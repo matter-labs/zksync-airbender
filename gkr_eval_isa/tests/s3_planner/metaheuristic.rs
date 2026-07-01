@@ -63,6 +63,43 @@ pub struct CachePrioritySite {
     pub class: ValueClass,
 }
 
+type CachePriorityKey = (u32, u32, u32, ValueClass);
+
+trait CachePriorityLocus {
+    fn cache_priority_key(&self) -> CachePriorityKey;
+}
+
+impl CachePriorityLocus for DemandSite {
+    fn cache_priority_key(&self) -> CachePriorityKey {
+        (self.consumer, self.input_index, self.value, self.class)
+    }
+}
+
+impl CachePriorityLocus for CachePrioritySite {
+    fn cache_priority_key(&self) -> CachePriorityKey {
+        (self.consumer, self.input_index, self.value, self.class)
+    }
+}
+
+fn cache_priority_site_to_gene<T: CachePriorityLocus>(sites: &[T]) -> Vec<usize> {
+    let mut keys: Vec<_> = sites.iter().map(|site| site.cache_priority_key()).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    sites.iter()
+        .map(|site| {
+            keys.binary_search(&site.cache_priority_key())
+                .expect("cache-priority key must exist")
+        })
+        .collect()
+}
+
+fn cache_priority_gene_count<T: CachePriorityLocus>(sites: &[T]) -> usize {
+    cache_priority_site_to_gene(sites)
+        .into_iter()
+        .max()
+        .map_or(0, |max| max + 1)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Genome {
     pub root_order_key: Vec<f64>,
@@ -70,11 +107,11 @@ pub struct Genome {
 }
 
 impl Genome {
-    pub fn neutral<T>(inst: &OracleInstance, sites: &[T]) -> Self {
+    pub fn neutral<T: CachePriorityLocus>(inst: &OracleInstance, sites: &[T]) -> Self {
         let denom = inst.roots.len().max(1) as f64;
         Self {
             root_order_key: (0..inst.roots.len()).map(|i| i as f64 / denom).collect(),
-            cache_priority: vec![0.0; sites.len()],
+            cache_priority: vec![0.0; cache_priority_gene_count(sites)],
         }
     }
 }
@@ -158,16 +195,9 @@ pub fn enumerate_cache_priority_sites(inst: &OracleInstance) -> Vec<CachePriorit
     }
     sites.sort_by_key(|site| (site.root, site.consumer, site.input_index, site.value));
     sites.dedup_by_key(|site| (site.root, site.consumer, site.input_index, site.value));
-    let mut structural_sites: Vec<(u32, u32, u32, ValueClass)> = sites
-        .iter()
-        .map(|site| (site.consumer, site.input_index, site.value, site.class))
-        .collect();
-    structural_sites.sort_unstable();
-    structural_sites.dedup();
-    for site in &mut sites {
-        site.structural_index = structural_sites
-            .binary_search(&(site.consumer, site.input_index, site.value, site.class))
-            .expect("structural site must exist") as u32;
+    let site_to_gene = cache_priority_site_to_gene(&sites);
+    for (site, structural_index) in sites.iter_mut().zip(site_to_gene) {
+        site.structural_index = structural_index as u32;
     }
     sites
 }
@@ -442,8 +472,8 @@ pub(crate) fn score_candidate_internal(
 ) -> (CandidateScore, CacheTrace) {
     assert_eq!(
         genome.cache_priority.len(),
-        sites.len(),
-        "cache_priority length must match demand-site count"
+        cache_priority_gene_count(sites),
+        "cache_priority length must match structural cache-priority site count"
     );
     assert_normalized_genome(genome);
 
@@ -488,8 +518,8 @@ pub(crate) fn replay_plan(
 ) -> (CandidateScore, Vec<StepPlanRaw>) {
     assert_eq!(
         genome.cache_priority.len(),
-        sites.len(),
-        "cache_priority length must match demand-site count"
+        cache_priority_gene_count(sites),
+        "cache_priority length must match structural cache-priority site count"
     );
     assert_normalized_genome(genome);
 
@@ -526,6 +556,7 @@ pub(crate) fn replay_plan(
 struct Replay<'a> {
     inst: &'a OracleInstance,
     sites: &'a [DemandSite],
+    site_to_cache_priority_gene: Vec<usize>,
     genome: &'a Genome,
     classes: Vec<ValueClass>,
     fork_info: forkset::ForkInfo,
@@ -617,11 +648,12 @@ fn choose_reload_policy(
     inst: &OracleInstance,
     genome: &Genome,
     value: u32,
-    site_idx: usize,
+    cache_priority_idx: usize,
 ) -> bool {
     let reload_cost = inst.nodes[value as usize].width as f64;
     let recompute_cost = recompute_traffic_for(inst, value) as f64;
-    (-reload_cost + RECOVERY_BIAS_SCALE * genome.cache_priority[site_idx]) >= -recompute_cost
+    (-reload_cost + RECOVERY_BIAS_SCALE * genome.cache_priority[cache_priority_idx])
+        >= -recompute_cost
 }
 
 fn is_reloadable_value(inst: &OracleInstance, value: u32) -> bool {
@@ -681,6 +713,7 @@ impl<'a> Replay<'a> {
         Self {
             inst,
             sites,
+            site_to_cache_priority_gene: cache_priority_site_to_gene(sites),
             genome,
             classes,
             fork_info: forkset::analyze(inst),
@@ -990,7 +1023,12 @@ impl<'a> Replay<'a> {
     }
 
     fn choose_reload(&self, value: u32, site_idx: usize) -> bool {
-        choose_reload_policy(self.inst, self.genome, value, site_idx)
+        choose_reload_policy(
+            self.inst,
+            self.genome,
+            value,
+            self.site_to_cache_priority_gene[site_idx],
+        )
     }
 
     fn maybe_admit(&mut self, value: u32, site_idx: usize) {
@@ -1013,7 +1051,7 @@ impl<'a> Replay<'a> {
             return;
         }
 
-        if self.genome.cache_priority[site_idx] <= 0.0 {
+        if self.genome.cache_priority[self.site_to_cache_priority_gene[site_idx]] <= 0.0 {
             self.admit_stats.pressure_rejected += 1;
             self.trace_event(CacheTraceEvent::PressureReject { site_idx, value });
             return;
@@ -1079,7 +1117,8 @@ impl<'a> Replay<'a> {
     // read-floor / all-fit invariants. If M6 shows the keep lever underperforms,
     // promoting it to a value-keyed gene (one per node) is the documented next step.
     fn stamp_keep(&mut self, value: u32, site_idx: usize) {
-        self.resident_keep[value as usize] = self.genome.cache_priority[site_idx];
+        self.resident_keep[value as usize] =
+            self.genome.cache_priority[self.site_to_cache_priority_gene[site_idx]];
         self.resident_keep_site[value as usize] = Some(site_idx);
     }
 
@@ -1421,11 +1460,12 @@ pub(crate) mod tests {
     fn trace_guided_cache_genome(inst: &OracleInstance, sites: &[DemandSite]) -> Genome {
         let mut genome = Genome::neutral(inst, sites);
         for (idx, site) in sites.iter().enumerate() {
-            genome.cache_priority[idx] = match site.value {
+            let bias = match site.value {
                 1 => -1.0,
                 2 => 1.0,
                 _ => 0.0,
             };
+            set_cache_priority_for_site(sites, &mut genome, idx, bias);
         }
         genome
     }
@@ -1476,18 +1516,22 @@ pub(crate) mod tests {
         let inst = OracleInstance {
             budget: 1,
             reloadable_values: vec![],
-            roots: vec![1, 2],
+            roots: vec![1, 1],
             nodes: vec![
                 n(0, NodeKind::Read, 1, true, vec![]),
                 n(1, NodeKind::Add, 1, false, vec![0]),
-                n(2, NodeKind::Add, 1, false, vec![0]),
             ],
         };
         let sites = enumerate_cache_priority_sites(&inst);
         let genome = Genome::neutral(&inst, &sites);
+        let unique_structural_count = sites
+            .iter()
+            .map(|site| site.structural_index)
+            .max()
+            .map_or(0usize, |max| max as usize + 1);
 
         assert_eq!(genome.root_order_key.len(), inst.roots.len());
-        assert_eq!(genome.cache_priority.len(), sites.len());
+        assert_eq!(genome.cache_priority.len(), unique_structural_count);
     }
 
     #[test]
@@ -1609,8 +1653,7 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 2 {
-                genome.cache_priority[idx] = 1.0;
-                genome.cache_priority[idx] = 1.0;
+                set_cache_priority_for_site(&sites, &mut genome, idx, 1.0);
             }
         }
 
@@ -1707,11 +1750,9 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 2 {
-                genome.cache_priority[idx] = -1.0;
-                genome.cache_priority[idx] = 1.0;
-                genome.cache_priority[idx] = 1.0;
+                set_cache_priority_for_site(&sites, &mut genome, idx, 1.0);
             } else {
-                genome.cache_priority[idx] = -1.0;
+                set_cache_priority_for_site(&sites, &mut genome, idx, -1.0);
             }
         }
 
@@ -1770,9 +1811,7 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 2 {
-                genome.cache_priority[idx] = 1.0;
-                genome.cache_priority[idx] = -1.0;
-                genome.cache_priority[idx] = 1.0;
+                set_cache_priority_for_site(&sites, &mut genome, idx, 1.0);
             }
         }
 
@@ -1951,18 +1990,17 @@ pub(crate) mod tests {
         let inst = OracleInstance {
             budget: 1,
             reloadable_values: vec![],
-            roots: vec![1, 2],
+            roots: vec![1, 1],
             nodes: vec![
                 n(0, NodeKind::Read, 1, true, vec![]),
                 n(1, NodeKind::Add, 1, false, vec![0]),
-                n(2, NodeKind::Add, 1, false, vec![0]),
             ],
         };
         let sites = enumerate_demand_sites(&inst);
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 0 {
-                genome.cache_priority[idx] = 1.0;
+                set_cache_priority_for_site(&sites, &mut genome, idx, 1.0);
             }
         }
 
@@ -1978,18 +2016,17 @@ pub(crate) mod tests {
         let inst = OracleInstance {
             budget: 1,
             reloadable_values: vec![],
-            roots: vec![1, 2],
+            roots: vec![1, 1],
             nodes: vec![
                 n(0, NodeKind::Read, 1, true, vec![]),
                 n(1, NodeKind::Add, 1, false, vec![0]),
-                n(2, NodeKind::Add, 1, false, vec![0]),
             ],
         };
         let sites = enumerate_demand_sites(&inst);
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 0 {
-                genome.cache_priority[idx] = -1.0;
+                set_cache_priority_for_site(&sites, &mut genome, idx, -1.0);
             }
         }
 
@@ -2042,7 +2079,7 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 1 {
-                genome.cache_priority[idx] = -1.0;
+                set_cache_priority_for_site(&sites, &mut genome, idx, -1.0);
             }
         }
 
@@ -2088,16 +2125,24 @@ pub(crate) mod tests {
         let reject_sites_for_value_1: Vec<_> = sites
             .iter()
             .enumerate()
-            .filter_map(|(idx, site)| (site.value == 1).then_some(idx))
+            .filter_map(|(idx, site)| {
+                (site.value == 1).then_some(cache_priority_gene_for_site(&sites, idx))
+            })
             .collect();
-        let admit_site_for_value_2 = sites
+        let admit_site_for_value_2 = cache_priority_gene_for_site(
+            &sites,
+            sites
             .iter()
             .position(|site| site.root == 3 && site.value == 2)
-            .expect("value 2 first demand site must exist");
-        let victim_keep_site_for_value_0 = sites
+            .expect("value 2 first demand site must exist"),
+        );
+        let victim_keep_site_for_value_0 = cache_priority_gene_for_site(
+            &sites,
+            sites
             .iter()
             .position(|site| site.root == 2 && site.value == 0)
-            .expect("value 0 last keep site before eviction must exist");
+            .expect("value 0 last keep site before eviction must exist"),
+        );
         let mut neighbors = Vec::new();
 
         push_trace_guided_cache_neighbors(&sites, &genome, &trace, 16, &mut neighbors);
@@ -2126,7 +2171,9 @@ pub(crate) mod tests {
         let reject_sites_for_value_1: Vec<_> = sites
             .iter()
             .enumerate()
-            .filter_map(|(idx, site)| (site.value == 1).then_some(idx))
+            .filter_map(|(idx, site)| {
+                (site.value == 1).then_some(cache_priority_gene_for_site(&sites, idx))
+            })
             .collect();
 
         let neighbors = neighbor_entries(&inst, &sites, &genome, 64, &[]);
@@ -2188,12 +2235,13 @@ pub(crate) mod tests {
             *bias = 1.0;
         }
         for (idx, site) in sites.iter().enumerate() {
-            genome.cache_priority[idx] = match site.value {
+            let bias = match site.value {
                 0 => 1.0,
                 1 => -1.0,
                 2 => 0.0,
                 _ => 0.0,
             };
+            set_cache_priority_for_site(&sites, &mut genome, idx, bias);
         }
 
         let score = score_candidate(&inst, &sites, &genome);
@@ -2230,8 +2278,7 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 2 {
-                genome.cache_priority[idx] = -1.0;
-                genome.cache_priority[idx] = 1.0;
+                set_cache_priority_for_site(&sites, &mut genome, idx, 1.0);
             }
         }
 
@@ -2487,14 +2534,62 @@ pub(crate) mod tests {
         assert_normalized_genome(&genome);
 
         let root_idx = 0;
-        let admit_idx = genome.root_order_key.len();
-        let recovery_idx = admit_idx + genome.cache_priority.len();
-        let keep_idx = recovery_idx + genome.cache_priority.len();
+        let cache_idx = genome.root_order_key.len();
+        let last_cache_idx = cache_idx + genome.cache_priority.len() - 1;
 
         assert_normalized_genome(&perturb_one_gene(&genome, root_idx, 100.0));
-        assert_normalized_genome(&perturb_one_gene(&genome, admit_idx, 100.0));
-        assert_normalized_genome(&perturb_one_gene(&genome, recovery_idx, -100.0));
-        assert_normalized_genome(&perturb_one_gene(&genome, keep_idx, 100.0));
+        assert_normalized_genome(&perturb_one_gene(&genome, cache_idx, 100.0));
+        assert_normalized_genome(&perturb_one_gene(&genome, last_cache_idx, -100.0));
+    }
+
+    #[test]
+    fn demand_site_genome_uses_unique_structural_cache_priority_count() {
+        let inst = OracleInstance {
+            budget: 1,
+            reloadable_values: vec![],
+            roots: vec![1, 1],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Add, 1, false, vec![0]),
+            ],
+        };
+        let demand_sites = enumerate_demand_sites(&inst);
+        let structural_sites = enumerate_cache_priority_sites(&inst);
+        let unique_structural_count = structural_sites
+            .iter()
+            .map(|site| site.structural_index)
+            .max()
+            .map_or(0usize, |max| max as usize + 1);
+
+        assert_eq!(demand_sites.len(), 4);
+        assert_eq!(unique_structural_count, 2);
+        assert_eq!(
+            Genome::neutral(&inst, &demand_sites).cache_priority.len(),
+            unique_structural_count
+        );
+        let genome = Genome::neutral(&inst, &demand_sites);
+        let score = score_candidate(&inst, &demand_sites, &genome);
+        assert!(score.feasible);
+        assert_eq!(score.traffic, 1);
+    }
+
+    #[test]
+    fn active_cache_mutation_path_uses_single_family() {
+        let inst = OracleInstance {
+            budget: 1,
+            reloadable_values: vec![],
+            roots: vec![1, 2],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Add, 1, false, vec![0]),
+                n(2, NodeKind::Add, 1, false, vec![0]),
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let base = Genome::neutral(&inst, &sites);
+        let families = active_cache_move_families(&sites, &base);
+
+        assert_eq!(families, vec![MoveFamily::KeepBias]);
     }
 
     #[test]
@@ -3180,12 +3275,6 @@ pub(crate) mod tests {
         for bias in &mut genome.cache_priority {
             *bias = rng.next_signed();
         }
-        for bias in &mut genome.cache_priority {
-            *bias = rng.next_signed();
-        }
-        for bias in &mut genome.cache_priority {
-            *bias = rng.next_signed();
-        }
         genome
     }
 
@@ -3198,7 +3287,8 @@ pub(crate) mod tests {
             if site.class == ValueClass::CachedRootOutput {
                 let reload = inst.nodes[site.value as usize].width as f64;
                 let recompute = estimate_recompute_traffic(inst, site.value) as f64;
-                genome.cache_priority[idx] = if recompute > reload { 1.0 } else { 0.0 };
+                let bias = if recompute > reload { 1.0 } else { 0.0 };
+                set_cache_priority_for_site(sites, &mut genome, idx, bias);
             }
         }
 
@@ -3215,7 +3305,12 @@ pub(crate) mod tests {
         }
         if max_density > 0.0 {
             for (idx, site) in sites.iter().enumerate() {
-                genome.cache_priority[idx] = density[site.value as usize] / max_density;
+                set_cache_priority_for_site(
+                    sites,
+                    &mut genome,
+                    idx,
+                    density[site.value as usize] / max_density,
+                );
             }
         }
         genome
@@ -4187,21 +4282,26 @@ pub(crate) mod tests {
         inst.roots.len() >= 3
     }
 
-    fn active_cache_move_families(sites: &[DemandSite], base: &Genome) -> Vec<MoveFamily> {
-        let mut families = Vec::with_capacity(3);
-        if !base.cache_priority.is_empty() {
-            families.push(MoveFamily::AdmitBias);
-        }
-        if sites
-            .iter()
-            .any(|site| site.class == ValueClass::CachedRootOutput)
-        {
-            families.push(MoveFamily::RecoveryBias);
-        }
+    fn active_cache_move_families(_sites: &[DemandSite], base: &Genome) -> Vec<MoveFamily> {
+        let mut families = Vec::with_capacity(1);
         if !base.cache_priority.is_empty() {
             families.push(MoveFamily::KeepBias);
         }
         families
+    }
+
+    fn cache_priority_gene_for_site(sites: &[DemandSite], site_idx: usize) -> usize {
+        cache_priority_site_to_gene(sites)[site_idx]
+    }
+
+    fn set_cache_priority_for_site(
+        sites: &[DemandSite],
+        genome: &mut Genome,
+        site_idx: usize,
+        bias: f64,
+    ) {
+        let gene_idx = cache_priority_gene_for_site(sites, site_idx);
+        genome.cache_priority[gene_idx] = bias;
     }
 
     fn push_root_swap_neighbors(
@@ -4446,7 +4546,12 @@ pub(crate) mod tests {
                     push_trace_candidate(out, limit, admit_candidate, MoveFamily::AdmitBias);
 
                     let mut keep_candidate = base.clone();
-                    keep_candidate.cache_priority[site_idx] = TRACE_GUIDED_BIAS;
+                    set_cache_priority_for_site(
+                        sites,
+                        &mut keep_candidate,
+                        site_idx,
+                        TRACE_GUIDED_BIAS,
+                    );
                     push_trace_candidate(out, limit, keep_candidate, MoveFamily::KeepBias);
                 }
                 CacheTraceEvent::Evict {
@@ -4456,7 +4561,12 @@ pub(crate) mod tests {
                 } => {
                     if let Some(victim_site) = victim_last_site {
                         let mut candidate = base.clone();
-                        candidate.cache_priority[victim_site] = -TRACE_GUIDED_BIAS;
+                        set_cache_priority_for_site(
+                            sites,
+                            &mut candidate,
+                            victim_site,
+                            -TRACE_GUIDED_BIAS,
+                        );
                         push_trace_candidate(out, limit, candidate, MoveFamily::KeepBias);
                     }
                 }
@@ -4466,9 +4576,10 @@ pub(crate) mod tests {
     }
 
     fn set_admit_bias_for_value(sites: &[DemandSite], genome: &mut Genome, value: u32, bias: f64) {
+        let site_to_gene = cache_priority_site_to_gene(sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == value {
-                genome.cache_priority[idx] = bias;
+                genome.cache_priority[site_to_gene[idx]] = bias;
             }
         }
     }
@@ -4489,56 +4600,19 @@ pub(crate) mod tests {
     }
 
     fn push_cache_bias_family_neighbors(
-        sites: &[DemandSite],
+        _sites: &[DemandSite],
         base: &Genome,
         family: MoveFamily,
         limit: usize,
         out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
     ) {
         match family {
-            MoveFamily::AdmitBias => push_admit_bias_neighbors(base, limit, out),
-            MoveFamily::RecoveryBias => push_recovery_bias_neighbors(sites, base, limit, out),
+            MoveFamily::AdmitBias | MoveFamily::RecoveryBias => {
+                panic!("legacy cache families must not be active in the 2-bank genome")
+            }
             MoveFamily::KeepBias => push_keep_bias_neighbors(base, limit, out),
             MoveFamily::RootSwap | MoveFamily::RootInsert | MoveFamily::RootReverse => {
                 panic!("root moves are not cache bias families")
-            }
-        }
-    }
-
-    fn push_admit_bias_neighbors(
-        base: &Genome,
-        limit: usize,
-        out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
-    ) {
-        for idx in 0..base.cache_priority.len() {
-            for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
-                if out.len() >= limit {
-                    return;
-                }
-                let mut candidate = base.clone();
-                candidate.cache_priority[idx] = clamp_bias(candidate.cache_priority[idx] + delta);
-                out.push((out.len(), candidate, Some(MoveFamily::AdmitBias)));
-            }
-        }
-    }
-
-    fn push_recovery_bias_neighbors(
-        sites: &[DemandSite],
-        base: &Genome,
-        limit: usize,
-        out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
-    ) {
-        for (idx, site) in sites.iter().enumerate() {
-            if site.class != ValueClass::CachedRootOutput {
-                continue;
-            }
-            for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
-                if out.len() >= limit {
-                    return;
-                }
-                let mut candidate = base.clone();
-                candidate.cache_priority[idx] = clamp_bias(candidate.cache_priority[idx] + delta);
-                out.push((out.len(), candidate, Some(MoveFamily::RecoveryBias)));
             }
         }
     }
@@ -4608,50 +4682,6 @@ pub(crate) mod tests {
                 }
                 let mut candidate = base.clone();
                 candidate.cache_priority[idx] = clamp_bias(candidate.cache_priority[idx] + delta);
-                score_neighbor(
-                    inst,
-                    sites,
-                    candidate,
-                    MoveFamily::AdmitBias,
-                    evals,
-                    best_genome,
-                    best_score,
-                    best_family,
-                );
-            }
-        }
-
-        for (idx, site) in sites.iter().enumerate() {
-            if site.class != ValueClass::CachedRootOutput {
-                continue;
-            }
-            for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
-                if *evals >= eval_budget {
-                    return;
-                }
-                let mut candidate = base.clone();
-                candidate.cache_priority[idx] = clamp_bias(candidate.cache_priority[idx] + delta);
-                score_neighbor(
-                    inst,
-                    sites,
-                    candidate,
-                    MoveFamily::RecoveryBias,
-                    evals,
-                    best_genome,
-                    best_score,
-                    best_family,
-                );
-            }
-        }
-
-        for idx in 0..base.cache_priority.len() {
-            for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
-                if *evals >= eval_budget {
-                    return;
-                }
-                let mut candidate = base.clone();
-                candidate.cache_priority[idx] =
-                    clamp_bias(candidate.cache_priority[idx] + delta);
                 score_neighbor(
                     inst,
                     sites,
