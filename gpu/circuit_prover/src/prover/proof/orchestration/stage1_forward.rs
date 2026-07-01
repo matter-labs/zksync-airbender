@@ -259,13 +259,23 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         debug_assert_eq!(external_u32.len(), external_challenges_u32_len);
         chunks.push((external_u32.as_ptr(), external_challenges_u32_len as u32));
     }
+    // Base-layer caps are committed only for non-degenerate base layers, exactly
+    // matching the CPU transcript in `prover::gkr::prover::prove_configured_with_gkr`
+    // (setup gated on `setup.hypercube_evals.len() > 0`, memory on
+    // `memory_layout.total_width > 0`, witness on `witness_layout.total_width > 0`).
+    // `setup_caps_total_u32` is already 0 when `bundle.setup` is absent. Memory and
+    // witness must be gated on their layout widths too: circuits with a zero-width
+    // base layer (e.g. standalone inits-and-teardowns, whose witness layer is
+    // width 0) must NOT commit that layer's cap, or the seed — and every
+    // downstream challenge (evaluation point, backward sumcheck, WHIR) — diverges
+    // from the CPU reference.
     if setup_caps_total_u32 > 0 {
         chunks.push((setup_cap_ptr as *const u32, setup_caps_total_u32 as u32));
     }
-    {
+    if compiled_circuit.memory_layout.total_width > 0 {
         chunks.push((memory_cap_ptr as *const u32, memory_caps_total_u32 as u32));
     }
-    {
+    if compiled_circuit.witness_layout.total_width > 0 {
         chunks.push((witness_cap_ptr as *const u32, witness_caps_total_u32 as u32));
     }
     let mut d_seed: DeviceAllocation<u32> =

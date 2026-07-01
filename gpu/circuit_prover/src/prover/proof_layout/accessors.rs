@@ -317,8 +317,19 @@ impl ProofLayout {
                     indices: &[u32]|
          -> WhirBaseLayerCommitmentAndQueries<BF, E4, DefaultTreeConstructor> {
             let base_layout = self.whir_base(which);
-            let cap_flat = self.whir_base_cap_host(slab, which);
-            let cap = digest_bytes_of(cap_flat);
+            // Zero-width base layers (e.g. the width-0 witness layer of the
+            // standalone inits-and-teardowns circuit, or an absent setup) commit
+            // to a dummy tree on the CPU (`commit_trace_part` short-circuits to
+            // `T::dummy()`, whose `get_cap()` is empty). The slab still reserves a
+            // cap region sized by the base geometry and stage 1 fills it with a
+            // degenerate hash, but the proof must present an EMPTY cap to match
+            // the CPU reference. This mirrors the `num_columns == 0` gate already
+            // applied to `queries` below.
+            let cap = if base_layout.num_columns == 0 {
+                Vec::new()
+            } else {
+                digest_bytes_of(self.whir_base_cap_host(slab, which))
+            };
             let evals = self.whir_base_evals_host(slab, which).to_vec();
             let query_count = base_layout.query_count;
             let leaf_values_len = base_layout.leaf_values_len;
