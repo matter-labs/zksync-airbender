@@ -51,6 +51,7 @@ pub struct DemandSite {
     pub input_index: u32,
     pub value: u32,
     pub class: ValueClass,
+    pub cache_priority_gene: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,13 +66,20 @@ pub struct CachePrioritySite {
 
 type CachePriorityKey = (u32, u32, u32, ValueClass);
 
-trait CachePriorityLocus {
+pub(crate) trait CachePriorityLocus {
     fn cache_priority_key(&self) -> CachePriorityKey;
+    fn cache_priority_gene(&self) -> Option<usize> {
+        None
+    }
 }
 
 impl CachePriorityLocus for DemandSite {
     fn cache_priority_key(&self) -> CachePriorityKey {
         (self.consumer, self.input_index, self.value, self.class)
+    }
+
+    fn cache_priority_gene(&self) -> Option<usize> {
+        Some(self.cache_priority_gene as usize)
     }
 }
 
@@ -82,6 +90,12 @@ impl CachePriorityLocus for CachePrioritySite {
 }
 
 fn cache_priority_site_to_gene<T: CachePriorityLocus>(sites: &[T]) -> Vec<usize> {
+    if sites.iter().all(|site| site.cache_priority_gene().is_some()) {
+        return sites
+            .iter()
+            .map(|site| site.cache_priority_gene().expect("checked above"))
+            .collect();
+    }
     let mut keys: Vec<_> = sites.iter().map(|site| site.cache_priority_key()).collect();
     keys.sort_unstable();
     keys.dedup();
@@ -94,8 +108,30 @@ fn cache_priority_site_to_gene<T: CachePriorityLocus>(sites: &[T]) -> Vec<usize>
 }
 
 fn cache_priority_gene_count<T: CachePriorityLocus>(sites: &[T]) -> usize {
+    if sites.iter().all(|site| site.cache_priority_gene().is_some()) {
+        return sites
+            .iter()
+            .map(|site| site.cache_priority_gene().expect("checked above"))
+            .max()
+            .map_or(0, |max| max + 1);
+    }
     cache_priority_site_to_gene(sites)
         .into_iter()
+        .max()
+        .map_or(0, |max| max + 1)
+}
+
+fn demand_site_to_cache_priority_gene(sites: &[DemandSite]) -> Vec<usize> {
+    sites
+        .iter()
+        .map(|site| site.cache_priority_gene as usize)
+        .collect()
+}
+
+fn demand_cache_priority_gene_count(sites: &[DemandSite]) -> usize {
+    sites
+        .iter()
+        .map(|site| site.cache_priority_gene as usize)
         .max()
         .map_or(0, |max| max + 1)
 }
@@ -211,6 +247,7 @@ pub fn enumerate_demand_sites(inst: &OracleInstance) -> Vec<DemandSite> {
             input_index: site.input_index,
             value: site.value,
             class: site.class,
+            cache_priority_gene: site.structural_index,
         })
         .collect()
 }
@@ -353,7 +390,7 @@ pub struct AdmitStats {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct CacheTrace {
+pub(crate) struct CacheTrace {
     events: Vec<CacheTraceEvent>,
 }
 
@@ -472,7 +509,7 @@ pub(crate) fn score_candidate_internal(
 ) -> (CandidateScore, CacheTrace) {
     assert_eq!(
         genome.cache_priority.len(),
-        cache_priority_gene_count(sites),
+        demand_cache_priority_gene_count(sites),
         "cache_priority length must match structural cache-priority site count"
     );
     assert_normalized_genome(genome);
@@ -518,7 +555,7 @@ pub(crate) fn replay_plan(
 ) -> (CandidateScore, Vec<StepPlanRaw>) {
     assert_eq!(
         genome.cache_priority.len(),
-        cache_priority_gene_count(sites),
+        demand_cache_priority_gene_count(sites),
         "cache_priority length must match structural cache-priority site count"
     );
     assert_normalized_genome(genome);
@@ -635,9 +672,9 @@ fn should_expand_policy_demand(
 // aware runtime computation, and that is deliberate on two grounds:
 //   1. State-dependence is already expressed per site. A DemandSite is
 //      (root_occurrence, consumer, input_index, value), so the SAME value demanded
-//      in two different cones gets two DIFFERENT `recovery_bias` genes. Residency at
+//      in two different cones gets two DIFFERENT `cache_priority` genes. Residency at
 //      a demand point is a function of order + context, and the site encodes that
-//      context — so the optimizer, tuning per-site recovery_bias, learns a
+//      context — so the optimizer, tuning per-site cache_priority, learns a
 //      context- (hence residency-) adapted decision. (See the per-site divergence
 //      test `recovery_policy_is_per_site_not_global`.)
 //   2. The decision must be residency-BLIND to keep the liveness pre-count
@@ -649,7 +686,7 @@ fn should_expand_policy_demand(
 //      resolved — eviction here is genome-keep-score driven, NOT Belady, so there
 //      is no next-use optimality to preserve, only liveness consistency.)
 // `recompute_traffic_for` is therefore the zero-bias PRIOR (an empty-cache full-cone
-// estimate); recovery_bias shifts it per site and the optimizer corrects it.
+// estimate); cache_priority shifts it per site and the optimizer corrects it.
 fn choose_reload_policy(
     inst: &OracleInstance,
     genome: &Genome,
@@ -707,8 +744,9 @@ impl<'a> Replay<'a> {
         order: &[usize],
         collect_trace: bool,
     ) -> Self {
+        let site_to_cache_priority_gene = demand_site_to_cache_priority_gene(sites);
         let (remaining_demands, remaining_site_demands) =
-            Self::remaining_demand_counts(inst, sites, genome, order);
+            Self::remaining_demand_counts(inst, sites, genome, &site_to_cache_priority_gene, order);
         let mut cone_of: Vec<Vec<u32>> = vec![Vec::new(); inst.nodes.len()];
         for &root_occurrence in order {
             let rv = inst.roots[root_occurrence] as usize;
@@ -719,7 +757,7 @@ impl<'a> Replay<'a> {
         Self {
             inst,
             sites,
-            site_to_cache_priority_gene: cache_priority_site_to_gene(sites),
+            site_to_cache_priority_gene,
             genome,
             classes,
             fork_info: forkset::analyze(inst),
@@ -748,12 +786,12 @@ impl<'a> Replay<'a> {
         inst: &OracleInstance,
         sites: &[DemandSite],
         genome: &Genome,
+        site_to_cache_priority_gene: &[usize],
         order: &[usize],
     ) -> (Vec<usize>, Vec<usize>) {
         let mut counts = vec![0usize; inst.nodes.len()];
         let mut site_counts = vec![0usize; sites.len()];
         let classes = classify_values(inst);
-        let site_to_cache_priority_gene = cache_priority_site_to_gene(sites);
         let mut completed_root = vec![false; inst.nodes.len()];
         for &root_occurrence in order {
             let root_value = inst.roots[root_occurrence];
@@ -1111,7 +1149,7 @@ impl<'a> Replay<'a> {
         }
     }
 
-    // KEEP REDUCTION (M2). `keep_after_use_bias` is a PER-SITE gene, but a value has a
+    // KEEP REDUCTION (M2). `cache_priority` is a PER-SITE gene, but a value has a
     // single residency, so its keep priority is stored as ONE scalar in
     // `resident_keep[value]`, overwritten by whichever site last stamps it — on
     // admission AND on every reuse (`finish_root`, `satisfy_demand`, `admit_value`).
@@ -1693,6 +1731,7 @@ pub(crate) mod tests {
         };
 
         let sites = enumerate_demand_sites(&inst);
+        let structural_sites = enumerate_cache_priority_sites(&inst);
 
         assert!(sites.contains(&DemandSite {
             root: 0,
@@ -1700,21 +1739,57 @@ pub(crate) mod tests {
             input_index: 0,
             value: 0,
             class: ValueClass::RamSource,
+            cache_priority_gene: 0,
         }));
-        assert!(sites.contains(&DemandSite {
-            root: 1,
-            consumer: 4,
-            input_index: 0,
-            value: 2,
-            class: ValueClass::CachedRootOutput,
-        }));
-        assert!(sites.contains(&DemandSite {
-            root: 1,
-            consumer: 4,
-            input_index: 1,
-            value: 3,
-            class: ValueClass::Intermediate,
-        }));
+        let cached_root_site = sites
+            .iter()
+            .find(|site| {
+                site.root == 1
+                    && site.consumer == 4
+                    && site.input_index == 0
+                    && site.value == 2
+                    && site.class == ValueClass::CachedRootOutput
+            })
+            .expect("cached-root demand site");
+        let cached_root_structural_site = structural_sites
+            .iter()
+            .find(|site| {
+                site.root == cached_root_site.root
+                    && site.consumer == cached_root_site.consumer
+                    && site.input_index == cached_root_site.input_index
+                    && site.value == cached_root_site.value
+                    && site.class == cached_root_site.class
+            })
+            .expect("cached-root structural site");
+        assert_eq!(
+            cached_root_site.cache_priority_gene,
+            cached_root_structural_site.structural_index
+        );
+
+        let intermediate_site = sites
+            .iter()
+            .find(|site| {
+                site.root == 1
+                    && site.consumer == 4
+                    && site.input_index == 1
+                    && site.value == 3
+                    && site.class == ValueClass::Intermediate
+            })
+            .expect("intermediate demand site");
+        let intermediate_structural_site = structural_sites
+            .iter()
+            .find(|site| {
+                site.root == intermediate_site.root
+                    && site.consumer == intermediate_site.consumer
+                    && site.input_index == intermediate_site.input_index
+                    && site.value == intermediate_site.value
+                    && site.class == intermediate_site.class
+            })
+            .expect("intermediate structural site");
+        assert_eq!(
+            intermediate_site.cache_priority_gene,
+            intermediate_structural_site.structural_index
+        );
     }
 
     #[test]
@@ -1733,14 +1808,56 @@ pub(crate) mod tests {
         };
 
         let sites = enumerate_demand_sites(&inst);
+        let structural_sites = enumerate_cache_priority_sites(&inst);
+        let site = sites
+            .iter()
+            .find(|site| {
+                site.root == 0
+                    && site.consumer == 2
+                    && site.input_index == ROOT_OUTPUT_INPUT_INDEX
+                    && site.value == 2
+                    && site.class == ValueClass::CachedRootOutput
+            })
+            .expect("reusable root-output demand site");
+        let structural_site = structural_sites
+            .iter()
+            .find(|structural_site| {
+                structural_site.root == site.root
+                    && structural_site.consumer == site.consumer
+                    && structural_site.input_index == site.input_index
+                    && structural_site.value == site.value
+                    && structural_site.class == site.class
+            })
+            .expect("reusable root-output structural site");
+        assert_eq!(site.cache_priority_gene, structural_site.structural_index);
+    }
 
-        assert!(sites.contains(&DemandSite {
-            root: 0,
-            consumer: 2,
-            input_index: ROOT_OUTPUT_INPUT_INDEX,
-            value: 2,
-            class: ValueClass::CachedRootOutput,
-        }));
+    #[test]
+    fn structurally_reused_demand_sites_share_cache_priority_gene() {
+        let inst = OracleInstance {
+            budget: 1,
+            reloadable_values: vec![2],
+            roots: vec![2, 2],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![0, 1]),
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let root_output_site = sites
+            .iter()
+            .find(|site| site.root == 0 && site.value == 2 && site.input_index == ROOT_OUTPUT_INPUT_INDEX)
+            .expect("root output site");
+        let repeated_root_output_site = sites
+            .iter()
+            .find(|site| site.root == 1 && site.value == 2 && site.input_index == ROOT_OUTPUT_INPUT_INDEX)
+            .expect("repeated root output site");
+
+        assert_eq!(
+            root_output_site.cache_priority_gene,
+            repeated_root_output_site.cache_priority_gene
+        );
     }
 
     #[test]
@@ -1999,7 +2116,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn replay_caches_ram_source_when_admit_bias_is_positive() {
+    fn replay_caches_ram_source_when_cache_priority_is_positive() {
         let inst = OracleInstance {
             budget: 1,
             reloadable_values: vec![],
@@ -2025,7 +2142,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn replay_eagerly_caches_free_capacity_despite_negative_admit_bias() {
+    fn replay_eagerly_caches_free_capacity_despite_negative_cache_priority() {
         let inst = OracleInstance {
             budget: 1,
             reloadable_values: vec![],
@@ -2161,22 +2278,22 @@ pub(crate) mod tests {
         push_trace_guided_cache_neighbors(&sites, &genome, &trace, 16, &mut neighbors);
 
         assert!(neighbors.iter().any(|(_, candidate, family)| {
-            *family == Some(MoveFamily::KeepBias)
+            *family == Some(MoveFamily::CachePriority)
                 && reject_sites_for_value_1
                     .iter()
                     .all(|&idx| candidate.cache_priority[idx] > 0.0)
         }));
         assert!(neighbors.iter().any(|(_, candidate, family)| {
-            *family == Some(MoveFamily::KeepBias)
+            *family == Some(MoveFamily::CachePriority)
                 && candidate.cache_priority[admit_site_for_value_2] > 0.0
         }));
         assert!(neighbors.iter().any(|(_, candidate, family)| {
-            *family == Some(MoveFamily::KeepBias)
+            *family == Some(MoveFamily::CachePriority)
                 && candidate.cache_priority[victim_keep_site_for_value_0] < 0.0
         }));
         assert!(neighbors
             .iter()
-            .all(|(_, _, family)| *family != Some(MoveFamily::AdmitBias)));
+            .all(|(_, _, family)| *family == Some(MoveFamily::CachePriority)));
     }
 
     #[test]
@@ -2192,7 +2309,7 @@ pub(crate) mod tests {
         assert!(!neighbors.is_empty());
         assert!(neighbors
             .iter()
-            .all(|(_, _, family)| *family == Some(MoveFamily::KeepBias)));
+            .all(|(_, _, family)| *family == Some(MoveFamily::CachePriority)));
     }
 
     #[test]
@@ -2211,14 +2328,14 @@ pub(crate) mod tests {
         let neighbors = neighbor_entries(&inst, &sites, &genome, 64, &[]);
 
         assert!(neighbors.iter().any(|(_, candidate, family)| {
-            *family == Some(MoveFamily::KeepBias)
+            *family == Some(MoveFamily::CachePriority)
                 && reject_sites_for_value_1
                     .iter()
                     .all(|&idx| candidate.cache_priority[idx] > 0.0)
         }));
         assert!(neighbors
             .iter()
-            .all(|(_, _, family)| *family != Some(MoveFamily::AdmitBias)));
+            .any(|(_, _, family)| *family == Some(MoveFamily::CachePriority)));
     }
 
     #[test]
@@ -2247,7 +2364,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn replay_evicts_lowest_keep_after_use_bias_value() {
+    fn replay_evicts_lowest_cache_priority_value() {
         let inst = OracleInstance {
             budget: 2,
             reloadable_values: vec![],
@@ -2296,7 +2413,7 @@ pub(crate) mod tests {
     // that streams must NOT evict).
 
     #[test]
-    fn recovery_bias_can_choose_cached_root_reload_over_recompute() {
+    fn cache_priority_can_choose_cached_root_reload_over_recompute() {
         let inst = OracleInstance {
             budget: 0,
             reloadable_values: vec![2],
@@ -2332,7 +2449,7 @@ pub(crate) mod tests {
         //
         // V = node 1 = ext Add{a} (width 4, reloadable root). reload(V)=width 4;
         // recompute(V)=re-read base leaf a (width 1). At budget 0, V is never cached,
-        // so each reuse independently reloads (recovery_bias 1.0 → 4*1 >= 4-1) or
+        // so each reuse independently reloads (cache_priority 1.0 → 4*1 >= 4-1) or
         // recomputes (bias 0.0 → cheaper recompute wins). V is reused at R1=Add{V,c}
         // and R2=Add{V,d}. Per-reuse cost: recompute = a(1)+V-Add instr; reload = 4.
         let inst = OracleInstance {
@@ -2628,7 +2745,7 @@ pub(crate) mod tests {
         let base = Genome::neutral(&inst, &sites);
         let families = active_cache_move_families(&sites, &base);
 
-        assert_eq!(families, vec![MoveFamily::KeepBias]);
+        assert_eq!(families, vec![MoveFamily::CachePriority]);
     }
 
     #[test]
@@ -3014,10 +3131,10 @@ pub(crate) mod tests {
             .any(|(_, _, family)| *family == Some(MoveFamily::RootInsert)));
         assert!(neighbors
             .iter()
-            .any(|(_, _, family)| *family == Some(MoveFamily::KeepBias)));
+            .any(|(_, _, family)| *family == Some(MoveFamily::CachePriority)));
         assert!(neighbors
             .iter()
-            .all(|(_, _, family)| *family != Some(MoveFamily::AdmitBias)));
+            .all(|(_, _, family)| family.is_some()));
     }
 
     #[test]
@@ -3042,22 +3159,22 @@ pub(crate) mod tests {
         let better = candidate_score(8, 25);
         let best = candidate_score(8, 18);
 
-        stats.record_candidate(MoveFamily::KeepBias, &worse, false);
-        stats.record_candidate(MoveFamily::KeepBias, &better, true);
-        stats.record_candidate(MoveFamily::KeepBias, &best, true);
+        stats.record_candidate(MoveFamily::CachePriority, &worse, false);
+        stats.record_candidate(MoveFamily::CachePriority, &better, true);
+        stats.record_candidate(MoveFamily::CachePriority, &best, true);
 
-        assert_eq!(stats.keep_after_use_bias.tried, 3);
-        assert_eq!(stats.keep_after_use_bias.improving, 2);
-        assert_eq!(stats.keep_after_use_bias.best, Some((8, 18)));
-        assert_eq!(stats.keep_after_use_bias.best_improving, Some((8, 18)));
+        assert_eq!(stats.cache_priority.tried, 3);
+        assert_eq!(stats.cache_priority.improving, 2);
+        assert_eq!(stats.cache_priority.best, Some((8, 18)));
+        assert_eq!(stats.cache_priority.best_improving, Some((8, 18)));
     }
 
     #[test]
     fn plateau_selection_accepts_equal_cache_neighbor_when_budget_remains() {
         let current = candidate_score(10, 20);
         let root_equal = scored_test_candidate(0, candidate_score(10, 20), MoveFamily::RootSwap);
-        let cache_equal = scored_test_candidate(1, candidate_score(10, 20), MoveFamily::KeepBias);
-        let worse_cache = scored_test_candidate(2, candidate_score(11, 20), MoveFamily::AdmitBias);
+        let cache_equal = scored_test_candidate(1, candidate_score(10, 20), MoveFamily::CachePriority);
+        let worse_cache = scored_test_candidate(2, candidate_score(11, 20), MoveFamily::CachePriority);
         let scored = vec![root_equal, cache_equal.clone(), worse_cache];
 
         let selected = select_optimizer_neighbor(&scored, &current, 1);
@@ -3068,7 +3185,7 @@ pub(crate) mod tests {
     #[test]
     fn plateau_selection_prefers_strict_improvement_over_sideways_cache_neighbor() {
         let current = candidate_score(10, 20);
-        let cache_equal = scored_test_candidate(0, candidate_score(10, 20), MoveFamily::KeepBias);
+        let cache_equal = scored_test_candidate(0, candidate_score(10, 20), MoveFamily::CachePriority);
         let improving_root =
             scored_test_candidate(1, candidate_score(9, 25), MoveFamily::RootInsert);
         let scored = vec![cache_equal, improving_root];
@@ -3083,7 +3200,7 @@ pub(crate) mod tests {
         let scored = vec![
             scored_test_candidate(0, candidate_score(12, 20), MoveFamily::RootSwap),
             scored_test_candidate(1, candidate_score(10, 22), MoveFamily::RootInsert),
-            scored_test_candidate(2, candidate_score(11, 18), MoveFamily::KeepBias),
+            scored_test_candidate(2, candidate_score(11, 18), MoveFamily::CachePriority),
         ];
 
         let states = optimizer_beam_from_seed_scores(scored, 2);
@@ -3398,9 +3515,7 @@ pub(crate) mod tests {
         root_swaps: usize,
         root_inserts: usize,
         root_reverses: usize,
-        admit_bias: usize,
-        recovery_bias: usize,
-        keep_after_use_bias: usize,
+        cache_priority: usize,
     }
 
     impl AcceptedMoves {
@@ -3408,9 +3523,7 @@ pub(crate) mod tests {
             self.root_swaps
                 + self.root_inserts
                 + self.root_reverses
-                + self.admit_bias
-                + self.recovery_bias
-                + self.keep_after_use_bias
+                + self.cache_priority
         }
 
         fn add(&mut self, family: MoveFamily) {
@@ -3418,9 +3531,7 @@ pub(crate) mod tests {
                 MoveFamily::RootSwap => self.root_swaps += 1,
                 MoveFamily::RootInsert => self.root_inserts += 1,
                 MoveFamily::RootReverse => self.root_reverses += 1,
-                MoveFamily::AdmitBias => self.admit_bias += 1,
-                MoveFamily::RecoveryBias => self.recovery_bias += 1,
-                MoveFamily::KeepBias => self.keep_after_use_bias += 1,
+                MoveFamily::CachePriority => self.cache_priority += 1,
             }
         }
     }
@@ -3439,9 +3550,7 @@ pub(crate) mod tests {
         root_swaps: MoveFamilyCounters,
         root_inserts: MoveFamilyCounters,
         root_reverses: MoveFamilyCounters,
-        admit_bias: MoveFamilyCounters,
-        recovery_bias: MoveFamilyCounters,
-        keep_after_use_bias: MoveFamilyCounters,
+        cache_priority: MoveFamilyCounters,
     }
 
     impl MoveFamilyStats {
@@ -3450,9 +3559,7 @@ pub(crate) mod tests {
                 MoveFamily::RootSwap => &mut self.root_swaps,
                 MoveFamily::RootInsert => &mut self.root_inserts,
                 MoveFamily::RootReverse => &mut self.root_reverses,
-                MoveFamily::AdmitBias => &mut self.admit_bias,
-                MoveFamily::RecoveryBias => &mut self.recovery_bias,
-                MoveFamily::KeepBias => &mut self.keep_after_use_bias,
+                MoveFamily::CachePriority => &mut self.cache_priority,
             }
         }
 
@@ -3484,9 +3591,7 @@ pub(crate) mod tests {
             merge_counters(&mut self.root_swaps, other.root_swaps);
             merge_counters(&mut self.root_inserts, other.root_inserts);
             merge_counters(&mut self.root_reverses, other.root_reverses);
-            merge_counters(&mut self.admit_bias, other.admit_bias);
-            merge_counters(&mut self.recovery_bias, other.recovery_bias);
-            merge_counters(&mut self.keep_after_use_bias, other.keep_after_use_bias);
+            merge_counters(&mut self.cache_priority, other.cache_priority);
         }
     }
 
@@ -3511,9 +3616,7 @@ pub(crate) mod tests {
         RootSwap,
         RootInsert,
         RootReverse,
-        AdmitBias,
-        RecoveryBias,
-        KeepBias,
+        CachePriority,
     }
 
     #[derive(Clone, Debug)]
@@ -3861,10 +3964,7 @@ pub(crate) mod tests {
     }
 
     fn is_cache_move_family(family: MoveFamily) -> bool {
-        matches!(
-            family,
-            MoveFamily::AdmitBias | MoveFamily::RecoveryBias | MoveFamily::KeepBias
-        )
+        matches!(family, MoveFamily::CachePriority)
     }
 
     /// Budget-proportional beam width: open at most one state per `BEAM_STATE_MIN_BUDGET`
@@ -4324,13 +4424,13 @@ pub(crate) mod tests {
     fn active_cache_move_families(_sites: &[DemandSite], base: &Genome) -> Vec<MoveFamily> {
         let mut families = Vec::with_capacity(1);
         if !base.cache_priority.is_empty() {
-            families.push(MoveFamily::KeepBias);
+            families.push(MoveFamily::CachePriority);
         }
         families
     }
 
     fn cache_priority_gene_for_site(sites: &[DemandSite], site_idx: usize) -> usize {
-        cache_priority_site_to_gene(sites)[site_idx]
+        sites[site_idx].cache_priority_gene as usize
     }
 
     fn set_cache_priority_for_site(
@@ -4572,7 +4672,7 @@ pub(crate) mod tests {
                 CacheTraceEvent::PressureReject { value, .. } => {
                     let mut candidate = base.clone();
                     set_cache_priority_for_value(sites, &mut candidate, value, TRACE_GUIDED_BIAS);
-                    push_trace_candidate(out, limit, candidate, MoveFamily::KeepBias);
+                    push_trace_candidate(out, limit, candidate, MoveFamily::CachePriority);
                 }
                 CacheTraceEvent::PressureAdmit { site_idx, value } => {
                     let mut admit_candidate = base.clone();
@@ -4582,7 +4682,7 @@ pub(crate) mod tests {
                         value,
                         -TRACE_GUIDED_BIAS,
                     );
-                    push_trace_candidate(out, limit, admit_candidate, MoveFamily::KeepBias);
+                    push_trace_candidate(out, limit, admit_candidate, MoveFamily::CachePriority);
 
                     let mut keep_candidate = base.clone();
                     set_cache_priority_for_site(
@@ -4591,7 +4691,7 @@ pub(crate) mod tests {
                         site_idx,
                         TRACE_GUIDED_BIAS,
                     );
-                    push_trace_candidate(out, limit, keep_candidate, MoveFamily::KeepBias);
+                    push_trace_candidate(out, limit, keep_candidate, MoveFamily::CachePriority);
                 }
                 CacheTraceEvent::Evict {
                     victim_last_site,
@@ -4606,7 +4706,7 @@ pub(crate) mod tests {
                             victim_site,
                             -TRACE_GUIDED_BIAS,
                         );
-                        push_trace_candidate(out, limit, candidate, MoveFamily::KeepBias);
+                        push_trace_candidate(out, limit, candidate, MoveFamily::CachePriority);
                     }
                 }
                 CacheTraceEvent::Evict { .. } => {}
@@ -4620,10 +4720,9 @@ pub(crate) mod tests {
         value: u32,
         bias: f64,
     ) {
-        let site_to_gene = cache_priority_site_to_gene(sites);
-        for (idx, site) in sites.iter().enumerate() {
+        for site in sites {
             if site.value == value {
-                genome.cache_priority[site_to_gene[idx]] = bias;
+                genome.cache_priority[site.cache_priority_gene as usize] = bias;
             }
         }
     }
@@ -4651,10 +4750,7 @@ pub(crate) mod tests {
         out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
     ) {
         match family {
-            MoveFamily::AdmitBias | MoveFamily::RecoveryBias => {
-                panic!("legacy cache families must not be active in the 2-bank genome")
-            }
-            MoveFamily::KeepBias => push_keep_bias_neighbors(base, limit, out),
+            MoveFamily::CachePriority => push_keep_bias_neighbors(base, limit, out),
             MoveFamily::RootSwap | MoveFamily::RootInsert | MoveFamily::RootReverse => {
                 panic!("root moves are not cache bias families")
             }
@@ -4674,7 +4770,7 @@ pub(crate) mod tests {
                 let mut candidate = base.clone();
                 candidate.cache_priority[idx] =
                     clamp_bias(candidate.cache_priority[idx] + delta);
-                out.push((out.len(), candidate, Some(MoveFamily::KeepBias)));
+                out.push((out.len(), candidate, Some(MoveFamily::CachePriority)));
             }
         }
     }
@@ -4730,7 +4826,7 @@ pub(crate) mod tests {
                     inst,
                     sites,
                     candidate,
-                    MoveFamily::KeepBias,
+                    MoveFamily::CachePriority,
                     evals,
                     best_genome,
                     best_score,
@@ -4904,7 +5000,7 @@ pub(crate) mod tests {
         let opt_avg_ns = opt_elapsed.as_nanos() / optimized.evals as u128;
 
         eprintln!(
-            "[META] {label} nodes={} roots={} sites={} population={} eval_budget={} baseline={:?}/{} swapped={:?}/{} feasible={}/{} best={best:?} median={median:?} init=[{}] infeasible={} avg={}ns/candidate best_order={:?} opt_best={:?}/{} opt_evals={} opt_avg={}ns/eval opt_moves=(swap:{},insert:{},admit:{},recovery:{},keep:{}) opt_family=[{}] opt_admit=[{}] opt_order={:?}",
+            "[META] {label} nodes={} roots={} sites={} population={} eval_budget={} baseline={:?}/{} swapped={:?}/{} feasible={}/{} best={best:?} median={median:?} init=[{}] infeasible={} avg={}ns/candidate best_order={:?} opt_best={:?}/{} opt_evals={} opt_avg={}ns/eval opt_moves=(swap:{},insert:{},cache:{}) opt_family=[{}] opt_admit=[{}] opt_order={:?}",
             inst.nodes.len(),
             inst.roots.len(),
             sites.len(),
@@ -4930,9 +5026,7 @@ pub(crate) mod tests {
             opt_avg_ns,
             optimized.accepted.root_swaps,
             optimized.accepted.root_inserts,
-            optimized.accepted.admit_bias,
-            optimized.accepted.recovery_bias,
-            optimized.accepted.keep_after_use_bias,
+            optimized.accepted.cache_priority,
             format_family_stats(optimized.family_stats),
             format_admit_stats(optimized.best_score.admit_stats),
             optimized.best_score.order,
@@ -5074,12 +5168,10 @@ pub(crate) mod tests {
 
     fn format_family_stats(stats: MoveFamilyStats) -> String {
         format!(
-            "sw={} ins={} a={} rec={} k={}",
+            "sw={} ins={} cache={}",
             format_family_counters(stats.root_swaps),
             format_family_counters(stats.root_inserts),
-            format_family_counters(stats.admit_bias),
-            format_family_counters(stats.recovery_bias),
-            format_family_counters(stats.keep_after_use_bias),
+            format_family_counters(stats.cache_priority),
         )
     }
 
@@ -5391,7 +5483,7 @@ pub(crate) mod tests {
             );
             scored += 1;
             println!(
-                "[META-CORPUS] {label:<52} nodes={:<5} roots={:<4} sites={:<4} feasible={:>4}/{:<4} base={:?}/{} init=[{}] opt={:?}/{} evals={:<5} moves=(sw:{},ins:{},a:{},rec:{},k:{}) fam=[{}] opt_admit=[{}] final_feasible={:>3}/{:<3} final=[{}] final_best={:?} final_fam=[{}] final_admit=[{}] final_evals={:<5} final_avg={}ns avg={}ns opt_avg={}ns infeasible={} final_infeasible={}",
+                "[META-CORPUS] {label:<52} nodes={:<5} roots={:<4} sites={:<4} feasible={:>4}/{:<4} base={:?}/{} init=[{}] opt={:?}/{} evals={:<5} moves=(sw:{},ins:{},cache:{}) fam=[{}] opt_admit=[{}] final_feasible={:>3}/{:<3} final=[{}] final_best={:?} final_fam=[{}] final_admit=[{}] final_evals={:<5} final_avg={}ns avg={}ns opt_avg={}ns infeasible={} final_infeasible={}",
                 inst.nodes.len(),
                 inst.roots.len(),
                 sites.len(),
@@ -5405,9 +5497,7 @@ pub(crate) mod tests {
                 smoke.optimized.evals,
                 smoke.optimized.accepted.root_swaps,
                 smoke.optimized.accepted.root_inserts,
-                smoke.optimized.accepted.admit_bias,
-                smoke.optimized.accepted.recovery_bias,
-                smoke.optimized.accepted.keep_after_use_bias,
+                smoke.optimized.accepted.cache_priority,
                 format_family_stats(smoke.optimized.family_stats),
                 format_admit_stats(smoke.optimized.best_score.admit_stats),
                 smoke.final_states.feasible,
