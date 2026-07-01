@@ -1765,6 +1765,31 @@ pub(crate) mod tests {
         }
     }
 
+    fn runtime_pruning_replay_genome(inst: &OracleInstance, sites: &[DemandSite]) -> Genome {
+        let mut genome = Genome::neutral(inst, sites);
+        for (idx, site) in sites.iter().enumerate() {
+            if site.value == 2 {
+                set_cache_priority_for_site(sites, &mut genome, idx, 1.0);
+            }
+        }
+        genome
+    }
+
+    fn replay_plan_demands(step: &StepPlanRaw) -> Vec<(u32, u32, u32, DemandKindRaw)> {
+        step.events
+            .iter()
+            .filter_map(|event| match event {
+                ReplayEventRaw::Demand {
+                    consumer,
+                    input_index,
+                    value,
+                    kind,
+                } => Some((*consumer, *input_index, *value, *kind)),
+                ReplayEventRaw::Admit { .. } | ReplayEventRaw::Evict { .. } => None,
+            })
+            .collect()
+    }
+
     fn nested_reloadable_fixture() -> OracleInstance {
         OracleInstance {
             budget: 0,
@@ -2055,6 +2080,29 @@ pub(crate) mod tests {
         assert!(
             replay.current_priority_site(0).is_some(),
             "future descendant demand must remain live until the later reload actually short-circuits it"
+        );
+    }
+
+    #[test]
+    fn replay_plan_prunes_descendant_demands_after_runtime_short_circuit() {
+        let inst = reloadable_root_output_fixture();
+        let sites = enumerate_demand_sites(&inst);
+        let genome = runtime_pruning_replay_genome(&inst, &sites);
+
+        let (_score, steps) = replay_plan(&inst, &sites, &genome, &[]);
+        let root_reuse_demands = replay_plan_demands(steps.last().expect("later root step"));
+
+        assert!(
+            root_reuse_demands.iter().any(|(_, _, value, kind)| {
+                *value == 2 && matches!(kind, DemandKindRaw::Resident | DemandKindRaw::Reload)
+            }),
+            "later root must short-circuit through the reused root output"
+        );
+        assert!(
+            root_reuse_demands
+                .iter()
+                .all(|(_, _, value, _)| *value != 0 && *value != 1),
+            "runtime pruning must suppress descendant demand events after the root-output short-circuit"
         );
     }
 

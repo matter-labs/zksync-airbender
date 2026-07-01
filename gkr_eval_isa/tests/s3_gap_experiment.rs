@@ -1129,6 +1129,175 @@ fn replay_plan_matches_score_and_reproduces_residency() {
     }
 }
 
+#[test]
+fn replay_plan_still_serializes_schedule_events_after_runtime_pruning() {
+    use s3_gap::instance::{extract_instance_with_remap, relation_units};
+    use s3_planner::metaheuristic::{project_genome_to_units, seeded_smoke_population};
+    use s3_planner::metaheuristic::{
+        enumerate_demand_sites, replay_plan, unit_members, DemandKindRaw,
+    };
+
+    let (layer, cross) =
+        try_load_l0("add_sub_lui_auipc_mop_layout_gkr.json").expect("fixture must load");
+    let (inst, remap) = extract_instance_with_remap(&layer, &cross, REAL_BUDGET);
+    let sites = enumerate_demand_sites(&inst);
+    let units = unit_members(&relation_units(&layer));
+    let genome = project_genome_to_units(&seeded_smoke_population(&inst, &sites, 1, 0)[0], &units);
+
+    let (_score, raw_steps) = replay_plan(&inst, &sites, &genome, &units);
+    assert!(
+        raw_steps.iter().any(|step| step_has_runtime_pruning_demand(step, &[DemandKindRaw::Resident, DemandKindRaw::Reload])),
+        "fixture must exercise a runtime-pruning resident/reload replay step"
+    );
+
+    let bridged = bridge_step_plans(&remap, raw_steps.clone());
+    let reinverted = invert_step_plans(&remap, &bridged);
+
+    assert_eq!(reinverted, raw_steps, "bridged replay steps must round-trip after runtime pruning");
+}
+
+fn step_has_runtime_pruning_demand(
+    step: &crate::s3_planner::metaheuristic::StepPlanRaw,
+    kinds: &[crate::s3_planner::metaheuristic::DemandKindRaw],
+) -> bool {
+    step.events.iter().any(|event| match event {
+        crate::s3_planner::metaheuristic::ReplayEventRaw::Demand { kind, .. } => {
+            kinds.contains(kind)
+        }
+        crate::s3_planner::metaheuristic::ReplayEventRaw::Admit { .. }
+        | crate::s3_planner::metaheuristic::ReplayEventRaw::Evict { .. } => false,
+    })
+}
+
+fn bridge_step_plan(
+    remap: &HashMap<u32, u32>,
+    step: crate::s3_planner::metaheuristic::StepPlanRaw,
+) -> cs::gkr_compiler::dag_ir::StepPlan {
+    let inv = invert_remap(remap);
+    bridge_step_plan_with_inverse(&inv, step)
+}
+
+fn bridge_step_plan_with_inverse(
+    inv: &HashMap<u32, u32>,
+    step: crate::s3_planner::metaheuristic::StepPlanRaw,
+) -> cs::gkr_compiler::dag_ir::StepPlan {
+    use crate::s3_planner::metaheuristic::{DemandKindRaw, ReplayEventRaw};
+    use cs::gkr_compiler::dag_ir::{DemandKind, ExprId, ReplayEvent, StepPlan};
+
+    let to_expr = |node: u32| ExprId(inv[&node]);
+
+    StepPlan {
+        resident_before: step
+            .resident_before
+            .into_iter()
+            .map(|node| to_expr(node))
+            .collect(),
+        events: step
+            .events
+            .into_iter()
+            .map(|event| match event {
+                ReplayEventRaw::Demand {
+                    consumer,
+                    input_index,
+                    value,
+                    kind,
+                } => ReplayEvent::Demand {
+                    consumer: to_expr(consumer),
+                    input_index,
+                    value: to_expr(value),
+                    kind: match kind {
+                        DemandKindRaw::Resident => DemandKind::Resident,
+                        DemandKindRaw::Reload => DemandKind::Reload,
+                        DemandKindRaw::Recompute => DemandKind::Recompute,
+                    },
+                },
+                ReplayEventRaw::Admit { value } => ReplayEvent::Admit {
+                    value: to_expr(value),
+                },
+                ReplayEventRaw::Evict { value } => ReplayEvent::Evict {
+                    value: to_expr(value),
+                },
+            })
+            .collect(),
+        resident_after: step
+            .resident_after
+            .into_iter()
+            .map(|node| to_expr(node))
+            .collect(),
+    }
+}
+
+fn bridge_step_plans(
+    remap: &HashMap<u32, u32>,
+    raw_steps: Vec<crate::s3_planner::metaheuristic::StepPlanRaw>,
+) -> Vec<cs::gkr_compiler::dag_ir::StepPlan> {
+    let inv = invert_remap(remap);
+    raw_steps
+        .into_iter()
+        .map(|step| bridge_step_plan_with_inverse(&inv, step))
+        .collect()
+}
+
+fn invert_step_plan(
+    remap: &HashMap<u32, u32>,
+    step: &cs::gkr_compiler::dag_ir::StepPlan,
+) -> crate::s3_planner::metaheuristic::StepPlanRaw {
+    use crate::s3_planner::metaheuristic::{DemandKindRaw, ReplayEventRaw, StepPlanRaw};
+    use cs::gkr_compiler::dag_ir::{DemandKind, ReplayEvent};
+
+    let to_node = |expr: cs::gkr_compiler::dag_ir::ExprId| remap[&expr.0];
+
+    StepPlanRaw {
+        resident_before: step
+            .resident_before
+            .iter()
+            .map(|&expr| to_node(expr))
+            .collect(),
+        events: step
+            .events
+            .iter()
+            .map(|event| match event {
+                ReplayEvent::Demand {
+                    consumer,
+                    input_index,
+                    value,
+                    kind,
+                } => ReplayEventRaw::Demand {
+                    consumer: to_node(*consumer),
+                    input_index: *input_index,
+                    value: to_node(*value),
+                    kind: match kind {
+                        DemandKind::Resident => DemandKindRaw::Resident,
+                        DemandKind::Reload => DemandKindRaw::Reload,
+                        DemandKind::Recompute => DemandKindRaw::Recompute,
+                    },
+                },
+                ReplayEvent::Admit { value } => ReplayEventRaw::Admit {
+                    value: to_node(*value),
+                },
+                ReplayEvent::Evict { value } => ReplayEventRaw::Evict {
+                    value: to_node(*value),
+                },
+            })
+            .collect(),
+        resident_after: step
+            .resident_after
+            .iter()
+            .map(|&expr| to_node(expr))
+            .collect(),
+    }
+}
+
+fn invert_step_plans(
+    remap: &HashMap<u32, u32>,
+    steps: &[cs::gkr_compiler::dag_ir::StepPlan],
+) -> Vec<crate::s3_planner::metaheuristic::StepPlanRaw> {
+    steps
+        .iter()
+        .map(|step| invert_step_plan(remap, step))
+        .collect()
+}
+
 // ── Task 6: id-bridge helpers + order-bridge binding gate ─────────────────────
 
 /// Atom roots in walk order: roots that are both materialized (claim-bearing Output)
@@ -1217,6 +1386,20 @@ fn produce_schedule_smoke_one_fixture() {
     assert_eq!(sched.layers.len(), dag.layers.len());
 }
 
+#[test]
+fn validate_schedules_from_grouped_metaheuristic() {
+    let sched = produce_circuit_schedule("add_sub_lui_auipc_mop_layout_gkr.json", REAL_BUDGET)
+        .expect("produce");
+
+    assert_eq!(sched.budget, REAL_BUDGET);
+    assert!(
+        sched.layers
+            .iter()
+            .any(|layer| layer.steps.iter().any(|step| !step.events.is_empty())),
+        "grouped metaheuristic schedule must contain replay events"
+    );
+}
+
 fn produce_circuit_schedule(
     fixture: &str,
     budget: usize,
@@ -1227,15 +1410,13 @@ fn produce_circuit_schedule(
     use crate::s3_planner::metaheuristic::{
         decode_grouped_occurrence_order, enumerate_demand_sites, no_cache_ceiling,
         order_keeps_units_contiguous, replay_plan, score_candidate_grouped, unit_members,
-        DemandKindRaw, ReplayEventRaw, StepPlanRaw,
+        StepPlanRaw,
     };
     // Optimizer driver + grouped seed helpers, via the flat `metaheuristic` re-export.
     use crate::s3_planner::metaheuristic::{
         optimize_from_population_grouped, project_genome_to_units, seeded_smoke_population,
     };
-    use cs::gkr_compiler::dag_ir::{
-        CircuitSchedule, DemandKind, ExprId, LayerSchedule, ReplayEvent, StepPlan,
-    };
+    use cs::gkr_compiler::dag_ir::{CircuitSchedule, LayerSchedule};
     use std::collections::HashMap;
 
     let artifact = load_fixture(&compiled_circuit_dir().join(fixture))?;
@@ -1311,28 +1492,10 @@ fn produce_circuit_schedule(
         }
 
         // --- Bridge raw (node-id) steps -> cs ExprId steps ---
-        let inv = invert_remap(&remap);
-        let to_expr = |n: u32| ExprId(inv[&n]);
-        let steps: Vec<StepPlan> = raw_steps.iter().map(|s| StepPlan {
-            resident_before: s.resident_before.iter().map(|&n| to_expr(n)).collect(),
-            events: s.events.iter().map(|e| match e {
-                ReplayEventRaw::Demand { consumer, input_index, value, kind } => ReplayEvent::Demand {
-                    consumer: to_expr(*consumer),
-                    input_index: *input_index,
-                    value: to_expr(*value),
-                    kind: match kind {
-                        DemandKindRaw::Resident => DemandKind::Resident,
-                        DemandKindRaw::Reload => DemandKind::Reload,
-                        DemandKindRaw::Recompute => DemandKind::Recompute,
-                    },
-                },
-                ReplayEventRaw::Admit { value } => ReplayEvent::Admit { value: to_expr(*value) },
-                ReplayEventRaw::Evict { value } => ReplayEvent::Evict { value: to_expr(*value) },
-            }).collect(),
-            resident_after: s.resident_after.iter().map(|&n| to_expr(n)).collect(),
-        }).collect();
+        let steps = bridge_step_plans(&remap, raw_steps.clone());
+        let bridged_raw_steps = invert_step_plans(&remap, &steps);
 
-        bindings.push((li, remap, raw_steps)); // stash for the §5.7 post-serde binding
+        bindings.push((li, remap, bridged_raw_steps)); // stash the bridged round-trip for the §5.7 post-serde binding
         layers_out.push(LayerSchedule { order, steps, predicted_traffic: score.traffic, floor });
     }
 
@@ -1352,28 +1515,10 @@ fn produce_circuit_schedule(
     let back: CircuitSchedule = serde_json::from_str(&json).unwrap();
     assert_eq!(back, sched, "post-serde round-trip mismatch for {fixture}");
     for (li, remap, raw_steps) in &bindings {
-        let to_node = |e: ExprId| -> u32 { remap[&e.0] };
         let ls = &back.layers[*li];
         assert_eq!(ls.steps.len(), raw_steps.len(), "step count mismatch, layer {li} of {fixture}");
         for (si, (st, raw)) in ls.steps.iter().zip(raw_steps).enumerate() {
-            let reinv = StepPlanRaw {
-                resident_before: st.resident_before.iter().map(|&e| to_node(e)).collect(),
-                events: st.events.iter().map(|e| match e {
-                    ReplayEvent::Demand { consumer, input_index, value, kind } => ReplayEventRaw::Demand {
-                        consumer: to_node(*consumer),
-                        input_index: *input_index,
-                        value: to_node(*value),
-                        kind: match kind {
-                            DemandKind::Resident => DemandKindRaw::Resident,
-                            DemandKind::Reload => DemandKindRaw::Reload,
-                            DemandKind::Recompute => DemandKindRaw::Recompute,
-                        },
-                    },
-                    ReplayEvent::Admit { value } => ReplayEventRaw::Admit { value: to_node(*value) },
-                    ReplayEvent::Evict { value } => ReplayEventRaw::Evict { value: to_node(*value) },
-                }).collect(),
-                resident_after: st.resident_after.iter().map(|&e| to_node(e)).collect(),
-            };
+            let reinv = invert_step_plan(remap, st);
             assert_eq!(&reinv, raw, "residency-binding mismatch, layer {li} step {si} of {fixture}");
         }
     }
