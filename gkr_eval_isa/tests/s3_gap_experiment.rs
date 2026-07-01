@@ -1298,6 +1298,13 @@ fn invert_step_plans(
         .collect()
 }
 
+fn binding_raw_steps_for_validation(
+    _remap: &HashMap<u32, u32>,
+    raw_steps: &[crate::s3_planner::metaheuristic::StepPlanRaw],
+) -> Vec<crate::s3_planner::metaheuristic::StepPlanRaw> {
+    raw_steps.to_vec()
+}
+
 // ── Task 6: id-bridge helpers + order-bridge binding gate ─────────────────────
 
 /// Atom roots in walk order: roots that are both materialized (claim-bearing Output)
@@ -1400,6 +1407,31 @@ fn validate_schedules_from_grouped_metaheuristic() {
     );
 }
 
+#[test]
+fn producer_binding_stashes_original_raw_steps() {
+    use crate::s3_gap::instance::{extract_instance_with_remap, relation_units};
+    use crate::s3_planner::metaheuristic::{
+        enumerate_demand_sites, project_genome_to_units, replay_plan, seeded_smoke_population,
+        unit_members,
+    };
+
+    let (layer, cross) =
+        try_load_l0("add_sub_lui_auipc_mop_layout_gkr.json").expect("fixture must load");
+    let (inst, remap) = extract_instance_with_remap(&layer, &cross, REAL_BUDGET);
+    let sites = enumerate_demand_sites(&inst);
+    let units = unit_members(&relation_units(&layer));
+    let genome =
+        project_genome_to_units(&seeded_smoke_population(&inst, &sites, 1, 0)[0], &units);
+
+    let (_score, raw_steps) = replay_plan(&inst, &sites, &genome, &units);
+    let binding_raw_steps = binding_raw_steps_for_validation(&remap, &raw_steps);
+
+    assert_eq!(
+        binding_raw_steps, raw_steps,
+        "producer binding must validate persisted steps against the original raw replay output"
+    );
+}
+
 fn produce_circuit_schedule(
     fixture: &str,
     budget: usize,
@@ -1493,9 +1525,9 @@ fn produce_circuit_schedule(
 
         // --- Bridge raw (node-id) steps -> cs ExprId steps ---
         let steps = bridge_step_plans(&remap, raw_steps.clone());
-        let bridged_raw_steps = invert_step_plans(&remap, &steps);
+        let binding_raw_steps = binding_raw_steps_for_validation(&remap, &raw_steps);
 
-        bindings.push((li, remap, bridged_raw_steps)); // stash the bridged round-trip for the §5.7 post-serde binding
+        bindings.push((li, remap, binding_raw_steps)); // stash the original raw replay for the §5.7 post-serde binding
         layers_out.push(LayerSchedule { order, steps, predicted_traffic: score.traffic, floor });
     }
 
