@@ -2763,6 +2763,37 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn perturb_one_gene_walks_order_then_cache_priority() {
+        let inst = swap_optimizer_fixture();
+        let sites = enumerate_cache_priority_sites(&inst);
+        let genome = unit_neutral_genome(inst.roots.len(), &sites);
+
+        let mutated = perturb_one_gene(&genome, inst.roots.len(), 0.25);
+
+        assert_eq!(mutated.cache_priority[0], 0.25);
+        assert_eq!(mutated.root_order_key, genome.root_order_key);
+    }
+
+    #[test]
+    fn trace_guided_neighbors_mutate_cache_priority_not_removed_bias_banks() {
+        let inst = trace_guided_cache_fixture();
+        let sites = enumerate_demand_sites(&inst);
+        let genome = trace_guided_cache_genome(&inst, &sites);
+        let (_score, trace) = score_candidate_with_trace(&inst, &sites, &genome);
+        let mut neighbors = Vec::new();
+
+        push_trace_guided_cache_neighbors(&sites, &genome, &trace, 16, &mut neighbors);
+
+        assert!(neighbors.iter().all(|(_, candidate, family)| {
+            *family == Some(MoveFamily::CachePriority)
+                && candidate.root_order_key == genome.root_order_key
+        }));
+        assert!(neighbors
+            .iter()
+            .any(|(_, candidate, _)| candidate.cache_priority != genome.cache_priority));
+    }
+
+    #[test]
     fn replay_caches_ram_source_when_cache_priority_is_positive() {
         let inst = OracleInstance {
             budget: 1,
@@ -3392,9 +3423,7 @@ pub(crate) mod tests {
         };
         let sites = enumerate_demand_sites(&inst);
         let base = Genome::neutral(&inst, &sites);
-        let families = active_cache_move_families(&sites, &base);
-
-        assert_eq!(families, vec![MoveFamily::CachePriority]);
+        assert!(has_cache_priority_neighbors(&sites, &base));
     }
 
     #[test]
@@ -5033,7 +5062,7 @@ pub(crate) mod tests {
             push_unit_reverse_neighbors(base, limit - cache_slots, &mut out);
         }
         if out.len() < limit {
-            let raw_cache_reserve = active_cache_move_families(sites, base).len();
+            let raw_cache_reserve = usize::from(has_cache_priority_neighbors(sites, base));
             // Trace reflects the same (flat or unit-keyed) decode the search scores under.
             let (_score, trace) = score_candidate_internal(inst, sites, base, true, units);
             push_trace_guided_cache_neighbors(
@@ -5044,7 +5073,7 @@ pub(crate) mod tests {
                 &mut out,
             );
         }
-        push_cache_bias_neighbors_balanced(sites, base, limit, &mut out);
+        push_cache_priority_neighbors(base, limit, &mut out);
         out
     }
 
@@ -5054,7 +5083,7 @@ pub(crate) mod tests {
         base: &Genome,
         remaining: usize,
     ) -> usize {
-        let active = active_cache_move_families(sites, base).len();
+        let active = usize::from(has_cache_priority_neighbors(sites, base));
         if active == 0 || remaining == 0 {
             return 0;
         }
@@ -5070,12 +5099,8 @@ pub(crate) mod tests {
         inst.roots.len() >= 3
     }
 
-    fn active_cache_move_families(_sites: &[DemandSite], base: &Genome) -> Vec<MoveFamily> {
-        let mut families = Vec::with_capacity(1);
-        if !base.cache_priority.is_empty() {
-            families.push(MoveFamily::CachePriority);
-        }
-        families
+    fn has_cache_priority_neighbors(_sites: &[DemandSite], base: &Genome) -> bool {
+        !base.cache_priority.is_empty()
     }
 
     fn cache_priority_gene_for_site(sites: &[DemandSite], site_idx: usize) -> usize {
@@ -5257,7 +5282,7 @@ pub(crate) mod tests {
     }
 
     /// Neutral unit-keyed genome: identity unit order, zero cache biases (per site).
-    fn unit_neutral_genome(n_units: usize, sites: &[DemandSite]) -> Genome {
+    fn unit_neutral_genome<T: CachePriorityLocus>(n_units: usize, sites: &[T]) -> Genome {
         let denom = n_units.max(1) as f64;
         Genome {
             root_order_key: (0..n_units).map(|i| i as f64 / denom).collect(),
@@ -5287,19 +5312,21 @@ pub(crate) mod tests {
         }
     }
 
-    fn push_cache_bias_neighbors_balanced(
-        sites: &[DemandSite],
+    fn push_cache_priority_neighbors(
         base: &Genome,
         limit: usize,
         out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
     ) {
-        let mut families = active_cache_move_families(sites, base);
-        while !families.is_empty() && out.len() < limit {
-            let family = families.remove(0);
-            let remaining_slots = limit - out.len();
-            let family_slots = remaining_slots.div_ceil(families.len() + 1);
-            let family_limit = limit.min(out.len() + family_slots);
-            push_cache_bias_family_neighbors(sites, base, family, family_limit, out);
+        for idx in 0..base.cache_priority.len() {
+            for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
+                if out.len() >= limit {
+                    return;
+                }
+                let mut candidate = base.clone();
+                candidate.cache_priority[idx] =
+                    clamp_bias(candidate.cache_priority[idx] + delta);
+                out.push((out.len(), candidate, Some(MoveFamily::CachePriority)));
+            }
         }
     }
 
@@ -5395,39 +5422,6 @@ pub(crate) mod tests {
             return;
         }
         out.push((out.len(), candidate, Some(family)));
-    }
-
-    fn push_cache_bias_family_neighbors(
-        _sites: &[DemandSite],
-        base: &Genome,
-        family: MoveFamily,
-        limit: usize,
-        out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
-    ) {
-        match family {
-            MoveFamily::CachePriority => push_keep_bias_neighbors(base, limit, out),
-            MoveFamily::RootSwap | MoveFamily::RootInsert | MoveFamily::RootReverse => {
-                panic!("root moves are not cache bias families")
-            }
-        }
-    }
-
-    fn push_keep_bias_neighbors(
-        base: &Genome,
-        limit: usize,
-        out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
-    ) {
-        for idx in 0..base.cache_priority.len() {
-            for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
-                if out.len() >= limit {
-                    return;
-                }
-                let mut candidate = base.clone();
-                candidate.cache_priority[idx] =
-                    clamp_bias(candidate.cache_priority[idx] + delta);
-                out.push((out.len(), candidate, Some(MoveFamily::CachePriority)));
-            }
-        }
     }
 
     fn try_root_swap_neighbors(
