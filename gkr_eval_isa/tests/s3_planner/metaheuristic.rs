@@ -1672,6 +1672,107 @@ pub(crate) mod tests {
         }
     }
 
+    #[derive(Clone, Debug)]
+    struct BeladyVariantScore {
+        base: CandidateScore,
+        belady_variant: Option<CandidateScore>,
+        selected: CandidateScore,
+    }
+
+    #[derive(Clone, Debug)]
+    struct BeladyVariantSelection {
+        selected_genome: Genome,
+        score: BeladyVariantScore,
+    }
+
+    fn score_candidate_with_belady_leaf_variant(
+        inst: &OracleInstance,
+        sites: &[DemandSite],
+        genome: &Genome,
+    ) -> BeladyVariantScore {
+        score_candidate_grouped_with_belady_leaf_variant(inst, sites, genome, &[]).score
+    }
+
+    fn score_candidate_grouped_with_belady_leaf_variant(
+        inst: &OracleInstance,
+        sites: &[DemandSite],
+        genome: &Genome,
+        units: &[Vec<usize>],
+    ) -> BeladyVariantSelection {
+        let base = score_candidate_grouped(inst, sites, genome, units);
+        let belady_genome = apply_belady_leaf_nudge_grouped(inst, sites, genome, units);
+        let belady = score_candidate_grouped(inst, sites, &belady_genome, units);
+        let (selected_genome, selected) = if objective_less(&belady, &base) {
+            (belady_genome, belady.clone())
+        } else {
+            (genome.clone(), base.clone())
+        };
+
+        BeladyVariantSelection {
+            selected_genome,
+            score: BeladyVariantScore {
+                base,
+                belady_variant: Some(belady),
+                selected,
+            },
+        }
+    }
+
+    fn apply_belady_leaf_nudge_grouped(
+        inst: &OracleInstance,
+        sites: &[DemandSite],
+        genome: &Genome,
+        units: &[Vec<usize>],
+    ) -> Genome {
+        let occurrence_order = decode_grouped_occurrence_order(inst, genome, units);
+        let reference = build_reference_string_for_occurrences(inst, &occurrence_order);
+        let mut recurring_leaves = Vec::new();
+        let mut one_shot_leaves = Vec::new();
+
+        for (value, node) in inst.nodes.iter().enumerate() {
+            if !node.real_dram || !matches!(node.kind, NodeKind::Read) {
+                continue;
+            }
+            let touch_count = reference.touch_count_by_value[value];
+            if touch_count == 0 {
+                continue;
+            }
+            let next_distance = reference.first_touch_by_value[value].and_then(|touch_index| {
+                reference.touches[touch_index as usize]
+                    .next_touch_of_value
+                    .map(|next_touch| next_touch - touch_index)
+            });
+            if touch_count <= 1 || next_distance.is_none() {
+                one_shot_leaves.push(value as u32);
+                continue;
+            }
+            recurring_leaves.push((value as u32, next_distance.unwrap(), touch_count, node.width));
+        }
+
+        recurring_leaves.sort_by(|a, b| {
+            a.1.cmp(&b.1)
+                .then(b.2.cmp(&a.2))
+                .then(a.3.cmp(&b.3))
+                .then(a.0.cmp(&b.0))
+        });
+
+        let mut belady = genome.clone();
+        let recurring_denom = recurring_leaves.len().saturating_sub(1).max(1) as f64;
+        for (rank, (value, _, _, _)) in recurring_leaves.iter().enumerate() {
+            let bias = if recurring_leaves.len() == 1 {
+                1.0
+            } else {
+                1.0 - 2.0 * (rank as f64 / recurring_denom)
+            };
+            set_cache_priority_for_value(sites, &mut belady, *value, bias);
+        }
+        for value in one_shot_leaves {
+            set_cache_priority_for_value(sites, &mut belady, value, -1.0);
+        }
+
+        belady
+    }
+
     fn trace_guided_cache_fixture() -> OracleInstance {
         OracleInstance {
             budget: 1,
@@ -2791,6 +2892,18 @@ pub(crate) mod tests {
         assert!(neighbors
             .iter()
             .any(|(_, candidate, _)| candidate.cache_priority != genome.cache_priority));
+    }
+
+    #[test]
+    fn belady_leaf_variant_is_rescored_end_to_end_before_selection() {
+        let inst = trace_guided_cache_fixture();
+        let sites = enumerate_demand_sites(&inst);
+        let genome = trace_guided_cache_genome(&inst, &sites);
+
+        let scored = score_candidate_with_belady_leaf_variant(&inst, &sites, &genome);
+
+        assert!(scored.belady_variant.as_ref().is_some());
+        assert!(scored.selected.traffic <= scored.base.traffic);
     }
 
     #[test]
@@ -4534,6 +4647,65 @@ pub(crate) mod tests {
         scored
     }
 
+    fn score_optimizer_genomes_parallel(
+        inst: &OracleInstance,
+        sites: &[DemandSite],
+        entries: Vec<(usize, Genome, Option<MoveFamily>)>,
+        workers: usize,
+        units: &[Vec<usize>],
+    ) -> Vec<ScoredGenome> {
+        if entries.is_empty() {
+            return Vec::new();
+        }
+
+        let worker_count = workers.max(1).min(entries.len());
+        let chunk_size = entries.len().div_ceil(worker_count);
+        let mut chunks: Vec<Vec<(usize, Genome, Option<MoveFamily>)>> =
+            Vec::with_capacity(worker_count);
+        let mut current = Vec::with_capacity(chunk_size);
+        for entry in entries {
+            current.push(entry);
+            if current.len() == chunk_size {
+                chunks.push(current);
+                current = Vec::with_capacity(chunk_size);
+            }
+        }
+        if !current.is_empty() {
+            chunks.push(current);
+        }
+
+        let mut scored = std::thread::scope(|scope| {
+            let handles: Vec<_> = chunks
+                .into_iter()
+                .map(|chunk| {
+                    scope.spawn(move || {
+                        chunk
+                            .into_iter()
+                            .map(|(index, genome, family)| {
+                                let selected = score_candidate_grouped_with_belady_leaf_variant(
+                                    inst, sites, &genome, units,
+                                );
+                                ScoredGenome {
+                                    index,
+                                    genome: selected.selected_genome,
+                                    score: selected.score.selected,
+                                    family,
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+
+            handles
+                .into_iter()
+                .flat_map(|handle| handle.join().expect("scoring worker panicked"))
+                .collect::<Vec<_>>()
+        });
+        scored.sort_by_key(|entry| entry.index);
+        scored
+    }
+
     fn objective_less(a: &CandidateScore, b: &CandidateScore) -> bool {
         objective_key(a) < objective_key(b)
     }
@@ -4714,8 +4886,13 @@ pub(crate) mod tests {
             return false;
         }
         *evals += neighbors.len();
-        let neighbor_scores =
-            score_genomes_parallel(inst, sites, neighbors, default_worker_count(), units);
+        let neighbor_scores = score_optimizer_genomes_parallel(
+            inst,
+            sites,
+            neighbors,
+            default_worker_count(),
+            units,
+        );
         record_family_improvements(&neighbor_scores, &state.score, family_stats);
 
         match select_optimizer_neighbor(&neighbor_scores, &state.score, state.plateau_remaining) {
@@ -4811,8 +4988,13 @@ pub(crate) mod tests {
             .map(|(index, genome)| (index, genome, None))
             .collect();
         let mut evals = seed_entries.len();
-        let seed_scores =
-            score_genomes_parallel(inst, sites, seed_entries, default_worker_count(), units);
+        let seed_scores = score_optimizer_genomes_parallel(
+            inst,
+            sites,
+            seed_entries,
+            default_worker_count(),
+            units,
+        );
 
         // Initialize a fixed-width beam from the scored seeds (best-objective first,
         // deduped by order+objective). The beam carries several promising states

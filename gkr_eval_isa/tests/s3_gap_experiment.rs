@@ -1474,6 +1474,35 @@ fn validate_schedules_from_grouped_metaheuristic() {
     );
 }
 
+#[test]
+fn grouped_metaheuristic_fixture_regression_does_not_exceed_snapshotted_baseline() {
+    let baseline = fixture_baseline_traffic();
+
+    for (fixture, expected_max) in baseline {
+        let actual = run_grouped_metaheuristic_fixture(fixture);
+        assert!(
+            actual <= *expected_max,
+            "{fixture}: expected <= {expected_max}, got {actual}"
+        );
+    }
+}
+
+fn fixture_baseline_traffic() -> &'static [(&'static str, u64)] {
+    &[
+        ("add_sub_lui_auipc_mop_layout_gkr.json", 211),
+        ("mem_word_only_layout_gkr.json", 198),
+    ]
+}
+
+fn run_grouped_metaheuristic_fixture(fixture: &str) -> u64 {
+    produce_circuit_schedule(fixture, REAL_BUDGET)
+        .unwrap_or_else(|| panic!("produce failed for {fixture}"))
+        .layers
+        .iter()
+        .map(|layer| layer.predicted_traffic)
+        .sum()
+}
+
 fn produce_circuit_schedule(
     fixture: &str,
     budget: usize,
