@@ -1444,8 +1444,12 @@ fn order_bridge_binding_holds() {
 // (The file-writing `produce_all_schedules` below is the gated, on-demand variant.)
 #[test]
 fn produce_schedule_smoke_one_fixture() {
-    let sched = produce_circuit_schedule("mem_word_only_layout_gkr.json", REAL_BUDGET)
-        .expect("produce");
+    let sched = produce_circuit_schedule(
+        "mem_word_only_layout_gkr.json",
+        REAL_BUDGET,
+        SearchConfig::default(),
+    )
+    .expect("produce");
     assert_eq!(sched.budget, REAL_BUDGET);
     // Must exercise the producer gates on a real schedule — assert at least one non-empty layer
     // (review TQ7: otherwise an all-empty result would pass vacuously).
@@ -1462,8 +1466,12 @@ fn produce_schedule_smoke_one_fixture() {
 
 #[test]
 fn validate_schedules_from_grouped_metaheuristic() {
-    let sched = produce_circuit_schedule("add_sub_lui_auipc_mop_layout_gkr.json", REAL_BUDGET)
-        .expect("produce");
+    let sched = produce_circuit_schedule(
+        "add_sub_lui_auipc_mop_layout_gkr.json",
+        REAL_BUDGET,
+        SearchConfig::default(),
+    )
+    .expect("produce");
 
     assert_eq!(sched.budget, REAL_BUDGET);
     assert!(
@@ -1495,7 +1503,7 @@ fn fixture_baseline_traffic() -> &'static [(&'static str, u64)] {
 }
 
 fn run_grouped_metaheuristic_fixture(fixture: &str) -> u64 {
-    produce_circuit_schedule(fixture, REAL_BUDGET)
+    produce_circuit_schedule(fixture, REAL_BUDGET, SearchConfig::default())
         .unwrap_or_else(|| panic!("produce failed for {fixture}"))
         .layers
         .iter()
@@ -1503,9 +1511,173 @@ fn run_grouped_metaheuristic_fixture(fixture: &str) -> u64 {
         .sum()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SearchConfig {
+    pop: usize,
+    evals: usize,
+    seed: u64,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self { pop: 8, evals: 1000, seed: 0 }
+    }
+}
+
+fn parse_usize_env(name: &str, default: usize) -> usize {
+    match std::env::var(name) {
+        Ok(raw) => raw
+            .parse::<usize>()
+            .unwrap_or_else(|_| panic!("{name} must be a usize, got {raw:?}")),
+        Err(std::env::VarError::NotPresent) => default,
+        Err(err) => panic!("failed to read {name}: {err}"),
+    }
+}
+
+fn parse_u64_env(name: &str, default: u64) -> u64 {
+    match std::env::var(name) {
+        Ok(raw) => raw
+            .parse::<u64>()
+            .unwrap_or_else(|_| panic!("{name} must be a u64, got {raw:?}")),
+        Err(std::env::VarError::NotPresent) => default,
+        Err(err) => panic!("failed to read {name}: {err}"),
+    }
+}
+
+fn schedule_search_config_from_env() -> SearchConfig {
+    let defaults = SearchConfig::default();
+    let cfg = SearchConfig {
+        pop: parse_usize_env("GKR_SCHEDULE_POP", defaults.pop),
+        evals: parse_usize_env("GKR_SCHEDULE_EVALS", defaults.evals),
+        seed: parse_u64_env("GKR_SCHEDULE_SEED", defaults.seed),
+    };
+    assert!(cfg.pop > 0, "GKR_SCHEDULE_POP must be positive");
+    assert!(cfg.evals > 0, "GKR_SCHEDULE_EVALS must be positive");
+    assert!(
+        cfg.pop < cfg.evals,
+        "GKR_SCHEDULE_POP must be < GKR_SCHEDULE_EVALS"
+    );
+    cfg
+}
+
+#[cfg(test)]
+fn schedule_env_lock() -> &'static std::sync::Mutex<()> {
+    static ENV_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    ENV_LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
+#[cfg(test)]
+fn panic_message(err: Box<dyn std::any::Any + Send>) -> String {
+    match err.downcast::<String>() {
+        Ok(msg) => *msg,
+        Err(err) => match err.downcast::<&'static str>() {
+            Ok(msg) => (*msg).to_string(),
+            Err(_) => "non-string panic payload".to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+struct ScheduleEnvGuard {
+    saved: Vec<(&'static str, Option<String>)>,
+}
+
+#[cfg(test)]
+impl ScheduleEnvGuard {
+    fn set(pairs: &[(&'static str, Option<&str>)]) -> Self {
+        let mut saved = Vec::with_capacity(pairs.len());
+        for (name, value) in pairs {
+            saved.push((*name, std::env::var(name).ok()));
+            match value {
+                Some(v) => unsafe {
+                    // SAFETY: env-mutating tests hold `schedule_env_lock()`, so
+                    // process-global environment mutations are serialized.
+                    std::env::set_var(name, v)
+                },
+                None => unsafe {
+                    // SAFETY: env-mutating tests hold `schedule_env_lock()`, so
+                    // process-global environment mutations are serialized.
+                    std::env::remove_var(name)
+                },
+            }
+        }
+        Self { saved }
+    }
+}
+
+#[cfg(test)]
+impl Drop for ScheduleEnvGuard {
+    fn drop(&mut self) {
+        for (name, value) in self.saved.drain(..) {
+            match value {
+                Some(v) => unsafe {
+                    // SAFETY: env-mutating tests hold `schedule_env_lock()`, so
+                    // process-global environment mutations are serialized.
+                    std::env::set_var(name, v)
+                },
+                None => unsafe {
+                    // SAFETY: env-mutating tests hold `schedule_env_lock()`, so
+                    // process-global environment mutations are serialized.
+                    std::env::remove_var(name)
+                },
+            }
+        }
+    }
+}
+
+#[test]
+fn schedule_search_config_defaults_match_current_producer() {
+    let cfg = SearchConfig::default();
+    assert_eq!(cfg.pop, 8);
+    assert_eq!(cfg.evals, 1000);
+    assert_eq!(cfg.seed, 0);
+}
+
+#[test]
+fn schedule_search_config_env_overrides_and_validation() {
+    let _lock = schedule_env_lock().lock().unwrap();
+
+    {
+        let _guard = ScheduleEnvGuard::set(&[
+            ("GKR_SCHEDULE_POP", Some("2000")),
+            ("GKR_SCHEDULE_EVALS", Some("48000")),
+            ("GKR_SCHEDULE_SEED", Some("7")),
+        ]);
+        let cfg = schedule_search_config_from_env();
+        assert_eq!(cfg.pop, 2000);
+        assert_eq!(cfg.evals, 48000);
+        assert_eq!(cfg.seed, 7);
+    }
+
+    {
+        let _guard = ScheduleEnvGuard::set(&[
+            ("GKR_SCHEDULE_POP", Some("0")),
+            ("GKR_SCHEDULE_EVALS", None),
+            ("GKR_SCHEDULE_SEED", None),
+        ]);
+        let err = std::panic::catch_unwind(schedule_search_config_from_env)
+            .expect_err("zero pop must panic");
+        let msg = panic_message(err);
+        assert!(msg.contains("GKR_SCHEDULE_POP must be positive"));
+    }
+
+    {
+        let _guard = ScheduleEnvGuard::set(&[
+            ("GKR_SCHEDULE_POP", Some("1000")),
+            ("GKR_SCHEDULE_EVALS", Some("1000")),
+            ("GKR_SCHEDULE_SEED", None),
+        ]);
+        let err = std::panic::catch_unwind(schedule_search_config_from_env)
+            .expect_err("pop >= evals must panic");
+        let msg = panic_message(err);
+        assert!(msg.contains("GKR_SCHEDULE_POP must be < GKR_SCHEDULE_EVALS"));
+    }
+}
+
 fn produce_circuit_schedule(
     fixture: &str,
     budget: usize,
+    search: SearchConfig,
 ) -> Option<cs::gkr_compiler::dag_ir::CircuitSchedule> {
     use crate::s3_gap::floor::dag_traffic_floor;
     use crate::s3_gap::instance::{extract_instance_with_remap, relation_units};
@@ -1526,7 +1698,6 @@ fn produce_circuit_schedule(
     let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact).ok()?;
     cs::gkr_compiler::dag_ir::validate(&dag).ok()?;
     let cross = build_cross_layer_field_map(&dag);
-    const EVAL_BUDGET: usize = 1000;
     // Reverse trim order (review CA-2/#4): the `_preprocessed_layout_gkr.json` variant ends with
     // `_layout_gkr.json` too, so the broad trim must come SECOND or it strips first and leaves
     // `_preprocessed`. This yields `inits_and_teardowns` and the correct stem for the other 10.
@@ -1549,9 +1720,12 @@ fn produce_circuit_schedule(
         assert_eq!(atom_roots.len(), inst.roots.len(), "atom-root/occurrence count mismatch");
 
         // Seeded, unit-projected population -> grouped optimizer.
-        let flat = seeded_smoke_population(&inst, &sites, 8, 0);
-        let unit_pop: Vec<_> = flat.iter().map(|g| project_genome_to_units(g, &units)).collect();
-        let opt = optimize_from_population_grouped(&inst, &sites, unit_pop, EVAL_BUDGET, &units);
+        let flat = seeded_smoke_population(&inst, &sites, search.pop, search.seed);
+        let unit_pop: Vec<_> = flat
+            .iter()
+            .map(|g| project_genome_to_units(g, &units))
+            .collect();
+        let opt = optimize_from_population_grouped(&inst, &sites, unit_pop, search.evals, &units);
 
         // Instrumented replay over the winning genome.
         let (score, raw_steps) = replay_plan(&inst, &sites, &opt.best_genome, &units);
@@ -1634,8 +1808,9 @@ fn produce_all_schedules() {
         eprintln!("skipping producer (set GKR_PRODUCE_SCHEDULES=1, not in CI)");
         return;
     }
+    let search = schedule_search_config_from_env();
     for fixture in ALL_FIXTURES {
-        let sched = produce_circuit_schedule(fixture, REAL_BUDGET)
+        let sched = produce_circuit_schedule(fixture, REAL_BUDGET, search)
             .unwrap_or_else(|| panic!("produce failed for {fixture}"));
         let out = compiled_circuit_dir().join(format!("{}_schedule_b{}_gkr.json", sched.circuit, REAL_BUDGET));
         let mut f = std::fs::File::create(&out).unwrap();

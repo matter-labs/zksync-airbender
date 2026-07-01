@@ -183,16 +183,6 @@
               }
             },
             {
-              "Evict": {
-                "value": 13
-              }
-            },
-            {
-              "Admit": {
-                "value": 24
-              }
-            },
-            {
               "Demand": {
                 "consumer": 36,
                 "input_index": 4,
@@ -211,16 +201,6 @@
             {
               "Admit": {
                 "value": 25
-              }
-            },
-            {
-              "Evict": {
-                "value": 16
-              }
-            },
-            {
-              "Admit": {
-                "value": 27
               }
             },
             {
@@ -261,16 +241,6 @@
               }
             },
             {
-              "Evict": {
-                "value": 24
-              }
-            },
-            {
-              "Admit": {
-                "value": 33
-              }
-            },
-            {
               "Demand": {
                 "consumer": 36,
                 "input_index": 8,
@@ -288,22 +258,12 @@
             },
             {
               "Evict": {
-                "value": 27
+                "value": 13
               }
             },
             {
               "Admit": {
                 "value": 34
-              }
-            },
-            {
-              "Evict": {
-                "value": 33
-              }
-            },
-            {
-              "Admit": {
-                "value": 35
               }
             }
           ],
@@ -311,13 +271,13 @@
             2,
             11,
             14,
+            16,
             19,
             21,
             23,
             25,
             32,
-            34,
-            35
+            34
           ]
         },
         {
@@ -325,13 +285,13 @@
             2,
             11,
             14,
+            16,
             19,
             21,
             23,
             25,
             32,
-            34,
-            35
+            34
           ],
           "events": [
             {
@@ -371,14 +331,6 @@
                 "consumer": 41,
                 "input_index": 4,
                 "value": 16,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 16,
-                "input_index": 0,
-                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -404,13 +356,13 @@
               }
             },
             {
-              "Admit": {
-                "value": 37
+              "Evict": {
+                "value": 16
               }
             },
             {
-              "Evict": {
-                "value": 35
+              "Admit": {
+                "value": 37
               }
             },
             {
@@ -602,16 +554,6 @@
               }
             },
             {
-              "Evict": {
-                "value": 40
-              }
-            },
-            {
-              "Admit": {
-                "value": 46
-              }
-            },
-            {
               "Demand": {
                 "consumer": 57,
                 "input_index": 3,
@@ -630,16 +572,6 @@
             {
               "Admit": {
                 "value": 47
-              }
-            },
-            {
-              "Evict": {
-                "value": 46
-              }
-            },
-            {
-              "Admit": {
-                "value": 48
               }
             },
             {
@@ -695,25 +627,7 @@
                 "consumer": 64,
                 "input_index": 2,
                 "value": 40,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 40,
-                "input_index": 1,
-                "value": 39,
                 "kind": "Resident"
-              }
-            },
-            {
-              "Evict": {
-                "value": 48
-              }
-            },
-            {
-              "Admit": {
-                "value": 40
               }
             },
             {
@@ -722,16 +636,6 @@
                 "input_index": 4,
                 "value": 59,
                 "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 40
-              }
-            },
-            {
-              "Admit": {
-                "value": 59
               }
             },
             {
@@ -761,9 +665,9 @@
             34,
             37,
             39,
+            40,
             45,
-            47,
-            59
+            47
           ]
         },
         {
@@ -777,9 +681,9 @@
             34,
             37,
             39,
+            40,
             45,
-            47,
-            59
+            47
           ],
           "events": [
             {
@@ -795,14 +699,6 @@
                 "consumer": 71,
                 "input_index": 2,
                 "value": 40,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 40,
-                "input_index": 1,
-                "value": 39,
                 "kind": "Resident"
               }
             },
@@ -865,6 +761,11 @@
               }
             },
             {
+              "Evict": {
+                "value": 40
+              }
+            },
+            {
               "Admit": {
                 "value": 67
               }
@@ -887,7 +788,7 @@
                 "consumer": 80,
                 "input_index": 2,
                 "value": 59,
-                "kind": "Resident"
+                "kind": "Recompute"
               }
             },
             {
@@ -896,11 +797,6 @@
                 "input_index": 1,
                 "value": 72,
                 "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 59
               }
             },
             {
