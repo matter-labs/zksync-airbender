@@ -89,15 +89,6 @@ pub mod field_ops {
     pub use crate::no_inline_ops::*;
 }
 
-#[cfg(all(not(target_arch = "riscv32"), feature = "replace_csr"))]
-pub type DefaultNonDeterminismSource = ::prover::nd_source_std::ThreadLocalBasedSource;
-
-#[cfg(all(not(target_arch = "riscv32"), not(feature = "replace_csr")))]
-pub type DefaultNonDeterminismSource = ();
-
-#[cfg(target_arch = "riscv32")]
-pub type DefaultNonDeterminismSource = non_determinism_source::CSRBasedSource;
-
 #[cfg(not(all(
     target_arch = "riscv32",
     any(feature = "blake2_with_compression", feature = "blake2_g_function")
