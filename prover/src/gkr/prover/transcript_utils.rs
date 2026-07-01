@@ -1,9 +1,9 @@
 use super::*;
+use crate::gkr::whir::WhirCommitment;
 use crate::query_utils::BitSource;
-use crate::{definitions::Transcript, gkr::whir::WhirCommitment};
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use field::FixedArrayConvertible;
-use transcript::Seed;
+use transcript::Transcript;
 
 pub fn flatten_field_els_into<F: PrimeField, E: FieldExtension<F>>(src: &[E], dst: &mut Vec<u32>)
 where
@@ -17,63 +17,58 @@ where
     }
 }
 
-pub fn commit_field_els<F: PrimeField, E: FieldExtension<F>>(seed: &mut Seed, els: &[E])
+/// Commit a slice of extension-field elements through the generic transcript.
+pub fn commit_field_els<F, E, TR>(seed: &mut TR::Seed, els: &[E])
 where
-    [(); E::DEGREE]: Sized,
+    F: PrimeField,
+    E: FieldExtension<F>,
+    TR: Transcript<F, E>,
 {
-    let mut transcript_input = Vec::with_capacity(els.len() * E::DEGREE);
-    flatten_field_els_into(els, &mut transcript_input);
-
-    Transcript::commit_with_seed(seed, &transcript_input);
+    TR::commit_extension_field_elements(seed, els);
 }
 
+/// Draw `num_challenges` extension-field elements through the generic transcript.
 #[track_caller]
-pub fn draw_random_field_els<F: PrimeField, E: FieldExtension<F>>(
-    seed: &mut Seed,
-    num_challenges: usize,
-) -> Vec<E>
+pub fn draw_random_field_els<F, E, TR>(seed: &mut TR::Seed, num_challenges: usize) -> Vec<E>
 where
-    [(); E::DEGREE]: Sized,
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    TR: Transcript<F, E>,
 {
-    let mut transcript_challenges =
-        vec![0u32; (num_challenges * E::DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-    Transcript::draw_randomness(seed, &mut transcript_challenges);
-
-    let mut all_challenges: Vec<E> = transcript_challenges
-        .as_chunks::<{ E::DEGREE }>()
-        .0
-        .into_iter()
-        .map(|el| {
-            let array = el.map(|el| F::from_raw_repr_with_reduction(el));
-            let coeffs = E::Coeffs::from_array(array);
-            E::from_coeffs(coeffs)
-        })
-        .collect();
-
-    assert!(all_challenges.len() >= num_challenges);
-    all_challenges.truncate(num_challenges);
+    let mut all_challenges = vec![E::ZERO; num_challenges];
+    TR::draw_random_field_elements(seed, &mut all_challenges);
 
     all_challenges
 }
 
-pub fn add_whir_commitment_to_transcript<F: PrimeField, T: ColumnMajorMerkleTreeConstructor<F>>(
-    seed: &mut Seed,
+pub fn add_whir_commitment_to_transcript<F, E, TR, T>(
+    seed: &mut TR::Seed,
     commitment: &WhirCommitment<F, T>,
-) {
+) where
+    F: PrimeField,
+    E: FieldExtension<F>,
+    TR: Transcript<F, E>,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+{
     let mut transcript_input =
         Vec::with_capacity(commitment.cap.cap.len() * BLAKE2S_DIGEST_SIZE_U32_WORDS);
     commitment.cap.add_into_buffer(&mut transcript_input);
 
-    Transcript::commit_with_seed(seed, &transcript_input);
+    TR::commit_u32_with_seed(seed, &transcript_input);
 }
 
-pub fn draw_query_bits(
-    seed: &mut Seed,
+pub fn draw_query_bits<F, E, TR>(
+    seed: &mut TR::Seed,
     num_bits_for_queries: usize,
     pow_bits: u32,
     worker: &Worker,
-) -> (u64, BitSource) {
-    let (new_seed, pow_challenge) = Transcript::search_pow(&seed, pow_bits, worker);
+) -> (u64, BitSource)
+where
+    F: PrimeField,
+    E: FieldExtension<F>,
+    TR: Transcript<F, E>,
+{
+    let (new_seed, pow_challenge) = TR::search_pow(seed, pow_bits, worker);
     *seed = new_seed;
     let num_required_words =
         num_bits_for_queries.next_multiple_of(u32::BITS as usize) / (u32::BITS as usize);
@@ -81,7 +76,7 @@ pub fn draw_query_bits(
     let num_required_words_padded =
         (num_required_words + 1).next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS);
     let mut source = vec![0u32; num_required_words_padded];
-    Transcript::draw_randomness(seed, &mut source);
+    TR::draw_randomness(seed, &mut source);
     // skip first word
     let source = source[1..].to_vec();
 

@@ -1049,21 +1049,22 @@ pub fn key_binary_generation_for_width<F: PrimeField, const N: usize, const WIDT
 }
 
 pub fn key_for_continuous_log2_range<F: PrimeField, const N: usize>(log2: usize) -> Vec<[F; N]> {
-    let keys = key_for_continuous_range((1u64 << log2) - 1);
+    let keys = key_for_continuous_range((1u32 << log2) - 1);
     assert_eq!(keys.len(), 1 << log2);
 
     keys
 }
 
 pub fn key_for_continuous_range<F: PrimeField, const N: usize>(
-    max_value_inclusive: u64,
+    max_value_inclusive: u32,
 ) -> Vec<[F; N]> {
     let len = max_value_inclusive as usize + 1;
+    assert!(len < F::CHARACTERISTICS as usize);
     let mut keys = Vec::with_capacity(len);
     if max_value_inclusive < (1 << 20) {
-        for a in 0u64..=max_value_inclusive {
+        for a in 0u32..=max_value_inclusive {
             let mut key = [F::ZERO; N];
-            key[0] = F::from_u64_with_reduction(a);
+            key[0] = F::from_u32_with_reduction(a);
             keys.push(key);
         }
     } else {
@@ -1071,7 +1072,7 @@ pub fn key_for_continuous_range<F: PrimeField, const N: usize>(
             .into_par_iter()
             .map(|a| {
                 let mut key = [F::ZERO; N];
-                key[0] = F::from_u64_with_reduction(a as u64);
+                key[0] = F::from_u32_with_reduction(a as u32);
                 key
             })
             .collect_into_vec(&mut keys);

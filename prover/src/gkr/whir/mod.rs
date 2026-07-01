@@ -82,7 +82,7 @@ use fft::{
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::alloc::Global;
 use std::sync::Arc;
-use transcript::Seed;
+use transcript::{Seed, Transcript};
 use worker::{IterableWithGeometry, Worker};
 
 pub mod hypercube_to_monomial;
@@ -387,6 +387,7 @@ pub fn whir_fold<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: Transcript<F, E>,
 >(
     mem_oracle: ColumnMajorBaseOracleForLDE<F, T>,
     mem_polys_claims: Vec<E>,
@@ -398,7 +399,7 @@ pub fn whir_fold<
     batching_challenge: E,
     whir_schedule: &WhirSchedule,
     twiddles: &Twiddles<F, Global>,
-    mut transcript_seed: Seed,
+    mut transcript_seed: TR::Seed,
     tree_cap_size: usize,
     trace_len_log2: usize,
     worker: &Worker,
@@ -661,7 +662,7 @@ where
             let univariate_coeffs = special_lagrange_interpolate(f0, f1, f_half, evaluation_point);
             // commit
             proof.sumcheck_polys.push(univariate_coeffs);
-            commit_field_els(&mut transcript_seed, &univariate_coeffs);
+            commit_field_els::<F, E, TR>(&mut transcript_seed, &univariate_coeffs);
 
             #[cfg(feature = "gkr_self_checks")]
             {
@@ -677,7 +678,7 @@ where
             }
 
             // draw folding challenge
-            let folding_challenges = draw_random_field_els(&mut transcript_seed, 1);
+            let folding_challenges = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
             let folding_challenge = folding_challenges[0];
             folding_challenges_in_round.push(folding_challenge);
 
@@ -755,7 +756,7 @@ where
                 },
                 queries: vec![],
             };
-            add_whir_commitment_to_transcript(&mut transcript_seed, &c.commitment);
+            add_whir_commitment_to_transcript::<F, E, TR, T>(&mut transcript_seed, &c.commitment);
             proof.intermediate_whir_oracles.push(c);
             rs_oracle = next_oracle;
         }
@@ -764,12 +765,12 @@ where
         let mut contributions_to_eq_poly_with_base_points = vec![];
 
         // draw OOD sample
-        let ood_points: Vec<E> = draw_random_field_els(&mut transcript_seed, 1);
+        let ood_points: Vec<E> = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
         let ood_point = ood_points[0];
         // compute OOD value
         let ood_value =
             evaluate_monomial_form(&sumchecked_poly_monomial_form[..], &ood_point, worker);
-        commit_field_els(&mut transcript_seed, &[ood_value]);
+        commit_field_els::<F, E, TR>(&mut transcript_seed, &[ood_value]);
         #[cfg(feature = "gkr_self_checks")]
         {
             let pows = make_pows(
@@ -811,8 +812,12 @@ where
 
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
         let num_bits_for_queries = num_queries * query_index_bits;
-        let (nonce, mut bit_source) =
-            draw_query_bits(&mut transcript_seed, num_bits_for_queries, pow_bits, worker);
+        let (nonce, mut bit_source) = draw_query_bits::<F, E, TR>(
+            &mut transcript_seed,
+            num_bits_for_queries,
+            pow_bits,
+            worker,
+        );
         proof.pow_nonces.push(nonce);
 
         let mut query_indexes = vec![];
@@ -823,7 +828,8 @@ where
         }
 
         // and delinearization challenge
-        let delinearization_challenges: Vec<E> = draw_random_field_els(&mut transcript_seed, 1);
+        let delinearization_challenges: Vec<E> =
+            draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
         let delinearization_challenge = delinearization_challenges[0];
         delinearization_challenges_per_round.push(delinearization_challenge);
 
@@ -1025,7 +1031,7 @@ where
             let univariate_coeffs = special_lagrange_interpolate(f0, f1, f_half, evaluation_point);
             // commit
             proof.sumcheck_polys.push(univariate_coeffs);
-            commit_field_els(&mut transcript_seed, &univariate_coeffs);
+            commit_field_els::<F, E, TR>(&mut transcript_seed, &univariate_coeffs);
 
             #[cfg(feature = "gkr_self_checks")]
             {
@@ -1040,7 +1046,7 @@ where
                 assert_eq!(v, claim);
             }
 
-            let folding_challenges = draw_random_field_els(&mut transcript_seed, 1);
+            let folding_challenges = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
             let folding_challenge = folding_challenges[0];
             folding_challenges_in_round.push(folding_challenge);
 
@@ -1106,18 +1112,18 @@ where
                 },
                 queries: vec![],
             };
-            add_whir_commitment_to_transcript(&mut transcript_seed, &c.commitment);
+            add_whir_commitment_to_transcript::<F, E, TR, T>(&mut transcript_seed, &c.commitment);
             proof.intermediate_whir_oracles.push(c);
             core::mem::replace(&mut rs_oracle, next_oracle)
         };
 
         // draw OOD sample
-        let ood_points: Vec<E> = draw_random_field_els(&mut transcript_seed, 1);
+        let ood_points: Vec<E> = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
         let ood_point = ood_points[0];
         // compute OOD value
         let ood_value =
             evaluate_monomial_form(&sumchecked_poly_monomial_form[..], &ood_point, worker);
-        commit_field_els(&mut transcript_seed, &[ood_value]);
+        commit_field_els::<F, E, TR>(&mut transcript_seed, &[ood_value]);
         #[cfg(feature = "gkr_self_checks")]
         {
             let pows = make_pows(
@@ -1153,8 +1159,12 @@ where
 
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
         let num_bits_for_queries = num_queries * query_index_bits;
-        let (nonce, mut bit_source) =
-            draw_query_bits(&mut transcript_seed, num_bits_for_queries, pow_bits, worker);
+        let (nonce, mut bit_source) = draw_query_bits::<F, E, TR>(
+            &mut transcript_seed,
+            num_bits_for_queries,
+            pow_bits,
+            worker,
+        );
         proof.pow_nonces.push(nonce);
 
         let mut query_indexes = vec![];
@@ -1165,7 +1175,8 @@ where
         }
 
         // and delinearization challenge
-        let delinearization_challenges: Vec<E> = draw_random_field_els(&mut transcript_seed, 1);
+        let delinearization_challenges: Vec<E> =
+            draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
         let delinearization_challenge = delinearization_challenges[0];
         delinearization_challenges_per_round.push(delinearization_challenge);
 
@@ -1292,7 +1303,7 @@ where
             let univariate_coeffs = special_lagrange_interpolate(f0, f1, f_half, evaluation_point);
             // commit
             proof.sumcheck_polys.push(univariate_coeffs);
-            commit_field_els(&mut transcript_seed, &univariate_coeffs);
+            commit_field_els::<F, E, TR>(&mut transcript_seed, &univariate_coeffs);
 
             #[cfg(feature = "gkr_self_checks")]
             {
@@ -1307,7 +1318,7 @@ where
                 assert_eq!(v, claim, "diverged at round {}", folding_round);
             }
 
-            let folding_challenges = draw_random_field_els(&mut transcript_seed, 1);
+            let folding_challenges = draw_random_field_els::<F, E, TR>(&mut transcript_seed, 1);
             let folding_challenge = folding_challenges[0];
             folding_challenges_in_round.push(folding_challenge);
 
@@ -1350,7 +1361,7 @@ where
         }
 
         // commit final-round monomials before drawing queries
-        commit_field_els(&mut transcript_seed, &sumchecked_poly_monomial_form);
+        commit_field_els::<F, E, TR>(&mut transcript_seed, &sumchecked_poly_monomial_form);
 
         // query
 
@@ -1375,8 +1386,12 @@ where
 
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
         let num_bits_for_queries = num_queries * query_index_bits;
-        let (nonce, mut bit_source) =
-            draw_query_bits(&mut transcript_seed, num_bits_for_queries, pow_bits, worker);
+        let (nonce, mut bit_source) = draw_query_bits::<F, E, TR>(
+            &mut transcript_seed,
+            num_bits_for_queries,
+            pow_bits,
+            worker,
+        );
         proof.pow_nonces.push(nonce);
 
         let mut query_indexes = vec![];
@@ -3009,7 +3024,7 @@ mod test {
             whir_pow_schedule: vec![10, 10, 10],
         };
 
-        let proof = whir_fold(
+        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript>(
             mem,
             a,
             wit,

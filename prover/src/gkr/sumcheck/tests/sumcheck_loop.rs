@@ -4,7 +4,10 @@ use std::mem::MaybeUninit;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
 use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, PrimeField};
-use transcript::Seed;
+use transcript::{
+    commit_base_field_elements_impl, commit_extension_field_elements_impl,
+    draw_random_field_elements_impl, Blake2sTranscript, Seed, Transcript,
+};
 use worker::Worker;
 
 use super::utils::*;
@@ -14,6 +17,63 @@ use crate::gkr::sumcheck::eq_poly::*;
 
 type F = Mersenne31Field;
 type E = Mersenne31Quartic;
+
+/// Test-only transcript implementing `Transcript<Mersenne31Field, Mersenne31Quartic>`.
+///
+/// The production `Blake2sTranscript` only implements `Transcript<BabyBearField,
+/// BabyBearExt4>`; the orphan rule forbids adding a Mersenne impl for it outside
+/// the `transcript` crate, so we wrap it in this local type for the Mersenne-based
+/// sumcheck tests. It delegates everything to `Blake2sTranscript`, reusing the
+/// shared (field-generic) serialization helpers.
+#[derive(Clone, Copy, Debug, Default)]
+struct TestTranscript;
+
+type TestBlake2s = Blake2sTranscript<true>;
+
+impl Transcript<F, E> for TestTranscript {
+    type Seed = Seed;
+    type Hasher = blake2s_u32::DelegatedBlake2sState;
+
+    fn commit_initial_u32(input: &[u32]) -> Seed {
+        TestBlake2s::commit_initial(input)
+    }
+    fn commit_u32_with_seed(seed: &mut Seed, input: &[u32]) {
+        TestBlake2s::commit_with_seed(seed, input);
+    }
+    fn commit_initial_u32_using_hasher(h: &mut Self::Hasher, input: &[u32]) -> Seed {
+        TestBlake2s::commit_initial_using_hasher(h, input)
+    }
+    fn commit_u32_with_seed_using_hasher(h: &mut Self::Hasher, seed: &mut Seed, input: &[u32]) {
+        TestBlake2s::commit_with_seed_using_hasher(h, seed, input);
+    }
+    fn draw_randomness(seed: &mut Seed, dst: &mut [u32]) {
+        TestBlake2s::draw_randomness(seed, dst);
+    }
+    fn draw_randomness_using_hasher(h: &mut Self::Hasher, seed: &mut Seed, dst: &mut [u32]) {
+        TestBlake2s::draw_randomness_using_hasher(h, seed, dst);
+    }
+    fn pow_threshold(pow_bits: u32) -> u32 {
+        TestBlake2s::pow_threshold(pow_bits)
+    }
+    fn verify_pow(seed: &mut Seed, nonce: u64, pow_bits: u32) {
+        TestBlake2s::verify_pow(seed, nonce, pow_bits);
+    }
+    fn verify_pow_using_hasher(h: &mut Self::Hasher, seed: &mut Seed, nonce: u64, pow_bits: u32) {
+        TestBlake2s::verify_pow_using_hasher(h, seed, nonce, pow_bits);
+    }
+    fn search_pow(seed: &Seed, pow_bits: u32, worker: &worker::Worker) -> (Seed, u64) {
+        TestBlake2s::search_pow(seed, pow_bits, worker)
+    }
+    fn commit_base_field_elements(seed: &mut Seed, els: &[F]) {
+        commit_base_field_elements_impl::<true, F>(seed, els);
+    }
+    fn commit_extension_field_elements(seed: &mut Seed, els: &[E]) {
+        commit_extension_field_elements_impl::<true, F, E>(seed, els);
+    }
+    fn draw_random_field_elements(seed: &mut Seed, buffer: &mut [E]) {
+        draw_random_field_elements_impl::<true, F, E>(seed, buffer);
+    }
+}
 
 /// Test the full sumcheck loop with a simple product gate.
 #[test]
@@ -79,7 +139,7 @@ fn test_sumcheck_loop_product() {
     let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
     let mut seed = Seed::default();
 
-    evaluate_sumcheck_for_layer::<F, E>(
+    evaluate_sumcheck_for_layer::<F, E, TestTranscript>(
         0,
         &layer,
         &mut claim_points,
@@ -235,7 +295,7 @@ fn test_sumcheck_loop_multiple_gates() {
     let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
     let mut seed = Seed::default();
 
-    evaluate_sumcheck_for_layer::<F, E>(
+    evaluate_sumcheck_for_layer::<F, E, TestTranscript>(
         0,
         &layer,
         &mut claim_points,

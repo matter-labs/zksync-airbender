@@ -22,7 +22,7 @@ use crate::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_e
 use cs::gkr_compiler::GKRLayerDescription;
 use cs::{definitions::GKRAddress, gkr_compiler::OutputType};
 use kernel_collector::KernelCollector;
-use transcript::Seed;
+use transcript::Transcript;
 
 mod batch_evaluation;
 mod distribution_analysis;
@@ -30,14 +30,18 @@ mod kernel_collector;
 
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing from storage.
-pub fn evaluate_dimension_reducing_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
+pub fn evaluate_dimension_reducing_sumcheck_for_layer<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    TR: Transcript<F, E>,
+>(
     layer_idx: usize,
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
     claim_points: &mut BTreeMap<usize, Vec<E>>,
     claims_storage: &mut BTreeMap<usize, BTreeMap<GKRAddress, E>>,
     gkr_storage: &mut GKRStorage<F, E>,
     batching_challenge: &mut E,
-    seed: &mut Seed,
+    seed: &mut TR::Seed,
     trace_len_after_reduction: usize,
     worker: &Worker,
 ) -> SumcheckIntermediateProofValues<F, E>
@@ -71,7 +75,7 @@ where
     let claim = collector.compute_combined_claim(output_claims);
 
     let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
-        run_sumcheck_loop::<F, E, 4, false>(
+        run_sumcheck_loop::<F, E, TR, 4, false>(
             &collector,
             claim,
             prev_challenges,
@@ -134,9 +138,9 @@ where
         lsb_lines.iter().map(|(k, v)| (*k, v.to_vec())).collect();
 
     let transcript_inputs: Vec<E> = lsb_lines.values().flatten().copied().collect();
-    commit_field_els(seed, &transcript_inputs);
+    commit_field_els::<F, E, TR>(seed, &transcript_inputs);
 
-    let challenges = draw_random_field_els::<F, E>(seed, 2);
+    let challenges = draw_random_field_els::<F, E, TR>(seed, 2);
     let [r_last, next_batching_challenge] = challenges.try_into().unwrap();
     folding_challenges.push(r_last);
 
@@ -188,7 +192,11 @@ where
 
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing from storage.
-pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
+pub fn evaluate_sumcheck_for_layer<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    TR: Transcript<F, E>,
+>(
     layer_idx: usize,
     layer: &GKRLayerDescription,
     claim_points: &mut BTreeMap<usize, Vec<E>>,
@@ -202,7 +210,7 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     inits_and_teardowns_top_bits: &[u32],
     address_high_bits_shift: u32,
     external_challenges: &GKRExternalChallenges<F, E>,
-    seed: &mut Seed,
+    seed: &mut TR::Seed,
     worker: &Worker,
 ) -> SumcheckIntermediateProofValues<F, E>
 where
@@ -249,7 +257,7 @@ where
     };
 
     let (folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
-        run_sumcheck_loop::<F, E, 2, true>(
+        run_sumcheck_loop::<F, E, TR, 2, true>(
             &collector,
             claim,
             prev_challenges,
@@ -305,9 +313,9 @@ where
         new_claims.iter().map(|(k, v)| (*k, vec![*v])).collect();
 
     let transcript_inputs: Vec<E> = new_claims.values().copied().collect();
-    commit_field_els(seed, &transcript_inputs);
+    commit_field_els::<F, E, TR>(seed, &transcript_inputs);
 
-    let next_batching_challenge = draw_random_field_els::<F, E>(seed, 1)[0];
+    let next_batching_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
 
     // self-check
     #[cfg(feature = "gkr_self_checks")]
@@ -428,7 +436,7 @@ where
                 .values()
                 .copied()
                 .collect::<Vec<_>>();
-            commit_field_els(seed, &transcript_input);
+            commit_field_els::<F, E, TR>(seed, &transcript_input);
         }
 
         #[cfg(feature = "gkr_self_checks")]
@@ -460,6 +468,7 @@ where
 fn run_sumcheck_loop<
     F: PrimeField,
     E: FieldExtension<F> + Field,
+    TR: Transcript<F, E>,
     const N: usize,
     const USE_BATCHING: bool,
 >(
@@ -471,7 +480,7 @@ fn run_sumcheck_loop<
     challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
     folding_steps: usize,
     worker: &Worker,
-    seed: &mut Seed,
+    seed: &mut TR::Seed,
 ) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, E)
 where
     [(); E::DEGREE]: Sized,
@@ -568,9 +577,9 @@ where
             );
         }
 
-        commit_field_els(seed, &coeffs);
+        commit_field_els::<F, E, TR>(seed, &coeffs);
         intermediate_coeffs.push(coeffs);
-        let folding_challenge = draw_random_field_els(seed, 1)[0];
+        let folding_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
 
         let new_claim = evaluate_small_univariate_poly::<F, E, _>(&coeffs, &folding_challenge);
 

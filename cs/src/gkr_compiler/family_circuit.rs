@@ -459,12 +459,14 @@ impl<F: PrimeField> GKRCompiler<F> {
             // We add a constraint (normal one), to perform timestamp += 4 constraint, without
             // carry over top limb, as we want to have upper bound anyway
 
+            assert!(TIMESTAMP_COLUMNS_NUM_BITS < F::CHAR_BITS as u32);
+
             // we need to ensure that constraint the describes a carry is boolean
             let mut t = Constraint::from(executor_machine_state.cycle_start_state.timestamp[0])
                 + Term::from(TIMESTAMP_STEP as u32)
                 - Term::from(executor_machine_state.cycle_end_state.timestamp[0]);
             t.scale(
-                F::from_u64_with_reduction(1 << TIMESTAMP_COLUMNS_NUM_BITS)
+                F::from_u32_with_reduction(1 << TIMESTAMP_COLUMNS_NUM_BITS)
                     .inverse()
                     .unwrap(),
             );

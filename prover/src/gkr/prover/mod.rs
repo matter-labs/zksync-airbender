@@ -306,6 +306,11 @@ pub fn prove_configured_with_gkr<
 where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
+    // The production prover uses the concrete `Blake2sTranscript` (aliased as
+    // `Transcript`) as its `TR: transcript::Transcript<F, E>`; this bound defers
+    // the requirement to monomorphization (satisfied for `F = BabyBearField`,
+    // `E = BabyBearExt4`).
+    Transcript: ::transcript::Transcript<F, E>,
 {
     assert_eq!(compiled_circuit.trace_len, trace_len);
     assert_eq!(
@@ -366,13 +371,14 @@ where
         );
     }
 
-    let mut seed = Transcript::commit_initial(&transcript_input);
+    let mut seed =
+        <Transcript as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
 
     // TODO
     assert_eq!(prover_config.lookup_challenges_pow_bits, 0, "TODO");
 
     // now we need to draw prove-local challenges, and in our case it's just a challenge for lookups, and challenge to batch all constraints
-    let challenges: Vec<E> = draw_random_field_els(&mut seed, 2);
+    let challenges: Vec<E> = draw_random_field_els::<F, E, Transcript>(&mut seed, 2);
     let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
 
     let mut gkr_storage = GKRStorage::<F, E>::default();
@@ -500,10 +506,10 @@ where
             }
         }
     }
-    commit_field_els(&mut seed, &evals_flattened);
+    commit_field_els::<F, E, Transcript>(&mut seed, &evals_flattened);
 
     let num_challenges = final_trace_size_log_2 + 1;
-    let mut challenges = draw_random_field_els::<F, E>(&mut seed, num_challenges);
+    let mut challenges = draw_random_field_els::<F, E, Transcript>(&mut seed, num_challenges);
     let batching_challenge = challenges.pop().unwrap();
 
     println!("Evaluating initial claims for sumcheck loop");
@@ -572,7 +578,7 @@ where
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
-        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
+        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer::<F, E, Transcript>(
             layer_idx,
             &layer,
             &mut points_for_claims_at_layer,
@@ -598,7 +604,7 @@ where
 
     // Backward loop: standard layer-by-layer sumcheck
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
-        let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
+        let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<F, E, Transcript>(
             layer_idx,
             layer,
             &mut points_for_claims_at_layer,
@@ -769,10 +775,10 @@ where
         "TODO"
     );
 
-    let whir_batching_challenge = draw_random_field_els::<F, E>(&mut seed, 1);
+    let whir_batching_challenge = draw_random_field_els::<F, E, Transcript>(&mut seed, 1);
     let whir_batching_challenge = whir_batching_challenge[0];
 
-    let whir_proof = whir_fold(
+    let whir_proof = whir_fold::<F, E, T, Transcript>(
         mem_oracle,
         mem_polys_claims,
         wit_oracle,
