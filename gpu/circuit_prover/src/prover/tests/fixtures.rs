@@ -11,11 +11,20 @@ pub(super) struct DelegationReplayFixture {
     pub(super) expected_final_state: DelegationState,
 }
 
-pub(super) fn build_delegation_replay_fixture(
+/// Workload-parameterized replay-fixture builder: runs the given binary/text
+/// program under `non_determinism_reads`, so each delegation can replay
+/// against the workload that actually exercises it (keccak_f1600 for keccak,
+/// `examples/bigint_with_control` for bigint, the `multi_family_smoke` blake2
+/// apps for the two blake2 delegations). `replay_delegation_trace_buffer`
+/// (below) is the keccak_f1600-defaulted convenience wrapper that routes
+/// through this.
+pub(super) fn build_delegation_replay_fixture_for_workload(
+    binary_path: &str,
+    text_path: &str,
     non_determinism_reads: &[u32],
 ) -> DelegationReplayFixture {
-    let binary = read_test_words("riscv_transpiler/examples/keccak_f1600/app.bin");
-    let text_section = read_test_words("riscv_transpiler/examples/keccak_f1600/app.text");
+    let binary = read_test_words(binary_path);
+    let text_section = read_test_words(text_path);
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
@@ -61,11 +70,42 @@ pub(super) fn replay_delegation_trace_buffer<W: Clone>(
         &mut [W],
     ),
 ) -> Vec<W> {
+    replay_delegation_trace_buffer_for_workload(
+        "riscv_transpiler/examples/keccak_f1600/app.bin",
+        "riscv_transpiler/examples/keccak_f1600/app.text",
+        &[15, 1],
+        zero_call,
+        count_from_counters,
+        empty_witness,
+        replay,
+    )
+}
+
+/// Workload-parameterized variant of [`replay_delegation_trace_buffer`]: each
+/// delegation replays against the program that actually calls it, rather than
+/// the hardcoded keccak_f1600 default.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn replay_delegation_trace_buffer_for_workload<W: Clone>(
+    binary_path: &str,
+    text_path: &str,
+    non_determinism_reads: &[u32],
+    zero_call: bool,
+    count_from_counters: impl FnOnce(&DelegationsAndFamiliesCounters) -> usize,
+    empty_witness: W,
+    replay: fn(
+        &SimpleTape,
+        usize,
+        &mut DelegationState,
+        &mut ReplayerRam<{ ROM_SECOND_WORD_BITS }>,
+        &mut [W],
+    ),
+) -> Vec<W> {
     if zero_call {
         return Vec::new();
     }
 
-    let fixture = build_delegation_replay_fixture(&[15, 1]);
+    let fixture =
+        build_delegation_replay_fixture_for_workload(binary_path, text_path, non_determinism_reads);
     let num_calls =
         count_from_counters(&fixture.snapshotter.snapshots.last().unwrap().state.counters);
     let mut replay_state = fixture.snapshotter.initial_snapshot.state;
@@ -221,6 +261,35 @@ pub(super) mod shift_binop_mod {
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
 
     include!("../../../../../prover/compiled_circuits/shift_binop_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BF, true>,
+            ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,
+        >;
+        fn_ptr(proxy);
+    }
+}
+
+#[allow(unused_imports)]
+pub(super) mod unsigned_mul_div_mod {
+    use crate::primitives::field::BF;
+    use cs::oracle::Placeholder;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
+    use cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use field::baby_bear::base::BabyBearField;
+    use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
+    use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
+
+    include!("../../../../../prover/compiled_circuits/unsigned_mul_div_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,
