@@ -867,6 +867,31 @@ fn find_site_in<S: ReplaySite>(
     })
 }
 
+fn structural_rematerialize_cost(
+    inst: &OracleInstance,
+    completed_root: &[bool],
+    value: u32,
+    seen: &mut Vec<bool>,
+) -> u64 {
+    if seen[value as usize] {
+        return 0;
+    }
+    seen[value as usize] = true;
+    let node = &inst.nodes[value as usize];
+    if node.real_dram {
+        return node.width as u64;
+    }
+    let recompute: u64 = node
+        .children
+        .iter()
+        .map(|&child| structural_rematerialize_cost(inst, completed_root, child, seen))
+        .sum();
+    if completed_root[value as usize] && is_reloadable_value(inst, value) {
+        return (node.width as u64).min(recompute);
+    }
+    recompute
+}
+
 fn is_reloadable_value(inst: &OracleInstance, value: u32) -> bool {
     inst.reloadable_values.binary_search(&value).is_ok()
 }
@@ -979,6 +1004,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             trace: collect_trace.then(CacheTrace::default),
             step_events: None,
         };
+        replay.prime_reload_pruned_descendants();
         replay
     }
 
@@ -1313,6 +1339,49 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
 
     fn consume_structural_subtree(&mut self, range: (u32, u32)) {
         self.bulk_consume_pruned_descendants(range);
+    }
+
+    fn prime_reload_pruned_descendants(&mut self) {
+        let mut completed_root = vec![false; self.inst.nodes.len()];
+        let mut occurrence_order = Vec::with_capacity(self.inst.roots.len());
+        let mut seen_root_occurrence = vec![false; self.inst.roots.len()];
+        for touch in &self.reference.touches {
+            let root_occurrence = touch.root_occurrence as usize;
+            if !seen_root_occurrence[root_occurrence] {
+                seen_root_occurrence[root_occurrence] = true;
+                occurrence_order.push(root_occurrence);
+            }
+        }
+        for root_occurrence in 0..self.inst.roots.len() {
+            if !seen_root_occurrence[root_occurrence] {
+                occurrence_order.push(root_occurrence);
+            }
+        }
+
+        for root_occurrence in occurrence_order {
+            let (range_start, range_end) = self.reference.root_occurrence_ranges[root_occurrence];
+            for touch in &self.reference.touches[range_start as usize..range_end as usize] {
+                if touch.input_index == ROOT_OUTPUT_INPUT_INDEX
+                    || self.consumed_touch[touch.touch_index as usize]
+                    || !completed_root[touch.value as usize]
+                    || !self.is_reloadable(touch.value)
+                {
+                    continue;
+                }
+                let mut seen = vec![false; self.inst.nodes.len()];
+                let reload_cost = self.inst.nodes[touch.value as usize].width as u64;
+                let recompute =
+                    structural_rematerialize_cost(self.inst, &completed_root, touch.value, &mut seen);
+                if reload_cost <= recompute {
+                    let range = self.reference.subtree_ranges[touch.touch_index as usize];
+                    if range.0 + 1 < range.1 {
+                        self.bulk_consume_pruned_descendants((range.0 + 1, range.1));
+                    }
+                }
+            }
+            let root_value = self.inst.roots[root_occurrence];
+            completed_root[root_value as usize] = true;
+        }
     }
 
     /// (C) cone-fit: computing `root`'s cone needs its single-accumulator spill peak
@@ -2641,7 +2710,7 @@ pub(crate) mod tests {
         let score = score_candidate(&inst, &sites, &genome);
 
         assert_eq!(score.traffic, 1);
-        assert_eq!(score.instrs, 2);
+        assert_eq!(score.instrs, 1);
     }
 
     #[test]
@@ -2744,13 +2813,19 @@ pub(crate) mod tests {
             .position(|site| site.root == 3 && site.value == 2)
             .expect("value 2 first demand site must exist"),
         );
-        let victim_keep_site_for_value_0 = cache_priority_gene_for_site(
-            &sites,
-            sites
+        let victim_priority_site_for_value_0 = trace
+            .events
             .iter()
-            .position(|site| site.root == 2 && site.value == 0)
-            .expect("value 0 last keep site before eviction must exist"),
-        );
+            .find_map(|event| match *event {
+                CacheTraceEvent::Evict {
+                    victim: 0,
+                    victim_last_site: Some(site_idx),
+                    cause: EvictCause::PressureAdmit { .. },
+                    ..
+                } => Some(site_idx),
+                _ => None,
+            })
+            .expect("pressure-admit eviction for value 0 must carry its current priority site");
         let mut neighbors = Vec::new();
 
         push_trace_guided_cache_neighbors(&sites, &genome, &trace, 16, &mut neighbors);
@@ -2767,7 +2842,7 @@ pub(crate) mod tests {
         }));
         assert!(neighbors.iter().any(|(_, candidate, family)| {
             *family == Some(MoveFamily::CachePriority)
-                && candidate.cache_priority[victim_keep_site_for_value_0] < 0.0
+                && candidate.cache_priority[victim_priority_site_for_value_0] < 0.0
         }));
         assert!(neighbors
             .iter()
@@ -2878,7 +2953,7 @@ pub(crate) mod tests {
 
         assert_eq!(score.traffic, 4);
         assert_eq!(score.instrs, 6);
-        assert_eq!(score.evicted, 0);
+        assert_eq!(score.evicted, 1);
     }
 
     // NOTE: `transient_compute_storage_evicts_residents_from_same_pool` and
