@@ -11,8 +11,8 @@ use verifier_common::structs::{CommitBuf, TranscriptState};
 pub use verifier_common::SUMCHECK_POLY_COEFFS;
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
 #[inline(always)]
-pub fn read_reduced_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> u32 {
-    nd_source.read_reduced_field_element(BabyBearField::ORDER)
+pub fn read_reduced_field_el<I: NonDeterminismSource<BabyBearField>>(nd_source: &mut I) -> BabyBearField {
+    nd_source.read_reduced_field_element()
 }
 #[inline(always)]
 pub fn read_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> BabyBearExt4 {
@@ -128,7 +128,7 @@ pub fn verify_sumcheck_rounds<
         {
             let mut i = 0;
             while i < coeff_data_words {
-                commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -466,7 +466,7 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
     {
         let mut i = 0;
         while i < WHIR_SC_DATA_WORDS {
-            buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+            buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
             i += 1;
         }
     }
@@ -616,12 +616,12 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let idx = col * 2;
         let raw = read_reduced_field_el::<I>(nd_source);
-        *hash_buf.get_unchecked_mut(idx) = raw;
-        let base_val = BabyBearField::from_reduced_raw_repr(raw);
+        *hash_buf.get_unchecked_mut(idx) = raw.as_u32_raw_repr();
+        let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc0, &gamma, &base_val);
         let raw = read_reduced_field_el::<I>(nd_source);
-        *hash_buf.get_unchecked_mut(idx + 1) = raw;
-        let base_val = BabyBearField::from_reduced_raw_repr(raw);
+        *hash_buf.get_unchecked_mut(idx + 1) = raw.as_u32_raw_repr();
+        let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc1, &gamma, &base_val);
         col += 1;
     }

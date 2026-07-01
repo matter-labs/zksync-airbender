@@ -39,7 +39,7 @@ impl MerkleTreeCapVarLength {
 pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     Sized + Send + Sync + core::fmt::Debug
 {
-    type Verifier: LeafInclusionVerifier;
+    type Verifier: LeafInclusionVerifier<F>;
 
     fn dummy() -> Self;
 

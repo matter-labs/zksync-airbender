@@ -1,12 +1,13 @@
 use super::*;
 use blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
+use field::baby_bear::base::BabyBearField;
 
 #[derive(Debug)]
 pub struct Blake2sForEverythingVerifier {
     hasher: blake2s_u32::DelegatedBlake2sState,
 }
 
-impl LeafInclusionVerifier for Blake2sForEverythingVerifier {
+impl LeafInclusionVerifier<BabyBearField> for Blake2sForEverythingVerifier {
     #[inline(always)]
     fn new() -> Self {
         Self {
@@ -16,7 +17,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifier {
 
     #[unroll::unroll_for_loops]
     unsafe fn verify_leaf_inclusion<
-        I: NonDeterminismSource,
+        I: NonDeterminismSource<BabyBearField>,
         const CAP_SIZE: usize,
         const NUM_COSETS: usize,
     >(

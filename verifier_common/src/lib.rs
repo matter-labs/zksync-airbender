@@ -159,7 +159,7 @@ pub trait ConcreteVerifierImpl<
     const ADDRS: usize,
 >: 'static
 {
-    fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+    fn verify_gkr<I: NonDeterminismSource<F>, E: ErrorCreator>(
         external_challenges: &::prover::definitions::GKRExternalChallenges<F, EE>,
         initial_transcript: &InitialGKRTranscript<
             EE,
@@ -174,7 +174,7 @@ pub trait ConcreteVerifierImpl<
         transcript_state: &mut ::transcript::TranscriptState,
         nd_source: &mut I,
     ) -> Result<GKRVerifierOutput<EE, ROUNDS, ADDRS>, E::Error>;
-    fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+    fn verify_whir<I: NonDeterminismSource<F>, E: ErrorCreator>(
         initial_transcript: &InitialGKRTranscript<
             EE,
             INIT_AND_TEARDOWN_SETS,
@@ -194,7 +194,7 @@ pub trait ConcreteVerifierImpl<
 }
 
 pub fn verify_impl<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<F>,
     E: ErrorCreator,
     F: PrimeField,
     EE: FieldExtension<F> + Field,
@@ -267,7 +267,7 @@ pub fn verify_impl<
 pub fn read_external_challenges<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<F>,
 >(
     nd_source: &mut I,
 ) -> prover::definitions::GKRExternalChallenges<F, E> {

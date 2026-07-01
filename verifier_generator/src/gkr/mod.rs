@@ -118,7 +118,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
                 {
                     let mut i = 0;
                     while i < coeff_data_words {
-                        commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                        commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                         i += 1;
                     }
                 }
@@ -995,7 +995,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         {
             let mut i = 0;
             while i < evals_data_words {
-                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source)as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -1064,7 +1064,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                         i += 1;
                     }
                 }
@@ -1275,7 +1275,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     {
                         let mut i = 0;
                         while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                             i += 1;
                         }
                     }
@@ -1349,7 +1349,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     {
                         let mut i = 0;
                         while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                             i += 1;
                         }
                     }
@@ -1415,7 +1415,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                         i += 1;
                     }
                 }

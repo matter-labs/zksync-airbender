@@ -104,6 +104,9 @@ pub trait PrimeField: Field {
     fn as_u32(self) -> u32;
     // < CHAR, but "natural" representation
     fn as_u32_reduced(self) -> u32;
+    // any representation, without reduction guarantees. To be used for roundtrips
+    // over newly constructed elements
+    fn as_u32_raw_repr(self) -> u32;
     // any representation, that can be used with the corresponding constructor
     fn as_u32_raw_repr_reduced(self) -> u32;
 

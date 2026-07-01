@@ -162,7 +162,7 @@ impl<
 pub fn make_initial_transcript<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<F>,
     const INIT_AND_TEARDOWN_SETS: usize,
     const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize,
     const CAP_SIZE: usize,

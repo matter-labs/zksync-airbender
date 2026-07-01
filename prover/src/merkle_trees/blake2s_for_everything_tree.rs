@@ -1,7 +1,7 @@
 use super::*;
 use crate::definitions::Blake2sForEverythingVerifier;
 use blake2s_u32::*;
-use field::PrimeField;
+use field::{PrimeField, baby_bear::base::BabyBearField};
 use std::alloc::Global;
 
 #[derive(Clone, Debug)]
@@ -119,8 +119,8 @@ impl<A: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
     }
 }
 
-impl<F: PrimeField, B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
-    ColumnMajorMerkleTreeConstructor<F>
+impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
+    ColumnMajorMerkleTreeConstructor<BabyBearField>
     for Blake2sU32MerkleTreeWithCap<B, USE_REDUCED_BLAKE2_ROUNDS>
 {
     type Verifier = Blake2sForEverythingVerifier;
@@ -175,30 +175,7 @@ impl<F: PrimeField, B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         (this_el_leaf_hash, result)
     }
 
-    // fn construct_for_column_major_coset<E: FieldExtension<F>, A: GoodAllocator>(
-    //     trace: &[&[E]],
-    //     combine_by: usize,
-    //     cap_size: usize,
-    //     bitreverse_input: bool,
-    //     bitreverse_output: bool,
-    //     worker: &Worker,
-    // ) -> Self
-    // where
-    //     [(); E::DEGREE]: Sized,
-    // {
-    //     use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_columns;
-    //     let leaf_hashes = blake2s_leaf_hashes_from_columns::<F, E, A, _>(
-    //         trace,
-    //         combine_by,
-    //         bitreverse_input,
-    //         bitreverse_output,
-    //         worker,
-    //     );
-
-    //     Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
-    // }
-
-    fn construct_from_cosets<E: FieldExtension<F>, A: GoodAllocator>(
+    fn construct_from_cosets<E: FieldExtension<BabyBearField>, A: GoodAllocator>(
         trace: &[&[&[E]]], // slice of cosets, each coset - is a slice of column evaluations
         combine_by: usize,
         cap_size: usize,
@@ -211,7 +188,7 @@ impl<F: PrimeField, B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         [(); E::DEGREE]: Sized,
     {
         use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_cosets;
-        let leaf_hashes = blake2s_leaf_hashes_from_cosets::<F, E, A, B, USE_REDUCED_BLAKE2_ROUNDS>(
+        let leaf_hashes = blake2s_leaf_hashes_from_cosets::<BabyBearField, E, A, B, USE_REDUCED_BLAKE2_ROUNDS>(
             trace,
             combine_by,
             bitreverse_evaluations,

@@ -9,8 +9,8 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
 
     quote! {
         #[inline(always)]
-        pub fn read_reduced_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> u32 {
-            nd_source.read_reduced_field_element(#field_struct::ORDER)
+        pub fn read_reduced_field_el<I: NonDeterminismSource<#field_struct>>(nd_source: &mut I) -> #field_struct {
+            nd_source.read_reduced_field_element()
         }
 
         #[inline(always)]

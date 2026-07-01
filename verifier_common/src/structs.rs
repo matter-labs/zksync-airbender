@@ -112,7 +112,7 @@ pub fn bitreverse_for_bitlength(num: u32, bitlength: u32) -> u32 {
 pub fn ext_from_nds<
     F: field::PrimeField,
     E: field::FieldExtension<F>,
-    I: non_determinism_source::NonDeterminismSource,
+    I: non_determinism_source::NonDeterminismSource<F>,
 >(
     nd_source: &mut I,
 ) -> E {
@@ -129,9 +129,9 @@ pub fn ext_from_nds<
         let dst = E::Coeffs::project_uninit(&mut coeffs);
         let mut i = 0;
         while i < E::DEGREE {
-            dst.get_unchecked_mut(i).write(F::from_reduced_raw_repr(
-                nd_source.read_reduced_field_element(F::CHARACTERISTICS_U32),
-            ));
+            dst.get_unchecked_mut(i).write(
+                nd_source.read_field_element(),
+            );
             i += 1;
         }
         E::from_coeffs(coeffs.assume_init())

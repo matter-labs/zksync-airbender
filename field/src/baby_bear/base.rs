@@ -408,6 +408,10 @@ impl PrimeField for BabyBearField {
         self.to_u32()
     }
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn as_u32_raw_repr(self) -> u32 {
+        self.0
+    }
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn as_u32_raw_repr_reduced(self) -> u32 {
         self.0
     }

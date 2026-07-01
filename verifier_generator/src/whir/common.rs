@@ -210,13 +210,13 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 let idx = col * 2;
 
                 let raw = read_reduced_field_el::<I>(nd_source);
-                *hash_buf.get_unchecked_mut(idx) = raw;
-                let base_val = #from_raw;
+                *hash_buf.get_unchecked_mut(idx) = raw.as_u32_raw_repr();
+                let base_val = raw;
                 #fma_into_acc_0;
 
                 let raw = read_reduced_field_el::<I>(nd_source);
-                *hash_buf.get_unchecked_mut(idx + 1) = raw;
-                let base_val = #from_raw;
+                *hash_buf.get_unchecked_mut(idx + 1) = raw.as_u32_raw_repr();
+                let base_val = raw;
                 #fma_into_acc_1;
 
                 col += 1;

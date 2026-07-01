@@ -1,4 +1,5 @@
 use crate::lazy_vec::LazyVec;
+use field::PrimeField;
 use crate::structs::{assemble_query_index, BitSource};
 use blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use non_determinism_source::NonDeterminismSource;
@@ -33,7 +34,8 @@ impl<E: Copy, const MAX_POW: usize> WhirAccumulator<E, MAX_POW> {
 /// `BUF` must be `(DIGEST_SIZE + CAP_WORDS)` rounded up to block size.
 #[inline(always)]
 pub fn read_commit_return_merkle_cap<
-    I: NonDeterminismSource,
+    F: PrimeField,
+    I: NonDeterminismSource<F>,
     const CAP_WORDS: usize,
     const BUF: usize,
 >(
@@ -52,7 +54,7 @@ pub fn read_commit_return_merkle_cap<
 }
 
 #[inline(always)]
-pub fn read_and_verify_pow<I: NonDeterminismSource>(
+pub fn read_and_verify_pow<F: PrimeField, I: NonDeterminismSource<F>>(
     ts: &mut TranscriptState,
     pow_bits: u32,
     nd_source: &mut I,
@@ -95,7 +97,7 @@ pub fn draw_query_indices<const MAX_QUERIES: usize, const MAX_DRAW_WORDS: usize>
 }
 
 #[inline(always)]
-pub fn verify_merkle_path<I: NonDeterminismSource>(
+pub fn verify_merkle_path<F: PrimeField, I: NonDeterminismSource<F>>(
     hasher: &mut DelegatedBlake2sState,
     mut leaf_index: usize,
     depth: usize,

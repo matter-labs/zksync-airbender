@@ -1,6 +1,7 @@
 use crate::definitions::MerkleTreeCap;
 use crate::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 use blake2s_u32::AlignedSlice64;
+use field::PrimeField;
 use core::fmt::Debug;
 use non_determinism_source::NonDeterminismSource;
 
@@ -10,10 +11,10 @@ pub use self::blake2s_for_everything::Blake2sForEverythingVerifier;
 mod blake2s_for_everything_with_alternative_compression;
 pub use self::blake2s_for_everything_with_alternative_compression::Blake2sForEverythingVerifierWithAlternativeCompression;
 
-pub trait LeafInclusionVerifier: 'static + Send + Sync + Debug {
+pub trait LeafInclusionVerifier<F: PrimeField>: 'static + Send + Sync + Debug {
     fn new() -> Self;
     unsafe fn verify_leaf_inclusion<
-        I: NonDeterminismSource,
+        I: NonDeterminismSource<F>,
         const CAP_SIZE: usize,
         const NUM_COSETS: usize,
     >(
