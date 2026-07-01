@@ -8,7 +8,7 @@ use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::GKRExternalChallenges;
-pub fn verify<I: NonDeterminismSource, E: ErrorCreator>(
+pub fn verify<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     nd_source: &mut I,
 ) -> Result<constants::ConcreteVerifierOutput, E::Error> {

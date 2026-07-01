@@ -183,7 +183,7 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
         use ::verifier_common::errors::ErrorCreator;
         #field_use_stmts
 
-        pub fn verify<I: NonDeterminismSource, E: ErrorCreator>(
+        pub fn verify<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
             nd_source: &mut I,
         ) -> Result<constants::ConcreteVerifierOutput, E::Error> {

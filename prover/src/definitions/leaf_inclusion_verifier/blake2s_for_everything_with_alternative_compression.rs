@@ -4,14 +4,13 @@ use super::*;
 use blake2s_u32::state_with_extended_control::*;
 use blake2s_u32::AlignedArray64;
 use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
-use field::baby_bear::base::BabyBearField;
 
 #[derive(Debug)]
 pub struct Blake2sForEverythingVerifierWithAlternativeCompression {
     hasher: Blake2RoundFunctionEvaluator,
 }
 
-impl LeafInclusionVerifier<BabyBearField> for Blake2sForEverythingVerifierWithAlternativeCompression {
+impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompression {
     #[inline(always)]
     fn new() -> Self {
         Self {
@@ -22,7 +21,7 @@ impl LeafInclusionVerifier<BabyBearField> for Blake2sForEverythingVerifierWithAl
     #[allow(invalid_value)]
     #[unroll::unroll_for_loops]
     unsafe fn verify_leaf_inclusion<
-        I: NonDeterminismSource<BabyBearField>,
+        I: U32WordNonDeterminismSource,
         const CAP_SIZE: usize,
         const NUM_COSETS: usize,
     >(

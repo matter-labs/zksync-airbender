@@ -1,6 +1,5 @@
 use core::mem::MaybeUninit;
-use non_determinism_source::NonDeterminismSource;
-use field::PrimeField;
+use non_determinism_source::U32WordNonDeterminismSource;
 
 pub use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS as DIGEST_SIZE_U32_WORDS;
 
@@ -41,7 +40,7 @@ impl<const N: usize> MerkleTreeCap<N> {
     }
 
     #[inline(always)]
-    pub fn new<F: PrimeField, I: NonDeterminismSource<F>>(nd_source: &mut I) -> Self {
+    pub fn new<I: U32WordNonDeterminismSource>(nd_source: &mut I) -> Self {
         unsafe {
             let mut new = Self {
                 cap: [MaybeUninit::uninit(); N].map(|el| el.assume_init()),
@@ -58,7 +57,7 @@ impl<const N: usize> MerkleTreeCap<N> {
     }
 
     #[inline(always)]
-    pub unsafe fn read_caps_into<F: PrimeField, I: NonDeterminismSource<F>, const M: usize>(
+    pub unsafe fn read_caps_into<I: U32WordNonDeterminismSource, const M: usize>(
         dst: *mut [Self; M],
         nd_source: &mut I,
     ) {

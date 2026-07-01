@@ -1,13 +1,14 @@
 use super::*;
+use verifier_common::non_determinism_source::U32WordNonDeterminismSource;
 
 #[allow(invalid_value)]
 #[inline(always)]
-pub unsafe fn read_setup_cap<F: PrimeField, I: NonDeterminismSource<F>, const SIZE: usize>(
+pub unsafe fn read_setup_cap<I: U32WordNonDeterminismSource, const SIZE: usize>(
     nd_source: &mut I,
 ) -> MerkleTreeCap<SIZE> {
     let mut result: MaybeUninit<MerkleTreeCap<SIZE>> = core::mem::MaybeUninit::uninit();
 
-    MerkleTreeCap::<SIZE>::read_caps_into::<F, I, 1>(result.as_mut_ptr().cast(), nd_source);
+    MerkleTreeCap::<SIZE>::read_caps_into::<I, 1>(result.as_mut_ptr().cast(), nd_source);
 
     result.assume_init()
 }

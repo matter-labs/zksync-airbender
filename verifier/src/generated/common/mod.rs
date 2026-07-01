@@ -11,15 +11,20 @@ use verifier_common::structs::{CommitBuf, TranscriptState};
 pub use verifier_common::SUMCHECK_POLY_COEFFS;
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
 #[inline(always)]
-pub fn read_reduced_field_el<I: NonDeterminismSource<BabyBearField>>(nd_source: &mut I) -> BabyBearField {
-    nd_source.read_reduced_field_element()
+pub fn read_reduced_field_el<I: NonDeterminismSource<BabyBearField>>(
+    nd_source: &mut I,
+) -> BabyBearField {
+    nd_source.read_field_element()
 }
 #[inline(always)]
-pub fn read_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> BabyBearExt4 {
+pub fn read_field_el<I: NonDeterminismSource<BabyBearField>>(nd_source: &mut I) -> BabyBearExt4 {
     ext_from_nds::<BabyBearField, BabyBearExt4, I>(nd_source)
 }
 #[inline(always)]
-pub fn read_field_els<I: NonDeterminismSource>(dst: &mut [BabyBearExt4], nd_source: &mut I) {
+pub fn read_field_els<I: NonDeterminismSource<BabyBearField>>(
+    dst: &mut [BabyBearExt4],
+    nd_source: &mut I,
+) {
     let mut i = 0;
     while i < dst.len() {
         dst[i] = read_field_el::<I>(nd_source);
@@ -105,7 +110,7 @@ pub fn make_eq_poly<const M: usize, const N: usize>(
 }
 #[inline(always)]
 pub fn verify_sumcheck_rounds<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const NUM_ROUNDS: usize,
     const COMMIT_BUF: usize,
@@ -449,7 +454,7 @@ pub fn compute_tree_index(
     }
 }
 #[inline(always)]
-pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
+pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     claim: BabyBearExt4,
     round: usize,
@@ -602,7 +607,7 @@ pub fn ext_from_raw_word_slice(words: &[u32]) -> BabyBearExt4 {
 }
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
+pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<BabyBearField>>(
     hash_buf: &mut [u32],
     num_columns: usize,
     gamma_powers: &[BabyBearExt4],
@@ -673,7 +678,7 @@ pub fn push_whir_pow_entry<const MAX_POW: usize>(
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn process_oracle_query<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const BUF_SIZE: usize,
     const LEAF_WORDS: usize,

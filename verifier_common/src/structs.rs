@@ -129,9 +129,8 @@ pub fn ext_from_nds<
         let dst = E::Coeffs::project_uninit(&mut coeffs);
         let mut i = 0;
         while i < E::DEGREE {
-            dst.get_unchecked_mut(i).write(
-                nd_source.read_field_element(),
-            );
+            dst.get_unchecked_mut(i)
+                .write(nd_source.read_field_element());
             i += 1;
         }
         E::from_coeffs(coeffs.assume_init())

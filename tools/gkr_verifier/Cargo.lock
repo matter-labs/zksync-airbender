@@ -52,6 +52,7 @@ name = "non_determinism_source"
 version = "0.1.0"
 dependencies = [
  "common_constants",
+ "field",
 ]
 
 [[package]]
@@ -182,6 +183,7 @@ name = "transcript"
 version = "0.1.0"
 dependencies = [
  "blake2s_u32",
+ "field",
  "unroll",
 ]
 

@@ -94,7 +94,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
     let common_fns = quote! {
         #[inline(always)]
         pub fn verify_sumcheck_rounds<
-            I: NonDeterminismSource,
+            I: NonDeterminismSource<#field_struct>,
             E: ErrorCreator,
             const NUM_ROUNDS: usize,
             const COMMIT_BUF: usize,
@@ -995,7 +995,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         {
             let mut i = 0;
             while i < evals_data_words {
-                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source)as_u32_raw_repr());
+                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -1766,7 +1766,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         #layer_functions
 
         #[allow(unused_variables, unused_mut, unused_unsafe)]
-        pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+        pub(crate) fn verify_gkr<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
             initial_transcript: &ConcreteInitialTranscript,
             ts: &mut ::verifier_common::structs::TranscriptState,
@@ -1791,7 +1791,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             GKR_ADDRS,
         > for VerifierImplementation {
             #[inline(always)]
-            fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+            fn verify_gkr<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
                 external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
                 initial_transcript: &ConcreteInitialTranscript,
                 transcript_state: &mut ::verifier_common::structs::TranscriptState,
@@ -1805,7 +1805,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 )
             }
             #[inline(always)]
-            fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+            fn verify_whir<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
                 initial_transcript: &ConcreteInitialTranscript,
                 transcript_state: &mut ::verifier_common::structs::TranscriptState,
                 whir_batching_challenge: #quartic_struct,

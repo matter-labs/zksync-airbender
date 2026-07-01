@@ -15,7 +15,7 @@ use crate::unrolled_circuit_params::*;
 #[allow(invalid_value)]
 #[inline(never)]
 pub unsafe fn verify_full_statement_for_unrolled_circuits<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const BASE_LAYER: bool,
     const REDUCED_ROUNDS: bool,
@@ -344,7 +344,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 }
 
 pub fn verify_unrolled_base_layer<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const REDUCED_ROUNDS: bool,
 >(
@@ -368,7 +368,7 @@ pub fn verify_unrolled_base_layer<
 }
 
 pub fn verify_unrolled_recursion_layer<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const REDUCED_ROUNDS: bool,
 >(
@@ -393,7 +393,7 @@ pub fn verify_unrolled_recursion_layer<
 }
 
 pub fn verify_base_or_recursion_unrolled_circuits<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const REDUCED_ROUNDS: bool,
 >(

@@ -3,17 +3,24 @@
 #[cfg(feature = "verifier_stats")]
 pub mod stats;
 
-pub trait NonDeterminismSource<F: ::field::PrimeField>: Send + Sync {
+pub trait U32WordNonDeterminismSource: Send + Sync {
     fn read_word(&mut self) -> u32;
+}
+
+pub trait NonDeterminismSource<F: ::field::PrimeField>: U32WordNonDeterminismSource {
     fn read_field_element(&mut self) -> F;
 }
 
-impl<T: core::iter::Iterator<Item = u32> + Send + Sync + ?Sized> NonDeterminismSource<::field::baby_bear::base::BabyBearField> for T {
+impl<T: core::iter::Iterator<Item = u32> + Send + Sync + ?Sized> U32WordNonDeterminismSource for T {
     #[inline(always)]
     fn read_word(&mut self) -> u32 {
         self.next().expect("next word")
     }
+}
 
+impl<T: core::iter::Iterator<Item = u32> + Send + Sync + ?Sized>
+    NonDeterminismSource<::field::baby_bear::base::BabyBearField> for T
+{
     #[inline(always)]
     fn read_field_element(&mut self) -> ::field::baby_bear::base::BabyBearField {
         let value = self.next().expect("next word");
@@ -27,20 +34,24 @@ impl<T: core::iter::Iterator<Item = u32> + Send + Sync + ?Sized> NonDeterminismS
 pub struct CSRBasedSource;
 
 #[cfg(target_arch = "riscv32")]
-impl NonDeterminismSource<::field::baby_bear::base::BabyBearField> for CSRBasedSource {
+impl U32WordNonDeterminismSource for CSRBasedSource {
     #[inline(always)]
     fn read_word(&mut self) -> u32 {
         #[cfg(feature = "verifier_stats")]
         stats::NDS_STATS.with_borrow_mut(|s| s.read_bytes += core::mem::size_of::<u32>());
         csr_read_word()
     }
+}
+
+#[cfg(target_arch = "riscv32")]
+impl NonDeterminismSource<::field::baby_bear::base::BabyBearField> for CSRBasedSource {
     #[inline(always)]
-    fn read_reduced_field_element(&mut self) -> ::field::baby_bear::base::BabyBearField {
+    fn read_field_element(&mut self) -> ::field::baby_bear::base::BabyBearField {
         #[cfg(feature = "verifier_stats")]
         stats::NDS_STATS.with_borrow_mut(|s| s.read_bytes += core::mem::size_of::<u32>());
         let repr = csr_read_field_element();
         use ::field::PrimeField;
-        ::field::baby_bear::base::BabyBearField::from_reduced_raw_repr(value)
+        ::field::baby_bear::base::BabyBearField::from_reduced_raw_repr(repr)
     }
 }
 

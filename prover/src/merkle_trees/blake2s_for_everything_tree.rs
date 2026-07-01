@@ -1,7 +1,7 @@
 use super::*;
 use crate::definitions::Blake2sForEverythingVerifier;
 use blake2s_u32::*;
-use field::{PrimeField, baby_bear::base::BabyBearField};
+use field::{baby_bear::base::BabyBearField, PrimeField};
 use std::alloc::Global;
 
 #[derive(Clone, Debug)]
@@ -188,14 +188,15 @@ impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
         [(); E::DEGREE]: Sized,
     {
         use crate::merkle_trees::blake2s_hash_leafs::blake2s_leaf_hashes_from_cosets;
-        let leaf_hashes = blake2s_leaf_hashes_from_cosets::<BabyBearField, E, A, B, USE_REDUCED_BLAKE2_ROUNDS>(
-            trace,
-            combine_by,
-            bitreverse_evaluations,
-            bitreverse_cosets,
-            bitreverse_leaf_hashes,
-            worker,
-        );
+        let leaf_hashes =
+            blake2s_leaf_hashes_from_cosets::<BabyBearField, E, A, B, USE_REDUCED_BLAKE2_ROUNDS>(
+                trace,
+                combine_by,
+                bitreverse_evaluations,
+                bitreverse_cosets,
+                bitreverse_leaf_hashes,
+                worker,
+            );
 
         Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
     }
