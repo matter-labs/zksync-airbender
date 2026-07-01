@@ -996,6 +996,20 @@ fn run_unified_multi_schedule_test() {
     );
 }
 
+/// Unified circuit single-proof parity, matching the `proof_parity` body every
+/// other circuit uses: prove once and assert field-wise bit-exactness vs the CPU
+/// `prove_configured_with_gkr` reference (`assert_gkr_proof_eq_for_test`, which
+/// covers `grand_product_accumulator_computed` and the full `whir_proof`). The
+/// grand-product closure-to-ONE check specific to the full machine lives in
+/// `run_unified_multi_schedule_test`; this test exists so unified has the same
+/// proof_parity / multi_schedule / profile trio as the other circuits.
+#[test]
+#[serial]
+#[ignore]
+fn run_unified_proof_parity_test() {
+    run_proof_parity(prepare_unified_proof_fixture());
+}
+
 /// Unified circuit profile run (warmup + profiled prove, structure check only).
 /// Uses a no-CPU-reference fixture so it skips the expensive CPU unified prove.
 #[test]
@@ -1026,16 +1040,20 @@ fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixtur
     super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(false).0
 }
 
-// KNOWN FAILURE (regression guard, CPU = source of truth): the two full-proof
-// parity tests below currently FAIL. The GPU inits-and-teardowns proof matches
-// the CPU reference on the *claim* (`final_explicit_evaluations` +
-// `grand_product_accumulator_computed`) but diverges on the backward-sumcheck
-// `sumcheck_intermediate_values` and WHIR, starting from the initial backward
-// claim at the first-processed layer. This is a GPU prover bug isolated to the
-// reduced-output i/t circuit (PermutationProduct only, no lookup kernels) — see
-// .agents/audits/2026-07-01-gpu-inits-and-teardowns-backward-divergence.md.
-// They are deliberately kept asserting the full match (not weakened) so they go
-// green automatically once the GPU handoff/initial-claim path is fixed.
+// Full-proof parity for the reduced-output inits-and-teardowns circuit
+// (PermutationProduct only, width-0 witness layer). These were the regression
+// guards for two zero-width-base-layer GPU bugs, now FIXED (CPU = source of
+// truth):
+//   1. The initial transcript committed the width-0 witness Merkle cap that the
+//      CPU omits (`witness_layout.total_width == 0`), diverging the seed and
+//      every downstream challenge — the evaluation point, backward sumcheck, and
+//      WHIR. Fixed in `stage1_forward.rs` by gating the memory/witness cap
+//      commits on their layout widths, matching the CPU.
+//   2. The parsed WHIR proof emitted a degenerate 16-digest cap for the width-0
+//      witness oracle, where the CPU's dummy tree yields an empty cap. Fixed in
+//      `proof_layout/accessors.rs::parse_whir_proof` by gating the base cap on
+//      `num_columns == 0`.
+// See .agents/audits/2026-07-01-gpu-inits-and-teardowns-backward-divergence.md.
 #[test]
 #[serial]
 #[ignore]
