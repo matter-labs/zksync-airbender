@@ -809,9 +809,11 @@ struct Replay<'a, S: ReplaySite> {
     inst: &'a OracleInstance,
     sites: &'a [S],
     site_to_cache_priority_gene: Vec<usize>,
-    site_to_touch_index: Vec<Option<u32>>,
+    site_to_touch_indices: Vec<Vec<u32>>,
+    site_touch_cursor: Vec<usize>,
+    last_consumed_site_touch: Vec<Option<u32>>,
     touch_to_site_idx: Vec<Option<usize>>,
-    touch_lookup: std::collections::BTreeMap<StructuralSiteKey, u32>,
+    touch_lookup: std::collections::BTreeMap<StructuralSiteKey, Vec<u32>>,
     genome: &'a Genome,
     classes: Vec<ValueClass>,
     fork_info: forkset::ForkInfo,
@@ -964,29 +966,32 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         collect_trace: bool,
     ) -> Self {
         let site_to_cache_priority_gene = cache_priority_site_to_gene(sites);
-        let touch_lookup: std::collections::BTreeMap<StructuralSiteKey, u32> = reference
-            .touches
+        let mut touch_lookup: std::collections::BTreeMap<StructuralSiteKey, Vec<u32>> =
+            std::collections::BTreeMap::new();
+        for touch in &reference.touches {
+            touch_lookup
+                .entry((
+                    touch.root_occurrence,
+                    touch.consumer,
+                    touch.input_index,
+                    touch.value,
+                ))
+                .or_default()
+                .push(touch.touch_index);
+        }
+        let site_to_touch_indices = sites
             .iter()
-            .map(|touch| {
-                (
-                    (
-                        touch.root_occurrence,
-                        touch.consumer,
-                        touch.input_index,
-                        touch.value,
-                    ),
-                    touch.touch_index,
-                )
+            .map(|site| {
+                touch_lookup
+                    .get(&site.structural_site_key())
+                    .cloned()
+                    .unwrap_or_default()
             })
-            .collect();
-        let site_to_touch_index = sites
-            .iter()
-            .map(|site| touch_lookup.get(&site.structural_site_key()).copied())
             .collect::<Vec<_>>();
         let mut touch_to_site_idx = vec![None; reference.touches.len()];
-        for (site_idx, touch_index) in site_to_touch_index.iter().enumerate() {
-            if let Some(touch_index) = touch_index {
-                touch_to_site_idx[*touch_index as usize] = Some(site_idx);
+        for (site_idx, touch_indices) in site_to_touch_indices.iter().enumerate() {
+            for &touch_index in touch_indices {
+                touch_to_site_idx[touch_index as usize] = Some(site_idx);
             }
         }
         let mut cone_of: Vec<Vec<u32>> = vec![Vec::new(); inst.nodes.len()];
@@ -1000,7 +1005,9 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             inst,
             sites,
             site_to_cache_priority_gene,
-            site_to_touch_index,
+            site_to_touch_indices,
+            site_touch_cursor: vec![0; sites.len()],
+            last_consumed_site_touch: vec![None; sites.len()],
             touch_to_site_idx,
             touch_lookup,
             genome,
@@ -1358,8 +1365,9 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
     }
 
     fn consume_site(&mut self, site_idx: usize) {
-        if let Some(touch_index) = self.site_to_touch_index[site_idx] {
+        if let Some(touch_index) = self.next_site_touch(site_idx) {
             self.consume_touch(touch_index);
+            self.last_consumed_site_touch[site_idx] = Some(touch_index);
         }
     }
 
@@ -1567,7 +1575,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
     }
 
     fn site_subtree_range(&self, site_idx: usize) -> Option<(u32, u32)> {
-        self.site_to_touch_index[site_idx]
+        self.last_consumed_site_touch[site_idx]
             .map(|touch_index| self.reference.subtree_ranges[touch_index as usize])
     }
 
@@ -1577,9 +1585,10 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         node_id: u32,
     ) -> Option<(u32, u32)> {
         let root_occurrence = root_occurrence as u32;
-        if let Some(&touch_index) = self
+        if let Some(touch_index) = self
             .touch_lookup
             .get(&(root_occurrence, node_id, ROOT_OUTPUT_INPUT_INDEX, node_id))
+            .and_then(|touches| self.next_live_touch_in(touches))
         {
             return Some(self.reference.subtree_ranges[touch_index as usize]);
         }
@@ -1587,9 +1596,10 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         let mut first = None;
         let mut end = None;
         for (input_index, &child) in self.inst.nodes[node_id as usize].children.iter().enumerate() {
-            let Some(&touch_index) = self
+            let Some(touch_index) = self
                 .touch_lookup
                 .get(&(root_occurrence, node_id, input_index as u32, child))
+                .and_then(|touches| self.next_live_touch_in(touches))
             else {
                 continue;
             };
@@ -1628,6 +1638,26 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
                 return Some(touch_index);
             }
             cursor = self.reference.touches[touch_index as usize].next_touch_of_value;
+        }
+        None
+    }
+
+    fn next_live_touch_in(&self, touches: &[u32]) -> Option<u32> {
+        touches
+            .iter()
+            .copied()
+            .find(|&touch_index| !self.consumed_touch[touch_index as usize])
+    }
+
+    fn next_site_touch(&mut self, site_idx: usize) -> Option<u32> {
+        let touches = &self.site_to_touch_indices[site_idx];
+        let cursor = &mut self.site_touch_cursor[site_idx];
+        while *cursor < touches.len() {
+            let touch_index = touches[*cursor];
+            *cursor += 1;
+            if !self.consumed_touch[touch_index as usize] {
+                return Some(touch_index);
+            }
         }
         None
     }
@@ -1799,6 +1829,34 @@ pub(crate) mod tests {
                 n(2, NodeKind::Add, 1, false, vec![0, 1]),
                 n(3, NodeKind::Read, 1, true, vec![]),
                 n(4, NodeKind::Add, 1, false, vec![2, 3]),
+            ],
+        }
+    }
+
+    fn resident_hit_shared_subtree_fixture() -> OracleInstance {
+        OracleInstance {
+            budget: 1,
+            reloadable_values: vec![],
+            roots: vec![3],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![0]),
+                n(3, NodeKind::Add, 1, false, vec![2, 2]),
+            ],
+        }
+    }
+
+    fn recompute_shared_subtree_fixture() -> OracleInstance {
+        OracleInstance {
+            budget: 1,
+            reloadable_values: vec![],
+            roots: vec![3],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 2, false, vec![0]),
+                n(3, NodeKind::Add, 1, false, vec![2, 2]),
             ],
         }
     }
@@ -2198,6 +2256,46 @@ pub(crate) mod tests {
         replay.bulk_consume_pruned_descendants(structural.touch_for_value(2));
 
         assert!(replay.current_priority_site(0).is_none());
+    }
+
+    #[test]
+    fn resident_hit_replay_consumes_shared_subtree_occurrences_end_to_end() {
+        let inst = resident_hit_shared_subtree_fixture();
+        let sites = enumerate_cache_priority_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+        let structural = build_reference_string(&inst, &decode_root_order(&inst, &genome));
+        let mut replay = Replay::new(
+            &inst,
+            &sites,
+            &genome,
+            classify_values(&inst),
+            &structural,
+            false,
+        );
+
+        replay.compute_root(0);
+
+        assert_eq!(replay.remaining_touch_count(0), 0);
+    }
+
+    #[test]
+    fn recompute_replay_consumes_shared_site_occurrences_end_to_end() {
+        let inst = recompute_shared_subtree_fixture();
+        let sites = enumerate_cache_priority_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+        let structural = build_reference_string(&inst, &decode_root_order(&inst, &genome));
+        let mut replay = Replay::new(
+            &inst,
+            &sites,
+            &genome,
+            classify_values(&inst),
+            &structural,
+            false,
+        );
+
+        replay.compute_root(0);
+
+        assert_eq!(replay.remaining_touch_count(0), 0);
     }
 
     #[test]
