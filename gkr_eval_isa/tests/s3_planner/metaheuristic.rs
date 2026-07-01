@@ -3679,14 +3679,23 @@ pub(crate) mod tests {
         let sites = enumerate_demand_sites(&inst);
         let neutral = Genome::neutral(&inst, &sites);
         let baseline = score_candidate(&inst, &sites, &neutral);
-
         let optimized = optimize_from_population(&inst, &sites, vec![neutral], 128);
+        let leaf_order: Vec<u32> = optimized
+            .best_score
+            .order
+            .iter()
+            .map(|&root| inst.nodes[root as usize].children[0])
+            .collect();
 
         assert!(objective_less(&optimized.best_score, &baseline));
+        // Task 6's Belady-aware rescoring changes the search trajectory enough for the
+        // local optimizer to reach the fully clustered leaf order [1,1,2,2,0,0],
+        // dropping traffic from the old local optimum (4) to the true clustered cost (3).
         assert_eq!(
             (optimized.best_score.traffic, optimized.best_score.instrs),
-            (4, 6)
+            (3, 6)
         );
+        assert_eq!(leaf_order, vec![1, 1, 2, 2, 0, 0]);
         assert!(optimized.accepted.root_inserts >= 1);
         assert_eq!(
             optimized.family_stats.root_inserts.selected,
