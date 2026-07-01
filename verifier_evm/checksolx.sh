@@ -14,20 +14,44 @@
 set -e
 
 GKR=gkr.sol
+SKIP_PARSE=0
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --skip-parse)
+            SKIP_PARSE=1
+            ;;
+        -h|--help)
+            echo "usage: ./checksolx.sh [--skip-parse]"
+            exit 0
+            ;;
+        *)
+            echo "usage: ./checksolx.sh [--skip-parse]" >&2
+            echo "unknown option: $1" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
 WORK=$(mktemp -d -t gkr-solx.XXXXXX)
 trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 
 # --- regenerate circuit.yul from parse.rs (cargo script), surfacing only parse.rs diagnostics ---
 CARGO_JSON="$WORK/cargo.json"
-if ! cargo -Zscript build --manifest-path parse.rs --message-format=json 2>"$WORK/cargo.err" >"$CARGO_JSON"; then
+if [ "$SKIP_PARSE" = 1 ]; then
+    echo "skipping parse, reusing existing circuit.yul" >&2
+elif ! cargo -Zscript build --manifest-path parse.rs --message-format=json 2>"$WORK/cargo.err" >"$CARGO_JSON"; then
     jq -r 'select(.message.spans[]?.file_name == "parse.rs") | .message.rendered' "$CARGO_JSON" >&2
     cat "$WORK/cargo.err" >&2
     exit 1
 fi
-jq -r 'select(.message.spans[]?.file_name == "parse.rs") | .message.rendered' "$CARGO_JSON"
-EXE=$(jq -r 'select(.executable != null) | .executable' "$CARGO_JSON" | tail -1)
-[ -z "$EXE" ] && { echo "no parse executable produced" >&2; exit 1; }
-"$EXE" >/dev/null   # writes circuit.yul
+if [ "$SKIP_PARSE" != 1 ]; then
+    jq -r 'select(.message.spans[]?.file_name == "parse.rs") | .message.rendered' "$CARGO_JSON"
+    EXE=$(jq -r 'select(.executable != null) | .executable' "$CARGO_JSON" | tail -1)
+    [ -z "$EXE" ] && { echo "no parse executable produced" >&2; exit 1; }
+    "$EXE" >/dev/null   # writes circuit.yul
+fi
 
 # --- inject circuit.yul into gkr.sol ---
 cp "$GKR" "$WORK/$GKR"

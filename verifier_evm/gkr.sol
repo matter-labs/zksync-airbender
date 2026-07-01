@@ -3,39 +3,36 @@ pragma solidity ^0.8.24;
 
 contract GKRVerifier {
     // ── Generic (used throughout) ───────────────────────────────────────────
+    // HEAP ORDER: challenges, point, gas, seed, init/circuit data (overlapping seed+32)
+    uint256 constant MINIMUM_FREE_HEAP_PTR = 7488;
     uint256 constant P      = 0xffffffffffffffffffffffffffffff61; // 2^128 - 159
     uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits
     uint256 constant ROUNDS = 200;
-    // Fiat-Shamir transcript region: seed at [SEED_PTR, SEED_PTR+32), absorb
-    // scratch above it. Every transcript helper uses this, never a hardcoded
-    // 0/32/64, so the layout can be relocated in one place.
-    uint256 constant SEED_PTR = 5000; // TODO: move back down
+    uint256 constant SEED_PTR = 8608; // = GKR_MAIN_GAS_PTR[1]; [SEED_PTR, SEED_PTR+32..(max absorbed)*16]
 
     // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
     uint256 constant MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
-    uint256 constant MEMORY_CHALLS_PTR      = 768; // 7 elems: 6 tuple-compression + 1 additive
-    uint256 constant LOGUP_CHALLS_PTR       = 992; // 2 elems: 1 tuple-compression + 1 additive
+    uint256 constant MEMORY_CHALLS_PTR      = 7488; // = MINIMUM_FREE_HEAP_PTR[0]; 7 elems: 6 tuple-compression + 1 additive
+    uint256 constant LOGUP_CHALLS_PTR       = 7712; // = MEMORY_CHALLS_PTR[7]; 2 elems: 1 tuple-compression + 1 additive
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
     uint256 constant GKR_INIT_BYTES          = 2048; // 8 polys * 16 elems * 16 bytes
     uint256 constant GKR_INIT_POLY_BYTES     = 256;  // 16 elems * 16 bytes (literal; Yul rejects const exprs)
-    uint256 constant POINT_PTR               = 0;    // z1..z4 / point batch at [0, 768), below the transcript region
-    uint256 constant GKR_INIT_EQ_PTR0        = 2496; // fold-accumulator scratch slot (legacy eq-table name)
-    uint256 constant CLAIM_PTR               = 3000;
-    uint256 constant GKR_STREAMREV_CLAIM_PTR = 4512;
-    uint256 constant GKR_INIT_GAS_PTR        = 4256; // stash gas() across init so Yul/solx spills can't clobber it
+    uint256 constant POINT_PTR               = 7776;    // = LOGUP_CHALLS_PTR[2]; z1..z4 / point batch at [0, 768), below the transcript region
+    uint256 constant GKR_INIT_GAS_PTR        = 8544; // = POINT_PTR[24]; stash gas() across init so Yul/solx spills can't clobber it
+    uint256 constant GKR_INIT_SCRATCH_PTR    = 8640; // = SEED_PTR[1]; fold-accumulator scratch slot (legacy eq-table name)
+    uint256 constant GKR_INIT_CLAIM_PTR      = 8672; // = SEED_PTR[2];
     uint256 constant GKR_INIT_PTR            = 2048; // testing: hardcoded init pointer
 
     // ── GKR compression ───────────────────────────────────────────────────────
     uint256 constant GKR_COMPRESSION_POINTCHECK_POLY_BYTES = 64;  // 4 * 16
     uint256 constant GKR_COMPRESSION_POINTCHECK_BYTES      = 512; // 8 * 64
-    uint256 constant GKR_COMPRESS_GAS_PTR    = 4288;
+    uint256 constant GKR_MAIN_GAS_PTR                      = 8576; // = GKR_INIT_GAS_PTR[1];
 
     // ── GKR circuit ───────────────────────────────────────────────────────────
     uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = 24;
-    uint256 constant GKR_CIRCUIT_CACHE_PTR    = 5032; // = SEED_PTR - 32*10; shares the transcript absorb region
-    uint256 constant GKR_CIRCUIT_ALPHA2_PTR = 5500;
-    // uint256 constant GKR_CIRCUIT_SCRATCH_PTR    = 7040; // used to fix stack pressure crashes
+    uint256 constant GKR_CIRCUIT_ALPHA2_PTR   = 8640; // = SEED_PTR[1];
+    uint256 constant GKR_CIRCUIT_CACHE_PTR    = 8672; // = SEED_PTR[2]; shares the transcript absorb region
 
     fallback() external {
         // uint256 variant = VARIANT;
@@ -136,7 +133,7 @@ contract GKRVerifier {
             // Same current READ+WRITE work as the open-coded even/odd path, but
             // factored into four quarter chunks under a loop.
 
-            mstore(CLAIM_PTR, claim)
+            mstore(GKR_INIT_CLAIM_PTR, claim)
             for { let poly := 6 } gt(poly, 0) { poly := sub(poly, 2) } {
                 let num_acc
                 let den_acc := 1
@@ -180,7 +177,7 @@ contract GKRVerifier {
                     switch i
                     case 0 {
                         numfold0 := numfoldc
-                        mstore(GKR_INIT_EQ_PTR0, numfold0)
+                        mstore(GKR_INIT_SCRATCH_PTR, numfold0)
                         denfold0 := denfoldc
                     }
                     case 1 {
@@ -200,7 +197,7 @@ contract GKRVerifier {
                 if mod(num_acc, P) { revert(0, 0) }
                 if iszero(den_acc) { revert(0, 0) }
                 // fold 0/1/2/3/4/5/6/7
-                numfold0 := mload(GKR_INIT_EQ_PTR0)
+                numfold0 := mload(GKR_INIT_SCRATCH_PTR)
                 numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P)), numfold0), P))
                 denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P)), denfold0), P))
                 // fold 8/9/10/11/12/13/14/15
@@ -210,10 +207,10 @@ contract GKRVerifier {
                 let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P)), numfold0), P))
                 let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P)), denfold0), P))
                 // batch
-                claim := mload(CLAIM_PTR)
+                claim := mload(GKR_INIT_CLAIM_PTR)
                 claim := add(mulmod(claim, alpha, P), den_claim)
                 claim := add(mulmod(claim, alpha, P), num_claim)
-                mstore(CLAIM_PTR, claim)
+                mstore(GKR_INIT_CLAIM_PTR, claim)
             }
 
             let write_acc
@@ -241,7 +238,7 @@ contract GKRVerifier {
                     switch i
                     case 0 {
                         fold0 := foldc
-                        mstore(GKR_INIT_EQ_PTR0, fold0)
+                        mstore(GKR_INIT_SCRATCH_PTR, fold0)
                     }
                     case 1 { fold1 := foldc }
                     case 2 { fold2 := foldc }
@@ -254,18 +251,18 @@ contract GKRVerifier {
                 }
                 write_acc := prod_acc
                 // fold 0/1/2/3/4/5/6/7
-                fold0 := mload(GKR_INIT_EQ_PTR0)
+                fold0 := mload(GKR_INIT_SCRATCH_PTR)
                 fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P)), fold0), P))
                 // fold 8/9/10/11/12/13/14/15
                 fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P)), fold2), P))
                 // fold 0/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15
                 let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P)), fold0), P))
                 // batch
-                claim := mload(CLAIM_PTR)
+                claim := mload(GKR_INIT_CLAIM_PTR)
                 claim := add(mulmod(claim, alpha, P), prod_claim)
-                mstore(CLAIM_PTR, claim)
+                mstore(GKR_INIT_CLAIM_PTR, claim)
             }
-            claim := mload(CLAIM_PTR)
+            claim := mload(GKR_INIT_CLAIM_PTR)
         }
 
         function acceval_inlinefold_streamrevlooploop_evenodd_newunchecked(ptr, z1, z2, z3, z4, alpha) -> claim {
@@ -277,7 +274,6 @@ contract GKRVerifier {
             // Same current READ+WRITE work as the open-coded even/odd path, but
             // factored into four quarter chunks under a loop.
 
-            mstore(CLAIM_PTR, claim)
             for { let poly := 6 } gt(poly, 0) { poly := sub(poly, 2) } {
                 {
                     let num_acc
@@ -334,19 +330,19 @@ contract GKRVerifier {
                         let numfoldc := add(numfolda, mulmod(z3, sub(add(numfoldb, mul(3, P)), numfolda), P))
                         let denfoldc := add(denfolda, mulmod(z3, sub(add(denfoldb, mul(3, P)), denfolda), P))
                         switch i
-                        case 0 { numfold0 := numfoldc mstore(GKR_INIT_EQ_PTR0, numfold0) denfold0 := denfoldc }
+                        case 0 { numfold0 := numfoldc mstore(GKR_INIT_SCRATCH_PTR, numfold0) denfold0 := denfoldc }
                         case 1 { numfold1 := numfoldc denfold1 := denfoldc }
                         case 2 { numfold2 := numfoldc denfold2 := denfoldc }
                         default { numfold3 := numfoldc denfold3 := denfoldc }
                     }
-                    numfold0 := mload(GKR_INIT_EQ_PTR0)
+                    numfold0 := mload(GKR_INIT_SCRATCH_PTR)
                     numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P)), numfold0), P))
                     denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P)), denfold0), P))
                     numfold1 := add(numfold2, mulmod(z2, sub(add(numfold3, mul(4, P)), numfold2), P))
                     denfold1 := add(denfold2, mulmod(z2, sub(add(denfold3, mul(4, P)), denfold2), P))
                     let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P)), numfold0), P))
                     let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P)), denfold0), P))
-                    let term_ptr := add(GKR_STREAMREV_CLAIM_PTR, mul(sub(6, poly), 32))
+                    let term_ptr := add(GKR_INIT_CLAIM_PTR, mul(sub(6, poly), 32))
                     mstore(term_ptr, den_claim)
                     mstore(add(term_ptr, 32), num_claim)
                 }
@@ -385,21 +381,21 @@ contract GKRVerifier {
                         let foldb := add(prod2, mulmod(z4, sub(add(prod3, mul(2, P)), prod2), P))
                         let foldc := add(folda, mulmod(z3, sub(add(foldb, mul(3, P)), folda), P))
                         switch i
-                        case 0 { fold0 := foldc mstore(GKR_INIT_EQ_PTR0, fold0) }
+                        case 0 { fold0 := foldc mstore(GKR_INIT_SCRATCH_PTR, fold0) }
                         case 1 { fold1 := foldc }
                         case 2 { fold2 := foldc }
                         default { fold3 := foldc }
                     }
-                    fold0 := mload(GKR_INIT_EQ_PTR0)
+                    fold0 := mload(GKR_INIT_SCRATCH_PTR)
                     fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P)), fold0), P))
                     fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P)), fold2), P))
                     let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P)), fold0), P))
-                    mstore(add(GKR_STREAMREV_CLAIM_PTR, sub(224, mul(poly, 32))), prod_claim)
+                    mstore(add(GKR_INIT_CLAIM_PTR, sub(224, mul(poly, 32))), prod_claim)
                 }
             }
             claim := 0
             for { let off := 0 } lt(off, 256) { off := add(off, 32) } {
-                claim := add(mulmod(claim, alpha, P), mload(add(GKR_STREAMREV_CLAIM_PTR, off)))
+                claim := add(mulmod(claim, alpha, P), mload(add(GKR_INIT_CLAIM_PTR, off)))
             }
         }
 
@@ -581,6 +577,11 @@ contract GKRVerifier {
             next_alpha := alpha
         }
 
+        // SPILL OVERWRITE PREVENTION
+        if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR) {
+            revert(0, 0)
+        }
+
         // INIT MAIN
         // Stash starting gas to memory across the gkr_init_* call so that
         // Yul stack spills can't corrupt it under high register pressure.
@@ -596,11 +597,11 @@ contract GKRVerifier {
 
         // MAIN
         {
-            mstore(GKR_COMPRESS_GAS_PTR, gas())
+            mstore(GKR_MAIN_GAS_PTR, gas())
             ptr, claim, alpha := gkr_compress(ptr, claim, alpha)
             ptr, claim, alpha := gkr_circuit(ptr, claim, alpha)
-            let compress_gas := sub(mload(GKR_COMPRESS_GAS_PTR), gas())
-            mstore(GKR_COMPRESS_GAS_PTR, compress_gas)
+            let compress_gas := sub(mload(GKR_MAIN_GAS_PTR), gas())
+            mstore(GKR_MAIN_GAS_PTR, compress_gas)
         }
 
         // DONE: Proof empty now
@@ -614,7 +615,7 @@ contract GKRVerifier {
         // anti-DCE
         mstore(0, claim)
         mstore(32, mload(GKR_INIT_GAS_PTR))
-        mstore(64, mload(GKR_COMPRESS_GAS_PTR))
+        mstore(64, mload(GKR_MAIN_GAS_PTR))
         mstore(96, ptr)
         return(0, 128)
     } }

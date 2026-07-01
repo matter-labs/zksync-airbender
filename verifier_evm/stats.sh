@@ -26,6 +26,9 @@
 # cells finish (a cell that finishes early waits its turn). Then the summary
 # table. gkr.sol is never modified in place; the temp dir is deleted on exit.
 #
+# Options:
+#   --skip-parse      reuse the existing circuit.yul (skip regeneration).
+#
 # Env knob (optional):
 #   STATS_SKIP_PARSE=1  reuse the existing circuit.yul (skip regeneration) —
 #                       fast re-bench when only compiler settings changed.
@@ -35,6 +38,26 @@
 # `wait <pid>` (POSIX), no `wait -n` / no bashisms.
 RUNTIME_LIMIT=24576
 GKR=gkr.sol
+SKIP_PARSE=${STATS_SKIP_PARSE:-0}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --skip-parse)
+            SKIP_PARSE=1
+            ;;
+        -h|--help)
+            echo "usage: ./stats.sh [--skip-parse]"
+            exit 0
+            ;;
+        *)
+            echo "usage: ./stats.sh [--skip-parse]" >&2
+            echo "unknown option: $1" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
 START=$(date +%s)
 SOLX=$(command -v solx 2>/dev/null)
 
@@ -50,8 +73,8 @@ regen_circuit() {
 }
 
 have_yul=0
-if [ "${STATS_SKIP_PARSE:-0}" = 1 ]; then
-    echo "STATS_SKIP_PARSE=1: skipping parse, reusing existing circuit.yul" >&2
+if [ "$SKIP_PARSE" = 1 ]; then
+    echo "skipping parse, reusing existing circuit.yul" >&2
     have_yul=1
 elif regen_circuit; then
     have_yul=1

@@ -2,6 +2,26 @@
 set -e
 
 GKR=gkr.sol
+SKIP_PARSE=0
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --skip-parse)
+            SKIP_PARSE=1
+            ;;
+        -h|--help)
+            echo "usage: ./checksolc_noremat.sh [--skip-parse]"
+            exit 0
+            ;;
+        *)
+            echo "usage: ./checksolc_noremat.sh [--skip-parse]" >&2
+            echo "unknown option: $1" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
 WORK=$(mktemp -d -t gkr-solc-noremat.XXXXXX)
 trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 
@@ -9,7 +29,9 @@ cp "$GKR" "$WORK/$GKR"
 [ -f foundry.toml ] && cp foundry.toml "$WORK/foundry.toml"
 
 PARSE_LOG="$WORK/parse.log"
-if ! ./parse.sh >"$PARSE_LOG" 2>&1; then
+if [ "$SKIP_PARSE" = 1 ]; then
+    echo "skipping parse, reusing existing circuit.yul" >&2
+elif ! ./parse.sh >"$PARSE_LOG" 2>&1; then
     echo "parse.sh failed:" >&2
     cat "$PARSE_LOG" >&2
     exit 1

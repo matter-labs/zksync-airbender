@@ -23,46 +23,27 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
     
     // POINT CHECK
     let acc
-    {  // CopyInExtensionField: [15] = [9]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 15))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [14] = [8]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 14))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [1] = [7]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 1))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [0] = [6]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 0))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // AggregateLookupRationalPair: [12]/[13] + [10]/[11] = [4]/[5]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 13)))), shr(128, calldataload(add(ptr, mul(16, 11)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 12)))), shr(128, calldataload(add(ptr, mul(16, 11)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 10)))), shr(128, calldataload(add(ptr, mul(16, 13)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // AggregateLookupRationalPair: [8]/[9] + [6]/[7] = [2]/[3]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), shr(128, calldataload(add(ptr, mul(16, 7)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 8)))), shr(128, calldataload(add(ptr, mul(16, 7)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 6)))), shr(128, calldataload(add(ptr, mul(16, 9)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // AggregateLookupRationalPair: [4]/[5] + [2]/[3] = [0]/[1]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 5)))), shr(128, calldataload(add(ptr, mul(16, 3)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 4)))), shr(128, calldataload(add(ptr, mul(16, 3)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 2)))), shr(128, calldataload(add(ptr, mul(16, 5)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
+    // CopyInExtensionField: [15] = [9]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 15)
+    
+    // CopyInExtensionField: [14] = [8]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 14)
+    
+    // CopyInExtensionField: [1] = [7]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 1)
+    
+    // CopyInExtensionField: [0] = [6]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 0)
+    
+    // AggregateLookupRationalPair: [12]/[13] + [10]/[11] = [4]/[5]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 12, 10, 13, 11)
+    
+    // AggregateLookupRationalPair: [8]/[9] + [6]/[7] = [2]/[3]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 8, 6, 9, 7)
+    
+    // AggregateLookupRationalPair: [4]/[5] + [2]/[3] = [0]/[1]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 4, 2, 5, 3)
+    
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     // after stack-heavy values are dead
@@ -122,70 +103,42 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
     
     // POINT CHECK
     let acc
-    {  // CopyInExtensionField: [24] = [15]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 24))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [23] = [14]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 23))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [18] = [13]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 18))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [17] = [12]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 17))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // AggregateLookupRationalPair: [21]/[22] + [19]/[20] = [10]/[11]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 22)))), shr(128, calldataload(add(ptr, mul(16, 20)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 21)))), shr(128, calldataload(add(ptr, mul(16, 20)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 19)))), shr(128, calldataload(add(ptr, mul(16, 22)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [12] = [9]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 12))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [11] = [8]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 11))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // AggregateLookupRationalPair: [15]/[16] + [13]/[14] = [6]/[7]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 16)))), shr(128, calldataload(add(ptr, mul(16, 14)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 15)))), shr(128, calldataload(add(ptr, mul(16, 14)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 13)))), shr(128, calldataload(add(ptr, mul(16, 16)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // AggregateLookupRationalPair: [5]/[6] + [3]/[4] = [4]/[5]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 6)))), shr(128, calldataload(add(ptr, mul(16, 4)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 5)))), shr(128, calldataload(add(ptr, mul(16, 4)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 3)))), shr(128, calldataload(add(ptr, mul(16, 6)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // AggregateLookupRationalPair: [9]/[10] + [7]/[8] = [2]/[3]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 10)))), shr(128, calldataload(add(ptr, mul(16, 8)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 9)))), shr(128, calldataload(add(ptr, mul(16, 8)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 7)))), shr(128, calldataload(add(ptr, mul(16, 10)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // MaskIntoIdentityProduct: [2]*[0] + (1-[0]) = [1]
-        let gate := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 2)))), shr(128, calldataload(add(ptr, mul(16, 0)))), P), add(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 0)))))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // MaskIntoIdentityProduct: [1]*[0] + (1-[0]) = [0]
-        let gate := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 1)))), shr(128, calldataload(add(ptr, mul(16, 0)))), P), add(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 0)))))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
+    // CopyInExtensionField: [24] = [15]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 24)
+    
+    // CopyInExtensionField: [23] = [14]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 23)
+    
+    // CopyInExtensionField: [18] = [13]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 18)
+    
+    // CopyInExtensionField: [17] = [12]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 17)
+    
+    // AggregateLookupRationalPair: [21]/[22] + [19]/[20] = [10]/[11]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 21, 19, 22, 20)
+    
+    // CopyInExtensionField: [12] = [9]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 12)
+    
+    // CopyInExtensionField: [11] = [8]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 11)
+    
+    // AggregateLookupRationalPair: [15]/[16] + [13]/[14] = [6]/[7]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 15, 13, 16, 14)
+    
+    // AggregateLookupRationalPair: [5]/[6] + [3]/[4] = [4]/[5]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 5, 3, 6, 4)
+    
+    // AggregateLookupRationalPair: [9]/[10] + [7]/[8] = [2]/[3]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 9, 7, 10, 8)
+    
+    // MaskIntoIdentityProduct: [2]*[0] + (1-[0]) = [1]
+    acc := gate_maskintoidentityproduct(ptr, alpha, acc, 2, 0)
+    
+    // MaskIntoIdentityProduct: [1]*[0] + (1-[0]) = [0]
+    acc := gate_maskintoidentityproduct(ptr, alpha, acc, 1, 0)
+    
     let rhs_scaled := mulmod(acc, eq_scale, P)
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     // after stack-heavy values are dead
@@ -245,14 +198,12 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     
     // POINT CHECK
     let acc
-    {  // CopyInExtensionField: [5] = [24]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 5))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [6] = [23]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 6))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
+    // CopyInExtensionField: [5] = [24]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 5)
+    
+    // CopyInExtensionField: [6] = [23]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 6)
+    
     {  // LookupUnbalancedPairWithVectorInputs: [70]/[71] + 1/(δ + β⁰(0 + 1[40]) + β¹(0 + 1[41]) + β²(0 + 1[42]) + β³(0 + 1[43]) + β⁴(0 + 1[44]) + β⁵(0 + 1[45]) + β⁶(0 + 1[46]) + β⁷(0 + 1[47]) + β⁸(0 + 0) + β⁹(0 + 1[39])) = [21]/[22]
         let den2 := add(mload(add(LOGUP_CHALLS_PTR, 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 45)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 46)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 47)))))), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 39))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 40)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 41)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 42)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 43)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 44)))))))) // for generic lookups we collect
         let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 71)))), den2, P)
@@ -282,22 +233,15 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // CopyInExtensionField: [62] = [16]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 62))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // CopyInExtensionField: [61] = [15]
-        let gate := shr(128, calldataload(add(ptr, mul(16, 61))))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // AggregateLookupRationalPair: [65]/[66] + [63]/[64] = [13]/[14]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 66)))), shr(128, calldataload(add(ptr, mul(16, 64)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 65)))), shr(128, calldataload(add(ptr, mul(16, 64)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 63)))), shr(128, calldataload(add(ptr, mul(16, 66)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
+    // CopyInExtensionField: [62] = [16]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 62)
+    
+    // CopyInExtensionField: [61] = [15]
+    acc := gate_copyinextensionfield(ptr, alpha, acc, 61)
+    
+    // AggregateLookupRationalPair: [65]/[66] + [63]/[64] = [13]/[14]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 65, 63, 66, 64)
+    
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [67]/[68] + 1/(δ + [69]) = [11]/[12]
         let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 68)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 69))))), P)
         let gate := den_out
@@ -314,22 +258,12 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // AggregateLookupRationalPair: [52]/[53] + [50]/[51] = [7]/[8]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 53)))), shr(128, calldataload(add(ptr, mul(16, 51)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 52)))), shr(128, calldataload(add(ptr, mul(16, 51)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 50)))), shr(128, calldataload(add(ptr, mul(16, 53)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // AggregateLookupRationalPair: [56]/[57] + [54]/[55] = [5]/[6]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 57)))), shr(128, calldataload(add(ptr, mul(16, 55)))), P)
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 56)))), shr(128, calldataload(add(ptr, mul(16, 55)))), P), mulmod(shr(128, calldataload(add(ptr, mul(16, 54)))), shr(128, calldataload(add(ptr, mul(16, 57)))), P))
-        gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
+    // AggregateLookupRationalPair: [52]/[53] + [50]/[51] = [7]/[8]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 52, 50, 53, 51)
+    
+    // AggregateLookupRationalPair: [56]/[57] + [54]/[55] = [5]/[6]
+    acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 56, 54, 57, 55)
+    
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [58]/[59] + 1/(δ + [60]) = [3]/[4]
         let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 59)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 60))))), P)
         let gate := den_out
@@ -1150,5 +1084,48 @@ function gkr_virtual_poly_zero_vars(len) -> eval {
 }
 function gkr_virtual_poly_rangecheck(width) -> eval {
     eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
+}
+
+function gate_calldataload(ptr, idx) -> load {
+    load := shr(128, calldataload(add(ptr, mul(16, idx))))
+}
+function gate_mload(ptr, idx) -> load {
+    load := mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, idx)))
+}
+function pointcheck_update(acc, alpha, gate) -> next_acc {
+    next_acc := add(mulmod(acc, alpha, P), gate)
+}
+function logup_pointcheck_update(acc, alpha, num_out, den_out) -> next_acc {
+    acc := pointcheck_update(acc, alpha, den_out)
+    next_acc := pointcheck_update(acc, alpha, num_out)
+}
+function u128_neg(input) -> neg_input {
+    neg_input := sub(mul(2, P), input)
+}
+
+// 3
+function gate_aggregatelookuprationalpair(ptr, alpha, acc, num1_idx, num2_idx, den1_idx, den2_idx) -> next_acc {
+    let num1 := gate_calldataload(ptr, num1_idx)
+    let num2 := gate_calldataload(ptr, num2_idx)
+    let den1 := gate_calldataload(ptr, den1_idx)
+    let den2 := gate_calldataload(ptr, den2_idx)
+    let den_out := mulmod(den1, den2, P)
+    let num_out := add(mulmod(num1, den2, P), mulmod(num2, den1, P))
+    next_acc := logup_pointcheck_update(acc, alpha, num_out, den_out)
+}
+function gate_copyinextensionfield(ptr, alpha, acc, input_idx) -> next_acc {
+    let input := gate_calldataload(ptr, input_idx)
+    next_acc := pointcheck_update(acc, alpha, input)
+}
+
+// 2
+function gate_maskintoidentityproduct(ptr, alpha, acc, input_idx, mask_idx) -> next_acc {
+    let input := gate_calldataload(ptr, input_idx)
+    let mask := gate_calldataload(ptr, mask_idx)
+    // let neg_mask := u128_neg(mask)
+    // let gate := add(mulmod(input, mask, P), add(1, neg_mask))
+    let neg_one := sub(P, 1)
+    let gate := add(mulmod(mask, add(input, neg_one), P), 1)
+    next_acc := pointcheck_update(acc, alpha, gate)
 }
 

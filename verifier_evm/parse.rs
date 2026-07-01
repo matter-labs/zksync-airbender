@@ -44,11 +44,30 @@ impl std::fmt::LowerHex for Dual {
         self.1.0.fmt(f) // yul
     }
 }
+impl std::fmt::Octal for Dual {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.1.fmt(f)
+    }
+}
+impl std::fmt::LowerExp for Dual {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.1.fmt(f)
+    }
+}
 
 impl std::fmt::LowerHex for Yul {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use std::fmt::Display;
-        self.0.fmt(f)
+        std::fmt::Display::fmt(&self.0, f)
+    }
+}
+impl std::fmt::Octal for Yul {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.calldataload_idx(), f)
+    }
+}
+impl std::fmt::LowerExp for Yul {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.mload_idx(), f)
     }
 }
 macro_rules! yul_format {
@@ -84,6 +103,34 @@ impl Yul {
     }
     fn mload(idx: &usize) -> Self {
         yul_format!("mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})))")
+    }
+    fn calldataload_idx(&self) -> usize {
+        let s = self.0.trim();
+        let prefix = "shr(128, calldataload(add(ptr, mul(16, ";
+        let suffix = "))))";
+        let idx = s
+            .strip_prefix(prefix)
+            .and_then(|s| s.strip_suffix(suffix))
+            .unwrap_or_else(|| panic!("expected simple calldata load, got: {s}"));
+        assert!(
+            idx.chars().all(|c| c.is_ascii_digit()),
+            "expected literal calldata index, got: {idx}"
+        );
+        idx.parse().unwrap()
+    }
+    fn mload_idx(&self) -> usize {
+        let s = self.0.trim();
+        let prefix = "mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, ";
+        let suffix = ")))";
+        let idx = s
+            .strip_prefix(prefix)
+            .and_then(|s| s.strip_suffix(suffix))
+            .unwrap_or_else(|| panic!("expected simple cache load, got: {s}"));
+        assert!(
+            idx.chars().all(|c| c.is_ascii_digit()),
+            "expected literal cache index, got: {idx}"
+        );
+        idx.parse().unwrap()
     }
     fn mstore(idx: &usize) -> Self {
         yul_format!("mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})), mod(gate, P))") // mod to prevent overflows with pointcheck const-cache multiplications
@@ -190,12 +237,6 @@ fn main() {
             if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
             ")
         };
-        const DEBUG_ENABLE_HEAP_ALPHA: bool = true;
-        let alpha2_init = if DEBUG_ENABLE_HEAP_ALPHA {
-            yul_format!("mstore(GKR_CIRCUIT_ALPHA2_PTR, mulmod(alpha, alpha, P))")
-        } else {
-            yul_format!("let alpha2 := mulmod(alpha, alpha, P)")
-        };
         yul_println!("
         function sumcheck_circuit_layer{i}(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {{
             // SUMCHECK ROUNDS
@@ -220,7 +261,6 @@ fn main() {
             }}
             
             // POINT CHECK
-            {alpha2_init:x}
             let acc");
         let mut running_max_group_offsets = (0, 0, 0, 0);
         let mut running_cachedoutput_counter = 0;
@@ -397,11 +437,6 @@ fn main() {
             assert!(*output_layer == i+1);
             let relation_name =  serde_json::to_value(enforced_relation).unwrap().as_object().unwrap().keys().next().unwrap().clone();
             let pointcheck_update = yul_format!("acc := add(mulmod(acc, alpha, P), gate)");
-            let logup_pointcheck_update = if DEBUG_ENABLE_HEAP_ALPHA {
-                yul_format!("acc := add(mulmod(acc, mload(GKR_CIRCUIT_ALPHA2_PTR), P), add(mulmod(den_out, alpha, P), num_out))")
-            } else {
-                yul_format!("acc := add(mulmod(acc, alpha2, P), add(mulmod(den_out, alpha, P), num_out))")
-            };
 
             fn gkraddress_to_calldata(address: &GKRAddress, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let (l0_memvars, l0_witvars, _l0_setupvars, l0_cachevars) = layer0_group_widths;
@@ -681,21 +716,18 @@ fn main() {
                     let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
                     // println!("{relation_name}: {num1}/{den1} + {num2}/{den2} = {num_out}/{den_out}");
                     yul_println!("
-                    \t{{  // {relation_name}: {num1}/{den1} + {num2}/{den2} = {num_out}/{den_out}
-                    \t    let den_out := mulmod({den1:x}, {den2:x}, P)
-                    \t    let num_out := add(mulmod({num1:x}, {den2:x}, P), mulmod({num2:x}, {den1:x}, P))
-                    \t    {logup_pointcheck_update:x}
-                    \t}}");
+                    \t// {relation_name}: {num1}/{den1} + {num2}/{den2} = {num_out}/{den_out}
+                    \tacc := gate_aggregatelookuprationalpair(ptr, alpha, acc, {num1:o}, {num2:o}, {den1:o}, {den2:o})
+                    \t");
                 }
                 NoFieldGKRRelation::CopyInExtensionField { input, output } => {
                     let input = gkraddress_to_calldata(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     // println!("{relation_name}: {input} = {output}");
                     yul_println!("
-                    \t{{  // {relation_name}: {input} = {output}
-                    \t    let gate := {input:x}
-                    \t    {pointcheck_update:x}
-                    \t}}");
+                    \t// {relation_name}: {input} = {output}
+                    \tacc := gate_copyinextensionfield(ptr, alpha, acc, {input:o})
+                    \t");
                 }
 
                 // 2
@@ -703,13 +735,11 @@ fn main() {
                     let input = gkraddress_to_calldata(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     let mask = gkraddress_to_calldata(mask, i, layer0_group_widths, &mut running_max_group_offsets);
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
-                    let neg_mask = u128_to_neg(&mask);
                     // println!("{relation_name}: {input}*{mask} + (1-{mask}) = {output}");
                     yul_println!("
-                    \t{{  // {relation_name}: {input}*{mask} + (1-{mask}) = {output}
-                    \t    let gate := add(mulmod({input:x}, {mask:x}, P), add(1, {neg_mask:x}))
-                    \t    {pointcheck_update:x}
-                    \t}}");
+                    \t// {relation_name}: {input}*{mask} + (1-{mask}) = {output}
+                    \tacc := gate_maskintoidentityproduct(ptr, alpha, acc, {input:o}, {mask:o})
+                    \t");
                 }
 
                 // 1
@@ -1008,6 +1038,8 @@ fn main() {
 
     // INTRODUCE EXTERNAL HELPER FNS
     // GREAT FOR BYTECODE REDUCTION!!
+    let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
+    let gate_mload_inner = Yul::mload(&123).0.replace("123", "idx");
     yul_println!("
         function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {{
             compressed := add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space)
@@ -1064,6 +1096,49 @@ fn main() {
         }}
         function gkr_virtual_poly_rangecheck(width) -> eval {{
             eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
+        }}
+
+        function gate_calldataload(ptr, idx) -> load {{
+            load := {gate_calldataload_inner}
+        }}
+        function gate_mload(ptr, idx) -> load {{
+            load := {gate_mload_inner}
+        }}
+        function pointcheck_update(acc, alpha, gate) -> next_acc {{
+            next_acc := add(mulmod(acc, alpha, P), gate)
+        }}
+        function logup_pointcheck_update(acc, alpha, num_out, den_out) -> next_acc {{
+            acc := pointcheck_update(acc, alpha, den_out)
+            next_acc := pointcheck_update(acc, alpha, num_out)
+        }}
+        function u128_neg(input) -> neg_input {{
+            neg_input := sub(mul(2, P), input)
+        }}
+
+        // 3
+        function gate_aggregatelookuprationalpair(ptr, alpha, acc, num1_idx, num2_idx, den1_idx, den2_idx) -> next_acc {{
+            let num1 := gate_calldataload(ptr, num1_idx)
+            let num2 := gate_calldataload(ptr, num2_idx)
+            let den1 := gate_calldataload(ptr, den1_idx)
+            let den2 := gate_calldataload(ptr, den2_idx)
+            let den_out := mulmod(den1, den2, P)
+            let num_out := add(mulmod(num1, den2, P), mulmod(num2, den1, P))
+            next_acc := logup_pointcheck_update(acc, alpha, num_out, den_out)
+        }}
+        function gate_copyinextensionfield(ptr, alpha, acc, input_idx) -> next_acc {{
+            let input := gate_calldataload(ptr, input_idx)
+            next_acc := pointcheck_update(acc, alpha, input)
+        }}
+
+        // 2
+        function gate_maskintoidentityproduct(ptr, alpha, acc, input_idx, mask_idx) -> next_acc {{
+            let input := gate_calldataload(ptr, input_idx)
+            let mask := gate_calldataload(ptr, mask_idx)
+            // let neg_mask := u128_neg(mask)
+            // let gate := add(mulmod(input, mask, P), add(1, neg_mask))
+            let neg_one := sub(P, 1)
+            let gate := add(mulmod(mask, add(input, neg_one), P), 1)
+            next_acc := pointcheck_update(acc, alpha, gate)
         }}
     ");
 }
