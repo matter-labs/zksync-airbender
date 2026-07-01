@@ -867,31 +867,6 @@ fn find_site_in<S: ReplaySite>(
     })
 }
 
-fn structural_rematerialize_cost(
-    inst: &OracleInstance,
-    completed_root: &[bool],
-    value: u32,
-    seen: &mut Vec<bool>,
-) -> u64 {
-    if seen[value as usize] {
-        return 0;
-    }
-    seen[value as usize] = true;
-    let node = &inst.nodes[value as usize];
-    if node.real_dram {
-        return node.width as u64;
-    }
-    let recompute: u64 = node
-        .children
-        .iter()
-        .map(|&child| structural_rematerialize_cost(inst, completed_root, child, seen))
-        .sum();
-    if completed_root[value as usize] && is_reloadable_value(inst, value) {
-        return (node.width as u64).min(recompute);
-    }
-    recompute
-}
-
 fn is_reloadable_value(inst: &OracleInstance, value: u32) -> bool {
     inst.reloadable_values.binary_search(&value).is_ok()
 }
@@ -1004,7 +979,6 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             trace: collect_trace.then(CacheTrace::default),
             step_events: None,
         };
-        replay.prime_reload_pruned_descendants();
         replay
     }
 
@@ -1230,9 +1204,11 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             return;
         }
         let incoming_priority = self.current_priority(value);
+        let mut planned_used_width = self.used_width();
+        let mut victims = Vec::new();
 
-        while self.used_width() + width > self.inst.budget {
-            let Some(victim) = self.lowest_priority_resident() else {
+        while planned_used_width + width > self.inst.budget {
+            let Some(victim) = self.lowest_priority_resident_excluding(&victims) else {
                 self.admit_stats.pressure_no_victim += 1;
                 return;
             };
@@ -1241,6 +1217,11 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
                 self.trace_event(CacheTraceEvent::PressureReject { site_idx, value });
                 return;
             }
+            planned_used_width -= self.inst.nodes[victim].width as usize;
+            victims.push(victim);
+        }
+
+        for victim in victims {
             let victim_priority_site = self.current_priority_site_idx(victim as u32);
             self.resident[victim] = false;
             self.resident_width -= self.inst.nodes[victim].width as usize;
@@ -1252,7 +1233,6 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
                 victim_remaining: self.remaining_touch_count(victim as u32),
                 cause: EvictCause::PressureAdmit { admitted: value },
             });
-            // Post-snapshot eviction (cause PressureAdmit) → an event.
             if let Some(events) = &mut self.step_events {
                 events.push(ReplayEventRaw::Evict {
                     value: victim as u32,
@@ -1341,49 +1321,6 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         self.bulk_consume_pruned_descendants(range);
     }
 
-    fn prime_reload_pruned_descendants(&mut self) {
-        let mut completed_root = vec![false; self.inst.nodes.len()];
-        let mut occurrence_order = Vec::with_capacity(self.inst.roots.len());
-        let mut seen_root_occurrence = vec![false; self.inst.roots.len()];
-        for touch in &self.reference.touches {
-            let root_occurrence = touch.root_occurrence as usize;
-            if !seen_root_occurrence[root_occurrence] {
-                seen_root_occurrence[root_occurrence] = true;
-                occurrence_order.push(root_occurrence);
-            }
-        }
-        for root_occurrence in 0..self.inst.roots.len() {
-            if !seen_root_occurrence[root_occurrence] {
-                occurrence_order.push(root_occurrence);
-            }
-        }
-
-        for root_occurrence in occurrence_order {
-            let (range_start, range_end) = self.reference.root_occurrence_ranges[root_occurrence];
-            for touch in &self.reference.touches[range_start as usize..range_end as usize] {
-                if touch.input_index == ROOT_OUTPUT_INPUT_INDEX
-                    || self.consumed_touch[touch.touch_index as usize]
-                    || !completed_root[touch.value as usize]
-                    || !self.is_reloadable(touch.value)
-                {
-                    continue;
-                }
-                let mut seen = vec![false; self.inst.nodes.len()];
-                let reload_cost = self.inst.nodes[touch.value as usize].width as u64;
-                let recompute =
-                    structural_rematerialize_cost(self.inst, &completed_root, touch.value, &mut seen);
-                if reload_cost <= recompute {
-                    let range = self.reference.subtree_ranges[touch.touch_index as usize];
-                    if range.0 + 1 < range.1 {
-                        self.bulk_consume_pruned_descendants((range.0 + 1, range.1));
-                    }
-                }
-            }
-            let root_value = self.inst.roots[root_occurrence];
-            completed_root[root_value as usize] = true;
-        }
-    }
-
     /// (C) cone-fit: computing `root`'s cone needs its single-accumulator spill peak
     /// (`fork_info.peak[root]`) of cells on top of the resident values that are
     /// OUTSIDERS to this cone. In-cone residents shield their subtrees and are folded
@@ -1466,6 +1403,22 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             .iter()
             .enumerate()
             .filter(|&(idx, &is_resident)| is_resident && self.borrowed[idx] == 0)
+            .min_by(|&(a, _), &(b, _)| {
+                self.current_priority(a as u32)
+                    .partial_cmp(&self.current_priority(b as u32))
+                    .expect("priority must be finite or -inf")
+                    .then(a.cmp(&b))
+            })
+            .map(|(idx, _)| idx)
+    }
+
+    fn lowest_priority_resident_excluding(&self, excluded: &[usize]) -> Option<usize> {
+        self.resident
+            .iter()
+            .enumerate()
+            .filter(|&(idx, &is_resident)| {
+                is_resident && self.borrowed[idx] == 0 && !excluded.contains(&idx)
+            })
             .min_by(|&(a, _), &(b, _)| {
                 self.current_priority(a as u32)
                     .partial_cmp(&self.current_priority(b as u32))
@@ -2060,8 +2013,49 @@ pub(crate) mod tests {
 
         let score = score_candidate(&inst, &sites, &genome);
 
+        // Runtime consumption prunes these descendants only when the later reload or
+        // resident hit actually happens, so early admissions are allowed here.
         assert_eq!(score.traffic, 2);
-        assert_eq!(score.admitted, 1);
+    }
+
+    #[test]
+    fn future_reload_descendants_stay_live_until_runtime_short_circuit() {
+        let inst = OracleInstance {
+            budget: 8,
+            reloadable_values: vec![2],
+            roots: vec![2, 3],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![0, 1]),
+                n(3, NodeKind::Add, 1, false, vec![2]),
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let mut genome = Genome::neutral(&inst, &sites);
+        for (idx, site) in sites.iter().enumerate() {
+            if site.value == 2 {
+                set_cache_priority_for_site(&sites, &mut genome, idx, 1.0);
+            }
+        }
+        let order = decode_root_order(&inst, &genome);
+        let reference = build_reference_string(&inst, &order);
+        let mut replay = Replay::new(
+            &inst,
+            &sites,
+            &genome,
+            classify_values(&inst),
+            &reference,
+            false,
+        );
+
+        replay.compute_root(0);
+        replay.finish_root(0);
+
+        assert!(
+            replay.current_priority_site(0).is_some(),
+            "future descendant demand must remain live until the later reload actually short-circuits it"
+        );
     }
 
     #[test]
@@ -2240,7 +2234,42 @@ pub(crate) mod tests {
 
         assert_eq!(score.traffic, 3);
         assert_eq!(score.instrs, 2);
-        assert_eq!(score.admitted, 1);
+    }
+
+    #[test]
+    fn pressure_reject_for_multi_cell_admission_is_atomic() {
+        let inst = OracleInstance {
+            budget: 2,
+            reloadable_values: vec![],
+            roots: vec![3, 4, 5, 6, 7, 8],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Read, 2, true, vec![]),
+                n(3, NodeKind::Add, 1, false, vec![0]),
+                n(4, NodeKind::Add, 1, false, vec![1]),
+                n(5, NodeKind::Add, 1, false, vec![2]),
+                n(6, NodeKind::Add, 1, false, vec![2]),
+                n(7, NodeKind::Add, 1, false, vec![0]),
+                n(8, NodeKind::Add, 1, false, vec![1]),
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let mut genome = Genome::neutral(&inst, &sites);
+        for (idx, site) in sites.iter().enumerate() {
+            let bias = match (site.consumer, site.value) {
+                (7, 0) => 0.6,
+                (8, 1) => 0.8,
+                (6, 2) => 0.7,
+                _ => 0.0,
+            };
+            set_cache_priority_for_site(&sites, &mut genome, idx, bias);
+        }
+
+        let score = score_candidate(&inst, &sites, &genome);
+
+        assert_eq!(score.traffic, 6);
+        assert_eq!(score.evicted, 0);
     }
 
     #[test]
