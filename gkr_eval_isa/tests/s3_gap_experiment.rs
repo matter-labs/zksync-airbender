@@ -1132,9 +1132,11 @@ fn replay_plan_matches_score_and_reproduces_residency() {
 #[test]
 fn replay_plan_still_serializes_schedule_events_after_runtime_pruning() {
     use s3_gap::instance::{extract_instance_with_remap, relation_units};
-    use s3_planner::metaheuristic::{project_genome_to_units, seeded_smoke_population};
     use s3_planner::metaheuristic::{
-        enumerate_demand_sites, replay_plan, unit_members, DemandKindRaw,
+        decode_grouped_occurrence_order, project_genome_to_units, seeded_smoke_population,
+    };
+    use s3_planner::metaheuristic::{
+        enumerate_demand_sites, replay_plan, unit_members,
     };
 
     let (layer, cross) =
@@ -1144,11 +1146,11 @@ fn replay_plan_still_serializes_schedule_events_after_runtime_pruning() {
     let units = unit_members(&relation_units(&layer));
     let genome = project_genome_to_units(&seeded_smoke_population(&inst, &sites, 1, 0)[0], &units);
 
+    let occurrence_order = decode_grouped_occurrence_order(&inst, &genome, &units);
     let (_score, raw_steps) = replay_plan(&inst, &sites, &genome, &units);
-    assert!(
-        raw_steps.iter().any(|step| step_has_runtime_pruning_demand(step, &[DemandKindRaw::Resident, DemandKindRaw::Reload])),
-        "fixture must exercise a runtime-pruning resident/reload replay step"
-    );
+    let (_step_idx, _occurrence, _suppressed_values) =
+        find_runtime_pruning_step(&inst, &sites, &occurrence_order, &raw_steps)
+            .expect("fixture must exercise a resident/reload short-circuit that suppresses known descendant demands");
 
     let bridged = bridge_step_plans(&remap, raw_steps.clone());
     let reinverted = invert_step_plans(&remap, &bridged);
@@ -1156,17 +1158,89 @@ fn replay_plan_still_serializes_schedule_events_after_runtime_pruning() {
     assert_eq!(reinverted, raw_steps, "bridged replay steps must round-trip after runtime pruning");
 }
 
-fn step_has_runtime_pruning_demand(
-    step: &crate::s3_planner::metaheuristic::StepPlanRaw,
-    kinds: &[crate::s3_planner::metaheuristic::DemandKindRaw],
-) -> bool {
-    step.events.iter().any(|event| match event {
-        crate::s3_planner::metaheuristic::ReplayEventRaw::Demand { kind, .. } => {
-            kinds.contains(kind)
+fn find_runtime_pruning_step(
+    inst: &crate::s3_gap::instance::OracleInstance,
+    sites: &[crate::s3_planner::metaheuristic::DemandSite],
+    occurrence_order: &[usize],
+    raw_steps: &[crate::s3_planner::metaheuristic::StepPlanRaw],
+) -> Option<(usize, usize, Vec<u32>)> {
+    use crate::s3_planner::metaheuristic::{DemandKindRaw, ReplayEventRaw};
+    use std::collections::BTreeSet;
+
+    for (step_idx, (step, &occurrence)) in raw_steps.iter().zip(occurrence_order).enumerate() {
+        let demanded_values: BTreeSet<u32> = step
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                ReplayEventRaw::Demand {
+                    value,
+                    kind: DemandKindRaw::Resident | DemandKindRaw::Reload,
+                    ..
+                } => Some(*value),
+                ReplayEventRaw::Demand { .. }
+                | ReplayEventRaw::Admit { .. }
+                | ReplayEventRaw::Evict { .. } => None,
+            })
+            .collect();
+        if demanded_values.is_empty() {
+            continue;
         }
-        crate::s3_planner::metaheuristic::ReplayEventRaw::Admit { .. }
-        | crate::s3_planner::metaheuristic::ReplayEventRaw::Evict { .. } => false,
-    })
+
+        let emitted_demands: BTreeSet<u32> = step
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                ReplayEventRaw::Demand { value, .. } => Some(*value),
+                ReplayEventRaw::Admit { .. } | ReplayEventRaw::Evict { .. } => None,
+            })
+            .collect();
+
+        for demanded in demanded_values {
+            let suppressed_descendants: BTreeSet<u32> = descendant_demand_values_for_occurrence(
+                inst,
+                sites,
+                occurrence,
+                demanded,
+            )
+            .into_iter()
+            .filter(|value| !emitted_demands.contains(value))
+            .collect();
+            if !suppressed_descendants.is_empty() {
+                return Some((
+                    step_idx,
+                    occurrence,
+                    suppressed_descendants.into_iter().collect(),
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+fn descendant_demand_values_for_occurrence(
+    inst: &crate::s3_gap::instance::OracleInstance,
+    sites: &[crate::s3_planner::metaheuristic::DemandSite],
+    occurrence: usize,
+    root_value: u32,
+) -> Vec<u32> {
+    use std::collections::BTreeSet;
+
+    let mut stack = inst.nodes[root_value as usize].children.clone();
+    let mut descendants = BTreeSet::new();
+    while let Some(value) = stack.pop() {
+        if !descendants.insert(value) {
+            continue;
+        }
+        stack.extend(inst.nodes[value as usize].children.iter().copied());
+    }
+
+    sites.iter()
+        .filter(|site| site.root == occurrence as u32 && descendants.contains(&site.value))
+        .map(|site| site.value)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn bridge_step_plan(
@@ -1298,13 +1372,6 @@ fn invert_step_plans(
         .collect()
 }
 
-fn binding_raw_steps_for_validation(
-    _remap: &HashMap<u32, u32>,
-    raw_steps: &[crate::s3_planner::metaheuristic::StepPlanRaw],
-) -> Vec<crate::s3_planner::metaheuristic::StepPlanRaw> {
-    raw_steps.to_vec()
-}
-
 // ── Task 6: id-bridge helpers + order-bridge binding gate ─────────────────────
 
 /// Atom roots in walk order: roots that are both materialized (claim-bearing Output)
@@ -1407,31 +1474,6 @@ fn validate_schedules_from_grouped_metaheuristic() {
     );
 }
 
-#[test]
-fn producer_binding_stashes_original_raw_steps() {
-    use crate::s3_gap::instance::{extract_instance_with_remap, relation_units};
-    use crate::s3_planner::metaheuristic::{
-        enumerate_demand_sites, project_genome_to_units, replay_plan, seeded_smoke_population,
-        unit_members,
-    };
-
-    let (layer, cross) =
-        try_load_l0("add_sub_lui_auipc_mop_layout_gkr.json").expect("fixture must load");
-    let (inst, remap) = extract_instance_with_remap(&layer, &cross, REAL_BUDGET);
-    let sites = enumerate_demand_sites(&inst);
-    let units = unit_members(&relation_units(&layer));
-    let genome =
-        project_genome_to_units(&seeded_smoke_population(&inst, &sites, 1, 0)[0], &units);
-
-    let (_score, raw_steps) = replay_plan(&inst, &sites, &genome, &units);
-    let binding_raw_steps = binding_raw_steps_for_validation(&remap, &raw_steps);
-
-    assert_eq!(
-        binding_raw_steps, raw_steps,
-        "producer binding must validate persisted steps against the original raw replay output"
-    );
-}
-
 fn produce_circuit_schedule(
     fixture: &str,
     budget: usize,
@@ -1525,9 +1567,8 @@ fn produce_circuit_schedule(
 
         // --- Bridge raw (node-id) steps -> cs ExprId steps ---
         let steps = bridge_step_plans(&remap, raw_steps.clone());
-        let binding_raw_steps = binding_raw_steps_for_validation(&remap, &raw_steps);
 
-        bindings.push((li, remap, binding_raw_steps)); // stash the original raw replay for the §5.7 post-serde binding
+        bindings.push((li, remap, raw_steps)); // stash the original raw replay for the §5.7 post-serde binding
         layers_out.push(LayerSchedule { order, steps, predicted_traffic: score.traffic, floor });
     }
 
