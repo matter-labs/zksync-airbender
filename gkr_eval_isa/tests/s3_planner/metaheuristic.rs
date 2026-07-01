@@ -65,6 +65,7 @@ pub struct CachePrioritySite {
 }
 
 type CachePriorityKey = (u32, u32, u32, ValueClass);
+type StructuralSiteKey = (u32, u32, u32, u32);
 
 pub(crate) trait CachePriorityLocus {
     fn cache_priority_key(&self) -> CachePriorityKey;
@@ -86,6 +87,52 @@ impl CachePriorityLocus for DemandSite {
 impl CachePriorityLocus for CachePrioritySite {
     fn cache_priority_key(&self) -> CachePriorityKey {
         (self.consumer, self.input_index, self.value, self.class)
+    }
+}
+
+trait ReplaySite: CachePriorityLocus {
+    fn root(&self) -> u32;
+    fn consumer(&self) -> u32;
+    fn input_index(&self) -> u32;
+    fn value(&self) -> u32;
+    fn structural_site_key(&self) -> StructuralSiteKey {
+        (self.root(), self.consumer(), self.input_index(), self.value())
+    }
+}
+
+impl ReplaySite for DemandSite {
+    fn root(&self) -> u32 {
+        self.root
+    }
+
+    fn consumer(&self) -> u32 {
+        self.consumer
+    }
+
+    fn input_index(&self) -> u32 {
+        self.input_index
+    }
+
+    fn value(&self) -> u32 {
+        self.value
+    }
+}
+
+impl ReplaySite for CachePrioritySite {
+    fn root(&self) -> u32 {
+        self.root
+    }
+
+    fn consumer(&self) -> u32 {
+        self.consumer
+    }
+
+    fn input_index(&self) -> u32 {
+        self.input_index
+    }
+
+    fn value(&self) -> u32 {
+        self.value
     }
 }
 
@@ -472,6 +519,172 @@ pub(crate) enum DemandKindRaw {
     Recompute,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StructuralTouch {
+    touch_index: u32,
+    root_occurrence: u32,
+    consumer: u32,
+    input_index: u32,
+    value: u32,
+    next_touch_of_value: Option<u32>,
+}
+
+#[derive(Clone, Debug)]
+struct ReferenceString {
+    touches: Vec<StructuralTouch>,
+    first_touch_by_value: Vec<Option<u32>>,
+    subtree_ranges: Vec<(u32, u32)>,
+}
+
+impl ReferenceString {
+    fn touch_for_value(&self, value: u32) -> (u32, u32) {
+        let consumer_touch = self
+            .touches
+            .iter()
+            .find(|touch| touch.value == value && touch.input_index != ROOT_OUTPUT_INPUT_INDEX)
+            .map(|touch| touch.touch_index);
+        let touch = consumer_touch.or_else(|| {
+            self.first_touch_by_value
+                .get(value as usize)
+                .copied()
+                .flatten()
+        });
+        let touch = touch.unwrap_or_else(|| panic!("no structural touch for value {value}"));
+        self.subtree_ranges[touch as usize]
+    }
+}
+
+fn build_reference_string(inst: &OracleInstance, root_order: &[u32]) -> ReferenceString {
+    let occurrence_order = root_value_order_to_occurrences(inst, root_order);
+    build_reference_string_for_occurrences(inst, &occurrence_order)
+}
+
+fn root_value_order_to_occurrences(inst: &OracleInstance, root_order: &[u32]) -> Vec<usize> {
+    assert_eq!(
+        root_order.len(),
+        inst.roots.len(),
+        "root order length must match roots length"
+    );
+    let mut used = vec![false; inst.roots.len()];
+    root_order
+        .iter()
+        .map(|&root_value| {
+            let occurrence = inst
+                .roots
+                .iter()
+                .enumerate()
+                .find_map(|(idx, &candidate)| {
+                    (!used[idx] && candidate == root_value).then_some(idx)
+                })
+                .unwrap_or_else(|| panic!("root value {root_value} missing from occurrence order"));
+            used[occurrence] = true;
+            occurrence
+        })
+        .collect()
+}
+
+fn build_reference_string_for_occurrences(
+    inst: &OracleInstance,
+    occurrence_order: &[usize],
+) -> ReferenceString {
+    let classes = classify_values(inst);
+    let mut touches = Vec::new();
+    let mut subtree_ranges = Vec::new();
+    for &root_occurrence in occurrence_order {
+        let root_value = inst.roots[root_occurrence];
+        let root_touch = matches!(
+            classes[root_value as usize],
+            ValueClass::RamSource | ValueClass::CachedRootOutput
+        )
+        .then(|| {
+            push_structural_touch(
+                &mut touches,
+                &mut subtree_ranges,
+                root_occurrence as u32,
+                root_value,
+                ROOT_OUTPUT_INPUT_INDEX,
+                root_value,
+            )
+        });
+        append_structural_subtree(
+            inst,
+            &classes,
+            root_occurrence as u32,
+            root_value,
+            &mut touches,
+            &mut subtree_ranges,
+        );
+        if let Some(touch_index) = root_touch {
+            subtree_ranges[touch_index as usize] = (touch_index, touches.len() as u32);
+        }
+    }
+
+    let mut first_touch_by_value = vec![None; inst.nodes.len()];
+    let mut next_touch_by_value = vec![None; inst.nodes.len()];
+    for touch_index in (0..touches.len()).rev() {
+        let value = touches[touch_index].value as usize;
+        touches[touch_index].next_touch_of_value = next_touch_by_value[value];
+        next_touch_by_value[value] = Some(touch_index as u32);
+        first_touch_by_value[value] = Some(touch_index as u32);
+    }
+
+    ReferenceString {
+        touches,
+        first_touch_by_value,
+        subtree_ranges,
+    }
+}
+
+fn append_structural_subtree(
+    inst: &OracleInstance,
+    _classes: &[ValueClass],
+    root_occurrence: u32,
+    node_id: u32,
+    touches: &mut Vec<StructuralTouch>,
+    subtree_ranges: &mut Vec<(u32, u32)>,
+) {
+    for (input_index, &child) in inst.nodes[node_id as usize].children.iter().enumerate() {
+        let touch_index = push_structural_touch(
+            touches,
+            subtree_ranges,
+            root_occurrence,
+            node_id,
+            input_index as u32,
+            child,
+        );
+        append_structural_subtree(
+            inst,
+            _classes,
+            root_occurrence,
+            child,
+            touches,
+            subtree_ranges,
+        );
+        subtree_ranges[touch_index as usize] = (touch_index, touches.len() as u32);
+    }
+}
+
+fn push_structural_touch(
+    touches: &mut Vec<StructuralTouch>,
+    subtree_ranges: &mut Vec<(u32, u32)>,
+    root_occurrence: u32,
+    consumer: u32,
+    input_index: u32,
+    value: u32,
+) -> u32 {
+    let touch_index = touches.len() as u32;
+    touches.push(StructuralTouch {
+        touch_index,
+        root_occurrence,
+        consumer,
+        input_index,
+        value,
+        next_touch_of_value: None,
+    });
+    subtree_ranges.push((touch_index, touch_index + 1));
+    touch_index
+}
+
 pub fn score_candidate(
     inst: &OracleInstance,
     sites: &[DemandSite],
@@ -516,12 +729,13 @@ pub(crate) fn score_candidate_internal(
 
     let occurrence_order = decode_grouped_occurrence_order(inst, genome, units);
     let classes = classify_values(inst);
+    let reference = build_reference_string_for_occurrences(inst, &occurrence_order);
     let mut replay = Replay::new(
         inst,
         sites,
         genome,
         classes,
-        &occurrence_order,
+        &reference,
         collect_trace,
     );
     for &root_occurrence in &occurrence_order {
@@ -562,7 +776,8 @@ pub(crate) fn replay_plan(
 
     let occurrence_order = decode_grouped_occurrence_order(inst, genome, units);
     let classes = classify_values(inst);
-    let mut replay = Replay::new(inst, sites, genome, classes, &occurrence_order, false);
+    let reference = build_reference_string_for_occurrences(inst, &occurrence_order);
+    let mut replay = Replay::new(inst, sites, genome, classes, &reference, false);
     replay.step_events = Some(Vec::new());
 
     let mut steps = Vec::with_capacity(occurrence_order.len());
@@ -590,10 +805,13 @@ pub(crate) fn replay_plan(
     (score, steps)
 }
 
-struct Replay<'a> {
+struct Replay<'a, S: ReplaySite> {
     inst: &'a OracleInstance,
-    sites: &'a [DemandSite],
+    sites: &'a [S],
     site_to_cache_priority_gene: Vec<usize>,
+    site_to_touch_index: Vec<Option<u32>>,
+    touch_to_site_idx: Vec<Option<usize>>,
+    touch_lookup: std::collections::BTreeMap<StructuralSiteKey, u32>,
     genome: &'a Genome,
     classes: Vec<ValueClass>,
     fork_info: forkset::ForkInfo,
@@ -601,8 +819,9 @@ struct Replay<'a> {
     /// slot = not a root value / not yet needed. Used by the cone-fit (C) gate to tell
     /// in-cone residents (shield) from outsiders (occupy budget during the cone).
     cone_of: Vec<Vec<u32>>,
-    remaining_demands: Vec<usize>,
-    remaining_site_demands: Vec<usize>,
+    reference: &'a ReferenceString,
+    next_unconsumed_touch: Vec<Option<u32>>,
+    consumed_touch: Vec<bool>,
     completed_root: Vec<bool>,
     resident: Vec<bool>,
     resident_keep: Vec<f64>,
@@ -623,18 +842,18 @@ struct Replay<'a> {
     step_events: Option<Vec<ReplayEventRaw>>,
 }
 
-fn find_site_in(
-    sites: &[DemandSite],
+fn find_site_in<S: ReplaySite>(
+    sites: &[S],
     root_occurrence: usize,
     consumer: u32,
     input_index: u32,
     value: u32,
 ) -> Option<usize> {
     sites.iter().position(|site| {
-        site.root == root_occurrence as u32
-            && site.consumer == consumer
-            && site.input_index == input_index
-            && site.value == value
+        site.root() == root_occurrence as u32
+            && site.consumer() == consumer
+            && site.input_index() == input_index
+            && site.value() == value
     })
 }
 
@@ -735,35 +954,62 @@ pub(crate) fn no_cache_ceiling(inst: &OracleInstance, sites: &[DemandSite]) -> u
         .sum()
 }
 
-impl<'a> Replay<'a> {
+impl<'a, S: ReplaySite> Replay<'a, S> {
     fn new(
         inst: &'a OracleInstance,
-        sites: &'a [DemandSite],
+        sites: &'a [S],
         genome: &'a Genome,
         classes: Vec<ValueClass>,
-        order: &[usize],
+        reference: &'a ReferenceString,
         collect_trace: bool,
     ) -> Self {
-        let site_to_cache_priority_gene = demand_site_to_cache_priority_gene(sites);
-        let (remaining_demands, remaining_site_demands) =
-            Self::remaining_demand_counts(inst, sites, genome, &site_to_cache_priority_gene, order);
+        let site_to_cache_priority_gene = cache_priority_site_to_gene(sites);
+        let touch_lookup: std::collections::BTreeMap<StructuralSiteKey, u32> = reference
+            .touches
+            .iter()
+            .map(|touch| {
+                (
+                    (
+                        touch.root_occurrence,
+                        touch.consumer,
+                        touch.input_index,
+                        touch.value,
+                    ),
+                    touch.touch_index,
+                )
+            })
+            .collect();
+        let site_to_touch_index = sites
+            .iter()
+            .map(|site| touch_lookup.get(&site.structural_site_key()).copied())
+            .collect::<Vec<_>>();
+        let mut touch_to_site_idx = vec![None; reference.touches.len()];
+        for (site_idx, touch_index) in site_to_touch_index.iter().enumerate() {
+            if let Some(touch_index) = touch_index {
+                touch_to_site_idx[*touch_index as usize] = Some(site_idx);
+            }
+        }
         let mut cone_of: Vec<Vec<u32>> = vec![Vec::new(); inst.nodes.len()];
-        for &root_occurrence in order {
-            let rv = inst.roots[root_occurrence] as usize;
+        for &root_value in &inst.roots {
+            let rv = root_value as usize;
             if cone_of[rv].is_empty() {
                 cone_of[rv] = forkset::cone(inst, rv as u32); // sorted, always ≥1 (the root)
             }
         }
-        Self {
+        let mut replay = Self {
             inst,
             sites,
             site_to_cache_priority_gene,
+            site_to_touch_index,
+            touch_to_site_idx,
+            touch_lookup,
             genome,
             classes,
             fork_info: forkset::analyze(inst),
             cone_of,
-            remaining_demands,
-            remaining_site_demands,
+            reference,
+            next_unconsumed_touch: reference.first_touch_by_value.clone(),
+            consumed_touch: vec![false; reference.touches.len()],
             completed_root: vec![false; inst.nodes.len()],
             resident: vec![false; inst.nodes.len()],
             resident_keep: vec![0.0; inst.nodes.len()],
@@ -779,106 +1025,9 @@ impl<'a> Replay<'a> {
             admit_stats: AdmitStats::default(),
             trace: collect_trace.then(CacheTrace::default),
             step_events: None,
-        }
-    }
-
-    fn remaining_demand_counts(
-        inst: &OracleInstance,
-        sites: &[DemandSite],
-        genome: &Genome,
-        site_to_cache_priority_gene: &[usize],
-        order: &[usize],
-    ) -> (Vec<usize>, Vec<usize>) {
-        let mut counts = vec![0usize; inst.nodes.len()];
-        let mut site_counts = vec![0usize; sites.len()];
-        let classes = classify_values(inst);
-        let mut completed_root = vec![false; inst.nodes.len()];
-        for &root_occurrence in order {
-            let root_value = inst.roots[root_occurrence];
-            Self::add_policy_demands(
-                inst,
-                sites,
-                genome,
-                &classes,
-                &site_to_cache_priority_gene,
-                &completed_root,
-                root_occurrence,
-                root_value,
-                &mut counts,
-                &mut site_counts,
-            );
-            if inst.nodes[root_value as usize].real_dram {
-                if let Some(site_idx) = find_site_in(
-                    sites,
-                    root_occurrence,
-                    root_value,
-                    ROOT_OUTPUT_INPUT_INDEX,
-                    root_value,
-                ) {
-                    counts[root_value as usize] += 1;
-                    site_counts[site_idx] += 1;
-                }
-            }
-            completed_root[root_value as usize] = true;
-        }
-        (counts, site_counts)
-    }
-
-    fn add_policy_demands(
-        inst: &OracleInstance,
-        sites: &[DemandSite],
-        genome: &Genome,
-        classes: &[ValueClass],
-        site_to_cache_priority_gene: &[usize],
-        completed_root: &[bool],
-        root_occurrence: usize,
-        node_id: u32,
-        counts: &mut [usize],
-        site_counts: &mut [usize],
-    ) {
-        for (input_index, &child) in inst.nodes[node_id as usize].children.iter().enumerate() {
-            if let Some(site_idx) =
-                find_site_in(sites, root_occurrence, node_id, input_index as u32, child)
-            {
-                counts[child as usize] += 1;
-                site_counts[site_idx] += 1;
-                if should_expand_policy_demand(
-                    inst,
-                    genome,
-                    classes,
-                    site_to_cache_priority_gene,
-                    completed_root,
-                    child,
-                    site_idx,
-                ) {
-                    Self::add_policy_demands(
-                        inst,
-                        sites,
-                        genome,
-                        classes,
-                        site_to_cache_priority_gene,
-                        completed_root,
-                        root_occurrence,
-                        child,
-                        counts,
-                        site_counts,
-                    );
-                }
-            } else {
-                Self::add_policy_demands(
-                    inst,
-                    sites,
-                    genome,
-                    classes,
-                    site_to_cache_priority_gene,
-                    completed_root,
-                    root_occurrence,
-                    child,
-                    counts,
-                    site_counts,
-                );
-            }
-        }
+        };
+        replay.prime_policy_pruned_descendants();
+        replay
     }
 
     fn compute_node(&mut self, root_occurrence: usize, node_id: u32) {
@@ -887,7 +1036,9 @@ impl<'a> Replay<'a> {
         }
         if self.resident[node_id as usize] {
             self.dormant_sites += self.count_subtree_sites(root_occurrence, node_id);
-            self.consume_policy_demands(root_occurrence, node_id);
+            if let Some(range) = self.structural_range_for_node(root_occurrence, node_id) {
+                self.consume_structural_subtree(range);
+            }
             return;
         }
         if self.inst.nodes[node_id as usize].real_dram {
@@ -988,9 +1139,7 @@ impl<'a> Replay<'a> {
         let root = self.inst.roots[root_occurrence];
         if let Some(site_idx) = self.find_site(root_occurrence, root, ROOT_OUTPUT_INPUT_INDEX, root)
         {
-            if self.inst.nodes[root as usize].real_dram {
-                self.consume_site(site_idx);
-            }
+            self.consume_site(site_idx);
             if self.resident[root as usize] {
                 self.stamp_keep(root, site_idx);
             } else {
@@ -1005,7 +1154,9 @@ impl<'a> Replay<'a> {
             self.emit_demand(site_idx, DemandKindRaw::Resident);
             self.stamp_keep(value, site_idx);
             self.dormant_sites += self.count_subtree_sites(root_occurrence, value);
-            self.consume_policy_demands(root_occurrence, value);
+            if let Some(range) = self.site_subtree_range(site_idx) {
+                self.bulk_consume_pruned_descendants(range);
+            }
             return true;
         }
 
@@ -1035,7 +1186,9 @@ impl<'a> Replay<'a> {
                         value,
                         site_idx: Some(site_idx),
                     });
-                    self.consume_policy_demands(root_occurrence, value);
+                    if let Some(range) = self.site_subtree_range(site_idx) {
+                        self.bulk_consume_pruned_descendants(range);
+                    }
                 } else {
                     self.emit_demand(site_idx, DemandKindRaw::Recompute);
                     self.compute_node(root_occurrence, value);
@@ -1058,13 +1211,13 @@ impl<'a> Replay<'a> {
     /// consumer demand and the integrity test asserts no Demand carries it.
     fn emit_demand(&mut self, site_idx: usize, kind: DemandKindRaw) {
         let site = &self.sites[site_idx];
-        if site.input_index == ROOT_OUTPUT_INPUT_INDEX {
+        if site.input_index() == ROOT_OUTPUT_INPUT_INDEX {
             return;
         }
         let event = ReplayEventRaw::Demand {
-            consumer: site.consumer,
-            input_index: site.input_index,
-            value: site.value,
+            consumer: site.consumer(),
+            input_index: site.input_index(),
+            value: site.value(),
             kind,
         };
         if let Some(events) = &mut self.step_events {
@@ -1120,7 +1273,7 @@ impl<'a> Replay<'a> {
                 site_idx: Some(site_idx),
                 victim: victim as u32,
                 victim_last_site,
-                victim_remaining: self.remaining_demands[victim],
+                victim_remaining: self.remaining_touch_count(victim as u32),
                 cause: EvictCause::PressureAdmit { admitted: value },
             });
             // Post-snapshot eviction (cause PressureAdmit) → an event.
@@ -1186,7 +1339,7 @@ impl<'a> Replay<'a> {
                     site_idx: Some(site_idx),
                     victim: value as u32,
                     victim_last_site,
-                    victim_remaining: self.remaining_demands[value],
+                    victim_remaining: self.remaining_touch_count(value as u32),
                     cause: EvictCause::Dead,
                 });
                 // Post-snapshot eviction (cause Dead) → an event.
@@ -1201,47 +1354,82 @@ impl<'a> Replay<'a> {
 
     fn has_future_demand(&self, value: u32, site_idx: usize) -> bool {
         let _ = site_idx;
-        self.remaining_demands[value as usize] > 0
+        self.next_live_touch(self.next_unconsumed_touch[value as usize]).is_some()
     }
 
     fn consume_site(&mut self, site_idx: usize) {
-        if self.remaining_site_demands[site_idx] == 0 {
+        if let Some(touch_index) = self.site_to_touch_index[site_idx] {
+            self.consume_touch(touch_index);
+        }
+    }
+
+    fn consume_touch(&mut self, touch_index: u32) {
+        if self.consumed_touch[touch_index as usize] {
             return;
         }
-        self.remaining_site_demands[site_idx] -= 1;
-        let value = self.sites[site_idx].value as usize;
-        debug_assert!(self.remaining_demands[value] > 0);
-        self.remaining_demands[value] -= 1;
+        self.consumed_touch[touch_index as usize] = true;
+        let touch = self.reference.touches[touch_index as usize];
+        if self.next_unconsumed_touch[touch.value as usize] == Some(touch_index) {
+            self.next_unconsumed_touch[touch.value as usize] =
+                self.next_live_touch(touch.next_touch_of_value);
+        }
     }
 
-    fn consume_policy_demands(&mut self, root_occurrence: usize, node_id: u32) {
-        let completed_root = self.completed_root.clone();
-        self.consume_policy_demands_with_completed(root_occurrence, node_id, &completed_root);
+    fn bulk_consume_pruned_descendants(&mut self, range: (u32, u32)) {
+        for touch_index in range.0..range.1 {
+            self.consume_touch(touch_index);
+        }
     }
 
-    fn consume_policy_demands_with_completed(
-        &mut self,
-        root_occurrence: usize,
-        node_id: u32,
-        completed_root: &[bool],
-    ) {
-        let children = self.inst.nodes[node_id as usize].children.clone();
-        for (input_index, child) in children.into_iter().enumerate() {
-            if let Some(site_idx) =
-                self.find_site(root_occurrence, node_id, input_index as u32, child)
-            {
-                self.consume_site(site_idx);
-                if self.should_expand_policy_demand_with_completed(child, site_idx, completed_root)
-                {
-                    self.consume_policy_demands_with_completed(
-                        root_occurrence,
-                        child,
-                        completed_root,
-                    );
-                }
-            } else {
-                self.consume_policy_demands_with_completed(root_occurrence, child, completed_root);
+    fn consume_structural_subtree(&mut self, range: (u32, u32)) {
+        self.bulk_consume_pruned_descendants(range);
+    }
+
+    fn prime_policy_pruned_descendants(&mut self) {
+        let mut completed_root = vec![false; self.inst.nodes.len()];
+        let mut occurrence_order = Vec::with_capacity(self.inst.roots.len());
+        let mut seen_root_occurrence = vec![false; self.inst.roots.len()];
+        for touch in &self.reference.touches {
+            let root_occurrence = touch.root_occurrence as usize;
+            if !seen_root_occurrence[root_occurrence] {
+                seen_root_occurrence[root_occurrence] = true;
+                occurrence_order.push(root_occurrence);
             }
+        }
+        for root_occurrence in 0..self.inst.roots.len() {
+            if !seen_root_occurrence[root_occurrence] {
+                occurrence_order.push(root_occurrence);
+            }
+        }
+
+        for root_occurrence in occurrence_order {
+            for touch in &self.reference.touches {
+                if touch.root_occurrence as usize != root_occurrence
+                    || touch.input_index == ROOT_OUTPUT_INPUT_INDEX
+                    || self.consumed_touch[touch.touch_index as usize]
+                {
+                    continue;
+                }
+                let Some(site_idx) = self.touch_to_site_idx[touch.touch_index as usize] else {
+                    continue;
+                };
+                if !should_expand_policy_demand(
+                    self.inst,
+                    self.genome,
+                    &self.classes,
+                    &self.site_to_cache_priority_gene,
+                    &completed_root,
+                    touch.value,
+                    site_idx,
+                ) {
+                    let range = self.reference.subtree_ranges[touch.touch_index as usize];
+                    if range.0 + 1 < range.1 {
+                        self.bulk_consume_pruned_descendants((range.0 + 1, range.1));
+                    }
+                }
+            }
+            let root_value = self.inst.roots[root_occurrence];
+            completed_root[root_value as usize] = true;
         }
     }
 
@@ -1275,7 +1463,7 @@ impl<'a> Replay<'a> {
                 site_idx: None,
                 victim: victim as u32,
                 victim_last_site,
-                victim_remaining: self.remaining_demands[victim],
+                victim_remaining: self.remaining_touch_count(victim as u32),
                 cause: EvictCause::Transient { width: cone_peak },
             });
         }
@@ -1350,23 +1538,6 @@ impl<'a> Replay<'a> {
         is_reloadable_value(self.inst, value)
     }
 
-    fn should_expand_policy_demand_with_completed(
-        &self,
-        value: u32,
-        site_idx: usize,
-        completed_root: &[bool],
-    ) -> bool {
-        should_expand_policy_demand(
-            self.inst,
-            self.genome,
-            &self.classes,
-            &self.site_to_cache_priority_gene,
-            completed_root,
-            value,
-            site_idx,
-        )
-    }
-
     fn count_subtree_sites(&self, root_occurrence: usize, node_id: u32) -> u64 {
         let mut seen = vec![false; self.inst.nodes.len()];
         let mut stack = vec![node_id];
@@ -1393,6 +1564,72 @@ impl<'a> Replay<'a> {
         if let Some(trace) = &mut self.trace {
             trace.events.push(event);
         }
+    }
+
+    fn site_subtree_range(&self, site_idx: usize) -> Option<(u32, u32)> {
+        self.site_to_touch_index[site_idx]
+            .map(|touch_index| self.reference.subtree_ranges[touch_index as usize])
+    }
+
+    fn structural_range_for_node(
+        &self,
+        root_occurrence: usize,
+        node_id: u32,
+    ) -> Option<(u32, u32)> {
+        let root_occurrence = root_occurrence as u32;
+        if let Some(&touch_index) = self
+            .touch_lookup
+            .get(&(root_occurrence, node_id, ROOT_OUTPUT_INPUT_INDEX, node_id))
+        {
+            return Some(self.reference.subtree_ranges[touch_index as usize]);
+        }
+
+        let mut first = None;
+        let mut end = None;
+        for (input_index, &child) in self.inst.nodes[node_id as usize].children.iter().enumerate() {
+            let Some(&touch_index) = self
+                .touch_lookup
+                .get(&(root_occurrence, node_id, input_index as u32, child))
+            else {
+                continue;
+            };
+            let range = self.reference.subtree_ranges[touch_index as usize];
+            first.get_or_insert(range.0);
+            end = Some(range.1);
+        }
+        first.zip(end)
+    }
+
+    fn current_priority_site(&self, value: u32) -> Option<&S> {
+        let touch_index = self.next_live_touch(self.next_unconsumed_touch[value as usize])?;
+        let site_idx = self.touch_to_site_idx[touch_index as usize]?;
+        self.sites.get(site_idx)
+    }
+
+    fn next_unconsumed_site(&self, value: u32) -> Option<&S> {
+        self.current_priority_site(value)
+    }
+
+    fn remaining_touch_count(&self, value: u32) -> usize {
+        let mut count = 0usize;
+        let mut cursor = self.next_live_touch(self.next_unconsumed_touch[value as usize]);
+        while let Some(touch_index) = cursor {
+            count += 1;
+            cursor = self.next_live_touch(
+                self.reference.touches[touch_index as usize].next_touch_of_value,
+            );
+        }
+        count
+    }
+
+    fn next_live_touch(&self, mut cursor: Option<u32>) -> Option<u32> {
+        while let Some(touch_index) = cursor {
+            if !self.consumed_touch[touch_index as usize] {
+                return Some(touch_index);
+            }
+            cursor = self.reference.touches[touch_index as usize].next_touch_of_value;
+        }
+        None
     }
 
     fn recompute_traffic(&self, value: u32) -> u64 {
@@ -1533,6 +1770,35 @@ pub(crate) mod tests {
                 n(3, NodeKind::Add, 1, false, vec![1]),
                 n(4, NodeKind::Add, 1, false, vec![0]),
                 n(5, NodeKind::Add, 1, false, vec![1]),
+            ],
+        }
+    }
+
+    fn resident_hit_fixture() -> OracleInstance {
+        OracleInstance {
+            budget: 4,
+            reloadable_values: vec![],
+            roots: vec![3],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![0, 1]),
+                n(3, NodeKind::Add, 1, false, vec![2]),
+            ],
+        }
+    }
+
+    fn reload_short_circuit_fixture() -> OracleInstance {
+        OracleInstance {
+            budget: 0,
+            reloadable_values: vec![2],
+            roots: vec![4],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![0, 1]),
+                n(3, NodeKind::Read, 1, true, vec![]),
+                n(4, NodeKind::Add, 1, false, vec![2, 3]),
             ],
         }
     }
@@ -1891,6 +2157,47 @@ pub(crate) mod tests {
         assert_eq!(score.traffic, 3);
         assert_eq!(score.instrs, 2);
         assert_eq!(score.admitted, 1);
+    }
+
+    #[test]
+    fn resident_hit_bulk_consumes_pruned_descendant_sites() {
+        let inst = resident_hit_fixture();
+        let sites = enumerate_cache_priority_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+        let structural = build_reference_string(&inst, &decode_root_order(&inst, &genome));
+        let mut replay = Replay::new(
+            &inst,
+            &sites,
+            &genome,
+            classify_values(&inst),
+            &structural,
+            false,
+        );
+
+        replay.consume_structural_subtree(structural.touch_for_value(2));
+
+        assert_eq!(replay.next_unconsumed_site(0), None);
+    }
+
+    #[test]
+    fn reload_short_circuit_advances_cursors_past_pruned_subtree() {
+        let inst = reload_short_circuit_fixture();
+        let sites = enumerate_cache_priority_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+        let order = decode_root_order(&inst, &genome);
+        let structural = build_reference_string(&inst, &order);
+
+        let mut replay = Replay::new(
+            &inst,
+            &sites,
+            &genome,
+            classify_values(&inst),
+            &structural,
+            false,
+        );
+        replay.bulk_consume_pruned_descendants(structural.touch_for_value(2));
+
+        assert!(replay.current_priority_site(0).is_none());
     }
 
     #[test]
@@ -6979,7 +7286,8 @@ pub(crate) mod tests {
         let duplicates = duplicate_traffic_reads(trace);
         let order = decode_root_occurrence_order(inst, genome);
         let classes = classify_values(inst);
-        let replay = Replay::new(inst, sites, genome, classes, &order, false);
+        let reference = build_reference_string_for_occurrences(inst, &order);
+        let replay = Replay::new(inst, sites, genome, classes, &reference, false);
         duplicates
             .into_iter()
             .map(|(value, _)| {
@@ -7076,7 +7384,7 @@ pub(crate) mod tests {
                 let mut cache_events = cache_events;
                 cache_events.insert(
                     0,
-                    format!("initial_remaining={}", replay.remaining_demands[value as usize]),
+                    format!("initial_remaining={}", replay.remaining_touch_count(value)),
                 );
                 (value, value_sites, read_events, cache_events)
             })
