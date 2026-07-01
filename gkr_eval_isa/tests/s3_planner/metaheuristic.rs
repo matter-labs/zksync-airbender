@@ -605,6 +605,7 @@ fn should_expand_policy_demand(
     inst: &OracleInstance,
     genome: &Genome,
     classes: &[ValueClass],
+    site_to_cache_priority_gene: &[usize],
     completed_root: &[bool],
     value: u32,
     site_idx: usize,
@@ -614,7 +615,12 @@ fn should_expand_policy_demand(
         ValueClass::CachedRootOutput
             if completed_root[value as usize]
                 && is_reloadable_value(inst, value)
-                && choose_reload_policy(inst, genome, value, site_idx) =>
+                && choose_reload_policy(
+                    inst,
+                    genome,
+                    value,
+                    site_to_cache_priority_gene[site_idx],
+                ) =>
         {
             false
         }
@@ -747,6 +753,7 @@ impl<'a> Replay<'a> {
         let mut counts = vec![0usize; inst.nodes.len()];
         let mut site_counts = vec![0usize; sites.len()];
         let classes = classify_values(inst);
+        let site_to_cache_priority_gene = cache_priority_site_to_gene(sites);
         let mut completed_root = vec![false; inst.nodes.len()];
         for &root_occurrence in order {
             let root_value = inst.roots[root_occurrence];
@@ -755,6 +762,7 @@ impl<'a> Replay<'a> {
                 sites,
                 genome,
                 &classes,
+                &site_to_cache_priority_gene,
                 &completed_root,
                 root_occurrence,
                 root_value,
@@ -783,6 +791,7 @@ impl<'a> Replay<'a> {
         sites: &[DemandSite],
         genome: &Genome,
         classes: &[ValueClass],
+        site_to_cache_priority_gene: &[usize],
         completed_root: &[bool],
         root_occurrence: usize,
         node_id: u32,
@@ -799,6 +808,7 @@ impl<'a> Replay<'a> {
                     inst,
                     genome,
                     classes,
+                    site_to_cache_priority_gene,
                     completed_root,
                     child,
                     site_idx,
@@ -808,6 +818,7 @@ impl<'a> Replay<'a> {
                         sites,
                         genome,
                         classes,
+                        site_to_cache_priority_gene,
                         completed_root,
                         root_occurrence,
                         child,
@@ -821,6 +832,7 @@ impl<'a> Replay<'a> {
                     sites,
                     genome,
                     classes,
+                    site_to_cache_priority_gene,
                     completed_root,
                     root_occurrence,
                     child,
@@ -1310,6 +1322,7 @@ impl<'a> Replay<'a> {
             self.inst,
             self.genome,
             &self.classes,
+            &self.site_to_cache_priority_gene,
             completed_root,
             value,
             site_idx,
@@ -1760,7 +1773,7 @@ pub(crate) mod tests {
 
         assert_eq!(score.traffic, 3);
         assert_eq!(score.instrs, 2);
-        assert_eq!(score.admitted, 2);
+        assert_eq!(score.admitted, 1);
     }
 
     #[test]
@@ -2008,7 +2021,7 @@ pub(crate) mod tests {
 
         assert_eq!(score.traffic, 1);
         assert_eq!(score.instrs, 2);
-        assert_eq!(score.order, vec![1, 2]);
+        assert_eq!(score.order, vec![1, 1]);
     }
 
     #[test]
@@ -2270,7 +2283,7 @@ pub(crate) mod tests {
 
         assert_eq!(score.traffic, 4);
         assert_eq!(score.instrs, 6);
-        assert_eq!(score.evicted, 1);
+        assert_eq!(score.evicted, 0);
     }
 
     // NOTE: `transient_compute_storage_evicts_residents_from_same_pool` and
@@ -2343,18 +2356,22 @@ pub(crate) mod tests {
                 .unwrap_or_else(|| panic!("no V-demand site at consumer {consumer}"))
         };
         let (r1_site, r2_site) = (v_at(3), v_at(5));
+        let (r1_gene, r2_gene) = (
+            cache_priority_gene_for_site(&sites, r1_site),
+            cache_priority_gene_for_site(&sites, r2_site),
+        );
 
         let mut both_recompute = Genome::neutral(&inst, &sites);
-        both_recompute.cache_priority[r1_site] = 0.0;
-        both_recompute.cache_priority[r2_site] = 0.0;
+        both_recompute.cache_priority[r1_gene] = 0.0;
+        both_recompute.cache_priority[r2_gene] = 0.0;
 
         let mut both_reload = Genome::neutral(&inst, &sites);
-        both_reload.cache_priority[r1_site] = 1.0;
-        both_reload.cache_priority[r2_site] = 1.0;
+        both_reload.cache_priority[r1_gene] = 1.0;
+        both_reload.cache_priority[r2_gene] = 1.0;
 
         let mut mixed = Genome::neutral(&inst, &sites);
-        mixed.cache_priority[r1_site] = 1.0; // reload at R1
-        mixed.cache_priority[r2_site] = 0.0; // recompute at R2
+        mixed.cache_priority[r1_gene] = 1.0; // reload at R1
+        mixed.cache_priority[r2_gene] = 0.0; // recompute at R2
 
         let rc = score_candidate(&inst, &sites, &both_recompute);
         let rl = score_candidate(&inst, &sites, &both_reload);
@@ -4495,7 +4512,7 @@ pub(crate) mod tests {
         let denom = n_units.max(1) as f64;
         Genome {
             root_order_key: (0..n_units).map(|i| i as f64 / denom).collect(),
-            cache_priority: vec![0.0; sites.len()],
+            cache_priority: vec![0.0; cache_priority_gene_count(sites)],
         }
     }
 
