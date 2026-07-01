@@ -534,6 +534,8 @@ struct ReferenceString {
     touches: Vec<StructuralTouch>,
     first_touch_by_value: Vec<Option<u32>>,
     subtree_ranges: Vec<(u32, u32)>,
+    root_occurrence_ranges: Vec<(u32, u32)>,
+    touch_count_by_value: Vec<usize>,
 }
 
 impl ReferenceString {
@@ -590,7 +592,9 @@ fn build_reference_string_for_occurrences(
     let classes = classify_values(inst);
     let mut touches = Vec::new();
     let mut subtree_ranges = Vec::new();
+    let mut root_occurrence_ranges = vec![(0, 0); inst.roots.len()];
     for &root_occurrence in occurrence_order {
+        let root_start = touches.len() as u32;
         let root_value = inst.roots[root_occurrence];
         let root_touch = matches!(
             classes[root_value as usize],
@@ -614,15 +618,19 @@ fn build_reference_string_for_occurrences(
             &mut touches,
             &mut subtree_ranges,
         );
+        let root_end = touches.len() as u32;
         if let Some(touch_index) = root_touch {
-            subtree_ranges[touch_index as usize] = (touch_index, touches.len() as u32);
+            subtree_ranges[touch_index as usize] = (touch_index, root_end);
         }
+        root_occurrence_ranges[root_occurrence] = (root_start, root_end);
     }
 
     let mut first_touch_by_value = vec![None; inst.nodes.len()];
     let mut next_touch_by_value = vec![None; inst.nodes.len()];
+    let mut touch_count_by_value = vec![0usize; inst.nodes.len()];
     for touch_index in (0..touches.len()).rev() {
         let value = touches[touch_index].value as usize;
+        touch_count_by_value[value] += 1;
         touches[touch_index].next_touch_of_value = next_touch_by_value[value];
         next_touch_by_value[value] = Some(touch_index as u32);
         first_touch_by_value[value] = Some(touch_index as u32);
@@ -632,6 +640,8 @@ fn build_reference_string_for_occurrences(
         touches,
         first_touch_by_value,
         subtree_ranges,
+        root_occurrence_ranges,
+        touch_count_by_value,
     }
 }
 
@@ -823,6 +833,7 @@ struct Replay<'a, S: ReplaySite> {
     cone_of: Vec<Vec<u32>>,
     reference: &'a ReferenceString,
     next_unconsumed_touch: Vec<Option<u32>>,
+    remaining_touch_count_by_value: Vec<usize>,
     consumed_touch: Vec<bool>,
     completed_root: Vec<bool>,
     resident: Vec<bool>,
@@ -1016,6 +1027,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             cone_of,
             reference,
             next_unconsumed_touch: reference.first_touch_by_value.clone(),
+            remaining_touch_count_by_value: reference.touch_count_by_value.clone(),
             consumed_touch: vec![false; reference.touches.len()],
             completed_root: vec![false; inst.nodes.len()],
             resident: vec![false; inst.nodes.len()],
@@ -1377,6 +1389,9 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         }
         self.consumed_touch[touch_index as usize] = true;
         let touch = self.reference.touches[touch_index as usize];
+        self.remaining_touch_count_by_value[touch.value as usize] = self
+            .remaining_touch_count_by_value[touch.value as usize]
+            .saturating_sub(1);
         if self.next_unconsumed_touch[touch.value as usize] == Some(touch_index) {
             self.next_unconsumed_touch[touch.value as usize] =
                 self.next_live_touch(touch.next_touch_of_value);
@@ -1411,9 +1426,9 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         }
 
         for root_occurrence in occurrence_order {
-            for touch in &self.reference.touches {
-                if touch.root_occurrence as usize != root_occurrence
-                    || touch.input_index == ROOT_OUTPUT_INPUT_INDEX
+            let (range_start, range_end) = self.reference.root_occurrence_ranges[root_occurrence];
+            for touch in &self.reference.touches[range_start as usize..range_end as usize] {
+                if touch.input_index == ROOT_OUTPUT_INPUT_INDEX
                     || self.consumed_touch[touch.touch_index as usize]
                 {
                     continue;
@@ -1621,15 +1636,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
     }
 
     fn remaining_touch_count(&self, value: u32) -> usize {
-        let mut count = 0usize;
-        let mut cursor = self.next_live_touch(self.next_unconsumed_touch[value as usize]);
-        while let Some(touch_index) = cursor {
-            count += 1;
-            cursor = self.next_live_touch(
-                self.reference.touches[touch_index as usize].next_touch_of_value,
-            );
-        }
-        count
+        self.remaining_touch_count_by_value[value as usize]
     }
 
     fn next_live_touch(&self, mut cursor: Option<u32>) -> Option<u32> {
@@ -1823,6 +1830,21 @@ pub(crate) mod tests {
             budget: 0,
             reloadable_values: vec![2],
             roots: vec![4],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![0, 1]),
+                n(3, NodeKind::Read, 1, true, vec![]),
+                n(4, NodeKind::Add, 1, false, vec![2, 3]),
+            ],
+        }
+    }
+
+    fn reloadable_root_output_fixture() -> OracleInstance {
+        OracleInstance {
+            budget: 0,
+            reloadable_values: vec![2],
+            roots: vec![2, 4],
             nodes: vec![
                 n(0, NodeKind::Read, 1, true, vec![]),
                 n(1, NodeKind::Read, 1, true, vec![]),
@@ -2239,30 +2261,44 @@ pub(crate) mod tests {
 
     #[test]
     fn reload_short_circuit_advances_cursors_past_pruned_subtree() {
-        let inst = reload_short_circuit_fixture();
-        let sites = enumerate_cache_priority_sites(&inst);
+        let inst = reloadable_root_output_fixture();
+        let sites = enumerate_demand_sites(&inst);
         let genome = Genome::neutral(&inst, &sites);
-        let order = decode_root_order(&inst, &genome);
-        let structural = build_reference_string(&inst, &order);
+        let (score, steps) = replay_plan(&inst, &sites, &genome, &[]);
 
-        let mut replay = Replay::new(
-            &inst,
-            &sites,
-            &genome,
-            classify_values(&inst),
-            &structural,
-            false,
-        );
-        replay.bulk_consume_pruned_descendants(structural.touch_for_value(2));
-
-        assert!(replay.current_priority_site(0).is_none());
+        assert!(score.feasible);
+        assert_eq!(steps.len(), 2);
+        assert!(steps[1].events.iter().any(|event| {
+            matches!(
+                event,
+                ReplayEventRaw::Demand {
+                    consumer: 4,
+                    input_index: 0,
+                    value: 2,
+                    kind: DemandKindRaw::Reload,
+                }
+            )
+        }));
+        assert!(steps[1].events.iter().all(|event| {
+            !matches!(
+                event,
+                ReplayEventRaw::Demand {
+                    value: 0 | 1,
+                    ..
+                }
+            )
+        }));
     }
 
     #[test]
-    fn resident_hit_replay_consumes_shared_subtree_occurrences_end_to_end() {
+    fn resident_hit_replay_preserves_shared_subtree_occurrence_multiplicity() {
         let inst = resident_hit_shared_subtree_fixture();
         let sites = enumerate_cache_priority_sites(&inst);
-        let genome = Genome::neutral(&inst, &sites);
+        let mut genome = Genome::neutral(&inst, &sites);
+        for site in &sites {
+            let bias = if site.value == 2 { 1.0 } else { -1.0 };
+            genome.cache_priority[site.structural_index as usize] = bias;
+        }
         let structural = build_reference_string(&inst, &decode_root_order(&inst, &genome));
         let mut replay = Replay::new(
             &inst,
@@ -2272,14 +2308,26 @@ pub(crate) mod tests {
             &structural,
             false,
         );
+        let first_site = replay
+            .find_site(0, 3, 0, 2)
+            .expect("first demand site should exist");
+        let second_site = replay
+            .find_site(0, 3, 1, 2)
+            .expect("second demand site should exist");
 
-        replay.compute_root(0);
+        replay.consume_site(first_site);
+        assert!(replay.satisfy_demand(0, 2, first_site));
+        assert_eq!(replay.remaining_touch_count(0), 1);
+        assert!(replay.current_priority_site(0).is_some());
 
+        replay.consume_site(second_site);
+        assert!(replay.satisfy_demand(0, 2, second_site));
         assert_eq!(replay.remaining_touch_count(0), 0);
+        assert!(replay.current_priority_site(0).is_none());
     }
 
     #[test]
-    fn recompute_replay_consumes_shared_site_occurrences_end_to_end() {
+    fn recompute_replay_preserves_shared_subtree_occurrence_multiplicity() {
         let inst = recompute_shared_subtree_fixture();
         let sites = enumerate_cache_priority_sites(&inst);
         let genome = Genome::neutral(&inst, &sites);
@@ -2292,10 +2340,39 @@ pub(crate) mod tests {
             &structural,
             false,
         );
+        let first_site = replay
+            .find_site(0, 3, 0, 2)
+            .expect("first demand site should exist");
+        let second_site = replay
+            .find_site(0, 3, 1, 2)
+            .expect("second demand site should exist");
 
-        replay.compute_root(0);
+        replay.consume_site(first_site);
+        assert!(!replay.satisfy_demand(0, 2, first_site));
+        assert_eq!(replay.remaining_touch_count(0), 1);
+        assert!(replay.current_priority_site(0).is_some());
 
+        replay.consume_site(second_site);
+        assert!(!replay.satisfy_demand(0, 2, second_site));
         assert_eq!(replay.remaining_touch_count(0), 0);
+        assert!(replay.current_priority_site(0).is_none());
+    }
+
+    #[test]
+    fn reference_string_indexes_root_occurrence_slices_and_value_multiplicity() {
+        let inst = reloadable_root_output_fixture();
+        let sites = enumerate_cache_priority_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+        let structural = build_reference_string_for_occurrences(
+            &inst,
+            &decode_root_occurrence_order(&inst, &genome),
+        );
+
+        assert_eq!(structural.root_occurrence_ranges, vec![(0, 3), (3, 7)]);
+        assert_eq!(structural.touch_count_by_value[0], 2);
+        assert_eq!(structural.touch_count_by_value[1], 2);
+        assert_eq!(structural.touch_count_by_value[2], 2);
+        assert_eq!(structural.touch_count_by_value[3], 1);
     }
 
     #[test]
