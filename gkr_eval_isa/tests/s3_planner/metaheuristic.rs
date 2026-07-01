@@ -8,7 +8,6 @@ use super::forkset;
 use crate::s3_gap::instance::{NodeKind, OracleInstance};
 
 pub const ROOT_OUTPUT_INPUT_INDEX: u32 = u32::MAX;
-const RECOVERY_BIAS_SCALE: f64 = 4.0;
 const LOCAL_BIAS_STEP: f64 = 0.25;
 const CACHE_FAMILY_QUOTA: usize = 64;
 const TRACE_GUIDED_BIAS: f64 = 0.125;
@@ -837,8 +836,6 @@ struct Replay<'a, S: ReplaySite> {
     consumed_touch: Vec<bool>,
     completed_root: Vec<bool>,
     resident: Vec<bool>,
-    resident_keep: Vec<f64>,
-    resident_keep_site: Vec<Option<usize>>,
     borrowed: Vec<u32>,
     resident_width: usize,
     traffic: u64,
@@ -868,67 +865,6 @@ fn find_site_in<S: ReplaySite>(
             && site.input_index() == input_index
             && site.value() == value
     })
-}
-
-fn should_expand_policy_demand(
-    inst: &OracleInstance,
-    genome: &Genome,
-    classes: &[ValueClass],
-    site_to_cache_priority_gene: &[usize],
-    completed_root: &[bool],
-    value: u32,
-    site_idx: usize,
-) -> bool {
-    match classes[value as usize] {
-        ValueClass::RamSource => false,
-        ValueClass::CachedRootOutput
-            if completed_root[value as usize]
-                && is_reloadable_value(inst, value)
-                && choose_reload_policy(
-                    inst,
-                    genome,
-                    value,
-                    site_to_cache_priority_gene[site_idx],
-                ) =>
-        {
-            false
-        }
-        ValueClass::CachedRootOutput | ValueClass::Intermediate | ValueClass::Other => true,
-    }
-}
-
-// Reload-vs-recompute for a reloadable CachedRootOutput. Returns true = RELOAD
-// (re-read the backing, do NOT expand the producing sub-cone), false = RECOMPUTE.
-//
-// DESIGN (closes OQ3): the decision is a PER-SITE genome policy, NOT a residency-
-// aware runtime computation, and that is deliberate on two grounds:
-//   1. State-dependence is already expressed per site. A DemandSite is
-//      (root_occurrence, consumer, input_index, value), so the SAME value demanded
-//      in two different cones gets two DIFFERENT `cache_priority` genes. Residency at
-//      a demand point is a function of order + context, and the site encodes that
-//      context — so the optimizer, tuning per-site cache_priority, learns a
-//      context- (hence residency-) adapted decision. (See the per-site divergence
-//      test `recovery_policy_is_per_site_not_global`.)
-//   2. The decision must be residency-BLIND to keep the liveness pre-count
-//      (`remaining_demand_counts`, residency-free) consistent with the runtime
-//      consumption (`consume_policy_demands`): both call this function, so it must
-//      be a pure function of (value, site, genome). A residency-aware runtime
-//      decision would expand cones the pre-count never counted → counter underflow.
-//      (This is the same shielding-blind hazard that the inner_dp two-phase fix
-//      resolved — eviction here is genome-keep-score driven, NOT Belady, so there
-//      is no next-use optimality to preserve, only liveness consistency.)
-// `recompute_traffic_for` is therefore the zero-bias PRIOR (an empty-cache full-cone
-// estimate); cache_priority shifts it per site and the optimizer corrects it.
-fn choose_reload_policy(
-    inst: &OracleInstance,
-    genome: &Genome,
-    value: u32,
-    cache_priority_idx: usize,
-) -> bool {
-    let reload_cost = inst.nodes[value as usize].width as f64;
-    let recompute_cost = recompute_traffic_for(inst, value) as f64;
-    (-reload_cost + RECOVERY_BIAS_SCALE * genome.cache_priority[cache_priority_idx])
-        >= -recompute_cost
 }
 
 fn is_reloadable_value(inst: &OracleInstance, value: u32) -> bool {
@@ -1031,8 +967,6 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             consumed_touch: vec![false; reference.touches.len()],
             completed_root: vec![false; inst.nodes.len()],
             resident: vec![false; inst.nodes.len()],
-            resident_keep: vec![0.0; inst.nodes.len()],
-            resident_keep_site: vec![None; inst.nodes.len()],
             borrowed: vec![0; inst.nodes.len()],
             resident_width: 0,
             traffic: 0,
@@ -1045,7 +979,6 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             trace: collect_trace.then(CacheTrace::default),
             step_events: None,
         };
-        replay.prime_policy_pruned_descendants();
         replay
     }
 
@@ -1159,9 +1092,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         if let Some(site_idx) = self.find_site(root_occurrence, root, ROOT_OUTPUT_INPUT_INDEX, root)
         {
             self.consume_site(site_idx);
-            if self.resident[root as usize] {
-                self.stamp_keep(root, site_idx);
-            } else {
+            if !self.resident[root as usize] {
                 self.maybe_admit(root, site_idx);
             }
         }
@@ -1171,7 +1102,6 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
     fn satisfy_demand(&mut self, root_occurrence: usize, value: u32, site_idx: usize) -> bool {
         if self.resident[value as usize] {
             self.emit_demand(site_idx, DemandKindRaw::Resident);
-            self.stamp_keep(value, site_idx);
             self.dormant_sites += self.count_subtree_sites(root_occurrence, value);
             if let Some(range) = self.site_subtree_range(site_idx) {
                 self.bulk_consume_pruned_descendants(range);
@@ -1245,12 +1175,13 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
     }
 
     fn choose_reload(&self, value: u32, site_idx: usize) -> bool {
-        choose_reload_policy(
-            self.inst,
-            self.genome,
-            value,
-            self.site_to_cache_priority_gene[site_idx],
-        )
+        let _ = site_idx;
+        if !self.completed_root[value as usize] || !self.is_reloadable(value) {
+            return false;
+        }
+        let reload_cost = self.inst.nodes[value as usize].width as u64;
+        let mut seen = vec![false; self.inst.nodes.len()];
+        reload_cost <= self.rematerialize_cost(value, &mut seen)
     }
 
     fn maybe_admit(&mut self, value: u32, site_idx: usize) {
@@ -1272,26 +1203,26 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             self.admit_value(value, site_idx);
             return;
         }
-
-        if self.genome.cache_priority[self.site_to_cache_priority_gene[site_idx]] <= 0.0 {
-            self.admit_stats.pressure_rejected += 1;
-            self.trace_event(CacheTraceEvent::PressureReject { site_idx, value });
-            return;
-        }
+        let incoming_priority = self.current_priority(value);
 
         while self.used_width() + width > self.inst.budget {
-            let Some(victim) = self.lowest_keep_resident() else {
+            let Some(victim) = self.lowest_priority_resident() else {
                 self.admit_stats.pressure_no_victim += 1;
                 return;
             };
-            let victim_last_site = self.resident_keep_site[victim];
+            if incoming_priority <= self.current_priority(victim as u32) {
+                self.admit_stats.pressure_rejected += 1;
+                self.trace_event(CacheTraceEvent::PressureReject { site_idx, value });
+                return;
+            }
+            let victim_priority_site = self.current_priority_site_idx(victim as u32);
             self.resident[victim] = false;
             self.resident_width -= self.inst.nodes[victim].width as usize;
             self.evicted += 1;
             self.trace_event(CacheTraceEvent::Evict {
                 site_idx: Some(site_idx),
                 victim: victim as u32,
-                victim_last_site,
+                victim_last_site: victim_priority_site,
                 victim_remaining: self.remaining_touch_count(victim as u32),
                 cause: EvictCause::PressureAdmit { admitted: value },
             });
@@ -1313,35 +1244,11 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
     fn admit_value(&mut self, value: u32, site_idx: usize) {
         self.resident[value as usize] = true;
         self.resident_width += self.inst.nodes[value as usize].width as usize;
-        self.stamp_keep(value, site_idx);
         self.admitted += 1;
         self.trace_event(CacheTraceEvent::Admit { site_idx, value });
         if let Some(events) = &mut self.step_events {
             events.push(ReplayEventRaw::Admit { value });
         }
-    }
-
-    // KEEP REDUCTION (M2). `cache_priority` is a PER-SITE gene, but a value has a
-    // single residency, so its keep priority is stored as ONE scalar in
-    // `resident_keep[value]`, overwritten by whichever site last stamps it — on
-    // admission AND on every reuse (`finish_root`, `satisfy_demand`, `admit_value`).
-    // The eviction comparators (`lowest_keep_resident`/`lowest_keep_outsider`) read
-    // only that scalar, so the EFFECTIVE per-value keep priority is the LAST-stamping
-    // site's gene. This is an explicit last-stamp reduction over the per-site genes.
-    //
-    // Consequence: the priority couples to the decoded root order (which site stamps
-    // last shifts with the order) — a known divergence from design.md:89, which
-    // specified a value-keyed `vec![0.0; nodes.len()]`. It is NOT a correctness bug:
-    // eviction stays a total order via the id tie-break, and the optimizer tunes
-    // whichever site stamps last. A clean unit pinning test is impractical (on small
-    // synthetic instances the scorer caches the leaf Reads, not the folds, so fold
-    // keep genes are inert); the lever's aggregate effect is covered by the corpus
-    // read-floor / all-fit invariants. If M6 shows the keep lever underperforms,
-    // promoting it to a value-keyed gene (one per node) is the documented next step.
-    fn stamp_keep(&mut self, value: u32, site_idx: usize) {
-        self.resident_keep[value as usize] =
-            self.genome.cache_priority[self.site_to_cache_priority_gene[site_idx]];
-        self.resident_keep_site[value as usize] = Some(site_idx);
     }
 
     fn evict_dead_residents(&mut self, site_idx: usize) {
@@ -1350,14 +1257,14 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
                 && self.borrowed[value] == 0
                 && !self.has_future_demand(value as u32, site_idx)
             {
-                let victim_last_site = self.resident_keep_site[value];
+                let victim_priority_site = self.current_priority_site_idx(value as u32);
                 self.resident[value] = false;
                 self.resident_width -= self.inst.nodes[value].width as usize;
                 self.evicted += 1;
                 self.trace_event(CacheTraceEvent::Evict {
                     site_idx: Some(site_idx),
                     victim: value as u32,
-                    victim_last_site,
+                    victim_last_site: victim_priority_site,
                     victim_remaining: self.remaining_touch_count(value as u32),
                     cause: EvictCause::Dead,
                 });
@@ -1408,54 +1315,6 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         self.bulk_consume_pruned_descendants(range);
     }
 
-    fn prime_policy_pruned_descendants(&mut self) {
-        let mut completed_root = vec![false; self.inst.nodes.len()];
-        let mut occurrence_order = Vec::with_capacity(self.inst.roots.len());
-        let mut seen_root_occurrence = vec![false; self.inst.roots.len()];
-        for touch in &self.reference.touches {
-            let root_occurrence = touch.root_occurrence as usize;
-            if !seen_root_occurrence[root_occurrence] {
-                seen_root_occurrence[root_occurrence] = true;
-                occurrence_order.push(root_occurrence);
-            }
-        }
-        for root_occurrence in 0..self.inst.roots.len() {
-            if !seen_root_occurrence[root_occurrence] {
-                occurrence_order.push(root_occurrence);
-            }
-        }
-
-        for root_occurrence in occurrence_order {
-            let (range_start, range_end) = self.reference.root_occurrence_ranges[root_occurrence];
-            for touch in &self.reference.touches[range_start as usize..range_end as usize] {
-                if touch.input_index == ROOT_OUTPUT_INPUT_INDEX
-                    || self.consumed_touch[touch.touch_index as usize]
-                {
-                    continue;
-                }
-                let Some(site_idx) = self.touch_to_site_idx[touch.touch_index as usize] else {
-                    continue;
-                };
-                if !should_expand_policy_demand(
-                    self.inst,
-                    self.genome,
-                    &self.classes,
-                    &self.site_to_cache_priority_gene,
-                    &completed_root,
-                    touch.value,
-                    site_idx,
-                ) {
-                    let range = self.reference.subtree_ranges[touch.touch_index as usize];
-                    if range.0 + 1 < range.1 {
-                        self.bulk_consume_pruned_descendants((range.0 + 1, range.1));
-                    }
-                }
-            }
-            let root_value = self.inst.roots[root_occurrence];
-            completed_root[root_value as usize] = true;
-        }
-    }
-
     /// (C) cone-fit: computing `root`'s cone needs its single-accumulator spill peak
     /// (`fork_info.peak[root]`) of cells on top of the resident values that are
     /// OUTSIDERS to this cone. In-cone residents shield their subtrees and are folded
@@ -1474,18 +1333,18 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             if self.outsider_resident_width(root) + cone_peak <= self.inst.budget {
                 return;
             }
-            let Some(victim) = self.lowest_keep_outsider(root) else {
+            let Some(victim) = self.lowest_priority_outsider(root) else {
                 self.feasible = false;
                 return;
             };
-            let victim_last_site = self.resident_keep_site[victim];
+            let victim_priority_site = self.current_priority_site_idx(victim as u32);
             self.resident[victim] = false;
             self.resident_width -= self.inst.nodes[victim].width as usize;
             self.evicted += 1;
             self.trace_event(CacheTraceEvent::Evict {
                 site_idx: None,
                 victim: victim as u32,
-                victim_last_site,
+                victim_last_site: victim_priority_site,
                 victim_remaining: self.remaining_touch_count(victim as u32),
                 cause: EvictCause::Transient { width: cone_peak },
             });
@@ -1503,7 +1362,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             .sum()
     }
 
-    fn lowest_keep_outsider(&self, root: u32) -> Option<usize> {
+    fn lowest_priority_outsider(&self, root: u32) -> Option<usize> {
         self.resident
             .iter()
             .enumerate()
@@ -1511,9 +1370,9 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
                 is_resident && self.borrowed[idx] == 0 && self.is_outsider(root, idx)
             })
             .min_by(|&(a, _), &(b, _)| {
-                self.resident_keep[a]
-                    .partial_cmp(&self.resident_keep[b])
-                    .expect("resident keep score must be finite")
+                self.current_priority(a as u32)
+                    .partial_cmp(&self.current_priority(b as u32))
+                    .expect("priority must be finite or -inf")
                     .then(a.cmp(&b))
             })
             .map(|(idx, _)| idx)
@@ -1533,15 +1392,15 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         *count = count.saturating_sub(1);
     }
 
-    fn lowest_keep_resident(&self) -> Option<usize> {
+    fn lowest_priority_resident(&self) -> Option<usize> {
         self.resident
             .iter()
             .enumerate()
             .filter(|&(idx, &is_resident)| is_resident && self.borrowed[idx] == 0)
             .min_by(|&(a, _), &(b, _)| {
-                self.resident_keep[a]
-                    .partial_cmp(&self.resident_keep[b])
-                    .expect("resident keep score must be finite")
+                self.current_priority(a as u32)
+                    .partial_cmp(&self.current_priority(b as u32))
+                    .expect("priority must be finite or -inf")
                     .then(a.cmp(&b))
             })
             .map(|(idx, _)| idx)
@@ -1626,9 +1485,19 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
     }
 
     fn current_priority_site(&self, value: u32) -> Option<&S> {
-        let touch_index = self.next_live_touch(self.next_unconsumed_touch[value as usize])?;
-        let site_idx = self.touch_to_site_idx[touch_index as usize]?;
+        let site_idx = self.current_priority_site_idx(value)?;
         self.sites.get(site_idx)
+    }
+
+    fn current_priority_site_idx(&self, value: u32) -> Option<usize> {
+        let touch_index = self.next_live_touch(self.next_unconsumed_touch[value as usize])?;
+        self.touch_to_site_idx[touch_index as usize]
+    }
+
+    fn current_priority(&self, value: u32) -> f64 {
+        self.current_priority_site_idx(value)
+            .map(|site_idx| self.genome.cache_priority[self.site_to_cache_priority_gene[site_idx]])
+            .unwrap_or(f64::NEG_INFINITY)
     }
 
     fn next_unconsumed_site(&self, value: u32) -> Option<&S> {
@@ -1669,8 +1538,27 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         None
     }
 
-    fn recompute_traffic(&self, value: u32) -> u64 {
-        recompute_traffic_for(self.inst, value)
+    fn rematerialize_cost(&self, value: u32, seen: &mut Vec<bool>) -> u64 {
+        if self.resident[value as usize] {
+            return 0;
+        }
+        if seen[value as usize] {
+            return 0;
+        }
+        seen[value as usize] = true;
+        let node = &self.inst.nodes[value as usize];
+        if node.real_dram {
+            return node.width as u64;
+        }
+        let recompute: u64 = node
+            .children
+            .iter()
+            .map(|&child| self.rematerialize_cost(child, seen))
+            .sum();
+        if self.completed_root[value as usize] && self.is_reloadable(value) {
+            return (node.width as u64).min(recompute);
+        }
+        recompute
     }
 }
 
@@ -1855,6 +1743,41 @@ pub(crate) mod tests {
         }
     }
 
+    fn nested_reloadable_fixture() -> OracleInstance {
+        OracleInstance {
+            budget: 0,
+            reloadable_values: vec![1, 2],
+            roots: vec![1, 2, 3],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Add, 1, false, vec![0]),
+                n(2, NodeKind::Add, 2, false, vec![1]),
+                n(3, NodeKind::Add, 1, false, vec![2]),
+            ],
+        }
+    }
+
+    fn unified_pool_fixture() -> OracleInstance {
+        OracleInstance {
+            budget: 2,
+            reloadable_values: vec![],
+            roots: vec![3, 4, 9, 6, 7, 8, 10],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![1]),
+                n(3, NodeKind::Add, 1, false, vec![0]),
+                n(4, NodeKind::Add, 1, false, vec![2]),
+                n(5, NodeKind::Read, 1, true, vec![]),
+                n(6, NodeKind::Add, 1, false, vec![0]),
+                n(7, NodeKind::Add, 1, false, vec![5]),
+                n(8, NodeKind::Add, 1, false, vec![2]),
+                n(9, NodeKind::Add, 1, false, vec![5]),
+                n(10, NodeKind::Add, 1, false, vec![0]),
+            ],
+        }
+    }
+
     fn resident_hit_shared_subtree_fixture() -> OracleInstance {
         OracleInstance {
             budget: 1,
@@ -1867,6 +1790,18 @@ pub(crate) mod tests {
                 n(3, NodeKind::Add, 1, false, vec![2, 2]),
             ],
         }
+    }
+
+    fn priority_fixture_genome(
+        inst: &OracleInstance,
+        sites: &[DemandSite],
+        priorities: &[(usize, f64)],
+    ) -> Genome {
+        let mut genome = Genome::neutral(inst, sites);
+        for &(gene_idx, bias) in priorities {
+            genome.cache_priority[gene_idx] = bias;
+        }
+        genome
     }
 
     fn recompute_shared_subtree_fixture() -> OracleInstance {
@@ -2288,6 +2223,67 @@ pub(crate) mod tests {
                 }
             )
         }));
+    }
+
+    #[test]
+    fn rematerialize_recurses_into_reloadable_descendants() {
+        let inst = nested_reloadable_fixture();
+        let sites = enumerate_demand_sites(&inst);
+        let mut genome = Genome::neutral(&inst, &sites);
+        for gene in &mut genome.cache_priority {
+            *gene = 1.0;
+        }
+
+        let score = score_candidate(&inst, &sites, &genome);
+
+        assert_eq!(score.traffic, 3, "top-level recovery should reuse descendant reloads");
+    }
+
+    #[test]
+    fn pressure_admission_evicts_lowest_priority_across_leaves_and_intermediates() {
+        let inst = unified_pool_fixture();
+        let sites = enumerate_demand_sites(&inst);
+        let a_future_gene = sites
+            .iter()
+            .find(|site| site.consumer == 6 && site.value == 0)
+            .expect("A future site")
+            .cache_priority_gene as usize;
+        let b_first_gene = sites
+            .iter()
+            .find(|site| site.consumer == 4 && site.value == 2)
+            .expect("B first site")
+            .cache_priority_gene as usize;
+        let b_future_gene = sites
+            .iter()
+            .find(|site| site.consumer == 8 && site.value == 2)
+            .expect("B future site")
+            .cache_priority_gene as usize;
+        let c_first_gene = sites
+            .iter()
+            .find(|site| site.consumer == 9 && site.value == 5)
+            .expect("C first site")
+            .cache_priority_gene as usize;
+        let c_future_gene = sites
+            .iter()
+            .find(|site| site.consumer == 7 && site.value == 5)
+            .expect("C future site")
+            .cache_priority_gene as usize;
+        let genome = priority_fixture_genome(
+            &inst,
+            &sites,
+            &[
+                (a_future_gene, 1.0),
+                (b_first_gene, 1.0),
+                (b_future_gene, -1.0),
+                (c_first_gene, 0.5),
+                (c_future_gene, 0.5),
+            ],
+        );
+
+        let score = score_candidate(&inst, &sites, &genome);
+
+        assert_eq!(score.evicted, 1);
+        assert_eq!(score.traffic, 4);
     }
 
     #[test]
@@ -2923,17 +2919,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn recovery_policy_is_per_site_not_global() {
-        // Closes OQ3 (M1): the reload-vs-recompute decision is a PER-SITE policy, so
-        // the SAME value can take OPPOSITE policies at two different demand sites —
-        // the structural mechanism by which the genome adapts the decision to context
-        // (≈ residency), with no residency-aware runtime computation needed.
-        //
-        // V = node 1 = ext Add{a} (width 4, reloadable root). reload(V)=width 4;
-        // recompute(V)=re-read base leaf a (width 1). At budget 0, V is never cached,
-        // so each reuse independently reloads (cache_priority 1.0 → 4*1 >= 4-1) or
-        // recomputes (bias 0.0 → cheaper recompute wins). V is reused at R1=Add{V,c}
-        // and R2=Add{V,d}. Per-reuse cost: recompute = a(1)+V-Add instr; reload = 4.
+    fn rematerialize_is_runtime_not_cache_priority_policy() {
+        // Task 3 removes the per-site recovery gene. Reuse of V is now decided by the
+        // runtime rematerialization estimate alone: reload(V)=4, recompute(V)=read a=1,
+        // so every demand recomputes V regardless of `cache_priority`.
         let inst = OracleInstance {
             budget: 0,
             reloadable_values: vec![1],
@@ -2976,11 +2965,9 @@ pub(crate) mod tests {
         let rl = score_candidate(&inst, &sites, &both_reload);
         let mx = score_candidate(&inst, &sites, &mixed);
 
-        // Three DISTINCT outcomes prove each site's policy is applied independently;
-        // mixed lands strictly between, with the per-site reload/recompute split.
         assert_eq!((rc.traffic, rc.instrs), (5, 5), "both-recompute");
-        assert_eq!((rl.traffic, rl.instrs), (11, 3), "both-reload");
-        assert_eq!((mx.traffic, mx.instrs), (8, 4), "mixed (R1 reload, R2 recompute)");
+        assert_eq!((rl.traffic, rl.instrs), (5, 5), "cache_priority no longer drives recovery");
+        assert_eq!((mx.traffic, mx.instrs), (5, 5), "mixed cache_priority still rematerializes");
     }
 
     #[test]
