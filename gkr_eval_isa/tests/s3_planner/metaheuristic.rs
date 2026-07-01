@@ -35,7 +35,7 @@ const NEIGHBOR_BATCH_CAP: usize = 128;
 /// so the search anneals back to pure hill-climbing by the end of the budget.
 const SA_INITIAL_TEMPERATURE: f64 = 4.0;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ValueClass {
     RamSource,
     Intermediate,
@@ -53,22 +53,28 @@ pub struct DemandSite {
     pub class: ValueClass,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CachePrioritySite {
+    pub structural_index: u32,
+    pub root: u32,
+    pub consumer: u32,
+    pub input_index: u32,
+    pub value: u32,
+    pub class: ValueClass,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Genome {
     pub root_order_key: Vec<f64>,
-    pub admit_bias: Vec<f64>,
-    pub recovery_bias: Vec<f64>,
-    pub keep_after_use_bias: Vec<f64>,
+    pub cache_priority: Vec<f64>,
 }
 
 impl Genome {
-    pub fn neutral(inst: &OracleInstance, sites: &[DemandSite]) -> Self {
+    pub fn neutral<T>(inst: &OracleInstance, sites: &[T]) -> Self {
         let denom = inst.roots.len().max(1) as f64;
         Self {
             root_order_key: (0..inst.roots.len()).map(|i| i as f64 / denom).collect(),
-            admit_bias: vec![0.0; sites.len()],
-            recovery_bias: vec![0.0; sites.len()],
-            keep_after_use_bias: vec![0.0; sites.len()],
+            cache_priority: vec![0.0; sites.len()],
         }
     }
 }
@@ -108,7 +114,7 @@ pub fn classify_values(inst: &OracleInstance) -> Vec<ValueClass> {
         .collect()
 }
 
-pub fn enumerate_demand_sites(inst: &OracleInstance) -> Vec<DemandSite> {
+pub fn enumerate_cache_priority_sites(inst: &OracleInstance) -> Vec<CachePrioritySite> {
     let classes = classify_values(inst);
     let mut sites = Vec::new();
     for (root_occurrence, &root_value) in inst.roots.iter().enumerate() {
@@ -124,7 +130,8 @@ pub fn enumerate_demand_sites(inst: &OracleInstance) -> Vec<DemandSite> {
             for (input_index, &child) in node.children.iter().enumerate() {
                 let class = classes[child as usize];
                 if class != ValueClass::Other {
-                    sites.push(DemandSite {
+                    sites.push(CachePrioritySite {
+                        structural_index: 0,
                         root,
                         consumer: parent,
                         input_index: input_index as u32,
@@ -139,7 +146,8 @@ pub fn enumerate_demand_sites(inst: &OracleInstance) -> Vec<DemandSite> {
             classes[root_value as usize],
             ValueClass::RamSource | ValueClass::CachedRootOutput
         ) {
-            sites.push(DemandSite {
+            sites.push(CachePrioritySite {
+                structural_index: 0,
                 root,
                 consumer: root_value,
                 input_index: ROOT_OUTPUT_INPUT_INDEX,
@@ -150,7 +158,31 @@ pub fn enumerate_demand_sites(inst: &OracleInstance) -> Vec<DemandSite> {
     }
     sites.sort_by_key(|site| (site.root, site.consumer, site.input_index, site.value));
     sites.dedup_by_key(|site| (site.root, site.consumer, site.input_index, site.value));
+    let mut structural_sites: Vec<(u32, u32, u32, ValueClass)> = sites
+        .iter()
+        .map(|site| (site.consumer, site.input_index, site.value, site.class))
+        .collect();
+    structural_sites.sort_unstable();
+    structural_sites.dedup();
+    for site in &mut sites {
+        site.structural_index = structural_sites
+            .binary_search(&(site.consumer, site.input_index, site.value, site.class))
+            .expect("structural site must exist") as u32;
+    }
     sites
+}
+
+pub fn enumerate_demand_sites(inst: &OracleInstance) -> Vec<DemandSite> {
+    enumerate_cache_priority_sites(inst)
+        .into_iter()
+        .map(|site| DemandSite {
+            root: site.root,
+            consumer: site.consumer,
+            input_index: site.input_index,
+            value: site.value,
+            class: site.class,
+        })
+        .collect()
 }
 
 pub fn decode_root_order(inst: &OracleInstance, genome: &Genome) -> Vec<u32> {
@@ -409,19 +441,9 @@ pub(crate) fn score_candidate_internal(
     units: &[Vec<usize>],
 ) -> (CandidateScore, CacheTrace) {
     assert_eq!(
-        genome.admit_bias.len(),
+        genome.cache_priority.len(),
         sites.len(),
-        "admit_bias length must match demand-site count"
-    );
-    assert_eq!(
-        genome.recovery_bias.len(),
-        sites.len(),
-        "recovery_bias length must match demand-site count"
-    );
-    assert_eq!(
-        genome.keep_after_use_bias.len(),
-        sites.len(),
-        "keep_after_use_bias length must match demand-site count"
+        "cache_priority length must match demand-site count"
     );
     assert_normalized_genome(genome);
 
@@ -465,19 +487,9 @@ pub(crate) fn replay_plan(
     units: &[Vec<usize>],
 ) -> (CandidateScore, Vec<StepPlanRaw>) {
     assert_eq!(
-        genome.admit_bias.len(),
+        genome.cache_priority.len(),
         sites.len(),
-        "admit_bias length must match demand-site count"
-    );
-    assert_eq!(
-        genome.recovery_bias.len(),
-        sites.len(),
-        "recovery_bias length must match demand-site count"
-    );
-    assert_eq!(
-        genome.keep_after_use_bias.len(),
-        sites.len(),
-        "keep_after_use_bias length must match demand-site count"
+        "cache_priority length must match demand-site count"
     );
     assert_normalized_genome(genome);
 
@@ -609,7 +621,7 @@ fn choose_reload_policy(
 ) -> bool {
     let reload_cost = inst.nodes[value as usize].width as f64;
     let recompute_cost = recompute_traffic_for(inst, value) as f64;
-    (-reload_cost + RECOVERY_BIAS_SCALE * genome.recovery_bias[site_idx]) >= -recompute_cost
+    (-reload_cost + RECOVERY_BIAS_SCALE * genome.cache_priority[site_idx]) >= -recompute_cost
 }
 
 fn is_reloadable_value(inst: &OracleInstance, value: u32) -> bool {
@@ -1001,7 +1013,7 @@ impl<'a> Replay<'a> {
             return;
         }
 
-        if self.genome.admit_bias[site_idx] <= 0.0 {
+        if self.genome.cache_priority[site_idx] <= 0.0 {
             self.admit_stats.pressure_rejected += 1;
             self.trace_event(CacheTraceEvent::PressureReject { site_idx, value });
             return;
@@ -1067,7 +1079,7 @@ impl<'a> Replay<'a> {
     // read-floor / all-fit invariants. If M6 shows the keep lever underperforms,
     // promoting it to a value-keyed gene (one per node) is the documented next step.
     fn stamp_keep(&mut self, value: u32, site_idx: usize) {
-        self.resident_keep[value as usize] = self.genome.keep_after_use_bias[site_idx];
+        self.resident_keep[value as usize] = self.genome.cache_priority[site_idx];
         self.resident_keep_site[value as usize] = Some(site_idx);
     }
 
@@ -1309,12 +1321,7 @@ fn assert_normalized_genome(genome: &Genome) {
             "root_order_key must be finite and in [0, 1], got {key}"
         );
     }
-    for &gene in genome
-        .admit_bias
-        .iter()
-        .chain(genome.recovery_bias.iter())
-        .chain(genome.keep_after_use_bias.iter())
-    {
+    for &gene in &genome.cache_priority {
         assert!(
             gene.is_finite() && (-1.0..=1.0).contains(&gene),
             "bias genes must be finite and in [-1, 1], got {gene}"
@@ -1333,18 +1340,8 @@ pub fn perturb_one_gene(genome: &Genome, index: usize, delta: f64) -> Genome {
         return out;
     }
     let index = index - out.root_order_key.len();
-    if index < out.admit_bias.len() {
-        out.admit_bias[index] = clamp_bias(out.admit_bias[index] + delta);
-        return out;
-    }
-    let index = index - out.admit_bias.len();
-    if index < out.recovery_bias.len() {
-        out.recovery_bias[index] = clamp_bias(out.recovery_bias[index] + delta);
-        return out;
-    }
-    let index = index - out.recovery_bias.len();
-    if index < out.keep_after_use_bias.len() {
-        out.keep_after_use_bias[index] = clamp_bias(out.keep_after_use_bias[index] + delta);
+    if index < out.cache_priority.len() {
+        out.cache_priority[index] = clamp_bias(out.cache_priority[index] + delta);
         return out;
     }
     panic!("gene index {index} out of range");
@@ -1394,9 +1391,7 @@ pub(crate) mod tests {
             index,
             genome: Genome {
                 root_order_key: vec![index as f64],
-                admit_bias: Vec::new(),
-                recovery_bias: Vec::new(),
-                keep_after_use_bias: Vec::new(),
+                cache_priority: Vec::new(),
             },
             score,
             family: Some(family),
@@ -1426,7 +1421,7 @@ pub(crate) mod tests {
     fn trace_guided_cache_genome(inst: &OracleInstance, sites: &[DemandSite]) -> Genome {
         let mut genome = Genome::neutral(inst, sites);
         for (idx, site) in sites.iter().enumerate() {
-            genome.admit_bias[idx] = match site.value {
+            genome.cache_priority[idx] = match site.value {
                 1 => -1.0,
                 2 => 1.0,
                 _ => 0.0,
@@ -1474,6 +1469,47 @@ pub(crate) mod tests {
         assert_eq!(classes[2], ValueClass::CachedRootOutput);
         assert_eq!(classes[3], ValueClass::Intermediate);
         assert_eq!(classes[4], ValueClass::Other);
+    }
+
+    #[test]
+    fn genome_neutral_uses_order_and_cache_priority_only() {
+        let inst = OracleInstance {
+            budget: 1,
+            reloadable_values: vec![],
+            roots: vec![1, 2],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Add, 1, false, vec![0]),
+                n(2, NodeKind::Add, 1, false, vec![0]),
+            ],
+        };
+        let sites = enumerate_cache_priority_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+
+        assert_eq!(genome.root_order_key.len(), inst.roots.len());
+        assert_eq!(genome.cache_priority.len(), sites.len());
+    }
+
+    #[test]
+    fn cache_priority_sites_include_reused_root_output_site() {
+        let inst = OracleInstance {
+            budget: 0,
+            reloadable_values: vec![2],
+            roots: vec![2, 4],
+            nodes: vec![
+                n(0, NodeKind::Read, 1, true, vec![]),
+                n(1, NodeKind::Read, 1, true, vec![]),
+                n(2, NodeKind::Add, 1, false, vec![0, 1]),
+                n(3, NodeKind::Read, 1, true, vec![]),
+                n(4, NodeKind::Add, 1, false, vec![2, 3]),
+            ],
+        };
+
+        let sites = enumerate_cache_priority_sites(&inst);
+
+        assert!(sites.iter().any(|site| {
+            site.value == 2 && site.input_index == ROOT_OUTPUT_INPUT_INDEX
+        }));
     }
 
     #[test]
@@ -1573,8 +1609,8 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 2 {
-                genome.recovery_bias[idx] = 1.0;
-                genome.admit_bias[idx] = 1.0;
+                genome.cache_priority[idx] = 1.0;
+                genome.cache_priority[idx] = 1.0;
             }
         }
 
@@ -1671,11 +1707,11 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 2 {
-                genome.recovery_bias[idx] = -1.0;
-                genome.admit_bias[idx] = 1.0;
-                genome.keep_after_use_bias[idx] = 1.0;
+                genome.cache_priority[idx] = -1.0;
+                genome.cache_priority[idx] = 1.0;
+                genome.cache_priority[idx] = 1.0;
             } else {
-                genome.keep_after_use_bias[idx] = -1.0;
+                genome.cache_priority[idx] = -1.0;
             }
         }
 
@@ -1734,9 +1770,9 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 2 {
-                genome.admit_bias[idx] = 1.0;
-                genome.recovery_bias[idx] = -1.0;
-                genome.keep_after_use_bias[idx] = 1.0;
+                genome.cache_priority[idx] = 1.0;
+                genome.cache_priority[idx] = -1.0;
+                genome.cache_priority[idx] = 1.0;
             }
         }
 
@@ -1790,9 +1826,7 @@ pub(crate) mod tests {
         };
         let genome = Genome {
             root_order_key: vec![0.2, 0.1, 0.2],
-            admit_bias: Vec::new(),
-            recovery_bias: Vec::new(),
-            keep_after_use_bias: Vec::new(),
+            cache_priority: Vec::new(),
         };
 
         assert_eq!(decode_root_order(&inst, &genome), vec![4, 3, 5]);
@@ -1825,9 +1859,7 @@ pub(crate) mod tests {
         let units = vec![vec![0usize, 1], vec![2, 3]];
         let genome = Genome {
             root_order_key: vec![0.5, 0.1], // one key per unit
-            admit_bias: Vec::new(),
-            recovery_bias: Vec::new(),
-            keep_after_use_bias: Vec::new(),
+            cache_priority: Vec::new(),
         };
         assert_eq!(
             decode_grouped_occurrence_order(&inst, &genome, &units),
@@ -1837,9 +1869,7 @@ pub(crate) mod tests {
         // Empty units ⇒ flat per-occurrence decode (genome is then per-occurrence).
         let flat_genome = Genome {
             root_order_key: vec![0.4, 0.1, 0.3, 0.2],
-            admit_bias: Vec::new(),
-            recovery_bias: Vec::new(),
-            keep_after_use_bias: Vec::new(),
+            cache_priority: Vec::new(),
         };
         assert_eq!(
             decode_grouped_occurrence_order(&inst, &flat_genome, &[]),
@@ -1856,9 +1886,7 @@ pub(crate) mod tests {
         for keys in [[0.1, 0.9], [0.9, 0.1], [0.5, 0.5]] {
             let genome = Genome {
                 root_order_key: keys.to_vec(),
-                admit_bias: Vec::new(),
-                recovery_bias: Vec::new(),
-                keep_after_use_bias: Vec::new(),
+                cache_priority: Vec::new(),
             };
             let order = decode_grouped_occurrence_order(&inst, &genome, &units);
             // Each unit occupies one contiguous run.
@@ -1934,7 +1962,7 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 0 {
-                genome.admit_bias[idx] = 1.0;
+                genome.cache_priority[idx] = 1.0;
             }
         }
 
@@ -1961,7 +1989,7 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 0 {
-                genome.admit_bias[idx] = -1.0;
+                genome.cache_priority[idx] = -1.0;
             }
         }
 
@@ -2014,7 +2042,7 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 1 {
-                genome.admit_bias[idx] = -1.0;
+                genome.cache_priority[idx] = -1.0;
             }
         }
 
@@ -2078,15 +2106,15 @@ pub(crate) mod tests {
             *family == Some(MoveFamily::AdmitBias)
                 && reject_sites_for_value_1
                     .iter()
-                    .all(|&idx| candidate.admit_bias[idx] > 0.0)
+                    .all(|&idx| candidate.cache_priority[idx] > 0.0)
         }));
         assert!(neighbors.iter().any(|(_, candidate, family)| {
             *family == Some(MoveFamily::KeepBias)
-                && candidate.keep_after_use_bias[admit_site_for_value_2] > 0.0
+                && candidate.cache_priority[admit_site_for_value_2] > 0.0
         }));
         assert!(neighbors.iter().any(|(_, candidate, family)| {
             *family == Some(MoveFamily::KeepBias)
-                && candidate.keep_after_use_bias[victim_keep_site_for_value_0] < 0.0
+                && candidate.cache_priority[victim_keep_site_for_value_0] < 0.0
         }));
     }
 
@@ -2107,7 +2135,7 @@ pub(crate) mod tests {
             *family == Some(MoveFamily::AdmitBias)
                 && reject_sites_for_value_1
                     .iter()
-                    .all(|&idx| candidate.admit_bias[idx] > 0.0)
+                    .all(|&idx| candidate.cache_priority[idx] > 0.0)
         }));
     }
 
@@ -2156,11 +2184,11 @@ pub(crate) mod tests {
         };
         let sites = enumerate_demand_sites(&inst);
         let mut genome = Genome::neutral(&inst, &sites);
-        for bias in &mut genome.admit_bias {
+        for bias in &mut genome.cache_priority {
             *bias = 1.0;
         }
         for (idx, site) in sites.iter().enumerate() {
-            genome.keep_after_use_bias[idx] = match site.value {
+            genome.cache_priority[idx] = match site.value {
                 0 => 1.0,
                 1 => -1.0,
                 2 => 0.0,
@@ -2202,8 +2230,8 @@ pub(crate) mod tests {
         let mut genome = Genome::neutral(&inst, &sites);
         for (idx, site) in sites.iter().enumerate() {
             if site.value == 2 {
-                genome.admit_bias[idx] = -1.0;
-                genome.recovery_bias[idx] = 1.0;
+                genome.cache_priority[idx] = -1.0;
+                genome.cache_priority[idx] = 1.0;
             }
         }
 
@@ -2248,16 +2276,16 @@ pub(crate) mod tests {
         let (r1_site, r2_site) = (v_at(3), v_at(5));
 
         let mut both_recompute = Genome::neutral(&inst, &sites);
-        both_recompute.recovery_bias[r1_site] = 0.0;
-        both_recompute.recovery_bias[r2_site] = 0.0;
+        both_recompute.cache_priority[r1_site] = 0.0;
+        both_recompute.cache_priority[r2_site] = 0.0;
 
         let mut both_reload = Genome::neutral(&inst, &sites);
-        both_reload.recovery_bias[r1_site] = 1.0;
-        both_reload.recovery_bias[r2_site] = 1.0;
+        both_reload.cache_priority[r1_site] = 1.0;
+        both_reload.cache_priority[r2_site] = 1.0;
 
         let mut mixed = Genome::neutral(&inst, &sites);
-        mixed.recovery_bias[r1_site] = 1.0; // reload at R1
-        mixed.recovery_bias[r2_site] = 0.0; // recompute at R2
+        mixed.cache_priority[r1_site] = 1.0; // reload at R1
+        mixed.cache_priority[r2_site] = 0.0; // recompute at R2
 
         let rc = score_candidate(&inst, &sites, &both_recompute);
         let rl = score_candidate(&inst, &sites, &both_reload);
@@ -2305,7 +2333,7 @@ pub(crate) mod tests {
         };
         let sites = enumerate_demand_sites(&inst);
         let mut genome = Genome::neutral(&inst, &sites);
-        for bias in &mut genome.admit_bias {
+        for bias in &mut genome.cache_priority {
             *bias = 1.0;
         }
 
@@ -2460,8 +2488,8 @@ pub(crate) mod tests {
 
         let root_idx = 0;
         let admit_idx = genome.root_order_key.len();
-        let recovery_idx = admit_idx + genome.admit_bias.len();
-        let keep_idx = recovery_idx + genome.recovery_bias.len();
+        let recovery_idx = admit_idx + genome.cache_priority.len();
+        let keep_idx = recovery_idx + genome.cache_priority.len();
 
         assert_normalized_genome(&perturb_one_gene(&genome, root_idx, 100.0));
         assert_normalized_genome(&perturb_one_gene(&genome, admit_idx, 100.0));
@@ -2513,9 +2541,9 @@ pub(crate) mod tests {
 
         let genome = reuse_weighted_smoke_genome(&inst, &sites);
 
-        assert!(genome.admit_bias.iter().all(|&bias| bias > 0.0));
-        assert!(genome.recovery_bias.iter().all(|&bias| bias >= 0.0));
-        assert!(genome.keep_after_use_bias[0] > genome.keep_after_use_bias[1]);
+        assert!(genome.cache_priority.iter().all(|&bias| bias > 0.0));
+        assert!(genome.cache_priority.iter().all(|&bias| bias >= 0.0));
+        assert!(genome.cache_priority[0] > genome.cache_priority[1]);
         assert_eq!(decode_root_order(&inst, &genome), inst.roots);
     }
 
@@ -3149,13 +3177,13 @@ pub(crate) mod tests {
         for key in &mut genome.root_order_key {
             *key = rng.next_unit();
         }
-        for bias in &mut genome.admit_bias {
+        for bias in &mut genome.cache_priority {
             *bias = rng.next_signed();
         }
-        for bias in &mut genome.recovery_bias {
+        for bias in &mut genome.cache_priority {
             *bias = rng.next_signed();
         }
-        for bias in &mut genome.keep_after_use_bias {
+        for bias in &mut genome.cache_priority {
             *bias = rng.next_signed();
         }
         genome
@@ -3163,14 +3191,14 @@ pub(crate) mod tests {
 
     fn reuse_weighted_smoke_genome(inst: &OracleInstance, sites: &[DemandSite]) -> Genome {
         let mut genome = Genome::neutral(inst, sites);
-        for bias in &mut genome.admit_bias {
+        for bias in &mut genome.cache_priority {
             *bias = 1.0;
         }
         for (idx, site) in sites.iter().enumerate() {
             if site.class == ValueClass::CachedRootOutput {
                 let reload = inst.nodes[site.value as usize].width as f64;
                 let recompute = estimate_recompute_traffic(inst, site.value) as f64;
-                genome.recovery_bias[idx] = if recompute > reload { 1.0 } else { 0.0 };
+                genome.cache_priority[idx] = if recompute > reload { 1.0 } else { 0.0 };
             }
         }
 
@@ -3187,7 +3215,7 @@ pub(crate) mod tests {
         }
         if max_density > 0.0 {
             for (idx, site) in sites.iter().enumerate() {
-                genome.keep_after_use_bias[idx] = density[site.value as usize] / max_density;
+                genome.cache_priority[idx] = density[site.value as usize] / max_density;
             }
         }
         genome
@@ -4161,7 +4189,7 @@ pub(crate) mod tests {
 
     fn active_cache_move_families(sites: &[DemandSite], base: &Genome) -> Vec<MoveFamily> {
         let mut families = Vec::with_capacity(3);
-        if !base.admit_bias.is_empty() {
+        if !base.cache_priority.is_empty() {
             families.push(MoveFamily::AdmitBias);
         }
         if sites
@@ -4170,7 +4198,7 @@ pub(crate) mod tests {
         {
             families.push(MoveFamily::RecoveryBias);
         }
-        if !base.keep_after_use_bias.is_empty() {
+        if !base.cache_priority.is_empty() {
             families.push(MoveFamily::KeepBias);
         }
         families
@@ -4345,9 +4373,7 @@ pub(crate) mod tests {
         let denom = n_units.max(1) as f64;
         Genome {
             root_order_key: (0..n_units).map(|i| i as f64 / denom).collect(),
-            admit_bias: vec![0.0; sites.len()],
-            recovery_bias: vec![0.0; sites.len()],
-            keep_after_use_bias: vec![0.0; sites.len()],
+            cache_priority: vec![0.0; sites.len()],
         }
     }
 
@@ -4369,9 +4395,7 @@ pub(crate) mod tests {
             .collect();
         Genome {
             root_order_key,
-            admit_bias: flat.admit_bias.clone(),
-            recovery_bias: flat.recovery_bias.clone(),
-            keep_after_use_bias: flat.keep_after_use_bias.clone(),
+            cache_priority: flat.cache_priority.clone(),
         }
     }
 
@@ -4422,7 +4446,7 @@ pub(crate) mod tests {
                     push_trace_candidate(out, limit, admit_candidate, MoveFamily::AdmitBias);
 
                     let mut keep_candidate = base.clone();
-                    keep_candidate.keep_after_use_bias[site_idx] = TRACE_GUIDED_BIAS;
+                    keep_candidate.cache_priority[site_idx] = TRACE_GUIDED_BIAS;
                     push_trace_candidate(out, limit, keep_candidate, MoveFamily::KeepBias);
                 }
                 CacheTraceEvent::Evict {
@@ -4432,7 +4456,7 @@ pub(crate) mod tests {
                 } => {
                     if let Some(victim_site) = victim_last_site {
                         let mut candidate = base.clone();
-                        candidate.keep_after_use_bias[victim_site] = -TRACE_GUIDED_BIAS;
+                        candidate.cache_priority[victim_site] = -TRACE_GUIDED_BIAS;
                         push_trace_candidate(out, limit, candidate, MoveFamily::KeepBias);
                     }
                 }
@@ -4444,7 +4468,7 @@ pub(crate) mod tests {
     fn set_admit_bias_for_value(sites: &[DemandSite], genome: &mut Genome, value: u32, bias: f64) {
         for (idx, site) in sites.iter().enumerate() {
             if site.value == value {
-                genome.admit_bias[idx] = bias;
+                genome.cache_priority[idx] = bias;
             }
         }
     }
@@ -4486,13 +4510,13 @@ pub(crate) mod tests {
         limit: usize,
         out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
     ) {
-        for idx in 0..base.admit_bias.len() {
+        for idx in 0..base.cache_priority.len() {
             for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
                 if out.len() >= limit {
                     return;
                 }
                 let mut candidate = base.clone();
-                candidate.admit_bias[idx] = clamp_bias(candidate.admit_bias[idx] + delta);
+                candidate.cache_priority[idx] = clamp_bias(candidate.cache_priority[idx] + delta);
                 out.push((out.len(), candidate, Some(MoveFamily::AdmitBias)));
             }
         }
@@ -4513,7 +4537,7 @@ pub(crate) mod tests {
                     return;
                 }
                 let mut candidate = base.clone();
-                candidate.recovery_bias[idx] = clamp_bias(candidate.recovery_bias[idx] + delta);
+                candidate.cache_priority[idx] = clamp_bias(candidate.cache_priority[idx] + delta);
                 out.push((out.len(), candidate, Some(MoveFamily::RecoveryBias)));
             }
         }
@@ -4524,14 +4548,14 @@ pub(crate) mod tests {
         limit: usize,
         out: &mut Vec<(usize, Genome, Option<MoveFamily>)>,
     ) {
-        for idx in 0..base.keep_after_use_bias.len() {
+        for idx in 0..base.cache_priority.len() {
             for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
                 if out.len() >= limit {
                     return;
                 }
                 let mut candidate = base.clone();
-                candidate.keep_after_use_bias[idx] =
-                    clamp_bias(candidate.keep_after_use_bias[idx] + delta);
+                candidate.cache_priority[idx] =
+                    clamp_bias(candidate.cache_priority[idx] + delta);
                 out.push((out.len(), candidate, Some(MoveFamily::KeepBias)));
             }
         }
@@ -4577,13 +4601,13 @@ pub(crate) mod tests {
         best_score: &mut CandidateScore,
         best_family: &mut Option<MoveFamily>,
     ) {
-        for idx in 0..base.admit_bias.len() {
+        for idx in 0..base.cache_priority.len() {
             for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
                 if *evals >= eval_budget {
                     return;
                 }
                 let mut candidate = base.clone();
-                candidate.admit_bias[idx] = clamp_bias(candidate.admit_bias[idx] + delta);
+                candidate.cache_priority[idx] = clamp_bias(candidate.cache_priority[idx] + delta);
                 score_neighbor(
                     inst,
                     sites,
@@ -4606,7 +4630,7 @@ pub(crate) mod tests {
                     return;
                 }
                 let mut candidate = base.clone();
-                candidate.recovery_bias[idx] = clamp_bias(candidate.recovery_bias[idx] + delta);
+                candidate.cache_priority[idx] = clamp_bias(candidate.cache_priority[idx] + delta);
                 score_neighbor(
                     inst,
                     sites,
@@ -4620,14 +4644,14 @@ pub(crate) mod tests {
             }
         }
 
-        for idx in 0..base.keep_after_use_bias.len() {
+        for idx in 0..base.cache_priority.len() {
             for delta in [-LOCAL_BIAS_STEP, LOCAL_BIAS_STEP] {
                 if *evals >= eval_budget {
                     return;
                 }
                 let mut candidate = base.clone();
-                candidate.keep_after_use_bias[idx] =
-                    clamp_bias(candidate.keep_after_use_bias[idx] + delta);
+                candidate.cache_priority[idx] =
+                    clamp_bias(candidate.cache_priority[idx] + delta);
                 score_neighbor(
                     inst,
                     sites,
