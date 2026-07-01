@@ -462,6 +462,7 @@ enum CacheTraceEvent {
     PressureAdmit {
         site_idx: usize,
         value: u32,
+        next_priority_site_idx: Option<usize>,
     },
     Evict {
         site_idx: Option<usize>,
@@ -1180,8 +1181,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             return false;
         }
         let reload_cost = self.inst.nodes[value as usize].width as u64;
-        let mut seen = vec![false; self.inst.nodes.len()];
-        reload_cost <= self.rematerialize_cost(value, &mut seen)
+        reload_cost <= self.rematerialize_cost(value)
     }
 
     fn maybe_admit(&mut self, value: u32, site_idx: usize) {
@@ -1242,7 +1242,11 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
 
         if self.used_width() + width <= self.inst.budget {
             self.admit_stats.pressure_admitted += 1;
-            self.trace_event(CacheTraceEvent::PressureAdmit { site_idx, value });
+            self.trace_event(CacheTraceEvent::PressureAdmit {
+                site_idx,
+                value,
+                next_priority_site_idx: self.current_priority_site_idx(value),
+            });
             self.admit_value(value, site_idx);
         }
     }
@@ -1560,14 +1564,10 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         None
     }
 
-    fn rematerialize_cost(&self, value: u32, seen: &mut Vec<bool>) -> u64 {
+    fn rematerialize_cost(&self, value: u32) -> u64 {
         if self.resident[value as usize] {
             return 0;
         }
-        if seen[value as usize] {
-            return 0;
-        }
-        seen[value as usize] = true;
         let node = &self.inst.nodes[value as usize];
         if node.real_dram {
             return node.width as u64;
@@ -1575,7 +1575,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         let recompute: u64 = node
             .children
             .iter()
-            .map(|&child| self.rematerialize_cost(child, seen))
+            .map(|&child| self.rematerialize_cost(child))
             .sum();
         if self.completed_root[value as usize] && self.is_reloadable(value) {
             return (node.width as u64).min(recompute);
@@ -2338,6 +2338,29 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn rematerialize_counts_repeated_shared_descendants_per_structural_use() {
+        let inst = OracleInstance {
+            budget: 0,
+            reloadable_values: vec![1],
+            roots: vec![1, 2],
+            nodes: vec![
+                n(0, NodeKind::Read, 2, true, vec![]),
+                n(1, NodeKind::Add, 3, false, vec![0, 0]),
+                n(2, NodeKind::Add, 1, false, vec![1]),
+            ],
+        };
+        let sites = enumerate_demand_sites(&inst);
+        let genome = Genome::neutral(&inst, &sites);
+
+        let score = score_candidate(&inst, &sites, &genome);
+
+        assert_eq!(
+            score.traffic, 7,
+            "reload should win because recompute must repay the shared leaf twice"
+        );
+    }
+
+    #[test]
     fn pressure_admission_evicts_lowest_priority_across_leaves_and_intermediates() {
         let inst = unified_pool_fixture();
         let sites = enumerate_demand_sites(&inst);
@@ -2811,7 +2834,7 @@ pub(crate) mod tests {
         assert!(trace
             .events
             .iter()
-            .any(|event| matches!(event, CacheTraceEvent::PressureAdmit { value: 2, .. })));
+            .any(|event| matches!(event, CacheTraceEvent::PressureAdmit { value: 2, next_priority_site_idx: Some(_), .. })));
         assert!(trace.events.iter().any(|event| matches!(
             event,
             CacheTraceEvent::Evict {
@@ -2835,13 +2858,18 @@ pub(crate) mod tests {
                 (site.value == 1).then_some(cache_priority_gene_for_site(&sites, idx))
             })
             .collect();
-        let admit_site_for_value_2 = cache_priority_gene_for_site(
-            &sites,
-            sites
+        let admit_next_use_gene_for_value_2 = trace
+            .events
             .iter()
-            .position(|site| site.root == 3 && site.value == 2)
-            .expect("value 2 first demand site must exist"),
-        );
+            .find_map(|event| match *event {
+                CacheTraceEvent::PressureAdmit {
+                    value: 2,
+                    next_priority_site_idx: Some(site_idx),
+                    ..
+                } => Some(cache_priority_gene_for_site(&sites, site_idx)),
+                _ => None,
+            })
+            .expect("pressure-admit for value 2 must carry its replay-relevant next-use site");
         let victim_priority_site_for_value_0 = trace
             .events
             .iter()
@@ -2867,7 +2895,7 @@ pub(crate) mod tests {
         }));
         assert!(neighbors.iter().any(|(_, candidate, family)| {
             *family == Some(MoveFamily::CachePriority)
-                && candidate.cache_priority[admit_site_for_value_2] > 0.0
+                && candidate.cache_priority[admit_next_use_gene_for_value_2] > 0.0
         }));
         assert!(neighbors.iter().any(|(_, candidate, family)| {
             *family == Some(MoveFamily::CachePriority)
@@ -5247,7 +5275,11 @@ pub(crate) mod tests {
                     set_cache_priority_for_value(sites, &mut candidate, value, TRACE_GUIDED_BIAS);
                     push_trace_candidate(out, limit, candidate, MoveFamily::CachePriority);
                 }
-                CacheTraceEvent::PressureAdmit { site_idx, value } => {
+                CacheTraceEvent::PressureAdmit {
+                    site_idx: _,
+                    value,
+                    next_priority_site_idx,
+                } => {
                     let mut admit_candidate = base.clone();
                     set_cache_priority_for_value(
                         sites,
@@ -5257,14 +5289,16 @@ pub(crate) mod tests {
                     );
                     push_trace_candidate(out, limit, admit_candidate, MoveFamily::CachePriority);
 
-                    let mut keep_candidate = base.clone();
-                    set_cache_priority_for_site(
-                        sites,
-                        &mut keep_candidate,
-                        site_idx,
-                        TRACE_GUIDED_BIAS,
-                    );
-                    push_trace_candidate(out, limit, keep_candidate, MoveFamily::CachePriority);
+                    if let Some(priority_site_idx) = next_priority_site_idx {
+                        let mut keep_candidate = base.clone();
+                        set_cache_priority_for_site(
+                            sites,
+                            &mut keep_candidate,
+                            priority_site_idx,
+                            TRACE_GUIDED_BIAS,
+                        );
+                        push_trace_candidate(out, limit, keep_candidate, MoveFamily::CachePriority);
+                    }
                 }
                 CacheTraceEvent::Evict {
                     victim_last_site,
@@ -7622,6 +7656,7 @@ pub(crate) mod tests {
                         CacheTraceEvent::PressureAdmit {
                             site_idx,
                             value: event_value,
+                            ..
                         } if event_value == value => {
                             let site = sites.get(site_idx);
                             let root_position =
