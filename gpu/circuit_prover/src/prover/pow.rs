@@ -76,11 +76,19 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
         transcript_commit(device_seed, nonce_words, stream)?;
     }
 
-    // Squeeze enough random u32 words to cover the first PoW header word plus
-    // `num_queries * query_domain_log2` bits of query material, padded up to a
-    // multiple of STATE_SIZE (the squeeze kernel's chunk granularity).
-    let total_bits = 32usize + num_queries * query_domain_log2;
-    let required_words = total_bits.div_ceil(32);
+    // Squeeze enough random u32 words to cover `num_queries * query_domain_log2`
+    // bits of query material plus the first PoW header word that the index
+    // assembly skips, padded up to a multiple of STATE_SIZE (the squeeze
+    // kernel's chunk granularity). This must match the CPU transcript exactly
+    // (`draw_query_bits`): `(ceil(query_bits / 32) + 1).next_multiple_of(8)`,
+    // where the `+ 1` — NOT an extra 32 bits folded into `total_bits` — is the
+    // skipped header word. Double-counting the header word (adding both `32 +`
+    // and `+ 1`) over-squeezes by a digest block whenever `ceil(query_bits/32)
+    // + 1` already lands on a multiple of 8, advancing the transcript past the
+    // CPU and diverging every subsequent Fiat-Shamir challenge (e.g. the WHIR
+    // delinearization challenge) for that round.
+    let query_bits = num_queries * query_domain_log2;
+    let required_words = query_bits.div_ceil(32);
     let padded_words = (required_words + 1).next_multiple_of(STATE_SIZE);
     let mut d_raw_bits: DeviceAllocation<u32> =
         context.alloc(padded_words, AllocationPlacement::BestFit)?;
