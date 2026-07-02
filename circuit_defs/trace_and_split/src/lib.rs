@@ -55,16 +55,9 @@ where
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
-    // Base-bug workaround: PR #305 changed `*CircuitOracle.decoder_table` to
-    // `&[Option<ExecutorFamilyDecoderData>]` but never migrated these trace_and_split
-    // callers (latent in base, which doesn't compile this crate in CI; surfaces because the
-    // GPU prover depends on trace_and_split). Per-family decoders are always present, so
-    // wrap each in `Some`. Drop this when the field migration is completed upstream.
-    let decoder_table_owned: Vec<Option<ExecutorFamilyDecoderData>> =
-        decoder_data.iter().map(|d| Some(*d)).collect();
     let oracle = NonMemoryCircuitOracle {
         inner: witness_chunk,
-        decoder_table: &decoder_table_owned,
+        decoder_table: decoder_data,
         default_pc_value_in_padding,
     };
 
@@ -129,13 +122,9 @@ where
     assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
-    // Base-bug workaround (same #305 incomplete migration as above): wrap per-family
-    // decoders in `Some` to match the `&[Option<ExecutorFamilyDecoderData>]` field.
-    let decoder_table_owned: Vec<Option<ExecutorFamilyDecoderData>> =
-        decoder_data.iter().map(|d| Some(*d)).collect();
     let oracle = MemoryCircuitOracle {
         inner: witness_chunk,
-        decoder_table: &decoder_table_owned,
+        decoder_table: decoder_data,
     };
 
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
