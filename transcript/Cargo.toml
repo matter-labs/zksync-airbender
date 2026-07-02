@@ -14,6 +14,7 @@ field = { workspace = true }
 blake2s_u32 = { workspace = true }
 unroll = { workspace = true }
 worker = { workspace = true, optional = true }
+sha3 = { workspace = true }
 
 [features]
 pow = ["worker"]

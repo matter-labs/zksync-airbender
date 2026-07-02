@@ -7,6 +7,8 @@ use worker::Worker;
 
 pub mod blake2s_for_everything_tree;
 pub mod blake2s_hash_leafs;
+pub mod keccak256_for_everything_tree;
+pub mod keccak256_hash_leafs;
 
 pub type DefaultTreeConstructor =
     crate::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap<

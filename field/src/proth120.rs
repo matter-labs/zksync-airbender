@@ -14,10 +14,8 @@
 
 use crate::PrimeField;
 use crate::field::Field;
-use crate::Rand;
 use crate::TwoAdicField;
 use core::ops::{Add, Sub};
-use rand::Rng;
 
 /// The prime field `F_p` where `p = 7 * 2^120 + 1`.
 ///
@@ -366,14 +364,8 @@ impl Sub for Proth120 {
     }
 }
 
-impl Rand for Proth120 {
-    fn random_element<R: Rng + ?Sized>(rng: &mut R) -> Self {
-        let lo: u64 = rng.random();
-        let hi: u64 = rng.random();
-        let value = ((hi as u128) << 64) | (lo as u128);
-        Self::new(value % Self::ORDER)
-    }
-}
+// `Rand` is provided by the blanket `impl<F: PrimeField> Rand for F`, now that
+// `Proth120` implements `PrimeField`.
 
 impl Field for Proth120 {
     const ZERO: Self = Self(0);
@@ -546,16 +538,17 @@ impl PrimeField for Proth120 {
     }
 
     fn from_u32_unchecked(value: u32) -> Self {
-        unreachable!()
+        // any u32 is a valid, already-reduced Proth120 value (u32::MAX < ORDER)
+        Self::new(value as u128)
     }
     fn from_u32_with_reduction(value: u32) -> Self {
-        unreachable!()
+        Self::new(value as u128)
     }
     fn from_u128_with_reduction(value: u128) -> Self {
         Self::new(value % Self::CHARACTERISTICS_U128)
     }
     fn from_u32(value: u32) -> Option<Self> {
-        unreachable!()
+        Some(Self::new(value as u128))
     }
     fn from_reduced_raw_repr(value: u32) -> Self {
         unreachable!()

@@ -93,6 +93,9 @@ pub mod whir_proof;
 #[cfg(test)]
 mod monomial_basis_self_check;
 
+#[cfg(all(test, feature = "prover"))]
+mod proth120_evm_gen;
+
 pub use self::queries::*;
 pub use self::whir_proof::*;
 
@@ -407,7 +410,7 @@ pub fn whir_fold<
 where
     [(); E::DEGREE]: Sized,
 {
-    let two_inv = F::from_u32_unchecked(2).inverse().unwrap();
+    let two_inv = F::TWO.inverse().unwrap();
 
     let oracle_refs = [&mem_oracle, &wit_oracle, setup_oracle];
     let evals_refs = [&mem_polys_claims, &wit_polys_claims, &setup_polys_claims];
@@ -1510,7 +1513,7 @@ where
     let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
     let trace_len = 1usize << trace_len_log2;
 
-    let two_inv = F::from_u32_unchecked(2).inverse().unwrap();
+    let two_inv = F::TWO.inverse().unwrap();
     let set_generator = domain_generator_for_size::<F>(values_per_leaf as u64);
     let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
         set_generator.inverse().unwrap(),
