@@ -435,24 +435,23 @@ fn build_unrolled_setup(
 }
 
 /// Build the unified-circuit setup directly from the unified cs/prover sources,
-/// bit-for-bit mirroring the CPU `UnifiedRiscvCircuitOracle::new` decoder path
+/// bit-for-bit mirroring the CPU unified decoder-preprocessing path
 /// and `cs::gkr_circuits::unified_reduced_machine::circuit::build_unified_artifact`
 /// compile path (the source of truth that produced
 /// `unified_reduced_machine_layout_gkr.json`). Unlike the per-family path in
 /// `build_unrolled_setup`, this uses the unified 5-CSR
-/// `FullUnsignedMachineDecoderConfig` / `UnifiedReducedMachineDecoder` decoder
-/// (extracted via `UnifiedRiscvCircuitOracle`), NOT the per-family
-/// `ReducedMachineDecoderConfig` preprocessing.
+/// `UnifiedReducedMachineDecoder` over `ReducedMachineDecoderConfig`
+/// (family 128), NOT the per-family decoder set.
 fn build_unified_setup_direct(
     binary_image: &[u32],
     text_section: &[u32],
     _worker: &Worker,
 ) -> UnrolledUnifiedSetup {
     use crate::upstream::{
-        build_unified_table_driver, create_mem_word_only_special_tables, BasicAssembly, Circuit,
-        GKRCompiler, UnifiedRiscvCircuitOracle,
+        build_unified_table_driver, create_mem_word_only_special_tables,
         unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr,
-        unified_reduced_machine_table_addition_fn, ROM_SECOND_WORD_BITS, ROM_WORD_SIZE,
+        unified_reduced_machine_table_addition_fn, BasicAssembly, Circuit, GKRCompiler,
+        OpcodeFamilyDecoder, UnifiedReducedMachineDecoder, ROM_SECOND_WORD_BITS, ROM_WORD_SIZE,
     };
 
     // Compile the unified artifact identically to
@@ -463,8 +462,7 @@ fn build_unified_setup_direct(
     // compile with inline inits/teardowns at trace_len_log2 = 24.
     let mut cs = BasicAssembly::<BF>::new();
     unified_reduced_machine_table_addition_fn(&mut cs);
-    for (table_type, table) in
-        create_mem_word_only_special_tables::<BF, ROM_SECOND_WORD_BITS>(&[])
+    for (table_type, table) in create_mem_word_only_special_tables::<BF, ROM_SECOND_WORD_BITS>(&[])
     {
         cs.add_table_with_content(table_type, table);
     }
@@ -479,11 +477,41 @@ fn build_unified_setup_direct(
         /* caching_is_allowed */ true,
     );
 
-    // Decoder table via the unified oracle's 5-CSR FullUnsignedMachineDecoderConfig
-    // path. Empty `inner`: the decoder table is derived from `text_section` only,
-    // independent of the per-cycle trace, so an empty trace yields the same table.
-    let oracle = UnifiedRiscvCircuitOracle::new::<BF>(&[], text_section, ROM_WORD_SIZE);
-    let decoder_table = oracle.decoder_table_with_options().to_vec();
+    // Decoder table via the unified reduced-machine preprocessing (mirrors
+    // setups::unrolled_circuits::unifier_reduced_machine_circuit's
+    // `unified_reduced_machine_circuit_setup`: `UnifiedReducedMachineDecoder`
+    // over `ReducedMachineDecoderConfig` with the 5 supported CSRs). pr-332
+    // removed the `UnifiedRiscvCircuitOracle::new` derivation this used to
+    // mirror; the oracle is now a plain borrow of an externally built table.
+    let decoder_table = {
+        use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
+        use common_constants::{
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
+            NON_DETERMINISM_CSR,
+        };
+        use riscv_transpiler::ir::ReducedMachineDecoderConfig;
+        use std::alloc::Global;
+        let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> =
+            vec![Box::new(UnifiedReducedMachineDecoder)];
+        const SUPPORTED_CSRS: &[u16] = &[
+            NON_DETERMINISM_CSR as u16,
+            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+        ];
+        let mut preprocessing_data =
+            crate::upstream::process_binary_into_separate_tables_ext::<
+                BF,
+                ReducedMachineDecoderConfig,
+                true,
+                Global,
+            >(text_section, &decoders, ROM_WORD_SIZE, SUPPORTED_CSRS);
+        preprocessing_data
+            .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+            .expect("UnifiedReducedMachineDecoder must produce a family-128 entry")
+    };
 
     // Real binary-derived AlignedRomRead content lives in the prove-time table
     // driver (matches the second `create_mem_word_only_special_tables` call inside
@@ -491,8 +519,7 @@ fn build_unified_setup_direct(
     let table_driver = build_unified_table_driver::<BF>(binary_image);
 
     let trace_len = CircuitType::Unrolled(UnrolledCircuitType::Unified).get_domain_size();
-    let setup =
-        CpuGKRSetup::construct(&table_driver, &decoder_table, trace_len, &compiled_circuit);
+    let setup = CpuGKRSetup::construct(&table_driver, &decoder_table, trace_len, &compiled_circuit);
 
     let decoder_data: Vec<CSExecutorFamilyDecoderData> = decoder_table
         .iter()
