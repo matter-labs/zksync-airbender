@@ -660,4 +660,3 @@ fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
     let (gpu_proof, _proof_time_ms) = proof_job.finish().unwrap();
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
 }
-

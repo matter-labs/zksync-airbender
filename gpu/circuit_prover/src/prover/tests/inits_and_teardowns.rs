@@ -108,7 +108,10 @@ pub(super) fn alloc_pinned_vec_from_slice_for_test<T: Copy>(
 /// circuits).
 pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     compute_cpu_reference: bool,
-) -> (BasicUnrolledFixture, Option<GKRProof<BF, E4, DefaultTreeConstructor>>) {
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
     type CountersT = DelegationsAndFamiliesCounters;
 
     const TRACE_LEN_LOG2: usize = 24;

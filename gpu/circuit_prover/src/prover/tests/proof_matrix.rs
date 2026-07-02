@@ -53,7 +53,10 @@ pub(super) fn run_profile(fixture: BasicUnrolledFixture) {
     assert_gkr_proof_structure_for_test(&prof_proof, &fixture.prover_config.whir_schedule);
     drop(prof_proof);
     let peak = fixture.context.get_used_mem_peak();
-    eprintln!("peak device memory: {:.3} GiB", peak as f64 / (1u64 << 30) as f64);
+    eprintln!(
+        "peak device memory: {:.3} GiB",
+        peak as f64 / (1u64 << 30) as f64
+    );
     assert!(peak > baseline);
     assert_eq!(fixture.context.get_used_mem_current(), baseline);
 }
@@ -250,24 +253,23 @@ fn run_mul_div_profile_test() {
 // ---------------------------------------------------------------------------
 
 fn prepare_load_store_word_only_proof_fixture() -> BasicUnrolledProofFixture {
-    let (base, p) =
-        prepare_unrolled_memory_proof_fixture::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(
-            &[15, 1],
-            UnrolledMemoryCircuitType::LoadStoreWordOnly,
-            MEM_WORD_ONLY_LAYOUT_PATH,
-            mem_word_only_mod::witness_eval_fn,
-            |td, binary| {
-                cs::gkr_circuits::mem_word_only::mem_word_only_table_driver_fn(td);
-                for (t, tbl) in cs::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
-                    _,
-                    { common_constants::ROM_SECOND_WORD_BITS },
-                >(binary)
-                {
-                    td.add_table_with_content(t, tbl);
-                }
-            },
-            true,
-        );
+    let (base, p) = prepare_unrolled_memory_proof_fixture::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(
+        &[15, 1],
+        UnrolledMemoryCircuitType::LoadStoreWordOnly,
+        MEM_WORD_ONLY_LAYOUT_PATH,
+        mem_word_only_mod::witness_eval_fn,
+        |td, binary| {
+            cs::gkr_circuits::mem_word_only::mem_word_only_table_driver_fn(td);
+            for (t, tbl) in cs::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
+                _,
+                { common_constants::ROM_SECOND_WORD_BITS },
+            >(binary)
+            {
+                td.add_table_with_content(t, tbl);
+            }
+        },
+        true,
+    );
     BasicUnrolledProofFixture {
         base,
         expected_cpu_proof: p.unwrap(),
@@ -329,10 +331,11 @@ fn prepare_load_store_subword_only_proof_fixture() -> BasicUnrolledProofFixture 
             mem_subword_only_mod::witness_eval_fn,
             |td, binary| {
                 cs::gkr_circuits::mem_subword_only::mem_subword_only_table_driver_fn(td);
-                for (t, tbl) in cs::gkr_circuits::mem_subword_only::create_mem_subword_only_special_tables::<
-                    _,
-                    { common_constants::ROM_SECOND_WORD_BITS },
-                >(binary)
+                for (t, tbl) in
+                    cs::gkr_circuits::mem_subword_only::create_mem_subword_only_special_tables::<
+                        _,
+                        { common_constants::ROM_SECOND_WORD_BITS },
+                    >(binary)
                 {
                     td.add_table_with_content(t, tbl);
                 }
@@ -353,10 +356,11 @@ fn prepare_load_store_subword_only_profiling_fixture() -> BasicUnrolledFixture {
         mem_subword_only_mod::witness_eval_fn,
         |td, binary| {
             cs::gkr_circuits::mem_subword_only::mem_subword_only_table_driver_fn(td);
-            for (t, tbl) in cs::gkr_circuits::mem_subword_only::create_mem_subword_only_special_tables::<
-                _,
-                { common_constants::ROM_SECOND_WORD_BITS },
-            >(binary)
+            for (t, tbl) in
+                cs::gkr_circuits::mem_subword_only::create_mem_subword_only_special_tables::<
+                    _,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(binary)
             {
                 td.add_table_with_content(t, tbl);
             }
@@ -428,8 +432,7 @@ const BLAKE2_NUM_DELEGATION_CYCLES: usize = 1 << 20;
 
 const BLAKE2_G_FUNCTION_LAYOUT_PATH: &str =
     "cs/compiled_circuits/blake2_g_function_layout_gkr.json";
-const BLAKE2_G_FUNCTION_BINARY_PATH: &str =
-    "examples/multi_family_smoke/app_blake2_g_function.bin";
+const BLAKE2_G_FUNCTION_BINARY_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.bin";
 const BLAKE2_G_FUNCTION_TEXT_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.text";
 const BLAKE2_G_FUNCTION_ND: [u32; 2] = [50, 0xDEAD_BEEF];
 const BLAKE2_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
@@ -440,7 +443,7 @@ const BLAKE2_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 /// the fixture drives a REAL bigint delegation proof instead of the previous
 /// empty-buffer short-circuit.
 fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriver<BF>) {
-    let buffer = replay_delegation_trace_buffer_for_workload(
+    let buffer = replay_delegation_trace_buffer_for_workload::<_, FullUnsignedMachineDecoderConfig>(
         BIGINT_WITH_CONTROL_BINARY_PATH,
         BIGINT_WITH_CONTROL_TEXT_PATH,
         &[15, 1],
@@ -556,8 +559,8 @@ const KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH: &str =
 /// Replay the keccak_special5 delegation witness buffer from the keccak_f1600
 /// workload. Asserts `keccak_calls > 0` (an empty delegation produces no proof)
 /// BEFORE the caller reaches the expensive GPU build.
-fn replay_keccak_special5_delegation_buffer()
--> (Vec<KeccakSpecial5DelegationWitness>, TableDriver<BF>) {
+fn replay_keccak_special5_delegation_buffer(
+) -> (Vec<KeccakSpecial5DelegationWitness>, TableDriver<BF>) {
     let buffer = replay_delegation_trace_buffer(
         false,
         |counters| counters.keccak_calls,
@@ -677,9 +680,11 @@ use riscv_transpiler::witness::BlakeGFunctionDelegationDestinationHolder;
 /// Replay the blake2_with_extended_control (compression) delegation witness
 /// buffer from the `app_blake2_with_compression` workload. Asserts
 /// `blake_calls > 0` BEFORE the caller reaches the expensive GPU build.
-fn replay_blake2_with_compression_delegation_buffer()
--> (Vec<Blake2sRoundFunctionDelegationWitness>, TableDriver<BF>) {
-    let buffer = replay_delegation_trace_buffer_for_workload(
+fn replay_blake2_with_compression_delegation_buffer(
+) -> (Vec<Blake2sRoundFunctionDelegationWitness>, TableDriver<BF>) {
+    // multi_family_smoke is a reduced-machine program; since pr-332 it uses the
+    // special-opcode extension only the reduced decoder knows.
+    let buffer = replay_delegation_trace_buffer_for_workload::<_, ReducedMachineDecoderConfig>(
         BLAKE2_WITH_COMPRESSION_BINARY_PATH,
         BLAKE2_WITH_COMPRESSION_TEXT_PATH,
         &BLAKE2_WITH_COMPRESSION_ND,
@@ -707,7 +712,10 @@ fn replay_blake2_with_compression_delegation_buffer()
          (compression) delegation (blake_calls == 0); got an empty buffer — the workload \
          assumption is wrong",
     );
-    eprintln!("blake2_with_compression delegation: blake_calls = {}", buffer.len());
+    eprintln!(
+        "blake2_with_compression delegation: blake_calls = {}",
+        buffer.len()
+    );
 
     let mut table_driver = TableDriver::<BF>::new();
     cs::gkr_circuits::delegation::blake2_round_with_extended_control::blake2_with_extended_control_table_driver_fn(
@@ -795,9 +803,9 @@ fn run_blake2_with_compression_profile_test() {
 /// Replay the blake2_g_function delegation witness buffer from the
 /// `app_blake2_g_function` workload. Asserts `blake_g_function_calls > 0`
 /// BEFORE the caller reaches the expensive GPU build.
-fn replay_blake2_g_function_delegation_buffer()
--> (Vec<Blake2sGFunctionDelegationWitness>, TableDriver<BF>) {
-    let buffer = replay_delegation_trace_buffer_for_workload(
+fn replay_blake2_g_function_delegation_buffer(
+) -> (Vec<Blake2sGFunctionDelegationWitness>, TableDriver<BF>) {
+    let buffer = replay_delegation_trace_buffer_for_workload::<_, ReducedMachineDecoderConfig>(
         BLAKE2_G_FUNCTION_BINARY_PATH,
         BLAKE2_G_FUNCTION_TEXT_PATH,
         &BLAKE2_G_FUNCTION_ND,

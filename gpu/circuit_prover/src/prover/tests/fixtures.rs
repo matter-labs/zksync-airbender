@@ -18,15 +18,14 @@ pub(super) struct DelegationReplayFixture {
 /// apps for the two blake2 delegations). `replay_delegation_trace_buffer`
 /// (below) is the keccak_f1600-defaulted convenience wrapper that routes
 /// through this.
-pub(super) fn build_delegation_replay_fixture_for_workload(
+pub(super) fn build_delegation_replay_fixture_for_workload<OPT: DecodingOptions>(
     binary_path: &str,
     text_path: &str,
     non_determinism_reads: &[u32],
 ) -> DelegationReplayFixture {
     let binary = read_test_words(binary_path);
     let text_section = read_test_words(text_path);
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
+    let instructions: Vec<Instruction> = preprocess_bytecode::<OPT, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
     let cycles_bound = 1 << 20;
@@ -70,7 +69,7 @@ pub(super) fn replay_delegation_trace_buffer<W: Clone>(
         &mut [W],
     ),
 ) -> Vec<W> {
-    replay_delegation_trace_buffer_for_workload(
+    replay_delegation_trace_buffer_for_workload::<_, FullUnsignedMachineDecoderConfig>(
         "riscv_transpiler/examples/keccak_f1600/app.bin",
         "riscv_transpiler/examples/keccak_f1600/app.text",
         &[15, 1],
@@ -85,7 +84,7 @@ pub(super) fn replay_delegation_trace_buffer<W: Clone>(
 /// delegation replays against the program that actually calls it, rather than
 /// the hardcoded keccak_f1600 default.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn replay_delegation_trace_buffer_for_workload<W: Clone>(
+pub(super) fn replay_delegation_trace_buffer_for_workload<W: Clone, OPT: DecodingOptions>(
     binary_path: &str,
     text_path: &str,
     non_determinism_reads: &[u32],
@@ -104,8 +103,11 @@ pub(super) fn replay_delegation_trace_buffer_for_workload<W: Clone>(
         return Vec::new();
     }
 
-    let fixture =
-        build_delegation_replay_fixture_for_workload(binary_path, text_path, non_determinism_reads);
+    let fixture = build_delegation_replay_fixture_for_workload::<OPT>(
+        binary_path,
+        text_path,
+        non_determinism_reads,
+    );
     let num_calls =
         count_from_counters(&fixture.snapshotter.snapshots.last().unwrap().state.counters);
     let mut replay_state = fixture.snapshotter.initial_snapshot.state;

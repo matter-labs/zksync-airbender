@@ -63,8 +63,7 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
             cycles_bound,
             state,
         );
-    let mut non_determinism =
-        QuasiUARTSource::new_with_reads(non_determinism_reads.to_vec());
+    let mut non_determinism = QuasiUARTSource::new_with_reads(non_determinism_reads.to_vec());
 
     let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _, BF>(
         &mut state,
@@ -169,7 +168,10 @@ pub(super) fn finish_proof_fixture(
     witness_gen_data: Vec<CSExecutorFamilyDecoderData>,
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
-) -> (BasicUnrolledFixture, Option<GKRProof<BF, E4, DefaultTreeConstructor>>) {
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
     const TRACE_LEN_LOG2: usize = 24;
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
@@ -401,7 +403,10 @@ pub(super) fn prepare_unrolled_non_memory_proof_fixture<const FAMILY_IDX: u8>(
     ),
     build_table_driver: impl FnOnce(&mut TableDriver<BF>),
     compute_cpu_reference: bool,
-) -> (BasicUnrolledFixture, Option<GKRProof<BF, E4, DefaultTreeConstructor>>) {
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
     let ex = extract_non_memory_family::<FAMILY_IDX>(
         BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
         BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
@@ -470,8 +475,7 @@ pub(super) fn extract_memory_family<const FAMILY_IDX: u8>(
             cycles_bound,
             state,
         );
-    let mut non_determinism =
-        QuasiUARTSource::new_with_reads(non_determinism_reads.to_vec());
+    let mut non_determinism = QuasiUARTSource::new_with_reads(non_determinism_reads.to_vec());
 
     let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _, BF>(
         &mut state,
@@ -576,7 +580,10 @@ pub(super) fn finish_proof_fixture_memory(
     witness_gen_data: Vec<CSExecutorFamilyDecoderData>,
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
-) -> (BasicUnrolledFixture, Option<GKRProof<BF, E4, DefaultTreeConstructor>>) {
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
     const TRACE_LEN_LOG2: usize = 24;
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
@@ -801,7 +808,10 @@ pub(super) fn prepare_unrolled_memory_proof_fixture<const FAMILY_IDX: u8>(
     ),
     build_table_driver: impl FnOnce(&mut TableDriver<BF>, &[u32]),
     compute_cpu_reference: bool,
-) -> (BasicUnrolledFixture, Option<GKRProof<BF, E4, DefaultTreeConstructor>>) {
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
     let ex = extract_memory_family::<FAMILY_IDX>(
         BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
         BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,

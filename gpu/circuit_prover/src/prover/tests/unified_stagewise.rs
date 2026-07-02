@@ -16,7 +16,7 @@ fn run_unified_stagewise_parity_test() {
     let binary = read_test_words("examples/multi_family_smoke/app_blake2_g_function.bin");
     let text_section = read_test_words("examples/multi_family_smoke/app_blake2_g_function.text");
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
+        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
     let cycles_bound = 1 << 20;
@@ -43,8 +43,7 @@ fn run_unified_stagewise_parity_test() {
     let compiled_circuit: GKRCircuitArtifact<BF> =
         deserialize_json_for_test("cs/compiled_circuits/unified_reduced_machine_layout_gkr.json");
     let num_unified_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
-    let num_calls =
-        counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
+    let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
 
     let (full_trace, unified_table_driver, buffer, witness_gen_data, sparse_inits_and_teardowns) =
         build_unified_full_trace_for_test(
@@ -64,14 +63,7 @@ fn run_unified_stagewise_parity_test() {
 
     // Reconstruct the Option decoder table from the oracle (CpuGKRSetup::construct
     // takes &[Option<ExecutorFamilyDecoderData>] to preserve None fill semantics).
-    let option_decoder_table = {
-        let oracle = UnifiedRiscvCircuitOracle::new::<BF>(
-            &buffer[..],
-            &text_section,
-            common_constants::ROM_WORD_SIZE,
-        );
-        oracle.decoder_table_with_options().to_vec()
-    };
+    let option_decoder_table = build_unified_decoder_table(&text_section);
 
     // Build prover config + CPU setup + GPU setup (no commit needed for stage1 parity).
     let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::Unified);
@@ -119,22 +111,39 @@ fn run_unified_stagewise_parity_test() {
         .collect_vec();
     let d_decoder_table = upload_slice_to_device_for_test(&h_decoder_table, &context);
 
-    println!("DEBUG: decoder table uploaded, uploading trace buffer (num_calls={}, size_bytes={})", buffer.len(), buffer.len() * std::mem::size_of::<UnifiedOpcodeTracingDataWithTimestamp>());
+    println!(
+        "DEBUG: decoder table uploaded, uploading trace buffer (num_calls={}, size_bytes={})",
+        buffer.len(),
+        buffer.len() * std::mem::size_of::<UnifiedOpcodeTracingDataWithTimestamp>()
+    );
     // Build unified trace device.
     let trace_data = upload_slice_to_device_for_test(&buffer, &context);
     let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(
-        UnrolledUnifiedTraceDevice { tracing_data: trace_data },
+        UnrolledUnifiedTraceDevice {
+            tracing_data: trace_data,
+        },
     ));
 
-    println!("DEBUG: trace buffer uploaded, building i/t pages; sparse_sets={}, sparse_entries_total={}", sparse_inits_and_teardowns.len(), sparse_inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>());
+    println!(
+        "DEBUG: trace buffer uploaded, building i/t pages; sparse_sets={}, sparse_entries_total={}",
+        sparse_inits_and_teardowns.len(),
+        sparse_inits_and_teardowns
+            .iter()
+            .map(|v| v.len())
+            .sum::<usize>()
+    );
     // Build inits-and-teardowns device and transfer.
-    let (page_indices, values_packed, timestamps_packed) =
-        build_inits_and_teardowns_pages_for_test(
-            &sparse_inits_and_teardowns,
-            TRACE_LEN_LOG2 as u32,
-            num_unified_teardown_sets as u32,
-        );
-    println!("DEBUG: i/t pages built: num_pages={}, values_bytes={}, timestamps_bytes={}", page_indices.len(), values_packed.len() * 4, timestamps_packed.len() * 8);
+    let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
+        &sparse_inits_and_teardowns,
+        TRACE_LEN_LOG2 as u32,
+        num_unified_teardown_sets as u32,
+    );
+    println!(
+        "DEBUG: i/t pages built: num_pages={}, values_bytes={}, timestamps_bytes={}",
+        page_indices.len(),
+        values_packed.len() * 4,
+        timestamps_packed.len() * 8
+    );
     let it_host = build_inits_and_teardowns_trace_host_for_test(
         &page_indices,
         &values_packed,
@@ -199,7 +208,11 @@ fn run_unified_stagewise_parity_test() {
             let gpu_col_dev = &gpu_hypercube[col * trace_len..(col + 1) * trace_len];
             let gpu_col = copy_device_slice_to_host(gpu_col_dev, &context);
             let cpu_col = &full_trace.column_major_memory_trace[col];
-            assert_eq!(&gpu_col[..], &cpu_col[..], "unified memory column {col} diverged");
+            assert_eq!(
+                &gpu_col[..],
+                &cpu_col[..],
+                "unified memory column {col} diverged"
+            );
         }
     }
 
@@ -210,7 +223,11 @@ fn run_unified_stagewise_parity_test() {
             let gpu_col_dev = &gpu_hypercube[col * trace_len..(col + 1) * trace_len];
             let gpu_col = copy_device_slice_to_host(gpu_col_dev, &context);
             let cpu_col = &full_trace.column_major_witness_trace[col];
-            assert_eq!(&gpu_col[..], &cpu_col[..], "unified witness column {col} diverged");
+            assert_eq!(
+                &gpu_col[..],
+                &cpu_col[..],
+                "unified witness column {col} diverged"
+            );
         }
     }
 
@@ -299,7 +316,11 @@ fn run_unified_stagewise_parity_test() {
 
     // Upload lookup challenges for schedule_forward_setup.
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
-    let lookup_challenges = [lookup_alpha, lookup_additive_part, constraints_batch_challenge];
+    let lookup_challenges = [
+        lookup_alpha,
+        lookup_additive_part,
+        constraints_batch_challenge,
+    ];
     unsafe {
         lookup_challenges_host
             .get_mut_accessor()
