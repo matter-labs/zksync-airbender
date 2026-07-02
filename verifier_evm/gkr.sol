@@ -416,35 +416,9 @@ contract GKRVerifier {
             next_ptr := add(ptr, GKR_INIT_BYTES)
         }
 
-        function sumcheck_round_dual(ptr, claim) -> next_ptr, next_claim {
-            // TODO: the two mods can be batched into one mod + maybe a sub with const*P
-            let w0 := calldataload(ptr)
-            let w1 := calldataload(add(ptr, 32))
-            let c0 := shr(128, w0)
-            let c1 := and(w0, MASK)
-            let c2 := shr(128, w1)
-            let c3 := and(w1, MASK)
-            let g0g1 := add(add(add(add(c0, c0), c1), c2), c3)
-            // r drawn before the claim check on purpose — optimal for the packed dual
-            // family on solc (plain non-packed is the opposite; see HEURISTICS.md).
-            let r := transcript_4to1_dual(w0, w1)
-            if mod(sub(add(claim, mul(6, P)), g0g1), P) { revert(0, 0) }
-            // NB: the 17P variant is more gas-efficient
-            // but it's risky to use until we have hand measured
-            // the max overflow possible in any given circuit
-            // for now, i leave it off. feel free to re-enable once measured
-            // if mod(sub(add(g0g1, mul(17, P)), claim), P) { revert(0, 0) }
-            next_claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
-            next_ptr := add(ptr, 64)
-        }
-
-        function sumcheck_compress_2pass(ptr, claim, alpha, rounds_skiplast) -> next_ptr, next_claim, next_alpha {
-            // START WITH LAYER: 2^4 poly -> 2^5 polys (last var skip)
-            // let rounds_skiplast := 3 // keep this const for now
-            let eq_scale := 1
-            // TODO: can offload alpha to memory bc it's used only in the end
-            for { let i := 0 } lt(i, rounds_skiplast) { i := add(i, 1) } {
-                // ptr, claim := sumcheck_round_dual(ptr, claim)
+        function sumcheck_rounds(ptr, claim, total_rounds) -> next_ptr, next_claim, eq_scale {
+            eq_scale := 1
+            for { let i := 0 } lt(i, total_rounds) { i := add(i, 1) } {
                 let w0 := calldataload(ptr)
                 let w1 := calldataload(add(ptr, 32))
                 let c0 := shr(128, w0)
@@ -462,6 +436,16 @@ contract GKRVerifier {
                 mstore(add(POINT_PTR, mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }
+            next_ptr := ptr
+            next_claim := claim
+        }
+
+        function sumcheck_compress_2pass(ptr, claim, alpha, rounds_skiplast) -> next_ptr, next_claim, next_alpha {
+            // START WITH LAYER: 2^4 poly -> 2^5 polys (last var skip)
+            // let rounds_skiplast := 3 // keep this const for now
+            // TODO: can offload alpha to memory bc it's used only in the end
+            let eq_scale
+            ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, rounds_skiplast)
 
             // POINT CHECK
             // TODO: this might need to be permuted in the last compression before circuit, due to prover shenanigans

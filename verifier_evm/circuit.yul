@@ -1,25 +1,8 @@
 function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // SUMCHECK ROUNDS
-    let eq_scale := 1
-    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
-        let w0 := calldataload(ptr)
-        let w1 := calldataload(add(ptr, 32))
-        let c0 := shr(128, w0)
-        let c1 := and(w0, MASK)
-        let c2 := shr(128, w1)
-        let c3 := and(w1, MASK)
-        let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
-        let r := transcript_4to1_dual(w0, w1) // before check is optimal
-        // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-        if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
-
-        claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
-        let z := mload(add(POINT_PTR, mul(i, 32)))
-        let zr := mulmod(z, r, P)
-        eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
-        mstore(add(POINT_PTR, mul(i, 32)), r)
-        ptr := add(ptr, 64)
-    }
+    let eq_scale
+    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+    ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
     let acc
@@ -51,55 +34,14 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
 
 
     // POINT CLAIMS BATCH (16 POINTS)
-    let points := 16
-    let is_odd := mod(points, 2)
-    if is_odd {
-        next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
-    }
-    next_alpha := transcript16to1(ptr)
-    let even_points := sub(points, is_odd)
-    let pairs := shr(1, even_points)
-    for { let pair := sub(pairs, 1) } lt(pair, pairs) { pair := sub(pair, 1) } {
-        let word := calldataload(add(ptr, mul(pair, 32)))
-        let el1 := and(MASK, word)
-        next_claim := add(mulmod(next_claim, next_alpha, P), el1)
-        let el0 := shr(128, word)
-        next_claim := add(mulmod(next_claim, next_alpha, P), el0)
-    }
-
-    next_ptr := add(ptr, mul(16, points))
-}
-
-function transcript16to1(ptr) -> alpha {
-    let input_bytes := mul(16, 16)
-    calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
-    let seed := keccak256(SEED_PTR, add(32, input_bytes))
-    mstore(SEED_PTR, seed)
-    alpha := shr(128, seed)
+    next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 16)
 }
 
 function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // SUMCHECK ROUNDS
-    let eq_scale := 1
-    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
-        let w0 := calldataload(ptr)
-        let w1 := calldataload(add(ptr, 32))
-        let c0 := shr(128, w0)
-        let c1 := and(w0, MASK)
-        let c2 := shr(128, w1)
-        let c3 := and(w1, MASK)
-        let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
-        let r := transcript_4to1_dual(w0, w1) // before check is optimal
-        // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-        if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
-
-        claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
-        let z := mload(add(POINT_PTR, mul(i, 32)))
-        let zr := mulmod(z, r, P)
-        eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
-        mstore(add(POINT_PTR, mul(i, 32)), r)
-        ptr := add(ptr, 64)
-    }
+    let eq_scale
+    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+    ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
     let acc
@@ -146,55 +88,14 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
 
 
     // POINT CLAIMS BATCH (25 POINTS)
-    let points := 25
-    let is_odd := mod(points, 2)
-    if is_odd {
-        next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
-    }
-    next_alpha := transcript25to1(ptr)
-    let even_points := sub(points, is_odd)
-    let pairs := shr(1, even_points)
-    for { let pair := sub(pairs, 1) } lt(pair, pairs) { pair := sub(pair, 1) } {
-        let word := calldataload(add(ptr, mul(pair, 32)))
-        let el1 := and(MASK, word)
-        next_claim := add(mulmod(next_claim, next_alpha, P), el1)
-        let el0 := shr(128, word)
-        next_claim := add(mulmod(next_claim, next_alpha, P), el0)
-    }
-
-    next_ptr := add(ptr, mul(16, points))
-}
-
-function transcript25to1(ptr) -> alpha {
-    let input_bytes := mul(25, 16)
-    calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
-    let seed := keccak256(SEED_PTR, add(32, input_bytes))
-    mstore(SEED_PTR, seed)
-    alpha := shr(128, seed)
+    next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 25)
 }
 
 function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // SUMCHECK ROUNDS
-    let eq_scale := 1
-    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
-        let w0 := calldataload(ptr)
-        let w1 := calldataload(add(ptr, 32))
-        let c0 := shr(128, w0)
-        let c1 := and(w0, MASK)
-        let c2 := shr(128, w1)
-        let c3 := and(w1, MASK)
-        let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
-        let r := transcript_4to1_dual(w0, w1) // before check is optimal
-        // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-        if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
-
-        claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
-        let z := mload(add(POINT_PTR, mul(i, 32)))
-        let zr := mulmod(z, r, P)
-        eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
-        mstore(add(POINT_PTR, mul(i, 32)), r)
-        ptr := add(ptr, 64)
-    }
+    let eq_scale
+    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+    ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
     let acc
@@ -291,55 +192,14 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
 
 
     // POINT CLAIMS BATCH (72 POINTS)
-    let points := 72
-    let is_odd := mod(points, 2)
-    if is_odd {
-        next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
-    }
-    next_alpha := transcript72to1(ptr)
-    let even_points := sub(points, is_odd)
-    let pairs := shr(1, even_points)
-    for { let pair := sub(pairs, 1) } lt(pair, pairs) { pair := sub(pair, 1) } {
-        let word := calldataload(add(ptr, mul(pair, 32)))
-        let el1 := and(MASK, word)
-        next_claim := add(mulmod(next_claim, next_alpha, P), el1)
-        let el0 := shr(128, word)
-        next_claim := add(mulmod(next_claim, next_alpha, P), el0)
-    }
-
-    next_ptr := add(ptr, mul(16, points))
-}
-
-function transcript72to1(ptr) -> alpha {
-    let input_bytes := mul(72, 16)
-    calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
-    let seed := keccak256(SEED_PTR, add(32, input_bytes))
-    mstore(SEED_PTR, seed)
-    alpha := shr(128, seed)
+    next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 72)
 }
 
 function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // SUMCHECK ROUNDS
-    let eq_scale := 1
-    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
-        let w0 := calldataload(ptr)
-        let w1 := calldataload(add(ptr, 32))
-        let c0 := shr(128, w0)
-        let c1 := and(w0, MASK)
-        let c2 := shr(128, w1)
-        let c3 := and(w1, MASK)
-        let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
-        let r := transcript_4to1_dual(w0, w1) // before check is optimal
-        // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-        if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
-
-        claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
-        let z := mload(add(POINT_PTR, mul(i, 32)))
-        let zr := mulmod(z, r, P)
-        eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
-        mstore(add(POINT_PTR, mul(i, 32)), r)
-        ptr := add(ptr, 64)
-    }
+    let eq_scale
+    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+    ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
     let acc
@@ -1002,31 +862,58 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
 
 
     // POINT CLAIMS BATCH (113 POINTS)
-    let points := 113
+    next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 113)
+}
+
+function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {
+    // NB: need to inline GKR_CIRCUIT_LAYER_ROUNDS unfortunately
+    eq_scale := 1
+    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
+        let w0 := calldataload(ptr)
+        let w1 := calldataload(add(ptr, 32))
+        let c0 := shr(128, w0)
+        let c1 := and(w0, MASK)
+        let c2 := shr(128, w1)
+        let c3 := and(w1, MASK)
+        let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
+        let r := transcript_4to1_dual(w0, w1) // before-check draw is intentional; see HEURISTICS.md
+        // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
+        if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
+        if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
+
+        claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
+        let z := mload(add(POINT_PTR, mul(i, 32)))
+        let zr := mulmod(z, r, P)
+        eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
+        mstore(add(POINT_PTR, mul(i, 32)), r)
+        ptr := add(ptr, 64)
+    }
+    next_ptr := ptr
+    next_claim := claim
+}
+function transcriptNto1(ptr, input_elements) -> alpha {
+    let input_bytes := mul(input_elements, 16)
+    calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
+    let seed := keccak256(SEED_PTR, add(32, input_bytes))
+    mstore(SEED_PTR, seed)
+    alpha := shr(128, seed)
+}
+function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha {
     let is_odd := mod(points, 2)
     if is_odd {
         next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
     }
-    next_alpha := transcript113to1(ptr)
+    next_alpha := transcriptNto1(ptr, points)
     let even_points := sub(points, is_odd)
     let pairs := shr(1, even_points)
     for { let pair := sub(pairs, 1) } lt(pair, pairs) { pair := sub(pair, 1) } {
         let word := calldataload(add(ptr, mul(pair, 32)))
         let el1 := and(MASK, word)
-        next_claim := add(mulmod(next_claim, next_alpha, P), el1)
         let el0 := shr(128, word)
+        next_claim := add(mulmod(next_claim, next_alpha, P), el1)
         next_claim := add(mulmod(next_claim, next_alpha, P), el0)
     }
-
     next_ptr := add(ptr, mul(16, points))
-}
-
-function transcript113to1(ptr) -> alpha {
-    let input_bytes := mul(113, 16)
-    calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
-    let seed := keccak256(SEED_PTR, add(32, input_bytes))
-    mstore(SEED_PTR, seed)
-    alpha := shr(128, seed)
 }
 
 function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {
