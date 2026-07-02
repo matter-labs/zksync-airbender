@@ -8,6 +8,16 @@ use crate::upstream::GKRAddress;
 
 // Scalar mirrors in `gpu/circuit_prover/native/witness/{common,trace}.cuh`.
 const _: () = assert!(crate::upstream::NON_DETERMINISM_CSR == 0x7c0);
+// `native/witness/tables.cuh` mirrors the upstream `TableType` enum by ordinal.
+// Guard the tail (last pre-existing entry + every entry after it) so an
+// upstream insertion that shifts ordinals fails `cargo check` instead of
+// silently mis-dispatching device lookups.
+const _: () = assert!(crate::upstream::TableType::Decoder as u16 == 46);
+const _: () = assert!(crate::upstream::TableType::XorRotate16 as u16 == 47);
+const _: () = assert!(crate::upstream::TableType::XorRotate12 as u16 == 48);
+const _: () = assert!(crate::upstream::TableType::XorRotate8 as u16 == 49);
+const _: () = assert!(crate::upstream::TableType::XorRotate7 as u16 == 50);
+const _: () = assert!(crate::upstream::TableType::DynamicPlaceholder as u16 == 51);
 const _: () = assert!(crate::upstream::REGISTER_SIZE == 2);
 const _: () = assert!(crate::upstream::NUM_TIMESTAMP_COLUMNS_FOR_RAM == 2);
 const _: () = assert!(crate::upstream::NUM_TIMESTAMP_DATA_LIMBS == 3);

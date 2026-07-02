@@ -54,6 +54,10 @@ enum TableType : u16 {
   LoadHalfwordRomRead,
   LoadByteRomRead,
   Decoder,
+  XorRotate16,
+  XorRotate12,
+  XorRotate8,
+  XorRotate7,
   DynamicPlaceholder,
 };
 
@@ -159,6 +163,10 @@ template <unsigned K, unsigned V> struct TableDriver {
     case TruncateShiftAmountAndRangeCheck8:
     case RangeCheck8x8:
     case AndNot:
+    case XorRotate16:
+    case XorRotate12:
+    case XorRotate8:
+    case XorRotate7:
       return index_for_keys<8, 0>(keys);
     case Xor9:
     case RangeCheck9x9:
