@@ -132,6 +132,12 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
         self.recipes_quadratic.push(recipe);
     }
 
+    // No gate emits a continuation `unified_linear` term: the materialize gate
+    // (its only former caller) now uses `push_c0_only_linear`, matching the CPU
+    // `evaluate_linear_term` which contributes to c0 only at rounds >= 1. The
+    // tier + its device descriptor are retained (kept in Rust↔CUDA lockstep) for
+    // potential future gates and to avoid a descriptor-layout churn.
+    #[allow(dead_code)]
     pub(in crate::prover::gkr::backward::flat) fn push_unified_linear(
         &mut self,
         source_idx: u32,

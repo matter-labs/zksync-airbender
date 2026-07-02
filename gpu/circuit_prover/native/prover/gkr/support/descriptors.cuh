@@ -46,12 +46,13 @@ template <typename E> struct gkr_ext_continuing_source {
   bool first_access;
 };
 
-// Raised from 128: unified circuit has 145 main-layer kernels (118 distinct
-// reads, within FLAT_ROUND0_MAX_SOURCES = 1280). 256 gives headroom.
+// Raised 128 -> 256 -> 1024. blake2_with_compression's largest main layer fuses
+// 547 kernels (Stage 4); 1024 gives ~2x headroom. Sizes no native array (a
+// capacity guard only).
 // MUST stay in lockstep with the Rust mirror in
 // src/prover/gkr/backward/kernels/shared.rs (asserted by the
 // gkr_backward_max_kernels_lockstep #[test]).
-static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 256;
+static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 1024;
 // Dim-reducing layers are keyed by OutputType: 2 pairwise records for
 // PermutationProduct, up to 3 lookup records, plus (unified circuit, PR #305)
 // 2 pairwise records for InitsAndTeardownsProduct = 7 records / 10 challenges.

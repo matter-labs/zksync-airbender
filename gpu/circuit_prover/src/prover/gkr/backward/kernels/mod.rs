@@ -15,13 +15,27 @@ pub(crate) use shared::*;
 use super::compact::{
     ab_gkr_main_round0_flat_compact_e4_kernel, ab_gkr_main_round0_flat_constant_compact_e4_kernel,
     ab_gkr_main_round1_flat_constant_compact_unified_compact_e4_kernel,
+    ab_gkr_main_round1_flat_devptr_compact_unified_compact_e4_kernel,
+    ab_gkr_main_round1_flat_devptr_terms_compact_unified_compact_e4_kernel,
     ab_gkr_main_round2_flat_constant_compact_unified_compact_e4_kernel,
+    ab_gkr_main_round2_flat_devptr_compact_unified_compact_e4_kernel,
+    ab_gkr_main_round2_flat_devptr_terms_compact_unified_compact_e4_kernel,
     ab_gkr_main_round3_flat_constant_explicit_unified_compact_e4_kernel,
-    ab_gkr_main_round3_flat_constant_unified_compact_e4_kernel, ab_gkr_round2_challenges_prelude,
+    ab_gkr_main_round3_flat_constant_unified_compact_e4_kernel,
+    ab_gkr_main_round3_flat_devptr_explicit_unified_compact_e4_kernel,
+    ab_gkr_main_round3_flat_devptr_terms_explicit_unified_compact_e4_kernel,
+    ab_gkr_main_round3_flat_devptr_terms_unified_compact_e4_kernel,
+    ab_gkr_main_round3_flat_devptr_unified_compact_e4_kernel, ab_gkr_round2_challenges_prelude,
     GpuGKRMainRound0FlatCompactSignature, GpuGKRMainRound0FlatConstantCompactSignature,
     GpuGKRMainRound1FlatConstantCompactUnifiedCompactSignature,
+    GpuGKRMainRound1FlatDevptrCompactUnifiedCompactSignature,
+    GpuGKRMainRound1FlatDevptrTermsCompactUnifiedCompactSignature,
     GpuGKRMainRound2FlatConstantCompactUnifiedCompactSignature,
-    GpuGKRMainRound3FlatConstantUnifiedCompactSignature, GpuGKRRound2ChallengesPreludeSignature,
+    GpuGKRMainRound2FlatDevptrCompactUnifiedCompactSignature,
+    GpuGKRMainRound2FlatDevptrTermsCompactUnifiedCompactSignature,
+    GpuGKRMainRound3FlatConstantUnifiedCompactSignature,
+    GpuGKRMainRound3FlatDevptrTermsUnifiedCompactSignature,
+    GpuGKRMainRound3FlatDevptrUnifiedCompactSignature, GpuGKRRound2ChallengesPreludeSignature,
 };
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -72,13 +86,30 @@ pub(crate) trait BackwardKernels: Copy + Sized {
     const MAIN_ROUND0_FLAT_CONSTANT_COMPACT: GpuGKRMainRound0FlatConstantCompactSignature<Self>;
     const MAIN_ROUND1_FLAT_CONSTANT_COMPACT_UNIFIED_COMPACT:
         GpuGKRMainRound1FlatConstantCompactUnifiedCompactSignature<Self>;
+    const MAIN_ROUND1_FLAT_DEVPTR_COMPACT_UNIFIED_COMPACT:
+        GpuGKRMainRound1FlatDevptrCompactUnifiedCompactSignature<Self>;
     const MAIN_ROUND2_FLAT_CONSTANT_COMPACT_UNIFIED_COMPACT:
         GpuGKRMainRound2FlatConstantCompactUnifiedCompactSignature<Self>;
+    const MAIN_ROUND2_FLAT_DEVPTR_COMPACT_UNIFIED_COMPACT:
+        GpuGKRMainRound2FlatDevptrCompactUnifiedCompactSignature<Self>;
     const ROUND2_CHALLENGES_PRELUDE: GpuGKRRound2ChallengesPreludeSignature<Self>;
     const MAIN_ROUND3_FLAT_CONSTANT_UNIFIED_COMPACT:
         GpuGKRMainRound3FlatConstantUnifiedCompactSignature<Self>;
     const MAIN_ROUND3_FLAT_CONSTANT_EXPLICIT_UNIFIED_COMPACT:
         GpuGKRMainRound3FlatConstantUnifiedCompactSignature<Self>;
+    const MAIN_ROUND3_FLAT_DEVPTR_UNIFIED_COMPACT:
+        GpuGKRMainRound3FlatDevptrUnifiedCompactSignature<Self>;
+    const MAIN_ROUND3_FLAT_DEVPTR_EXPLICIT_UNIFIED_COMPACT:
+        GpuGKRMainRound3FlatDevptrUnifiedCompactSignature<Self>;
+    // Device-pointer TERMS variants (Stage 3b): terms/tiles in device memory.
+    const MAIN_ROUND1_FLAT_DEVPTR_TERMS_COMPACT_UNIFIED_COMPACT:
+        GpuGKRMainRound1FlatDevptrTermsCompactUnifiedCompactSignature<Self>;
+    const MAIN_ROUND2_FLAT_DEVPTR_TERMS_COMPACT_UNIFIED_COMPACT:
+        GpuGKRMainRound2FlatDevptrTermsCompactUnifiedCompactSignature<Self>;
+    const MAIN_ROUND3_FLAT_DEVPTR_TERMS_UNIFIED_COMPACT:
+        GpuGKRMainRound3FlatDevptrTermsUnifiedCompactSignature<Self>;
+    const MAIN_ROUND3_FLAT_DEVPTR_TERMS_EXPLICIT_UNIFIED_COMPACT:
+        GpuGKRMainRound3FlatDevptrTermsUnifiedCompactSignature<Self>;
 }
 
 impl BackwardKernels for crate::primitives::field::E4 {
@@ -148,9 +179,15 @@ impl BackwardKernels for crate::primitives::field::E4 {
     const MAIN_ROUND1_FLAT_CONSTANT_COMPACT_UNIFIED_COMPACT:
         GpuGKRMainRound1FlatConstantCompactUnifiedCompactSignature<Self> =
         ab_gkr_main_round1_flat_constant_compact_unified_compact_e4_kernel;
+    const MAIN_ROUND1_FLAT_DEVPTR_COMPACT_UNIFIED_COMPACT:
+        GpuGKRMainRound1FlatDevptrCompactUnifiedCompactSignature<Self> =
+        ab_gkr_main_round1_flat_devptr_compact_unified_compact_e4_kernel;
     const MAIN_ROUND2_FLAT_CONSTANT_COMPACT_UNIFIED_COMPACT:
         GpuGKRMainRound2FlatConstantCompactUnifiedCompactSignature<Self> =
         ab_gkr_main_round2_flat_constant_compact_unified_compact_e4_kernel;
+    const MAIN_ROUND2_FLAT_DEVPTR_COMPACT_UNIFIED_COMPACT:
+        GpuGKRMainRound2FlatDevptrCompactUnifiedCompactSignature<Self> =
+        ab_gkr_main_round2_flat_devptr_compact_unified_compact_e4_kernel;
     const ROUND2_CHALLENGES_PRELUDE: GpuGKRRound2ChallengesPreludeSignature<Self> =
         ab_gkr_round2_challenges_prelude;
     const MAIN_ROUND3_FLAT_CONSTANT_UNIFIED_COMPACT:
@@ -159,6 +196,24 @@ impl BackwardKernels for crate::primitives::field::E4 {
     const MAIN_ROUND3_FLAT_CONSTANT_EXPLICIT_UNIFIED_COMPACT:
         GpuGKRMainRound3FlatConstantUnifiedCompactSignature<Self> =
         ab_gkr_main_round3_flat_constant_explicit_unified_compact_e4_kernel;
+    const MAIN_ROUND3_FLAT_DEVPTR_UNIFIED_COMPACT:
+        GpuGKRMainRound3FlatDevptrUnifiedCompactSignature<Self> =
+        ab_gkr_main_round3_flat_devptr_unified_compact_e4_kernel;
+    const MAIN_ROUND3_FLAT_DEVPTR_EXPLICIT_UNIFIED_COMPACT:
+        GpuGKRMainRound3FlatDevptrUnifiedCompactSignature<Self> =
+        ab_gkr_main_round3_flat_devptr_explicit_unified_compact_e4_kernel;
+    const MAIN_ROUND1_FLAT_DEVPTR_TERMS_COMPACT_UNIFIED_COMPACT:
+        GpuGKRMainRound1FlatDevptrTermsCompactUnifiedCompactSignature<Self> =
+        ab_gkr_main_round1_flat_devptr_terms_compact_unified_compact_e4_kernel;
+    const MAIN_ROUND2_FLAT_DEVPTR_TERMS_COMPACT_UNIFIED_COMPACT:
+        GpuGKRMainRound2FlatDevptrTermsCompactUnifiedCompactSignature<Self> =
+        ab_gkr_main_round2_flat_devptr_terms_compact_unified_compact_e4_kernel;
+    const MAIN_ROUND3_FLAT_DEVPTR_TERMS_UNIFIED_COMPACT:
+        GpuGKRMainRound3FlatDevptrTermsUnifiedCompactSignature<Self> =
+        ab_gkr_main_round3_flat_devptr_terms_unified_compact_e4_kernel;
+    const MAIN_ROUND3_FLAT_DEVPTR_TERMS_EXPLICIT_UNIFIED_COMPACT:
+        GpuGKRMainRound3FlatDevptrTermsUnifiedCompactSignature<Self> =
+        ab_gkr_main_round3_flat_devptr_terms_explicit_unified_compact_e4_kernel;
 }
 
 #[cfg(test)]

@@ -391,30 +391,25 @@ fn run_load_store_subword_only_profile_test() {
 // DELEGATION PROOF FIXTURES
 //
 // These drive a delegation circuit through the GPU `prove()` path. Each replays
-// from its OWN correct workload (Task 7): bigint from `examples/bigint_with_control`
+// from its OWN correct workload: bigint from `examples/bigint_with_control`
 // (issues one bigint call), keccak from keccak_f1600, and the two blake2 variants
 // from the `examples/multi_family_smoke` apps (nd `[50, 0xDEAD_BEEF]`, matching the
 // CPU unified orchestration test). All four build their fixture + CPU reference +
-// tracing host successfully — harness SETUP is sound.
+// tracing host, then prove on the GPU.
 //
-// VERIFIED GPU `prove()` results (2026-06-30, on a clean prover — no prover edits):
-//   * blake2_g_function  — ✅ PASS: GPU proof == CPU reference, byte-identical
-//                          (blake_g_function_calls = 80).
-//   * keccak_special5    — ❌ prove() panics: flat round 0 has 2130 coefficients,
-//                          exceeds the `__constant__` limit of 1024 (state.rs:257).
-//   * bigint (BigIntWithControl) — ❌ prove() panics: flat round 0 has 2599
-//                          coefficients > `__constant__` limit 1024 (state.rs:257).
-//   * blake2_with_compression (blake2_with_extended_control) — ❌ prove() panics:
-//                          547 kernels/layer > GKR_BACKWARD_MAX_KERNELS_PER_LAYER
-//                          256 (state.rs:93); blake_calls = 10.
+// GPU `prove()` results — all byte-identical to the CPU reference (validated
+// 2026-07-02 via the full proof_parity matrix + multi_schedule):
+//   * blake2_g_function          — ✅ byte-exact (blake_g_function_calls = 80).
+//   * keccak_special5            — ✅ byte-exact.
+//   * bigint (BigIntWithControl) — ✅ byte-exact.
+//   * blake2_with_compression    — ✅ byte-exact (blake_calls = 10).
 //
-// The three ❌ are real GPU-prover CAPACITY limits in the fused flat backward path
-// (same family as the no_caches inline-descriptor limit), NOT harness bugs — setup
-// completes and only `prove()` hits the ceiling. All four tests are kept `#[ignore]`d
-// (heavy GPU). Do NOT modify the prover to force the failing three green — that is a
-// separate prover-capacity investigation, not test work. blake2_g_function proves the
-// generic `prepare_delegation_proof_fixture` builder (unified_fixtures_helpers.rs) is
-// sound end-to-end.
+// keccak / bigint / blake2_with_compression originally overflowed the fused flat
+// backward path's inline `__constant__`/`__grid_constant__` capacity caps. They
+// are unblocked on this branch by the dual-path device-memory fallback + capacity
+// raises (coeff / terms / recipe device buffers, per-layer cap raises), plus the
+// GKR materialize-gate sumcheck-emit fix and the WHIR query-index transcript fix.
+// All four tests are kept `#[ignore]`d (heavy GPU) — run with `--ignored`.
 // ===========================================================================
 
 const BIGINT_DELEGATION_LAYOUT_PATH: &str =
@@ -524,9 +519,8 @@ fn prepare_bigint_profiling_fixture() -> BasicUnrolledFixture {
     fixture
 }
 
-/// bigint delegation proof_parity. VERIFIED: setup succeeds but `prove()` panics —
-/// flat round 0 has 2599 coefficients > `__constant__` limit 1024 (prover-capacity
-/// limit, see the section banner). `#[ignore]`d; do not fix the prover here.
+/// bigint delegation proof_parity: GPU proof == CPU reference, byte-identical.
+/// `#[ignore]`d as a heavy GPU test — run with `--ignored`.
 #[test]
 #[serial]
 #[ignore]
@@ -549,12 +543,11 @@ fn run_bigint_profile_test() {
 }
 
 // ---------------------------------------------------------------------------
-// keccak_special5 delegation fixture wrappers + test functions — DEFERRED
+// keccak_special5 delegation fixture wrappers + test functions
 //
-// keccak_f1600 DOES exercise the keccak delegation (`keccak_calls > 0`), so the
-// fixture builds, but the GPU delegation proof is NOT verified bit-equal to the
-// CPU reference (a backward-sumcheck parity divergence was observed during
-// development). Kept `#[ignore]`d and deferred — see the section banner above.
+// keccak_f1600 exercises the keccak delegation (`keccak_calls > 0`); the GPU
+// delegation proof is verified byte-equal to the CPU reference — see the section
+// banner above.
 // ---------------------------------------------------------------------------
 
 const KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH: &str =
@@ -638,9 +631,8 @@ fn prepare_keccak_special5_profiling_fixture() -> BasicUnrolledFixture {
     fixture
 }
 
-/// keccak_special5 delegation proof_parity. VERIFIED: setup succeeds but `prove()`
-/// panics — flat round 0 has 2130 coefficients > `__constant__` limit 1024
-/// (prover-capacity limit, see the section banner). `#[ignore]`d; do not fix the prover.
+/// keccak_special5 delegation proof_parity: GPU proof == CPU reference,
+/// byte-identical. `#[ignore]`d as a heavy GPU test — run with `--ignored`.
 #[test]
 #[serial]
 #[ignore]
@@ -663,14 +655,14 @@ fn run_keccak_special5_profile_test() {
 }
 
 // ---------------------------------------------------------------------------
-// blake2_with_compression delegation fixture wrappers + test functions — DEFERRED
+// blake2_with_compression delegation fixture wrappers + test functions
 //
 // Replays from `examples/multi_family_smoke/app_blake2_with_compression` with
 // nd `[50, 0xDEAD_BEEF]` (the same program + inputs the CPU unified
 // orchestration test's `multi_family_smoke_blake_compression` config uses),
-// which DOES exercise the blake2 round-function (compression) delegation
-// (`blake_calls > 0`). GPU↔CPU proof parity has NOT been verified for this
-// delegation — see the section banner above. Kept `#[ignore]`d and deferred.
+// which exercises the blake2 round-function (compression) delegation
+// (`blake_calls > 0`). GPU↔CPU proof parity is verified byte-identical — see the
+// section banner above.
 // ---------------------------------------------------------------------------
 
 /// The oracle/witness types this delegation needs, imported directly (test-only
@@ -764,10 +756,9 @@ fn prepare_blake2_with_compression_profiling_fixture() -> BasicUnrolledFixture {
     fixture
 }
 
-/// blake2_with_compression (blake2_with_extended_control) delegation proof_parity.
-/// VERIFIED: setup succeeds but `prove()` panics — 547 kernels/layer >
-/// GKR_BACKWARD_MAX_KERNELS_PER_LAYER 256 (prover-capacity limit, section banner).
-/// `#[ignore]`d; do not fix the prover here.
+/// blake2_with_compression (blake2_with_extended_control) delegation proof_parity:
+/// GPU proof == CPU reference, byte-identical. `#[ignore]`d as a heavy GPU test —
+/// run with `--ignored`.
 #[test]
 #[serial]
 #[ignore]
@@ -790,16 +781,15 @@ fn run_blake2_with_compression_profile_test() {
 }
 
 // ---------------------------------------------------------------------------
-// blake2_g_function delegation fixture wrappers + test functions — DEFERRED
+// blake2_g_function delegation fixture wrappers + test functions
 //
 // Replays from `examples/multi_family_smoke/app_blake2_g_function` with nd
 // `[50, 0xDEAD_BEEF]` (the same program + inputs the CPU unified
 // orchestration test's `multi_family_smoke_blake_g_function` config uses,
 // and the default workload `prepare_unified_proof_fixture` already drives),
-// which DOES exercise the blake2 G-function delegation
-// (`blake_g_function_calls > 0`). VERIFIED ✅ PASS: GPU proof == CPU reference,
-// byte-identical (see the section banner). `#[ignore]`d only because it is a heavy
-// GPU test.
+// which exercises the blake2 G-function delegation
+// (`blake_g_function_calls > 0`). GPU proof == CPU reference, byte-identical
+// (see the section banner). `#[ignore]`d as a heavy GPU test — run with `--ignored`.
 // ---------------------------------------------------------------------------
 
 /// Replay the blake2_g_function delegation witness buffer from the

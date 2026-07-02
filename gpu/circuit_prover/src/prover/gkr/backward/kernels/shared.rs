@@ -11,9 +11,12 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
 
-/// Previous ceiling was 128; the unified circuit has 145 kernels in layer 0
-/// (118 distinct reads, well within `FLAT_ROUND0_MAX_SOURCES = 1280`).
-/// Raised to 256 to give headroom for future circuits.
+/// Previous ceilings were 128 (unified layer 0 has 145 kernels) then 256.
+/// Raised to 1024 for the blake2_with_compression delegation, whose largest
+/// main layer fuses 547 kernels (Stage 4). 1024 gives ~2x headroom and stays
+/// under the dim-reducing descriptor-size projection ceiling (~1712 before the
+/// projected struct would exceed the 32 KB kernel-arg limit; see
+/// `gkr_address_audit_helpers::compaction_sizes`).
 ///
 /// MUST stay in lockstep with the native mirror in
 /// `native/prover/gkr/support/descriptors.cuh` (`GKR_BACKWARD_MAX_KERNELS_PER_LAYER`).
@@ -21,7 +24,7 @@ use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
 /// is only a `<=` capacity assert on both sides), so nothing structural catches
 /// drift — the `gkr_backward_max_kernels_lockstep` test below pins the value to
 /// force a matching native edit.
-pub(crate) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 256;
+pub(crate) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 1024;
 /// Supported GKR trace-length ceiling. Backward folding uses one challenge per
 /// trace dimension, so a `2^24` trace has at most 24 folding steps.
 pub(crate) const GKR_BACKWARD_MAX_TRACE_LEN_LOG2: usize = 24;
@@ -258,6 +261,6 @@ mod cap_tests {
     // change one side you MUST change the other; this test fails loudly to force it.
     #[test]
     fn gkr_backward_max_kernels_lockstep() {
-        assert_eq!(GKR_BACKWARD_MAX_KERNELS_PER_LAYER, 256);
+        assert_eq!(GKR_BACKWARD_MAX_KERNELS_PER_LAYER, 1024);
     }
 }
