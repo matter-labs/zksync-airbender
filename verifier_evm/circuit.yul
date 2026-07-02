@@ -106,7 +106,7 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     acc := gate_copyinextensionfield(ptr, alpha, acc, 6)
     
     {  // LookupUnbalancedPairWithVectorInputs: [70]/[71] + 1/(δ + β⁰(0 + 1[40]) + β¹(0 + 1[41]) + β²(0 + 1[42]) + β³(0 + 1[43]) + β⁴(0 + 1[44]) + β⁵(0 + 1[45]) + β⁶(0 + 1[46]) + β⁷(0 + 1[47]) + β⁸(0 + 0) + β⁹(0 + 1[39])) = [21]/[22]
-        let den2 := add(mload(add(LOGUP_CHALLS_PTR, 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 45)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 46)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 47)))))), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 39))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 40)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 41)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 42)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 43)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 44)))))))) // for generic lookups we collect
+        let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 45)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 46)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 47)))))), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 39))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 40)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 41)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 42)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 43)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 44)))))))) // for generic lookups we collect
         let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 71)))), den2, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
@@ -115,8 +115,8 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromVectorInputs: 1/(δ + β⁰(0 + 1[22]) + β¹(0 + 1[23]) + β²(0 + 1[24]) + β³(0 + 1[25]) + β⁴(0 + 1[26]) + β⁵(0 + 1[27]) + β⁶(0 + 1[28]) + β⁷(0 + 1[29]) + β⁸(0 + 0) + β⁹(0 + 1[21])) + 1/(δ + β⁰(0 + 1[31]) + β¹(0 + 1[32]) + β²(0 + 1[33]) + β³(0 + 1[34]) + β⁴(0 + 1[35]) + β⁵(0 + 1[36]) + β⁶(0 + 1[37]) + β⁷(0 + 1[38]) + β⁸(0 + 0) + β⁹(0 + 1[30])) = [19]/[20]
-        let den1 := add(mload(add(LOGUP_CHALLS_PTR, 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 27)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 28)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29)))))), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 21))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 24)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 25)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 26)))))))) // for generic lookups we collect
-        let den2 := add(mload(add(LOGUP_CHALLS_PTR, 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 36)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 37)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 38)))))), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 30))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 31)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 32)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 33)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 34)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 35)))))))) // for generic lookups we collect
+        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 27)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 28)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29)))))), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 21))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 24)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 25)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 26)))))))) // for generic lookups we collect
+        let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 36)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 37)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 38)))))), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 30))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 31)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 32)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 33)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 34)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 35)))))))) // for generic lookups we collect
         let den_out := mulmod(den1, den2, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
@@ -125,8 +125,8 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromVectorInputs: 1/(δ + β⁰(0 + 1[9]) + β¹(0 + 1[10]) + β²(0 + 1[11]) + β³(0 + 0) + β⁴(0 + 0) + β⁵(0 + 0) + β⁶(0 + 0) + β⁷(0 + 0) + β⁸(0 + 0) + β⁹(0 + 1[8])) + 1/(δ + β⁰(0 + 1[13]) + β¹(0 + 1[14]) + β²(0 + 1[15]) + β³(0 + 1[16]) + β⁴(0 + 1[17]) + β⁵(0 + 1[18]) + β⁶(0 + 1[19]) + β⁷(0 + 1[20]) + β⁸(0 + 0) + β⁹(0 + 1[12])) = [17]/[18]
-        let den1 := add(mload(add(LOGUP_CHALLS_PTR, 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, 0), add(0, 0), add(0, 0), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 8))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 9)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 10)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 11)))))), add(0, 0), add(0, 0))) // for generic lookups we collect
-        let den2 := add(mload(add(LOGUP_CHALLS_PTR, 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 18)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 19)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 20)))))), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 12))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 13)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 14)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 15)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 16)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 17)))))))) // for generic lookups we collect
+        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, 0), add(0, 0), add(0, 0), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 8))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 9)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 10)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 11)))))), add(0, 0), add(0, 0))) // for generic lookups we collect
+        let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 18)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 19)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 20)))))), add(0, 0), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 12))))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 13)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 14)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 15)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 16)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 17)))))))) // for generic lookups we collect
         let den_out := mulmod(den1, den2, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
@@ -144,18 +144,18 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 65, 63, 66, 64)
     
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [67]/[68] + 1/(δ + [69]) = [11]/[12]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 68)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 69))))), P)
+        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 68)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 69))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 67)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 69))))), P), shr(128, calldataload(add(ptr, mul(16, 68)))))
+        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 67)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 69))))), P), shr(128, calldataload(add(ptr, mul(16, 68)))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [48]/[49] + 1/(δ + [7]) = [9]/[10]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 7))))), P)
+        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 7))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 7))))), P), shr(128, calldataload(add(ptr, mul(16, 49)))))
+        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 7))))), P), shr(128, calldataload(add(ptr, mul(16, 49)))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -166,10 +166,10 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 56, 54, 57, 55)
     
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [58]/[59] + 1/(δ + [60]) = [3]/[4]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 59)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 60))))), P)
+        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 59)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 60))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 60))))), P), shr(128, calldataload(add(ptr, mul(16, 59)))))
+        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 60))))), P), shr(128, calldataload(add(ptr, mul(16, 59)))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -205,19 +205,19 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     let acc
     {  // RangeCheck16Bits: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(0)
         let gate := gkr_virtual_poly_rangecheck(16)
-        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 0)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)), mod(gate, P))
     }
     {  // RangeCheckTimestamp: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(1)
         let gate := gkr_virtual_poly_rangecheck(19)
-        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 1)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)), mod(gate, P))
     }
     {  // InitsAndTeardownsLow: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = Cache(2)
         let gate := mul(4, gkr_virtual_poly_compose_vars(14, 0)) // u32 word-aligned
-        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 2)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)), mod(gate, P))
     }
     {  // InitsAndTeardownsHigh: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = Cache(3)
         let gate := gkr_virtual_poly_compose_vars(10, 14)
-        mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)), mod(gate, P))
     }
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1-[99] + [99](1[99])
         let gate := add(add(0, mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 99))))))), mulmod(shr(128, calldataload(add(ptr, mul(16, 99)))), mul(1, shr(128, calldataload(add(ptr, mul(16, 99))))), P))
@@ -552,8 +552,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupWithDensAndSetupExpressions: [21]/(δ + β⁰(0 + 1[22]) + β¹(0 + 1[23]) + β²(0 + 1[4]) + β³(0 + 1[38]) + β⁴(0 + 1[39]) + β⁵(0 + 1[40]) + β⁶(0 + 1[41]) + β⁷(0 + 1[42]) + β⁸(0 + 1[43] + 2[44] + 2^2[45] + 2^3[46] + 2^4[47] + 2^5[48] + 2^6[49] + 2^7[50] + 2^8[51] + 2^9[52] + 2^10[53] + 2^11[54] + 2^12[55] + 2^13[56] + 2^14[57] + 2^15[58] + 2^16[9] + 2^17[16]) + β⁹(46 + 0)) - [102]/(δ + β⁰[103] + β¹[104] + β²[105] + β³[106] + β⁴[107] + β⁵[108] + β⁶[109] + β⁷[110] + β⁸[111] + β⁹[112]) = [70]/[71]
-        let input_den := add(mload(add(LOGUP_CHALLS_PTR, 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 40)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 41)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 42)))))), add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 43))))), mul(2, shr(128, calldataload(add(ptr, mul(16, 44)))))), mul(4, shr(128, calldataload(add(ptr, mul(16, 45)))))), mul(8, shr(128, calldataload(add(ptr, mul(16, 46)))))), mul(16, shr(128, calldataload(add(ptr, mul(16, 47)))))), mul(32, shr(128, calldataload(add(ptr, mul(16, 48)))))), mul(64, shr(128, calldataload(add(ptr, mul(16, 49)))))), mul(128, shr(128, calldataload(add(ptr, mul(16, 50)))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 51)))))), mul(512, shr(128, calldataload(add(ptr, mul(16, 52)))))), mul(1024, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(2048, shr(128, calldataload(add(ptr, mul(16, 54)))))), mul(4096, shr(128, calldataload(add(ptr, mul(16, 55)))))), mul(8192, shr(128, calldataload(add(ptr, mul(16, 56)))))), mul(16384, shr(128, calldataload(add(ptr, mul(16, 57)))))), mul(32768, shr(128, calldataload(add(ptr, mul(16, 58)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 9)))))), mul(131072, shr(128, calldataload(add(ptr, mul(16, 16))))))), add(46, 0)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 4)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 38)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 39)))))))) // for generic lookups we collect
-        let setup_den := add(mload(add(LOGUP_CHALLS_PTR, 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, shr(128, calldataload(add(ptr, mul(16, 108)))), shr(128, calldataload(add(ptr, mul(16, 109)))), shr(128, calldataload(add(ptr, mul(16, 110)))), shr(128, calldataload(add(ptr, mul(16, 111)))), shr(128, calldataload(add(ptr, mul(16, 112))))), shr(128, calldataload(add(ptr, mul(16, 103)))), shr(128, calldataload(add(ptr, mul(16, 104)))), shr(128, calldataload(add(ptr, mul(16, 105)))), shr(128, calldataload(add(ptr, mul(16, 106)))), shr(128, calldataload(add(ptr, mul(16, 107)))))) // for generic lookups we collect
+        let input_den := add(mload(add(LOGUP_CHALLS_PTR(), 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 40)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 41)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 42)))))), add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mul(1, shr(128, calldataload(add(ptr, mul(16, 43))))), mul(2, shr(128, calldataload(add(ptr, mul(16, 44)))))), mul(4, shr(128, calldataload(add(ptr, mul(16, 45)))))), mul(8, shr(128, calldataload(add(ptr, mul(16, 46)))))), mul(16, shr(128, calldataload(add(ptr, mul(16, 47)))))), mul(32, shr(128, calldataload(add(ptr, mul(16, 48)))))), mul(64, shr(128, calldataload(add(ptr, mul(16, 49)))))), mul(128, shr(128, calldataload(add(ptr, mul(16, 50)))))), mul(256, shr(128, calldataload(add(ptr, mul(16, 51)))))), mul(512, shr(128, calldataload(add(ptr, mul(16, 52)))))), mul(1024, shr(128, calldataload(add(ptr, mul(16, 53)))))), mul(2048, shr(128, calldataload(add(ptr, mul(16, 54)))))), mul(4096, shr(128, calldataload(add(ptr, mul(16, 55)))))), mul(8192, shr(128, calldataload(add(ptr, mul(16, 56)))))), mul(16384, shr(128, calldataload(add(ptr, mul(16, 57)))))), mul(32768, shr(128, calldataload(add(ptr, mul(16, 58)))))), mul(65536, shr(128, calldataload(add(ptr, mul(16, 9)))))), mul(131072, shr(128, calldataload(add(ptr, mul(16, 16))))))), add(46, 0)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 22)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 23)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 4)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 38)))))), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 39)))))))) // for generic lookups we collect
+        let setup_den := add(mload(add(LOGUP_CHALLS_PTR(), 32)), gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, shr(128, calldataload(add(ptr, mul(16, 108)))), shr(128, calldataload(add(ptr, mul(16, 109)))), shr(128, calldataload(add(ptr, mul(16, 110)))), shr(128, calldataload(add(ptr, mul(16, 111)))), shr(128, calldataload(add(ptr, mul(16, 112))))), shr(128, calldataload(add(ptr, mul(16, 103)))), shr(128, calldataload(add(ptr, mul(16, 104)))), shr(128, calldataload(add(ptr, mul(16, 105)))), shr(128, calldataload(add(ptr, mul(16, 106)))), shr(128, calldataload(add(ptr, mul(16, 107)))))) // for generic lookups we collect
         let den_out := mulmod(input_den, setup_den, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
@@ -566,34 +566,34 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromBaseInputs: 1/(δ + 2^19 + 1-[25] + 1[6] + 1-[98]) + 1/(δ + -2 + 1-[24] + 1[12] + 2^19[99]) = [67]/[68]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 6)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 98))))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 2), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 12)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 99)))))))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 6)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 98))))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(sub(P, 2), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 12)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 99)))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 6)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 98))))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 2), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 12)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 99)))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 6)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 98))))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(sub(P, 2), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 12)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 99)))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromBaseInputs: 1/(δ + 2^19 + 1-[25] + 1[1] + 1-[97]) + 1/(δ + -1 + 1-[24] + 1[5] + 2^19[98]) = [65]/[66]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 1)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 97))))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 1), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 5)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 98)))))))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 1)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 97))))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(sub(P, 1), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 5)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 98)))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 1)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 97))))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(sub(P, 1), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 5)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 98)))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(524288, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 25)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 1)))))), mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 97))))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(sub(P, 1), add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 5)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 98)))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromBaseInputs: 1/(δ + 0 + 1[29]) + 1/(δ + 0 + 1-[24] + 1[0] + 2^19[97]) = [63]/[64]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 0)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 97)))))))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 0)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 97)))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 0)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 97)))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 29))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, add(add(mul(1, sub(mul(2, P), shr(128, calldataload(add(ptr, mul(16, 24)))))), mul(1, shr(128, calldataload(add(ptr, mul(16, 0)))))), mul(524288, shr(128, calldataload(add(ptr, mul(16, 97)))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [28]) - [101]/(δ + Cache(1)) = [61]/[62]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 28))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 1)))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 28))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 1)))), sub(P, mulmod(shr(128, calldataload(add(ptr, mul(16, 101)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 28))))), P)))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)))), sub(P, mulmod(shr(128, calldataload(add(ptr, mul(16, 101)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 28))))), P)))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -602,50 +602,50 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromBaseInputs: 1/(δ + 0 + 1[18]) + 1/(δ + 0 + 1[26]) = [58]/[59]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 18))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 26))))))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 18))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 26))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 18))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 26))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 18))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 26))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromBaseInputs: 1/(δ + 0 + 1[11]) + 1/(δ + 0 + 1[17]) = [56]/[57]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 11))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 17))))))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 11))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 17))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 11))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 17))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 11))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 17))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromBaseInputs: 1/(δ + 0 + 1[88]) + 1/(δ + 0 + 1[10]) = [54]/[55]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 88))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 10))))))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 88))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 10))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 88))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 10))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 88))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 10))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromBaseInputs: 1/(δ + 0 + 1[20]) + 1/(δ + 0 + 1[23]) = [52]/[53]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 20))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 23))))))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 20))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 23))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 20))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 23))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 20))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 23))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupPairFromBaseInputs: 1/(δ + 0 + 1[86]) + 1/(δ + 0 + 1[19]) = [50]/[51]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 86))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 19))))))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 86))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 19))))))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 86))))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 19))))))))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 86))))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), add(0, mul(1, shr(128, calldataload(add(ptr, mul(16, 19))))))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [85]) - [100]/(δ + Cache(0)) = [48]/[49]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 85))))), add(mload(add(LOGUP_CHALLS_PTR, 32)), mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 0)))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 85))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR, 32)), mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 0)))), sub(P, mulmod(shr(128, calldataload(add(ptr, mul(16, 100)))), add(mload(add(LOGUP_CHALLS_PTR, 32)), shr(128, calldataload(add(ptr, mul(16, 85))))), P)))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)))), sub(P, mulmod(shr(128, calldataload(add(ptr, mul(16, 100)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 85))))), P)))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -814,16 +814,16 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // InitsOrTeardownsInitialPair: (γ + 1 + αCache(2) + α²(Cache(3) + 0) + α³[32] + α⁴[33] + α⁵[30] + α⁶[31]) * (γ + 1 + αCache(2) + α²(Cache(3) + 1024) + α³[36] + α⁴[37] + α⁵[34] + α⁶[35]) = [6]
-        let shared := add(add(mload(add(MEMORY_CHALLS_PTR, mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR, mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 2))), P))
-        let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR, mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3))), 0), P), gkr_memrel_compress_high(shr(128, calldataload(add(ptr, mul(16, 32)))), shr(128, calldataload(add(ptr, mul(16, 33)))), shr(128, calldataload(add(ptr, mul(16, 30)))), shr(128, calldataload(add(ptr, mul(16, 31))))))) // for memrel we collect
-        let rhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR, mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3))), 1024), P), gkr_memrel_compress_high(shr(128, calldataload(add(ptr, mul(16, 36)))), shr(128, calldataload(add(ptr, mul(16, 37)))), shr(128, calldataload(add(ptr, mul(16, 34)))), shr(128, calldataload(add(ptr, mul(16, 35))))))) // for memrel we collect
+        let shared := add(add(mload(add(MEMORY_CHALLS_PTR(), mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2))), P))
+        let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3))), 0), P), gkr_memrel_compress_high(shr(128, calldataload(add(ptr, mul(16, 32)))), shr(128, calldataload(add(ptr, mul(16, 33)))), shr(128, calldataload(add(ptr, mul(16, 30)))), shr(128, calldataload(add(ptr, mul(16, 31))))))) // for memrel we collect
+        let rhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3))), 1024), P), gkr_memrel_compress_high(shr(128, calldataload(add(ptr, mul(16, 36)))), shr(128, calldataload(add(ptr, mul(16, 37)))), shr(128, calldataload(add(ptr, mul(16, 34)))), shr(128, calldataload(add(ptr, mul(16, 35))))))) // for memrel we collect
         let gate := mulmod(lhs, rhs, P)
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // InitsOrTeardownsInitialPair: (γ + 1 + αCache(2) + α²(Cache(3) + 0) + 0) * (γ + 1 + αCache(2) + α²(Cache(3) + 1024) + 0) = [5]
-        let shared := add(add(mload(add(MEMORY_CHALLS_PTR, mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR, mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 2))), P))
-        let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR, mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3))), 0), P), 0)) // for memrel we collect
-        let rhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR, mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, 3))), 1024), P), 0)) // for memrel we collect
+        let shared := add(add(mload(add(MEMORY_CHALLS_PTR(), mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2))), P))
+        let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3))), 0), P), 0)) // for memrel we collect
+        let rhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3))), 1024), P), 0)) // for memrel we collect
         let gate := mulmod(lhs, rhs, P)
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -882,10 +882,10 @@ function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {
         if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
 
         claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
-        let z := mload(add(POINT_PTR, mul(i, 32)))
+        let z := mload(add(POINT_PTR(), mul(i, 32)))
         let zr := mulmod(z, r, P)
         eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
-        mstore(add(POINT_PTR, mul(i, 32)), r)
+        mstore(add(POINT_PTR(), mul(i, 32)), r)
         ptr := add(ptr, 64)
     }
     next_ptr := ptr
@@ -893,9 +893,9 @@ function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {
 }
 function transcriptNto1(ptr, input_elements) -> alpha {
     let input_bytes := mul(input_elements, 16)
-    calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
-    let seed := keccak256(SEED_PTR, add(32, input_bytes))
-    mstore(SEED_PTR, seed)
+    calldatacopy(add(SEED_PTR(), 32), ptr, input_bytes)
+    let seed := keccak256(SEED_PTR(), add(32, input_bytes))
+    mstore(SEED_PTR(), seed)
     alpha := shr(128, seed)
 }
 function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha {
@@ -917,13 +917,13 @@ function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha 
 }
 
 function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {
-    compressed := add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space)
-    compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR), addr_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 32)), addr_high, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 64)), ts_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 96)), ts_high, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 128)), val_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 160)), val_high, P))
+    compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
+    compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
 }
 
 // Fold five generic lookup tuple columns into an existing Horner accumulator.
@@ -932,23 +932,23 @@ function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high
 // two five-column calls keeps each call boundary small while still supporting
 // arbitrary linrel_to_calldata_inner() output for every column.
 function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {
-    acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR), P), c4)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c3)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c2)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c1)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c0)
+    acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P), c4)
+    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c3)
+    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c2)
+    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c1)
+    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c0)
 }
 
 // function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {
-//     compressed := add(compressed, add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space))
-//     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR), addr_low, P))
-//     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 32)), addr_high, P))
+//     compressed := add(compressed, add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space))
+//     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
+//     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
 // }
 function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compressed {
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 64)), ts_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 96)), ts_high, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 128)), val_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 160)), val_high, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
 }
 
 function gkr_virtual_poly_compose_vars(len, skip) -> eval {
@@ -960,13 +960,13 @@ function gkr_virtual_poly_compose_vars(len, skip) -> eval {
     //     min := max
     // }
     for { let i := min } lt(i, max) { i := add(i, 1) } {
-        eval := add(mul(eval, 2), mload(add(POINT_PTR, mul(i, 32))))
+        eval := add(mul(eval, 2), mload(add(POINT_PTR(), mul(i, 32))))
     }
 }
 function gkr_virtual_poly_zero_vars(len) -> eval {
     eval := 1
     for { let i := 0 } lt(i, len) { i := add(i, 1) } {
-        eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR, mul(i, 32))))), P)
+        eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR(), mul(i, 32))))), P)
     }
 }
 function gkr_virtual_poly_rangecheck(width) -> eval {
@@ -977,7 +977,7 @@ function gate_calldataload(ptr, idx) -> load {
     load := shr(128, calldataload(add(ptr, mul(16, idx))))
 }
 function gate_mload(ptr, idx) -> load {
-    load := mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, idx)))
+    load := mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, idx)))
 }
 function pointcheck_update(acc, alpha, gate) -> next_acc {
     next_acc := add(mulmod(acc, alpha, P), gate)

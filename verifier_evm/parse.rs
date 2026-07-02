@@ -102,7 +102,7 @@ impl Yul {
         yul_format!("shr(128, calldataload(add(ptr, mul(16, {idx}))))")
     }
     fn mload(idx: &usize) -> Self {
-        yul_format!("mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})))")
+        yul_format!("mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, {idx})))")
     }
     fn calldataload_idx(&self) -> usize {
         let s = self.0.trim();
@@ -120,7 +120,7 @@ impl Yul {
     }
     fn mload_idx(&self) -> usize {
         let s = self.0.trim();
-        let prefix = "mload(add(GKR_CIRCUIT_CACHE_PTR, mul(32, ";
+        let prefix = "mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, ";
         let suffix = ")))";
         let idx = s
             .strip_prefix(prefix)
@@ -133,20 +133,20 @@ impl Yul {
         idx.parse().unwrap()
     }
     fn mstore(idx: &usize) -> Self {
-        yul_format!("mstore(add(GKR_CIRCUIT_CACHE_PTR, mul(32, {idx})), mod(gate, P))") // mod to prevent overflows with pointcheck const-cache multiplications
+        yul_format!("mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, {idx})), mod(gate, P))") // mod to prevent overflows with pointcheck const-cache multiplications
     }
     fn logup_gamma() -> Self {
-        yul_format!("mload(add(LOGUP_CHALLS_PTR, 32))")
+        yul_format!("mload(add(LOGUP_CHALLS_PTR(), 32))")
     }
     fn logup_alpha() -> Self {
-        yul_format!("mload(LOGUP_CHALLS_PTR)")
+        yul_format!("mload(LOGUP_CHALLS_PTR())")
     }
     fn memory_gamma() -> Self {
-        yul_format!("mload(add(MEMORY_CHALLS_PTR, mul(32, 6)))")
+        yul_format!("mload(add(MEMORY_CHALLS_PTR(), mul(32, 6)))")
     }
     fn memory_alpha(idx: usize) -> Self {
         match idx {
-            0..6 => yul_format!("mload(add(MEMORY_CHALLS_PTR, mul(32, {idx})))"),
+            0..6 => yul_format!("mload(add(MEMORY_CHALLS_PTR(), mul(32, {idx})))"),
             _ => unreachable!("we do not have memory linearisation challenge alpha_{idx}")
         }
     }
@@ -954,7 +954,7 @@ fn main() {
         let check = if DEBUG_ENABLE_DUMMY_CHECKS {
             yul_format!("
             let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
-            \tmstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
+            \tmstore(GKR_CIRCUIT_CACHE_PTR(), dummy_check)
             ")
         } else {
             yul_format!("
@@ -982,7 +982,7 @@ fn main() {
     let check = if DEBUG_ENABLE_DUMMY_CHECKS {
         yul_format!("
         let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
-        \t\tmstore(GKR_CIRCUIT_CACHE_PTR, dummy_check)
+        \t\tmstore(GKR_CIRCUIT_CACHE_PTR(), dummy_check)
         ")
     } else {
         yul_format!("
@@ -1008,10 +1008,10 @@ fn main() {
                 if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
                 {check:x}
                 claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
-                let z := mload(add(POINT_PTR, mul(i, 32)))
+                let z := mload(add(POINT_PTR(), mul(i, 32)))
                 let zr := mulmod(z, r, P)
                 eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
-                mstore(add(POINT_PTR, mul(i, 32)), r)
+                mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }}
             next_ptr := ptr
@@ -1019,9 +1019,9 @@ fn main() {
         }}
         function transcriptNto1(ptr, input_elements) -> alpha {{
             let input_bytes := mul(input_elements, 16)
-            calldatacopy(add(SEED_PTR, 32), ptr, input_bytes)
-            let seed := keccak256(SEED_PTR, add(32, input_bytes))
-            mstore(SEED_PTR, seed)
+            calldatacopy(add(SEED_PTR(), 32), ptr, input_bytes)
+            let seed := keccak256(SEED_PTR(), add(32, input_bytes))
+            mstore(SEED_PTR(), seed)
             alpha := shr(128, seed)
         }}
         function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha {{
@@ -1043,13 +1043,13 @@ fn main() {
         }}
 
         function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {{
-            compressed := add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space)
-            compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR), addr_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 32)), addr_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 64)), ts_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 96)), ts_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 128)), val_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 160)), val_high, P))
+            compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
+            compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
         }}
 
         // Fold five generic lookup tuple columns into an existing Horner accumulator.
@@ -1058,23 +1058,23 @@ fn main() {
         // two five-column calls keeps each call boundary small while still supporting
         // arbitrary linrel_to_calldata_inner() output for every column.
         function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {{
-            acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR), P), c4)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c3)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c2)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c1)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR), P), c0)
+            acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P), c4)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c3)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c2)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c1)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c0)
         }}
 
         // function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {{
-        //     compressed := add(compressed, add(mload(add(MEMORY_CHALLS_PTR, 192)), address_space))
-        //     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR), addr_low, P))
-        //     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 32)), addr_high, P))
+        //     compressed := add(compressed, add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space))
+        //     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
+        //     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
         // }}
         function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compressed {{
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 64)), ts_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 96)), ts_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 128)), val_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR, 160)), val_high, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
         }}
 
         function gkr_virtual_poly_compose_vars(len, skip) -> eval {{
@@ -1086,13 +1086,13 @@ fn main() {
             //     min := max
             // }}
             for {{ let i := min }} lt(i, max) {{ i := add(i, 1) }} {{
-                eval := add(mul(eval, 2), mload(add(POINT_PTR, mul(i, 32))))
+                eval := add(mul(eval, 2), mload(add(POINT_PTR(), mul(i, 32))))
             }}
         }}
         function gkr_virtual_poly_zero_vars(len) -> eval {{
             eval := 1
             for {{ let i := 0 }} lt(i, len) {{ i := add(i, 1) }} {{
-                eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR, mul(i, 32))))), P)
+                eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR(), mul(i, 32))))), P)
             }}
         }}
         function gkr_virtual_poly_rangecheck(width) -> eval {{

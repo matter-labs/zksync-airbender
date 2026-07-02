@@ -4,35 +4,34 @@ pragma solidity ^0.8.24;
 contract GKRVerifier {
     // ── Generic (used throughout) ───────────────────────────────────────────
     // HEAP ORDER: challenges, point, gas, seed, init/circuit data (overlapping seed+32)
-    uint256 constant MINIMUM_FREE_HEAP_PTR = 7488;
+    // MEMORY_CHALLS_PTR (7)
+    // LOGUP_CHALLS_PTR (2)
+    // POINT_PTR (24)
+    // GKR_INIT_GAS_PTR (1)
+    // GKR_MAIN_GAS_PTR (1)
+    // SEED_PTR (1)
+    // optional SEED_PTR + 32:
+    //    GKR_INIT/CIRCUIT 1 (1)
+    //    GKR_INIT/CIRCUIT 2 (1)
+    //    ..
+    uint256 constant MINIMUM_FREE_HEAP_PTR = 7588;
     uint256 constant P      = 0xffffffffffffffffffffffffffffff61; // 2^128 - 159
     uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits
     uint256 constant ROUNDS = 200;
-    uint256 constant SEED_PTR = 8608; // = GKR_MAIN_GAS_PTR[1]; [SEED_PTR, SEED_PTR+32..(max absorbed)*16]
 
     // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
     uint256 constant MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
-    uint256 constant MEMORY_CHALLS_PTR      = 7488; // = MINIMUM_FREE_HEAP_PTR[0]; 7 elems: 6 tuple-compression + 1 additive
-    uint256 constant LOGUP_CHALLS_PTR       = 7712; // = MEMORY_CHALLS_PTR[7]; 2 elems: 1 tuple-compression + 1 additive
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
     uint256 constant GKR_INIT_BYTES          = 2048; // 8 polys * 16 elems * 16 bytes
     uint256 constant GKR_INIT_POLY_BYTES     = 256;  // 16 elems * 16 bytes (literal; Yul rejects const exprs)
-    uint256 constant POINT_PTR               = 7776;    // = LOGUP_CHALLS_PTR[2]; z1..z4 / point batch at [0, 768), below the transcript region
-    uint256 constant GKR_INIT_GAS_PTR        = 8544; // = POINT_PTR[24]; stash gas() across init so Yul/solx spills can't clobber it
-    uint256 constant GKR_INIT_SCRATCH_PTR    = 8640; // = SEED_PTR[1]; fold-accumulator scratch slot (legacy eq-table name)
-    uint256 constant GKR_INIT_CLAIM_PTR      = 8672; // = SEED_PTR[2];
-    uint256 constant GKR_INIT_PTR            = 2048; // testing: hardcoded init pointer
 
     // ── GKR compression ───────────────────────────────────────────────────────
     uint256 constant GKR_COMPRESSION_POINTCHECK_POLY_BYTES = 64;  // 4 * 16
     uint256 constant GKR_COMPRESSION_POINTCHECK_BYTES      = 512; // 8 * 64
-    uint256 constant GKR_MAIN_GAS_PTR                      = 8576; // = GKR_INIT_GAS_PTR[1];
 
     // ── GKR circuit ───────────────────────────────────────────────────────────
     uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = 24;
-    uint256 constant GKR_CIRCUIT_ALPHA2_PTR   = 8640; // = SEED_PTR[1];
-    uint256 constant GKR_CIRCUIT_CACHE_PTR    = 8672; // = SEED_PTR[2]; shares the transcript absorb region
 
     fallback() external {
         // uint256 variant = VARIANT;
@@ -46,31 +45,62 @@ contract GKRVerifier {
         // with larger shifts. Hash challenges use the earlier 16 hash bytes
         // first: shr(128, seed), then and(seed, MASK).
 
+        function MEMORY_CHALLS_PTR() -> ptr {
+            ptr := MINIMUM_FREE_HEAP_PTR
+        }
+        function LOGUP_CHALLS_PTR() -> ptr {
+            ptr := add(MEMORY_CHALLS_PTR(), mul(32, 7))
+        }
+        function POINT_PTR() -> ptr {
+            ptr := add(LOGUP_CHALLS_PTR(), mul(32, 2))
+        }
+        function GKR_INIT_GAS_PTR() -> ptr {
+            ptr := add(POINT_PTR(), mul(32, GKR_CIRCUIT_LAYER_ROUNDS))
+        }
+        function GKR_MAIN_GAS_PTR() -> ptr {
+            ptr := add(GKR_INIT_GAS_PTR(), mul(32, 1))
+        }
+        function SEED_PTR() -> ptr {
+            ptr := add(GKR_MAIN_GAS_PTR(), mul(32, 1))
+        }
+        function GKR_INIT_SCRATCH_PTR() -> ptr {
+            ptr := add(SEED_PTR(), mul(32, 1))
+        }
+        function GKR_INIT_CLAIM_PTR() -> ptr {
+            ptr := add(SEED_PTR(), mul(32, 2))
+        }
+        function GKR_CIRCUIT_ALPHA2_PTR() -> ptr {
+            ptr := add(SEED_PTR(), mul(32, 1))
+        }
+        function GKR_CIRCUIT_CACHE_PTR() -> ptr {
+            ptr := add(SEED_PTR(), mul(32, 2))
+        }
+
         function transcript_4to1_dual(w0, w1) -> r {
             // put to memory 4 coeffs from w0, w1, after SEED (prev hash, FS chain)
-            mstore(add(SEED_PTR, 64), w1)
-            mstore(add(SEED_PTR, 32), w0)
-            let seed := keccak256(SEED_PTR, 96) // hash SEED + 4 coeffs to stack word
-            mstore(SEED_PTR, seed) // immediately dump SEED
+            mstore(add(SEED_PTR(), 64), w1)
+            mstore(add(SEED_PTR(), 32), w0)
+            let seed := keccak256(SEED_PTR(), 96) // hash SEED + 4 coeffs to stack word
+            mstore(SEED_PTR(), seed) // immediately dump SEED
             r := shr(128, seed)
         }
 
         // alpha is the batching challenge needed right after checking outputs
         function transcript128to5_once(ptr) -> z1, z2, z3, z4, alpha {
-            calldatacopy(add(SEED_PTR, 32), ptr, GKR_INIT_BYTES)
+            calldatacopy(add(SEED_PTR(), 32), ptr, GKR_INIT_BYTES)
 
-            let seed := keccak256(SEED_PTR, add(32, GKR_INIT_BYTES))
-            mstore(SEED_PTR, seed)
+            let seed := keccak256(SEED_PTR(), add(32, GKR_INIT_BYTES))
+            mstore(SEED_PTR(), seed)
             z1 := shr(128, seed)
             z2 := and(seed, MASK)
 
-            seed := keccak256(SEED_PTR, 32)
-            mstore(SEED_PTR, seed)
+            seed := keccak256(SEED_PTR(), 32)
+            mstore(SEED_PTR(), seed)
             z3 := shr(128, seed)
             z4 := and(seed, MASK)
 
-            seed := keccak256(SEED_PTR, 32)
-            mstore(SEED_PTR, seed)
+            seed := keccak256(SEED_PTR(), 32)
+            mstore(SEED_PTR(), seed)
             alpha := shr(128, seed)
         }
 
@@ -78,15 +108,15 @@ contract GKRVerifier {
 
         // alpha is the batching challenge needed right folding point claims
         function transcript32to3(ptr) -> z1, z2, alpha {
-            calldatacopy(add(SEED_PTR, 32), ptr, GKR_COMPRESSION_POINTCHECK_BYTES)
+            calldatacopy(add(SEED_PTR(), 32), ptr, GKR_COMPRESSION_POINTCHECK_BYTES)
 
-            let seed := keccak256(SEED_PTR, add(32, GKR_COMPRESSION_POINTCHECK_BYTES))
-            mstore(SEED_PTR, seed)
+            let seed := keccak256(SEED_PTR(), add(32, GKR_COMPRESSION_POINTCHECK_BYTES))
+            mstore(SEED_PTR(), seed)
             z1 := shr(128, seed)
             z2 := and(seed, MASK)
 
-            seed := keccak256(SEED_PTR, 32)
-            mstore(SEED_PTR, seed)
+            seed := keccak256(SEED_PTR(), 32)
+            mstore(SEED_PTR(), seed)
             alpha := shr(128, seed)
         }
 
@@ -94,33 +124,33 @@ contract GKRVerifier {
             // TODO: we are missing FINAL regs val/ts + FINAL pc/ts
             
             // FIRST: absorb mem caps -> get 7 mem challs
-            calldatacopy(add(SEED_PTR, 32), ptr, MERKLE_TREE_CAPS_BYTES)
-            let seed := keccak256(SEED_PTR, add(32, MERKLE_TREE_CAPS_BYTES))
-            mstore(SEED_PTR, seed)
-            mstore(MEMORY_CHALLS_PTR, shr(128, seed))
-            mstore(add(MEMORY_CHALLS_PTR, 32), and(seed, MASK))
+            calldatacopy(add(SEED_PTR(), 32), ptr, MERKLE_TREE_CAPS_BYTES)
+            let seed := keccak256(SEED_PTR(), add(32, MERKLE_TREE_CAPS_BYTES))
+            mstore(SEED_PTR(), seed)
+            mstore(MEMORY_CHALLS_PTR(), shr(128, seed))
+            mstore(add(MEMORY_CHALLS_PTR(), 32), and(seed, MASK))
 
-            seed := keccak256(SEED_PTR, 32)
-            mstore(SEED_PTR, seed)
-            mstore(add(MEMORY_CHALLS_PTR, 64), shr(128, seed))
-            mstore(add(MEMORY_CHALLS_PTR, 96), and(seed, MASK))
+            seed := keccak256(SEED_PTR(), 32)
+            mstore(SEED_PTR(), seed)
+            mstore(add(MEMORY_CHALLS_PTR(), 64), shr(128, seed))
+            mstore(add(MEMORY_CHALLS_PTR(), 96), and(seed, MASK))
 
-            seed := keccak256(SEED_PTR, 32)
-            mstore(SEED_PTR, seed)
-            mstore(add(MEMORY_CHALLS_PTR, 128), shr(128, seed))
-            mstore(add(MEMORY_CHALLS_PTR, 160), and(seed, MASK))
+            seed := keccak256(SEED_PTR(), 32)
+            mstore(SEED_PTR(), seed)
+            mstore(add(MEMORY_CHALLS_PTR(), 128), shr(128, seed))
+            mstore(add(MEMORY_CHALLS_PTR(), 160), and(seed, MASK))
 
-            seed := keccak256(SEED_PTR, 32)
-            mstore(SEED_PTR, seed)
-            mstore(add(MEMORY_CHALLS_PTR, 192), shr(128, seed))
+            seed := keccak256(SEED_PTR(), 32)
+            mstore(SEED_PTR(), seed)
+            mstore(add(MEMORY_CHALLS_PTR(), 192), shr(128, seed))
 
             // SECOND: absorb wit+setup caps -> get 2 logup challs
             ptr := add(ptr, MERKLE_TREE_CAPS_BYTES)
-            calldatacopy(add(SEED_PTR, 32), ptr, mul(2, MERKLE_TREE_CAPS_BYTES))
-            seed := keccak256(SEED_PTR, add(32, mul(2, MERKLE_TREE_CAPS_BYTES)))
-            mstore(SEED_PTR, seed)
-            mstore(LOGUP_CHALLS_PTR, shr(128, seed))
-            mstore(add(LOGUP_CHALLS_PTR, 32), and(seed, MASK))
+            calldatacopy(add(SEED_PTR(), 32), ptr, mul(2, MERKLE_TREE_CAPS_BYTES))
+            seed := keccak256(SEED_PTR(), add(32, mul(2, MERKLE_TREE_CAPS_BYTES)))
+            mstore(SEED_PTR(), seed)
+            mstore(LOGUP_CHALLS_PTR(), shr(128, seed))
+            mstore(add(LOGUP_CHALLS_PTR(), 32), and(seed, MASK))
 
             next_ptr := add(ptr, mul(2, MERKLE_TREE_CAPS_BYTES))
         }
@@ -133,7 +163,7 @@ contract GKRVerifier {
             // Same current READ+WRITE work as the open-coded even/odd path, but
             // factored into four quarter chunks under a loop.
 
-            mstore(GKR_INIT_CLAIM_PTR, claim)
+            mstore(GKR_INIT_CLAIM_PTR(), claim)
             for { let poly := 6 } gt(poly, 0) { poly := sub(poly, 2) } {
                 let num_acc
                 let den_acc := 1
@@ -177,7 +207,7 @@ contract GKRVerifier {
                     switch i
                     case 0 {
                         numfold0 := numfoldc
-                        mstore(GKR_INIT_SCRATCH_PTR, numfold0)
+                        mstore(GKR_INIT_SCRATCH_PTR(), numfold0)
                         denfold0 := denfoldc
                     }
                     case 1 {
@@ -197,7 +227,7 @@ contract GKRVerifier {
                 if mod(num_acc, P) { revert(0, 0) }
                 if iszero(den_acc) { revert(0, 0) }
                 // fold 0/1/2/3/4/5/6/7
-                numfold0 := mload(GKR_INIT_SCRATCH_PTR)
+                numfold0 := mload(GKR_INIT_SCRATCH_PTR())
                 numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P)), numfold0), P))
                 denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P)), denfold0), P))
                 // fold 8/9/10/11/12/13/14/15
@@ -207,10 +237,10 @@ contract GKRVerifier {
                 let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P)), numfold0), P))
                 let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P)), denfold0), P))
                 // batch
-                claim := mload(GKR_INIT_CLAIM_PTR)
+                claim := mload(GKR_INIT_CLAIM_PTR())
                 claim := add(mulmod(claim, alpha, P), den_claim)
                 claim := add(mulmod(claim, alpha, P), num_claim)
-                mstore(GKR_INIT_CLAIM_PTR, claim)
+                mstore(GKR_INIT_CLAIM_PTR(), claim)
             }
 
             let write_acc
@@ -238,7 +268,7 @@ contract GKRVerifier {
                     switch i
                     case 0 {
                         fold0 := foldc
-                        mstore(GKR_INIT_SCRATCH_PTR, fold0)
+                        mstore(GKR_INIT_SCRATCH_PTR(), fold0)
                     }
                     case 1 { fold1 := foldc }
                     case 2 { fold2 := foldc }
@@ -251,18 +281,18 @@ contract GKRVerifier {
                 }
                 write_acc := prod_acc
                 // fold 0/1/2/3/4/5/6/7
-                fold0 := mload(GKR_INIT_SCRATCH_PTR)
+                fold0 := mload(GKR_INIT_SCRATCH_PTR())
                 fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P)), fold0), P))
                 // fold 8/9/10/11/12/13/14/15
                 fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P)), fold2), P))
                 // fold 0/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15
                 let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P)), fold0), P))
                 // batch
-                claim := mload(GKR_INIT_CLAIM_PTR)
+                claim := mload(GKR_INIT_CLAIM_PTR())
                 claim := add(mulmod(claim, alpha, P), prod_claim)
-                mstore(GKR_INIT_CLAIM_PTR, claim)
+                mstore(GKR_INIT_CLAIM_PTR(), claim)
             }
-            claim := mload(GKR_INIT_CLAIM_PTR)
+            claim := mload(GKR_INIT_CLAIM_PTR())
         }
 
         function acceval_inlinefold_streamrevlooploop_evenodd_newunchecked(ptr, z1, z2, z3, z4, alpha) -> claim {
@@ -330,19 +360,19 @@ contract GKRVerifier {
                         let numfoldc := add(numfolda, mulmod(z3, sub(add(numfoldb, mul(3, P)), numfolda), P))
                         let denfoldc := add(denfolda, mulmod(z3, sub(add(denfoldb, mul(3, P)), denfolda), P))
                         switch i
-                        case 0 { numfold0 := numfoldc mstore(GKR_INIT_SCRATCH_PTR, numfold0) denfold0 := denfoldc }
+                        case 0 { numfold0 := numfoldc mstore(GKR_INIT_SCRATCH_PTR(), numfold0) denfold0 := denfoldc }
                         case 1 { numfold1 := numfoldc denfold1 := denfoldc }
                         case 2 { numfold2 := numfoldc denfold2 := denfoldc }
                         default { numfold3 := numfoldc denfold3 := denfoldc }
                     }
-                    numfold0 := mload(GKR_INIT_SCRATCH_PTR)
+                    numfold0 := mload(GKR_INIT_SCRATCH_PTR())
                     numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P)), numfold0), P))
                     denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P)), denfold0), P))
                     numfold1 := add(numfold2, mulmod(z2, sub(add(numfold3, mul(4, P)), numfold2), P))
                     denfold1 := add(denfold2, mulmod(z2, sub(add(denfold3, mul(4, P)), denfold2), P))
                     let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P)), numfold0), P))
                     let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P)), denfold0), P))
-                    let term_ptr := add(GKR_INIT_CLAIM_PTR, mul(sub(6, poly), 32))
+                    let term_ptr := add(GKR_INIT_CLAIM_PTR(), mul(sub(6, poly), 32))
                     mstore(term_ptr, den_claim)
                     mstore(add(term_ptr, 32), num_claim)
                 }
@@ -381,21 +411,21 @@ contract GKRVerifier {
                         let foldb := add(prod2, mulmod(z4, sub(add(prod3, mul(2, P)), prod2), P))
                         let foldc := add(folda, mulmod(z3, sub(add(foldb, mul(3, P)), folda), P))
                         switch i
-                        case 0 { fold0 := foldc mstore(GKR_INIT_SCRATCH_PTR, fold0) }
+                        case 0 { fold0 := foldc mstore(GKR_INIT_SCRATCH_PTR(), fold0) }
                         case 1 { fold1 := foldc }
                         case 2 { fold2 := foldc }
                         default { fold3 := foldc }
                     }
-                    fold0 := mload(GKR_INIT_SCRATCH_PTR)
+                    fold0 := mload(GKR_INIT_SCRATCH_PTR())
                     fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P)), fold0), P))
                     fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P)), fold2), P))
                     let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P)), fold0), P))
-                    mstore(add(GKR_INIT_CLAIM_PTR, sub(224, mul(poly, 32))), prod_claim)
+                    mstore(add(GKR_INIT_CLAIM_PTR(), sub(224, mul(poly, 32))), prod_claim)
                 }
             }
             claim := 0
             for { let off := 0 } lt(off, 256) { off := add(off, 32) } {
-                claim := add(mulmod(claim, alpha, P), mload(add(GKR_INIT_CLAIM_PTR, off)))
+                claim := add(mulmod(claim, alpha, P), mload(add(GKR_INIT_CLAIM_PTR(), off)))
             }
         }
 
@@ -405,10 +435,10 @@ contract GKRVerifier {
         function gkr_init_inlinefold(ptr) -> next_ptr, claim, alpha {
             let z1, z2, z3, z4
             z1, z2, z3, z4, alpha := transcript128to5_once(ptr)
-            mstore(POINT_PTR, z1)
-            mstore(add(POINT_PTR, 32), z2)
-            mstore(add(POINT_PTR, 64), z3)
-            mstore(add(POINT_PTR, 96), z4)
+            mstore(POINT_PTR(), z1)
+            mstore(add(POINT_PTR(), 32), z2)
+            mstore(add(POINT_PTR(), 64), z3)
+            mstore(add(POINT_PTR(), 96), z4)
 
             // claim := acceval_inlinefold_streamrevlooploop_evenodd(ptr, z1, z2, z3, z4, alpha)
             claim := acceval_inlinefold_streamrevlooploop_evenodd_newunchecked(ptr, z1, z2, z3, z4, alpha)
@@ -430,10 +460,10 @@ contract GKRVerifier {
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
                 if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
                 claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
-                let z := mload(add(POINT_PTR, mul(i, 32)))
+                let z := mload(add(POINT_PTR(), mul(i, 32)))
                 let zr := mulmod(z, r, P)
                 eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
-                mstore(add(POINT_PTR, mul(i, 32)), r)
+                mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }
             next_ptr := ptr
@@ -507,7 +537,7 @@ contract GKRVerifier {
                 acc1 := add(mulmod(acc1, alpha, P), contribution)
             }
             let diff := add(acc1, sub(mul(2, P), acc0))
-            let z_last := mload(add(POINT_PTR, mul(rounds_skiplast, 32)))
+            let z_last := mload(add(POINT_PTR(), mul(rounds_skiplast, 32)))
             let rhs_scaled := mulmod(add(acc0, mulmod(z_last, diff, P)), eq_scale, P)
             // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
             if mod(add(claim, sub(P, rhs_scaled)), P) { revert(0, 0) }
@@ -517,8 +547,8 @@ contract GKRVerifier {
             // remember to reset ptr back..
             let r_last, r_pair // ie. new (zN, zN+1) points
             r_last, r_pair, next_alpha := transcript32to3(ptr)
-            mstore(add(POINT_PTR, mul(rounds_skiplast, 32)), r_last)
-            mstore(add(POINT_PTR, mul(add(rounds_skiplast, 1), 32)), r_pair)
+            mstore(add(POINT_PTR(), mul(rounds_skiplast, 32)), r_last)
+            mstore(add(POINT_PTR(), mul(add(rounds_skiplast, 1), 32)), r_pair)
             for { let poly := 7 } lt(poly, 8) { poly := sub(poly, 1) } {
                 let base := add(ptr, mul(poly, GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
 
@@ -571,21 +601,21 @@ contract GKRVerifier {
         // Yul stack spills can't corrupt it under high register pressure.
         let ptr, claim, alpha
         {
-            mstore(GKR_INIT_GAS_PTR, gas())
-            mstore(SEED_PTR, 0) // SEED Transcript, FINE as long as we don't draw without absorb!
+            mstore(GKR_INIT_GAS_PTR(), gas())
+            mstore(SEED_PTR(), 0) // SEED Transcript, FINE as long as we don't draw without absorb!
             ptr := transcript_init(0)
             ptr, claim, alpha := gkr_init_inlinefold(ptr)
-            let init_gas := sub(mload(GKR_INIT_GAS_PTR), gas())
-            mstore(GKR_INIT_GAS_PTR, init_gas)
+            let init_gas := sub(mload(GKR_INIT_GAS_PTR()), gas())
+            mstore(GKR_INIT_GAS_PTR(), init_gas)
         }
 
         // MAIN
         {
-            mstore(GKR_MAIN_GAS_PTR, gas())
+            mstore(GKR_MAIN_GAS_PTR(), gas())
             ptr, claim, alpha := gkr_compress(ptr, claim, alpha)
             ptr, claim, alpha := gkr_circuit(ptr, claim, alpha)
-            let compress_gas := sub(mload(GKR_MAIN_GAS_PTR), gas())
-            mstore(GKR_MAIN_GAS_PTR, compress_gas)
+            let compress_gas := sub(mload(GKR_MAIN_GAS_PTR()), gas())
+            mstore(GKR_MAIN_GAS_PTR(), compress_gas)
         }
 
         // DONE: Proof empty now
@@ -598,8 +628,8 @@ contract GKRVerifier {
 
         // anti-DCE
         mstore(0, claim)
-        mstore(32, mload(GKR_INIT_GAS_PTR))
-        mstore(64, mload(GKR_MAIN_GAS_PTR))
+        mstore(32, mload(GKR_INIT_GAS_PTR()))
+        mstore(64, mload(GKR_MAIN_GAS_PTR()))
         mstore(96, ptr)
         return(0, 128)
     } }
