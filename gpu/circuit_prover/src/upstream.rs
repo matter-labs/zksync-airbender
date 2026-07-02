@@ -216,4 +216,8 @@ pub(crate) use prover::definitions::FinalRegisterValue;
 // `trace_and_split` — Fiat-Shamir transform for permutation argument
 // -----------------------------------------------------------------------
 
-pub(crate) use trace_and_split::fs_transform_for_permutation_argument;
+// pr-332 split the FS transform per execution kind (`fs_transform_unrolled_…`
+// vs the new `fs_transform_unified_…` with per-circuit inits-and-teardowns top
+// bits). Keep the old local name for the unrolled flow; the unified flow must
+// migrate to `fs_transform_unified_for_permutation_argument` (protocol change).
+pub(crate) use trace_and_split::fs_transform_unrolled_for_permutation_argument as fs_transform_for_permutation_argument;
