@@ -203,19 +203,25 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
                 entry.clone()
             } else {
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiling bytecode");
-                // #317: JittedCode::preprocess_bytecode now takes pre-decoded
-                // `&[Instruction]`. Decode the raw text first with the machine's decoder
-                // config (PROTECT_AGAINST_MID_DELEGATION_JUMPS=true, matching the prover
-                // orchestration / verifier / transpiler callers).
+                // #317: JittedCode::preprocess_bytecode takes pre-decoded
+                // `&[Instruction]`. The JIT's delegation lowering recovers a
+                // delegated call's length by scanning the run of identical
+                // delegation instructions (jit/impls.rs, `Op::ZicsrDelegation`),
+                // so it requires the UNPROTECTED tape layout
+                // (`PROTECT_AGAINST_MID_DELEGATION_JUMPS=false`, which fills
+                // every slot of the run). The protected layout keeps only the
+                // run head and loses the 7-vs-10 blake round count, aborting
+                // the JIT on any delegation-bearing binary.
                 let instructions: Vec<Instruction> = match self.machine_type {
                     MachineType::Full => {
-                        preprocess_bytecode::<FullMachineDecoderConfig, true>(&text_section)
+                        preprocess_bytecode::<FullMachineDecoderConfig, false>(&text_section)
                     }
-                    MachineType::FullUnsigned => {
-                        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section)
-                    }
+                    MachineType::FullUnsigned => preprocess_bytecode::<
+                        FullUnsignedMachineDecoderConfig,
+                        false,
+                    >(&text_section),
                     MachineType::Reduced => {
-                        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section)
+                        preprocess_bytecode::<ReducedMachineDecoderConfig, false>(&text_section)
                     }
                 };
                 let jitted_code = JittedCode::preprocess_bytecode(&instructions, cycles_bound);
