@@ -26,6 +26,45 @@ const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 
+/// pr-332 removed `UnifiedRiscvCircuitOracle::new` (the oracle is now a plain
+/// borrow of an externally built decoder table). Derive the unified decoder
+/// table the way the production setups path does
+/// (`unified_reduced_machine_circuit_setup`): `UnifiedReducedMachineDecoder`
+/// over `ReducedMachineDecoderConfig` with the 5 supported CSRs. The table is
+/// a function of `text_section` only.
+pub(super) fn build_unified_decoder_table(
+    text_section: &[u32],
+) -> Vec<Option<cs::gkr_circuits::ExecutorFamilyDecoderData>> {
+    use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
+    use common_constants::{
+        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
+        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
+        NON_DETERMINISM_CSR,
+    };
+    use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
+    use cs::gkr_circuits::{process_binary_into_separate_tables_ext, OpcodeFamilyDecoder};
+    use riscv_transpiler::ir::ReducedMachineDecoderConfig;
+
+    let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> = vec![Box::new(UnifiedReducedMachineDecoder)];
+    const SUPPORTED_CSRS: &[u16] = &[
+        NON_DETERMINISM_CSR as u16,
+        BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+        BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+        KECCAK_SPECIAL5_CSR_REGISTER as u16,
+        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
+    ];
+    let mut preprocessing_data =
+        process_binary_into_separate_tables_ext::<BF, ReducedMachineDecoderConfig, true, Global>(
+            text_section,
+            &decoders,
+            common_constants::ROM_WORD_SIZE,
+            SUPPORTED_CSRS,
+        );
+    preprocessing_data
+        .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+        .expect("UnifiedReducedMachineDecoder must produce a family-128 entry")
+}
+
 /// Re-derives `prover::tests::gkr::orchestration::unified::build_unified_full_trace`
 /// against the **non-test** prover surface (the test module is gated behind
 /// `prover/test`, which circuit_prover does not enable), and also returns the
@@ -74,11 +113,11 @@ pub(super) fn build_unified_full_trace_for_test(
     assert_eq!(*expected_final_state, state);
     drop(replay_ram);
 
-    let oracle = UnifiedRiscvCircuitOracle::new::<BF>(
-        &buffer[..],
-        text_section,
-        common_constants::ROM_WORD_SIZE,
-    );
+    let option_decoder_table = build_unified_decoder_table(text_section);
+    let oracle = UnifiedRiscvCircuitOracle {
+        inner: &buffer[..],
+        decoder_table: &option_decoder_table,
+    };
     let unified_table_driver = build_unified_table_driver::<BF>(binary);
 
     // Sparse triples for the GPU page builder, AND the per-set column form for CPU witness gen.
@@ -120,8 +159,7 @@ pub(super) fn build_unified_full_trace_for_test(
             Global,
         );
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
-        let decoder_table = oracle.decoder_table_with_options().to_vec();
-        let witness_gen_data = decoder_table
+        let witness_gen_data = option_decoder_table
             .iter()
             .map(|entry| entry.unwrap_or_default())
             .collect_vec();
@@ -145,8 +183,7 @@ pub(super) fn build_unified_full_trace_for_test(
         Global,
         Global,
     );
-    let decoder_table = oracle.decoder_table_with_options().to_vec();
-    let witness_gen_data = decoder_table
+    let witness_gen_data = option_decoder_table
         .iter()
         .map(|entry| entry.unwrap_or_default())
         .collect_vec();
@@ -610,7 +647,8 @@ where
     // `whir_steps_schedule[0]` rows-per-leaf, matching `delegation_asserts.rs`'s
     // validated delegation setup. (`prove()` asserts this equals
     // `base_oracles_values_per_leaf.trailing_zeros()`.)
-    let setup = CpuGKRSetup::construct(&table_driver, &[], num_delegation_cycles, &compiled_circuit);
+    let setup =
+        CpuGKRSetup::construct(&table_driver, &[], num_delegation_cycles, &compiled_circuit);
     let device_block_size = 1usize << device_allocator_block_log_size;
     let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
@@ -635,7 +673,11 @@ where
     let decoder_table_host = make_decoder_table_host_for_test(&[]);
 
     // Per-coset memory tree caps from the CPU proof.
-    let combined_cap = &expected_cpu_proof.whir_proof.memory_commitment.commitment.cap;
+    let combined_cap = &expected_cpu_proof
+        .whir_proof
+        .memory_commitment
+        .commitment
+        .cap;
     let lde_factor = whir_schedule.base_lde_factor;
     let subcap_size = combined_cap.cap.len() / lde_factor;
     let memory_tree_caps = combined_cap
@@ -710,7 +752,8 @@ where
     let prover_config = delegation_prover_config(circuit_type);
     let whir_schedule = prover_config.whir_schedule.clone();
 
-    let setup = CpuGKRSetup::construct(&table_driver, &[], num_delegation_cycles, &compiled_circuit);
+    let setup =
+        CpuGKRSetup::construct(&table_driver, &[], num_delegation_cycles, &compiled_circuit);
     let device_block_size = 1usize << device_allocator_block_log_size;
     let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
@@ -815,8 +858,7 @@ fn prepare_unified_fixture(
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
-    let device_allocator_block_log_size =
-        default_fixture_device_allocator_block_log_size();
+    let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
@@ -825,7 +867,7 @@ fn prepare_unified_fixture(
     let text_section = read_test_words(UNIFIED_TEXT_PATH);
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
+        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
     let cycles_bound = 1 << 20;
@@ -851,8 +893,9 @@ fn prepare_unified_fixture(
     // Closure-assembly metadata, captured from the final VM state (counters
     // zeroed for the boundary state the replayer must reproduce).
     let counters = state.counters;
-    let unified_register_final_state: [(u32, (u32, u32)); 32] =
-        state.registers.map(|el| (el.value, split_timestamp(el.timestamp)));
+    let unified_register_final_state: [(u32, (u32, u32)); 32] = state
+        .registers
+        .map(|el| (el.value, split_timestamp(el.timestamp)));
     let unified_final_pc = state.pc;
     let unified_final_timestamp = state.timestamp;
     let mut expected_final_state = state;
@@ -903,14 +946,7 @@ fn prepare_unified_fixture(
     // The CPU setup needs the genuine `Option<..>` decoder table (the `None`
     // rows encode the `MINUS_ONE` fill, which differs from `Some(default)`);
     // the GPU host below uses the unwrapped form + its own fill value.
-    let option_decoder_table = {
-        let oracle = UnifiedRiscvCircuitOracle::new::<BF>(
-            &buffer[..],
-            &text_section,
-            common_constants::ROM_WORD_SIZE,
-        );
-        oracle.decoder_table_with_options().to_vec()
-    };
+    let option_decoder_table = build_unified_decoder_table(&text_section);
     let setup = CpuGKRSetup::construct(
         &unified_table_driver,
         &option_decoder_table,
@@ -1015,8 +1051,9 @@ fn prepare_unified_fixture(
         } else {
             None
         };
-        let inits_and_teardowns =
-            Some(InitsAndTeardownsTransfer::new(inits_and_teardowns_host.clone(), &context).unwrap());
+        let inits_and_teardowns = Some(
+            InitsAndTeardownsTransfer::new(inits_and_teardowns_host.clone(), &context).unwrap(),
+        );
         let tracing_data =
             Some(TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap());
 

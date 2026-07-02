@@ -62,16 +62,18 @@ use itertools::Itertools;
 
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
+use riscv_transpiler::ir::DecodingOptions;
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
+use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters, RamWithRomRegion,
     ReplayBuffer, SimpleSnapshotter, SimpleTape, State, VM,
 };
+use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
-use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::{
     BigintDelegationDestinationHolder, BlakeDelegationDestinationHolder,
     KeccakDelegationDestinationHolder, MemDestinationHolder, MemoryOpcodeTracingDataWithTimestamp,
@@ -94,11 +96,9 @@ const BASIC_UNROLLED_ADD_SUB_NO_CACHES_LAYOUT_PATH: &str =
     "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json";
 const JUMP_BRANCH_SLT_LAYOUT_PATH: &str = "cs/compiled_circuits/jump_branch_slt_layout_gkr.json";
 const SHIFT_BINOP_LAYOUT_PATH: &str = "cs/compiled_circuits/shift_binop_layout_gkr.json";
-const UNSIGNED_MUL_DIV_LAYOUT_PATH: &str =
-    "cs/compiled_circuits/unsigned_mul_div_layout_gkr.json";
+const UNSIGNED_MUL_DIV_LAYOUT_PATH: &str = "cs/compiled_circuits/unsigned_mul_div_layout_gkr.json";
 const MEM_WORD_ONLY_LAYOUT_PATH: &str = "cs/compiled_circuits/mem_word_only_layout_gkr.json";
-const MEM_SUBWORD_ONLY_LAYOUT_PATH: &str =
-    "cs/compiled_circuits/mem_subword_only_layout_gkr.json";
+const MEM_SUBWORD_ONLY_LAYOUT_PATH: &str = "cs/compiled_circuits/mem_subword_only_layout_gkr.json";
 
 mod asserts;
 mod basic_unrolled_parity;
@@ -632,7 +632,8 @@ impl BasicUnrolledFixture {
         )?;
         let mem_after_prove = self.context.get_used_mem_current();
         assert_eq!(
-            mem_after_prove, mem_before_prove,
+            mem_after_prove,
+            mem_before_prove,
             "prove() must release every device allocation it makes: \
              before={mem_before_prove} after={mem_after_prove} \
              net_retained={}",

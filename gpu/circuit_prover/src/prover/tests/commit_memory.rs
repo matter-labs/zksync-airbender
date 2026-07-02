@@ -168,10 +168,12 @@ fn run_unified_commit_memory_matches_cpu_test() {
         )
         .unwrap(),
     );
-    let tracing_data = Some(TracingDataTransfer::new(base.tracing_data_host.clone(), context).unwrap());
+    let tracing_data =
+        Some(TracingDataTransfer::new(base.tracing_data_host.clone(), context).unwrap());
 
     let mut bundle =
-        GpuGKRCommitMemoryTransfer::new(decoder, inits_and_teardowns, tracing_data, context).unwrap();
+        GpuGKRCommitMemoryTransfer::new(decoder, inits_and_teardowns, tracing_data, context)
+            .unwrap();
     bundle.schedule(context).unwrap();
 
     let job = commit_memory_from_transfers(
