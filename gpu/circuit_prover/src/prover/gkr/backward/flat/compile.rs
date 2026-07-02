@@ -5,13 +5,22 @@ use super::super::kernels::GpuGKRMainLayerDeferredChallengeSource;
 use super::types::CoefficientRecipe;
 use crate::primitives::field::BF;
 use crate::prover::gkr::eval_recipes::{
-    GpuFlatRecipeEvalDesc, GpuPrefactorTerm, GpuRecipeHeader, FLAT_IMMEDIATE_MAX_MONOMIALS,
-    FLAT_IMMEDIATE_MAX_RECIPES, FLAT_RECIPE_MAX_HEADERS, FLAT_RECIPE_MAX_TERMS,
+    GpuFlatRecipeEvalDesc, GpuPrefactorTerm, GpuRecipeHeader, RecipeEvalHostArrays,
+    FLAT_IMMEDIATE_MAX_MONOMIALS, FLAT_IMMEDIATE_MAX_RECIPES, FLAT_RECIPE_MAX_HEADERS,
+    FLAT_RECIPE_MAX_TERMS,
 };
 use crate::prover::gkr::immediate_factors::ImmediateFactorInterner;
 use crate::upstream::Field;
 
 /// Compiled recipe buffer ready for device upload.
+///
+/// Dual-path (Stage 3c): when every table fits its inline cap, `desc` is a
+/// populated inline `GpuFlatRecipeEvalDesc` and `device_arrays` is `None`
+/// (the fast, byte-identical path passed by value as a `__grid_constant__`
+/// kernel arg). When any table overflows its cap (e.g. bigint's 3006 recipes
+/// vs the 2816-header cap), `desc` is left default-zero (unused) and
+/// `device_arrays` carries the host arrays for H2D upload into device buffers
+/// read by the `_devptr` eval-recipes kernels.
 #[allow(dead_code)]
 pub(crate) struct CompiledRecipeBuffers {
     pub(crate) desc: Box<GpuFlatRecipeEvalDesc>,
@@ -19,23 +28,24 @@ pub(crate) struct CompiledRecipeBuffers {
     pub(crate) num_terms: usize,
     pub(crate) num_immediate_recipes: usize,
     pub(crate) num_immediate_monomials: usize,
+    /// `Some` iff any table overflows its inline cap → device-pointer path.
+    pub(crate) device_arrays: Option<RecipeEvalHostArrays>,
 }
 
 /// Compile `CoefficientRecipe` entries into the device-side format.
 pub(crate) fn compile_recipes_for_device<E: Field + field::FieldExtension<BF>>(
     recipes: &[CoefficientRecipe<E>],
 ) -> CompiledRecipeBuffers {
-    assert!(
-        recipes.len() <= FLAT_RECIPE_MAX_HEADERS,
-        "flat recipe count {} exceeds cap {}",
-        recipes.len(),
-        FLAT_RECIPE_MAX_HEADERS
-    );
-    let mut desc = Box::<GpuFlatRecipeEvalDesc>::default();
-    let mut terms = Vec::new();
+    // Build the four tables as plain `Vec`s first. Whether they land in an
+    // inline `__grid_constant__` descriptor or in device buffers is decided
+    // afterwards from their sizes (Stage 3c dual path); the values are identical
+    // either way. The `terms_offset`/`immediate_idx` header fields are `u16`, so
+    // those bounds are enforced regardless of path (they cap the device form too).
+    let mut headers: Vec<GpuRecipeHeader> = Vec::with_capacity(recipes.len());
+    let mut terms: Vec<GpuPrefactorTerm> = Vec::new();
     let mut immediate_interner = ImmediateFactorInterner::new();
 
-    for (idx, recipe) in recipes.iter().enumerate() {
+    for recipe in recipes.iter() {
         assert!(
             recipe.batch_power <= u16::MAX as u32,
             "flat recipe batch power {} exceeds u16",
@@ -74,12 +84,6 @@ pub(crate) fn compile_recipes_for_device<E: Field + field::FieldExtension<BF>>(
                 });
             }
         }
-        assert!(
-            terms.len() <= FLAT_RECIPE_MAX_TERMS,
-            "flat recipe term count {} exceeds cap {}",
-            terms.len(),
-            FLAT_RECIPE_MAX_TERMS
-        );
 
         let immediate_recipe = if recipe.negate {
             recipe.immediate_recipe.negated()
@@ -88,37 +92,60 @@ pub(crate) fn compile_recipes_for_device<E: Field + field::FieldExtension<BF>>(
         };
         let immediate_idx = immediate_interner.intern(immediate_recipe);
 
-        desc.headers[idx] = GpuRecipeHeader {
+        headers.push(GpuRecipeHeader {
             batch_power: recipe.batch_power as u16,
             group_count_0: group_counts[0],
             group_count_1: group_counts[1],
             terms_offset: terms_offset as u16,
             immediate_idx,
-        };
+        });
     }
 
     let (immediate_headers, immediate_monomials) = immediate_interner.materialize();
-    assert!(
-        immediate_headers.len() <= FLAT_IMMEDIATE_MAX_RECIPES,
-        "flat immediate recipe count {} exceeds cap {}",
-        immediate_headers.len(),
-        FLAT_IMMEDIATE_MAX_RECIPES
-    );
-    assert!(
-        immediate_monomials.len() <= FLAT_IMMEDIATE_MAX_MONOMIALS,
-        "flat immediate monomial count {} exceeds cap {}",
-        immediate_monomials.len(),
-        FLAT_IMMEDIATE_MAX_MONOMIALS
-    );
-    desc.terms[..terms.len()].copy_from_slice(&terms);
-    desc.immediate_recipes[..immediate_headers.len()].copy_from_slice(&immediate_headers);
-    desc.immediate_monomials[..immediate_monomials.len()].copy_from_slice(&immediate_monomials);
+
+    let num_recipes = headers.len();
+    let num_terms = terms.len();
+    let num_immediate_recipes = immediate_headers.len();
+    let num_immediate_monomials = immediate_monomials.len();
+
+    // Any table exceeding its inline cap forces the device-pointer path for the
+    // whole descriptor. Individual per-table caps are what keep the inline
+    // `GpuFlatRecipeEvalDesc` under the 32 KB kernel-arg ceiling, so checking
+    // them individually is sufficient.
+    let use_device = num_recipes > FLAT_RECIPE_MAX_HEADERS
+        || num_terms > FLAT_RECIPE_MAX_TERMS
+        || num_immediate_recipes > FLAT_IMMEDIATE_MAX_RECIPES
+        || num_immediate_monomials > FLAT_IMMEDIATE_MAX_MONOMIALS;
+
+    let (desc, device_arrays) = if use_device {
+        // Device path: retain the host arrays for H2D upload; leave the inline
+        // descriptor default-zero (unused — the `_devptr` kernels ignore it).
+        (
+            Box::<GpuFlatRecipeEvalDesc>::default(),
+            Some(RecipeEvalHostArrays {
+                headers,
+                terms,
+                immediate_recipes: immediate_headers,
+                immediate_monomials,
+            }),
+        )
+    } else {
+        // Inline path: copy each table into the fixed-size descriptor arrays.
+        // Byte-identical to the pre-Stage-3c behaviour.
+        let mut desc = Box::<GpuFlatRecipeEvalDesc>::default();
+        desc.headers[..num_recipes].copy_from_slice(&headers);
+        desc.terms[..num_terms].copy_from_slice(&terms);
+        desc.immediate_recipes[..num_immediate_recipes].copy_from_slice(&immediate_headers);
+        desc.immediate_monomials[..num_immediate_monomials].copy_from_slice(&immediate_monomials);
+        (desc, None)
+    };
 
     CompiledRecipeBuffers {
         desc,
-        num_recipes: recipes.len(),
-        num_terms: terms.len(),
-        num_immediate_recipes: immediate_headers.len(),
-        num_immediate_monomials: immediate_monomials.len(),
+        num_recipes,
+        num_terms,
+        num_immediate_recipes,
+        num_immediate_monomials,
+        device_arrays,
     }
 }

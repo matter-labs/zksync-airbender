@@ -109,7 +109,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(
-            self.flat_recipe_desc.is_some(),
+            self.flat_recipe_desc.is_some() || self.flat_recipe_desc_device.is_some(),
             "flat round 0 recipe descriptor must be scheduled"
         );
         let plan_compact = self
@@ -144,7 +144,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(
-            self.flat_cont_recipe_desc.is_some(),
+            self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
         let sizes = self
@@ -155,17 +155,47 @@ where
             .flat_round1_unified_desc_compact
             .as_ref()
             .expect("flat round 1 compact desc must be built");
-        compact::launch_main_round1_unified(
-            compact_desc,
-            null(),
-            sizes.fold_stride,
-            sizes.next_layer_size,
-            self.round_scratch.eq_low_group.as_ptr(),
-            &self.eq_sizes,
-            self.round_scratch.accumulator.as_mut_ptr(),
-            acc_size as u32,
-            context,
-        )
+        if let Some((devptr, bufs)) = self.flat_round1_terms_device.as_ref() {
+            // Stage 3b device-terms path (terms/tiles + coeffs from device).
+            compact::launch_main_round1_unified_devptr_terms(
+                devptr,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                bufs.tables,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        } else if self.flat_cont_use_constant {
+            compact::launch_main_round1_unified(
+                compact_desc,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        } else {
+            compact::launch_main_round1_unified_devptr(
+                compact_desc,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        }
     }
 
     fn launch_round2_kernels_from_symbol(
@@ -174,7 +204,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(
-            self.flat_cont_recipe_desc.is_some(),
+            self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
         let sizes = self
@@ -185,17 +215,47 @@ where
             .flat_round2_unified_desc_compact
             .as_ref()
             .expect("flat round 2 compact desc must be built");
-        compact::launch_main_round2_unified(
-            compact_desc,
-            compact::get_main_layer_claim_point_device_ptr() as *const E,
-            sizes.fold_stride,
-            sizes.next_layer_size,
-            self.round_scratch.eq_low_group.as_ptr(),
-            &self.eq_sizes,
-            self.round_scratch.accumulator.as_mut_ptr(),
-            acc_size as u32,
-            context,
-        )
+        if let Some((devptr, bufs)) = self.flat_round2_terms_device.as_ref() {
+            // Stage 3b device-terms path (terms/tiles + coeffs from device).
+            compact::launch_main_round2_unified_devptr_terms(
+                devptr,
+                compact::get_main_layer_claim_point_device_ptr() as *const E,
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                bufs.tables,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        } else if self.flat_cont_use_constant {
+            compact::launch_main_round2_unified(
+                compact_desc,
+                compact::get_main_layer_claim_point_device_ptr() as *const E,
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        } else {
+            compact::launch_main_round2_unified_devptr(
+                compact_desc,
+                compact::get_main_layer_claim_point_device_ptr() as *const E,
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        }
     }
 
     fn launch_round3_kernels_from_symbol(
@@ -206,7 +266,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(
-            self.flat_cont_recipe_desc.is_some(),
+            self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
         let sizes = self
@@ -222,19 +282,58 @@ where
             .unwrap_or_else(|| {
                 panic!("flat continuation compact desc must be built for step {step}")
             });
-        compact::launch_main_round3_unified(
-            compact_desc,
-            null(),
-            sizes.fold_stride,
-            sizes.next_layer_size,
-            (step - 1) as u32,
-            self.round_scratch.eq_low_group.as_ptr(),
-            &self.eq_sizes,
-            self.round_scratch.accumulator.as_mut_ptr(),
-            acc_size as u32,
-            explicit_form,
-            context,
-        )
+        if let Some((_, devptr, bufs)) = self
+            .flat_continuation_terms_device
+            .iter()
+            .find(|(s, _, _)| *s == step)
+        {
+            // Stage 3b device-terms path (terms/tiles + coeffs from device).
+            return compact::launch_main_round3_unified_devptr_terms(
+                devptr,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                (step - 1) as u32,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                bufs.tables,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                explicit_form,
+                context,
+            );
+        }
+        if self.flat_cont_use_constant {
+            compact::launch_main_round3_unified(
+                compact_desc,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                (step - 1) as u32,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                explicit_form,
+                context,
+            )
+        } else {
+            compact::launch_main_round3_unified_devptr(
+                compact_desc,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                (step - 1) as u32,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                explicit_form,
+                context,
+            )
+        }
     }
 
     /// Warp-partial round-kernel launcher. `step == 0` uses the round-0
@@ -250,14 +349,17 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         debug_assert!(acc_size >= 32);
-        assert!(
-            self.flat_use_constant,
-            "warp-partial main-layer dispatch only supports the constant-coefficient path"
-        );
         let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
         let eq_low_ptr = self.round_scratch.eq_low_group.as_ptr() as *const E4;
 
         if step == 0 {
+            // Round 0's warp-partial kernel only has a constant-coefficient
+            // variant. A round-0 coefficient overflow is handled by the
+            // unfused device-buffer path (`launch_main_round0`), not here.
+            assert!(
+                self.flat_use_constant,
+                "warp-partial round-0 dispatch only supports the constant-coefficient path"
+            );
             let plan_compact = self
                 .flat_round0_template_compact
                 .as_ref()
@@ -282,16 +384,43 @@ where
                     .flat_round1_unified_desc_compact
                     .as_ref()
                     .expect("flat round 1 compact desc must be built");
-                super::super::kernels::launch_main_round1_unified_warp_partial(
-                    compact_desc,
-                    sizes.fold_stride,
-                    sizes.next_layer_size,
-                    eq_low_ptr,
-                    &self.eq_sizes,
-                    partials_ptr,
-                    acc_size as u32,
-                    context,
-                )
+                if let Some((devptr, bufs)) = self.flat_round1_terms_device.as_ref() {
+                    super::super::kernels::launch_main_round1_unified_warp_partial_devptr_terms(
+                        devptr,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        bufs.tables,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else if self.flat_cont_use_constant {
+                    super::super::kernels::launch_main_round1_unified_warp_partial(
+                        compact_desc,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else {
+                    super::super::kernels::launch_main_round1_unified_warp_partial_devptr(
+                        compact_desc,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                }
             }
             2 => {
                 let sizes = self
@@ -302,17 +431,46 @@ where
                     .flat_round2_unified_desc_compact
                     .as_ref()
                     .expect("flat round 2 compact desc must be built");
-                super::super::kernels::launch_main_round2_unified_warp_partial(
-                    compact_desc,
-                    super::super::compact::get_main_layer_claim_point_device_ptr() as *const E4,
-                    sizes.fold_stride,
-                    sizes.next_layer_size,
-                    eq_low_ptr,
-                    &self.eq_sizes,
-                    partials_ptr,
-                    acc_size as u32,
-                    context,
-                )
+                if let Some((devptr, bufs)) = self.flat_round2_terms_device.as_ref() {
+                    super::super::kernels::launch_main_round2_unified_warp_partial_devptr_terms(
+                        devptr,
+                        super::super::compact::get_main_layer_claim_point_device_ptr() as *const E4,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        bufs.tables,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else if self.flat_cont_use_constant {
+                    super::super::kernels::launch_main_round2_unified_warp_partial(
+                        compact_desc,
+                        super::super::compact::get_main_layer_claim_point_device_ptr() as *const E4,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else {
+                    super::super::kernels::launch_main_round2_unified_warp_partial_devptr(
+                        compact_desc,
+                        super::super::compact::get_main_layer_claim_point_device_ptr() as *const E4,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                }
             }
             step => {
                 let sizes = self
@@ -328,17 +486,51 @@ where
                     .unwrap_or_else(|| {
                         panic!("flat continuation compact desc must be built for step {step}")
                     });
-                super::super::kernels::launch_main_round3_unified_warp_partial(
-                    compact_desc,
-                    sizes.fold_stride,
-                    sizes.next_layer_size,
-                    (step - 1) as u32,
-                    eq_low_ptr,
-                    &self.eq_sizes,
-                    partials_ptr,
-                    acc_size as u32,
-                    context,
-                )
+                if let Some((_, devptr, bufs)) = self
+                    .flat_continuation_terms_device
+                    .iter()
+                    .find(|(s, _, _)| *s == step)
+                {
+                    return super::super::kernels::launch_main_round3_unified_warp_partial_devptr_terms(
+                        devptr,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        (step - 1) as u32,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        bufs.tables,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    );
+                }
+                if self.flat_cont_use_constant {
+                    super::super::kernels::launch_main_round3_unified_warp_partial(
+                        compact_desc,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        (step - 1) as u32,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else {
+                    super::super::kernels::launch_main_round3_unified_warp_partial_devptr(
+                        compact_desc,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        (step - 1) as u32,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                }
             }
         }
     }
@@ -446,10 +638,11 @@ where
         external_challenges_ptr: *const E,
         context: &ProverContext,
     ) -> CudaResult<Callbacks<'static>> {
-        let desc = match self.flat_recipe_desc {
-            Some(ref desc) => desc,
-            None => return Ok(Callbacks::new()),
-        };
+        // Either an inline descriptor or a device-pointer descriptor is present
+        // (mutually exclusive; Stage 3c). No recipes at all => nothing to launch.
+        if self.flat_recipe_desc.is_none() && self.flat_recipe_desc_device.is_none() {
+            return Ok(Callbacks::new());
+        }
         let stream = context.get_exec_stream();
 
         // SAFETY: `device_claim_point_in` outlives this scheduling call (held
@@ -475,16 +668,32 @@ where
                 .cast()
         };
 
-        crate::prover::gkr::eval_recipes::eval_recipes_e4(
-            batch_base_ptr,
-            lookup_mul_ptr,
-            lookup_add_ptr,
-            external_challenges_ptr,
-            desc,
-            self.flat_recipe_count,
-            coeff_out_ptr,
-            stream,
-        )?;
+        // Route to the device-pointer eval-recipes kernel when the recipe tables
+        // overflowed the inline caps (Stage 3c); otherwise use the inline desc.
+        if let Some(ref desc_device) = self.flat_recipe_desc_device {
+            crate::prover::gkr::eval_recipes::eval_recipes_e4_devptr(
+                batch_base_ptr,
+                lookup_mul_ptr,
+                lookup_add_ptr,
+                external_challenges_ptr,
+                &desc_device.desc,
+                self.flat_recipe_count,
+                coeff_out_ptr,
+                stream,
+            )?;
+        } else {
+            let desc = self.flat_recipe_desc.as_ref().unwrap();
+            crate::prover::gkr::eval_recipes::eval_recipes_e4(
+                batch_base_ptr,
+                lookup_mul_ptr,
+                lookup_add_ptr,
+                external_challenges_ptr,
+                desc,
+                self.flat_recipe_count,
+                coeff_out_ptr,
+                stream,
+            )?;
+        }
 
         Ok(Callbacks::new())
     }
@@ -501,23 +710,51 @@ where
         external_challenges_ptr: *const E4,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let desc = match self.flat_cont_recipe_desc {
-            Some(ref desc) => desc,
-            None => return Ok(()),
+        // Inline or device-pointer descriptor (mutually exclusive; Stage 3c). No
+        // continuation recipes at all => nothing to launch.
+        if self.flat_cont_recipe_desc.is_none() && self.flat_cont_recipe_desc_device.is_none() {
+            return Ok(());
+        }
+
+        // Route the continuation coefficients to the `__constant__` symbol when
+        // the count fits, else to the device buffer read by the devptr kernels.
+        let coeff_out_ptr: *mut E4 = if self.flat_cont_use_constant {
+            flat::get_constant_coefficients_device_ptr()
+        } else {
+            self.flat_cont_coeff_device_buf
+                .as_mut()
+                .unwrap()
+                .as_mut_ptr()
+                .cast()
         };
+        let stream = context.get_exec_stream();
 
-        let coeff_out_ptr: *mut E4 = flat::get_constant_coefficients_device_ptr();
-
-        flat::eval_continuation_recipes_e4(
-            batch_base_ptr,
-            lookup_mul_ptr,
-            lookup_add_ptr,
-            external_challenges_ptr,
-            desc,
-            self.flat_cont_recipe_count,
-            coeff_out_ptr,
-            context.get_exec_stream(),
-        )?;
+        // Route to the device-pointer eval-recipes kernel when the recipe tables
+        // overflowed the inline caps (Stage 3c); otherwise use the inline desc.
+        if let Some(ref desc_device) = self.flat_cont_recipe_desc_device {
+            flat::eval_continuation_recipes_e4_devptr(
+                batch_base_ptr,
+                lookup_mul_ptr,
+                lookup_add_ptr,
+                external_challenges_ptr,
+                &desc_device.desc,
+                self.flat_cont_recipe_count,
+                coeff_out_ptr,
+                stream,
+            )?;
+        } else {
+            let desc = self.flat_cont_recipe_desc.as_ref().unwrap();
+            flat::eval_continuation_recipes_e4(
+                batch_base_ptr,
+                lookup_mul_ptr,
+                lookup_add_ptr,
+                external_challenges_ptr,
+                desc,
+                self.flat_cont_recipe_count,
+                coeff_out_ptr,
+                stream,
+            )?;
+        }
 
         Ok(())
     }
@@ -773,7 +1010,15 @@ where
             // fallback. The warp shfl_xor in the warp-partial kernel uses a
             // full 0xFFFFFFFF mask, so `acc_size < 32` would deadlock with
             // dead lanes — late rounds run the unfused 5-launch path.
-            let use_warp_partial = acc_size >= 32;
+            //
+            // Round 0's warp-partial kernel has only a constant-coefficient
+            // variant. When round-0 coefficients overflow the `__constant__`
+            // symbol (large delegations → `flat_use_constant == false`), fall
+            // back to the unfused round-0 path (`launch_round0_kernels`), which
+            // supports the device-buffer coeff loader. Fast-path circuits keep
+            // the warp-partial path (their round-0 fits `__constant__`).
+            let use_warp_partial =
+                acc_size >= 32 && !(step == 0 && !self.flat_use_constant);
 
             // Round-kernel launch.
             if use_warp_partial {

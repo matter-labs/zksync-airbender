@@ -8,7 +8,7 @@ use super::super::kernels::{GpuGKRMainLayerConstraintMetadataSource, GpuGKRMainL
 use super::builder::FlatDescriptionBuilder;
 use super::emit::{
     emit_constraint_gate, emit_cross_product_gate, emit_linear_form_times_ext,
-    emit_materialize_gate, emit_single_times_linear_form,
+    emit_single_times_linear_form,
 };
 use super::types::CoefficientRecipe;
 use crate::primitives::field::BF;
@@ -248,9 +248,16 @@ pub(crate) fn build_flat_round0_plan<'s, E: Field>(
             }
 
             GpuGKRMainLayerKernelKind::MaterializeGrandProductTermExpression => {
+                // Round 0 emits ONLY the output term (c0). The materialize
+                // relation is a pure linear form + constant with NO quadratic
+                // tier, and the CPU round 0 (`step == 0` in batch_evaluation.rs)
+                // skips linear terms entirely — `evaluate_linear_term` returns
+                // early for `FIRST_ROUND` — and does not fill the constant term.
+                // Emitting the linear form as `c1_linear` here over-counts the
+                // round-0 monomial; the linear form + constant enter only in the
+                // continuation rounds via `emit_continuation_materialize_gate`.
                 let out = b.add_ext_source(&r0.extension_field_outputs[0]);
                 b.push_c0_ext(out, bc0());
-                emit_materialize_gate(&mut b, gate, r0, p0, 0);
             }
 
             GpuGKRMainLayerKernelKind::LookupPairFromBaseInputs

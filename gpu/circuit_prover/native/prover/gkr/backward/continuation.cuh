@@ -8,12 +8,19 @@ EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::prove
 namespace airbender::prover::gkr {
 
 // Maximum array sizes for the flat continuation static description.
-// The entire struct is passed as __grid_constant__ (~28KB budget).
-constexpr unsigned FLAT_CONT_MAX_SOURCES = 512;
-constexpr unsigned FLAT_CONT_MAX_C0_ONLY_LINEAR = 640;
-constexpr unsigned FLAT_CONT_MAX_UNIFIED_QUADRATIC = 4608;
-constexpr unsigned FLAT_CONT_MAX_UNIFIED_LINEAR = 128;
-constexpr unsigned FLAT_CONT_MAX_CONSTANT = 64;
+// NOTE: `flat_continuation_static_desc` below is a legacy intermediate mirror and
+// is not passed to any kernel; the live kernels consume the compact
+// `flat_continuation_unified_desc_compact`. The C0_ONLY_LINEAR / UNIFIED_QUADRATIC
+// / UNIFIED_LINEAR / CONSTANT caps only bound the host-side term-desc builder
+// (Rust `FlatContinuationTermDesc`); terms are compiled into the compact desc's
+// device-ified `terms` array. Raised for blake2_with_compression (Stage 4, 547
+// fused kernels/layer). Kept in lockstep with the Rust mirror in
+// flat/continuation/types.rs.
+constexpr unsigned FLAT_CONT_MAX_SOURCES = 3072;
+constexpr unsigned FLAT_CONT_MAX_C0_ONLY_LINEAR = 2048;
+constexpr unsigned FLAT_CONT_MAX_UNIFIED_QUADRATIC = 12288;
+constexpr unsigned FLAT_CONT_MAX_UNIFIED_LINEAR = 512;
+constexpr unsigned FLAT_CONT_MAX_CONSTANT = 1024;
 
 // Term types for the unified term array.
 constexpr u16 TERM_TYPE_CONSTANT = 0;
@@ -89,8 +96,8 @@ DEVICE_FORCEINLINE E flat_cont_fold_and_load(const flat_continuing_source_entry<
 // ===========================================================================
 
 // Maximum array sizes for base/ext split.
-constexpr unsigned FLAT_CONT_MAX_BASE_SOURCES = 128;
-constexpr unsigned FLAT_CONT_MAX_EXT_SOURCES = 384;
+constexpr unsigned FLAT_CONT_MAX_BASE_SOURCES = 2048;
+constexpr unsigned FLAT_CONT_MAX_EXT_SOURCES = 1024;
 
 // Source index encoding: bit 15 = 1 means ext_sources[], bit 15 = 0 means base_sources[].
 constexpr u16 FLAT_CONT_EXT_SOURCE_BIT = 0x8000;
@@ -189,6 +196,33 @@ struct flat_round1_unified_desc_compact {
 
 static_assert(sizeof(flat_round1_unified_desc_compact) <= 32 * 1024, "flat_round1_unified_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
 
+// Device-pointer companion of `flat_round1_unified_desc_compact`: identical
+// field names/order MINUS the three large arrays (`terms`, `tile_term_offsets`,
+// `tile_fold_offsets`), which move to a `flat_term_tables` bundle read from
+// device memory. Selected at runtime when the inline desc would overflow the
+// 32 KB __grid_constant__ cap (keccak round-1 needs ~2500 terms). Field names
+// match the inline struct so the templated helpers duck-type across both.
+struct flat_round1_unified_desc_compact_devptr {
+  gkr_dim_reducing_tables tables;
+
+  u32 base_layer_half_size;
+  u32 next_layer_size;
+
+  gkr_source_record base_sources[FLAT_CONT_MAX_BASE_SOURCES];
+  u32 num_base_sources;
+
+  gkr_source_record ext_sources[FLAT_CONT_MAX_EXT_SOURCES];
+  u32 num_ext_sources;
+
+  u32 num_terms;
+  u32 num_constant_terms;
+  u32 num_tiles;
+  u16 fold_sources[FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES];
+};
+
+static_assert(sizeof(flat_round1_unified_desc_compact_devptr) <= 32 * 1024,
+              "flat_round1_unified_desc_compact_devptr exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
+
 // Combined descriptor for the unified continuation kernel (rounds 3+):
 // single source array + mixed terms with per-tile fold/compute metadata.
 template <typename E> struct flat_continuation_unified_desc {
@@ -238,6 +272,28 @@ struct flat_continuation_unified_desc_compact {
 static_assert(sizeof(flat_continuation_unified_desc_compact) <= 32 * 1024,
               "flat_continuation_unified_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
 
+// Device-pointer companion of `flat_continuation_unified_desc_compact`:
+// identical field names/order MINUS the three large arrays (`terms`,
+// `tile_term_offsets`, `tile_fold_offsets`), moved to a `flat_term_tables`
+// bundle read from device memory. Selected on inline-desc overflow.
+struct flat_continuation_unified_desc_compact_devptr {
+  gkr_dim_reducing_tables tables;
+
+  u32 prev_per_poly_offset[GKR_DIM_REDUCING_BASE_SLOTS];
+  u32 cache_per_poly_offset[GKR_DIM_REDUCING_BASE_SLOTS];
+
+  gkr_source_record sources[FLAT_CONT_MAX_SOURCES];
+  u32 num_sources;
+
+  u32 num_terms;
+  u32 num_constant_terms;
+  u32 num_tiles;
+  u16 fold_sources[FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES];
+};
+
+static_assert(sizeof(flat_continuation_unified_desc_compact_devptr) <= 32 * 1024,
+              "flat_continuation_unified_desc_compact_devptr exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
+
 // --- Compact load helpers (continuation rounds ≥ 3) ---
 //
 // Each `packed` u16 in `desc.sources[]` is:
@@ -248,9 +304,8 @@ static_assert(sizeof(flat_continuation_unified_desc_compact) <= 32 * 1024,
 // `prev` and `cache` derive from the same per-poly slot in the consolidated
 // folding backing — the encoder bakes the per-step offsets into the desc.
 
-template <typename E>
-DEVICE_FORCEINLINE void flat_cont_resolve_compact(const flat_continuation_unified_desc_compact &desc, const gkr_source_record record, const E *&prev,
-                                                  E *&cache) {
+template <typename E, typename Desc>
+DEVICE_FORCEINLINE void flat_cont_resolve_compact(const Desc &desc, const gkr_source_record record, const E *&prev, E *&cache) {
   const bool first_access = (record.src & 0x8000u) != 0;
   const u32 ptr_idx = (record.src >> 11) & 0xFu;
   const u32 poly_idx = record.src & 0x07FFu;
@@ -263,9 +318,9 @@ DEVICE_FORCEINLINE void flat_cont_resolve_compact(const flat_continuation_unifie
 
 // Mirror of `flat_cont_fold_and_load`, but resolves prev/cache via the
 // compact descriptor's tables instead of raw pointers.
-template <typename E>
-DEVICE_FORCEINLINE E flat_cont_fold_and_load_compact(const flat_continuation_unified_desc_compact &desc, const gkr_source_record record,
-                                                     const E &folding_challenge, const unsigned fold_stride, const unsigned index) {
+template <typename E, typename Desc>
+DEVICE_FORCEINLINE E flat_cont_fold_and_load_compact(const Desc &desc, const gkr_source_record record, const E &folding_challenge, const unsigned fold_stride,
+                                                     const unsigned index) {
   const E *prev;
   E *cache;
   flat_cont_resolve_compact<E>(desc, record, prev, cache);
@@ -280,10 +335,10 @@ DEVICE_FORCEINLINE E flat_cont_fold_and_load_compact(const flat_continuation_uni
 }
 
 // Per-tile fold for the compact continuation descriptor.
-template <typename E, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_cont_tile_fold_compact(const flat_continuation_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                    const unsigned fold_stride, const unsigned next_layer_size, const unsigned folding_challenge_slot,
-                                                    const unsigned gid, const unsigned warp_id) {
+template <typename E, unsigned NUM_WARPS, typename Desc>
+DEVICE_FORCEINLINE void flat_cont_tile_fold_compact(const Desc &desc, const unsigned fold_start, const unsigned fold_end, const unsigned fold_stride,
+                                                    const unsigned next_layer_size, const unsigned folding_challenge_slot, const unsigned gid,
+                                                    const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
@@ -295,9 +350,9 @@ DEVICE_FORCEINLINE void flat_cont_tile_fold_compact(const flat_continuation_unif
 }
 
 // Cache-only load pair for the compact continuation descriptor.
-template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void flat_cont_load_pair_cached_compact(const flat_continuation_unified_desc_compact &desc, const u16 source_idx,
-                                                           const unsigned next_layer_size, const unsigned gid, E &f0, E &f1_or_delta) {
+template <typename E, bool EXPLICIT_FORM, typename Desc>
+DEVICE_FORCEINLINE void flat_cont_load_pair_cached_compact(const Desc &desc, const u16 source_idx, const unsigned next_layer_size, const unsigned gid, E &f0,
+                                                           E &f1_or_delta) {
   const gkr_source_record record = desc.sources[source_idx];
   const u32 ptr_idx = (record.cache >> 11) & 0xFu;
   const u32 poly_idx = record.cache & 0x07FFu;
@@ -342,6 +397,32 @@ struct flat_round2_unified_desc_compact {
 
 static_assert(sizeof(flat_round2_unified_desc_compact) <= 32 * 1024, "flat_round2_unified_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
 
+// Device-pointer companion of `flat_round2_unified_desc_compact`: identical
+// field names/order MINUS the three large arrays (`terms`, `tile_term_offsets`,
+// `tile_fold_offsets`), moved to a `flat_term_tables` bundle read from device
+// memory. Selected on inline-desc overflow.
+struct flat_round2_unified_desc_compact_devptr {
+  gkr_dim_reducing_tables tables;
+
+  u32 base_layer_half_size;
+  u32 base_quarter_size;
+  u32 next_layer_size;
+
+  gkr_source_record base_sources[FLAT_CONT_MAX_BASE_SOURCES];
+  u32 num_base_sources;
+
+  gkr_source_record ext_sources[FLAT_CONT_MAX_EXT_SOURCES];
+  u32 num_ext_sources;
+
+  u32 num_terms;
+  u32 num_constant_terms;
+  u32 num_tiles;
+  u16 fold_sources[FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES];
+};
+
+static_assert(sizeof(flat_round2_unified_desc_compact_devptr) <= 32 * 1024,
+              "flat_round2_unified_desc_compact_devptr exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
+
 } // namespace airbender::prover::gkr
 
 // The __constant__ coefficient symbol is declared in flat.cuh and shared
@@ -353,6 +434,45 @@ namespace airbender::prover::gkr {
 // Indexed __constant__ coefficient loader: reads by explicit index (not idx++).
 struct coeff_loader_constant_indexed {
   DEVICE_FORCEINLINE e4 operator()(unsigned idx) const { return ::ab_gkr_flat_coefficients[idx]; }
+};
+
+// Indexed device-pointer coefficient loader: reads by explicit index from a
+// device buffer instead of the __constant__ symbol. Selected at runtime when
+// the continuation coefficient count exceeds FLAT_CONST_MAX. Bit-exact with
+// coeff_loader_constant_indexed — the ONLY difference is the read source.
+struct coeff_loader_ptr_indexed {
+  const e4 *p;
+  DEVICE_FORCEINLINE e4 operator()(unsigned idx) const { return p[idx]; }
+};
+
+// Device-memory bundle for the three large per-descriptor arrays that overflow
+// the inline __grid_constant__ cap on large delegations. Passed BY VALUE to the
+// devptr kernels alongside the `_devptr` descriptor; each pointer targets a
+// device buffer whose contents are bit-identical to the inline arrays.
+struct flat_term_tables {
+  const flat_unified_term *terms;
+  const u16 *tile_term_offsets;
+  const u16 *tile_fold_offsets;
+};
+
+// Inline term/tile accessor: reads the three arrays straight out of the inline
+// __grid_constant__ descriptor. Used by the fast path — the templated helpers
+// compile to identical code as before Stage 3b.
+template <typename Desc> struct term_tables_inline {
+  const Desc &desc;
+  DEVICE_FORCEINLINE flat_unified_term term(unsigned i) const { return desc.terms[i]; }
+  DEVICE_FORCEINLINE u16 tile_term_offset(unsigned i) const { return desc.tile_term_offsets[i]; }
+  DEVICE_FORCEINLINE u16 tile_fold_offset(unsigned i) const { return desc.tile_fold_offsets[i]; }
+};
+
+// Device-pointer term/tile accessor: reads the three arrays from a
+// `flat_term_tables` bundle in device memory. Bit-exact with the inline
+// accessor — the ONLY difference is the read source.
+struct term_tables_devptr {
+  flat_term_tables tt;
+  DEVICE_FORCEINLINE flat_unified_term term(unsigned i) const { return tt.terms[i]; }
+  DEVICE_FORCEINLINE u16 tile_term_offset(unsigned i) const { return tt.tile_term_offsets[i]; }
+  DEVICE_FORCEINLINE u16 tile_fold_offset(unsigned i) const { return tt.tile_fold_offsets[i]; }
 };
 
 // --- Unified tiled kernel: per-tile fold → sync → compute from cache ---
@@ -456,9 +576,9 @@ DEVICE_FORCEINLINE void flat_round1_compute_unified(const flat_round1_unified_de
 // Returns `source_kind` so the caller can branch real vs virtual; the real
 // path uses `base_input_start`, the virtual path synthesizes via
 // `gkr_virtual_base_value`.
-template <typename E>
-DEVICE_FORCEINLINE void flat_round1_resolve_base_compact(const flat_round1_unified_desc_compact &desc, const u32 idx, gkr_base_source_kind &source_kind,
-                                                         bool &first_access, const bf *&base_input_start, E *&this_layer_cache_start) {
+template <typename E, typename Desc>
+DEVICE_FORCEINLINE void flat_round1_resolve_base_compact(const Desc &desc, const u32 idx, gkr_base_source_kind &source_kind, bool &first_access,
+                                                         const bf *&base_input_start, E *&this_layer_cache_start) {
   const gkr_source_record record = desc.base_sources[idx];
   first_access = (record.src & 0x8000u) != 0;
   const bool is_virtual = (record.cache & 0x8000u) != 0;
@@ -492,9 +612,8 @@ DEVICE_FORCEINLINE bf flat_round1_get_base_bf_value_compact(const gkr_base_sourc
 // Mirror of `gkr_get_base_after_one_value`. Folds the bf source pair at
 // `(index, base_layer_half_size + index)` and writes the folded E value into
 // the cache at `index` if `first_access`.
-template <typename E>
-DEVICE_FORCEINLINE E flat_round1_get_base_value_compact(const flat_round1_unified_desc_compact &desc, const u32 idx, const E first_folding_challenge,
-                                                        const unsigned index) {
+template <typename E, typename Desc>
+DEVICE_FORCEINLINE E flat_round1_get_base_value_compact(const Desc &desc, const u32 idx, const E first_folding_challenge, const unsigned index) {
   gkr_base_source_kind source_kind;
   bool first_access;
   const bf *base_input_start;
@@ -513,9 +632,8 @@ DEVICE_FORCEINLINE E flat_round1_get_base_value_compact(const flat_round1_unifie
 
 // Resolve an ext source's `(prev, cache)` pointers from a packed u16. The
 // cache pointer derives from the record's cache half.
-template <typename E>
-DEVICE_FORCEINLINE void flat_round1_resolve_ext_compact(const flat_round1_unified_desc_compact &desc, const gkr_source_record record, const E *&prev, E *&cache,
-                                                        bool &first_access) {
+template <typename E, typename Desc>
+DEVICE_FORCEINLINE void flat_round1_resolve_ext_compact(const Desc &desc, const gkr_source_record record, const E *&prev, E *&cache, bool &first_access) {
   first_access = (record.src & 0x8000u) != 0;
   const u32 ptr_idx = (record.src >> 11) & 0xFu;
   const u32 poly_idx = record.src & 0x07FFu;
@@ -531,9 +649,9 @@ DEVICE_FORCEINLINE void flat_round1_resolve_ext_compact(const flat_round1_unifie
 }
 
 // Mirror of `flat_cont_fold_and_load` for round 1 ext sources.
-template <typename E>
-DEVICE_FORCEINLINE E flat_round1_ext_fold_and_load_compact(const flat_round1_unified_desc_compact &desc, const gkr_source_record record,
-                                                           const E &folding_challenge, const unsigned fold_stride, const unsigned index) {
+template <typename E, typename Desc>
+DEVICE_FORCEINLINE E flat_round1_ext_fold_and_load_compact(const Desc &desc, const gkr_source_record record, const E &folding_challenge,
+                                                           const unsigned fold_stride, const unsigned index) {
   const E *prev;
   E *cache;
   bool first_access;
@@ -549,9 +667,9 @@ DEVICE_FORCEINLINE E flat_round1_ext_fold_and_load_compact(const flat_round1_uni
 
 // Per-tile fold for round 1 compact: dispatches on source type (base vs ext)
 // via the `FLAT_CONT_EXT_SOURCE_BIT` encoding in `fold_sources`.
-template <typename E, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_round1_tile_fold_compact(const flat_round1_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                      const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
+template <typename E, unsigned NUM_WARPS, typename Desc>
+DEVICE_FORCEINLINE void flat_round1_tile_fold_compact(const Desc &desc, const unsigned fold_start, const unsigned fold_end, const unsigned fold_stride,
+                                                      const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
@@ -571,9 +689,9 @@ DEVICE_FORCEINLINE void flat_round1_tile_fold_compact(const flat_round1_unified_
 // Load pair from cache only (post-fold) for round 1 compact. Resolves the
 // cache pointer for either base or ext source by inspecting `fold_sources`'s
 // high bit.
-template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void flat_round1_load_pair_cached_compact(const flat_round1_unified_desc_compact &desc, const u16 source_idx, const unsigned next_layer_size,
-                                                             const unsigned gid, E &f0, E &f1_or_delta) {
+template <typename E, bool EXPLICIT_FORM, typename Desc>
+DEVICE_FORCEINLINE void flat_round1_load_pair_cached_compact(const Desc &desc, const u16 source_idx, const unsigned next_layer_size, const unsigned gid, E &f0,
+                                                             E &f1_or_delta) {
   const E *cache;
   if (source_idx & FLAT_CONT_EXT_SOURCE_BIT) {
     const gkr_source_record ext_record = desc.ext_sources[source_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
@@ -600,14 +718,17 @@ DEVICE_FORCEINLINE void flat_round1_load_pair_cached_compact(const flat_round1_u
 }
 
 // Process a range of unified terms from cache for round 1 compact. Mirrors
-// `flat_round1_compute_unified` but loads via the compact decoder.
-template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_round1_compute_unified_compact(const flat_round1_unified_desc_compact &desc, const unsigned term_start, const unsigned term_end,
-                                                            const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
-  coeff_loader_constant_indexed coeff{};
-
+// `flat_round1_compute_unified` but loads via the compact decoder. Templated
+// on the coefficient loader (constant symbol vs device pointer) and the term
+// tables accessor (inline arrays vs device pointer) plus the descriptor type
+// (inline vs devptr — same field names). All three are constructed by the
+// kernel and threaded through unchanged.
+template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS, typename CoeffLoader, typename TermTables, typename Desc>
+DEVICE_FORCEINLINE void flat_round1_compute_unified_compact(const Desc &desc, CoeffLoader coeff, TermTables tt, const unsigned term_start,
+                                                            const unsigned term_end, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id,
+                                                            E &c0, E &c1) {
   for (unsigned i = term_start + warp_id; i < term_end; i += NUM_WARPS) {
-    const flat_unified_term t = desc.terms[i];
+    const flat_unified_term t = tt.term(i);
     const E k = coeff(t.coeff_idx);
 
     switch (t.term_type) {
@@ -723,14 +844,15 @@ DEVICE_FORCEINLINE void flat_cont_compute_unified(const flat_continuation_unifie
 
 // Compute path for the compact continuation descriptor, mirroring
 // `flat_cont_compute_unified` but loading from compact-resolved cache.
-template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_cont_compute_unified_compact(const flat_continuation_unified_desc_compact &desc, const unsigned term_start,
+// Templated on the coefficient loader (constant symbol vs device pointer), the
+// term tables accessor (inline arrays vs device pointer), and the descriptor
+// type (inline vs devptr — same field names).
+template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS, typename CoeffLoader, typename TermTables, typename Desc>
+DEVICE_FORCEINLINE void flat_cont_compute_unified_compact(const Desc &desc, CoeffLoader coeff, TermTables tt, const unsigned term_start,
                                                           const unsigned term_end, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id,
                                                           E &c0, E &c1) {
-  coeff_loader_constant_indexed coeff{};
-
   for (unsigned i = term_start + warp_id; i < term_end; i += NUM_WARPS) {
-    const flat_unified_term t = desc.terms[i];
+    const flat_unified_term t = tt.term(i);
     const E k = coeff(t.coeff_idx);
 
     switch (t.term_type) {
@@ -775,9 +897,9 @@ DEVICE_FORCEINLINE void flat_cont_compute_unified_compact(const flat_continuatio
 // Resolve a base source's `(source_kind, base_input_start, this_layer_cache_start)`
 // triple from a packed u16 plus the per-source position `idx`.
 // Encoding identical to round 1.
-template <typename E>
-DEVICE_FORCEINLINE void flat_round2_resolve_base_compact(const flat_round2_unified_desc_compact &desc, const u32 idx, gkr_base_source_kind &source_kind,
-                                                         bool &first_access, const bf *&base_input_start, E *&this_layer_cache_start) {
+template <typename E, typename Desc>
+DEVICE_FORCEINLINE void flat_round2_resolve_base_compact(const Desc &desc, const u32 idx, gkr_base_source_kind &source_kind, bool &first_access,
+                                                         const bf *&base_input_start, E *&this_layer_cache_start) {
   const gkr_source_record record = desc.base_sources[idx];
   first_access = (record.src & 0x8000u) != 0;
   const bool is_virtual = (record.cache & 0x8000u) != 0;
@@ -802,8 +924,7 @@ DEVICE_FORCEINLINE void flat_round2_resolve_base_compact(const flat_round2_unifi
 
 // Folds the bf source quadruple at the base-after-two grid into a single E
 // value and writes to the cache at `index` if `first_access`.
-template <typename E>
-DEVICE_FORCEINLINE E flat_round2_get_base_value_compact(const flat_round2_unified_desc_compact &desc, const u32 idx, const unsigned index) {
+template <typename E, typename Desc> DEVICE_FORCEINLINE E flat_round2_get_base_value_compact(const Desc &desc, const u32 idx, const unsigned index) {
   gkr_base_source_kind source_kind;
   bool first_access;
   const bf *base_input_start;
@@ -840,9 +961,9 @@ DEVICE_FORCEINLINE E flat_round2_get_base_value_compact(const flat_round2_unifie
 // (round-2 sumcheck-step-2 invariant; verified by the encoder).
 //
 // The kernel re-derives the cache offset from the runtime `next_layer_size`.
-template <typename E>
-DEVICE_FORCEINLINE void flat_round2_resolve_ext_compact(const flat_round2_unified_desc_compact &desc, const gkr_source_record record, const E *&prev, E *&cache,
-                                                        bool &first_access, const unsigned next_layer_size) {
+template <typename E, typename Desc>
+DEVICE_FORCEINLINE void flat_round2_resolve_ext_compact(const Desc &desc, const gkr_source_record record, const E *&prev, E *&cache, bool &first_access,
+                                                        const unsigned next_layer_size) {
   first_access = (record.src & 0x8000u) != 0;
   const u32 ptr_idx = (record.src >> 11) & 0xFu;
   const u32 poly_idx = record.src & 0x07FFu;
@@ -855,10 +976,9 @@ DEVICE_FORCEINLINE void flat_round2_resolve_ext_compact(const flat_round2_unifie
   cache = const_cast<E *>(poly_slot) + (static_cast<size_t>(next_layer_size) << 2);
 }
 
-template <typename E>
-DEVICE_FORCEINLINE E flat_round2_ext_fold_and_load_compact(const flat_round2_unified_desc_compact &desc, const gkr_source_record record,
-                                                           const E &folding_challenge, const unsigned fold_stride, const unsigned next_layer_size,
-                                                           const unsigned index) {
+template <typename E, typename Desc>
+DEVICE_FORCEINLINE E flat_round2_ext_fold_and_load_compact(const Desc &desc, const gkr_source_record record, const E &folding_challenge,
+                                                           const unsigned fold_stride, const unsigned next_layer_size, const unsigned index) {
   const E *prev;
   E *cache;
   bool first_access;
@@ -872,9 +992,9 @@ DEVICE_FORCEINLINE E flat_round2_ext_fold_and_load_compact(const flat_round2_uni
   return folded;
 }
 
-template <typename E, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_round2_tile_fold_compact(const flat_round2_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                      const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
+template <typename E, unsigned NUM_WARPS, typename Desc>
+DEVICE_FORCEINLINE void flat_round2_tile_fold_compact(const Desc &desc, const unsigned fold_start, const unsigned fold_end, const unsigned fold_stride,
+                                                      const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
@@ -891,9 +1011,9 @@ DEVICE_FORCEINLINE void flat_round2_tile_fold_compact(const flat_round2_unified_
   __syncthreads();
 }
 
-template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void flat_round2_load_pair_cached_compact(const flat_round2_unified_desc_compact &desc, const u16 source_idx, const unsigned next_layer_size,
-                                                             const unsigned gid, E &f0, E &f1_or_delta) {
+template <typename E, bool EXPLICIT_FORM, typename Desc>
+DEVICE_FORCEINLINE void flat_round2_load_pair_cached_compact(const Desc &desc, const u16 source_idx, const unsigned next_layer_size, const unsigned gid, E &f0,
+                                                             E &f1_or_delta) {
   const E *cache;
   if (source_idx & FLAT_CONT_EXT_SOURCE_BIT) {
     const gkr_source_record ext_record = desc.ext_sources[source_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
@@ -923,13 +1043,15 @@ DEVICE_FORCEINLINE void flat_round2_load_pair_cached_compact(const flat_round2_u
   }
 }
 
-template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_round2_compute_unified_compact(const flat_round2_unified_desc_compact &desc, const unsigned term_start, const unsigned term_end,
-                                                            const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
-  coeff_loader_constant_indexed coeff{};
-
+// Templated on the coefficient loader (constant symbol vs device pointer), the
+// term tables accessor (inline arrays vs device pointer), and the descriptor
+// type (inline vs devptr — same field names).
+template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS, typename CoeffLoader, typename TermTables, typename Desc>
+DEVICE_FORCEINLINE void flat_round2_compute_unified_compact(const Desc &desc, CoeffLoader coeff, TermTables tt, const unsigned term_start,
+                                                            const unsigned term_end, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id,
+                                                            E &c0, E &c1) {
   for (unsigned i = term_start + warp_id; i < term_end; i += NUM_WARPS) {
-    const flat_unified_term t = desc.terms[i];
+    const flat_unified_term t = tt.term(i);
     const E k = coeff(t.coeff_idx);
 
     switch (t.term_type) {
@@ -1062,40 +1184,43 @@ DEVICE_FORCEINLINE void flat_store_unified_partials_warp_reduce(E (*smem)[32], c
   }
 }
 
-template <typename E, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_round1_accumulate_unified_compact(const flat_round1_unified_desc_compact &desc, const unsigned fold_stride,
+// Accumulate wrappers: templated additionally on the term tables accessor
+// (`tt`) and the descriptor type (`Desc`). Tile boundaries (`tile_term_offset`
+// / `tile_fold_offset`) come from `tt` so they resolve to either the inline
+// __grid_constant__ arrays or the device buffer; term/tile *counts*
+// (`num_constant_terms`, `num_tiles`) stay descriptor-resident in both paths.
+template <typename E, unsigned NUM_WARPS, typename CoeffLoader, typename TermTables, typename Desc>
+DEVICE_FORCEINLINE void flat_round1_accumulate_unified_compact(const Desc &desc, CoeffLoader coeff, TermTables tt, const unsigned fold_stride,
                                                                const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
-  flat_round1_compute_unified_compact<E, false, NUM_WARPS>(desc, 0, desc.num_constant_terms, next_layer_size, gid, warp_id, c0, c1);
+  flat_round1_compute_unified_compact<E, false, NUM_WARPS>(desc, coeff, tt, 0, desc.num_constant_terms, next_layer_size, gid, warp_id, c0, c1);
   for (unsigned tile = 0; tile < desc.num_tiles; tile++) {
-    flat_round1_tile_fold_compact<E, NUM_WARPS>(desc, desc.tile_fold_offsets[tile], desc.tile_fold_offsets[tile + 1], fold_stride, next_layer_size, gid,
-                                                warp_id);
-    flat_round1_compute_unified_compact<E, false, NUM_WARPS>(desc, desc.tile_term_offsets[tile], desc.tile_term_offsets[tile + 1], next_layer_size, gid,
+    flat_round1_tile_fold_compact<E, NUM_WARPS>(desc, tt.tile_fold_offset(tile), tt.tile_fold_offset(tile + 1), fold_stride, next_layer_size, gid, warp_id);
+    flat_round1_compute_unified_compact<E, false, NUM_WARPS>(desc, coeff, tt, tt.tile_term_offset(tile), tt.tile_term_offset(tile + 1), next_layer_size, gid,
                                                              warp_id, c0, c1);
   }
 }
 
-template <typename E, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_round2_accumulate_unified_compact(const flat_round2_unified_desc_compact &desc, const unsigned fold_stride,
+template <typename E, unsigned NUM_WARPS, typename CoeffLoader, typename TermTables, typename Desc>
+DEVICE_FORCEINLINE void flat_round2_accumulate_unified_compact(const Desc &desc, CoeffLoader coeff, TermTables tt, const unsigned fold_stride,
                                                                const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
-  flat_round2_compute_unified_compact<E, false, NUM_WARPS>(desc, 0, desc.num_constant_terms, next_layer_size, gid, warp_id, c0, c1);
+  flat_round2_compute_unified_compact<E, false, NUM_WARPS>(desc, coeff, tt, 0, desc.num_constant_terms, next_layer_size, gid, warp_id, c0, c1);
   for (unsigned tile = 0; tile < desc.num_tiles; tile++) {
-    flat_round2_tile_fold_compact<E, NUM_WARPS>(desc, desc.tile_fold_offsets[tile], desc.tile_fold_offsets[tile + 1], fold_stride, next_layer_size, gid,
-                                                warp_id);
-    flat_round2_compute_unified_compact<E, false, NUM_WARPS>(desc, desc.tile_term_offsets[tile], desc.tile_term_offsets[tile + 1], next_layer_size, gid,
+    flat_round2_tile_fold_compact<E, NUM_WARPS>(desc, tt.tile_fold_offset(tile), tt.tile_fold_offset(tile + 1), fold_stride, next_layer_size, gid, warp_id);
+    flat_round2_compute_unified_compact<E, false, NUM_WARPS>(desc, coeff, tt, tt.tile_term_offset(tile), tt.tile_term_offset(tile + 1), next_layer_size, gid,
                                                              warp_id, c0, c1);
   }
 }
 
-template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_cont_accumulate_unified_compact(const flat_continuation_unified_desc_compact &desc, const unsigned fold_stride,
+template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS, typename CoeffLoader, typename TermTables, typename Desc>
+DEVICE_FORCEINLINE void flat_cont_accumulate_unified_compact(const Desc &desc, CoeffLoader coeff, TermTables tt, const unsigned fold_stride,
                                                              const unsigned next_layer_size, const unsigned folding_challenge_slot, const unsigned gid,
                                                              const unsigned warp_id, E &c0, E &c1) {
-  flat_cont_compute_unified_compact<E, EXPLICIT_FORM, NUM_WARPS>(desc, 0, desc.num_constant_terms, next_layer_size, gid, warp_id, c0, c1);
+  flat_cont_compute_unified_compact<E, EXPLICIT_FORM, NUM_WARPS>(desc, coeff, tt, 0, desc.num_constant_terms, next_layer_size, gid, warp_id, c0, c1);
   for (unsigned tile = 0; tile < desc.num_tiles; tile++) {
-    flat_cont_tile_fold_compact<E, NUM_WARPS>(desc, desc.tile_fold_offsets[tile], desc.tile_fold_offsets[tile + 1], fold_stride, next_layer_size,
+    flat_cont_tile_fold_compact<E, NUM_WARPS>(desc, tt.tile_fold_offset(tile), tt.tile_fold_offset(tile + 1), fold_stride, next_layer_size,
                                               folding_challenge_slot, gid, warp_id);
-    flat_cont_compute_unified_compact<E, EXPLICIT_FORM, NUM_WARPS>(desc, desc.tile_term_offsets[tile], desc.tile_term_offsets[tile + 1], next_layer_size, gid,
-                                                                   warp_id, c0, c1);
+    flat_cont_compute_unified_compact<E, EXPLICIT_FORM, NUM_WARPS>(desc, coeff, tt, tt.tile_term_offset(tile), tt.tile_term_offset(tile + 1), next_layer_size,
+                                                                   gid, warp_id, c0, c1);
   }
 }
 

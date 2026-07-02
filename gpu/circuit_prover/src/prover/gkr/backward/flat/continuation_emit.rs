@@ -413,7 +413,7 @@ pub(super) fn emit_continuation_materialize_gate<E: Field>(
                     false,
                     lt.input as usize + base_input_offset,
                 );
-                b.push_unified_linear(
+                b.push_c0_only_linear(
                     src,
                     CoefficientRecipe {
                         batch_power,
@@ -444,7 +444,7 @@ pub(super) fn emit_continuation_materialize_gate<E: Field>(
                     false,
                     lt.input as usize + base_input_offset,
                 );
-                b.push_unified_linear(
+                b.push_c0_only_linear(
                     src,
                     CoefficientRecipe {
                         batch_power,

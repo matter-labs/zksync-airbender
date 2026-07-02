@@ -22,7 +22,9 @@ EXTERN __launch_bounds__(128, 8) __global__
   e4 c0 = e4::ZERO();
   e4 c1 = e4::ZERO();
 
-  flat_cont_accumulate_unified_compact<e4, false, NUM_WARPS>(desc, fold_stride, next_layer_size, folding_challenge_slot, gid, warp_id, c0, c1);
+  flat_cont_accumulate_unified_compact<e4, false, NUM_WARPS>(desc, coeff_loader_constant_indexed{},
+                                                             term_tables_inline<flat_continuation_unified_desc_compact>{desc}, fold_stride, next_layer_size,
+                                                             folding_challenge_slot, gid, warp_id, c0, c1);
 
   __shared__ e4 smem[NUM_WARPS - 1][32];
   flat_store_unified_contributions<e4, NUM_WARPS>(smem, eq_low, eq_sizes, contributions, acc_size, gid, lane, warp_id, c0, c1);
@@ -42,7 +44,108 @@ EXTERN __launch_bounds__(128, 8) __global__ void ab_gkr_main_round3_flat_constan
   e4 c0 = e4::ZERO();
   e4 c1 = e4::ZERO();
 
-  flat_cont_accumulate_unified_compact<e4, true, NUM_WARPS>(desc, fold_stride, next_layer_size, folding_challenge_slot, gid, warp_id, c0, c1);
+  flat_cont_accumulate_unified_compact<e4, true, NUM_WARPS>(desc, coeff_loader_constant_indexed{},
+                                                            term_tables_inline<flat_continuation_unified_desc_compact>{desc}, fold_stride, next_layer_size,
+                                                            folding_challenge_slot, gid, warp_id, c0, c1);
+
+  __shared__ e4 smem[NUM_WARPS - 1][32];
+  flat_store_unified_contributions<e4, NUM_WARPS>(smem, eq_low, eq_sizes, contributions, acc_size, gid, lane, warp_id, c0, c1);
+}
+
+// Device-pointer coefficient variant of the round 3+ warp-split kernel
+// (non-explicit form). Identical algebra; coefficients read from the
+// `coefficients` device buffer instead of the __constant__ symbol.
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_gkr_main_round3_flat_devptr_unified_compact_e4_kernel(const __grid_constant__ flat_continuation_unified_desc_compact desc,
+                                                                  const unsigned fold_stride, const unsigned next_layer_size,
+                                                                  const unsigned folding_challenge_slot, const e4 *coefficients, const e4 *eq_low,
+                                                                  const __grid_constant__ gkr_eq_sizes eq_sizes, e4 *contributions, const unsigned acc_size) {
+  constexpr unsigned NUM_WARPS = 4;
+  const unsigned lane = threadIdx.x % 32;
+  const unsigned warp_id = threadIdx.x / 32;
+  const unsigned gid = blockIdx.x * 32 + lane;
+  if (gid >= acc_size)
+    return;
+
+  e4 c0 = e4::ZERO();
+  e4 c1 = e4::ZERO();
+
+  flat_cont_accumulate_unified_compact<e4, false, NUM_WARPS>(desc, coeff_loader_ptr_indexed{coefficients},
+                                                             term_tables_inline<flat_continuation_unified_desc_compact>{desc}, fold_stride, next_layer_size,
+                                                             folding_challenge_slot, gid, warp_id, c0, c1);
+
+  __shared__ e4 smem[NUM_WARPS - 1][32];
+  flat_store_unified_contributions<e4, NUM_WARPS>(smem, eq_low, eq_sizes, contributions, acc_size, gid, lane, warp_id, c0, c1);
+}
+
+// Device-pointer coefficient variant of the round 3+ warp-split kernel
+// (explicit form).
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_gkr_main_round3_flat_devptr_explicit_unified_compact_e4_kernel(const __grid_constant__ flat_continuation_unified_desc_compact desc,
+                                                                           const unsigned fold_stride, const unsigned next_layer_size,
+                                                                           const unsigned folding_challenge_slot, const e4 *coefficients, const e4 *eq_low,
+                                                                           const __grid_constant__ gkr_eq_sizes eq_sizes, e4 *contributions,
+                                                                           const unsigned acc_size) {
+  constexpr unsigned NUM_WARPS = 4;
+  const unsigned lane = threadIdx.x % 32;
+  const unsigned warp_id = threadIdx.x / 32;
+  const unsigned gid = blockIdx.x * 32 + lane;
+  if (gid >= acc_size)
+    return;
+
+  e4 c0 = e4::ZERO();
+  e4 c1 = e4::ZERO();
+
+  flat_cont_accumulate_unified_compact<e4, true, NUM_WARPS>(desc, coeff_loader_ptr_indexed{coefficients},
+                                                            term_tables_inline<flat_continuation_unified_desc_compact>{desc}, fold_stride, next_layer_size,
+                                                            folding_challenge_slot, gid, warp_id, c0, c1);
+
+  __shared__ e4 smem[NUM_WARPS - 1][32];
+  flat_store_unified_contributions<e4, NUM_WARPS>(smem, eq_low, eq_sizes, contributions, acc_size, gid, lane, warp_id, c0, c1);
+}
+
+// Device-pointer TERMS variant of the round 3+ warp-split kernel (non-explicit
+// form). Terms/tiles and coefficients both live in device memory; the `_devptr`
+// descriptor carries only the small fields. Selected on inline-desc overflow.
+EXTERN __launch_bounds__(128, 8) __global__ void ab_gkr_main_round3_flat_devptr_terms_unified_compact_e4_kernel(
+    const __grid_constant__ flat_continuation_unified_desc_compact_devptr desc, const unsigned fold_stride, const unsigned next_layer_size,
+    const unsigned folding_challenge_slot, const e4 *coefficients, const flat_term_tables term_tables, const e4 *eq_low,
+    const __grid_constant__ gkr_eq_sizes eq_sizes, e4 *contributions, const unsigned acc_size) {
+  constexpr unsigned NUM_WARPS = 4;
+  const unsigned lane = threadIdx.x % 32;
+  const unsigned warp_id = threadIdx.x / 32;
+  const unsigned gid = blockIdx.x * 32 + lane;
+  if (gid >= acc_size)
+    return;
+
+  e4 c0 = e4::ZERO();
+  e4 c1 = e4::ZERO();
+
+  flat_cont_accumulate_unified_compact<e4, false, NUM_WARPS>(desc, coeff_loader_ptr_indexed{coefficients}, term_tables_devptr{term_tables}, fold_stride,
+                                                             next_layer_size, folding_challenge_slot, gid, warp_id, c0, c1);
+
+  __shared__ e4 smem[NUM_WARPS - 1][32];
+  flat_store_unified_contributions<e4, NUM_WARPS>(smem, eq_low, eq_sizes, contributions, acc_size, gid, lane, warp_id, c0, c1);
+}
+
+// Device-pointer TERMS variant of the round 3+ warp-split kernel (explicit
+// form).
+EXTERN __launch_bounds__(128, 8) __global__ void ab_gkr_main_round3_flat_devptr_terms_explicit_unified_compact_e4_kernel(
+    const __grid_constant__ flat_continuation_unified_desc_compact_devptr desc, const unsigned fold_stride, const unsigned next_layer_size,
+    const unsigned folding_challenge_slot, const e4 *coefficients, const flat_term_tables term_tables, const e4 *eq_low,
+    const __grid_constant__ gkr_eq_sizes eq_sizes, e4 *contributions, const unsigned acc_size) {
+  constexpr unsigned NUM_WARPS = 4;
+  const unsigned lane = threadIdx.x % 32;
+  const unsigned warp_id = threadIdx.x / 32;
+  const unsigned gid = blockIdx.x * 32 + lane;
+  if (gid >= acc_size)
+    return;
+
+  e4 c0 = e4::ZERO();
+  e4 c1 = e4::ZERO();
+
+  flat_cont_accumulate_unified_compact<e4, true, NUM_WARPS>(desc, coeff_loader_ptr_indexed{coefficients}, term_tables_devptr{term_tables}, fold_stride,
+                                                            next_layer_size, folding_challenge_slot, gid, warp_id, c0, c1);
 
   __shared__ e4 smem[NUM_WARPS - 1][32];
   flat_store_unified_contributions<e4, NUM_WARPS>(smem, eq_low, eq_sizes, contributions, acc_size, gid, lane, warp_id, c0, c1);

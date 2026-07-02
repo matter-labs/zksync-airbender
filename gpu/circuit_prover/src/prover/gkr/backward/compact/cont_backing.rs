@@ -13,7 +13,7 @@ use super::super::flat::{
 use super::super::kernels::{
     pack_cache_u16, pack_source_u16, GpuGKRSourceRecord, GKR_DIM_REDUCING_BASE_SLOTS,
 };
-use super::cont_descs::GpuFlatContinuationUnifiedDesc;
+use super::cont_descs::{FlatTermTablesHost, GpuFlatContinuationUnifiedDesc};
 use super::encoding::FLAT_SOURCE_POLY_IDX_MASK;
 use crate::primitives::field::BF;
 use crate::upstream::Field;
@@ -148,7 +148,7 @@ pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
     sources: &[GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_SOURCES],
     plan: &FlatContinuationBuildPlan<E>,
     storage: &GpuGKRStorage<BF, E>,
-) -> Box<GpuFlatContinuationUnifiedDesc> {
+) -> (Box<GpuFlatContinuationUnifiedDesc>, Option<FlatTermTablesHost>) {
     use std::collections::HashSet;
 
     let mut compact = Box::new(GpuFlatContinuationUnifiedDesc::default());
@@ -283,10 +283,8 @@ pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
         + td.num_c0_only_linear as usize
         + td.num_unified_quadratic as usize
         + td.num_unified_linear as usize;
-    assert!(
-        total_terms <= FLAT_CONT_UNIFIED_MAX_TERMS,
-        "continuation unified terms overflow: {total_terms} > {FLAT_CONT_UNIFIED_MAX_TERMS}",
-    );
+    // NOTE: `total_terms` may exceed FLAT_CONT_UNIFIED_MAX_TERMS on large
+    // delegations → device-terms path (Stage 3b); no assert here.
 
     let mut terms: Vec<GpuFlatUnifiedTerm> = Vec::with_capacity(total_terms);
     for i in 0..td.num_constants as u16 {
@@ -352,10 +350,8 @@ pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
     }
 
     let num_tiles = tile_boundaries.len();
-    assert!(
-        num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES,
-        "continuation unified tiles overflow: {num_tiles} > {FLAT_CONT_UNIFIED_MAX_TILES}",
-    );
+    // NOTE: `num_tiles` may exceed FLAT_CONT_UNIFIED_MAX_TILES on large
+    // delegations → device-terms path (Stage 3b); no assert here.
 
     let mut fold_sources: Vec<u16> = Vec::new();
     let mut tile_term_offsets: Vec<u16> = Vec::with_capacity(num_tiles + 1);
@@ -401,13 +397,24 @@ pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
         fold_sources.len(),
     );
 
-    compact.terms[..terms.len()].copy_from_slice(&terms);
     compact.num_terms = terms.len() as u32;
     compact.num_constant_terms = num_constant_terms as u32;
     compact.num_tiles = num_tiles as u32;
-    compact.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
-    compact.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
     compact.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
 
-    compact
+    if terms.len() <= FLAT_CONT_UNIFIED_MAX_TERMS && num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES {
+        compact.terms[..terms.len()].copy_from_slice(&terms);
+        compact.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
+        compact.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
+        (compact, None)
+    } else {
+        (
+            compact,
+            Some(FlatTermTablesHost {
+                terms,
+                tile_term_offsets,
+                tile_fold_offsets,
+            }),
+        )
+    }
 }

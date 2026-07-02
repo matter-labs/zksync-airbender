@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 
 use crate::prover::gkr::GpuGKRStorage;
@@ -13,9 +16,148 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, Reduce, ReduceOperation};
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::primitives::callbacks::Callbacks;
+use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::BF;
+use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use crate::prover::ProverContext;
 use crate::upstream::{Field, FieldExtension, GKRAddress};
+
+/// H2D-upload a descriptor's overflowing term/tile tables into device buffers on
+/// `exec_stream` (Stage 3b). The copies precede all continuation kernels (which
+/// launch later on the same stream). The pinned host sources are captured by a
+/// keepalive callback scheduled onto `callbacks` (threaded into the
+/// finish-retained keepalive bundle), so they outlive the async copies even
+/// though the layer plan itself may drop right after scheduling. The returned
+/// `FlatTermDeviceBuffers` owns the device allocations (stream-ordered drop) and
+/// exposes the `GpuFlatTermTables` device pointers for the `_devptr_terms_`
+/// kernels. Contents are bit-identical to the inline arrays.
+fn upload_flat_term_tables(
+    tables: &compact::FlatTermTablesHost,
+    context: &ProverContext,
+    callbacks: &mut Callbacks<'static>,
+) -> CudaResult<FlatTermDeviceBuffers> {
+    let stream = context.get_exec_stream();
+
+    let terms_host = {
+        let mut h = alloc_static_pinned_box_uninit::<flat::GpuFlatUnifiedTerm>(tables.terms.len())?;
+        h.copy_from_slice(&tables.terms);
+        Arc::new(h)
+    };
+    let tto_host = {
+        let mut h = alloc_static_pinned_box_uninit::<u16>(tables.tile_term_offsets.len())?;
+        h.copy_from_slice(&tables.tile_term_offsets);
+        Arc::new(h)
+    };
+    let tfo_host = {
+        let mut h = alloc_static_pinned_box_uninit::<u16>(tables.tile_fold_offsets.len())?;
+        h.copy_from_slice(&tables.tile_fold_offsets);
+        Arc::new(h)
+    };
+
+    let mut terms_dev = context
+        .alloc::<flat::GpuFlatUnifiedTerm>(tables.terms.len(), AllocationPlacement::BestFit)?;
+    let mut tto_dev =
+        context.alloc::<u16>(tables.tile_term_offsets.len(), AllocationPlacement::BestFit)?;
+    let mut tfo_dev =
+        context.alloc::<u16>(tables.tile_fold_offsets.len(), AllocationPlacement::BestFit)?;
+
+    memory_copy_async(&mut terms_dev, terms_host.as_ref(), stream)?;
+    memory_copy_async(&mut tto_dev, tto_host.as_ref(), stream)?;
+    memory_copy_async(&mut tfo_dev, tfo_host.as_ref(), stream)?;
+
+    // Keep the pinned host sources alive until the copies complete. The closure
+    // owns the Arcs (captured by move); the `let _ = &..` body is a no-op that
+    // keeps it a `Fn`. It fires after the copies on the same stream and is
+    // dropped with the keepalive bundle at finish (post-drain).
+    let keepalive = (terms_host, tto_host, tfo_host);
+    callbacks.schedule(
+        move || {
+            let _ = &keepalive;
+        },
+        stream,
+    )?;
+
+    let term_tables = compact::GpuFlatTermTables {
+        terms: terms_dev.as_ptr(),
+        tile_term_offsets: tto_dev.as_ptr(),
+        tile_fold_offsets: tfo_dev.as_ptr(),
+    };
+    Ok(FlatTermDeviceBuffers {
+        terms: terms_dev,
+        tile_term_offsets: tto_dev,
+        tile_fold_offsets: tfo_dev,
+        tables: term_tables,
+    })
+}
+
+/// Stage one recipe-eval table for H2D upload on `stream`. Returns the pinned
+/// host source (kept for keepalive) and its device buffer. An empty table gets a
+/// 1-element placeholder device buffer and no host copy: the `_devptr`
+/// eval-recipes kernels never index an empty table (a 0-count prefactor group or
+/// 0-monomial immediate is skipped before any load), so the placeholder is never
+/// dereferenced. `alloc_static_pinned_box_uninit` requires a non-empty length, so
+/// the empty case must skip it.
+fn stage_recipe_table<T: Copy>(
+    src: &[T],
+    context: &ProverContext,
+    stream: &era_cudart::stream::CudaStream,
+) -> CudaResult<(Option<Arc<StaticPinnedBox<T>>>, DeviceAllocation<T>)> {
+    if src.is_empty() {
+        return Ok((None, context.alloc::<T>(1, AllocationPlacement::BestFit)?));
+    }
+    let mut host = alloc_static_pinned_box_uninit::<T>(src.len())?;
+    host.copy_from_slice(src);
+    let host = Arc::new(host);
+    let mut dev = context.alloc::<T>(src.len(), AllocationPlacement::BestFit)?;
+    memory_copy_async(&mut dev, host.as_ref(), stream)?;
+    Ok((Some(host), dev))
+}
+
+/// H2D-upload a compiled recipe descriptor's overflowing recipe/term/immediate
+/// tables into device buffers on `exec_stream` (Stage 3c). Mirrors
+/// `upload_flat_term_tables`: pinned host sources are async-copied to device
+/// buffers, then retained by a keepalive callback until the copies complete (the
+/// layer plan itself may drop right after scheduling). The returned
+/// `RecipeEvalDeviceBuffers` owns the device allocations (stream-ordered drop)
+/// and exposes the `GpuFlatRecipeEvalDescDevptr` device pointers for the
+/// `_devptr` eval-recipes kernels. Contents are bit-identical to the inline arrays.
+fn upload_recipe_eval_arrays(
+    arrays: &crate::prover::gkr::eval_recipes::RecipeEvalHostArrays,
+    context: &ProverContext,
+    callbacks: &mut Callbacks<'static>,
+) -> CudaResult<RecipeEvalDeviceBuffers> {
+    use crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDescDevptr;
+    let stream = context.get_exec_stream();
+
+    let (headers_host, headers_dev) = stage_recipe_table(&arrays.headers, context, stream)?;
+    let (terms_host, terms_dev) = stage_recipe_table(&arrays.terms, context, stream)?;
+    let (irec_host, irec_dev) = stage_recipe_table(&arrays.immediate_recipes, context, stream)?;
+    let (imon_host, imon_dev) = stage_recipe_table(&arrays.immediate_monomials, context, stream)?;
+
+    // Keep the pinned host sources alive until the copies complete (same pattern
+    // as `upload_flat_term_tables`). Empty arrays contributed no host buffer.
+    let keepalive = (headers_host, terms_host, irec_host, imon_host);
+    callbacks.schedule(
+        move || {
+            let _ = &keepalive;
+        },
+        stream,
+    )?;
+
+    let desc = GpuFlatRecipeEvalDescDevptr {
+        headers: headers_dev.as_ptr(),
+        terms: terms_dev.as_ptr(),
+        immediate_recipes: irec_dev.as_ptr(),
+        immediate_monomials: imon_dev.as_ptr(),
+    };
+    Ok(RecipeEvalDeviceBuffers {
+        headers: headers_dev,
+        terms: terms_dev,
+        immediate_recipes: irec_dev,
+        immediate_monomials: imon_dev,
+        desc,
+    })
+}
 
 impl<E: Field + FieldExtension<BF>> GpuGKRMainLayerBackwardState<E> {
     pub(crate) fn storage(&self) -> &GpuGKRStorage<BF, E> {
@@ -245,39 +387,72 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             Some(flat::build_flat_round0_plan(&gates, &self.storage))
         };
 
-        // Compile one inline descriptor for the round-0 eval-recipes launch.
+        // Compile one descriptor for the round-0 eval-recipes launch.
         let mut recipe_callbacks = Callbacks::new();
-        let (flat_recipe_desc, flat_recipe_count, flat_coeff_device_buf, flat_use_constant) =
-            if let Some(ref plan) = flat_round0_template_compact {
-                let total = plan.total_coefficients();
-                if total > 0 {
-                    let compiled = flat::compile_recipes_for_device(&plan.recipes);
-                    let use_constant = !self.is_delegation || layer_idx != 0;
-                    if use_constant {
-                        assert!(
-                            total <= flat::FLAT_CONST_MAX,
-                            "flat round 0: {} coefficients exceeds __constant__ limit of {}",
-                            total,
-                            flat::FLAT_CONST_MAX,
-                        );
-                    }
-                    let coeff_buf = if use_constant {
-                        None // eval_recipes writes directly to __constant__ symbol
-                    } else {
-                        Some(context.alloc(total, AllocationPlacement::BestFit)?)
-                    };
-                    (
-                        Some(compiled.desc),
-                        compiled.num_recipes,
-                        coeff_buf,
-                        use_constant,
-                    )
-                } else {
-                    (None, 0, None, true)
+        let (
+            flat_recipe_desc,
+            flat_recipe_desc_device,
+            flat_recipe_count,
+            flat_coeff_device_buf,
+            flat_use_constant,
+        ) = if let Some(ref plan) = flat_round0_template_compact {
+            let total = plan.total_coefficients();
+            if total > 0 {
+                let compiled = flat::compile_recipes_for_device(&plan.recipes);
+                // Use the __constant__ coefficient symbol only when the
+                // coefficient count actually fits it; otherwise fall back to
+                // the device-buffer path (`coeff_loader_ptr`) so large
+                // delegations (keccak_special5, bigint) whose round-0
+                // coefficient count exceeds FLAT_CONST_MAX can still prove.
+                // The pre-existing delegation-layer-0 exclusion is preserved.
+                // Circuits that fit keep the perf-preferred __constant__/LDC
+                // broadcast placement.
+                let use_constant =
+                    (!self.is_delegation || layer_idx != 0) && total <= flat::FLAT_CONST_MAX;
+                if use_constant {
+                    assert!(
+                        total <= flat::FLAT_CONST_MAX,
+                        "flat round 0: {} coefficients exceeds __constant__ limit of {}",
+                        total,
+                        flat::FLAT_CONST_MAX,
+                    );
                 }
+                let coeff_buf = if use_constant {
+                    None // eval_recipes writes directly to __constant__ symbol
+                } else {
+                    Some(context.alloc(total, AllocationPlacement::BestFit)?)
+                };
+                // Stage 3c: when the recipe/term/immediate tables overflow the
+                // inline `GpuFlatRecipeEvalDesc` caps (e.g. bigint's 3006 recipes),
+                // upload them to device buffers and dispatch the `_devptr`
+                // eval-recipes kernel; otherwise keep the inline descriptor. This
+                // is independent of the `use_constant` coefficient-placement choice.
+                let (recipe_desc, recipe_desc_device) =
+                    if let Some(ref arrays) = compiled.device_arrays {
+                        (
+                            None,
+                            Some(upload_recipe_eval_arrays(
+                                arrays,
+                                context,
+                                &mut recipe_callbacks,
+                            )?),
+                        )
+                    } else {
+                        (Some(compiled.desc), None)
+                    };
+                (
+                    recipe_desc,
+                    recipe_desc_device,
+                    compiled.num_recipes,
+                    coeff_buf,
+                    use_constant,
+                )
             } else {
-                (None, 0, None, true)
-            };
+                (None, None, 0, None, true)
+            }
+        } else {
+            (None, None, 0, None, true)
+        };
         // Restored — no diagnostic override
 
         let max_acc_size = self.trace_len / 2;
@@ -303,8 +478,11 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             flat_continuation_plan,
             flat_continuation_per_step_sources,
             flat_cont_recipe_desc,
+            flat_cont_recipe_desc_device,
             flat_cont_recipe_count,
             cont_recipe_callbacks,
+            flat_cont_coeff_device_buf,
+            flat_cont_use_constant,
         ) = self.build_flat_continuation_artifacts(
             &static_data,
             &kernel_plans,
@@ -325,43 +503,86 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // and term/tile/fold metadata builds inline). The consolidated
         // per-(layer, class) base-folding backings cover the base side;
         // `intermediate_folding_consolidated` covers the ext side.
+        // Each unified-desc builder returns `(inline_desc, Option<term tables>)`.
+        // `Some` means the term/tile count overflows the inline __grid_constant__
+        // cap → Stage 3b device-terms path: derive the `_devptr` companion desc
+        // and H2D-upload the term/tile tables into device buffers.
+        let mut flat_round1_terms_device = None;
         let flat_round1_unified_desc_compact = if let (Some(ref r1_desc), Some(plan)) =
             (&flat_round1_desc, flat_continuation_plan.as_ref())
         {
-            Some(compact::build_flat_round1_unified_desc::<E>(
-                r1_desc,
-                plan,
-                &self.storage,
-            ))
+            let (desc, tables) =
+                compact::build_flat_round1_unified_desc::<E>(r1_desc, plan, &self.storage);
+            if let Some(tables) = tables {
+                let devptr = Box::new(desc.to_devptr());
+                let bufs = upload_flat_term_tables(&tables, context, &mut recipe_callbacks)?;
+                flat_round1_terms_device = Some((devptr, bufs));
+            }
+            Some(desc)
         } else {
             None
         };
+        let mut flat_round2_terms_device = None;
         let flat_round2_unified_desc_compact = if let (Some(ref r2_desc), Some(plan)) =
             (&flat_round2_desc, flat_continuation_plan.as_ref())
         {
-            Some(compact::build_flat_round2_unified_desc::<E>(
-                r2_desc,
-                plan,
-                &self.storage,
-            ))
+            let (desc, tables) =
+                compact::build_flat_round2_unified_desc::<E>(r2_desc, plan, &self.storage);
+            if let Some(tables) = tables {
+                let devptr = Box::new(desc.to_devptr());
+                let bufs = upload_flat_term_tables(&tables, context, &mut recipe_callbacks)?;
+                flat_round2_terms_device = Some((devptr, bufs));
+            }
+            Some(desc)
         } else {
             None
         };
+        let mut flat_continuation_terms_device: Vec<(
+            usize,
+            Box<compact::GpuFlatContinuationUnifiedDescDevptr>,
+            FlatTermDeviceBuffers,
+        )> = Vec::new();
         let flat_continuation_unified_descs_compact: Vec<(
             usize,
             Box<compact::GpuFlatContinuationUnifiedDesc>,
         )> = if let Some(ref plan) = flat_continuation_plan {
-            flat_continuation_per_step_sources
-                .iter()
-                .map(|(step, sources)| {
-                    let compact =
-                        compact::build_flat_continuation_unified_desc(sources, plan, &self.storage);
-                    (*step, compact)
-                })
-                .collect()
+            let mut out = Vec::with_capacity(flat_continuation_per_step_sources.len());
+            for (step, sources) in flat_continuation_per_step_sources.iter() {
+                let (desc, tables) =
+                    compact::build_flat_continuation_unified_desc(sources, plan, &self.storage);
+                if let Some(tables) = tables {
+                    let devptr = Box::new(desc.to_devptr());
+                    let bufs = upload_flat_term_tables(&tables, context, &mut recipe_callbacks)?;
+                    flat_continuation_terms_device.push((*step, devptr, bufs));
+                }
+                out.push((*step, desc));
+            }
+            out
         } else {
             Vec::new()
         };
+
+        // Stage 3b coupling: the `_devptr_terms_` kernels always read
+        // coefficients from the device buffer (never __constant__), so any
+        // term-device descriptor forces the continuation coefficient path to
+        // device too. When coefficients already overflowed, this is a no-op
+        // (the buffer + `false` flag are already set).
+        let any_terms_device = flat_round1_terms_device.is_some()
+            || flat_round2_terms_device.is_some()
+            || !flat_continuation_terms_device.is_empty();
+        let (flat_cont_use_constant, flat_cont_coeff_device_buf) =
+            if any_terms_device && flat_cont_use_constant {
+                let total = flat_continuation_plan
+                    .as_ref()
+                    .map(|p| p.total_coefficients())
+                    .unwrap_or(0);
+                (
+                    false,
+                    Some(context.alloc(total, AllocationPlacement::BestFit)?),
+                )
+            } else {
+                (flat_cont_use_constant, flat_cont_coeff_device_buf)
+            };
 
         if std::env::var("GPU_PROVER_DUMP_FLAT_PLAN").is_ok() {
             flat::dump_flat_round1_plan(
@@ -418,15 +639,22 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             round0_descriptors,
             flat_round0_template_compact,
             flat_recipe_desc,
+            flat_recipe_desc_device,
             flat_recipe_count,
             flat_coeff_device_buf,
             flat_use_constant,
+            flat_cont_coeff_device_buf,
+            flat_cont_use_constant,
             flat_continuation_plan,
             flat_cont_recipe_desc,
+            flat_cont_recipe_desc_device,
             flat_cont_recipe_count,
             flat_continuation_unified_descs_compact,
             flat_round1_unified_desc_compact,
             flat_round2_unified_desc_compact,
+            flat_round1_terms_device,
+            flat_round2_terms_device,
+            flat_continuation_terms_device,
             round_scratch,
             recipe_upload_callbacks: recipe_callbacks,
             batch_challenge_base_override_ptr: None,
@@ -710,7 +938,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
         folding_steps: usize,
         _layer_idx: usize,
-        _context: &ProverContext,
+        context: &ProverContext,
     ) -> CudaResult<(
         Option<flat::FlatContinuationBuildPlan<E>>,
         Vec<(
@@ -718,8 +946,17 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             Box<[flat::GpuFlatContinuingSourceEntry; flat::FLAT_CONT_MAX_SOURCES]>,
         )>,
         Option<Box<crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDesc>>,
+        // Stage 3c device-recipes path for the continuation phase. `Some` iff the
+        // recipe tables overflow the inline caps (mutually exclusive with the
+        // inline desc above).
+        Option<RecipeEvalDeviceBuffers>,
         usize,
         Callbacks<'static>,
+        // Continuation coeff device buffer (None => __constant__ path) and the
+        // use-constant flag. Mirror of the round-0 `flat_coeff_device_buf` /
+        // `flat_use_constant` pair.
+        Option<DeviceAllocation<E>>,
+        bool,
     )> {
         use flat::{
             build_flat_continuation_plan, compile_recipes_for_device, GpuFlatContinuingSourceEntry,
@@ -752,18 +989,48 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         let plan = build_flat_continuation_plan(&gates);
         let total = plan.total_coefficients();
         if total == 0 {
-            return Ok((Some(plan), vec![], None, 0, Callbacks::new()));
+            return Ok((Some(plan), vec![], None, None, 0, Callbacks::new(), None, true));
         }
 
-        // Compile one inline descriptor for the continuation eval-recipes launch.
+        // Compile one descriptor for the continuation eval-recipes launch.
         let compiled = compile_recipes_for_device(&plan.recipes);
-        let cont_recipe_callbacks = Callbacks::new();
-        assert!(
-            total <= FLAT_CONST_MAX,
-            "flat continuation: {} coefficients exceeds __constant__ limit of {}",
-            total,
-            FLAT_CONST_MAX,
-        );
+        let mut cont_recipe_callbacks = Callbacks::new();
+        // Stage 3c: overflowing continuation recipe tables go to device buffers
+        // (dispatched via the `_devptr` eval-recipes kernel); otherwise the inline
+        // descriptor is used. Mirror of the round-0 recipe-desc split.
+        let (flat_cont_recipe_desc, flat_cont_recipe_desc_device) =
+            if let Some(ref arrays) = compiled.device_arrays {
+                (
+                    None,
+                    Some(upload_recipe_eval_arrays(
+                        arrays,
+                        context,
+                        &mut cont_recipe_callbacks,
+                    )?),
+                )
+            } else {
+                (Some(compiled.desc), None)
+            };
+        // Use the __constant__ coefficient symbol only when the continuation
+        // coefficient count actually fits it; otherwise fall back to the
+        // device-buffer path (`coeff_loader_ptr_indexed`) so large delegations
+        // (keccak_special5, bigint) whose continuation coefficient count exceeds
+        // FLAT_CONST_MAX can still prove. Circuits that fit keep the perf-preferred
+        // __constant__/LDC broadcast placement. Mirrors the round-0 policy flip.
+        let cont_use_constant = total <= FLAT_CONST_MAX;
+        if cont_use_constant {
+            assert!(
+                total <= FLAT_CONST_MAX,
+                "flat continuation: {} coefficients exceeds __constant__ limit of {}",
+                total,
+                FLAT_CONST_MAX,
+            );
+        }
+        let flat_cont_coeff_device_buf = if cont_use_constant {
+            None // eval_recipes writes directly to __constant__ symbol
+        } else {
+            Some(context.alloc(total, AllocationPlacement::BestFit)?)
+        };
 
         // Build a key→source index map using round3 prepared cache pointers (same as plan).
         let round3_prepared = kernel_plans
@@ -861,9 +1128,12 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         Ok((
             Some(plan),
             per_step_sources,
-            Some(compiled.desc),
+            flat_cont_recipe_desc,
+            flat_cont_recipe_desc_device,
             compiled.num_recipes,
             cont_recipe_callbacks,
+            flat_cont_coeff_device_buf,
+            cont_use_constant,
         ))
     }
 

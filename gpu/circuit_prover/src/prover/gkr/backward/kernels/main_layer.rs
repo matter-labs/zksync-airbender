@@ -161,6 +161,55 @@ pub(crate) struct GpuGKRMainLayerKernelPlan<E> {
     pub(crate) round3_and_beyond_prepared: Vec<GpuGKRMainLayerRound3Prepared<E>>,
 }
 
+/// Device-resident term/tile tables for one unified descriptor whose term/tile
+/// count overflows the inline `__grid_constant__` cap (Stage 3b). The three
+/// `DeviceAllocation`s are plan-owned (stream-ordered drop, like the coeff
+/// device buffer); `tables` holds raw device pointers into them, passed by value
+/// to the `_devptr_terms_` kernels. The pinned host H2D sources are kept alive
+/// separately via a keepalive callback on `recipe_upload_callbacks` (their drop
+/// is not stream-ordered).
+pub(crate) struct FlatTermDeviceBuffers {
+    #[allow(dead_code)]
+    pub(crate) terms: DeviceAllocation<super::super::flat::GpuFlatUnifiedTerm>,
+    #[allow(dead_code)]
+    pub(crate) tile_term_offsets: DeviceAllocation<u16>,
+    #[allow(dead_code)]
+    pub(crate) tile_fold_offsets: DeviceAllocation<u16>,
+    pub(crate) tables: super::super::compact::GpuFlatTermTables,
+}
+
+// SAFETY: `tables` holds raw device pointers into the sibling `DeviceAllocation`
+// fields; they are never dereferenced from Rust, only forwarded to kernel args.
+unsafe impl Send for FlatTermDeviceBuffers {}
+unsafe impl Sync for FlatTermDeviceBuffers {}
+
+/// Device buffers backing the device-pointer eval-recipes descriptor
+/// (`GpuFlatRecipeEvalDescDevptr`), used when a layer's recipe/term/immediate
+/// tables overflow the inline `GpuFlatRecipeEvalDesc` caps (Stage 3c). The four
+/// `DeviceAllocation`s are plan-owned (stream-ordered drop, like the coeff device
+/// buffer); `desc` holds raw device pointers into them, passed by value to the
+/// `_devptr` eval-recipes kernels. The pinned host H2D sources are kept alive
+/// separately via a keepalive callback on `recipe_upload_callbacks` (their drop
+/// is not stream-ordered).
+pub(crate) struct RecipeEvalDeviceBuffers {
+    #[allow(dead_code)]
+    pub(crate) headers: DeviceAllocation<crate::prover::gkr::eval_recipes::GpuRecipeHeader>,
+    #[allow(dead_code)]
+    pub(crate) terms: DeviceAllocation<crate::prover::gkr::eval_recipes::GpuPrefactorTerm>,
+    #[allow(dead_code)]
+    pub(crate) immediate_recipes:
+        DeviceAllocation<crate::prover::gkr::immediate_factors::ImmediateFactorRecipeHeader>,
+    #[allow(dead_code)]
+    pub(crate) immediate_monomials:
+        DeviceAllocation<crate::prover::gkr::immediate_factors::ImmediateFactorMonomial>,
+    pub(crate) desc: crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDescDevptr,
+}
+
+// SAFETY: `desc` holds raw device pointers into the sibling `DeviceAllocation`
+// fields; they are never dereferenced from Rust, only forwarded to kernel args.
+unsafe impl Send for RecipeEvalDeviceBuffers {}
+unsafe impl Sync for RecipeEvalDeviceBuffers {}
+
 pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) layer_idx: usize,
     #[allow(dead_code)]
@@ -181,18 +230,39 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// `launch_main_round0_constant`.
     pub(crate) flat_round0_template_compact: Option<super::super::compact::FlatRound0BuildPlan<E>>,
     /// Inline eval-recipes descriptor passed by value to each round-0 launch.
+    /// Mutually exclusive with `flat_recipe_desc_device`: exactly one is `Some`
+    /// when `flat_recipe_count > 0` (or both `None` when there are no recipes).
     pub(crate) flat_recipe_desc:
         Option<Box<crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDesc>>,
+    /// Stage 3c device-recipes path for round 0. `Some` iff the recipe/term/
+    /// immediate tables overflow the inline caps; carries the device buffers +
+    /// the device-pointer companion desc read by the `_devptr` eval-recipes
+    /// kernel. Independent of the coefficient `__constant__` decision.
+    pub(crate) flat_recipe_desc_device: Option<RecipeEvalDeviceBuffers>,
     pub(crate) flat_recipe_count: usize,
     /// Device buffer for eval_recipes output (delegation L0 round 0 only; others write to __constant__).
     pub(crate) flat_coeff_device_buf: Option<DeviceAllocation<E>>,
     /// Whether round 0 uses __constant__ for coefficients (false only for delegation L0).
     pub(crate) flat_use_constant: bool,
+    /// Device buffer for the continuation eval_recipes output. `None` when the
+    /// continuation coefficient count fits `FLAT_CONST_MAX` and the
+    /// `__constant__` symbol path is used; `Some` when it overflows and the
+    /// device-pointer continuation kernels read from here instead. Mirrors
+    /// `flat_coeff_device_buf` for the round-0 phase. Owned by the plan and
+    /// dropped only after every continuation launch reading it is scheduled.
+    pub(crate) flat_cont_coeff_device_buf: Option<DeviceAllocation<E>>,
+    /// Whether the continuation phase uses `__constant__` for coefficients
+    /// (true when the count fits `FLAT_CONST_MAX`).
+    pub(crate) flat_cont_use_constant: bool,
     /// Flat continuation plan for rounds 1+ (shared term arrays + per-step source tables).
     pub(crate) flat_continuation_plan: Option<super::super::flat::FlatContinuationBuildPlan<E>>,
     /// Inline eval-recipes descriptor passed by value to each continuation launch.
+    /// Mutually exclusive with `flat_cont_recipe_desc_device` (see round-0 pair).
     pub(crate) flat_cont_recipe_desc:
         Option<Box<crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDesc>>,
+    /// Stage 3c device-recipes path for the continuation phase. Mirror of
+    /// `flat_recipe_desc_device` for rounds 3+.
+    pub(crate) flat_cont_recipe_desc_device: Option<RecipeEvalDeviceBuffers>,
     pub(crate) flat_cont_recipe_count: usize,
     /// Continuation compact descriptors (per step). Consumed by
     /// `launch_main_round3_unified`.
@@ -207,6 +277,27 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// Round 2 compact descriptor.
     pub(crate) flat_round2_unified_desc_compact:
         Option<Box<super::super::compact::GpuFlatRound2UnifiedDesc>>,
+    /// Stage 3b device-terms path. `Some` iff the descriptor's term/tile count
+    /// overflows the inline cap; carries the device-pointer companion desc +
+    /// the device term/tile buffers. When present the `_devptr_terms_` kernel is
+    /// dispatched (which reads coefficients from the device buffer too, so
+    /// `flat_cont_use_constant` is forced `false` whenever any of these is set).
+    pub(crate) flat_round1_terms_device: Option<(
+        Box<super::super::compact::GpuFlatRound1UnifiedDescDevptr>,
+        FlatTermDeviceBuffers,
+    )>,
+    pub(crate) flat_round2_terms_device: Option<(
+        Box<super::super::compact::GpuFlatRound2UnifiedDescDevptr>,
+        FlatTermDeviceBuffers,
+    )>,
+    /// Per-step device-terms companions for continuation rounds (≥3). Only
+    /// overflowing steps are present; keyed by step to match
+    /// `flat_continuation_unified_descs_compact`.
+    pub(crate) flat_continuation_terms_device: Vec<(
+        usize,
+        Box<super::super::compact::GpuFlatContinuationUnifiedDescDevptr>,
+        FlatTermDeviceBuffers,
+    )>,
     pub(crate) round_scratch: GpuGKRMainLayerRoundScratch<E>,
     /// Keepalive slot for scheduling callbacks unrelated to inline recipe descriptors.
     pub(crate) recipe_upload_callbacks: Callbacks<'static>,

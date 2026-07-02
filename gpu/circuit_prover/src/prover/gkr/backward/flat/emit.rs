@@ -135,57 +135,6 @@ pub(super) fn emit_cross_product_gate<E: Field>(
     }
 }
 
-/// Emit c1 terms for Materialize gates: c1 += β * Σ (lt.challenge * Δ(input))
-pub(super) fn emit_materialize_gate<E: Field>(
-    b: &mut FlatDescriptionBuilder<'_, E>,
-    gate: &PreparedGateForFlatPlan<'_, E>,
-    r0: &GpuSumcheckRound0LaunchDescriptors<BF, E>,
-    batch_power: u32,
-    base_input_offset: usize,
-) {
-    match gate.constraint_source {
-        Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(ref tmpl)) => {
-            for lt in &tmpl.linear_terms {
-                if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                    continue;
-                }
-                let src =
-                    b.add_bf_source(&r0.base_field_inputs[lt.input as usize + base_input_offset]);
-                b.push_c1_linear(
-                    src,
-                    CoefficientRecipe {
-                        batch_power,
-                        negate: false,
-                        immediate_factor: E::ONE,
-                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
-                        prefactors: vec![lt.challenge_terms.clone()],
-                    },
-                );
-            }
-        }
-        Some(GpuGKRMainLayerConstraintMetadataSource::Immediate(ref meta)) => {
-            for lt in &meta.linear_terms {
-                if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                    continue;
-                }
-                let src =
-                    b.add_bf_source(&r0.base_field_inputs[lt.input as usize + base_input_offset]);
-                b.push_c1_linear(
-                    src,
-                    CoefficientRecipe {
-                        batch_power,
-                        negate: false,
-                        immediate_factor: lt.challenge,
-                        immediate_recipe: lt.immediate_recipe.clone(),
-                        prefactors: vec![],
-                    },
-                );
-            }
-        }
-        None => panic!("materialize gate requires metadata"),
-    }
-}
-
 /// Emit terms: β * Σ(linear_form_terms_j · Δⱼ) * Δ(cached_src)
 /// where cached_src is bf and linear_form terms produce bf deltas.
 /// `use_linear_terms`: true = iterate linear_terms, false = iterate quadratic_terms

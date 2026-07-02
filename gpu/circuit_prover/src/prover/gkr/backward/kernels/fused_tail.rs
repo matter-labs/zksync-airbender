@@ -20,8 +20,10 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use super::launchers::{GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS};
 use crate::primitives::field::E4;
 use crate::prover::gkr::backward::compact::{
-    launch_round2_challenges_prelude, GpuFlatContinuationUnifiedDesc, GpuFlatRound0StaticDesc,
-    GpuFlatRound1UnifiedDesc, GpuFlatRound2UnifiedDesc,
+    launch_round2_challenges_prelude, GpuFlatContinuationUnifiedDesc,
+    GpuFlatContinuationUnifiedDescDevptr, GpuFlatRound0StaticDesc, GpuFlatRound1UnifiedDesc,
+    GpuFlatRound1UnifiedDescDevptr, GpuFlatRound2UnifiedDesc, GpuFlatRound2UnifiedDescDevptr,
+    GpuFlatTermTables,
 };
 use crate::prover::ProverContext;
 
@@ -143,6 +145,173 @@ cuda_kernel_declaration!(pub(crate)
         fold_stride: u32,
         next_layer_size: u32,
         folding_challenge_slot: u32,
+        eq_low: *const E4,
+        eq_sizes: GkrEqSizes,
+        partials: *mut E4,
+        acc_size: u32,
+    )
+);
+
+// Device-pointer coeff variants of the warp-partial continuation kernels.
+// Identical to the constant variants plus a `coefficients` device-buffer
+// argument; selected when the continuation coefficient count exceeds
+// FLAT_CONST_MAX.
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GpuGKRMainRound1FlatDevptrCompactUnifiedCompact<T>,
+    desc: GpuFlatRound1UnifiedDesc,
+    fold_stride: u32,
+    next_layer_size: u32,
+    coefficients: *const T,
+    eq_low: *const T,
+    eq_sizes: GkrEqSizes,
+    contributions: *mut T,
+    acc_size: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GpuGKRMainRound2FlatDevptrCompactUnifiedCompact<T>,
+    desc: GpuFlatRound2UnifiedDesc,
+    fold_stride: u32,
+    next_layer_size: u32,
+    coefficients: *const T,
+    eq_low: *const T,
+    eq_sizes: GkrEqSizes,
+    contributions: *mut T,
+    acc_size: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GpuGKRMainRound3FlatDevptrUnifiedCompact<T>,
+    desc: GpuFlatContinuationUnifiedDesc,
+    fold_stride: u32,
+    next_layer_size: u32,
+    folding_challenge_slot: u32,
+    coefficients: *const T,
+    eq_low: *const T,
+    eq_sizes: GkrEqSizes,
+    contributions: *mut T,
+    acc_size: u32,
+);
+
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_main_round1_flat_devptr_compact_unified_compact_warp_partial_e4_kernel(
+        desc: GpuFlatRound1UnifiedDesc,
+        fold_stride: u32,
+        next_layer_size: u32,
+        coefficients: *const E4,
+        eq_low: *const E4,
+        eq_sizes: GkrEqSizes,
+        partials: *mut E4,
+        acc_size: u32,
+    )
+);
+
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_main_round2_flat_devptr_compact_unified_compact_warp_partial_e4_kernel(
+        desc: GpuFlatRound2UnifiedDesc,
+        fold_stride: u32,
+        next_layer_size: u32,
+        coefficients: *const E4,
+        eq_low: *const E4,
+        eq_sizes: GkrEqSizes,
+        partials: *mut E4,
+        acc_size: u32,
+    )
+);
+
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_main_round3_flat_devptr_unified_compact_warp_partial_e4_kernel(
+        desc: GpuFlatContinuationUnifiedDesc,
+        fold_stride: u32,
+        next_layer_size: u32,
+        folding_challenge_slot: u32,
+        coefficients: *const E4,
+        eq_low: *const E4,
+        eq_sizes: GkrEqSizes,
+        partials: *mut E4,
+        acc_size: u32,
+    )
+);
+
+// Device-pointer TERMS variants of the warp-partial continuation kernels
+// (Stage 3b): terms/tiles moved to device memory alongside the coefficients,
+// selected when the inline desc would overflow the 32 KB cap.
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GpuGKRMainRound1FlatDevptrTermsCompactUnifiedCompact<T>,
+    desc: GpuFlatRound1UnifiedDescDevptr,
+    fold_stride: u32,
+    next_layer_size: u32,
+    coefficients: *const T,
+    term_tables: GpuFlatTermTables,
+    eq_low: *const T,
+    eq_sizes: GkrEqSizes,
+    contributions: *mut T,
+    acc_size: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GpuGKRMainRound2FlatDevptrTermsCompactUnifiedCompact<T>,
+    desc: GpuFlatRound2UnifiedDescDevptr,
+    fold_stride: u32,
+    next_layer_size: u32,
+    coefficients: *const T,
+    term_tables: GpuFlatTermTables,
+    eq_low: *const T,
+    eq_sizes: GkrEqSizes,
+    contributions: *mut T,
+    acc_size: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GpuGKRMainRound3FlatDevptrTermsUnifiedCompact<T>,
+    desc: GpuFlatContinuationUnifiedDescDevptr,
+    fold_stride: u32,
+    next_layer_size: u32,
+    folding_challenge_slot: u32,
+    coefficients: *const T,
+    term_tables: GpuFlatTermTables,
+    eq_low: *const T,
+    eq_sizes: GkrEqSizes,
+    contributions: *mut T,
+    acc_size: u32,
+);
+
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_main_round1_flat_devptr_terms_compact_unified_compact_warp_partial_e4_kernel(
+        desc: GpuFlatRound1UnifiedDescDevptr,
+        fold_stride: u32,
+        next_layer_size: u32,
+        coefficients: *const E4,
+        term_tables: GpuFlatTermTables,
+        eq_low: *const E4,
+        eq_sizes: GkrEqSizes,
+        partials: *mut E4,
+        acc_size: u32,
+    )
+);
+
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_main_round2_flat_devptr_terms_compact_unified_compact_warp_partial_e4_kernel(
+        desc: GpuFlatRound2UnifiedDescDevptr,
+        fold_stride: u32,
+        next_layer_size: u32,
+        coefficients: *const E4,
+        term_tables: GpuFlatTermTables,
+        eq_low: *const E4,
+        eq_sizes: GkrEqSizes,
+        partials: *mut E4,
+        acc_size: u32,
+    )
+);
+
+cuda_kernel_declaration!(pub(crate)
+    ab_gkr_main_round3_flat_devptr_terms_unified_compact_warp_partial_e4_kernel(
+        desc: GpuFlatContinuationUnifiedDescDevptr,
+        fold_stride: u32,
+        next_layer_size: u32,
+        folding_challenge_slot: u32,
+        coefficients: *const E4,
+        term_tables: GpuFlatTermTables,
         eq_low: *const E4,
         eq_sizes: GkrEqSizes,
         partials: *mut E4,
@@ -382,6 +551,218 @@ pub(crate) fn launch_main_round3_unified_warp_partial(
     );
     GpuGKRMainRound3FlatConstantUnifiedCompactFunction(
         ab_gkr_main_round3_flat_constant_unified_compact_warp_partial_e4_kernel,
+    )
+    .launch(&config, &args)
+}
+
+/// Device-pointer coeff variant of `launch_main_round1_unified_warp_partial`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_main_round1_unified_warp_partial_devptr(
+    desc: &GpuFlatRound1UnifiedDesc,
+    fold_stride: u32,
+    next_layer_size: u32,
+    coefficients: *const E4,
+    eq_low: *const E4,
+    eq_sizes: &GkrEqSizes,
+    partials: *mut E4,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let block_dim = 128u32;
+    let grid_dim = acc_size.div_ceil(32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
+    let args = GpuGKRMainRound1FlatDevptrCompactUnifiedCompactArguments::new(
+        *desc,
+        fold_stride,
+        next_layer_size,
+        coefficients,
+        eq_low,
+        *eq_sizes,
+        partials,
+        acc_size,
+    );
+    GpuGKRMainRound1FlatDevptrCompactUnifiedCompactFunction(
+        ab_gkr_main_round1_flat_devptr_compact_unified_compact_warp_partial_e4_kernel,
+    )
+    .launch(&config, &args)
+}
+
+/// Device-pointer coeff variant of `launch_main_round2_unified_warp_partial`.
+/// Schedules the round-2 challenges prelude first, matching the constant twin.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_main_round2_unified_warp_partial_devptr(
+    desc: &GpuFlatRound2UnifiedDesc,
+    folding_challenges: *const E4,
+    fold_stride: u32,
+    next_layer_size: u32,
+    coefficients: *const E4,
+    eq_low: *const E4,
+    eq_sizes: &GkrEqSizes,
+    partials: *mut E4,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    launch_round2_challenges_prelude::<E4>(folding_challenges, context)?;
+
+    let block_dim = 128u32;
+    let grid_dim = acc_size.div_ceil(32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
+    let args = GpuGKRMainRound2FlatDevptrCompactUnifiedCompactArguments::new(
+        *desc,
+        fold_stride,
+        next_layer_size,
+        coefficients,
+        eq_low,
+        *eq_sizes,
+        partials,
+        acc_size,
+    );
+    GpuGKRMainRound2FlatDevptrCompactUnifiedCompactFunction(
+        ab_gkr_main_round2_flat_devptr_compact_unified_compact_warp_partial_e4_kernel,
+    )
+    .launch(&config, &args)
+}
+
+/// Device-pointer coeff variant of `launch_main_round3_unified_warp_partial`
+/// (non-explicit form only, matching the constant twin).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_main_round3_unified_warp_partial_devptr(
+    desc: &GpuFlatContinuationUnifiedDesc,
+    fold_stride: u32,
+    next_layer_size: u32,
+    folding_challenge_slot: u32,
+    coefficients: *const E4,
+    eq_low: *const E4,
+    eq_sizes: &GkrEqSizes,
+    partials: *mut E4,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let block_dim = 128u32;
+    let grid_dim = acc_size.div_ceil(32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
+    let args = GpuGKRMainRound3FlatDevptrUnifiedCompactArguments::new(
+        *desc,
+        fold_stride,
+        next_layer_size,
+        folding_challenge_slot,
+        coefficients,
+        eq_low,
+        *eq_sizes,
+        partials,
+        acc_size,
+    );
+    GpuGKRMainRound3FlatDevptrUnifiedCompactFunction(
+        ab_gkr_main_round3_flat_devptr_unified_compact_warp_partial_e4_kernel,
+    )
+    .launch(&config, &args)
+}
+
+/// Device-pointer TERMS variant of `launch_main_round1_unified_warp_partial_devptr`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_main_round1_unified_warp_partial_devptr_terms(
+    desc: &GpuFlatRound1UnifiedDescDevptr,
+    fold_stride: u32,
+    next_layer_size: u32,
+    coefficients: *const E4,
+    term_tables: GpuFlatTermTables,
+    eq_low: *const E4,
+    eq_sizes: &GkrEqSizes,
+    partials: *mut E4,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let block_dim = 128u32;
+    let grid_dim = acc_size.div_ceil(32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
+    let args = GpuGKRMainRound1FlatDevptrTermsCompactUnifiedCompactArguments::new(
+        *desc,
+        fold_stride,
+        next_layer_size,
+        coefficients,
+        term_tables,
+        eq_low,
+        *eq_sizes,
+        partials,
+        acc_size,
+    );
+    GpuGKRMainRound1FlatDevptrTermsCompactUnifiedCompactFunction(
+        ab_gkr_main_round1_flat_devptr_terms_compact_unified_compact_warp_partial_e4_kernel,
+    )
+    .launch(&config, &args)
+}
+
+/// Device-pointer TERMS variant of `launch_main_round2_unified_warp_partial_devptr`.
+/// Schedules the round-2 challenges prelude first, matching the coeff-devptr twin.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_main_round2_unified_warp_partial_devptr_terms(
+    desc: &GpuFlatRound2UnifiedDescDevptr,
+    folding_challenges: *const E4,
+    fold_stride: u32,
+    next_layer_size: u32,
+    coefficients: *const E4,
+    term_tables: GpuFlatTermTables,
+    eq_low: *const E4,
+    eq_sizes: &GkrEqSizes,
+    partials: *mut E4,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    launch_round2_challenges_prelude::<E4>(folding_challenges, context)?;
+
+    let block_dim = 128u32;
+    let grid_dim = acc_size.div_ceil(32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
+    let args = GpuGKRMainRound2FlatDevptrTermsCompactUnifiedCompactArguments::new(
+        *desc,
+        fold_stride,
+        next_layer_size,
+        coefficients,
+        term_tables,
+        eq_low,
+        *eq_sizes,
+        partials,
+        acc_size,
+    );
+    GpuGKRMainRound2FlatDevptrTermsCompactUnifiedCompactFunction(
+        ab_gkr_main_round2_flat_devptr_terms_compact_unified_compact_warp_partial_e4_kernel,
+    )
+    .launch(&config, &args)
+}
+
+/// Device-pointer TERMS variant of `launch_main_round3_unified_warp_partial_devptr`
+/// (non-explicit form only, matching the coeff-devptr twin).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_main_round3_unified_warp_partial_devptr_terms(
+    desc: &GpuFlatContinuationUnifiedDescDevptr,
+    fold_stride: u32,
+    next_layer_size: u32,
+    folding_challenge_slot: u32,
+    coefficients: *const E4,
+    term_tables: GpuFlatTermTables,
+    eq_low: *const E4,
+    eq_sizes: &GkrEqSizes,
+    partials: *mut E4,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let block_dim = 128u32;
+    let grid_dim = acc_size.div_ceil(32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
+    let args = GpuGKRMainRound3FlatDevptrTermsUnifiedCompactArguments::new(
+        *desc,
+        fold_stride,
+        next_layer_size,
+        folding_challenge_slot,
+        coefficients,
+        term_tables,
+        eq_low,
+        *eq_sizes,
+        partials,
+        acc_size,
+    );
+    GpuGKRMainRound3FlatDevptrTermsUnifiedCompactFunction(
+        ab_gkr_main_round3_flat_devptr_terms_unified_compact_warp_partial_e4_kernel,
     )
     .launch(&config, &args)
 }

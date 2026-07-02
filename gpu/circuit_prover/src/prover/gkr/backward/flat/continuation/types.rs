@@ -2,15 +2,30 @@ use super::super::{CoefficientRecipe, GpuFlatC0Ref, GpuFlatC1Pair};
 use crate::primitives::field::BF;
 use crate::upstream::Field;
 
-pub(crate) const FLAT_CONT_MAX_SOURCES: usize = 512;
-pub(crate) const FLAT_CONT_MAX_C0_ONLY_LINEAR: usize = 640;
-pub(crate) const FLAT_CONT_MAX_UNIFIED_QUADRATIC: usize = 4608;
-pub(crate) const FLAT_CONT_MAX_UNIFIED_LINEAR: usize = 128;
-pub(crate) const FLAT_CONT_MAX_CONSTANT: usize = 64;
+// Continuation (round 3+) unique-source table size. Sizes the inline `sources`
+// array in the compact `GpuFlatContinuationUnifiedDesc` (+ its devptr companion)
+// and the per-step host source `Box`es. Raised 512 -> 3072 for
+// blake2_with_compression (Stage 4); stays well under the compact desc's 32 KB
+// inline ceiling (~4587 max). Lockstep with native `continuation.cuh`.
+pub(crate) const FLAT_CONT_MAX_SOURCES: usize = 3072;
+// Term-category capacities for the host-side `FlatContinuationTermDesc` builder
+// intermediate (and the now-dead native `flat_continuation_static_desc` mirror).
+// These size heap `Box`es only — the kernel-facing terms are compiled into the
+// compact unified desc's `terms` array (device-ified via Stage 3b when over
+// `FLAT_CONT_UNIFIED_MAX_TERMS`). Raised for blake2_with_compression (547 fused
+// kernels/layer, Stage 4) which overflows the previous 256/640/4608/128 caps.
+pub(crate) const FLAT_CONT_MAX_C0_ONLY_LINEAR: usize = 2048;
+pub(crate) const FLAT_CONT_MAX_UNIFIED_QUADRATIC: usize = 12288;
+pub(crate) const FLAT_CONT_MAX_UNIFIED_LINEAR: usize = 512;
+pub(crate) const FLAT_CONT_MAX_CONSTANT: usize = 1024;
 
-// Round 1/2 mixed source limits
-pub(crate) const FLAT_CONT_MAX_BASE_SOURCES: usize = 128;
-pub(crate) const FLAT_CONT_MAX_EXT_SOURCES: usize = 384;
+// Round 1/2 mixed source limits. Size the inline `base_sources`/`ext_sources`
+// arrays in the round1/2 compact descs (+ devptr companions) and, summed,
+// `fold_sources`. Raised 512/384 -> 2048/1024 for blake2_with_compression
+// (Stage 4); the sum (3072) stays under the round1/2 inline 32 KB ceiling
+// (max base+ext ~3376). Lockstep with native `continuation.cuh`.
+pub(crate) const FLAT_CONT_MAX_BASE_SOURCES: usize = 2048;
+pub(crate) const FLAT_CONT_MAX_EXT_SOURCES: usize = 1024;
 pub(crate) const FLAT_CONT_EXT_SOURCE_BIT: u16 = 0x8000;
 
 // Unified tiled kernel constants

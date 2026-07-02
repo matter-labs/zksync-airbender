@@ -54,6 +54,34 @@ impl Default for GpuFlatRecipeEvalDesc {
     }
 }
 
+/// Device-pointer companion of [`GpuFlatRecipeEvalDesc`] for delegations whose
+/// recipe/term/immediate tables overflow the inline caps (e.g. bigint's 3006
+/// recipes vs the 2816-header cap). Mirrors `gpu_flat_recipe_eval_desc_devptr`
+/// in `backward/coeff.cuh`: four device pointers, passed by value as a
+/// `__grid_constant__` kernel argument. The pointed-to device buffers are owned
+/// by `RecipeEvalDeviceBuffers` in the layer plan and outlive every scheduled
+/// launch that reads them.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct GpuFlatRecipeEvalDescDevptr {
+    pub headers: *const GpuRecipeHeader,
+    pub terms: *const GpuPrefactorTerm,
+    pub immediate_recipes: *const ImmediateFactorRecipeHeader,
+    pub immediate_monomials: *const ImmediateFactorMonomial,
+}
+
+/// Host-side recipe/term/immediate arrays retained for H2D upload when the
+/// compiled recipe tables overflow the inline `GpuFlatRecipeEvalDesc` caps.
+/// Produced by `compile_recipes_for_device` (as the `device_arrays` field of
+/// [`CompiledRecipeBuffers`]) and consumed by `upload_recipe_eval_arrays`, which
+/// copies each `Vec` into a device buffer bit-identically to the inline arrays.
+pub(crate) struct RecipeEvalHostArrays {
+    pub headers: Vec<GpuRecipeHeader>,
+    pub terms: Vec<GpuPrefactorTerm>,
+    pub immediate_recipes: Vec<ImmediateFactorRecipeHeader>,
+    pub immediate_monomials: Vec<ImmediateFactorMonomial>,
+}
+
 const _: () = {
     assert!(std::mem::size_of::<GpuRecipeHeader>() == 8);
     assert!(std::mem::size_of::<GpuPrefactorTerm>() == 8);
@@ -84,6 +112,32 @@ cuda_kernel_declaration!(
         lookup_add: *const E4,
         ext_challenges: *const E4,
         desc: GpuFlatRecipeEvalDesc,
+        coefficients: *mut E4,
+        num_recipes: u32,
+    )
+);
+
+// Device-pointer variant: the recipe/term/immediate tables are read from device
+// buffers via a small (four-pointer) `GpuFlatRecipeEvalDescDevptr` instead of the
+// inline descriptor. Used when the recipe count overflows the inline caps.
+cuda_kernel_signature_arguments_and_function!(
+    EvalRecipesE4Devptr,
+    batch_base: *const E4,
+    lookup_mul: *const E4,
+    lookup_add: *const E4,
+    ext_challenges: *const E4,
+    desc: GpuFlatRecipeEvalDescDevptr,
+    coefficients: *mut E4,
+    num_recipes: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_gkr_flat_round0_eval_recipes_e4_devptr_kernel(
+        batch_base: *const E4,
+        lookup_mul: *const E4,
+        lookup_add: *const E4,
+        ext_challenges: *const E4,
+        desc: GpuFlatRecipeEvalDescDevptr,
         coefficients: *mut E4,
         num_recipes: u32,
     )
@@ -123,6 +177,40 @@ pub(crate) fn eval_recipes_e4(
         num_recipes as u32,
     );
     EvalRecipesE4Function(ab_gkr_flat_round0_eval_recipes_e4_kernel).launch(&config, &args)
+}
+
+/// Device-pointer variant of [`eval_recipes_e4`]. Identical launch geometry and
+/// semantics; the recipe/term/immediate tables are read from the device buffers
+/// referenced by `desc` (four pointers) instead of an inline descriptor. Used
+/// when the recipe count overflows the inline `GpuFlatRecipeEvalDesc` caps.
+pub(crate) fn eval_recipes_e4_devptr(
+    batch_base: *const E4,
+    lookup_mul: *const E4,
+    lookup_add: *const E4,
+    ext_challenges: *const E4,
+    desc: &GpuFlatRecipeEvalDescDevptr,
+    num_recipes: usize,
+    coefficients: *mut E4,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(num_recipes <= u32::MAX as usize);
+    if num_recipes == 0 {
+        return Ok(());
+    }
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_recipes as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = EvalRecipesE4DevptrArguments::new(
+        batch_base,
+        lookup_mul,
+        lookup_add,
+        ext_challenges,
+        *desc,
+        coefficients,
+        num_recipes as u32,
+    );
+    EvalRecipesE4DevptrFunction(ab_gkr_flat_round0_eval_recipes_e4_devptr_kernel)
+        .launch(&config, &args)
 }
 
 #[cfg(test)]

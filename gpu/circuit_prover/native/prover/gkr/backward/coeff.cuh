@@ -55,6 +55,23 @@ static_assert(sizeof(immediate_factor_recipe_header) == 4, "immediate_factor_rec
 static_assert(sizeof(immediate_factor_monomial) == 8, "immediate_factor_monomial must be 8 bytes");
 static_assert(sizeof(gpu_flat_recipe_eval_desc) <= 32u * 1024u, "gpu_flat_recipe_eval_desc must fit under the 32 KB inline kernel-arg ceiling");
 
+// Device-pointer companion for delegations whose recipe/term/immediate table
+// sizes overflow the inline `gpu_flat_recipe_eval_desc` caps (e.g. bigint's 3006
+// recipes vs the 2816 header cap). Each of the four arrays lives in its own
+// device buffer. Because C++ indexes an array member (`desc.terms[i]`) and a
+// pointer member with identical syntax (array-to-pointer decay), `eval_single_recipe`
+// is templated over the descriptor type and its body is shared verbatim between
+// the inline and device-pointer forms. This struct is tiny (four pointers), so it
+// is still passed by value as a `__grid_constant__` kernel argument.
+struct gpu_flat_recipe_eval_desc_devptr {
+  const gpu_recipe_header *headers;
+  const gpu_prefactor_term *terms;
+  const immediate_factor_recipe_header *immediate_recipes;
+  const immediate_factor_monomial *immediate_monomials;
+};
+
+static_assert(sizeof(gpu_flat_recipe_eval_desc_devptr) <= 32u * 1024u, "gpu_flat_recipe_eval_desc_devptr must fit under the 32 KB inline kernel-arg ceiling");
+
 DEVICE_FORCEINLINE e4 eval_immediate_factor(const immediate_factor_recipe_header &recipe, const immediate_factor_monomial *all_monomials,
                                             const e4 *ext_challenges) {
   e4 acc = e4::ZERO();
@@ -72,8 +89,9 @@ DEVICE_FORCEINLINE e4 eval_immediate_factor(const immediate_factor_recipe_header
   return acc;
 }
 
-DEVICE_FORCEINLINE e4 eval_single_recipe(const gpu_recipe_header &recipe, const gpu_flat_recipe_eval_desc &desc, const e4 &batch_base, const e4 &lookup_mul,
-                                         const e4 &lookup_add, const e4 *ext_challenges) {
+template <typename Desc>
+DEVICE_FORCEINLINE e4 eval_single_recipe(const gpu_recipe_header &recipe, const Desc &desc, const e4 &batch_base, const e4 &lookup_mul, const e4 &lookup_add,
+                                         const e4 *ext_challenges) {
   e4 c = e4::pow(batch_base, recipe.batch_power);
   const e4 immediate = eval_immediate_factor(desc.immediate_recipes[recipe.immediate_idx], desc.immediate_monomials, ext_challenges);
   c = e4::mul(c, immediate);

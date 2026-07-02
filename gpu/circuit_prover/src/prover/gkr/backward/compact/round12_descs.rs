@@ -10,8 +10,8 @@ use super::super::kernels::{
 use super::{
     build_backing_ranges, build_continuation_backing_ranges, resolve_backing_for_pointer,
     resolve_continuation_backing_for_pointer, BackingRange, ContinuationBackingRange,
-    GpuFlatRound1UnifiedDesc, GpuFlatRound2UnifiedDesc, CONT_BASE_CACHE_VIRTUAL_FLAG,
-    CONT_BASE_FIRST_ACCESS_FLAG, CONT_BASE_VIRTUAL_KIND_MASK,
+    FlatTermTablesHost, GpuFlatRound1UnifiedDesc, GpuFlatRound2UnifiedDesc,
+    CONT_BASE_CACHE_VIRTUAL_FLAG, CONT_BASE_FIRST_ACCESS_FLAG, CONT_BASE_VIRTUAL_KIND_MASK,
 };
 use crate::primitives::field::BF;
 use crate::upstream::Field;
@@ -102,7 +102,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
     round1_fused: &super::super::flat::Round1FusedSources,
     plan: &super::super::flat::FlatContinuationBuildPlan<E>,
     storage: &GpuGKRStorage<BF, E>,
-) -> Box<GpuFlatRound1UnifiedDesc> {
+) -> (Box<GpuFlatRound1UnifiedDesc>, Option<FlatTermTablesHost>) {
     use super::super::flat::{
         FLAT_CONT_EXT_SOURCE_BIT, FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE, TERM_TYPE_C0_ONLY_LINEAR,
         TERM_TYPE_CONSTANT, TERM_TYPE_UNIFIED_LINEAR, TERM_TYPE_UNIFIED_QUADRATIC,
@@ -250,10 +250,9 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
         + td.num_c0_only_linear as usize
         + td.num_unified_quadratic as usize
         + td.num_unified_linear as usize;
-    assert!(
-        total_terms <= FLAT_CONT_UNIFIED_MAX_TERMS,
-        "round1 unified terms overflow: {total_terms} > {FLAT_CONT_UNIFIED_MAX_TERMS}",
-    );
+    // NOTE: `total_terms` may exceed FLAT_CONT_UNIFIED_MAX_TERMS on large
+    // delegations. When it does, the device-terms path (Stage 3b) is taken at
+    // the end of this fn instead of the inline copy; no assert here.
 
     // Apply round1 idx_remap (continuation source_table_idx → tagged round1
     // index, with `FLAT_CONT_EXT_SOURCE_BIT` set for ext entries) inline as
@@ -331,10 +330,8 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
     }
 
     let num_tiles = tile_boundaries.len();
-    assert!(
-        num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES,
-        "round1 unified tiles overflow: {num_tiles} > {FLAT_CONT_UNIFIED_MAX_TILES}",
-    );
+    // NOTE: `num_tiles` may exceed FLAT_CONT_UNIFIED_MAX_TILES on large
+    // delegations → device-terms path (Stage 3b); no assert here.
 
     let mut fold_sources: Vec<u16> = Vec::new();
     let mut tile_term_offsets: Vec<u16> = Vec::with_capacity(num_tiles + 1);
@@ -386,15 +383,30 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
         fold_sources.len(),
     );
 
-    compact.terms[..terms.len()].copy_from_slice(&terms);
     compact.num_terms = terms.len() as u32;
     compact.num_constant_terms = num_constant_terms as u32;
     compact.num_tiles = num_tiles as u32;
-    compact.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
-    compact.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
     compact.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
 
-    compact
+    if terms.len() <= FLAT_CONT_UNIFIED_MAX_TERMS && num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES {
+        // Inline path: terms/tiles fit the __grid_constant__ desc.
+        compact.terms[..terms.len()].copy_from_slice(&terms);
+        compact.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
+        compact.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
+        (compact, None)
+    } else {
+        // Device path (Stage 3b): terms/tiles overflow the inline cap → keep
+        // them as host Vecs for H2D; the inline desc's term/tile arrays stay
+        // unused (the `_devptr_terms_` kernel reads from device buffers).
+        (
+            compact,
+            Some(FlatTermTablesHost {
+                terms,
+                tile_term_offsets,
+                tile_fold_offsets,
+            }),
+        )
+    }
 }
 
 /// Resolve a round-2 cache pointer. For base sources at round 2,
@@ -436,7 +448,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round2_unified_desc<E: Field>
     round2_fused: &super::super::flat::Round2FusedSources,
     plan: &super::super::flat::FlatContinuationBuildPlan<E>,
     storage: &GpuGKRStorage<BF, E>,
-) -> Box<GpuFlatRound2UnifiedDesc> {
+) -> (Box<GpuFlatRound2UnifiedDesc>, Option<FlatTermTablesHost>) {
     use super::super::flat::{
         FLAT_CONT_EXT_SOURCE_BIT, FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE, TERM_TYPE_C0_ONLY_LINEAR,
         TERM_TYPE_CONSTANT, TERM_TYPE_UNIFIED_LINEAR, TERM_TYPE_UNIFIED_QUADRATIC,
@@ -587,10 +599,8 @@ pub(in crate::prover::gkr::backward) fn build_flat_round2_unified_desc<E: Field>
         + td.num_c0_only_linear as usize
         + td.num_unified_quadratic as usize
         + td.num_unified_linear as usize;
-    assert!(
-        total_terms <= FLAT_CONT_UNIFIED_MAX_TERMS,
-        "round2 unified terms overflow: {total_terms} > {FLAT_CONT_UNIFIED_MAX_TERMS}",
-    );
+    // NOTE: `total_terms` may exceed FLAT_CONT_UNIFIED_MAX_TERMS on large
+    // delegations → device-terms path (Stage 3b); no assert here.
 
     // Apply round2 idx_remap (continuation source_table_idx → tagged round2
     // index, with `FLAT_CONT_EXT_SOURCE_BIT` set for ext entries) inline as
@@ -668,10 +678,8 @@ pub(in crate::prover::gkr::backward) fn build_flat_round2_unified_desc<E: Field>
     }
 
     let num_tiles = tile_boundaries.len();
-    assert!(
-        num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES,
-        "round2 unified tiles overflow: {num_tiles} > {FLAT_CONT_UNIFIED_MAX_TILES}",
-    );
+    // NOTE: `num_tiles` may exceed FLAT_CONT_UNIFIED_MAX_TILES on large
+    // delegations → device-terms path (Stage 3b); no assert here.
 
     let mut fold_sources: Vec<u16> = Vec::new();
     let mut tile_term_offsets: Vec<u16> = Vec::with_capacity(num_tiles + 1);
@@ -723,13 +731,24 @@ pub(in crate::prover::gkr::backward) fn build_flat_round2_unified_desc<E: Field>
         fold_sources.len(),
     );
 
-    compact.terms[..terms.len()].copy_from_slice(&terms);
     compact.num_terms = terms.len() as u32;
     compact.num_constant_terms = num_constant_terms as u32;
     compact.num_tiles = num_tiles as u32;
-    compact.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
-    compact.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
     compact.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
 
-    compact
+    if terms.len() <= FLAT_CONT_UNIFIED_MAX_TERMS && num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES {
+        compact.terms[..terms.len()].copy_from_slice(&terms);
+        compact.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
+        compact.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
+        (compact, None)
+    } else {
+        (
+            compact,
+            Some(FlatTermTablesHost {
+                terms,
+                tile_term_offsets,
+                tile_fold_offsets,
+            }),
+        )
+    }
 }
