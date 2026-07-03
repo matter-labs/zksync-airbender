@@ -33,7 +33,8 @@
 use std::collections::{HashMap, HashSet};
 
 use cs::gkr_compiler::dag_ir::{
-    DagLayer, Expr, ExprId, LayerSchedule, ReadPlace, RootId, SourceKind,
+    DagLayer, DemandKind, Expr, ExprId, LayerSchedule, ReadPlace, ReplayEvent, RootId, SinkInfo,
+    SinkKind, SourceKind,
 };
 
 use super::super::context::{DagForwardContext, ForwardAction};
@@ -46,6 +47,7 @@ use super::arith::{
 use super::place::{ValueId, VInstrKind, VirtualInstr, VirtualOp};
 use super::schedule::split_reduction;
 use super::schedule_residency::MaterializeMap;
+use super::MaterializePolicy;
 use crate::fwd::compile::CompileError;
 
 /// BabyBear field −1 (= P−1), the canonical additive-inverse-of-1 representative.
@@ -186,6 +188,17 @@ struct VirtualLower<'a> {
     root_outputs: Vec<(RootId, VirtualRootOutput)>,
     /// Interned resolution-leaf descriptors (`ExprId → ctx.specials` index).
     desc_by_expr: HashMap<ExprId, u16>,
+    /// Emission policy. `LegacyRecompute` = the lazy realize-from-sets + recompute path
+    /// (default, unchanged); `Materialize` = the event-local cache-produce vs fuse path.
+    policy: MaterializePolicy,
+    /// `ExprId`s that appear as a direct child of some `Add` in this layer (layer-global).
+    add_child_exprs: HashSet<ExprId>,
+    /// Cache-root expr ids (`materialize: Some(Cache{..})`): NEVER fusable (layer-global).
+    cache_root_exprs: HashSet<ExprId>,
+    /// Values `Admit`ed in the step being replayed (authoritative; NOT `resident_after`).
+    admitted_this_step: HashSet<ExprId>,
+    /// Values with a `Recompute` `Demand` in the step being replayed.
+    recompute_this_step: HashSet<ExprId>,
 }
 
 impl<'a> VirtualLower<'a> {
@@ -410,10 +423,252 @@ impl<'a> VirtualLower<'a> {
             );
             return Ok(());
         }
+        if self.policy == MaterializePolicy::Materialize {
+            return self.compile_add_materialize(layer, &children, expected, resident_target);
+        }
         if self.try_compile_fma_virtual(layer, &children, expected, resident_target)?.is_some() {
             return Ok(());
         }
         self.compile_reduction_virtual(layer, &children, true, false, expected, resident_target)
+    }
+
+    /// A FUSABLE product (Global Constraint 2): a `Mul` that is a direct child of an
+    /// `Add` in this layer and is NOT a cache root. Cache-root `Mul`s flow through the
+    /// existing materialize/`Resident`/`Reload` path unchanged; only fusable products
+    /// participate in the event-local cache-produce-vs-fuse decision.
+    fn is_fusable_product(&self, layer: &DagLayer, p: ExprId) -> bool {
+        matches!(layer.exprs[p.0 as usize], Expr::Mul(_))
+            && self.add_child_exprs.contains(&p)
+            && !self.cache_root_exprs.contains(&p)
+    }
+
+    /// Event-local per-step decision (Global Constraint 1): a fusable product `p` whose
+    /// current step has BOTH a `Recompute` `Demand` for `p` and an `Admit{p}` event is
+    /// CACHE-PRODUCED (`Mul`→cell). A `Recompute` without a same-step `Admit` fuses; a
+    /// `Resident` read is served from `p`'s already-defined cell (the `defined` check).
+    fn cache_produce_now(&self, p: ExprId) -> bool {
+        self.admitted_this_step.contains(&p) && self.recompute_this_step.contains(&p)
+    }
+
+    /// Materialize-policy `Add` lowering (Global Constraints 1–5): split the fusable
+    /// `Mul`-in-`Add` children by their event-local decision. CACHE-PRODUCE products are
+    /// emitted FIRST as real `Mul`→cell (`defines = p`, TRUE signed value); already-cached
+    /// (`Resident`/defined) fusable products are read as `Value(p)` addends (the cell holds
+    /// the signed value, so their contribution sign is `Plus`); remaining fusable products
+    /// FUSE (`Fma`) exactly as the legacy path. Non-fusable (cache-root) binary products
+    /// keep the legacy fuse resolution. Then plain addends fold in, then the fused `Fma`s.
+    fn compile_add_materialize(
+        &mut self,
+        layer: &DagLayer,
+        children: &[ExprId],
+        expected: OperandField,
+        resident_target: &HashSet<ExprId>,
+    ) -> Result<(), CompileError> {
+        // Cache-produce products: (sign, p, p-field, lhs-field, lhs-op, rhs-field, rhs-op).
+        let mut cache_produce: Vec<(
+            Sign,
+            ExprId,
+            OperandField,
+            OperandField,
+            VirtualOp,
+            OperandField,
+            VirtualOp,
+        )> = Vec::new();
+        // Fused products: (sign, lhs-field, lhs-op, rhs-field, rhs-op).
+        let mut fused: Vec<(Sign, OperandField, VirtualOp, OperandField, VirtualOp)> = Vec::new();
+        // Plain addends + resident-read fusable products: (field, op, sign).
+        let mut addend_ops: Vec<(OperandField, VirtualOp, Sign)> = Vec::new();
+
+        // Lower every operand up front (a compound child clobbers the acc during its own
+        // lowering, so all operand deliveries must precede the acc-based emission below).
+        for &c in children {
+            match classify_additive_child(layer, c) {
+                AdditiveChild::Product { sign, lhs, rhs } => {
+                    let fusable = self.is_fusable_product(layer, c);
+                    if fusable && self.defined.contains(&c) {
+                        // Already cached (this step's `Resident`, or an earlier cache-produce):
+                        // the cell holds `p`'s TRUE signed value, so add it with sign `Plus`.
+                        let f = child_operand_field(layer, c, expected, &self.cross);
+                        let op = self.lower_operand_virtual(layer, c, expected, resident_target)?;
+                        addend_ops.push((f, op, Sign::Plus));
+                    } else if fusable && self.cache_produce_now(c) {
+                        let pf = child_operand_field(layer, c, expected, &self.cross);
+                        let lf = child_operand_field(layer, lhs, expected, &self.cross);
+                        let rf = child_operand_field(layer, rhs, expected, &self.cross);
+                        let lhs_op =
+                            self.lower_operand_virtual(layer, lhs, expected, resident_target)?;
+                        let rhs_op =
+                            self.lower_operand_virtual(layer, rhs, expected, resident_target)?;
+                        cache_produce.push((sign, c, pf, lf, lhs_op, rf, rhs_op));
+                    } else {
+                        // Fuse: a fusable product without a cache-produce decision, or a
+                        // cache-root binary product (kept on the legacy fuse resolution).
+                        let lf = child_operand_field(layer, lhs, expected, &self.cross);
+                        let rf = child_operand_field(layer, rhs, expected, &self.cross);
+                        let lhs_op =
+                            self.lower_operand_virtual(layer, lhs, expected, resident_target)?;
+                        let rhs_op =
+                            self.lower_operand_virtual(layer, rhs, expected, resident_target)?;
+                        fused.push((sign, lf, lhs_op, rf, rhs_op));
+                    }
+                }
+                AdditiveChild::Addend { sign, id } => {
+                    let f = child_operand_field(layer, id, expected, &self.cross);
+                    let op = self.lower_operand_virtual(layer, id, expected, resident_target)?;
+                    addend_ops.push((f, op, sign));
+                }
+            }
+        }
+
+        // ── Seed the accumulator: CACHE-PRODUCE products FIRST (empty-acc, Constraint 4). ──
+        let mut acc_field = OperandField::Base;
+        let mut seeded = false;
+        for (i, (sign, p, pf, lf, lhs_op, rf, rhs_op)) in cache_produce.iter().enumerate() {
+            if i > 0 {
+                // Offload the live partial to a fresh temp, produce this product, add back.
+                // The temp holds the PREVIOUS accumulator, so it must be evicted AND folded
+                // back at the accumulator's OWN field (`acc_field`) — NOT this product's
+                // field (`*pf`), which can differ (e.g. base×base vs a product with an Ext
+                // factor). `acc_field` is still the pre-product field here (it is only
+                // widened at the end of the iteration, after this fold).
+                let partial_field = acc_field;
+                let t = self.fresh_internal();
+                self.widths.insert(t, partial_field);
+                self.emit_evict_to_cell(t, partial_field);
+                self.produce_product_into_acc(*sign, *lf, lhs_op, *rf, rhs_op);
+                self.widths.insert(*p, *pf);
+                self.emit_evict_to_cell(*p, *pf);
+                self.defined.insert(*p);
+                self.push_fold(partial_field, vec![VirtualOp::Value(t)], true, Sign::Plus);
+            } else {
+                self.produce_product_into_acc(*sign, *lf, lhs_op, *rf, rhs_op);
+                self.widths.insert(*p, *pf);
+                self.emit_evict_to_cell(*p, *pf);
+                self.defined.insert(*p);
+                seeded = true;
+            }
+            if *pf == OperandField::Ext {
+                acc_field = OperandField::Ext;
+            }
+        }
+
+        // If no cache-produce seeded the acc, seed from an addend, else from a fused product.
+        let mut seed_addend: Option<usize> = None;
+        if !seeded {
+            if !addend_ops.is_empty() {
+                seed_addend = Some(self.seed_from_addends(&addend_ops));
+            } else if !fused.is_empty() {
+                let s = fused.iter().position(|(sg, ..)| *sg == Sign::Plus).unwrap_or(0);
+                let (ssign, lf0, lhs0, rf0, rhs0) = fused.remove(s);
+                self.produce_product_into_acc(ssign, lf0, &lhs0, rf0, &rhs0);
+            } else {
+                // Degenerate (all children filtered to zero): value-safe 0.
+                self.emit_init_field(
+                    VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::Zero as u16 },
+                    OperandField::Base,
+                );
+            }
+        }
+
+        // Fold the (non-seed) addends into the acc, then the remaining FUSED products.
+        self.fold_addends_into_acc(&addend_ops, seed_addend)?;
+        self.emit_fma_products(fused);
+        Ok(())
+    }
+
+    /// Pick + emit the accumulator seed among `addend_ops` (a Base-Plus term, else any
+    /// Plus, else any Base, else the first), applying a `Minus` seed as a unary negate.
+    /// Returns the chosen seed index. Precondition: `addend_ops` is non-empty. Shared by
+    /// `try_compile_fma_virtual` and `compile_add_materialize` (one seed heuristic).
+    fn seed_from_addends(&mut self, addend_ops: &[(OperandField, VirtualOp, Sign)]) -> usize {
+        let seed = addend_ops
+            .iter()
+            .position(|(f, _, s)| *f == OperandField::Base && *s == Sign::Plus)
+            .or_else(|| addend_ops.iter().position(|(_, _, s)| *s == Sign::Plus))
+            .or_else(|| addend_ops.iter().position(|(f, _, _)| *f == OperandField::Base))
+            .unwrap_or(0);
+        self.emit_init_field(addend_ops[seed].1.clone(), addend_ops[seed].0);
+        if addend_ops[seed].2 == Sign::Minus {
+            self.emit_unary_negate();
+        }
+        seed
+    }
+
+    /// Fold `addend_ops` (skipping the already-seeded `skip` index, if any) into the acc,
+    /// grouped by (field, sign) so each homogeneous group is one ADD (MAX_ARITY-split).
+    /// Shared by `try_compile_fma_virtual` and `compile_add_materialize`.
+    fn fold_addends_into_acc(
+        &mut self,
+        addend_ops: &[(OperandField, VirtualOp, Sign)],
+        skip: Option<usize>,
+    ) -> Result<(), CompileError> {
+        let mut base_plus: Vec<VirtualOp> = Vec::new();
+        let mut base_minus: Vec<VirtualOp> = Vec::new();
+        let mut ext_plus: Vec<VirtualOp> = Vec::new();
+        let mut ext_minus: Vec<VirtualOp> = Vec::new();
+        for (i, (f, op, s)) in addend_ops.iter().enumerate() {
+            if Some(i) == skip {
+                continue;
+            }
+            match (f, s) {
+                (OperandField::Base, Sign::Plus) => base_plus.push(op.clone()),
+                (OperandField::Base, Sign::Minus) => base_minus.push(op.clone()),
+                (OperandField::Ext, Sign::Plus) => ext_plus.push(op.clone()),
+                (OperandField::Ext, Sign::Minus) => ext_minus.push(op.clone()),
+            }
+        }
+        for (f, s, group) in [
+            (OperandField::Base, Sign::Plus, base_plus),
+            (OperandField::Base, Sign::Minus, base_minus),
+            (OperandField::Ext, Sign::Plus, ext_plus),
+            (OperandField::Ext, Sign::Minus, ext_minus),
+        ] {
+            if group.is_empty() {
+                continue;
+            }
+            self.emit_reduction_group_virtual(f, group, true, s)?;
+        }
+        Ok(())
+    }
+
+    /// Fold binary products into the acc as FMA pairs, canonicalized (H5) and grouped by
+    /// (field_lhs, field_rhs, sign) so commutative same-shape pairs share one chunked FMA.
+    /// Shared by `try_compile_fma_virtual` and `compile_add_materialize`.
+    fn emit_fma_products(
+        &mut self,
+        products: Vec<(Sign, OperandField, VirtualOp, OperandField, VirtualOp)>,
+    ) {
+        use std::collections::BTreeMap;
+        let mut groups: BTreeMap<(u8, u8, u8), Vec<(VirtualOp, VirtualOp)>> = BTreeMap::new();
+        for (sign, lf, lhs_op, rf, rhs_op) in products {
+            let ((cf_l, cf_r), (op_l, op_r)) = canonical_fma_pair_v(lf, rf, lhs_op, rhs_op);
+            groups.entry((cf_l as u8, cf_r as u8, sign as u8)).or_default().push((op_l, op_r));
+        }
+        for ((lf, rf, sign), gpairs) in groups {
+            self.push_fma_chunked(field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs);
+        }
+    }
+
+    /// Compute `lhs*rhs` into the (empty) accumulator, applying a leading `-1` as a
+    /// unary negate so the acc holds the product's TRUE signed value (Constraints 3/4).
+    fn produce_product_into_acc(
+        &mut self,
+        sign: Sign,
+        lf: OperandField,
+        lhs_op: &VirtualOp,
+        rf: OperandField,
+        rhs_op: &VirtualOp,
+    ) {
+        self.emit_init_field(lhs_op.clone(), lf);
+        self.emit(VInstr::Mul {
+            field: rf,
+            reads: vec![rhs_op.clone()],
+            defines: None,
+            is_dram_read: is_dram_op(rhs_op),
+        });
+        if sign == Sign::Minus {
+            self.emit_unary_negate();
+        }
     }
 
     fn compile_mul_virtual(
@@ -639,56 +894,13 @@ impl<'a> VirtualLower<'a> {
         // Seed the accumulator; `fma_lo` is the product set still to fold as FMA.
         let fma_lo: Vec<(Sign, OperandField, VirtualOp, OperandField, VirtualOp)> =
             if !addend_ops.is_empty() {
-                let seed = addend_ops
-                    .iter()
-                    .position(|(f, _, s)| *f == OperandField::Base && *s == Sign::Plus)
-                    .or_else(|| addend_ops.iter().position(|(_, _, s)| *s == Sign::Plus))
-                    .or_else(|| addend_ops.iter().position(|(f, _, _)| *f == OperandField::Base))
-                    .unwrap_or(0);
-                self.emit_init_field(addend_ops[seed].1.clone(), addend_ops[seed].0);
-                if addend_ops[seed].2 == Sign::Minus {
-                    self.emit_unary_negate();
-                }
-                let mut base_plus: Vec<VirtualOp> = Vec::new();
-                let mut base_minus: Vec<VirtualOp> = Vec::new();
-                let mut ext_plus: Vec<VirtualOp> = Vec::new();
-                let mut ext_minus: Vec<VirtualOp> = Vec::new();
-                for (i, (f, op, s)) in addend_ops.iter().enumerate() {
-                    if i == seed {
-                        continue;
-                    }
-                    match (f, s) {
-                        (OperandField::Base, Sign::Plus) => base_plus.push(op.clone()),
-                        (OperandField::Base, Sign::Minus) => base_minus.push(op.clone()),
-                        (OperandField::Ext, Sign::Plus) => ext_plus.push(op.clone()),
-                        (OperandField::Ext, Sign::Minus) => ext_minus.push(op.clone()),
-                    }
-                }
-                for (f, s, group) in [
-                    (OperandField::Base, Sign::Plus, base_plus),
-                    (OperandField::Base, Sign::Minus, base_minus),
-                    (OperandField::Ext, Sign::Plus, ext_plus),
-                    (OperandField::Ext, Sign::Minus, ext_minus),
-                ] {
-                    if group.is_empty() {
-                        continue;
-                    }
-                    self.emit_reduction_group_virtual(f, group, true, s)?;
-                }
+                let seed = self.seed_from_addends(&addend_ops);
+                self.fold_addends_into_acc(&addend_ops, Some(seed))?;
                 lo
             } else {
                 let seed = lo.iter().position(|(s, ..)| *s == Sign::Plus).unwrap_or(0);
                 let (seed_sign, lf0, lhs0_op, rf0, rhs0_op) = lo[seed].clone();
-                self.emit_init_field(lhs0_op, lf0);
-                self.emit(VInstr::Mul {
-                    field: rf0,
-                    reads: vec![rhs0_op.clone()],
-                    defines: None,
-                    is_dram_read: is_dram_op(&rhs0_op),
-                });
-                if seed_sign == Sign::Minus {
-                    self.emit_unary_negate();
-                }
+                self.produce_product_into_acc(seed_sign, lf0, &lhs0_op, rf0, &rhs0_op);
                 if lo.len() == 1 {
                     return Ok(Some(()));
                 }
@@ -697,18 +909,7 @@ impl<'a> VirtualLower<'a> {
                 rest
             };
 
-        use std::collections::BTreeMap;
-        let mut groups: BTreeMap<(u8, u8, u8), Vec<(VirtualOp, VirtualOp)>> = BTreeMap::new();
-        for (sign, lf, lhs_op, rf, rhs_op) in fma_lo {
-            let ((cf_l, cf_r), (op_l, op_r)) = canonical_fma_pair_v(lf, rf, lhs_op, rhs_op);
-            groups
-                .entry((cf_l as u8, cf_r as u8, sign as u8))
-                .or_default()
-                .push((op_l, op_r));
-        }
-        for ((lf, rf, sign), gpairs) in groups {
-            self.push_fma_chunked(field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs);
-        }
+        self.emit_fma_products(fma_lo);
         Ok(Some(()))
     }
 
@@ -787,6 +988,7 @@ pub(crate) fn lower_layer_virtual(
     ctx: &mut DagForwardContext,
     _mat: &MaterializeMap,
     this_layer: usize,
+    policy: MaterializePolicy,
 ) -> Result<
     (
         Vec<VInstr>,
@@ -808,6 +1010,21 @@ pub(crate) fn lower_layer_virtual(
         "layer has {} exprs; internal ValueId base {INTERNAL_BASE} would collide",
         layer.exprs.len()
     );
+
+    // Layer-global fusability inputs (Global Constraint 2): the set of exprs that appear
+    // as a direct child of some `Add`, and the set of cache-root exprs (never fusable).
+    let mut add_child_exprs: HashSet<ExprId> = HashSet::new();
+    for e in &layer.exprs {
+        if let Expr::Add(children) = e {
+            add_child_exprs.extend(children.iter().copied());
+        }
+    }
+    let mut cache_root_exprs: HashSet<ExprId> = HashSet::new();
+    for root in &layer.roots {
+        if let Some(SinkInfo { kind: SinkKind::Cache { .. }, .. }) = &root.materialize {
+            cache_root_exprs.insert(root.expr);
+        }
+    }
 
     // Compute roots by shared ExprId: intern each sink's backing once.
     let mut expr_to_compute: HashMap<ExprId, Vec<(RootId, u8, u16, OperandField)>> = HashMap::new();
@@ -835,6 +1052,11 @@ pub(crate) fn lower_layer_virtual(
         exposed: HashSet::new(),
         root_outputs: Vec::new(),
         desc_by_expr,
+        policy,
+        add_child_exprs,
+        cache_root_exprs,
+        admitted_this_step: HashSet::new(),
+        recompute_this_step: HashSet::new(),
     };
 
     let mut resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)> =
@@ -845,6 +1067,39 @@ pub(crate) fn lower_layer_virtual(
         let step = &schedule.steps[p];
         let rb: HashSet<ExprId> = step.resident_before.iter().copied().collect();
         let ra: HashSet<ExprId> = step.resident_after.iter().copied().collect();
+
+        // Under `Materialize`, derive the event-local decision inputs for this step from
+        // its `Admit`/`Demand` events (authoritative — NOT `resident_after`, Constraint 1).
+        // `LegacyRecompute` leaves these empty, so `compile_add_materialize` never fires.
+        if st.policy == MaterializePolicy::Materialize {
+            let mut admitted: HashSet<ExprId> = HashSet::new();
+            let mut recompute: HashSet<ExprId> = HashSet::new();
+            for ev in &step.events {
+                match ev {
+                    ReplayEvent::Admit { value } => {
+                        admitted.insert(*value);
+                    }
+                    ReplayEvent::Demand { value, kind, .. } => match kind {
+                        DemandKind::Recompute => {
+                            recompute.insert(*value);
+                        }
+                        DemandKind::Reload => {
+                            // Constraint 5: a fusable (`Intermediate`) product is never
+                            // reloaded — reloadability is a cache-root-only property.
+                            debug_assert!(
+                                !st.is_fusable_product(layer, *value),
+                                "Reload demand targets fusable Intermediate product {}",
+                                value.0
+                            );
+                        }
+                        DemandKind::Resident => {}
+                    },
+                    ReplayEvent::Evict { .. } => {}
+                }
+            }
+            st.admitted_this_step = admitted;
+            st.recompute_this_step = recompute;
+        }
 
         // Drop values the schedule no longer keeps resident entering this step (implicit
         // cone-fit drops + explicit evicts, realized as a set difference). This bounds
