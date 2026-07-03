@@ -34,6 +34,7 @@ members = [
     "gpu/ops",
     "gpu/circuit_prover",
     "gpu/execution_prover",
+    "gpu/program_prover",
     "gpu/gkr_model",
     "execution_tests",
 
@@ -168,6 +169,8 @@ gpu_ntt = { path = "./gpu/ntt" }
 gpu_ops = { path = "./gpu/ops" }
 circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
 execution_prover = { path = "./gpu/execution_prover", default-features = false }
+program_prover = { path = "./gpu/program_prover", default-features = false }
+prover_examples = { path = "./circuit_defs/prover_examples" }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
