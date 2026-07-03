@@ -6,13 +6,13 @@
 
 use std::path::PathBuf;
 
-use cs::gkr_compiler::dag_ir::{lower_dag, DagCircuit, ReadPlace};
+use cs::gkr_compiler::dag_ir::{lower_dag, DagCircuit};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
-use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_layer};
-use gkr_eval_isa::fwd::context::CompiledLayer;
+use gkr_eval_isa::fwd::compile::analyze::{analyze_layer, materialize_descriptors};
+use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
+use gkr_eval_isa::fwd::context::{build_forward_actions, DagForwardContext};
 use gkr_eval_isa::fwd::source::SpecialStrategy;
-use std::collections::HashMap;
 
 // ── Fixture directory (verbatim from fwd_parity.rs) ────────────────────────
 
@@ -65,38 +65,33 @@ pub fn lower(artifact: &GKRCircuitArtifact<BabyBearField>) -> DagCircuit {
     lower_dag(artifact).expect("lower_dag failed")
 }
 
-// ── Per-layer compilation ───────────────────────────────────────────────────
+// ── Per-layer lowering context ───────────────────────────────────────────────
 
-const BUDGET: usize = 1024;
-
-/// Compile a single layer from the given `DagCircuit` + artifact, mirroring
-/// the per-layer compile call in `fwd_parity.rs::check_fixture` (lines 183–194).
-pub fn compile_one_layer(
+/// Build the layer lowering context (actions + interned special descriptors) WITHOUT
+/// compiling a program. `ctx.specials` is produced by the same
+/// `analyze_layer` + `materialize_descriptors` pass the schedule-driven compiler runs
+/// (`lower.rs`) and is schedule-INDEPENDENT — so the strategy census needs no committed
+/// schedule (it also covers the `no_caches` fixtures, which have none). Post-T3b this
+/// replaces the old 5-arg `compile_layer` call the census used only for `ctx.specials`.
+pub fn layer_ctx(
     artifact: &GKRCircuitArtifact<BabyBearField>,
     dag: &DagCircuit,
     layer_idx: usize,
-) -> CompiledLayer {
-    let cross_layer_fields: HashMap<ReadPlace, _> = build_cross_layer_field_map(dag);
+) -> DagForwardContext {
     let dag_layer = &dag.layers[layer_idx];
     let art_layer = &artifact.layers[layer_idx];
-    compile_layer(
-        dag_layer,
-        art_layer,
-        &artifact.scratch_space_mapping,
-        &cross_layer_fields,
-        BUDGET,
-    )
-    .unwrap_or_else(|e| panic!("layer {layer_idx}: compile_layer failed: {e:?}"))
+    let mut ctx = DagForwardContext::default();
+    ctx.actions = build_forward_actions(dag_layer, art_layer, &artifact.scratch_space_mapping)
+        .unwrap_or_else(|e| panic!("layer {layer_idx}: build_forward_actions failed: {e:?}"));
+    ctx.cross_layer_fields = build_cross_layer_field_map(dag);
+    let graph = analyze_layer(dag_layer, &ctx);
+    materialize_descriptors(&graph.descriptors, dag_layer, &mut ctx);
+    ctx
 }
 
 // ── Strategy extraction ─────────────────────────────────────────────────────
 
-/// Return the `SpecialStrategy` of every descriptor in `compiled.ctx.specials`.
-pub fn special_strategies(compiled: &CompiledLayer) -> Vec<SpecialStrategy> {
-    compiled
-        .ctx
-        .specials
-        .iter()
-        .map(|d| d.strategy.clone())
-        .collect()
+/// Return the `SpecialStrategy` of every descriptor in `ctx.specials`.
+pub fn special_strategies(ctx: &DagForwardContext) -> Vec<SpecialStrategy> {
+    ctx.specials.iter().map(|d| d.strategy.clone()).collect()
 }

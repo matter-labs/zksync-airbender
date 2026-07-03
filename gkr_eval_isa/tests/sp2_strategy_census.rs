@@ -25,9 +25,9 @@ fn census_reaches_all_four_strategies_at_layer0() {
         let Some(artifact) = census_helpers::load_fixture(name) else { continue };
         let dag = census_helpers::lower(&artifact);
         for (layer_idx, _layer) in dag.layers.iter().enumerate() {
-            let compiled = census_helpers::compile_one_layer(&artifact, &dag, layer_idx);
+            let ctx = census_helpers::layer_ctx(&artifact, &dag, layer_idx);
             let mut c = StrategyCounts::default();
-            for desc in census_helpers::special_strategies(&compiled) {
+            for desc in census_helpers::special_strategies(&ctx) {
                 match desc {
                     SpecialStrategy::PeekSingleColumn { .. } => c.single += 1,
                     SpecialStrategy::PeekAggregate { .. } => c.aggregate += 1,

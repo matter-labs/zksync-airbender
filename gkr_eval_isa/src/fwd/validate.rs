@@ -494,6 +494,7 @@ mod tests {
             trace: CompileTrace::default(),
             budget: 16,
             stats: CompileStats::default(),
+            resident_realized: vec![],
         }
     }
 
@@ -543,6 +544,7 @@ mod tests {
                 trace: CompileTrace::default(),
                 budget: 16,
                 stats: CompileStats::default(),
+                resident_realized: vec![],
             }
         };
 
@@ -600,6 +602,7 @@ mod tests {
             trace: CompileTrace::default(),
             budget: 16,
             stats: CompileStats::default(),
+            resident_realized: vec![],
         };
 
         assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
@@ -699,6 +702,7 @@ mod tests {
             trace: CompileTrace::default(),
             budget: 16,
             stats: CompileStats::default(),
+            resident_realized: vec![],
         };
 
         // Must not spuriously reject due to dag_ir field re-derivation.

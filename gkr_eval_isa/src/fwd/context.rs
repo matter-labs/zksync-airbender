@@ -77,6 +77,13 @@ pub struct CompiledLayer {
     pub trace: CompileTrace,
     pub budget: usize,
     pub stats: CompileStats,
+    /// Stage-3 (schedule-driven) EXPLICIT per-step residency boundary snapshots,
+    /// index-aligned with `LayerSchedule::order`: `(before, after)` where `before`
+    /// is the realized resident set entering step `p` (after implicit cone-fit drops)
+    /// and `after` the realized set leaving it, filtered to real scheduled `ExprId`s
+    /// (internal lowering temporaries excluded). Empty for layers built by the old
+    /// residency-coupled `compile_layer` path.
+    pub resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)>,
 }
 
 /// Classify every materialize-bearing root of a layer (spec §10). No closures — real metadata.

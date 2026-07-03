@@ -326,6 +326,7 @@ mod tests {
             trace: CompileTrace::default(),
             budget: 4,
             stats: CompileStats::default(),
+            resident_realized: vec![],
         }
     }
 
@@ -587,6 +588,7 @@ mod tests {
             trace: CompileTrace::default(),
             budget: 4,
             stats: CompileStats::default(),
+            resident_realized: vec![],
         };
 
         let layer = empty_layer();
@@ -698,6 +700,7 @@ mod tests {
             trace: CompileTrace::default(),
             budget: 4,
             stats: CompileStats::default(),
+            resident_realized: vec![],
         };
         (compiled, empty_layer())
     }

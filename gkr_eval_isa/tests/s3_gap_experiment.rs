@@ -49,7 +49,7 @@ use cs::gkr_compiler::dag_ir::{
 };
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
-use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_layer};
+use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_circuit};
 
 // REAL_BUDGET — the production smem cell budget the whole experiment targets.
 const REAL_BUDGET: usize = 16;
@@ -88,27 +88,30 @@ fn load_layer_source(
     (dag, artifact, cross)
 }
 
-/// M7 baseline: the PRODUCTION residency scheduler's width-weighted DRAM traffic for an
-/// L0 fixture at `budget`. This runs the real compiler (`compile_layer`: identity root
-/// order + its Belady-ish eviction) and returns `stats.dram_traffic` — the same
-/// cell-weighted metric the gap experiment compares C/E/J/D in, so it is directly
-/// comparable to the optimizer's scorer traffic. Returns `None` if the fixture cannot
-/// load or the layer cannot compile at `budget`.
-fn production_l0_traffic(fixture: &str, budget: usize) -> Option<u64> {
+/// Load the committed b16 schedule for `stem` (`{stem}_schedule_b16_gkr.json`).
+fn load_committed_schedule(stem: &str) -> Option<cs::gkr_compiler::dag_ir::CircuitSchedule> {
+    let path = compiled_circuit_dir().join(format!("{stem}_schedule_b16_gkr.json"));
+    let bytes = std::fs::read(path).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// M7 baseline: the schedule-driven compiler's width-weighted DRAM traffic for an L0
+/// fixture. Post-T3b this compiles the committed b16 schedule (`compile_circuit`) and
+/// returns layer 0's `stats.dram_traffic` — the same cell-weighted metric the gap
+/// experiment compares C/E/J/D in. Returns `None` when the fixture cannot load OR has no
+/// committed schedule (e.g. the `_no_caches` variants) — those rows report
+/// `PROD_COMPILE_FAILED` and are skipped. `budget` is retained for signature stability;
+/// the committed schedule is b16 (== `REAL_BUDGET`).
+fn production_l0_traffic(fixture: &str, _budget: usize) -> Option<u64> {
     let artifact = load_fixture(&compiled_circuit_dir().join(fixture))?;
     let dag = lower_dag(&artifact).ok()?;
     validate(&dag).ok()?;
-    let cross = build_cross_layer_field_map(&dag);
-    let layer = dag.layers.first()?;
-    let compiled = compile_layer(
-        layer,
-        artifact.layers.first()?,
-        &artifact.scratch_space_mapping,
-        &cross,
-        budget,
-    )
-    .ok()?;
-    Some(compiled.stats.dram_traffic as u64)
+    let stem = fixture
+        .trim_end_matches("_layout_gkr.json")
+        .trim_end_matches("_layout_no_caches_gkr.json");
+    let sched = load_committed_schedule(stem)?;
+    let compiled = compile_circuit(&dag, &sched, &artifact).ok()?;
+    Some(compiled.layers.first()?.stats.dram_traffic as u64)
 }
 
 /// Wrap a single (possibly downscaled) layer into a `DagCircuit` so `validate()`
@@ -373,23 +376,19 @@ fn s3_gap_experiment() {
     // Expected feasible-not-optimal at full scale (a pure MILP SCALE limit now
     // that the per-stage over-strictness is fixed — 146 nodes/39 roots cannot be
     // proven optimal within the cap) → makes gate() return Insufficient BY DESIGN.
-    // Record real compile_layer traffic as C.
+    // Record real schedule-driven compiler traffic as C.
     {
         let (dag, artifact, cross) = load_layer_source("add_sub_lui_auipc_mop_layout_gkr.json");
         let layer = &dag.layers[0];
         let inst = extract_instance(layer, &cross, REAL_BUDGET);
         let d = dag_traffic_floor(layer, &cross) as u64;
-        // Real C from the production compiler (floor 8 compiles this layer).
-        let c = match compile_layer(
-            layer,
-            &artifact.layers[0],
-            &artifact.scratch_space_mapping,
-            &cross,
-            REAL_BUDGET,
-        ) {
-            Ok(cl) => cl.stats.dram_traffic as u64,
-            Err(e) => {
-                eprintln!("[GAP] full-size compile_layer error (recording C=MAX): {e:?}");
+        // Real C from the schedule-driven compiler at the committed b16 schedule.
+        let c = match load_committed_schedule("add_sub_lui_auipc_mop")
+            .and_then(|sched| compile_circuit(&dag, &sched, &artifact).ok())
+        {
+            Some(cc) => cc.layers[0].stats.dram_traffic as u64,
+            None => {
+                eprintln!("[GAP] full-size compile error (recording C=MAX)");
                 u64::MAX
             }
         };

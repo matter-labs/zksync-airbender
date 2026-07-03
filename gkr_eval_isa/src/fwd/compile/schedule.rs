@@ -146,8 +146,8 @@ impl CellAllocator {
 /// single ADD/MUL instruction over the accumulator with the running partial held
 /// in an evict cell between chunks (§11 eviction). This enforces ONLY the encoder
 /// arity cap. The smem working-set bound is a separate concern, handled by the
-/// on-demand `ResidencyState::alloc_temp` path (`emit_reduction_group` draws each
-/// evict-partial cell from the shared allocator, evicting a backed resident if full)
+/// schedule-driven lowerer (`lower.rs`): each split partial is evicted to a fresh
+/// internal value and re-folded, with cell placement bounded by `plan_placement`
 /// rather than a static pre-split.
 pub fn split_reduction(arity: usize) -> Vec<usize> {
     if arity == 0 {

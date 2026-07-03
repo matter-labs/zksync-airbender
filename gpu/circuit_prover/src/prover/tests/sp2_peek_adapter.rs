@@ -43,7 +43,7 @@ use cs::gkr_compiler::dag_ir::{
 };
 use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation};
 use field::{Field, FieldExtension, PrimeField};
-use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_layer};
+use gkr_eval_isa::fwd::compile::compile_circuit;
 use gkr_eval_isa::fwd::context::CompiledLayer;
 use gkr_eval_isa::fwd::source::{SpecialDescriptor, SpecialStrategy};
 
@@ -463,6 +463,11 @@ struct CircuitRecipe {
     table_driver: TableDriver<BF>,
     /// The witness-eval fn (`*_mod::witness_eval_fn`).
     witness_eval_fn: WitnessEvalFn,
+    /// Committed-schedule stem (`{stem}_schedule_b16_gkr.json` under
+    /// `cs/compiled_circuits/`) for the schedule-driven forward compile (post-T3b:
+    /// the self-scheduling residency engine was deleted, so layer 0 is now compiled
+    /// from the committed b16 schedule).
+    schedule_stem: &'static str,
 }
 
 /// Generalized real-data builder. Mirrors `generated_forward_layer0_real_witness.rs:263-389`,
@@ -668,18 +673,22 @@ fn build_real_data(recipe: CircuitRecipe) -> RealData {
     // generic sets. (Empty mapping ⇒ no decoder set; report 0.)
     let decoder_set_index = generic_map.len().saturating_sub(1);
 
-    // ----- compile layer 0 to a CompiledLayer (same path as the census) -----
+    // ----- compile layer 0 to a CompiledLayer via the committed b16 schedule -----
+    // Post-T3b the forward compiler is schedule-driven: load the committed b16
+    // schedule for this circuit and take layer 0 from the compiled circuit.
     let dag = lower_dag(&circuit).expect("lower_dag failed");
-    let cross_layer_fields = build_cross_layer_field_map(&dag);
-    const BUDGET: usize = 1024;
-    let compiled_layer0 = compile_layer(
-        &dag.layers[0],
-        &circuit.layers[0],
-        &circuit.scratch_space_mapping,
-        &cross_layer_fields,
-        BUDGET,
-    )
-    .expect("compile_layer (layer 0) failed");
+    let sched_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cs/compiled_circuits")
+        .join(format!("{}_schedule_b16_gkr.json", recipe.schedule_stem));
+    let sched_bytes = std::fs::read(&sched_path)
+        .unwrap_or_else(|e| panic!("read committed schedule {sched_path:?}: {e}"));
+    let schedule: cs::gkr_compiler::dag_ir::CircuitSchedule =
+        serde_json::from_slice(&sched_bytes)
+            .unwrap_or_else(|e| panic!("parse committed schedule {sched_path:?}: {e}"));
+    let compiled_circuit =
+        compile_circuit(&dag, &schedule, &circuit).expect("compile_circuit (b16 schedule) failed");
+    let compiled_layer0: CompiledLayer =
+        compiled_circuit.layers.into_iter().next().expect("layer 0");
 
     RealData {
         range16_map,
@@ -731,6 +740,7 @@ pub(super) fn build_add_sub_real_data() -> RealData {
         artifact: compile_add_sub_circuit(ADD_SUB_TRACE_LEN_LOG2),
         table_driver,
         witness_eval_fn: add_sub_lui_auipc_mod::witness_eval_fn,
+        schedule_stem: "add_sub_lui_auipc_mop",
     })
 }
 
@@ -747,6 +757,7 @@ pub(super) fn build_unsigned_mul_div_real_data() -> RealData {
         artifact: compile_unsigned_mul_div_circuit(MUL_DIV_TRACE_LEN_LOG2),
         table_driver,
         witness_eval_fn: unsigned_mul_div_mod::witness_eval_fn,
+        schedule_stem: "unsigned_mul_div",
     })
 }
 

@@ -333,6 +333,7 @@ mod tests {
             trace: CompileTrace::default(),
             budget: 4,
             stats: CompileStats::default(),
+            resident_realized: vec![],
         }
     }
 
