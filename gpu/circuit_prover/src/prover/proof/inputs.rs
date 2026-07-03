@@ -145,6 +145,14 @@ pub struct GpuGKRProofTransfer<'a, A: GoodAllocator> {
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
     pub(crate) memory: GpuGKRMemoryTransfer<'a>,
     pub(crate) canonical_top_bits: Option<CanonicalTopBitsTransfer<'a>>,
+    /// Host copy of the SAME per-circuit inits-and-teardowns top bits staged
+    /// in `canonical_top_bits` (empty when the circuit has no teardown sets).
+    /// For unified circuits these are the ACTUAL top bits: canonical
+    /// (`0..teardown_sets.len()`) for circuits carrying real i&t data, all
+    /// zeros for TRIVIAL (dummy) chunks — mirroring the CPU reference
+    /// (`prover_examples::unified`). Consumed at scheduling time by the
+    /// forward plan, backward blueprints, and terminal proof assembly.
+    pub(crate) top_bits_host: Vec<u32>,
     pub(crate) external_challenges: ExternalChallengesTransfer<'a>,
 }
 
@@ -198,6 +206,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
             tracing_data,
             memory,
             canonical_top_bits,
+            top_bits_host: canonical_top_bits_source.to_vec(),
             external_challenges,
         })
     }
@@ -235,6 +244,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
             tracing_data,
             memory,
             canonical_top_bits,
+            top_bits_host: _,
             external_challenges,
         } = self;
         GpuGKRProofTransferKeepalive {

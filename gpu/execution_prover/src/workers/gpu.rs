@@ -238,6 +238,17 @@ fn schedule_phase_one<'a>(
         None
     };
 
+    // A unified circuit whose request carries no inits-and-teardowns data is a
+    // TRIVIAL (dummy) i&t chunk: only the trailing circuits of a unified
+    // execution hold real i&t data. Remember that before the host buffer is
+    // consumed below — it selects the all-zero top bits for the proof path.
+    let is_trivial_unified_inits_and_teardowns = matches!(
+        circuit_type,
+        CircuitType::Unrolled(
+            circuit_prover::witness::circuit_type::UnrolledCircuitType::Unified
+        )
+    ) && inits_and_teardowns_host.is_none();
+
     let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
         Some(InitsAndTeardownsTransfer::new(host, context)?)
     } else {
@@ -287,14 +298,22 @@ fn schedule_phase_one<'a>(
             .clone()
             .expect("Proof requires external_challenges");
         let compiled_circuit = state.precomputations.compiled_circuit.as_ref();
-        let canonical_top_bits = canonical_inits_and_teardowns_top_bits(compiled_circuit);
+        // ACTUAL top bits for this circuit: canonical (== the real top bits in
+        // the supported regime) for circuits with real i&t data; all zeros for
+        // trivial unified chunks, mirroring the CPU reference
+        // (`prover_examples::unified` uses `vec![0u32; num_teardown_sets]`).
+        let top_bits = if is_trivial_unified_inits_and_teardowns {
+            vec![0u32; compiled_circuit.memory_layout.teardown_sets.len()]
+        } else {
+            canonical_inits_and_teardowns_top_bits(compiled_circuit)
+        };
         let mut bundle = circuit_prover::prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
             setup_transfer,
             decoder_transfer,
             inits_and_teardowns_transfer,
             tracing_data_transfer,
             memory_transfer,
-            &canonical_top_bits,
+            &top_bits,
             external_challenges_value,
             context,
         )?;

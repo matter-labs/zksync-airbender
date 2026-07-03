@@ -383,6 +383,7 @@ fn forward_layer_dispatch_and_launch_match_expected_outputs() {
         &BTreeMap::new(),
         &mut storage,
         &external_challenges,
+        &[],
         trace_len,
         &context,
     )
@@ -638,6 +639,7 @@ fn direct_no_cache_flat_forward_variants_match_expected_outputs() {
         &BTreeMap::new(),
         &mut storage,
         &external_challenges,
+        &[],
         trace_len,
         &context,
     )

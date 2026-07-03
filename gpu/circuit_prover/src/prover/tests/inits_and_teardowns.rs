@@ -686,6 +686,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             &mut gpu_forward_setup,
             &compiled_circuit,
             &external_challenges,
+            &crate::prover::proof::canonical_inits_and_teardowns_top_bits(&compiled_circuit),
             FINAL_TRACE_SIZE_LOG_2,
             None,
             &context,

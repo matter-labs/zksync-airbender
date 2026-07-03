@@ -466,6 +466,10 @@ where
     crate::ops::simple::Sub: crate::ops::simple::BinaryOp<E, BF, E>,
     crate::ops::simple::Sub: crate::ops::simple::BinaryOp<BF, BF, BF>,
 {
+    // Test fixtures always carry real i&t data (when they have teardown sets
+    // at all), so the canonical top bits are the actual ones.
+    let inits_and_teardowns_top_bits =
+        crate::prover::proof::canonical_inits_and_teardowns_top_bits(compiled_circuit);
     schedule_forward_pass_impl(
         Some(&setup_transfer.trace_holder),
         None,
@@ -473,6 +477,7 @@ where
         forward_setup,
         compiled_circuit,
         external_challenges,
+        &inits_and_teardowns_top_bits,
         final_trace_size_log_2,
         None,
         context,

@@ -239,6 +239,11 @@ pub(crate) fn schedule_forward_pass<E>(
     forward_setup: &mut GpuGKRForwardSetup<E>,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     external_challenges: &GKRExternalChallenges<BF, E>,
+    // ACTUAL per-circuit inits-and-teardowns top bits (one per teardown set):
+    // canonical `0..sets` for circuits with real i&t data, all zeros for
+    // trivial (dummy) unified chunks. Values feed only constant terms in the
+    // i&t initial-pair materialization; plan structure is invariant to them.
+    inits_and_teardowns_top_bits: &[u32],
     final_trace_size_log_2: usize,
     output_evaluations_slab: Option<ForwardOutputSlabTarget<E>>,
     context: &ProverContext,
@@ -323,6 +328,7 @@ where
             stage1,
             forward_setup,
             external_challenges,
+            inits_and_teardowns_top_bits,
             decoder_predicate_address,
             trace_len,
             context,
@@ -392,6 +398,7 @@ fn schedule_layer<E>(
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup<E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
+    inits_and_teardowns_top_bits: &[u32],
     decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
     context: &ProverContext,
@@ -473,6 +480,7 @@ where
         &compiled_circuit.scratch_space_mapping,
         storage,
         external_challenges,
+        inits_and_teardowns_top_bits,
         trace_len,
         context,
     )?;

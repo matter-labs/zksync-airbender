@@ -64,6 +64,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         tracing_data,
         memory,
         canonical_top_bits,
+        top_bits_host,
         external_challenges,
     } = inputs;
 
@@ -144,6 +145,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         &mut forward_setup,
         &compiled_circuit,
         &external_challenges.value,
+        &top_bits_host,
         final_trace_size_log_2,
         output_evaluations_slab,
         context,
@@ -181,6 +183,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         backward_state,
         compiled_circuit.clone(),
         external_challenges.value.clone(),
+        top_bits_host.clone(),
         external_challenges.device.as_ptr(),
         backward_shared_state,
         d_seed,
@@ -229,7 +232,11 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         base_layer_claims_shared_state,
         pending_aggregation,
         external_challenges.value.clone(),
-        canonical_inits_and_teardowns_top_bits(&compiled_circuit),
+        // The ACTUAL per-circuit top bits (all-zero for trivial unified
+        // chunks): they land in `GKRProof::inits_and_teardowns_top_bits`,
+        // which the full-statement verifier asserts to be zero for the
+        // leading (dummy) unified instances.
+        top_bits_host.clone(),
         &mut callbacks,
         context,
     )?);
@@ -293,6 +300,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         tracing_data,
         memory,
         canonical_top_bits,
+        top_bits_host,
         external_challenges,
     }
     .into_keepalive();
