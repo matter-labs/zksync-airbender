@@ -16,7 +16,7 @@ use execution_prover::{ProgramArtifacts, ProveResult};
 use gpu_core::primitives::field::BF;
 use worker::Worker;
 
-use crate::interim_upstream::{compute_end_params, Setups};
+use crate::upstream::{compute_end_params, Setups};
 use crate::upstream::{
     config_for_security_level_under_pessimistic_conjecture, ColumnMajorMerkleTreeConstructor,
     DefaultTreeConstructor, MerkleTreeCap, ProgramProof, SecurityLevel, Twiddles,

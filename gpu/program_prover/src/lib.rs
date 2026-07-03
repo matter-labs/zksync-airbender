@@ -7,11 +7,10 @@
 //! `verifiers` feature) verifies proofs natively. Replaces the dead
 //! `execution_utils` GPU recursion driver.
 
-pub mod interim_upstream;
 pub mod proof_assembly;
 pub mod upstream;
 
-pub use interim_upstream::Setups;
+pub use upstream::Setups;
 pub use proof_assembly::assemble_program_proof;
 
 #[cfg(test)]
