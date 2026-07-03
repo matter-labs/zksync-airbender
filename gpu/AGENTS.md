@@ -11,7 +11,7 @@ Dependency edges may only point DOWN this order; never up. Enforcement is doc-on
 (no mechanical check) — keep it true by review.
 
 ```text
-gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash, gpu_cub }  <  circuit_prover  <  execution_prover
+gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash, gpu_cub }  <  circuit_prover  <  execution_prover  <  program_prover
 ```
 
 Plus two off-DAG crates: **`gpu_gkr_model`** (pure-CPU GKR layout model — address
@@ -79,6 +79,13 @@ helper, a build-dependency only).
 `crate::ops::blake2s`, `crate::ops::cub`), so in-crate paths are unchanged. The
 only `native/` left in `circuit_prover` is the GKR/WHIR protocol + witness CUDA.
 `execution_prover` holds `ExecutionProver` + the 9-symbol facade.
+`program_prover` is the program-level driver on top of `execution_prover`: it
+assembles `ProveResult` into `full_statement_verifier::ProgramProof`, builds the
+non-determinism streams the `fsv_*` verifier binaries consume, and (behind its
+non-default `verifiers` feature) verifies proofs natively. It replaces the dead
+`execution_utils` GPU recursion driver; protocol helpers currently mirrored from
+`prover_examples::recursion` live in its `interim_upstream` module until
+upstream exports them as library code.
 
 ## Cross-crate conventions (apply when adding/editing a kernel crate)
 
