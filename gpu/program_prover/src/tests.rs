@@ -84,8 +84,8 @@ fn test_program_prover_base_layer_verify() {
 /// while the replay worker replays over BabyBear, so the simulation's final
 /// registers / RAM state silently diverged from the traced witness —
 /// per-circuit proofs stayed self-consistent and only the closure caught it.
-/// Fixed by pinning `RISCV_MOP_FIELD=babybear` in
-/// `ExecutionProver::with_configuration`.
+/// Fixed by making the MOP field an explicit `JittedCode::preprocess_bytecode`
+/// parameter (the simulation runner passes `MopField::BabyBear`).
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
@@ -580,6 +580,60 @@ fn test_program_prover_recursion_layer_verify() {
 #[ignore]
 #[serial]
 fn test_program_prover_recursive_pipeline() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Info)
+        .try_init();
+    let (_, binary_image) = read_binary(&test_artifact(
+        "examples/hashed_fibonacci/app_blake2_with_compression.bin",
+    ));
+    let (_, text_section) = read_binary(&test_artifact(
+        "examples/hashed_fibonacci/app_blake2_with_compression.text",
+    ));
+    run_gpu_recursive_pipeline(binary_image, text_section, vec![100, 5], true);
+}
+
+/// The real thing: the recursion ladder over the zksync_os block workload —
+/// the GPU analogue of `test_recursive_proving_pipeline_zksync_os` (heavy;
+/// the base layer proves a full zksync_os block). The base measures well
+/// above the unified-switch threshold, so the unrolled recursion loop runs
+/// its natural course (no forced rung). Threshold overridable via
+/// `RECURSION_UNIFIED_SWITCH_CYCLES` like the CPU pipeline.
+#[test]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[ignore]
+#[serial]
+fn test_program_prover_recursive_pipeline_zksync_os() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Info)
+        .try_init();
+    // Mirrors prover_examples::recursion::read_hex_witness.
+    let raw = std::fs::read_to_string(test_artifact(
+        "riscv_transpiler/examples/zksync_os/23620012_witness",
+    ))
+    .expect("read witness file");
+    let raw = raw.trim();
+    assert!(raw.len() % 8 == 0);
+    let witness: Vec<u32> = raw
+        .as_bytes()
+        .chunks(8)
+        .map(|c| u32::from_str_radix(std::str::from_utf8(c).unwrap(), 16).expect("invalid hex"))
+        .collect();
+    let (_, binary_image) =
+        read_binary(&test_artifact("riscv_transpiler/examples/zksync_os/app.bin"));
+    let (_, text_section) =
+        read_binary(&test_artifact("riscv_transpiler/examples/zksync_os/app.text"));
+    run_gpu_recursive_pipeline(binary_image, text_section, witness, false);
+}
+
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+fn run_gpu_recursive_pipeline(
+    base_binary_image: Vec<u32>,
+    base_text_section: Vec<u32>,
+    base_non_determinism: Vec<u32>,
+    force_first_rung: bool,
+) {
     use crate::interim_upstream::{
         begin_chain, build_unified_stream, compute_end_params, continue_chain,
         native_verify_unified, native_verify_unrolled, UNIFIED_SWITCH_CYCLES,
@@ -638,33 +692,29 @@ fn test_program_prover_recursive_pipeline() {
         (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
     }
 
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter_level(log::LevelFilter::Info)
-        .try_init();
+    // Mirrors prover_examples::recursion's unified_switch_cycles().
+    let switch_cycles: u64 = std::env::var("RECURSION_UNIFIED_SWITCH_CYCLES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(UNIFIED_SWITCH_CYCLES);
+
     let configuration = ExecutionProverConfiguration::default();
     let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
     let worker = worker::Worker::new();
 
     // === Stage 1: base layer. ===
-    let (_, binary_image) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.bin",
-    ));
-    let (_, text_section) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.text",
-    ));
     let base_handle = prover.add_binary(
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
-        binary_image,
-        text_section,
+        base_binary_image,
+        base_text_section,
         None,
     );
     let result = prover.commit_memory_and_prove(
         0,
         &base_handle,
-        QuasiUARTSource::new_with_reads(vec![100, 5]),
+        QuasiUARTSource::new_with_reads(base_non_determinism),
     );
     let artifacts = prover.program_artifacts(&base_handle);
     let (base_proof, base_setups) =
@@ -695,10 +745,11 @@ fn test_program_prover_recursive_pipeline() {
         let measured =
             measure_verifier_cycles(bin, text, build_unrolled_stream(&setups, &proof));
         log::info!("layer-{layer} verifier measures {measured} cycles");
-        // Forced first rung: our tiny base measures below the threshold
-        // immediately; run one unrolled recursion layer anyway (see doc).
-        if layer > 0 && measured < UNIFIED_SWITCH_CYCLES {
-            log::info!("... below {UNIFIED_SWITCH_CYCLES} — switching to the unified machine");
+        // Forced first rung (small workloads only): run one unrolled
+        // recursion layer even when the base already measures below the
+        // threshold, so the loop machinery is exercised (see caller doc).
+        if (layer > 0 || !force_first_rung) && measured < switch_cycles {
+            log::info!("... below {switch_cycles} — switching to the unified machine");
             break;
         }
 
