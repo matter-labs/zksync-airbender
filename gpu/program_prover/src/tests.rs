@@ -74,16 +74,18 @@ fn test_program_prover_base_layer_verify() {
 /// `num_it_circuits`), build the unified ND stream, and run the real
 /// base-layer unified verifier natively.
 ///
-/// KNOWN BLOCKER: fails the global memory-permutation closure
+/// This test used to fail the global memory-permutation closure
 /// (`read_set_product_accumulator == write_set_product_accumulator`,
-/// full_statement_verifier/src/unified_circuit_statement.rs:255). The GPU
-/// unified prove path uses CANONICAL inits-and-teardowns top bits
-/// (`canonical_inits_and_teardowns_top_bits`, workers/gpu.rs) while the
-/// verifier closes the grand product over the REAL RAM address top bits the
-/// CPU reference collects via `ram.collect_inits_and_teardowns_sets`.
-/// execution_prover's `InitsAndTeardownsData` does not carry top bits yet;
-/// plumbing them through commit-FS + the proof job is the outstanding work
-/// item. This test validates that fix once it lands.
+/// full_statement_verifier/src/unified_circuit_statement.rs:255). The root
+/// cause was NOT the canonical inits-and-teardowns top bits (for this
+/// workload the touched 2^24-word RAM chunks are exactly {0, 1}, so the
+/// canonical `[0, 1]` equals the real top bits): the JIT simulator was
+/// building MOP (Zimop) opcodes over M31 (the `RISCV_MOP_FIELD` default)
+/// while the replay worker replays over BabyBear, so the simulation's final
+/// registers / RAM state silently diverged from the traced witness —
+/// per-circuit proofs stayed self-consistent and only the closure caught it.
+/// Fixed by pinning `RISCV_MOP_FIELD=babybear` in
+/// `ExecutionProver::with_configuration`.
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
@@ -130,6 +132,128 @@ fn test_program_prover_unified_base_layer_verify() {
     let stream = crate::interim_upstream::build_unified_stream(&setups, &proof);
     let output = crate::interim_upstream::native_verify_unified(stream, true);
     log::info!("unified base layer verified natively; output registers: {output:?}");
+}
+
+/// Unified counterpart of `test_program_prover_cpu_gpu_proof_diff`: prove
+/// multi_family_smoke on the CPU reference
+/// (`prover_examples::unified::prove_unified_execution_with_replayer`, which
+/// asserts internal closure to ONE), verify it natively, then prove on GPU and
+/// diff the two `ProgramProof`s field by field. This is the instrument that
+/// localized the JIT M31-vs-BabyBear MOP-field divergence behind the closure
+/// failure `test_program_prover_unified_base_layer_verify` used to hit.
+#[test]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[ignore]
+#[serial]
+fn test_program_prover_unified_cpu_gpu_proof_diff() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Info)
+        .try_init();
+    let (_, binary_image) = read_binary(&test_artifact(
+        "examples/multi_family_smoke/app_blake2_with_compression.bin",
+    ));
+    let (_, text_section) = read_binary(&test_artifact(
+        "examples/multi_family_smoke/app_blake2_with_compression.text",
+    ));
+    let (_, padded_binary_image) = setups::read_and_pad_binary(&test_artifact(
+        "examples/multi_family_smoke/app_blake2_with_compression.bin",
+    ));
+    let (_, padded_text_section) = setups::read_and_pad_binary(&test_artifact(
+        "examples/multi_family_smoke/app_blake2_with_compression.text",
+    ));
+    let worker = worker::Worker::new_with_num_threads(8);
+    let configuration = ExecutionProverConfiguration::default();
+    let security_level = configuration.security_level;
+
+    let (cpu_proof, cpu_setups) =
+        prover_examples::unified::prove_unified_execution_with_replayer::<std::alloc::Global>(
+            1 << 31,
+            &padded_binary_image,
+            &padded_text_section,
+            true,
+            QuasiUARTSource::new_with_reads(vec![50, 0xDEAD_BEEF]),
+            1 << 30,
+            &worker,
+            security_level,
+            0,
+        );
+    log::info!("CPU reference proved (internal closure passed); verifying natively");
+    let cpu_output = crate::interim_upstream::native_verify_unified(
+        crate::interim_upstream::build_unified_stream(&cpu_setups, &cpu_proof),
+        true,
+    );
+    log::info!("CPU reference verifies; output registers: {cpu_output:?}");
+
+    // GPU flow.
+    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let handle = prover.add_binary(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        binary_image,
+        text_section,
+        None,
+    );
+    let result = prover.commit_memory_and_prove(
+        0,
+        &handle,
+        QuasiUARTSource::new_with_reads(vec![50, 0xDEAD_BEEF]),
+    );
+    let artifacts = prover.program_artifacts(&handle);
+    let (gpu_proof, _gpu_setups) =
+        assemble_program_proof(&artifacts, result, security_level, &worker);
+
+    serde_json::to_writer(
+        std::fs::File::create("/tmp/pp_unified_cpu_proof.json").unwrap(),
+        &cpu_proof,
+    )
+    .unwrap();
+    serde_json::to_writer(
+        std::fs::File::create("/tmp/pp_unified_gpu_proof.json").unwrap(),
+        &gpu_proof,
+    )
+    .unwrap();
+    log::info!("dumped /tmp/pp_unified_cpu_proof.json and /tmp/pp_unified_gpu_proof.json");
+
+    assert_eq!(cpu_proof.final_pc, gpu_proof.final_pc, "final_pc differs");
+    assert_eq!(
+        cpu_proof.final_timestamp, gpu_proof.final_timestamp,
+        "final_timestamp differs"
+    );
+    assert_eq!(
+        cpu_proof.register_final_values, gpu_proof.register_final_values,
+        "register_final_values differ"
+    );
+    assert_eq!(
+        cpu_proof.num_it_circuits, gpu_proof.num_it_circuits,
+        "num_it_circuits differs"
+    );
+    for (family_idx, cpu_family_proofs) in cpu_proof.riscv_proofs.iter() {
+        let gpu_family_proofs = &gpu_proof.riscv_proofs[family_idx];
+        assert_eq!(cpu_family_proofs.len(), gpu_family_proofs.len());
+        for (i, (c, g)) in cpu_family_proofs.iter().zip(gpu_family_proofs).enumerate() {
+            assert_eq!(
+                serde_json::to_value(c).unwrap(),
+                serde_json::to_value(g).unwrap(),
+                "unified riscv proof differs: family {family_idx} sequence {i}"
+            );
+        }
+    }
+    for (delegation_type, cpu_delegation_proofs) in cpu_proof.delegation_proofs.iter() {
+        let gpu_delegation_proofs = &gpu_proof.delegation_proofs[delegation_type];
+        for (i, (c, g)) in cpu_delegation_proofs
+            .iter()
+            .zip(gpu_delegation_proofs)
+            .enumerate()
+        {
+            assert_eq!(
+                serde_json::to_value(c).unwrap(),
+                serde_json::to_value(g).unwrap(),
+                "delegation proof differs: type {delegation_type} sequence {i}"
+            );
+        }
+    }
+    log::info!("full unified CPU/GPU ProgramProof parity");
 }
 
 /// Diagnostic: prove the same binary + ND inputs on the CPU reference
