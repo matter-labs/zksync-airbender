@@ -462,3 +462,99 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     }
     log::info!("full CPU/GPU ProgramProof parity");
 }
+
+/// Recursion level 1 — the "JIT vs fsv binaries" watch item: prove the
+/// `fsv_unrolled_base_layer` verifier program (blake2_with_compression
+/// variant, reduced ISA) on the GPU, feeding it the base-layer
+/// `ProgramProof`'s ND stream as its witness, then verify the resulting
+/// recursion-layer proof natively. This is the first time an fsv binary
+/// (which uses pr-332's tri-add / xor-rot special opcodes) runs through the
+/// JIT simulator + GPU prover — a decode gap in the JIT would surface here.
+///
+/// Mirrors one iteration of `prover_examples::recursion`'s unrolled-recursion
+/// loop: chain fields come from `begin_chain(compute_end_params(base))`, and
+/// the recursion-layer verify runs with `is_base = false` (reads the chain
+/// preimage from the stream).
+#[test]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[ignore]
+#[serial]
+fn test_program_prover_recursion_layer_verify() {
+    use crate::interim_upstream::{begin_chain, compute_end_params, native_verify_unrolled};
+
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Info)
+        .try_init();
+    let configuration = ExecutionProverConfiguration::default();
+    let security_level = configuration.security_level;
+    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let worker = worker::Worker::new();
+
+    // Stage 1: base layer (identical to test_program_prover_base_layer_verify).
+    let (_, binary_image) = read_binary(&test_artifact(
+        "examples/hashed_fibonacci/app_blake2_with_compression.bin",
+    ));
+    let (_, text_section) = read_binary(&test_artifact(
+        "examples/hashed_fibonacci/app_blake2_with_compression.text",
+    ));
+    let base_handle = prover.add_binary(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        binary_image,
+        text_section,
+        None,
+    );
+    let result = prover.commit_memory_and_prove(
+        0,
+        &base_handle,
+        QuasiUARTSource::new_with_reads(vec![100, 5]),
+    );
+    let artifacts = prover.program_artifacts(&base_handle);
+    let (base_proof, base_setups) =
+        assemble_program_proof(&artifacts, result, security_level, &worker);
+    native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
+    log::info!(
+        "base layer proved on GPU + verified natively ({} cycles)",
+        proof_cycles(&base_proof)
+    );
+
+    let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
+    let (chain_hash, chain_preimage) = begin_chain(&base_end_params);
+
+    // Stage 2: prove the fsv base-layer verifier over the base proof's stream.
+    let (_, fsv_binary) = read_binary(&test_artifact(
+        "tools/gkr_verifier/fsv_unrolled_base_layer_sec_80_blake2_with_compression.bin",
+    ));
+    let (_, fsv_text) = read_binary(&test_artifact(
+        "tools/gkr_verifier/fsv_unrolled_base_layer_sec_80_blake2_with_compression.text",
+    ));
+    let fsv_handle = prover.add_binary(
+        ExecutionKind::Unrolled,
+        MachineType::Reduced,
+        fsv_binary,
+        fsv_text,
+        None,
+    );
+    let stream = build_unrolled_stream(&base_setups, &base_proof);
+    let result = prover.commit_memory_and_prove(
+        0,
+        &fsv_handle,
+        QuasiUARTSource::new_with_reads(stream),
+    );
+    let artifacts = prover.program_artifacts(&fsv_handle);
+    let (mut recursion_proof, recursion_setups) =
+        assemble_program_proof(&artifacts, result, security_level, &worker);
+    recursion_proof.recursion_chain_hash = Some(chain_hash);
+    recursion_proof.recursion_chain_preimage = Some(chain_preimage);
+    log::info!(
+        "recursion layer proved on GPU ({} cycles)",
+        proof_cycles(&recursion_proof)
+    );
+
+    let output = native_verify_unrolled(
+        build_unrolled_stream(&recursion_setups, &recursion_proof),
+        false,
+    );
+    log::info!("recursion layer verified natively; output registers: {output:?}");
+}
