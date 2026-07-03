@@ -27,6 +27,7 @@ prover_examples = { path = "../../circuit_defs/prover_examples", default-feature
 worker = { path = "../../worker" }
 clap = { workspace = true }
 riscv_transpiler = { path = "../../riscv_transpiler" }
+riscv_common = { path = "../../riscv_common", default-features = false }
 field = { workspace = true }
 
 verifier_common = { workspace = true }
