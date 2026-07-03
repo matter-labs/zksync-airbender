@@ -33,7 +33,7 @@ use sha3::{Digest, Keccak256};
 use std::alloc::Global;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use verifier_common::fsv_binaries::FsvProgram;
+use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 
 #[cfg(all(feature = "security_80", feature = "security_100"))]
 compile_error!("multiple security levels selected at the same time");
@@ -208,11 +208,25 @@ pub struct ProofArtifact {
     /// Recursion-chain state AFTER this artifact's layer.
     pub chain_hash: [u32; 8],
     pub chain_preimage: [u32; 16],
+    /// Blake-mode tags of the fsv verifier binaries the ladder used
+    /// (`BlakeMode::tag()` values). Untrusted CLAIM data: at verification
+    /// time they only select among the checked-in trusted fsv binaries, so a
+    /// lie makes the chain-binding comparison fail.
+    #[serde(default = "default_blake_tag")]
+    pub blake_unrolled: String,
+    #[serde(default = "default_blake_tag")]
+    pub blake_bridge: String,
+    #[serde(default = "default_blake_tag")]
+    pub blake_final: String,
     pub proof: ProgramProof,
     pub setups: Setups,
 }
 
 pub const ARTIFACT_SCHEMA_VERSION: u32 = 2;
+
+fn default_blake_tag() -> String {
+    BlakeMode::Compression.tag().to_string()
+}
 
 // ==============================================================================
 // Backend abstraction
@@ -793,6 +807,12 @@ fn finalize_artifact(
         chain_end_params: state.chain_end_params,
         chain_hash: chain.hash(),
         chain_preimage: chain.preimage(),
+        // The ladder resolves the blake modes from the environment (see
+        // host_utils); record the tags so verification reconstructs the same
+        // ladder regardless of the verify-time environment.
+        blake_unrolled: unrolled_blake_mode().tag().to_string(),
+        blake_bridge: bridge_blake_mode().tag().to_string(),
+        blake_final: final_blake_mode().tag().to_string(),
         proof: state.proof,
         setups: state.setups,
     }
@@ -806,21 +826,387 @@ pub fn verify_artifact(
     artifact: &ProofArtifact,
     source: &ProgramSource,
 ) -> Result<[u32; 16], String> {
-    let _loaded = load_and_validate_program(source, artifact)?;
+    let loaded = load_and_validate_program(source, artifact)?;
     validate_artifact_chain(artifact)?;
 
-    // A proof without a recursion chain is a base-layer statement.
-    let is_base = artifact.proof.recursion_chain_preimage.is_none();
-    match artifact.target {
-        ProofTarget::Base | ProofTarget::RecursionUnrolled => Ok(native_verify_unrolled(
+    // Trusted per-layer end-params, recomputed from the supplied program and
+    // the checked-in fsv binaries (see the program-binding module comment
+    // below). Cross-check the artifact's claimed history entry by entry
+    // (stronger than internal consistency), then bind the verifier's
+    // authenticated output chain to the trusted chain.
+    let worker = worker::Worker::new();
+    let expected = expected_chain_end_params(artifact, &loaded, &worker)?;
+    if expected != artifact.chain_end_params {
+        return Err(
+            "artifact chain_end_params do not match the trusted per-layer end-params recomputed \
+             from the supplied program and the checked-in fsv verifier binaries"
+                .to_string(),
+        );
+    }
+    let expected_chain = rebuild_chain(&expected)?;
+
+    // The claim shape decides the statement flavor: a single layer is a
+    // base-layer statement (no recursion chain in the stream).
+    let is_base = expected.len() == 1;
+    let output = match artifact.target {
+        ProofTarget::Base | ProofTarget::RecursionUnrolled => native_verify_unrolled(
             build_unrolled_stream(&artifact.setups, &artifact.proof),
             is_base,
-        )),
-        ProofTarget::RecursionUnified => Ok(native_verify_unified(
+        ),
+        ProofTarget::RecursionUnified => native_verify_unified(
             build_unified_stream(&artifact.setups, &artifact.proof),
             is_base,
-        )),
+        ),
+    };
+    ensure_recursion_chain_binds_program(&output, &expected_chain.hash())?;
+    Ok(output)
+}
+
+// ==============================================================================
+// Program binding (port of PR #321, commit a2d7ad19, from the old
+// execution_utils-based cli)
+// ==============================================================================
+//
+// The artifact JSON (program_*_keccak, chain_end_params, chain_hash, setups,
+// blake tags, ...) is attacker-editable, and the recursion verifier's setup
+// is the program-independent embedded verifier — so neither constrains which
+// base program a recursion proof actually attests to. The authenticated value
+// is the verifier's returned `output[8..16]`: the recursion chain the STARK
+// proved. We therefore recompute the EXPECTED chain exclusively from trusted
+// inputs — the supplied `--bin`/`--text` and the checked-in
+// `tools/gkr_verifier` fsv binaries — and reject unless it matches
+// `output[8..16]`. The artifact's chain_end_params / blake tags are only a
+// CLAIM of the ladder shape: they select among trusted binaries and trusted
+// derivations, so lying about them makes the comparison fail.
+
+/// The reduced-machine exit sequence every provable program ends with.
+/// Copied from `riscv_common::EXIT_SEQUENCE` via the dead `execution_utils`
+/// crate (see `execution_utils/src/lib.rs::find_binary_exit_point`); upstream
+/// should eventually export the exit-point scan from `setups` — delete this
+/// mirror when it does.
+const EXIT_SEQUENCE: &[u32] = &[
+    0x000d2503, // lw a0, 0x0(s10)
+    0x004d2583, // lw a1, 0x4(s10)
+    0x008d2603, // lw a2, 0x8(s10)
+    0x00cd2683, // lw a3, 0xc(s10)
+    0x010d2703, // lw a4, 0x10(s10)
+    0x014d2783, // lw a5, 0x14(s10)
+    0x018d2803, // lw a6, 0x18(s10)
+    0x01cd2883, // lw a7, 0x1c(s10)
+    0x020d2903, // lw s2, 0x20(s10)
+    0x024d2983, // lw s3, 0x24(s10)
+    0x028d2a03, // lw s4, 0x28(s10)
+    0x02cd2a83, // lw s5, 0x2c(s10)
+    0x030d2b03, // lw s6, 0x30(s10)
+    0x034d2b83, // lw s7, 0x34(s10)
+    0x038d2c03, // lw s8, 0x38(s10)
+    0x03cd2c83, // lw s9, 0x3c(s10)
+    0x0000006f, // loop
+];
+
+/// Statically derive a program's exit PC from its binary: the PC of the final
+/// self-loop of the (unique) exit sequence. This is the `final_pc` a normally
+/// terminating proven execution ends at, and the value hashed into
+/// `end_params`. Mirror of `execution_utils::find_binary_exit_point`,
+/// re-typed for `&[u32]`.
+fn find_binary_exit_point(binary: &[u32]) -> Result<u32, String> {
+    let mut candidates = vec![];
+    for (start_offset, window) in binary.windows(EXIT_SEQUENCE.len()).enumerate() {
+        if window == EXIT_SEQUENCE {
+            candidates.push(start_offset);
+        }
     }
+    if candidates.len() != 1 {
+        return Err(format!(
+            "expected exactly one exit sequence in the binary, found {}",
+            candidates.len()
+        ));
+    }
+    let final_pc = (candidates[0] + EXIT_SEQUENCE.len() - 1) * core::mem::size_of::<u32>();
+    Ok(final_pc as u32)
+}
+
+/// Which setup family a layer's program is proven under.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum SetupMachine {
+    /// Unrolled machine, full-unsigned ISA (base user programs).
+    UnrolledFullUnsigned,
+    /// Unrolled machine, reduced ISA (fsv unrolled verifier layers).
+    UnrolledReduced,
+    /// Unified reduced machine (bridge + final layers).
+    Unified,
+}
+
+/// Recompute the per-program `Setups` map for `(binary, machine)` WITHOUT
+/// proving, byte-identical to what the provers produce.
+///
+/// Mirror of the setups-assembly part of
+/// `prover_examples::unrolled::prove_unrolled_execution_with_replayer`
+/// (unrolled machines: one `UnrolledCircuitSetupParams` per machine family)
+/// and `prover_examples::unified::prove_unified_execution_with_replayer`
+/// (unified machine: a single entry under
+/// `REDUCED_MACHINE_CIRCUIT_FAMILY_IDX`); the commit parameters match
+/// `program_prover::proof_assembly::assemble_program_proof`, whose caps are
+/// validated byte-identical to the CPU reference. This is the "per-program
+/// setup-params assembly" helper upstream has been asked to export — delete
+/// this mirror when they do.
+fn recompute_program_setups(
+    bin: &[u32],
+    text: &[u32],
+    machine: SetupMachine,
+    worker: &worker::Worker,
+) -> Setups {
+    use prover::fft::Twiddles;
+    use prover::field::baby_bear::base::BabyBearField;
+    use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
+    use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor};
+    use riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly as FullUnsignedConfig;
+    use riscv_transpiler::cycle::ReducedMachineWithDelegation as ReducedConfig;
+
+    let mut padded_bin = bin.to_vec();
+    let mut padded_text = text.to_vec();
+    setups::pad_bytecode_for_proving(&mut padded_bin);
+    setups::pad_bytecode_for_proving(&mut padded_text);
+
+    let use_caches = true;
+    let security_level = COMPILED_SECURITY_LEVEL.to_prover();
+
+    // (family_idx, trace_len, GKRSetup) triples for every family of the machine.
+    let circuit_setups: Vec<_> = match machine {
+        SetupMachine::UnrolledFullUnsigned | SetupMachine::UnrolledReduced => {
+            let per_family = match machine {
+                SetupMachine::UnrolledFullUnsigned => {
+                    setups::get_unrolled_circuits_setups_for_machine_type::<
+                        FullUnsignedConfig,
+                        Global,
+                    >(&padded_bin, &padded_text, use_caches, worker)
+                }
+                _ => setups::get_unrolled_circuits_setups_for_machine_type::<ReducedConfig, Global>(
+                    &padded_bin,
+                    &padded_text,
+                    use_caches,
+                    worker,
+                ),
+            };
+            per_family
+                .into_iter()
+                .map(|(family_idx, setup)| (family_idx as u32, setup.trace_len, setup.setup))
+                .collect()
+        }
+        SetupMachine::Unified => {
+            let unified_setup = setups::unified_reduced_machine_circuit_setup::<Global>(
+                &padded_bin,
+                &padded_text,
+                use_caches,
+                worker,
+            );
+            vec![(
+                common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
+                unified_setup.trace_len,
+                unified_setup.setup,
+            )]
+        }
+    };
+
+    let mut twiddles: std::collections::HashMap<usize, Twiddles<BabyBearField, Global>> =
+        std::collections::HashMap::new();
+    let mut result: Setups = std::collections::BTreeMap::new();
+    for (family_idx, trace_len, setup) in circuit_setups {
+        let prover_config = config_for_security_level_under_pessimistic_conjecture(
+            trace_len.trailing_zeros() as usize,
+            security_level,
+        );
+        let twiddles_for_size = twiddles
+            .entry(trace_len)
+            .or_insert_with(|| Twiddles::new(trace_len, worker));
+        let setup_commitment = setup.commit::<DefaultTreeConstructor>(
+            &*twiddles_for_size,
+            prover_config.lde_factor,
+            prover_config.whir_schedule.whir_steps_schedule[0],
+            prover_config.cap_size,
+            trace_len.trailing_zeros() as usize,
+            worker,
+        );
+        result.insert(
+            family_idx,
+            setups::UnrolledCircuitSetupParams::from_setup_tree_cap(
+                family_idx,
+                trace_len as u32,
+                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
+                    &setup_commitment.tree,
+                ),
+            ),
+        );
+    }
+    result
+}
+
+/// Trusted `end_params` of `(binary, machine)`: recomputed setups (cached by
+/// binary keccak in-process — the unified setup is expensive, so it is only
+/// computed when the claim actually includes unified layers) hashed with the
+/// binary's statically derived exit PC.
+fn trusted_end_params(
+    bin: &[u32],
+    text: &[u32],
+    machine: SetupMachine,
+    worker: &worker::Worker,
+) -> Result<[u32; 8], String> {
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<std::collections::HashMap<(SetupMachine, [u8; 32]), [u32; 8]>>> =
+        OnceLock::new();
+
+    let mut hasher = Keccak256::new();
+    for word in bin.iter().chain(text.iter()) {
+        hasher.update(word.to_le_bytes());
+    }
+    let key = (machine, hasher.finalize().into());
+
+    let cache = CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    if let Some(end_params) = cache.lock().unwrap().get(&key) {
+        return Ok(*end_params);
+    }
+
+    let start = Instant::now();
+    let setups = recompute_program_setups(bin, text, machine, worker);
+    let exit_pc = find_binary_exit_point(bin)?;
+    let end_params = compute_end_params(&setups, exit_pc);
+    log::info!("recomputed {machine:?} setups in {} ms", elapsed_ms(start));
+    cache.lock().unwrap().insert(key, end_params);
+    Ok(end_params)
+}
+
+/// Parse a blake tag claimed by the artifact and validate it against the fsv
+/// program it selects.
+fn parse_blake_tag(tag: &str, program: FsvProgram) -> Result<BlakeMode, String> {
+    let mode = BlakeMode::parse(tag)
+        .ok_or_else(|| format!("artifact claims unknown blake mode tag {tag:?}"))?;
+    if !program.supports(mode) {
+        return Err(format!(
+            "artifact claims blake mode {tag:?} for an fsv program not built with it"
+        ));
+    }
+    Ok(mode)
+}
+
+/// Reconstruct the ladder's per-layer `end_params`, derived ONLY from trusted
+/// inputs (the supplied program + checked-in fsv binaries). The artifact
+/// contributes only the CLAIM shape: target, number of chain entries, blake
+/// tags.
+fn expected_chain_end_params(
+    artifact: &ProofArtifact,
+    loaded: &LoadedProgram,
+    worker: &worker::Worker,
+) -> Result<Vec<[u32; 8]>, String> {
+    let n = artifact.chain_end_params.len();
+    let rungs = match artifact.target {
+        ProofTarget::Base => {
+            if n != 1 {
+                return Err(format!("Base artifact must claim exactly 1 layer, got {n}"));
+            }
+            0
+        }
+        ProofTarget::RecursionUnrolled => {
+            if n < 1 {
+                return Err("RecursionUnrolled artifact claims no layers".to_string());
+            }
+            n - 1
+        }
+        ProofTarget::RecursionUnified => {
+            if n < 3 {
+                return Err(format!(
+                    "RecursionUnified artifact must claim at least 3 layers \
+                     (base + bridge + final), got {n}"
+                ));
+            }
+            n - 3
+        }
+    };
+
+    let mut expected = Vec::with_capacity(n);
+    expected.push(trusted_end_params(
+        &loaded.bin_u32,
+        &loaded.text_u32,
+        SetupMachine::UnrolledFullUnsigned,
+        worker,
+    )?);
+
+    if artifact.target == ProofTarget::Base {
+        return Ok(expected);
+    }
+
+    let fsv_dir = fsv_dir();
+    let unrolled_blake = parse_blake_tag(&artifact.blake_unrolled, FsvProgram::UnrolledBaseLayer)?;
+
+    for rung in 0..rungs {
+        let program = if rung == 0 {
+            FsvProgram::UnrolledBaseLayer
+        } else {
+            FsvProgram::UnrolledRecursionLayer
+        };
+        let (bin, text) = load_fsv_program(&fsv_dir, program, unrolled_blake);
+        expected.push(trusted_end_params(
+            &bin,
+            &text,
+            SetupMachine::UnrolledReduced,
+            worker,
+        )?);
+    }
+
+    if artifact.target == ProofTarget::RecursionUnrolled {
+        return Ok(expected);
+    }
+
+    // Bridge: the unrolled verifier binary (selected by whether any rung ran)
+    // proved on the UNIFIED machine — its end_params use the unified setups.
+    let bridge_program = if rungs == 0 {
+        FsvProgram::UnrolledBaseLayer
+    } else {
+        FsvProgram::UnrolledRecursionLayer
+    };
+    let bridge_blake = parse_blake_tag(&artifact.blake_bridge, bridge_program)?;
+    let (bridge_bin, bridge_text) = load_fsv_program(&fsv_dir, bridge_program, bridge_blake);
+    expected.push(trusted_end_params(
+        &bridge_bin,
+        &bridge_text,
+        SetupMachine::Unified,
+        worker,
+    )?);
+
+    // Final: fsv_unified_recursion_layer on the unified machine.
+    let final_blake = parse_blake_tag(&artifact.blake_final, FsvProgram::UnifiedRecursionLayer)?;
+    let (final_bin, final_text) =
+        load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_blake);
+    expected.push(trusted_end_params(
+        &final_bin,
+        &final_text,
+        SetupMachine::Unified,
+        worker,
+    )?);
+
+    Ok(expected)
+}
+
+/// Bind a verified proof to the program supplied by the caller (PR #321).
+///
+/// The cryptographic verifier returns the recursion chain it actually proved
+/// in `output[8..16]`: for a base-layer proof `begin(end_params)`, for a
+/// recursion layer the input chain extended with the verified program's
+/// `end_params` (with the same-program no-op rule — see
+/// `full_statement_verifier::unrolled_proof_statement`). That chain
+/// authenticates the whole tower of verified programs back to the base
+/// program. `expected_chain` is derived from the supplied `--bin`/`--text`
+/// and the checked-in fsv binaries only; if the proof proved a chain for a
+/// different base program, the two differ and we reject.
+fn ensure_recursion_chain_binds_program(
+    verifier_output: &[u32; 16],
+    expected_chain: &[u32; 8],
+) -> Result<(), String> {
+    if &verifier_output[8..16] != expected_chain {
+        return Err(
+            "recursion chain proven by the proof does not match the supplied program".to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn validate_artifact_chain(artifact: &ProofArtifact) -> Result<(), String> {
@@ -983,4 +1369,111 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     hasher.update(data);
     hasher.finalize().into()
+}
+
+/// Port of PR #321's `recursion_binding_tests`, adapted to
+/// `FsvRecursionChain` (no proving required).
+#[cfg(test)]
+mod recursion_binding_tests {
+    use super::*;
+
+    /// The recursion chain a top-layer proof carries for a base program with
+    /// the given `end_params` (the value the verifier authenticates in
+    /// `output[8..16]`).
+    fn chain_for_program(base_end_params: [u32; 8]) -> [u32; 8] {
+        FsvRecursionChain::begin(&base_end_params).hash()
+    }
+
+    fn verifier_output_with_chain(chain: [u32; 8]) -> [u32; 16] {
+        let mut out = [0u32; 16];
+        out[8..16].copy_from_slice(&chain);
+        out
+    }
+
+    #[test]
+    fn accepts_when_proven_chain_matches_supplied_program() {
+        let chain = chain_for_program([1, 2, 3, 4, 5, 6, 7, 8]);
+        let output = verifier_output_with_chain(chain);
+        assert!(ensure_recursion_chain_binds_program(&output, &chain).is_ok());
+    }
+
+    /// Regression test for proof replay across programs: a valid proof
+    /// generated for program Q must not verify as a proof for a different
+    /// program P, even though the program-hash metadata can be freely
+    /// rewritten to P's hashes.
+    #[test]
+    fn rejects_proof_whose_chain_encodes_a_different_program() {
+        // Two distinct base programs produce two distinct authenticated chains.
+        let chain_p = chain_for_program([10, 11, 12, 13, 14, 15, 16, 17]);
+        let chain_q = chain_for_program([99, 98, 97, 96, 95, 94, 93, 92]);
+        assert_ne!(
+            chain_p, chain_q,
+            "different programs must yield different chains"
+        );
+
+        // The attacker holds a valid proof for Q; the verifier authenticates
+        // Q's chain.
+        let proven_output = verifier_output_with_chain(chain_q);
+
+        // Claiming it is a proof for P must be rejected by the binding check.
+        let err = ensure_recursion_chain_binds_program(&proven_output, &chain_p)
+            .expect_err("a proof whose chain encodes a different program must be rejected");
+        assert!(
+            err.contains("does not match the supplied program"),
+            "unexpected error message: {err}"
+        );
+
+        // And it still verifies against the program it was actually
+        // generated for.
+        assert!(ensure_recursion_chain_binds_program(&proven_output, &chain_q).is_ok());
+    }
+
+    /// The multi-layer chain reconstruction matches the verifier's extension
+    /// rule, including the same-program no-op.
+    #[test]
+    fn rebuild_chain_extends_and_deduplicates() {
+        let ep0 = [1u32, 2, 3, 4, 5, 6, 7, 8];
+        let ep1 = [9u32, 10, 11, 12, 13, 14, 15, 16];
+
+        let mut reference = FsvRecursionChain::begin(&ep0);
+        reference.extend(&ep1);
+
+        let rebuilt = rebuild_chain(&[ep0, ep1]).unwrap();
+        assert_eq!(rebuilt.hash(), reference.hash());
+        // Repeating the same layer's end-params is a no-op, mirroring the
+        // in-circuit rule.
+        let rebuilt_dup = rebuild_chain(&[ep0, ep1, ep1]).unwrap();
+        assert_eq!(rebuilt_dup.hash(), reference.hash());
+    }
+
+    /// The statically derived exit point matches the reference behavior on a
+    /// synthetic binary and rejects binaries without a unique exit sequence.
+    #[test]
+    fn find_binary_exit_point_locates_the_exit_loop() {
+        let mut binary = vec![0x0000_0013u32; 10]; // nops
+        let exit_start = binary.len();
+        binary.extend_from_slice(EXIT_SEQUENCE);
+        binary.extend_from_slice(&[0u32; 4]);
+
+        let exit_pc = find_binary_exit_point(&binary).unwrap();
+        assert_eq!(
+            exit_pc,
+            ((exit_start + EXIT_SEQUENCE.len() - 1) * 4) as u32,
+            "exit PC must be the final self-loop of the exit sequence"
+        );
+
+        assert!(find_binary_exit_point(&[0u32; 32]).is_err());
+    }
+
+    /// The exit point of a real shipped program: hashed_fibonacci's `.bin`.
+    #[test]
+    fn find_binary_exit_point_on_real_binary() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/hashed_fibonacci/app_blake2_with_compression.bin");
+        if !path.exists() {
+            return; // repo layout changed; the synthetic test still covers the scan
+        }
+        let (_, bin) = setups::read_binary(&path);
+        find_binary_exit_point(&bin).expect("shipped binary must contain one exit sequence");
+    }
 }
