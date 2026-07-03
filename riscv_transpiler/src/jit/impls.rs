@@ -338,6 +338,15 @@ pub(crate) fn packed_ts_store(
 #[cfg(not(feature = "xmm_ts"))]
 pub(crate) fn packed_ts_off(name: InstructionName, rs1: u32, rs2: u32, rd: u32) -> i32 {
     use InstructionName as Op;
+    // ND-write must not credit rs1: the interpreter reads rs1's value WITHOUT bumping its
+    // timestamp (vm nd_write: "in circuits we will just read from x0"). The rs1 axis has no
+    // memory sentinel (the buffer is 32*33*33), so steer it to x0 — the x0@+0 credit is
+    // dominated by this same slot's rd-axis x0@+2.
+    let p_rs1 = if matches!(name, Op::ZicsrNonDeterminismWrite) {
+        0
+    } else {
+        rs1 as usize
+    };
     let p_rs2 = if matches!(name, Op::Lb | Op::Lbu | Op::Lh | Op::Lhu | Op::Lw) {
         32 // load: rs2 axis is the memory access, not a register
     } else {
@@ -359,7 +368,7 @@ pub(crate) fn packed_ts_off(name: InstructionName, rs1: u32, rs2: u32, rd: u32) 
     } else {
         rd as usize
     };
-    let idx = 33 * 33 * (rs1 as usize) + 33 * p_rs2 + p_rd;
+    let idx = 33 * 33 * p_rs1 + 33 * p_rs2 + p_rd;
     debug_assert!(idx < PACKED_TS_LEN);
     MachineState::PACKED_TS_OFFSET as i32 + (idx as i32) * 8
 }
