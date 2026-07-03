@@ -4,7 +4,7 @@
 
 #![allow(unused_imports)]
 
-use crate::interim_upstream::{build_unrolled_stream, proof_cycles};
+use crate::upstream::build_unrolled_stream;
 use crate::proof_assembly::assemble_program_proof;
 use execution_prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -57,13 +57,13 @@ fn test_program_prover_base_layer_verify() {
     let (proof, setups) = assemble_program_proof(&artifacts, result, security_level, &worker);
     log::info!(
         "assembled ProgramProof: {} cycles, {} riscv families, {} delegation types",
-        proof_cycles(&proof),
+        proof.executed_cycles(),
         proof.riscv_proofs.len(),
         proof.delegation_proofs.len(),
     );
 
     let stream = build_unrolled_stream(&setups, &proof);
-    let output = crate::interim_upstream::native_verify_unrolled(stream, true);
+    let output = crate::upstream::native_verify_unrolled(stream, true);
     log::info!("base layer verified natively; output registers: {output:?}");
 }
 
@@ -119,7 +119,7 @@ fn test_program_prover_unified_base_layer_verify() {
     let (proof, setups) = assemble_program_proof(&artifacts, result, security_level, &worker);
     log::info!(
         "assembled unified ProgramProof: {} cycles, {} unified circuits, num_it_circuits {:?}, {} delegation types",
-        proof_cycles(&proof),
+        proof.executed_cycles(),
         proof
             .riscv_proofs
             .values()
@@ -129,8 +129,8 @@ fn test_program_prover_unified_base_layer_verify() {
         proof.delegation_proofs.len(),
     );
 
-    let stream = crate::interim_upstream::build_unified_stream(&setups, &proof);
-    let output = crate::interim_upstream::native_verify_unified(stream, true);
+    let stream = crate::upstream::build_unified_stream(&setups, &proof);
+    let output = crate::upstream::native_verify_unified(stream, true);
     log::info!("unified base layer verified natively; output registers: {output:?}");
 }
 
@@ -179,8 +179,8 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
             0,
         );
     log::info!("CPU reference proved (internal closure passed); verifying natively");
-    let cpu_output = crate::interim_upstream::native_verify_unified(
-        crate::interim_upstream::build_unified_stream(&cpu_setups, &cpu_proof),
+    let cpu_output = crate::upstream::native_verify_unified(
+        crate::upstream::build_unified_stream(&cpu_setups, &cpu_proof),
         true,
     );
     log::info!("CPU reference verifies; output registers: {cpu_output:?}");
@@ -300,7 +300,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
         0,
     );
     log::info!("CPU reference proved; verifying natively");
-    let cpu_output = crate::interim_upstream::native_verify_unrolled(
+    let cpu_output = crate::upstream::native_verify_unrolled(
         build_unrolled_stream(&cpu_setups, &cpu_proof),
         true,
     );
@@ -352,7 +352,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     // driver computes it externally); compare our assembled value against the
     // recomputation over the CPU setups instead.
     assert_eq!(
-        crate::interim_upstream::compute_end_params(&cpu_setups, cpu_proof.final_pc),
+        crate::upstream::compute_end_params(&cpu_setups, cpu_proof.final_pc),
         gpu_proof.end_params,
         "end_params differ from recomputation over CPU setups"
     );
@@ -480,7 +480,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 #[ignore]
 #[serial]
 fn test_program_prover_recursion_layer_verify() {
-    use crate::interim_upstream::{begin_chain, compute_end_params, native_verify_unrolled};
+    use crate::upstream::{compute_end_params, native_verify_unrolled, FsvRecursionChain};
 
     let _ = env_logger::builder()
         .is_test(true)
@@ -516,11 +516,11 @@ fn test_program_prover_recursion_layer_verify() {
     native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
     log::info!(
         "base layer proved on GPU + verified natively ({} cycles)",
-        proof_cycles(&base_proof)
+        base_proof.executed_cycles()
     );
 
     let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
-    let (chain_hash, chain_preimage) = begin_chain(&base_end_params);
+    let chain = FsvRecursionChain::begin(&base_end_params);
 
     // Stage 2: prove the fsv base-layer verifier over the base proof's stream.
     let (_, fsv_binary) = read_binary(&test_artifact(
@@ -545,11 +545,10 @@ fn test_program_prover_recursion_layer_verify() {
     let artifacts = prover.program_artifacts(&fsv_handle);
     let (mut recursion_proof, recursion_setups) =
         assemble_program_proof(&artifacts, result, security_level, &worker);
-    recursion_proof.recursion_chain_hash = Some(chain_hash);
-    recursion_proof.recursion_chain_preimage = Some(chain_preimage);
+    recursion_proof.set_recursion_chain(&chain);
     log::info!(
         "recursion layer proved on GPU ({} cycles)",
-        proof_cycles(&recursion_proof)
+        recursion_proof.executed_cycles()
     );
 
     let output = native_verify_unrolled(
@@ -634,9 +633,9 @@ fn run_gpu_recursive_pipeline(
     base_non_determinism: Vec<u32>,
     force_first_rung: bool,
 ) {
-    use crate::interim_upstream::{
-        begin_chain, build_unified_stream, compute_end_params, continue_chain,
-        native_verify_unified, native_verify_unrolled, UNIFIED_SWITCH_CYCLES,
+    use crate::upstream::{
+        build_unified_stream, compute_end_params, native_verify_unified, native_verify_unrolled,
+        unified_switch_cycles, FsvRecursionChain,
     };
     use crate::upstream::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 
@@ -692,11 +691,7 @@ fn run_gpu_recursive_pipeline(
         (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
     }
 
-    // Mirrors prover_examples::recursion's unified_switch_cycles().
-    let switch_cycles: u64 = std::env::var("RECURSION_UNIFIED_SWITCH_CYCLES")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(UNIFIED_SWITCH_CYCLES);
+    let switch_cycles = unified_switch_cycles();
 
     let configuration = ExecutionProverConfiguration::default();
     let security_level = configuration.security_level;
@@ -720,10 +715,10 @@ fn run_gpu_recursive_pipeline(
     let (base_proof, base_setups) =
         assemble_program_proof(&artifacts, result, security_level, &worker);
     native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
-    log::info!("stage 1: base layer proved + verified ({} cycles)", proof_cycles(&base_proof));
+    log::info!("stage 1: base layer proved + verified ({} cycles)", base_proof.executed_cycles());
 
     let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
-    let (mut chain_hash, mut chain_preimage) = begin_chain(&base_end_params);
+    let mut chain = FsvRecursionChain::begin(&base_end_params);
 
     // === Stages 2-3: unrolled recursion loop. ===
     let (unrolled_base_bin, unrolled_base_text) =
@@ -768,18 +763,15 @@ fn run_gpu_recursive_pipeline(
         let artifacts = prover.program_artifacts(&fsv_handle);
         let (mut new_proof, new_setups) =
             assemble_program_proof(&artifacts, result, security_level, &worker);
-        new_proof.recursion_chain_hash = Some(chain_hash);
-        new_proof.recursion_chain_preimage = Some(chain_preimage);
+        new_proof.set_recursion_chain(&chain);
         native_verify_unrolled(build_unrolled_stream(&new_setups, &new_proof), false);
         log::info!(
             "stage 2: unrolled recursion layer {layer} proved + verified ({} cycles)",
-            proof_cycles(&new_proof)
+            new_proof.executed_cycles()
         );
 
         let end_params = compute_end_params(&new_setups, new_proof.final_pc);
-        let (h, p) = continue_chain(&chain_hash, &chain_preimage, &end_params);
-        chain_hash = h;
-        chain_preimage = p;
+        chain.extend(&end_params);
         proof = new_proof;
         setups = new_setups;
         input_is_base = false;
@@ -807,18 +799,15 @@ fn run_gpu_recursive_pipeline(
     let artifacts = prover.program_artifacts(&bridge_handle);
     let (mut bridge_proof, bridge_setups) =
         assemble_program_proof(&artifacts, result, security_level, &worker);
-    bridge_proof.recursion_chain_hash = Some(chain_hash);
-    bridge_proof.recursion_chain_preimage = Some(chain_preimage);
+    bridge_proof.set_recursion_chain(&chain);
     native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof), false);
     log::info!(
         "stage 4: bridge proved in unified mode + verified ({} cycles)",
-        proof_cycles(&bridge_proof)
+        bridge_proof.executed_cycles()
     );
 
     let bridge_end_params = compute_end_params(&bridge_setups, bridge_proof.final_pc);
-    let (h, p) = continue_chain(&chain_hash, &chain_preimage, &bridge_end_params);
-    chain_hash = h;
-    chain_preimage = p;
+    chain.extend(&bridge_end_params);
 
     // === Stage 5: final — fsv_unified_recursion_layer in unified mode. ===
     let (final_bin, final_text) =
@@ -838,11 +827,10 @@ fn run_gpu_recursive_pipeline(
     let artifacts = prover.program_artifacts(&final_handle);
     let (mut final_proof, final_setups) =
         assemble_program_proof(&artifacts, result, security_level, &worker);
-    final_proof.recursion_chain_hash = Some(chain_hash);
-    final_proof.recursion_chain_preimage = Some(chain_preimage);
+    final_proof.set_recursion_chain(&chain);
     let output = native_verify_unified(build_unified_stream(&final_setups, &final_proof), false);
     log::info!(
         "stage 5: final unified recursion proof verified ({} cycles); output registers: {output:?}",
-        proof_cycles(&final_proof)
+        final_proof.executed_cycles()
     );
 }

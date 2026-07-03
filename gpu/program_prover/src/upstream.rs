@@ -33,3 +33,14 @@ pub use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 // the debug error reporter for native verification.
 pub use verifier_common::errors::DebugErrorCreator;
 pub use verifier_common::transcript::Blake2sBufferingTranscript;
+
+// PR-332 follow-up (3a5f4102): the recursion protocol helpers we asked
+// upstream to export as library code. These replace the deleted
+// `interim_upstream` byte-mirrors.
+pub use full_statement_verifier::host_utils::{
+    build_unified_stream, build_unrolled_stream, compute_end_params, unified_switch_cycles,
+    FsvRecursionChain, DEFAULT_UNIFIED_SWITCH_CYCLES,
+};
+#[cfg(feature = "verifiers")]
+pub use full_statement_verifier::host_utils::{native_verify_unrolled, native_verify_unified};
+pub use setups::Setups;
