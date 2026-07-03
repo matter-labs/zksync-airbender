@@ -880,50 +880,12 @@ pub fn verify_artifact(
 // derivations, so lying about them makes the comparison fail.
 
 /// The reduced-machine exit sequence every provable program ends with.
-/// Copied from `riscv_common::EXIT_SEQUENCE` via the dead `execution_utils`
-/// crate (see `execution_utils/src/lib.rs::find_binary_exit_point`); upstream
-/// should eventually export the exit-point scan from `setups` — delete this
-/// mirror when it does.
-const EXIT_SEQUENCE: &[u32] = &[
-    0x000d2503, // lw a0, 0x0(s10)
-    0x004d2583, // lw a1, 0x4(s10)
-    0x008d2603, // lw a2, 0x8(s10)
-    0x00cd2683, // lw a3, 0xc(s10)
-    0x010d2703, // lw a4, 0x10(s10)
-    0x014d2783, // lw a5, 0x14(s10)
-    0x018d2803, // lw a6, 0x18(s10)
-    0x01cd2883, // lw a7, 0x1c(s10)
-    0x020d2903, // lw s2, 0x20(s10)
-    0x024d2983, // lw s3, 0x24(s10)
-    0x028d2a03, // lw s4, 0x28(s10)
-    0x02cd2a83, // lw s5, 0x2c(s10)
-    0x030d2b03, // lw s6, 0x30(s10)
-    0x034d2b83, // lw s7, 0x34(s10)
-    0x038d2c03, // lw s8, 0x38(s10)
-    0x03cd2c83, // lw s9, 0x3c(s10)
-    0x0000006f, // loop
-];
-
-/// Statically derive a program's exit PC from its binary: the PC of the final
-/// self-loop of the (unique) exit sequence. This is the `final_pc` a normally
-/// terminating proven execution ends at, and the value hashed into
-/// `end_params`. Mirror of `execution_utils::find_binary_exit_point`,
-/// re-typed for `&[u32]`.
+/// Statically derive the program's exit PC (thin fallible wrapper over
+/// `setups::program_setups::find_binary_exit_point`, which panics on a
+/// malformed binary).
 fn find_binary_exit_point(binary: &[u32]) -> Result<u32, String> {
-    let mut candidates = vec![];
-    for (start_offset, window) in binary.windows(EXIT_SEQUENCE.len()).enumerate() {
-        if window == EXIT_SEQUENCE {
-            candidates.push(start_offset);
-        }
-    }
-    if candidates.len() != 1 {
-        return Err(format!(
-            "expected exactly one exit sequence in the binary, found {}",
-            candidates.len()
-        ));
-    }
-    let final_pc = (candidates[0] + EXIT_SEQUENCE.len() - 1) * core::mem::size_of::<u32>();
-    Ok(final_pc as u32)
+    std::panic::catch_unwind(|| setups::program_setups::find_binary_exit_point(binary))
+        .map_err(|_| "binary has no unique exit sequence".to_string())
 }
 
 /// Which setup family a layer's program is proven under.
@@ -938,30 +900,17 @@ enum SetupMachine {
 }
 
 /// Recompute the per-program `Setups` map for `(binary, machine)` WITHOUT
-/// proving, byte-identical to what the provers produce.
-///
-/// Mirror of the setups-assembly part of
-/// `prover_examples::unrolled::prove_unrolled_execution_with_replayer`
-/// (unrolled machines: one `UnrolledCircuitSetupParams` per machine family)
-/// and `prover_examples::unified::prove_unified_execution_with_replayer`
-/// (unified machine: a single entry under
-/// `REDUCED_MACHINE_CIRCUIT_FAMILY_IDX`); the commit parameters match
-/// `program_prover::proof_assembly::assemble_program_proof`, whose caps are
-/// validated byte-identical to the CPU reference. This is the "per-program
-/// setup-params assembly" helper upstream has been asked to export — delete
-/// this mirror when they do.
+/// proving, byte-identical to what the provers produce (see
+/// `setups::program_setups`).
 fn recompute_program_setups(
     bin: &[u32],
     text: &[u32],
     machine: SetupMachine,
     worker: &worker::Worker,
 ) -> Setups {
-    use prover::fft::Twiddles;
-    use prover::field::baby_bear::base::BabyBearField;
-    use prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture;
-    use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor};
     use riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly as FullUnsignedConfig;
     use riscv_transpiler::cycle::ReducedMachineWithDelegation as ReducedConfig;
+    use setups::program_setups::{compute_unified_program_setups, compute_unrolled_program_setups};
 
     let mut padded_bin = bin.to_vec();
     let mut padded_text = text.to_vec();
@@ -970,75 +919,26 @@ fn recompute_program_setups(
 
     let use_caches = true;
     let security_level = COMPILED_SECURITY_LEVEL.to_prover();
-
-    // (family_idx, trace_len, GKRSetup) triples for every family of the machine.
-    let circuit_setups: Vec<_> = match machine {
-        SetupMachine::UnrolledFullUnsigned | SetupMachine::UnrolledReduced => {
-            let per_family = match machine {
-                SetupMachine::UnrolledFullUnsigned => {
-                    setups::get_unrolled_circuits_setups_for_machine_type::<
-                        FullUnsignedConfig,
-                        Global,
-                    >(&padded_bin, &padded_text, use_caches, worker)
-                }
-                _ => setups::get_unrolled_circuits_setups_for_machine_type::<ReducedConfig, Global>(
-                    &padded_bin,
-                    &padded_text,
-                    use_caches,
-                    worker,
-                ),
-            };
-            per_family
-                .into_iter()
-                .map(|(family_idx, setup)| (family_idx as u32, setup.trace_len, setup.setup))
-                .collect()
-        }
-        SetupMachine::Unified => {
-            let unified_setup = setups::unified_reduced_machine_circuit_setup::<Global>(
-                &padded_bin,
-                &padded_text,
-                use_caches,
-                worker,
-            );
-            vec![(
-                common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
-                unified_setup.trace_len,
-                unified_setup.setup,
-            )]
-        }
-    };
-
-    let mut twiddles: std::collections::HashMap<usize, Twiddles<BabyBearField, Global>> =
-        std::collections::HashMap::new();
-    let mut result: Setups = std::collections::BTreeMap::new();
-    for (family_idx, trace_len, setup) in circuit_setups {
-        let prover_config = config_for_security_level_under_pessimistic_conjecture(
-            trace_len.trailing_zeros() as usize,
+    match machine {
+        SetupMachine::UnrolledFullUnsigned => compute_unrolled_program_setups::<
+            FullUnsignedConfig,
+            Global,
+        >(&padded_bin, &padded_text, use_caches, security_level, worker),
+        SetupMachine::UnrolledReduced => compute_unrolled_program_setups::<ReducedConfig, Global>(
+            &padded_bin,
+            &padded_text,
+            use_caches,
             security_level,
-        );
-        let twiddles_for_size = twiddles
-            .entry(trace_len)
-            .or_insert_with(|| Twiddles::new(trace_len, worker));
-        let setup_commitment = setup.commit::<DefaultTreeConstructor>(
-            &*twiddles_for_size,
-            prover_config.lde_factor,
-            prover_config.whir_schedule.whir_steps_schedule[0],
-            prover_config.cap_size,
-            trace_len.trailing_zeros() as usize,
             worker,
-        );
-        result.insert(
-            family_idx,
-            setups::UnrolledCircuitSetupParams::from_setup_tree_cap(
-                family_idx,
-                trace_len as u32,
-                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
-                    &setup_commitment.tree,
-                ),
-            ),
-        );
+        ),
+        SetupMachine::Unified => compute_unified_program_setups::<Global>(
+            &padded_bin,
+            &padded_text,
+            use_caches,
+            security_level,
+            worker,
+        ),
     }
-    result
 }
 
 /// Trusted `end_params` of `(binary, machine)`: recomputed setups (cached by
@@ -1452,13 +1352,13 @@ mod recursion_binding_tests {
     fn find_binary_exit_point_locates_the_exit_loop() {
         let mut binary = vec![0x0000_0013u32; 10]; // nops
         let exit_start = binary.len();
-        binary.extend_from_slice(EXIT_SEQUENCE);
+        binary.extend_from_slice(riscv_common::EXIT_SEQUENCE);
         binary.extend_from_slice(&[0u32; 4]);
 
         let exit_pc = find_binary_exit_point(&binary).unwrap();
         assert_eq!(
             exit_pc,
-            ((exit_start + EXIT_SEQUENCE.len() - 1) * 4) as u32,
+            ((exit_start + riscv_common::EXIT_SEQUENCE.len() - 1) * 4) as u32,
             "exit PC must be the final self-loop of the exit sequence"
         );
 
