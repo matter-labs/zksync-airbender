@@ -30,6 +30,11 @@ pub struct ProveResult {
     pub inits_and_teardowns_proofs: Vec<GKRProof<BF, E4, DefaultTreeConstructor>>,
     pub delegation_proofs: BTreeMap<u32, Vec<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     pub pow_challenge: u64,
+    /// `Some` for `ExecutionKind::Unified` only: the number of trailing
+    /// unified circuits that carry real inits-and-teardowns data (the leading
+    /// ones are dummies). The unified verifier consumes this as an extra ND
+    /// word (`ProgramProof::num_it_circuits`).
+    pub num_unified_it_circuits: Option<u32>,
 }
 
 pub(super) enum ExecutionProverResult {

@@ -353,6 +353,15 @@ impl ExecutionProver {
                 .into_iter()
                 .map(|(i, v)| (i, v.into_values().collect_vec()))
                 .collect();
+            let circuit_families_proofs: BTreeMap<_, Vec<_>> = circuit_families_proofs;
+            // Unified mode: real inits-and-teardowns circuits are the trailing
+            // ones; everything before `trivial_unified_inits_and_teardowns_count`
+            // is a dummy marker.
+            let num_unified_it_circuits = circuit_families_proofs
+                .get(&UnrolledCircuitType::Unified.get_family_idx())
+                .map(|unified_proofs| {
+                    (unified_proofs.len() - trivial_unified_inits_and_teardowns_count) as u32
+                });
             let result = ProveResult {
                 register_final_values: final_register_values,
                 final_pc,
@@ -361,6 +370,7 @@ impl ExecutionProver {
                 inits_and_teardowns_proofs,
                 delegation_proofs: delegation_circuits_proofs,
                 pow_challenge,
+                num_unified_it_circuits,
             };
             ExecutionProverResult::Prove(result)
         } else {

@@ -8,7 +8,9 @@
 // the `verifiers` feature) the native verifier entry points.
 pub use full_statement_verifier::program_proof::ProgramProof;
 #[cfg(feature = "verifiers")]
-pub use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer;
+pub use full_statement_verifier::unified_circuit_statement::{
+    verify_unified_circuit_base_layer, verify_unified_circuit_recursion_layer,
+};
 #[cfg(feature = "verifiers")]
 pub use full_statement_verifier::unrolled_proof_statement::{
     verify_unrolled_base_layer, verify_unrolled_recursion_layer,
