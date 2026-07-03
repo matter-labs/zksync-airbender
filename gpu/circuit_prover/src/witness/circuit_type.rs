@@ -281,13 +281,20 @@ impl UnrolledNonMemoryCircuitType {
         }
     }
 
+    /// Final-PC value substituted into padding rows of the memory columns.
+    /// Must equal the `PC_STEP` the CPU setups pass to
+    /// `make_setup_for_non_mem_circuit` for every family — the GPU proof-parity
+    /// fixtures thread THIS value into their CPU oracle, so a stale entry here
+    /// is invisible to the parity suite (it diverged for JumpBranchSlt until
+    /// the program_prover base-layer verify e2e caught it) — hence the arms
+    /// reference the upstream constant directly instead of a literal.
     #[inline(always)]
     pub const fn get_default_pc_value_in_padding(&self) -> u32 {
         match self {
-            Self::AddSubLuiAuipcMop => 4,
-            Self::JumpBranchSlt => 0,
-            Self::MulDivUnsigned => 4,
-            Self::ShiftBinaryCsr => 4,
+            Self::AddSubLuiAuipcMop => common_constants::PC_STEP as u32,
+            Self::JumpBranchSlt => common_constants::PC_STEP as u32,
+            Self::MulDivUnsigned => common_constants::PC_STEP as u32,
+            Self::ShiftBinaryCsr => common_constants::PC_STEP as u32,
         }
     }
 }
