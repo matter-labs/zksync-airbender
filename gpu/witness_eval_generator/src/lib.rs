@@ -456,8 +456,8 @@ mod tests {
     use std::io::Write;
 
     fn generate(id: &str) {
-        let layout_path = format!("../cs/compiled_circuits/{id}_layout_gkr.json");
-        let ssa_path = format!("../cs/compiled_circuits/{id}_ssa_gkr.json");
+        let layout_path = format!("../../cs/compiled_circuits/{id}_layout_gkr.json");
+        let ssa_path = format!("../../cs/compiled_circuits/{id}_ssa_gkr.json");
         let generated_cu_path = format!("{id}.cuh");
         println!("{generated_cu_path}");
         let code = generate_from_files(&layout_path, &ssa_path, false).unwrap();

@@ -14,7 +14,11 @@ Dependency edges may only point DOWN this order; never up. Enforcement is doc-on
 gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash, gpu_cub }  <  circuit_prover  <  execution_prover  <  program_prover
 ```
 
-Plus two off-DAG crates: **`gpu_gkr_model`** (pure-CPU GKR layout model — address
+Plus three off-DAG crates: **`gpu_witness_eval_generator`** (`witness_eval_generator/`:
+pure-CPU codegen producing the committed `circuit_defs/**/generated/witness_generation_fn.cuh`
+CUDA witness bodies that `circuit_prover`'s native templates `#include`; run manually via its
+`generate` bin, drift-guarded by its `generate_all` test; has its own `AGENTS.md`),
+**`gpu_gkr_model`** (pure-CPU GKR layout model — address
 audit, storage layout, circuit transform; deps `cs` + `field`, no CUDA; consumed
 by `circuit_prover`'s `gkr` via `gkr::{gkr_address_audit, storage_layout,
 transform}` facade re-exports) and **`gpu_native_build`** (the shared build-script
