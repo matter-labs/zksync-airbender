@@ -124,11 +124,6 @@
               }
             },
             {
-              "Admit": {
-                "value": 16
-              }
-            },
-            {
               "Demand": {
                 "consumer": 28,
                 "input_index": 2,
@@ -218,7 +213,6 @@
             11,
             13,
             14,
-            16,
             18,
             24,
             26
@@ -230,7 +224,6 @@
             11,
             13,
             14,
-            16,
             18,
             24,
             26
@@ -265,6 +258,14 @@
                 "consumer": 33,
                 "input_index": 4,
                 "value": 16,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 16,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -305,11 +306,6 @@
               }
             },
             {
-              "Evict": {
-                "value": 16
-              }
-            },
-            {
               "Admit": {
                 "value": 29
               }
@@ -338,6 +334,11 @@
             {
               "Admit": {
                 "value": 31
+              }
+            },
+            {
+              "Evict": {
+                "value": 30
               }
             },
             {
@@ -415,7 +416,6 @@
             24,
             26,
             29,
-            30,
             31,
             32
           ]
@@ -426,7 +426,6 @@
             24,
             26,
             29,
-            30,
             31,
             32
           ],
@@ -509,6 +508,14 @@
                 "consumer": 55,
                 "input_index": 1,
                 "value": 30,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 30,
+                "input_index": 1,
+                "value": 29,
                 "kind": "Resident"
               }
             },
@@ -526,16 +533,6 @@
                 "input_index": 4,
                 "value": 50,
                 "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 30
-              }
-            },
-            {
-              "Admit": {
-                "value": 50
               }
             },
             {
@@ -566,7 +563,6 @@
             32,
             38,
             39,
-            50,
             53
           ]
         },
@@ -577,7 +573,6 @@
             32,
             38,
             39,
-            50,
             53
           ],
           "events": [
@@ -626,7 +621,7 @@
                 "consumer": 71,
                 "input_index": 2,
                 "value": 50,
-                "kind": "Resident"
+                "kind": "Recompute"
               }
             },
             {
@@ -660,11 +655,6 @@
             {
               "Evict": {
                 "value": 39
-              }
-            },
-            {
-              "Evict": {
-                "value": 50
               }
             },
             {

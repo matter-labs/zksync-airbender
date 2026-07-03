@@ -6,23 +6,23 @@
       "order": [
         140,
         141,
-        142,
         143,
+        142,
         144,
         145,
         146,
         147,
-        148,
         150,
+        148,
         149,
-        152,
         151,
-        154,
+        152,
         153,
-        156,
+        154,
         155,
-        158,
+        156,
         157,
+        158,
         160,
         159,
         161,
@@ -251,11 +251,6 @@
               }
             },
             {
-              "Admit": {
-                "value": 16
-              }
-            },
-            {
               "Demand": {
                 "consumer": 31,
                 "input_index": 2,
@@ -334,7 +329,6 @@
             11,
             13,
             14,
-            16,
             22
           ]
         },
@@ -343,172 +337,7 @@
             11,
             13,
             14,
-            16,
             22
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 38,
-                "input_index": 2,
-                "value": 4,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 38,
-                "input_index": 3,
-                "value": 13,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 38,
-                "input_index": 4,
-                "value": 16,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 38,
-                "input_index": 5,
-                "value": 35,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 34,
-                "input_index": 0,
-                "value": 32,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 13
-              }
-            },
-            {
-              "Evict": {
-                "value": 16
-              }
-            },
-            {
-              "Admit": {
-                "value": 32
-              }
-            },
-            {
-              "Admit": {
-                "value": 35
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 38,
-                "input_index": 6,
-                "value": 37,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 37,
-                "input_index": 1,
-                "value": 36,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 36
-              }
-            },
-            {
-              "Admit": {
-                "value": 37
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 43,
-                "input_index": 2,
-                "value": 20,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 19,
-                "input_index": 0,
-                "value": 11,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 43,
-                "input_index": 3,
-                "value": 22,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 43,
-                "input_index": 4,
-                "value": 35,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 43,
-                "input_index": 5,
-                "value": 37,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 40,
-                "input_index": 1,
-                "value": 39,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 42,
-                "input_index": 1,
-                "value": 41,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            22,
-            32,
-            35,
-            36,
-            37
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            22,
-            32,
-            35,
-            36,
-            37
           ],
           "events": [
             {
@@ -626,11 +455,192 @@
           ],
           "resident_after": [
             11,
+            13,
             14,
-            22,
-            32,
+            22
+          ]
+        },
+        {
+          "resident_before": [
+            11,
+            13,
+            14,
+            22
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 38,
+                "input_index": 2,
+                "value": 4,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 38,
+                "input_index": 3,
+                "value": 13,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 38,
+                "input_index": 4,
+                "value": 16,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 16,
+                "input_index": 0,
+                "value": 14,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 38,
+                "input_index": 5,
+                "value": 35,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 34,
+                "input_index": 0,
+                "value": 32,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 13
+              }
+            },
+            {
+              "Admit": {
+                "value": 32
+              }
+            },
+            {
+              "Admit": {
+                "value": 35
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 38,
+                "input_index": 6,
+                "value": 37,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 37,
+                "input_index": 1,
+                "value": 36,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 36
+              }
+            },
+            {
+              "Evict": {
+                "value": 32
+              }
+            },
+            {
+              "Evict": {
+                "value": 36
+              }
+            },
+            {
+              "Evict": {
+                "value": 22
+              }
+            },
+            {
+              "Admit": {
+                "value": 37
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 43,
+                "input_index": 2,
+                "value": 20,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 19,
+                "input_index": 0,
+                "value": 11,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 43,
+                "input_index": 3,
+                "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 43,
+                "input_index": 4,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 43,
+                "input_index": 5,
+                "value": 37,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 40,
+                "input_index": 1,
+                "value": 39,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 42,
+                "input_index": 1,
+                "value": 41,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            11,
+            14,
             35,
-            36,
             37
           ]
         },
@@ -638,10 +648,7 @@
           "resident_before": [
             11,
             14,
-            22,
-            32,
             35,
-            36,
             37
           ],
           "events": [
@@ -650,6 +657,14 @@
                 "consumer": 72,
                 "input_index": 2,
                 "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -706,6 +721,14 @@
                 "consumer": 77,
                 "input_index": 2,
                 "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -761,10 +784,7 @@
           "resident_after": [
             11,
             14,
-            22,
-            32,
             35,
-            36,
             37
           ]
         },
@@ -772,10 +792,7 @@
           "resident_before": [
             11,
             14,
-            22,
-            32,
             35,
-            36,
             37
           ],
           "events": [
@@ -784,6 +801,14 @@
                 "consumer": 89,
                 "input_index": 2,
                 "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -840,6 +865,14 @@
                 "consumer": 101,
                 "input_index": 2,
                 "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -895,10 +928,7 @@
           "resident_after": [
             11,
             14,
-            22,
-            32,
             35,
-            36,
             37
           ]
         },
@@ -906,10 +936,7 @@
           "resident_before": [
             11,
             14,
-            22,
-            32,
             35,
-            36,
             37
           ],
           "events": [
@@ -918,6 +945,14 @@
                 "consumer": 106,
                 "input_index": 2,
                 "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -974,6 +1009,14 @@
                 "consumer": 111,
                 "input_index": 2,
                 "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -1029,10 +1072,7 @@
           "resident_after": [
             11,
             14,
-            22,
-            32,
             35,
-            36,
             37
           ]
         },
@@ -1040,10 +1080,7 @@
           "resident_before": [
             11,
             14,
-            22,
-            32,
             35,
-            36,
             37
           ],
           "events": [
@@ -1052,6 +1089,14 @@
                 "consumer": 123,
                 "input_index": 2,
                 "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -1108,6 +1153,14 @@
                 "consumer": 135,
                 "input_index": 2,
                 "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -1163,10 +1216,7 @@
           "resident_after": [
             11,
             14,
-            22,
-            32,
             35,
-            36,
             37
           ]
         },
@@ -1174,144 +1224,7 @@
           "resident_before": [
             11,
             14,
-            22,
-            32,
             35,
-            36,
-            37
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 140,
-                "input_index": 2,
-                "value": 22,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 140,
-                "input_index": 3,
-                "value": 35,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 140,
-                "input_index": 4,
-                "value": 37,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 140,
-                "input_index": 5,
-                "value": 114,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 113,
-                "input_index": 0,
-                "value": 11,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 137,
-                "input_index": 1,
-                "value": 136,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 139,
-                "input_index": 1,
-                "value": 138,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 145,
-                "input_index": 2,
-                "value": 22,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 145,
-                "input_index": 3,
-                "value": 35,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 145,
-                "input_index": 4,
-                "value": 37,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 145,
-                "input_index": 5,
-                "value": 126,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 125,
-                "input_index": 0,
-                "value": 11,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 142,
-                "input_index": 1,
-                "value": 141,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 144,
-                "input_index": 1,
-                "value": 143,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            22,
-            32,
-            35,
-            36,
-            37
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            22,
-            32,
-            35,
-            36,
             37
           ],
           "events": [
@@ -1320,6 +1233,14 @@
                 "consumer": 173,
                 "input_index": 2,
                 "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
                 "kind": "Resident"
               }
             },
@@ -1412,11 +1333,6 @@
               }
             },
             {
-              "Evict": {
-                "value": 22
-              }
-            },
-            {
               "Admit": {
                 "value": 164
               }
@@ -1446,9 +1362,7 @@
           "resident_after": [
             11,
             14,
-            32,
             35,
-            36,
             37,
             164,
             166
@@ -1458,9 +1372,155 @@
           "resident_before": [
             11,
             14,
-            32,
             35,
-            36,
+            37,
+            164,
+            166
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 140,
+                "input_index": 2,
+                "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 140,
+                "input_index": 3,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 140,
+                "input_index": 4,
+                "value": 37,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 140,
+                "input_index": 5,
+                "value": 114,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 113,
+                "input_index": 0,
+                "value": 11,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 137,
+                "input_index": 1,
+                "value": 136,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 139,
+                "input_index": 1,
+                "value": 138,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 145,
+                "input_index": 2,
+                "value": 22,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 22,
+                "input_index": 0,
+                "value": 14,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 145,
+                "input_index": 3,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 145,
+                "input_index": 4,
+                "value": 37,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 145,
+                "input_index": 5,
+                "value": 126,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 125,
+                "input_index": 0,
+                "value": 11,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 142,
+                "input_index": 1,
+                "value": 141,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 144,
+                "input_index": 1,
+                "value": 143,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            11,
+            14,
+            35,
+            37,
+            164,
+            166
+          ]
+        },
+        {
+          "resident_before": [
+            11,
+            14,
+            35,
             37,
             164,
             166
@@ -1590,9 +1650,7 @@
           "resident_after": [
             11,
             14,
-            32,
             35,
-            36,
             37,
             164,
             166
@@ -1602,9 +1660,7 @@
           "resident_before": [
             11,
             14,
-            32,
             35,
-            36,
             37,
             164,
             166
@@ -1612,24 +1668,8 @@
           "events": [
             {
               "Demand": {
-                "consumer": 198,
+                "consumer": 186,
                 "input_index": 2,
-                "value": 35,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 198,
-                "input_index": 3,
-                "value": 37,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 198,
-                "input_index": 4,
                 "value": 176,
                 "kind": "Recompute"
               }
@@ -1653,215 +1693,18 @@
               }
             },
             {
-              "Admit": {
-                "value": 176
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 198,
-                "input_index": 5,
-                "value": 177,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 177,
-                "input_index": 1,
-                "value": 166,
-                "kind": "Resident"
+              "Evict": {
+                "value": 164
               }
             },
             {
               "Evict": {
+                "value": 166
+              }
+            },
+            {
+              "Admit": {
                 "value": 176
-              }
-            },
-            {
-              "Admit": {
-                "value": 177
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 198,
-                "input_index": 6,
-                "value": 183,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 183,
-                "input_index": 1,
-                "value": 182,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 177
-              }
-            },
-            {
-              "Admit": {
-                "value": 182
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 198,
-                "input_index": 7,
-                "value": 185,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 185,
-                "input_index": 1,
-                "value": 184,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 184
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 199,
-                "input_index": 2,
-                "value": 35,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 199,
-                "input_index": 3,
-                "value": 37,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 199,
-                "input_index": 4,
-                "value": 177,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 177,
-                "input_index": 1,
-                "value": 166,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 199,
-                "input_index": 5,
-                "value": 188,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 187,
-                "input_index": 1,
-                "value": 164,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 199,
-                "input_index": 6,
-                "value": 194,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 194,
-                "input_index": 1,
-                "value": 193,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 193
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 199,
-                "input_index": 7,
-                "value": 196,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 196,
-                "input_index": 1,
-                "value": 195,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 195
-              }
-            }
-          ],
-          "resident_after": [
-            32,
-            35,
-            36,
-            37,
-            164,
-            166,
-            182,
-            184,
-            193,
-            195
-          ]
-        },
-        {
-          "resident_before": [
-            32,
-            35,
-            36,
-            37,
-            164,
-            166,
-            182,
-            184,
-            193,
-            195
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 186,
-                "input_index": 2,
-                "value": 176,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 175,
-                "input_index": 0,
-                "value": 164,
-                "kind": "Resident"
               }
             },
             {
@@ -1877,7 +1720,17 @@
                 "consumer": 177,
                 "input_index": 1,
                 "value": 166,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 176
+              }
+            },
+            {
+              "Admit": {
+                "value": 177
               }
             },
             {
@@ -1909,7 +1762,7 @@
                 "consumer": 183,
                 "input_index": 1,
                 "value": 182,
-                "kind": "Resident"
+                "kind": "Reload"
               }
             },
             {
@@ -1925,7 +1778,7 @@
                 "consumer": 185,
                 "input_index": 1,
                 "value": 184,
-                "kind": "Resident"
+                "kind": "Reload"
               }
             },
             {
@@ -1933,25 +1786,7 @@
                 "consumer": 197,
                 "input_index": 2,
                 "value": 177,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 177,
-                "input_index": 1,
-                "value": 166,
                 "kind": "Resident"
-              }
-            },
-            {
-              "Evict": {
-                "value": 182
-              }
-            },
-            {
-              "Evict": {
-                "value": 184
               }
             },
             {
@@ -1967,7 +1802,17 @@
                 "consumer": 187,
                 "input_index": 1,
                 "value": 164,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 177
+              }
+            },
+            {
+              "Admit": {
+                "value": 164
               }
             },
             {
@@ -1999,7 +1844,12 @@
                 "consumer": 194,
                 "input_index": 1,
                 "value": 193,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 193
               }
             },
             {
@@ -2015,14 +1865,200 @@
                 "consumer": 196,
                 "input_index": 1,
                 "value": 195,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 195
+              }
+            }
+          ],
+          "resident_after": [
+            35,
+            37,
+            164,
+            193,
+            195
+          ]
+        },
+        {
+          "resident_before": [
+            35,
+            37,
+            164,
+            193,
+            195
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 198,
+                "input_index": 2,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 198,
+                "input_index": 3,
+                "value": 37,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 198,
+                "input_index": 4,
+                "value": 176,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 175,
+                "input_index": 0,
+                "value": 164,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 198,
+                "input_index": 5,
+                "value": 177,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 177,
+                "input_index": 1,
+                "value": 166,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 166
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 198,
+                "input_index": 6,
+                "value": 183,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 183,
+                "input_index": 1,
+                "value": 182,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 198,
+                "input_index": 7,
+                "value": 185,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 185,
+                "input_index": 1,
+                "value": 184,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 199,
+                "input_index": 2,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 199,
+                "input_index": 3,
+                "value": 37,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 199,
+                "input_index": 4,
+                "value": 177,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 177,
+                "input_index": 1,
+                "value": 166,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 199,
+                "input_index": 5,
+                "value": 188,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 187,
+                "input_index": 1,
+                "value": 164,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 199,
+                "input_index": 6,
+                "value": 194,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 194,
+                "input_index": 1,
+                "value": 193,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 199,
+                "input_index": 7,
+                "value": 196,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 196,
+                "input_index": 1,
+                "value": 195,
                 "kind": "Resident"
               }
             }
           ],
           "resident_after": [
-            32,
             35,
-            36,
             37,
             164,
             166,
@@ -2032,9 +2068,7 @@
         },
         {
           "resident_before": [
-            32,
             35,
-            36,
             37,
             164,
             166,
@@ -2044,24 +2078,8 @@
           "events": [
             {
               "Demand": {
-                "consumer": 222,
+                "consumer": 210,
                 "input_index": 2,
-                "value": 35,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 222,
-                "input_index": 3,
-                "value": 37,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 222,
-                "input_index": 4,
                 "value": 177,
                 "kind": "Recompute"
               }
@@ -2082,208 +2100,6 @@
             {
               "Evict": {
                 "value": 195
-              }
-            },
-            {
-              "Admit": {
-                "value": 177
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 222,
-                "input_index": 5,
-                "value": 201,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 200,
-                "input_index": 1,
-                "value": 164,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 222,
-                "input_index": 6,
-                "value": 207,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 207,
-                "input_index": 1,
-                "value": 206,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 177
-              }
-            },
-            {
-              "Admit": {
-                "value": 206
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 222,
-                "input_index": 7,
-                "value": 209,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 209,
-                "input_index": 1,
-                "value": 208,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 208
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 223,
-                "input_index": 2,
-                "value": 35,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 223,
-                "input_index": 3,
-                "value": 37,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 223,
-                "input_index": 4,
-                "value": 177,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 177,
-                "input_index": 1,
-                "value": 166,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 223,
-                "input_index": 5,
-                "value": 212,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 211,
-                "input_index": 1,
-                "value": 164,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 223,
-                "input_index": 6,
-                "value": 218,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 218,
-                "input_index": 1,
-                "value": 217,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 217
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 223,
-                "input_index": 7,
-                "value": 220,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 220,
-                "input_index": 1,
-                "value": 219,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 219
-              }
-            }
-          ],
-          "resident_after": [
-            32,
-            35,
-            36,
-            37,
-            164,
-            166,
-            206,
-            208,
-            217,
-            219
-          ]
-        },
-        {
-          "resident_before": [
-            32,
-            35,
-            36,
-            37,
-            164,
-            166,
-            206,
-            208,
-            217,
-            219
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 210,
-                "input_index": 2,
-                "value": 177,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 177,
-                "input_index": 1,
-                "value": 166,
-                "kind": "Resident"
               }
             },
             {
@@ -2331,7 +2147,12 @@
                 "consumer": 207,
                 "input_index": 1,
                 "value": 206,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 206
               }
             },
             {
@@ -2347,7 +2168,12 @@
                 "consumer": 209,
                 "input_index": 1,
                 "value": 208,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 208
               }
             },
             {
@@ -2364,16 +2190,6 @@
                 "input_index": 1,
                 "value": 166,
                 "kind": "Resident"
-              }
-            },
-            {
-              "Evict": {
-                "value": 206
-              }
-            },
-            {
-              "Evict": {
-                "value": 208
               }
             },
             {
@@ -2421,7 +2237,7 @@
                 "consumer": 218,
                 "input_index": 1,
                 "value": 217,
-                "kind": "Resident"
+                "kind": "Reload"
               }
             },
             {
@@ -2437,36 +2253,32 @@
                 "consumer": 220,
                 "input_index": 1,
                 "value": 219,
-                "kind": "Resident"
+                "kind": "Reload"
               }
             }
           ],
           "resident_after": [
-            32,
             35,
-            36,
             37,
             164,
             166,
-            217,
-            219
+            206,
+            208
           ]
         },
         {
           "resident_before": [
-            32,
             35,
-            36,
             37,
             164,
             166,
-            217,
-            219
+            206,
+            208
           ],
           "events": [
             {
               "Demand": {
-                "consumer": 246,
+                "consumer": 222,
                 "input_index": 2,
                 "value": 35,
                 "kind": "Resident"
@@ -2474,7 +2286,7 @@
             },
             {
               "Demand": {
-                "consumer": 246,
+                "consumer": 222,
                 "input_index": 3,
                 "value": 37,
                 "kind": "Resident"
@@ -2482,117 +2294,7 @@
             },
             {
               "Demand": {
-                "consumer": 246,
-                "input_index": 4,
-                "value": 177,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 177,
-                "input_index": 1,
-                "value": 166,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Evict": {
-                "value": 217
-              }
-            },
-            {
-              "Evict": {
-                "value": 219
-              }
-            },
-            {
-              "Admit": {
-                "value": 177
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 246,
-                "input_index": 5,
-                "value": 225,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 224,
-                "input_index": 1,
-                "value": 164,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 246,
-                "input_index": 6,
-                "value": 231,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 231,
-                "input_index": 1,
-                "value": 230,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 177
-              }
-            },
-            {
-              "Admit": {
-                "value": 230
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 246,
-                "input_index": 7,
-                "value": 233,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 233,
-                "input_index": 1,
-                "value": 232,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 232
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 247,
-                "input_index": 2,
-                "value": 35,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 247,
-                "input_index": 3,
-                "value": 37,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 247,
+                "consumer": 222,
                 "input_index": 4,
                 "value": 177,
                 "kind": "Recompute"
@@ -2608,15 +2310,15 @@
             },
             {
               "Demand": {
-                "consumer": 247,
+                "consumer": 222,
                 "input_index": 5,
-                "value": 236,
+                "value": 201,
                 "kind": "Recompute"
               }
             },
             {
               "Demand": {
-                "consumer": 235,
+                "consumer": 200,
                 "input_index": 1,
                 "value": 164,
                 "kind": "Resident"
@@ -2624,72 +2326,140 @@
             },
             {
               "Demand": {
-                "consumer": 247,
+                "consumer": 222,
                 "input_index": 6,
-                "value": 242,
+                "value": 207,
                 "kind": "Recompute"
               }
             },
             {
               "Demand": {
-                "consumer": 242,
+                "consumer": 207,
                 "input_index": 1,
-                "value": 241,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 241
+                "value": 206,
+                "kind": "Resident"
               }
             },
             {
               "Demand": {
-                "consumer": 247,
+                "consumer": 222,
                 "input_index": 7,
-                "value": 244,
+                "value": 209,
                 "kind": "Recompute"
               }
             },
             {
               "Demand": {
-                "consumer": 244,
+                "consumer": 209,
                 "input_index": 1,
-                "value": 243,
+                "value": 208,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 223,
+                "input_index": 2,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 223,
+                "input_index": 3,
+                "value": 37,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 223,
+                "input_index": 4,
+                "value": 177,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 177,
+                "input_index": 1,
+                "value": 166,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Evict": {
+                "value": 206
+              }
+            },
+            {
+              "Evict": {
+                "value": 208
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 223,
+                "input_index": 5,
+                "value": 212,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 211,
+                "input_index": 1,
+                "value": 164,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 223,
+                "input_index": 6,
+                "value": 218,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 218,
+                "input_index": 1,
+                "value": 217,
                 "kind": "Reload"
               }
             },
             {
-              "Admit": {
-                "value": 243
+              "Demand": {
+                "consumer": 223,
+                "input_index": 7,
+                "value": 220,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 220,
+                "input_index": 1,
+                "value": 219,
+                "kind": "Reload"
               }
             }
           ],
           "resident_after": [
-            32,
             35,
-            36,
             37,
             164,
-            166,
-            230,
-            232,
-            241,
-            243
+            166
           ]
         },
         {
           "resident_before": [
-            32,
             35,
-            36,
             37,
             164,
-            166,
-            230,
-            232,
-            241,
-            243
+            166
           ],
           "events": [
             {
@@ -2753,7 +2523,12 @@
                 "consumer": 231,
                 "input_index": 1,
                 "value": 230,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 230
               }
             },
             {
@@ -2769,7 +2544,12 @@
                 "consumer": 233,
                 "input_index": 1,
                 "value": 232,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 232
               }
             },
             {
@@ -2786,16 +2566,6 @@
                 "input_index": 1,
                 "value": 166,
                 "kind": "Resident"
-              }
-            },
-            {
-              "Evict": {
-                "value": 230
-              }
-            },
-            {
-              "Evict": {
-                "value": 232
               }
             },
             {
@@ -2843,7 +2613,7 @@
                 "consumer": 242,
                 "input_index": 1,
                 "value": 241,
-                "kind": "Resident"
+                "kind": "Reload"
               }
             },
             {
@@ -2859,36 +2629,32 @@
                 "consumer": 244,
                 "input_index": 1,
                 "value": 243,
-                "kind": "Resident"
+                "kind": "Reload"
               }
             }
           ],
           "resident_after": [
-            32,
             35,
-            36,
             37,
             164,
             166,
-            241,
-            243
+            230,
+            232
           ]
         },
         {
           "resident_before": [
-            32,
             35,
-            36,
             37,
             164,
             166,
-            241,
-            243
+            230,
+            232
           ],
           "events": [
             {
               "Demand": {
-                "consumer": 270,
+                "consumer": 246,
                 "input_index": 2,
                 "value": 35,
                 "kind": "Resident"
@@ -2896,7 +2662,7 @@
             },
             {
               "Demand": {
-                "consumer": 270,
+                "consumer": 246,
                 "input_index": 3,
                 "value": 37,
                 "kind": "Resident"
@@ -2904,122 +2670,7 @@
             },
             {
               "Demand": {
-                "consumer": 270,
-                "input_index": 4,
-                "value": 177,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 177,
-                "input_index": 1,
-                "value": 166,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Evict": {
-                "value": 241
-              }
-            },
-            {
-              "Evict": {
-                "value": 243
-              }
-            },
-            {
-              "Admit": {
-                "value": 177
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 270,
-                "input_index": 5,
-                "value": 249,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 248,
-                "input_index": 1,
-                "value": 164,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 270,
-                "input_index": 6,
-                "value": 255,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 255,
-                "input_index": 1,
-                "value": 254,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 164
-              }
-            },
-            {
-              "Admit": {
-                "value": 254
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 270,
-                "input_index": 7,
-                "value": 257,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 257,
-                "input_index": 1,
-                "value": 256,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 177
-              }
-            },
-            {
-              "Admit": {
-                "value": 256
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 271,
-                "input_index": 2,
-                "value": 35,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 271,
-                "input_index": 3,
-                "value": 37,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 271,
+                "consumer": 246,
                 "input_index": 4,
                 "value": 177,
                 "kind": "Recompute"
@@ -3035,93 +2686,156 @@
             },
             {
               "Demand": {
-                "consumer": 271,
+                "consumer": 246,
                 "input_index": 5,
-                "value": 260,
+                "value": 225,
                 "kind": "Recompute"
               }
             },
             {
               "Demand": {
-                "consumer": 259,
+                "consumer": 224,
                 "input_index": 1,
                 "value": 164,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 164
+                "kind": "Resident"
               }
             },
             {
               "Demand": {
-                "consumer": 271,
+                "consumer": 246,
                 "input_index": 6,
-                "value": 266,
+                "value": 231,
                 "kind": "Recompute"
               }
             },
             {
               "Demand": {
-                "consumer": 266,
+                "consumer": 231,
                 "input_index": 1,
-                "value": 265,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 265
+                "value": 230,
+                "kind": "Resident"
               }
             },
             {
               "Demand": {
-                "consumer": 271,
+                "consumer": 246,
                 "input_index": 7,
-                "value": 268,
+                "value": 233,
                 "kind": "Recompute"
               }
             },
             {
               "Demand": {
-                "consumer": 268,
+                "consumer": 233,
                 "input_index": 1,
-                "value": 267,
+                "value": 232,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 247,
+                "input_index": 2,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 247,
+                "input_index": 3,
+                "value": 37,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 247,
+                "input_index": 4,
+                "value": 177,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 177,
+                "input_index": 1,
+                "value": 166,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Evict": {
+                "value": 230
+              }
+            },
+            {
+              "Evict": {
+                "value": 232
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 247,
+                "input_index": 5,
+                "value": 236,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 235,
+                "input_index": 1,
+                "value": 164,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 247,
+                "input_index": 6,
+                "value": 242,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 242,
+                "input_index": 1,
+                "value": 241,
                 "kind": "Reload"
               }
             },
             {
-              "Admit": {
-                "value": 267
+              "Demand": {
+                "consumer": 247,
+                "input_index": 7,
+                "value": 244,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 244,
+                "input_index": 1,
+                "value": 243,
+                "kind": "Reload"
               }
             }
           ],
           "resident_after": [
-            32,
             35,
-            36,
             37,
             164,
-            166,
-            254,
-            256,
-            265,
-            267
+            166
           ]
         },
         {
           "resident_before": [
-            32,
             35,
-            36,
             37,
             164,
-            166,
-            254,
-            256,
-            265,
-            267
+            166
           ],
           "events": [
             {
@@ -3185,7 +2899,12 @@
                 "consumer": 255,
                 "input_index": 1,
                 "value": 254,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 254
               }
             },
             {
@@ -3201,7 +2920,12 @@
                 "consumer": 257,
                 "input_index": 1,
                 "value": 256,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 256
               }
             },
             {
@@ -3265,7 +2989,7 @@
                 "consumer": 266,
                 "input_index": 1,
                 "value": 265,
-                "kind": "Resident"
+                "kind": "Reload"
               }
             },
             {
@@ -3281,35 +3005,207 @@
                 "consumer": 268,
                 "input_index": 1,
                 "value": 267,
-                "kind": "Resident"
+                "kind": "Reload"
               }
             }
           ],
           "resident_after": [
-            32,
             35,
-            36,
             37,
             164,
             166,
             254,
-            256,
-            265,
-            267
+            256
           ]
         },
         {
           "resident_before": [
-            32,
             35,
-            36,
             37,
             164,
             166,
             254,
-            256,
-            265,
-            267
+            256
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 270,
+                "input_index": 2,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 270,
+                "input_index": 3,
+                "value": 37,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 270,
+                "input_index": 4,
+                "value": 177,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 177,
+                "input_index": 1,
+                "value": 166,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 270,
+                "input_index": 5,
+                "value": 249,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 248,
+                "input_index": 1,
+                "value": 164,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 270,
+                "input_index": 6,
+                "value": 255,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 255,
+                "input_index": 1,
+                "value": 254,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 270,
+                "input_index": 7,
+                "value": 257,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 257,
+                "input_index": 1,
+                "value": 256,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 271,
+                "input_index": 2,
+                "value": 35,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 271,
+                "input_index": 3,
+                "value": 37,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 271,
+                "input_index": 4,
+                "value": 177,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 177,
+                "input_index": 1,
+                "value": 166,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 271,
+                "input_index": 5,
+                "value": 260,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 259,
+                "input_index": 1,
+                "value": 164,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 271,
+                "input_index": 6,
+                "value": 266,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 266,
+                "input_index": 1,
+                "value": 265,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 271,
+                "input_index": 7,
+                "value": 268,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 268,
+                "input_index": 1,
+                "value": 267,
+                "kind": "Reload"
+              }
+            }
+          ],
+          "resident_after": [
+            35,
+            37,
+            164,
+            166,
+            254,
+            256
+          ]
+        },
+        {
+          "resident_before": [
+            35,
+            37,
+            164,
+            166,
+            254,
+            256
           ],
           "events": [
             {
@@ -3362,16 +3258,6 @@
               }
             },
             {
-              "Evict": {
-                "value": 265
-              }
-            },
-            {
-              "Evict": {
-                "value": 267
-              }
-            },
-            {
               "Admit": {
                 "value": 272
               }
@@ -3407,8 +3293,6 @@
             }
           ],
           "resident_after": [
-            32,
-            36,
             37,
             272,
             283
@@ -3416,8 +3300,6 @@
         },
         {
           "resident_before": [
-            32,
-            36,
             37,
             272,
             283
@@ -3484,32 +3366,6 @@
                 "consumer": 284,
                 "input_index": 1,
                 "value": 32,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            32,
-            36,
-            37,
-            272,
-            283
-          ]
-        },
-        {
-          "resident_before": [
-            32,
-            36,
-            37,
-            272,
-            283
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 1021,
-                "input_index": 0,
-                "value": 1019,
                 "kind": "Reload"
               }
             },
@@ -3526,6 +3382,29 @@
             {
               "Evict": {
                 "value": 283
+              }
+            },
+            {
+              "Admit": {
+                "value": 32
+              }
+            }
+          ],
+          "resident_after": [
+            32
+          ]
+        },
+        {
+          "resident_before": [
+            32
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 1021,
+                "input_index": 0,
+                "value": 1019,
+                "kind": "Reload"
               }
             },
             {
@@ -3698,7 +3577,6 @@
           ],
           "resident_after": [
             32,
-            36,
             1019,
             1020,
             1022,
@@ -3713,7 +3591,6 @@
         {
           "resident_before": [
             32,
-            36,
             1019,
             1020,
             1022,
@@ -3868,7 +3745,6 @@
           ],
           "resident_after": [
             32,
-            36,
             1019,
             1020,
             1022,
@@ -3885,7 +3761,6 @@
         {
           "resident_before": [
             32,
-            36,
             1019,
             1020,
             1022,
@@ -4042,7 +3917,6 @@
           ],
           "resident_after": [
             32,
-            36,
             1019,
             1020,
             1022,
@@ -4061,7 +3935,6 @@
         {
           "resident_before": [
             32,
-            36,
             1019,
             1020,
             1022,
@@ -4139,6 +4012,11 @@
               }
             },
             {
+              "Admit": {
+                "value": 710
+              }
+            },
+            {
               "Demand": {
                 "consumer": 1057,
                 "input_index": 1,
@@ -4151,7 +4029,7 @@
                 "consumer": 1058,
                 "input_index": 0,
                 "value": 710,
-                "kind": "Reload"
+                "kind": "Resident"
               }
             },
             {
@@ -4188,7 +4066,7 @@
             },
             {
               "Evict": {
-                "value": 32
+                "value": 710
               }
             },
             {
@@ -4214,7 +4092,7 @@
             }
           ],
           "resident_after": [
-            36,
+            32,
             1019,
             1020,
             1022,
@@ -4234,7 +4112,7 @@
         },
         {
           "resident_before": [
-            36,
+            32,
             1019,
             1020,
             1022,
@@ -4270,7 +4148,7 @@
             },
             {
               "Evict": {
-                "value": 1020
+                "value": 32
               }
             },
             {
@@ -4368,7 +4246,7 @@
             },
             {
               "Evict": {
-                "value": 1035
+                "value": 1020
               }
             },
             {
@@ -4394,7 +4272,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -4403,6 +4280,7 @@
             1030,
             1031,
             1032,
+            1035,
             1041,
             1044,
             1050,
@@ -4414,7 +4292,6 @@
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -4423,6 +4300,7 @@
             1030,
             1031,
             1032,
+            1035,
             1041,
             1044,
             1050,
@@ -4450,7 +4328,7 @@
             },
             {
               "Evict": {
-                "value": 1044
+                "value": 1035
               }
             },
             {
@@ -4548,7 +4426,7 @@
             },
             {
               "Evict": {
-                "value": 1053
+                "value": 1044
               }
             },
             {
@@ -4574,7 +4452,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -4585,6 +4462,7 @@
             1032,
             1041,
             1050,
+            1053,
             1059,
             1062,
             1068,
@@ -4594,7 +4472,6 @@
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -4605,6 +4482,7 @@
             1032,
             1041,
             1050,
+            1053,
             1059,
             1062,
             1068,
@@ -4630,7 +4508,7 @@
             },
             {
               "Evict": {
-                "value": 1062
+                "value": 1053
               }
             },
             {
@@ -4728,7 +4606,7 @@
             },
             {
               "Evict": {
-                "value": 1071
+                "value": 1062
               }
             },
             {
@@ -4754,7 +4632,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -4767,6 +4644,7 @@
             1050,
             1059,
             1068,
+            1071,
             1077,
             1080,
             1086
@@ -4774,7 +4652,6 @@
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -4787,6 +4664,7 @@
             1050,
             1059,
             1068,
+            1071,
             1077,
             1080,
             1086
@@ -4810,7 +4688,7 @@
             },
             {
               "Evict": {
-                "value": 1080
+                "value": 1071
               }
             },
             {
@@ -4907,6 +4785,16 @@
               }
             },
             {
+              "Evict": {
+                "value": 1080
+              }
+            },
+            {
+              "Admit": {
+                "value": 1095
+              }
+            },
+            {
               "Demand": {
                 "consumer": 1096,
                 "input_index": 0,
@@ -4924,7 +4812,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -4939,12 +4826,12 @@
             1068,
             1077,
             1086,
-            1089
+            1089,
+            1095
           ]
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -4959,7 +4846,8 @@
             1068,
             1077,
             1086,
-            1089
+            1089,
+            1095
           ],
           "events": [
             {
@@ -5094,7 +4982,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -5109,12 +4996,12 @@
             1068,
             1077,
             1086,
+            1095,
             1098
           ]
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -5129,6 +5016,7 @@
             1068,
             1077,
             1086,
+            1095,
             1098
           ],
           "events": [
@@ -5264,7 +5152,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -5279,12 +5166,12 @@
             1068,
             1077,
             1086,
+            1095,
             1107
           ]
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -5299,6 +5186,7 @@
             1068,
             1077,
             1086,
+            1095,
             1107
           ],
           "events": [
@@ -5434,7 +5322,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -5449,12 +5336,12 @@
             1068,
             1077,
             1086,
+            1095,
             1116
           ]
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -5469,6 +5356,7 @@
             1068,
             1077,
             1086,
+            1095,
             1116
           ],
           "events": [
@@ -5604,7 +5492,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -5619,12 +5506,12 @@
             1068,
             1077,
             1086,
+            1095,
             1125
           ]
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -5639,6 +5526,7 @@
             1068,
             1077,
             1086,
+            1095,
             1125
           ],
           "events": [
@@ -5774,7 +5662,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -5789,12 +5676,12 @@
             1068,
             1077,
             1086,
+            1095,
             1134
           ]
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -5809,6 +5696,7 @@
             1068,
             1077,
             1086,
+            1095,
             1134
           ],
           "events": [
@@ -5944,7 +5832,6 @@
             }
           ],
           "resident_after": [
-            36,
             1019,
             1022,
             1024,
@@ -5959,12 +5846,12 @@
             1068,
             1077,
             1086,
+            1095,
             1143
           ]
         },
         {
           "resident_before": [
-            36,
             1019,
             1022,
             1024,
@@ -5979,6 +5866,7 @@
             1068,
             1077,
             1086,
+            1095,
             1143
           ],
           "events": [
@@ -6124,7 +6012,6 @@
             }
           ],
           "resident_after": [
-            36,
             1024,
             1026,
             1028,
@@ -6137,6 +6024,7 @@
             1068,
             1077,
             1086,
+            1095,
             1143,
             1152,
             1158
@@ -6144,7 +6032,6 @@
         },
         {
           "resident_before": [
-            36,
             1024,
             1026,
             1028,
@@ -6157,6 +6044,7 @@
             1068,
             1077,
             1086,
+            1095,
             1143,
             1152,
             1158
@@ -6304,7 +6192,6 @@
             }
           ],
           "resident_after": [
-            36,
             1026,
             1030,
             1031,
@@ -6315,6 +6202,7 @@
             1068,
             1077,
             1086,
+            1095,
             1143,
             1152,
             1158,
@@ -6324,7 +6212,6 @@
         },
         {
           "resident_before": [
-            36,
             1026,
             1030,
             1031,
@@ -6335,6 +6222,7 @@
             1068,
             1077,
             1086,
+            1095,
             1143,
             1152,
             1158,
@@ -6403,23 +6291,7 @@
                 "consumer": 1187,
                 "input_index": 7,
                 "value": 1095,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 1095,
-                "input_index": 0,
-                "value": 1030,
                 "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 1095,
-                "input_index": 1,
-                "value": 1089,
-                "kind": "Reload"
               }
             },
             {
@@ -6633,6 +6505,11 @@
             {
               "Evict": {
                 "value": 1086
+              }
+            },
+            {
+              "Evict": {
+                "value": 1095
               }
             },
             {
@@ -6955,6 +6832,11 @@
               }
             },
             {
+              "Admit": {
+                "value": 671
+              }
+            },
+            {
               "Demand": {
                 "consumer": 1184,
                 "input_index": 1,
@@ -6990,7 +6872,6 @@
             }
           ],
           "resident_after": [
-            36,
             921,
             932,
             943,
@@ -7005,12 +6886,12 @@
             721,
             732,
             688,
+            671,
             1185
           ]
         },
         {
           "resident_before": [
-            36,
             921,
             932,
             943,
@@ -7025,11 +6906,11 @@
             721,
             732,
             688,
+            671,
             1185
           ],
           "events": [],
           "resident_after": [
-            36,
             921,
             932,
             943,
@@ -7044,12 +6925,12 @@
             721,
             732,
             688,
+            671,
             1185
           ]
         },
         {
           "resident_before": [
-            36,
             921,
             932,
             943,
@@ -7064,11 +6945,11 @@
             721,
             732,
             688,
+            671,
             1185
           ],
           "events": [],
           "resident_after": [
-            36,
             921,
             932,
             943,
@@ -7083,12 +6964,12 @@
             721,
             732,
             688,
+            671,
             1185
           ]
         },
         {
           "resident_before": [
-            36,
             921,
             932,
             943,
@@ -7103,6 +6984,7 @@
             721,
             732,
             688,
+            671,
             1185
           ],
           "events": [
@@ -7124,7 +7006,6 @@
             }
           ],
           "resident_after": [
-            36,
             921,
             932,
             943,
@@ -7139,16 +7020,14 @@
             721,
             732,
             688,
+            671,
             1185
           ]
         },
         {
           "resident_before": [
-            921,
             932,
             943,
-            954,
-            965,
             976,
             987,
             788,
@@ -7157,7 +7036,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7178,11 +7058,8 @@
             }
           ],
           "resident_after": [
-            921,
             932,
             943,
-            954,
-            965,
             976,
             987,
             788,
@@ -7191,16 +7068,14 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
           "resident_before": [
-            921,
             932,
             943,
-            954,
-            965,
             976,
             987,
             788,
@@ -7209,7 +7084,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7233,7 +7109,7 @@
                 "consumer": 1193,
                 "input_index": 0,
                 "value": 921,
-                "kind": "Resident"
+                "kind": "Reload"
               }
             },
             {
@@ -7248,14 +7124,17 @@
             },
             {
               "Admit": {
+                "value": 921
+              }
+            },
+            {
+              "Admit": {
                 "value": 1193
               }
             }
           ],
           "resident_after": [
             921,
-            954,
-            965,
             976,
             987,
             788,
@@ -7265,14 +7144,13 @@
             721,
             732,
             688,
+            671,
             1193
           ]
         },
         {
           "resident_before": [
             921,
-            954,
-            965,
             976,
             987,
             788,
@@ -7282,6 +7160,7 @@
             721,
             732,
             688,
+            671,
             1193
           ],
           "events": [
@@ -7296,8 +7175,6 @@
           ],
           "resident_after": [
             921,
-            954,
-            965,
             976,
             987,
             788,
@@ -7307,14 +7184,13 @@
             721,
             732,
             688,
+            671,
             1193
           ]
         },
         {
           "resident_before": [
             921,
-            954,
-            965,
             976,
             987,
             788,
@@ -7324,6 +7200,7 @@
             721,
             732,
             688,
+            671,
             1193
           ],
           "events": [
@@ -7332,7 +7209,22 @@
                 "consumer": 1205,
                 "input_index": 0,
                 "value": 954,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Evict": {
+                "value": 921
+              }
+            },
+            {
+              "Evict": {
+                "value": 1193
+              }
+            },
+            {
+              "Admit": {
+                "value": 954
               }
             },
             {
@@ -7340,12 +7232,16 @@
                 "consumer": 1205,
                 "input_index": 1,
                 "value": 965,
-                "kind": "Resident"
+                "kind": "Reload"
+              }
+            },
+            {
+              "Admit": {
+                "value": 965
               }
             }
           ],
           "resident_after": [
-            921,
             954,
             965,
             976,
@@ -7357,7 +7253,7 @@
             721,
             732,
             688,
-            1193
+            671
           ]
         },
         {
@@ -7372,7 +7268,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7403,7 +7300,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
@@ -7418,7 +7316,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7449,7 +7348,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
@@ -7464,7 +7364,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7495,7 +7396,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
@@ -7510,7 +7412,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7541,7 +7444,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
@@ -7556,7 +7460,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7587,7 +7492,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
@@ -7602,7 +7508,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7633,7 +7540,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
@@ -7648,7 +7556,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7679,7 +7588,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
@@ -7694,7 +7604,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7725,7 +7636,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
@@ -7740,7 +7652,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7771,7 +7684,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ]
         },
         {
@@ -7786,7 +7700,8 @@
             821,
             721,
             732,
-            688
+            688,
+            671
           ],
           "events": [
             {
@@ -7794,6 +7709,149 @@
                 "consumer": 1225,
                 "input_index": 0,
                 "value": 671,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 1225,
+                "input_index": 1,
+                "value": 688,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            954,
+            965,
+            976,
+            987,
+            788,
+            799,
+            810,
+            821,
+            721,
+            732,
+            688,
+            671
+          ]
+        },
+        {
+          "resident_before": [
+            954,
+            965,
+            976,
+            987,
+            788,
+            799,
+            810,
+            821,
+            721,
+            732,
+            688,
+            671
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 1223,
+                "input_index": 0,
+                "value": 688,
+                "kind": "Resident"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 1224,
+                "input_index": 0,
+                "value": 671,
+                "kind": "Resident"
+              }
+            }
+          ],
+          "resident_after": [
+            954,
+            965,
+            976,
+            987,
+            788,
+            799,
+            810,
+            821,
+            721,
+            732,
+            688,
+            671
+          ]
+        },
+        {
+          "resident_before": [
+            954,
+            965,
+            976,
+            987,
+            788,
+            799,
+            810,
+            821,
+            721,
+            732,
+            688,
+            671
+          ],
+          "events": [],
+          "resident_after": [
+            954,
+            965,
+            976,
+            987,
+            788,
+            799,
+            810,
+            821,
+            721,
+            732,
+            688,
+            671
+          ]
+        },
+        {
+          "resident_before": [
+            954,
+            965,
+            976,
+            987,
+            788,
+            799,
+            810,
+            821,
+            721,
+            732,
+            688,
+            671
+          ],
+          "events": [
+            {
+              "Demand": {
+                "consumer": 1232,
+                "input_index": 1,
+                "value": 1227,
+                "kind": "Reload"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 1232,
+                "input_index": 2,
+                "value": 1229,
+                "kind": "Recompute"
+              }
+            },
+            {
+              "Demand": {
+                "consumer": 1229,
+                "input_index": 0,
+                "value": 32,
                 "kind": "Reload"
               }
             },
@@ -7845,94 +7903,6 @@
             {
               "Evict": {
                 "value": 732
-              }
-            },
-            {
-              "Admit": {
-                "value": 671
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 1225,
-                "input_index": 1,
-                "value": 688,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            688,
-            671
-          ]
-        },
-        {
-          "resident_before": [
-            688,
-            671
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 1223,
-                "input_index": 0,
-                "value": 688,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 1224,
-                "input_index": 0,
-                "value": 671,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            688,
-            671
-          ]
-        },
-        {
-          "resident_before": [
-            688,
-            671
-          ],
-          "events": [],
-          "resident_after": [
-            688,
-            671
-          ]
-        },
-        {
-          "resident_before": [
-            688,
-            671
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 1232,
-                "input_index": 1,
-                "value": 1227,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 1232,
-                "input_index": 2,
-                "value": 1229,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 1229,
-                "input_index": 0,
-                "value": 32,
-                "kind": "Reload"
               }
             },
             {
@@ -11801,7 +11771,7 @@
           ]
         }
       ],
-      "predicted_traffic": 184,
+      "predicted_traffic": 195,
       "floor": 157
     },
     {
