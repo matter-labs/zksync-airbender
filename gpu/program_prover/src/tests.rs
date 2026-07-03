@@ -67,6 +67,71 @@ fn test_program_prover_base_layer_verify() {
     log::info!("base layer verified natively; output registers: {output:?}");
 }
 
+/// Unified counterpart of the base-layer e2e: prove the `multi_family_smoke`
+/// workload (same binary + ND inputs as circuit_prover's unified GPU tests,
+/// blake2_with_compression variant — the JIT lacks the g-function delegation)
+/// with `ExecutionKind::Unified`, assemble the `ProgramProof` (including
+/// `num_it_circuits`), build the unified ND stream, and run the real
+/// base-layer unified verifier natively.
+///
+/// KNOWN BLOCKER: fails the global memory-permutation closure
+/// (`read_set_product_accumulator == write_set_product_accumulator`,
+/// full_statement_verifier/src/unified_circuit_statement.rs:255). The GPU
+/// unified prove path uses CANONICAL inits-and-teardowns top bits
+/// (`canonical_inits_and_teardowns_top_bits`, workers/gpu.rs) while the
+/// verifier closes the grand product over the REAL RAM address top bits the
+/// CPU reference collects via `ram.collect_inits_and_teardowns_sets`.
+/// execution_prover's `InitsAndTeardownsData` does not carry top bits yet;
+/// plumbing them through commit-FS + the proof job is the outstanding work
+/// item. This test validates that fix once it lands.
+#[test]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[ignore]
+#[serial]
+fn test_program_prover_unified_base_layer_verify() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Info)
+        .try_init();
+    let configuration = ExecutionProverConfiguration::default();
+    let security_level = configuration.security_level;
+    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let (_, binary_image) = read_binary(&test_artifact(
+        "examples/multi_family_smoke/app_blake2_with_compression.bin",
+    ));
+    let (_, text_section) = read_binary(&test_artifact(
+        "examples/multi_family_smoke/app_blake2_with_compression.text",
+    ));
+    let handle = prover.add_binary(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        binary_image,
+        text_section,
+        None,
+    );
+    let non_determinism_source = QuasiUARTSource::new_with_reads(vec![50, 0xDEAD_BEEF]);
+    let result = prover.commit_memory_and_prove(0, &handle, non_determinism_source);
+
+    let artifacts = prover.program_artifacts(&handle);
+    let worker = worker::Worker::new();
+    let (proof, setups) = assemble_program_proof(&artifacts, result, security_level, &worker);
+    log::info!(
+        "assembled unified ProgramProof: {} cycles, {} unified circuits, num_it_circuits {:?}, {} delegation types",
+        proof_cycles(&proof),
+        proof
+            .riscv_proofs
+            .values()
+            .map(|v| v.len())
+            .sum::<usize>(),
+        proof.num_it_circuits,
+        proof.delegation_proofs.len(),
+    );
+
+    let stream = crate::interim_upstream::build_unified_stream(&setups, &proof);
+    let output = crate::interim_upstream::native_verify_unified(stream, true);
+    log::info!("unified base layer verified natively; output registers: {output:?}");
+}
+
 /// Diagnostic: prove the same binary + ND inputs on the CPU reference
 /// (`prover_examples::prove_unrolled_execution_with_replayer`), sanity-verify
 /// the CPU proof natively, then diff the CPU-assembled `(ProgramProof, Setups)`

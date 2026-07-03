@@ -120,17 +120,29 @@ pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
         .expect("verifier thread must not panic")
 }
 
-/// Native (host) verification of a unified-layer stream.
+/// Native (host) verification of a unified-layer stream. Extends the upstream
+/// mirror with an `is_base` switch: the base variant starts a fresh recursion
+/// chain (requires the upper 8 output registers to be zero, reads no chain
+/// preimage), matching proofs of ordinary programs rather than fsv binaries.
 #[cfg(feature = "verifiers")]
-pub fn native_verify_unified(stream: Vec<u32>) -> [u32; 16] {
-    use crate::upstream::{verify_unified_circuit_recursion_layer, DebugErrorCreator};
+pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
+    use crate::upstream::{
+        verify_unified_circuit_base_layer, verify_unified_circuit_recursion_layer,
+        DebugErrorCreator,
+    };
     std::thread::Builder::new()
         .name("unified verifier".to_string())
         .stack_size(1 << 27)
         .spawn(move || {
             let mut it = stream.into_iter();
-            verify_unified_circuit_recursion_layer::<_, DebugErrorCreator, REDUCED_ROUNDS>(&mut it)
-                .expect("unified proof must verify")
+            let result = if is_base {
+                verify_unified_circuit_base_layer::<_, DebugErrorCreator, REDUCED_ROUNDS>(&mut it)
+            } else {
+                verify_unified_circuit_recursion_layer::<_, DebugErrorCreator, REDUCED_ROUNDS>(
+                    &mut it,
+                )
+            };
+            result.expect("unified proof must verify")
         })
         .expect("spawn verifier thread")
         .join()

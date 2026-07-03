@@ -30,9 +30,10 @@ use crate::upstream::{
 /// a (possibly empty) proof list; all delegation circuit artifacts are
 /// embedded regardless of whether that delegation fired.
 ///
-/// Unrolled-execution shape only for now: `num_it_circuits` is left `None`
-/// (the unified flattener requires it — unified assembly lands with the
-/// unified verify e2e).
+/// Handles both execution kinds: for `ExecutionKind::Unified` results,
+/// `ProveResult::num_unified_it_circuits` carries the count of trailing
+/// unified circuits with real inits-and-teardowns data, which becomes
+/// `ProgramProof::num_it_circuits` (required by the unified flattener).
 pub fn assemble_program_proof(
     artifacts: &ProgramArtifacts,
     result: ProveResult,
@@ -118,7 +119,7 @@ pub fn assemble_program_proof(
         recursion_chain_preimage: None,
         recursion_chain_hash: None,
         pow_challenge: result.pow_challenge,
-        num_it_circuits: None,
+        num_it_circuits: result.num_unified_it_circuits,
     };
     (proof, setups)
 }
