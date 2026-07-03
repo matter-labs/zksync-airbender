@@ -18,6 +18,7 @@ impl ExecutionProver {
             circuit_families_memory_caps,
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
+            num_trivial_unified_circuits,
             binary_handle: _,
         } = memory_commitment;
         let execution_kind = self.binary_holders[&binary_key].execution_kind;
@@ -70,6 +71,7 @@ impl ExecutionProver {
                     *final_pc,
                     *final_timestamp,
                     &canonical_top_bits,
+                    *num_trivial_unified_circuits,
                     unified_memory_caps,
                     &delegation_circuits_memory_caps
                         .iter()
@@ -267,19 +269,31 @@ fn fs_transform_unified(
     final_pc: u32,
     final_timestamp: TimestampScalar,
     canonical_top_bits: &[u32],
+    // Number of LEADING unified circuits (by sequence id) with trivial
+    // (dummy) inits-and-teardowns. Those must contribute all-zero top bits to
+    // the FS seed — the CPU reference uses `vec![0u32; num_teardown_sets]`
+    // for dummies — while the trailing real circuits use the canonical top
+    // bits (== the real ones in the supported regime).
+    num_trivial_unified_circuits: usize,
     unified_memory_caps: &[Vec<MerkleTreeCapVarLength>],
     delegation_circuits_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
 ) -> crate::upstream::Seed {
     let unified_circuits_memory_caps = unified_memory_caps
         .iter()
-        .map(|per_coset_caps| {
+        .enumerate()
+        .map(|(sequence_id, per_coset_caps)| {
             let cap = MerkleTreeCapVarLength {
                 cap: per_coset_caps
                     .iter()
                     .flat_map(|caps| caps.cap.iter().copied())
                     .collect_vec(),
             };
-            (canonical_top_bits.to_vec(), cap)
+            let top_bits = if sequence_id < num_trivial_unified_circuits {
+                vec![0u32; canonical_top_bits.len()]
+            } else {
+                canonical_top_bits.to_vec()
+            };
+            (top_bits, cap)
         })
         .collect_vec();
     let delegation_circuits_memory_caps = delegation_circuits_memory_caps

@@ -1,7 +1,7 @@
 use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::UnsafeMutAccessor;
-use crate::primitives::device_structures::DeviceMatrixMut;
+use crate::primitives::device_structures::{DeviceMatrixMut, DeviceMatrixMutImpl};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::prover::config::assert_gpu_supported_pow_config;
@@ -189,17 +189,27 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
             // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone i/t
             // commit-memory arm at trace/memory.rs:169-180 (inits_and_teardowns + log_domain_size +
             // PAGE_SIZE_LOG2 + the i/t launcher are already in scope/imported there).
-            let inits_and_teardowns = inits_and_teardowns
-                .as_ref()
-                .expect("unified circuit requires init/teardown data");
-            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                &compiled_circuit.memory_layout,
-                log_domain_size,
-                PAGE_SIZE_LOG2,
-                inits_and_teardowns,
-                memory,
-                stream,
-            )?;
+            //
+            // `None` = a TRIVIAL (dummy) unified init/teardown chunk: the CPU reference
+            // (prover_examples::unified) commits all-zero i&t columns for the leading
+            // `num_dummy_inits_and_teardowns` circuits. The i/t launcher only zeroes the whole
+            // matrix and writes teardown timestamp/value columns at page-covered rows, so the
+            // all-zero case is exactly "zero the matrix and skip the teardown-column writes".
+            match inits_and_teardowns.as_ref() {
+                Some(inits_and_teardowns) => {
+                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                        &compiled_circuit.memory_layout,
+                        log_domain_size,
+                        PAGE_SIZE_LOG2,
+                        inits_and_teardowns,
+                        memory,
+                        stream,
+                    )?;
+                }
+                None => {
+                    crate::ops::simple::set_to_zero(memory.slice_mut(), stream)?;
+                }
+            }
             generate_memory_values_unrolled_unified(
                 &compiled_circuit.memory_layout,
                 decoder_table.expect("unified circuit requires a decoder table"),

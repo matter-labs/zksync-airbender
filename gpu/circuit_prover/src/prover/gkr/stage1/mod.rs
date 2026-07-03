@@ -464,16 +464,28 @@ impl GpuGKRStage1Output {
                     // generate_memory_and_witness_values_unrolled_inits_and_teardowns zeroes the whole
                     // matrix (set_to_zero, memory_unrolled.rs:632) before writing the teardown columns,
                     // and derives pages_per_set_log2 itself. Mirrors the standalone i/t arm (stage1 :435-449).
-                    let inits_and_teardowns = inits_and_teardowns
-                        .expect("unified circuit requires transferred init/teardown data");
-                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                        &compiled_circuit.memory_layout,
-                        geometry.log_domain_size as u32,
-                        PAGE_SIZE_LOG2,
-                        inits_and_teardowns,
-                        &mut memory_matrix,
-                        context.get_exec_stream(),
-                    )?;
+                    // `None` = a TRIVIAL (dummy) unified init/teardown chunk (CPU reference
+                    // commits all-zero i&t columns): the i/t launcher only zeroes the whole
+                    // matrix and writes teardown timestamp/value columns at page-covered rows,
+                    // so the all-zero case is exactly "zero the matrix, skip the page sweep".
+                    match inits_and_teardowns {
+                        Some(inits_and_teardowns) => {
+                            generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                                &compiled_circuit.memory_layout,
+                                geometry.log_domain_size as u32,
+                                PAGE_SIZE_LOG2,
+                                inits_and_teardowns,
+                                &mut memory_matrix,
+                                context.get_exec_stream(),
+                            )?;
+                        }
+                        None => {
+                            crate::ops::simple::set_to_zero(
+                                memory_matrix.slice_mut(),
+                                context.get_exec_stream(),
+                            )?;
+                        }
+                    }
                     let decoder_table = if compiled_circuit.has_decoder_lookup {
                         decoder_table.expect("decoder lookup requires transferred decoder table")
                     } else {

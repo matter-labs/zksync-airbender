@@ -187,6 +187,9 @@ where
         mut self,
         compiled_circuit: GKRCircuitArtifact<BF>,
         external_challenges: GKRExternalChallenges<BF, E>,
+        // ACTUAL per-circuit i&t top bits: canonical for real i&t data, all
+        // zeros for trivial (dummy) unified chunks (CPU-reference parity).
+        inits_and_teardowns_top_bits: Vec<u32>,
         device_external_challenges_ptr: *const E,
         mut shared_state: Box<ScheduledBackwardWorkflowState<E>>,
         initial_d_seed: DeviceAllocation<u32>,
@@ -292,6 +295,7 @@ where
         let mut main_backward_state = self.into_main_layer_backward_state_static(
             compiled_circuit,
             external_challenges,
+            inits_and_teardowns_top_bits,
             false,
         );
         let mut main_layers = Vec::new();
@@ -472,9 +476,16 @@ where
         )?;
         drop(external_challenges_host);
 
+        // Test-only dynamic entry: fixtures always carry real i&t data, so
+        // the canonical top bits are the actual ones.
+        let inits_and_teardowns_top_bits =
+            crate::prover::gkr::backward::builders::canonical_inits_and_teardowns_top_bits(
+                compiled_circuit.memory_layout.teardown_sets.len(),
+            );
         let mut execution = self.schedule_execute_backward_workflow_from_shared_state(
             compiled_circuit,
             external_challenges,
+            inits_and_teardowns_top_bits,
             device_external_challenges.as_ptr(),
             shared_state,
             initial_d_seed,

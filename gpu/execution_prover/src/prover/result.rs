@@ -15,6 +15,12 @@ pub struct CommitMemoryResult {
     pub circuit_families_memory_caps: BTreeMap<u8, Vec<Vec<MerkleTreeCapVarLength>>>,
     pub inits_and_teardowns_memory_caps: Vec<Vec<MerkleTreeCapVarLength>>,
     pub delegation_circuits_memory_caps: BTreeMap<u32, Vec<Vec<MerkleTreeCapVarLength>>>,
+    /// Unified mode only (0 otherwise): the number of LEADING unified circuits
+    /// whose inits-and-teardowns are trivial (dummy, all-zero). Only the
+    /// trailing circuits carry real i&t data. Consumed by the FS-seed
+    /// derivation, which must use all-zero top bits for the trivial circuits
+    /// (CPU reference: `prover_examples::unified`).
+    pub num_trivial_unified_circuits: usize,
     /// Set by [`ExecutionProver::commit_memory`] from the binary handle passed
     /// in. Read back in `prove`/`commit_memory_and_prove` to recover the binary
     /// associated with this commitment. Defaults to a placeholder for the inner
