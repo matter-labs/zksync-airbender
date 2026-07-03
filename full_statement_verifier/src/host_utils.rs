@@ -35,6 +35,7 @@ fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
         .map(|params| MerkleTreeCap::flatten_single(&params.setup_caps))
 }
 
+
 #[cfg(feature = "verifiers")]
 pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
     use verifier_common::errors::DebugErrorCreator;
