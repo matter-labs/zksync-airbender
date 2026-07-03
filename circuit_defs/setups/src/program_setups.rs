@@ -28,10 +28,7 @@ use std::collections::HashMap;
 /// than bytes).
 pub fn find_binary_exit_point(binary: &[u32]) -> u32 {
     let mut candidates = vec![];
-    for (start_offset, window) in binary
-        .windows(riscv_common::EXIT_SEQUENCE.len())
-        .enumerate()
-    {
+    for (start_offset, window) in binary.windows(riscv_common::EXIT_SEQUENCE.len()).enumerate() {
         if window == riscv_common::EXIT_SEQUENCE {
             candidates.push(start_offset);
         }
