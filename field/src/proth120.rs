@@ -12,8 +12,8 @@
 //! Multiplication uses Montgomery reduction (CIOS over two 64-bit limbs). No
 //! extensions are defined over this field.
 
-use crate::PrimeField;
 use crate::field::Field;
+use crate::PrimeField;
 use crate::TwoAdicField;
 use core::ops::{Add, Sub};
 

@@ -2,8 +2,9 @@ use super::*;
 use crate::gkr::whir::{hypercube_to_monomial, ColumnMajorBaseOracleForLDE};
 use fft::Twiddles;
 use fft::{
-    bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
-    materialize_powers_serial_starting_with_one, GoodAllocator,
+    bitreverse_enumeration_inplace, distribute_powers_parallel, distribute_powers_serial,
+    domain_generator_for_size, materialize_powers_serial_starting_with_one,
+    parallel_bitreverse_enumeration_inplace, GoodAllocator,
 };
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::sync::Arc;
@@ -260,6 +261,70 @@ pub(crate) fn compute_column_major_lde_from_monomial_form<
     assert_eq!(result.len(), lde_factor);
 
     result
+}
+
+/// Compute a SINGLE LDE coset (offset `root_powers[coset_index]`) from a monomial
+/// form, matching `compute_column_major_lde_from_monomial_form`'s coset `coset_index`.
+/// Used by the coset-by-coset commitment so the full RS codeword never has to be
+/// materialized at once. The three heavy steps (offset scaling, bit-reversal, NTT)
+/// each run on the worker, so a single coset uses all cores.
+pub fn compute_column_major_lde_single_coset<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    A: GoodAllocator,
+>(
+    monomial_form_normal_order: &[E],
+    twiddles: &Twiddles<F, A>,
+    lde_factor: usize,
+    coset_index: usize,
+    worker: &Worker,
+) -> Box<[E]> {
+    assert!(lde_factor.is_power_of_two());
+    assert!(coset_index < lde_factor);
+
+    let trace_len_log2 = monomial_form_normal_order.len().trailing_zeros();
+    let next_root = domain_generator_for_size::<F>(((1 << trace_len_log2) * lde_factor) as u64);
+    let root_powers =
+        materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
+    assert_eq!(root_powers[0], F::ONE);
+
+    compute_column_major_lde_single_coset_with_offset(
+        monomial_form_normal_order,
+        twiddles,
+        root_powers[coset_index],
+        worker,
+    )
+}
+
+/// Like [`compute_column_major_lde_single_coset`] but takes the coset's offset
+/// directly (= `root_powers[coset_index]`), so a caller iterating many cosets can
+/// precompute `root_powers` once instead of per coset.
+pub fn compute_column_major_lde_single_coset_with_offset<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    A: GoodAllocator,
+>(
+    monomial_form_normal_order: &[E],
+    twiddles: &Twiddles<F, A>,
+    offset: F,
+    worker: &Worker,
+) -> Box<[E]> {
+    let trace_len_log2 = monomial_form_normal_order.len().trailing_zeros();
+    assert!(twiddles.forward_twiddles.len() >= (1 << (trace_len_log2 - 1)));
+    let selected_twiddles = &twiddles.forward_twiddles[..(1 << (trace_len_log2 - 1))];
+
+    let mut evals = monomial_form_normal_order.to_vec();
+    if offset != F::ONE {
+        distribute_powers_parallel(&mut evals[..], F::ONE, offset, worker);
+    }
+    parallel_bitreverse_enumeration_inplace(&mut evals[..], worker);
+    fft::naive::parallel_ct_ntt_bitreversed_to_natural(
+        &mut evals[..],
+        trace_len_log2,
+        selected_twiddles,
+        worker,
+    );
+    evals.into_boxed_slice()
 }
 
 pub(crate) fn compute_column_major_monomial_form_from_main_domain<

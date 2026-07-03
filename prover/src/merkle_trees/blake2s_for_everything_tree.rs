@@ -200,4 +200,15 @@ impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
 
         Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
     }
+
+    fn build_over_leaf_hashes(
+        leaf_hashes: Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+        cap_size: usize,
+        worker: &Worker,
+    ) -> Self {
+        let mut v: Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], B> =
+            Vec::with_capacity_in(leaf_hashes.len(), B::default());
+        v.extend(leaf_hashes);
+        Self::continue_from_leaf_hashes(v, cap_size, worker)
+    }
 }

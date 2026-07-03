@@ -66,4 +66,13 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         [u32; DIGEST_SIZE_U32_WORDS],
         Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
     );
+
+    /// Build a tree whose leaves ARE the given digests (e.g. per-coset subtree
+    /// roots), up to `cap_size` top nodes. Lets the coset-by-coset commitment
+    /// assemble the top tree over per-coset roots without re-hashing field data.
+    fn build_over_leaf_hashes(
+        leaf_hashes: Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+        cap_size: usize,
+        worker: &Worker,
+    ) -> Self;
 }

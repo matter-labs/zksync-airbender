@@ -39,7 +39,10 @@ fn compress_two_to_one(left: &Digest32, right: &Digest32) -> Digest32 {
 }
 
 impl<A: GoodAllocator> Keccak256MerkleTreeWithCap<A> {
-    fn continue_from_leaf_hashes(
+    /// Build the tree above a set of leaf hashes up to `cap_size` top nodes.
+    /// Exposed for the coset-by-coset commitment, which builds each coset's
+    /// subtree (cap_size 1) and then a top tree over the per-coset roots.
+    pub(crate) fn continue_from_leaf_hashes(
         leaf_hashes: Vec<Digest32, A>,
         cap_size: usize,
         worker: &Worker,
@@ -110,7 +113,9 @@ impl<A: GoodAllocator> Keccak256MerkleTreeWithCap<A> {
     }
 }
 
-impl<B: GoodAllocator> ColumnMajorMerkleTreeConstructor<Proth120> for Keccak256MerkleTreeWithCap<B> {
+impl<B: GoodAllocator> ColumnMajorMerkleTreeConstructor<Proth120>
+    for Keccak256MerkleTreeWithCap<B>
+{
     type Verifier = Keccak256LeafInclusionVerifier;
 
     fn dummy() -> Self {
@@ -184,6 +189,16 @@ impl<B: GoodAllocator> ColumnMajorMerkleTreeConstructor<Proth120> for Keccak256M
 
         Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
     }
+
+    fn build_over_leaf_hashes(
+        leaf_hashes: Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+        cap_size: usize,
+        worker: &Worker,
+    ) -> Self {
+        let mut v: Vec<Digest32, B> = Vec::with_capacity_in(leaf_hashes.len(), B::default());
+        v.extend(leaf_hashes);
+        Self::continue_from_leaf_hashes(v, cap_size, worker)
+    }
 }
 
 /// `keccak256` of a byte slice.
@@ -256,9 +271,8 @@ impl LeafInclusionVerifier for Keccak256LeafInclusionVerifier {
         for w in words.iter() {
             preimage.extend_from_slice(&w.to_be_bytes());
         }
-        let mut h = super::keccak256_hash_leafs::keccak_digest_from_bytes(keccak256_bytes(
-            &preimage,
-        ));
+        let mut h =
+            super::keccak256_hash_leafs::keccak_digest_from_bytes(keccak256_bytes(&preimage));
 
         let mut index = leaf_index as usize;
         for _ in 0..depth {
@@ -336,7 +350,8 @@ mod test {
             .map(|c| {
                 (0..TRACE_LEN)
                     .map(|r| {
-                        let v = (Proth120::ORDER - 1 - ((c * TRACE_LEN + r) as u128)) % Proth120::ORDER;
+                        let v =
+                            (Proth120::ORDER - 1 - ((c * TRACE_LEN + r) as u128)) % Proth120::ORDER;
                         Proth120::new(v)
                     })
                     .collect()
@@ -349,13 +364,8 @@ mod test {
         let tree = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             Proth120,
         >>::construct_from_cosets::<Proth120, Global>(
-            trace,
-            COMBINE_BY,
-            CAP_SIZE,
-            /* bitreverse_evaluations */ true,
-            /* bitreverse_cosets */ false,
-            /* bitreverse_leaf_hashes */ false,
-            &worker,
+            trace, COMBINE_BY, CAP_SIZE, /* bitreverse_evaluations */ true,
+            /* bitreverse_cosets */ false, /* bitreverse_leaf_hashes */ false, &worker,
         );
 
         // --- EVM leaf format: leaf[row] = keccak256( concat_c BE16(col_c[row]) ) ---
@@ -469,7 +479,10 @@ mod test {
                     &mut nd,
                 )
             };
-            assert!(ok, "verify_leaf_inclusion should accept the correct leaf {idx}");
+            assert!(
+                ok,
+                "verify_leaf_inclusion should accept the correct leaf {idx}"
+            );
 
             // Negative: a corrupted leaf value must be rejected.
             let mut bad_values = leaf_values.clone();
@@ -495,7 +508,10 @@ mod test {
                     &mut nd_bad,
                 )
             };
-            assert!(!bad_ok, "verify_leaf_inclusion must reject a corrupted leaf {idx}");
+            assert!(
+                !bad_ok,
+                "verify_leaf_inclusion must reject a corrupted leaf {idx}"
+            );
         }
     }
 }

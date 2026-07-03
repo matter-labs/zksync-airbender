@@ -792,6 +792,8 @@ where
         seed,
         prover_config.whir_schedule.cap_size,
         trace_len.trailing_zeros() as usize,
+        None, // base oracles hold all cosets; no coset-by-coset hook
+        crate::gkr::whir::WhirIntermediateOracleMode::Monolithic,
         worker,
     );
 

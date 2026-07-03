@@ -5,9 +5,10 @@ pragma solidity ^0.8.24;
 // WHIR polynomial-commitment opening verifier (EVM skeleton)
 // =============================================================================
 //
-// Hand-written EVM/Yul SKELETON of the WHIR proximity-test verifier, sibling of
-// gkr.sol. Realistic gas ESTIMATE, not sound: every equality assert is replaced
-// by an anti-DCE sink2(). Stub proof from WhirStreamGen. See whir_schedule.json.
+// Hand-written EVM/Yul WHIR proximity-test verifier, sibling of gkr.sol. Every
+// checked relation is a real assert via sink2() (reverts on mismatch). VARIANT 5
+// verifies a real Proth120/Keccak proof from the `prover` crate's
+// `generate_whir_input_for_evm` test (see WhirRealProofTest below).
 //
 // Field: P = 7*2^120 + 1 (Proth120, ~123 bit), one uint128/element, mulmod. keccak256
 // for transcript/Merkle/PoW. Mutable state in hand-placed memory "registers"
@@ -20,18 +21,19 @@ pragma solidity ^0.8.24;
 // preimage as its first bytes; the verifier hashes it once and checks it against
 // the slot (sink). Trades ~33 cold SLOADs (~69k gas) for 1 SLOAD + 1 keccak.
 // Preimage layout: [seed:32][batching:16][opening:16][z_initial:nz*16]
-//                  [base_cap_0 : CAP*32] ... [base_cap_{nbcaps-1} : CAP*32]
+//                  [witness_cap : CAP*32][setup_cap : CAP*32]
 //
 // ---- Merkle caps ------------------------------------------------------------
 // CAP_LOG2 = log2(cap size). Each commitment is a cap of 2^CAP_LOG2 hashes, so a
 // Merkle path is CAP_LOG2 levels shorter. Caps shrink paths (saves
 // total_paths*CAP_LOG2 sibling words) but grow every commitment to CAP*32 bytes.
 //
-// ---- Schedule variants (set VARIANT) ----------------------------------------
-//   0=A, 1=B : stock layout, 113 cols over 2^24, k0=1
-//   2=PACKED : polys 16x bigger (2^28), 8+1 = 9 batched cols, variable first
-//              fold. Search-optimal: folds=[2,4,4,4,5,5] lde2=[4,6,10,13,17,17]
-//              q=[13,9,5,4,3,3] pow=30, monomials=2^4.
+// ---- Layout: 8 witness polys + 1 setup poly --------------------------------
+// The witness oracle batches 8 columns into one Merkle tree, the setup oracle 1
+// column into another; round 0 opens both (gamma-batched), later rounds fold the
+// single intermediate oracle. VARIANT selects the message size:
+//   4 = production: message 2^26, initial LDE 32 => RS codeword 2^31
+//   5 = test:       message 2^8,  initial LDE 32 => RS codeword 2^13
 // =============================================================================
 
 contract WhirVerifier {
@@ -39,24 +41,31 @@ contract WhirVerifier {
     uint256 constant P    = 0x7000000000000000000000000000001;
     uint256 constant MASK = 0xffffffffffffffffffffffffffffffff;
     uint256 constant HALF = 0x3800000000000000000000000000001;  // 2^-1 = (P+1)/2
-    // GEN = primitive 2^31-th root of unity (evaluation-domain generator for the
-    // 2^31 RS codeword), GEN_INV = GEN^-1.
-    uint256 constant GEN     = 0x293B319B108C8A856BF8B8AB7799ECD;
-    uint256 constant GEN_INV = 0x290A0CB0CAD8AC9DAFCDC73EBD1A223;
+    // GEN = evaluation-domain generator for the RS codeword, GEN_INV = GEN^-1.
+    // Yul inline-asm only accepts direct number constants, so keep the active
+    // codeword's generator here and swap when changing VARIANT:
+    //   VARIANT 4 (2^31): GEN=0x293B319B108C8A856BF8B8AB7799ECD
+    //                     GEN_INV=0x290A0CB0CAD8AC9DAFCDC73EBD1A223
+    //   VARIANT 5 (2^13): GEN=0x029ef460f7f59242f45befd0fa65241e
+    //                     GEN_INV=0x00cb35491d13c704939bb02be3b31e21
+    uint256 constant GEN     = 0x0293B319B108C8A856BF8B8AB7799ECD;
+    uint256 constant GEN_INV = 0x0290A0CB0CAD8AC9DAFCDC73EBD1A223;
 
     uint256 constant NUM_ROUNDS = 6;
-    // 0=A, 1=B, 2=PACKED(8col,V=28), 3=FULLYPACKED(1col,V=31),
-    // 4=PROTH120 (8 witness + 1 setup polys of 2^26, initial LDE 32, RS codeword 2^31)
-    // 5=PROTH120 TEST (8 witness + 1 setup polys of 2^8, initial LDE 32, codeword 2^13)
-    uint256 constant VARIANT  = 5;
-    uint256 constant MERGED   = 1;  // variants 0/1 only
+    // Message size selector (8 witness + 1 setup polys, both sizes):
+    //   4 = production (message 2^26, RS codeword 2^31)
+    //   5 = test       (message 2^8,  RS codeword 2^13)
+    uint256 constant VARIANT  = 4;
+    // Must match the prover's `eval_leaves` cargo feature. 0 (default): intermediate
+    // oracles commit multilinear-COEFFICIENT leaves -> fold with the plain monomial
+    // tensor (fold_multilinear). 1 (eval_leaves): they commit raw EVALUATIONS -> fold
+    // with the coset base-root (fold_coset), like the round-0 base oracle.
+    uint256 constant EVAL_LEAVES = 0;
     // cap size knob: keep CAP == 2^CAP_LOG2 in sync (Yul needs literal constants).
-    // 0/1 => single root; 3/8, 4/16, 5/32.
     uint256 constant CAP_LOG2 = 3;
     uint256 constant CAP      = 8;
 
     // ── hand-placed memory ────────────────────────────────────────────────────
-    uint256 constant SINK_PTR     = 64;
     uint256 constant SEED_PTR     = 128;
     uint256 constant Z_PTR        = 2048;
     uint256 constant ACC_PREF_PTR = 2816;
@@ -73,10 +82,9 @@ contract WhirVerifier {
     uint256 constant REG_CC       = 22560;
     uint256 constant REG_CURDELIN = 22592;
     uint256 constant MONO_PTR     = 22752;  // final monomials (<=16*32)
-    // cap regions (each holds up to CAP*32 = 1024 bytes at CAP=32)
-    uint256 constant BCAP0_PTR    = 23296;  // base oracle caps
-    uint256 constant BCAP1_PTR    = 24320;
-    uint256 constant BCAP2_PTR    = 25344;
+    // cap regions (each holds up to CAP*32 bytes)
+    uint256 constant BCAP0_PTR    = 23296;  // witness base-oracle cap
+    uint256 constant BCAP1_PTR    = 24320;  // setup base-oracle cap
     uint256 constant QCAP_PTR     = 26368;  // current query cap (rounds >= 1)
     uint256 constant NCAP_PTR     = 27392;  // just-read intermediate cap
     // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
@@ -84,21 +92,21 @@ contract WhirVerifier {
     //   DRAW_BUF holds the little-endian u32 words squeezed from the seed.
     uint256 constant QIDX_BUF_PTR = 28416;  // drawn query indices
     uint256 constant DRAW_BUF_PTR = 30016;  // squeezed LE u32 words (one per slot)
-    uint256 constant SINKCTR_PTR  = 31616;  // debug: sink call counter
-    uint256 constant SINKMASK_PTR = 31648;  // debug: bit i set if sink call i mismatched
 
     fallback() external {
         assembly {
+        // Every checked WHIR relation flows through here: revert unless equal.
         function sink2(a, b) {
-            let ctr := mload(SINKCTR_PTR)
-            if iszero(eq(a, b)) { mstore(SINKMASK_PTR, or(mload(SINKMASK_PTR), shl(ctr, 1))) }
-            mstore(SINK_PTR, xor(mload(SINK_PTR), xor(a, b)))
-            mstore(SINKCTR_PTR, add(ctr, 1))
+            let c := add(mload(0xF000), 1)
+            mstore(0xF000, c)
+            if iszero(eq(a, b)) { mstore(0, c) mstore(32, a) mstore(64, b) revert(0, 96) }
         }
         function draw1() -> r {
             let s := keccak256(SEED_PTR, 32)
             mstore(SEED_PTR, s)
-            r := shr(128, s)
+            // top 128 bits reduced mod P (matches prover `from_u128_with_reduction`).
+            // Reduction is required: unreduced values break `sub(P, x)` for x > P.
+            r := mod(shr(128, s), P)
         }
         function powmod(base, e) -> res {
             res := 1
@@ -156,13 +164,6 @@ contract WhirVerifier {
                 }
                 mstore(add(QIDX_BUF_PTR, mul(qq, 32)), idx)
             }
-            // debug: capture the first draw's first two indices
-            if iszero(mload(SINKCTR_PTR)) {} // no-op guard placeholder
-            if iszero(mload(31744)) {
-                mstore(31680, mload(QIDX_BUF_PTR))
-                mstore(31712, mload(add(QIDX_BUF_PTR, 32)))
-                mstore(31744, 1)
-            }
         }
         function fold_accumulator(alpha, n, zi_off) {
             let one_minus_alpha := addmod(1, sub(P, alpha), P)
@@ -204,6 +205,24 @@ contract WhirVerifier {
                     mstore(add(FBUF_PTR, mul(i, 32)), t)
                 }
                 root_inv := mulmod(root_inv, root_inv, P)
+                n := half
+            }
+            folded := mload(FBUF_PTR)
+        }
+        // Plain multilinear fold (monomial tensor eval) with the fold challenges,
+        // WITHOUT the coset base-root. Used for INTERMEDIATE/FINAL oracle leaves,
+        // whose stored values fold as f = e0 + e1*ch per step (the prover's default
+        // `eval_multilinear_with_monomial_tensor` path, no `evals_to_multilinear_coeffs`).
+        function fold_multilinear(fold) -> folded {
+            let n := shl(fold, 1)
+            for { let round := 0 } lt(round, fold) { round := add(round, 1) } {
+                let half := shr(1, n)
+                let ch := mload(add(FOLD_CH_PTR, mul(round, 32)))
+                for { let i := 0 } lt(i, half) { i := add(i, 1) } {
+                    let a := mload(add(FBUF_PTR, mul(mul(i, 2), 32)))
+                    let b := mload(add(FBUF_PTR, mul(add(mul(i, 2), 1), 32)))
+                    mstore(add(FBUF_PTR, mul(i, 32)), addmod(a, mulmod(b, ch, P), P))
+                }
                 n := half
             }
             folded := mload(FBUF_PTR)
@@ -337,47 +356,25 @@ contract WhirVerifier {
 
             switch r
             case 0 {
-                switch VARIANT
-                case 3 {
-                    // FULLYPACKED: round 0 is a single pre-batched column / one tree
-                    cp := read_leaf(cp, vp, depth, BCAP0_PTR, qidx, cb)
-                }
-                case 2 {
-                    for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(FBUF_PTR, mul(j, 32)), 0) }
-                    cp := batch_oracle(cp, 8, 0, vp, depth, BCAP0_PTR, qidx, cb)
-                    cp := batch_oracle(cp, 1, 8, vp, depth, BCAP1_PTR, qidx, cb)
-                }
-                case 4 {
-                    // PROTH120: 8 witness columns (BCAP0) + 1 setup column (BCAP1)
-                    for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(FBUF_PTR, mul(j, 32)), 0) }
-                    cp := batch_oracle(cp, 8, 0, vp, depth, BCAP0_PTR, qidx, cb)
-                    cp := batch_oracle(cp, 1, 8, vp, depth, BCAP1_PTR, qidx, cb)
-                }
-                case 5 {
-                    // PROTH120 TEST: same 8 witness (BCAP0) + 1 setup (BCAP1) layout
-                    for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(FBUF_PTR, mul(j, 32)), 0) }
-                    cp := batch_oracle(cp, 8, 0, vp, depth, BCAP0_PTR, qidx, cb)
-                    cp := batch_oracle(cp, 1, 8, vp, depth, BCAP1_PTR, qidx, cb)
-                }
-                default {
-                    for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(FBUF_PTR, mul(j, 32)), 0) }
-                    switch MERGED
-                    case 1 {
-                        cp := batch_oracle(cp, 103, 0,   vp, depth, BCAP0_PTR, qidx, cb)
-                        cp := batch_oracle(cp, 10,  103, vp, depth, BCAP1_PTR, qidx, cb)
-                    }
-                    default {
-                        cp := batch_oracle(cp, 38, 0,   vp, depth, BCAP0_PTR, qidx, cb)
-                        cp := batch_oracle(cp, 65, 38,  vp, depth, BCAP1_PTR, qidx, cb)
-                        cp := batch_oracle(cp, 10, 103, vp, depth, BCAP2_PTR, qidx, cb)
-                    }
-                }
+                // Round 0 queries the base oracles: 8 witness columns (BCAP0) then
+                // 1 setup column (BCAP1), gamma-batched into the folding buffer.
+                for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(FBUF_PTR, mul(j, 32)), 0) }
+                cp := batch_oracle(cp, 8, 0, vp, depth, BCAP0_PTR, qidx, cb)
+                cp := batch_oracle(cp, 1, 8, vp, depth, BCAP1_PTR, qidx, cb)
             }
             default {
                 cp := read_leaf(cp, vp, depth, QCAP_PTR, qidx, cb)
             }
             mstore(REG_CD, cp)
-            let folded := fold_coset(fold, base_root_inv)
+            // round 0 queries a base oracle (coset fold); later rounds query
+            // intermediate oracles (plain multilinear fold, no base-root).
+            let folded
+            // round 0 (base oracle) always folds evals with the coset base-root;
+            // intermediate rounds fold coeff leaves (fold_multilinear) unless the
+            // prover used eval_leaves, in which case they too are raw evals.
+            switch or(iszero(r), EVAL_LEAVES)
+            case 1 { folded := fold_coset(fold, base_root_inv) }
+            default { folded := fold_multilinear(fold) }
             push_pow(exp_pow2(powmod(GEN, qidx), fold), cur)
             mstore(REG_CC, addmod(mload(REG_CC), mulmod(folded, cur, P), P))
         }
@@ -434,7 +431,12 @@ contract WhirVerifier {
                 let qidx := and(mload(add(QIDX_BUF_PTR, mul(qq, 32))), idx_mask)
                 let base_root := powmod(GEN, qidx)
                 cp := read_leaf(cp, vp, depth, QCAP_PTR, qidx, cb)
-                let folded := fold_coset(fold, powmod(GEN_INV, qidx))
+                // final round queries an intermediate oracle: coeff leaves fold with
+                // the plain monomial tensor, unless eval_leaves (raw evals -> fold_coset).
+                let folded
+                switch EVAL_LEAVES
+                case 1 { folded := fold_coset(fold, powmod(GEN_INV, qidx)) }
+                default { folded := fold_multilinear(fold) }
                 let qp := exp_pow2(base_root, fold)
                 let ev := mload(add(MONO_PTR, mul(sub(nmono, 1), 32)))
                 for { let j := sub(nmono, 1) } gt(j, 0) { j := sub(j, 1) } {
@@ -477,19 +479,14 @@ contract WhirVerifier {
         // =================================================================== MAIN
         let start_gas := gas()
 
-        let nz := 24
-        let gcount := 113
-        let rfin := 1
+        // 8 witness + 1 setup poly -> 9 batched columns, 2 base caps (witness,setup).
+        //   VARIANT 4 (prod):  message 2^26, final poly 2^4 monomials (rfin 4)
+        //   VARIANT 5 (test):  message 2^8,  final poly 2^2 monomials (rfin 2)
+        let nz := 26
+        let gcount := 9
+        let rfin := 4
         let nbcaps := 2
-        if eq(VARIANT, 2) { nz := 28 gcount := 9 rfin := 4 }
-        // FULLYPACKED: 113 polys -> ONE poly of 2^(24+ceil(log2 113)) = 2^31, 1 column, 1 tree
-        if eq(VARIANT, 3) { nz := 31 gcount := 1 rfin := 4 nbcaps := 1 }
-        // PROTH120: 8 witness + 1 setup poly of 2^26 -> 9 batched cols, 2 base caps,
-        // final poly 2^4 monomials.
-        if eq(VARIANT, 4) { nz := 26 gcount := 9 rfin := 4 }
-        // PROTH120 TEST: 8 witness + 1 setup poly of 2^8, final poly 2^2 monomials.
-        if eq(VARIANT, 5) { nz := 8 gcount := 9 rfin := 2 }
-        if and(lt(VARIANT, 2), iszero(MERGED)) { nbcaps := 3 }
+        if eq(VARIANT, 5) { nz := 8 rfin := 2 }
 
         // ---- parse + verify the single hashed state commitment -------------
         // preimage at calldata [0, plen): seed | batching | opening | z | base caps
@@ -504,11 +501,10 @@ contract WhirVerifier {
             mstore(add(Z_PTR, mul(mul(i, 2), 32)), shr(128, w))
             mstore(add(Z_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))
         }
-        // base caps
+        // base caps: witness (BCAP0) then setup (BCAP1)
         let caps_off := add(64, mul(zwords, 32))
         calldatacopy(BCAP0_PTR, caps_off, mul(CAP, 32))
         calldatacopy(BCAP1_PTR, add(caps_off, mul(CAP, 32)), mul(CAP, 32))
-        if eq(nbcaps, 3) { calldatacopy(BCAP2_PTR, add(caps_off, mul(2, mul(CAP, 32))), mul(CAP, 32)) }
         let plen := add(caps_off, mul(nbcaps, mul(CAP, 32)))
         // hash preimage, check vs the single stored commitment (sink)
         calldatacopy(LEAF_PTR, 0, plen)
@@ -531,51 +527,8 @@ contract WhirVerifier {
 
         for { let r := 0 } lt(r, NUM_ROUNDS) { r := add(r, 1) } {
             // `cb` = coset bits = log2(LDE factor) for this round's oracle tree.
-            // It defaults to 0 (single coset / no coset-order reversal) for
-            // variants 0/1, whose lde2 schedule is not documented here; variants
-            // 2/3 set it per round from their `lde2` schedules below.
             let fold, q, pow_bits, qib, vp, cb
             switch VARIANT
-            case 0 {
-                switch r
-                case 0 { fold := 1 q := 13 pow_bits := 30 qib := 27 vp := 2 }
-                case 1 { fold := 5 q := 10 pow_bits := 30 qib := 23 vp := 32 }
-                case 2 { fold := 5 q := 5  pow_bits := 30 qib := 23 vp := 32 }
-                case 3 { fold := 5 q := 4  pow_bits := 20 qib := 23 vp := 32 }
-                case 4 { fold := 4 q := 3  pow_bits := 20 qib := 24 vp := 16 }
-                default { fold := 3 q := 2 pow_bits := 32 qib := 25 vp := 8 }
-            }
-            case 1 {
-                switch r
-                case 0 { fold := 1 q := 10 pow_bits := 30 qib := 28 vp := 2 }
-                case 1 { fold := 5 q := 8  pow_bits := 32 qib := 24 vp := 32 }
-                case 2 { fold := 5 q := 5  pow_bits := 25 qib := 24 vp := 32 }
-                case 3 { fold := 5 q := 3  pow_bits := 32 qib := 24 vp := 32 }
-                case 4 { fold := 4 q := 3  pow_bits := 17 qib := 25 vp := 16 }
-                default { fold := 3 q := 2 pow_bits := 30 qib := 26 vp := 8 }
-            }
-            case 2 {
-                // PACKED 8-col V=28 (search-optimal): folds=[2,4,4,4,5,5] lde2=[4,6,10,13,17,17]
-                switch r
-                case 0 { fold := 2 q := 13 pow_bits := 30 qib := 30 vp := 4  cb := 4 }
-                case 1 { fold := 4 q := 9  pow_bits := 30 qib := 28 vp := 16 cb := 6 }
-                case 2 { fold := 4 q := 5  pow_bits := 30 qib := 28 vp := 16 cb := 10 }
-                case 3 { fold := 4 q := 4  pow_bits := 30 qib := 27 vp := 16 cb := 13 }
-                case 4 { fold := 5 q := 3  pow_bits := 30 qib := 26 vp := 32 cb := 17 }
-                default { fold := 5 q := 3 pow_bits := 30 qib := 21 vp := 32 cb := 17 }
-            }
-            case 3 {
-                // FULLYPACKED 1-col V=31, strict RS<=2^32 (DP-optimal):
-                //   folds=[3,4,5,5,5,5] lde2=[1,4,8,13,17,17] q=[50,13,7,4,3,3] monomials=2^4
-                //   round 0 LDE is forced to 2 (RS=31+1=32) => 50 queries.
-                switch r
-                case 0 { fold := 3 q := 50 pow_bits := 30 qib := 29 vp := 8  cb := 1 }
-                case 1 { fold := 4 q := 13 pow_bits := 30 qib := 28 vp := 16 cb := 4 }
-                case 2 { fold := 5 q := 7  pow_bits := 30 qib := 27 vp := 32 cb := 8 }
-                case 3 { fold := 5 q := 4  pow_bits := 30 qib := 27 vp := 32 cb := 13 }
-                case 4 { fold := 5 q := 3  pow_bits := 30 qib := 26 vp := 32 cb := 17 }
-                default { fold := 5 q := 3 pow_bits := 30 qib := 21 vp := 32 cb := 17 }
-            }
             case 4 {
                 // PROTH120: 8 witness + 1 setup poly of 2^26 (message), initial LDE
                 // factor 32 (=2^5). Every round's RS codeword stays 2^31, so the LDE
@@ -639,64 +592,37 @@ contract WhirVerifier {
             default { do_final(fold, q, pow_bits, qib, vp, idx_mask, mload(REG_ZIOFF), rfin, cb) }
         }
 
+        // Every check passed (any failure would have reverted). Return the final
+        // claim, the gas used, and the number of proof bytes consumed.
         let verify_gas := sub(start_gas, gas())
         mstore(0, mload(REG_CLAIM))
         mstore(32, verify_gas)
         mstore(64, mload(REG_CD))
-        mstore(96, mload(SINK_PTR))
-        mstore(128, mload(SINKMASK_PTR))
-        mstore(160, mload(31680))
-        mstore(192, mload(31712))
-        return(0, 224)
+        return(0, 96)
         }
     }
 }
 
 // =============================================================================
-// Test / bench harness.  forge test -C verifier_evm --match-contract WhirVerifierTest -vv
+// Test harness. Feeds the REAL prover-generated calldata (the VARIANT 5 fixture
+// from `prover` test `generate_whir_input_for_evm`). The verifier reverts on any
+// failed relation, so a successful call == a valid proof.
+//   forge test -C verifier_evm --match-contract WhirRealProofTest -vv
 // =============================================================================
-contract WhirVerifierTest is WhirVerifier {
-    event log_named_uint(string key, uint256 val);
-
-    function test() external {
-        // single hashed state commitment; verifier sinks the check so any value works
-        assembly { sstore(0, keccak256(0, 32)) }
-        bytes memory data = (new WhirStreamGen()).run();
-        emit log_named_uint("calldata_bytes", data.length);
-        uint256 g = gasleft();
-        (bool ok, bytes memory ret) = address(this).call(data);
-        g -= gasleft();
-        require(ok, "whir verify reverted");
-        (uint256 claim, uint256 verify_gas, uint256 cd, uint256 sink) =
-            abi.decode(ret, (uint256, uint256, uint256, uint256));
-        claim; sink;
-        uint256 data_gas = calldata_gas(data);
-        emit log_named_uint("proof_bytes_consumed", cd);
-        emit log_named_uint("calldata_gas", data_gas);
-        emit log_named_uint("verify_gas", verify_gas);
-        emit log_named_uint("total_gas", 21000 + data_gas + verify_gas);
-    }
-}
-
 interface WhirVm {
     function readFile(string calldata path) external view returns (string memory);
     function parseBytes(string calldata s) external pure returns (bytes memory);
 }
 
-// Feeds the REAL prover-generated calldata (VARIANT 5 fixture) and requires the
-// verifier's accumulated `sink` to be zero (every checked relation matched) and
-// the whole stream to be consumed.
-//   forge test -C verifier_evm --match-contract WhirRealProofTest -vv
 contract WhirRealProofTest is WhirVerifier {
     event log_named_uint(string key, uint256 val);
-    event log_named_bytes32(string key, bytes32 val);
     WhirVm constant vm = WhirVm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
-    // VARIANT 5 preimage length: 64 + ceil(nz/2)*32 + nbcaps*CAP*32
-    //                          = 64 + 4*32 + 2*8*32 = 704
-    uint256 constant PLEN = 704;
+    // VARIANT 4 preimage length: 64 + ceil(nz/2)*32 + nbcaps*CAP*32
+    //                          = 64 + 13*32 + 2*8*32 = 992
+    uint256 constant PLEN = 992;
 
     function test() external {
-        string memory h = vm.readFile("whir/testdata/proth120_whir_calldata.hex");
+        string memory h = vm.readFile("whir/testdata/proth120_whir_calldata_prod.hex");
         bytes memory data = vm.parseBytes(string.concat("0x", h));
         // bind the preimage to storage slot 0 (stand-in for the on-chain commitment)
         bytes32 ph;
@@ -704,108 +630,18 @@ contract WhirRealProofTest is WhirVerifier {
         assembly { sstore(0, ph) }
         emit log_named_uint("calldata_bytes", data.length);
         (bool ok, bytes memory ret) = address(this).call(data);
+        if (!ok) {
+            (uint256 sinkIdx, uint256 a, uint256 b) = abi.decode(ret, (uint256, uint256, uint256));
+            emit log_named_uint("failed_sink_index", sinkIdx);
+            emit log_named_uint("sink_a", a);
+            emit log_named_uint("sink_b", b);
+        }
         require(ok, "whir verify reverted");
-        (uint256 claim, uint256 verify_gas, uint256 cd, uint256 sink, uint256 mask,
-         uint256 q0, uint256 q1) =
-            abi.decode(ret, (uint256, uint256, uint256, uint256, uint256, uint256, uint256));
+        (uint256 claim, uint256 verify_gas, uint256 cd) =
+            abi.decode(ret, (uint256, uint256, uint256));
         emit log_named_uint("proof_bytes_consumed", cd);
         emit log_named_uint("verify_gas", verify_gas);
         emit log_named_uint("final_claim", claim);
-        emit log_named_bytes32("sink", bytes32(sink));
-        emit log_named_bytes32("sink_mismatch_mask", bytes32(mask));
-        emit log_named_uint("round0_qidx0", q0);
-        emit log_named_uint("round0_qidx1", q1);
         require(cd == data.length, "stream not fully consumed");
-        require(sink == 0, "verification sink nonzero");
-    }
-}
-
-function calldata_gas(bytes memory data) pure returns (uint256) {
-    uint256 standard = 0; uint256 tokens = 0;
-    for (uint256 i = 0; i < data.length; ++i) {
-        if (data[i] == 0) { standard += 4; tokens += 1; }
-        else { standard += 16; tokens += 4; }
-    }
-    uint256 eip7623 = 10 * tokens;
-    return standard > eip7623 ? standard : eip7623;
-}
-
-// =============================================================================
-// Stub proof-stream generator. Computes the exact byte length the verifier walks
-// (preimage + per-round caps/leaves/paths) and fills with a nonzero pattern.
-// Must mirror VARIANT / MERGED / CAP_LOG2.
-// =============================================================================
-contract WhirStreamGen {
-    uint256 constant VARIANT  = 4;
-    uint256 constant MERGED   = 1;
-    uint256 constant CAP_LOG2 = 3;
-    uint256 constant CAP      = 8;
-
-    function run() external pure returns (bytes memory out) {
-        uint8[6]  memory fold;
-        uint8[6]  memory q;
-        uint8[6]  memory qib;
-        uint16[6] memory vp;
-        uint256 rfin; uint256 nz; uint256 round0_cols; uint256 round0_trees; uint256 nbcaps;
-
-        if (VARIANT == 0) {
-            fold = [1, 5, 5, 5, 4, 3]; q = [13, 10, 5, 4, 3, 2];
-            qib = [27, 23, 23, 23, 24, 25]; vp = [uint16(2), 32, 32, 32, 16, 8];
-            rfin = 1; nz = 24; round0_cols = 113; round0_trees = MERGED == 1 ? 2 : 3;
-        } else if (VARIANT == 1) {
-            fold = [1, 5, 5, 5, 4, 3]; q = [10, 8, 5, 3, 3, 2];
-            qib = [28, 24, 24, 24, 25, 26]; vp = [uint16(2), 32, 32, 32, 16, 8];
-            rfin = 1; nz = 24; round0_cols = 113; round0_trees = MERGED == 1 ? 2 : 3;
-        } else if (VARIANT == 2) {
-            fold = [2, 4, 4, 4, 5, 5]; q = [13, 9, 5, 4, 3, 3];
-            qib = [30, 28, 28, 27, 26, 21]; vp = [uint16(4), 16, 16, 16, 32, 32];
-            rfin = 4; nz = 28; round0_cols = 9; round0_trees = 2;
-        } else if (VARIANT == 4) {
-            // PROTH120: 8 witness + 1 setup poly of 2^26, initial LDE 32, RS codeword 2^31.
-            //   folds=[2,4,4,4,4,4] lde2=[5,7,11,15,19,23] qib=31-fold, monomials=2^4
-            //   q = pessimistic-conjecture queries for 100-bit security (no floor rounding);
-            //   verifier pow=[30,30,27,25,21,24] (reduced where it doesn't change q).
-            fold = [2, 4, 4, 4, 4, 4]; q = [17, 12, 8, 6, 5, 4];
-            qib = [29, 27, 27, 27, 27, 27]; vp = [uint16(4), 16, 16, 16, 16, 16];
-            rfin = 4; nz = 26; round0_cols = 9; round0_trees = 2;
-        } else {
-            // FULLYPACKED 1-col V=31, strict RS<=2^32
-            fold = [3, 4, 5, 5, 5, 5]; q = [50, 13, 7, 4, 3, 3];
-            qib = [29, 28, 27, 27, 26, 21]; vp = [uint16(8), 16, 32, 32, 32, 32];
-            rfin = 4; nz = 31; round0_cols = 1; round0_trees = 1;
-        }
-        nbcaps = round0_trees;
-
-        // preimage: seed + batching + opening + z (packed 2/word, ceil) + base caps
-        uint256 total = 64 + ((nz + 1) / 2) * 32 + nbcaps * CAP * 32;
-
-        for (uint256 r = 0; r < 6; ++r) {
-            total += uint256(fold[r]) * 48;
-            uint256 depth = uint256(qib[r]) - CAP_LOG2;
-            if (r < 5) {
-                total += CAP * 32 + 16 + 8;       // intermediate cap + ood + nonce
-                for (uint256 i = 0; i < q[r]; ++i) {
-                    if (r == 0) {
-                        total += round0_cols * uint256(vp[r]) * 16;
-                        total += round0_trees * depth * 32;
-                    } else {
-                        total += uint256(vp[r]) * 16 + depth * 32;
-                    }
-                }
-            } else {
-                total += (1 << rfin) * 16 + 8;    // monomials + nonce
-                for (uint256 i = 0; i < q[r]; ++i) {
-                    total += uint256(vp[r]) * 16 + depth * 32;
-                }
-            }
-        }
-
-        out = new bytes(total);
-        assembly {
-            let ptr := add(out, 32)
-            let end := add(ptr, total)
-            let pat := 0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5
-            for {} lt(ptr, end) { ptr := add(ptr, 32) } { mstore(ptr, pat) }
-        }
     }
 }

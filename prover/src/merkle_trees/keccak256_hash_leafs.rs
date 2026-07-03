@@ -28,7 +28,12 @@ const _: () = assert!(KECCAK256_DIGEST_SIZE_U32_WORDS == DIGEST_SIZE_U32_WORDS);
 #[inline(always)]
 pub(crate) fn keccak_digest_from_bytes(bytes: [u8; 32]) -> [u32; KECCAK256_DIGEST_SIZE_U32_WORDS] {
     core::array::from_fn(|i| {
-        u32::from_be_bytes([bytes[4 * i], bytes[4 * i + 1], bytes[4 * i + 2], bytes[4 * i + 3]])
+        u32::from_be_bytes([
+            bytes[4 * i],
+            bytes[4 * i + 1],
+            bytes[4 * i + 2],
+            bytes[4 * i + 3],
+        ])
     })
 }
 

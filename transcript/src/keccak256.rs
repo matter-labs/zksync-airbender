@@ -72,6 +72,17 @@ fn draw_field(seed: &mut Keccak256Seed) -> Proth120 {
     Proth120::from_u128_with_reduction(u128::from_be_bytes(top))
 }
 
+/// PoW digest `keccak256(seed || nonce_be_8)`.
+#[inline]
+fn pow_digest(seed: &Keccak256Seed, nonce: u64) -> [u8; 32] {
+    let mut h = Keccak256::new();
+    h.update(seed.0);
+    h.update(nonce.to_be_bytes());
+    let mut digest = [0u8; 32];
+    digest.copy_from_slice(h.finalize().as_slice());
+    digest
+}
+
 /// True iff the top `pow_bits` bits of the big-endian digest are zero.
 #[inline]
 fn top_bits_are_zero(digest: &[u8; 32], pow_bits: u32) -> bool {
@@ -134,12 +145,8 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
             let mut j = 0;
             while j < 8 && i < dst.len() {
                 let b = 4 * j;
-                dst[i] = u32::from_le_bytes([
-                    seed.0[b],
-                    seed.0[b + 1],
-                    seed.0[b + 2],
-                    seed.0[b + 3],
-                ]);
+                dst[i] =
+                    u32::from_le_bytes([seed.0[b], seed.0[b + 1], seed.0[b + 2], seed.0[b + 3]]);
                 i += 1;
                 j += 1;
             }
@@ -160,11 +167,7 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
     }
 
     fn verify_pow(seed: &mut Self::Seed, nonce: u64, pow_bits: u32) {
-        let mut h = Keccak256::new();
-        h.update(seed.0);
-        h.update(nonce.to_be_bytes());
-        let mut digest = [0u8; 32];
-        digest.copy_from_slice(h.finalize().as_slice());
+        let digest = pow_digest(seed, nonce);
         assert!(
             top_bits_are_zero(&digest, pow_bits),
             "Keccak256 PoW check failed for nonce {nonce} and {pow_bits} bits"
@@ -182,20 +185,45 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
     }
 
     #[cfg(feature = "pow")]
-    fn search_pow(seed: &Self::Seed, pow_bits: u32, _worker: &worker::Worker) -> (Self::Seed, u64) {
-        // Sequential grinding. Callers should keep `pow_bits` small in tests.
-        let mut nonce = 0u64;
-        loop {
-            let mut h = Keccak256::new();
-            h.update(seed.0);
-            h.update(nonce.to_be_bytes());
-            let mut digest = [0u8; 32];
-            digest.copy_from_slice(h.finalize().as_slice());
-            if top_bits_are_zero(&digest, pow_bits) {
-                return (Keccak256Seed(digest), nonce);
-            }
-            nonce += 1;
+    fn search_pow(seed: &Self::Seed, pow_bits: u32, worker: &worker::Worker) -> (Self::Seed, u64) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        // nonce 0 always satisfies "top 0 bits are zero".
+        if pow_bits == 0 {
+            return (Keccak256Seed(pow_digest(seed, 0)), 0);
         }
+
+        // Grind in parallel: thread `t` scans the nonce stripe {t, t+T, t+2T, ...}.
+        // `found` tracks the smallest valid nonce seen so far; a thread stops once
+        // its next candidate can no longer beat it. The result is the global minimum
+        // valid nonce, so it is deterministic and identical to a sequential search.
+        let num_threads = worker.get_num_cores().max(1) as u64;
+        let found = AtomicU64::new(u64::MAX);
+        worker.scope(num_threads as usize, |scope, geometry| {
+            for thread_idx in 0..geometry.len() {
+                let start = geometry.get_chunk_start_pos(thread_idx) as u64;
+                let size = geometry.get_chunk_size(thread_idx) as u64;
+                let found = &found;
+                worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    for stripe in start..(start + size) {
+                        let mut nonce = stripe;
+                        loop {
+                            if nonce >= found.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            if top_bits_are_zero(&pow_digest(seed, nonce), pow_bits) {
+                                found.fetch_min(nonce, Ordering::Relaxed);
+                                break;
+                            }
+                            nonce += num_threads;
+                        }
+                    }
+                });
+            }
+        });
+
+        let nonce = found.load(Ordering::Relaxed);
+        (Keccak256Seed(pow_digest(seed, nonce)), nonce)
     }
 
     fn commit_base_field_elements(seed: &mut Self::Seed, els: &[Proth120]) {
@@ -259,8 +287,7 @@ mod test {
         let expected_seed = keccak(&seed.0);
         let mut top = [0u8; 16];
         top.copy_from_slice(&expected_seed[0..16]);
-        let expected_val =
-            Proth120::from_u128_with_reduction(u128::from_be_bytes(top)).to_u128();
+        let expected_val = Proth120::from_u128_with_reduction(u128::from_be_bytes(top)).to_u128();
 
         let mut out = [Proth120::default(); 1];
         <Keccak256Transcript as Transcript<Proth120, Proth120>>::draw_random_field_elements(
@@ -292,5 +319,43 @@ mod test {
         <Keccak256Transcript as Transcript<Proth120, Proth120>>::verify_pow(
             &mut seed, good, pow_bits,
         );
+    }
+
+    #[cfg(feature = "pow")]
+    #[test]
+    fn parallel_search_pow_finds_min_and_verifies() {
+        let worker = worker::Worker::new_with_num_threads(4);
+        let seed0 = Keccak256Seed([0x77u8; 32]);
+        for pow_bits in [0u32, 4, 8, 12] {
+            // ground truth: smallest valid nonce (sequential brute force)
+            let mut n = 0u64;
+            let expected = loop {
+                if top_bits_are_zero(&pow_digest(&seed0, n), pow_bits) {
+                    break n;
+                }
+                n += 1;
+            };
+
+            let (new_seed, nonce) =
+                <Keccak256Transcript as Transcript<Proth120, Proth120>>::search_pow(
+                    &seed0, pow_bits, &worker,
+                );
+            assert_eq!(
+                nonce, expected,
+                "search_pow must return the minimum nonce (pow={pow_bits})"
+            );
+            assert_eq!(
+                new_seed.0,
+                pow_digest(&seed0, nonce),
+                "seed must be keccak(seed||nonce)"
+            );
+
+            // and the returned nonce verifies
+            let mut s = seed0;
+            <Keccak256Transcript as Transcript<Proth120, Proth120>>::verify_pow(
+                &mut s, nonce, pow_bits,
+            );
+            assert_eq!(s.0, new_seed.0);
+        }
     }
 }
