@@ -42,6 +42,7 @@ pub use keccak_special5;
 pub use prover;
 
 pub mod circuits;
+pub mod program_setups;
 pub mod unrolled_circuits;
 pub use self::circuits::*;
 pub use self::unrolled_circuits::*;
