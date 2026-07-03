@@ -828,8 +828,8 @@ fn run_gpu_recursive_pipeline(
     let final_handle = prover.add_binary(
         ExecutionKind::Unified,
         MachineType::Reduced,
-        final_bin,
-        final_text,
+        final_bin.clone(),
+        final_text.clone(),
         None,
     );
     let result = prover.commit_memory_and_prove(
@@ -846,4 +846,41 @@ fn run_gpu_recursive_pipeline(
         "stage 5: final unified recursion proof verified ({} cycles); output registers: {output:?}",
         final_proof.executed_cycles()
     );
+
+    // Convergence experiment (opt-in): keep applying the final-blake unified
+    // recursion layer to its own proof and watch the cycle count settle at
+    // the self-verification fixpoint. RECURSION_EXTRA_FINAL_ROUNDS=N runs N
+    // more rounds; re-chaining the same program is a no-op by the chain rule.
+    let extra_rounds: u32 = std::env::var("RECURSION_EXTRA_FINAL_ROUNDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let (mut proof, mut setups) = (final_proof, final_setups);
+    for round in 0..extra_rounds {
+        let end_params = compute_end_params(&setups, proof.final_pc);
+        chain.extend(&end_params);
+        let handle = prover.add_binary(
+            ExecutionKind::Unified,
+            MachineType::Reduced,
+            final_bin.clone(),
+            final_text.clone(),
+            None,
+        );
+        let result = prover.commit_memory_and_prove(
+            0,
+            &handle,
+            QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
+        );
+        let artifacts = prover.program_artifacts(&handle);
+        let (mut new_proof, new_setups) =
+            assemble_program_proof(&artifacts, result, security_level, &worker);
+        new_proof.set_recursion_chain(&chain);
+        native_verify_unified(build_unified_stream(&new_setups, &new_proof), false);
+        log::info!(
+            "extra final round {round}: verified ({} cycles)",
+            new_proof.executed_cycles()
+        );
+        proof = new_proof;
+        setups = new_setups;
+    }
 }
