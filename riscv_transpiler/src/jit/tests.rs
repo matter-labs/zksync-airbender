@@ -1932,7 +1932,7 @@ fn test_perf_with_trace_keeping() {
     let mut source = QuasiUARTSource::new_with_reads(witness);
 
     let instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text);
-    let simulator = JittedCode::<_>::preprocess_bytecode(&instructions, None);
+    let simulator = JittedCode::<_>::preprocess_bytecode(&instructions, None, mop_field());
 
     let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
     let initial_chunk = implementation.initial_snapshot();
@@ -1976,7 +1976,7 @@ fn test_replayer_over_jit() {
     let mut source = QuasiUARTSource::new_with_reads(witness);
 
     let jit_instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text);
-    let simulator = JittedCode::<_>::preprocess_bytecode(&jit_instructions, None);
+    let simulator = JittedCode::<_>::preprocess_bytecode(&jit_instructions, None, mop_field());
 
     let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
     let initial_chunk = implementation.initial_snapshot();

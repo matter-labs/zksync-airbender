@@ -1081,7 +1081,9 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
 //     Montgomery multiply (`product += ((product_lo * MONT_K) * p); result = product >> 32`,
 //     one conditional subtract), per `field::baby_bear::ops::basic`.
 // FMA computes `rd = rs1*rs2 + rd_old` in the field (reading rd's OLD value, no timestamp touch).
-// The field is chosen once per JIT build from `RISCV_MOP_FIELD` (default M31). The emitter only
+// The field is an explicit `preprocess_bytecode` parameter — the caller must pass the same
+// field its replayer/witness pipeline uses (`mop_field()` reads `RISCV_MOP_FIELD` for
+// env-driven callers such as the JIT differential tests). The emitter only
 // loads operands and leaves the reduced result in `out`; the caller owns the timestamp touches
 // (rs1@+0, rs2@+1, rd@+2), `store_result`, and the AddSubLui family counter.
 
@@ -1091,9 +1093,11 @@ pub enum MopField {
     BabyBear,
 }
 
-/// MOP field selection. Read freshly from `RISCV_MOP_FIELD` at each JIT build (default `M31`); an
-/// unrecognized value panics. Intentionally not cached, so a single process (e.g. a test) can
-/// build JITs for different fields by changing the variable between builds.
+/// Env-driven MOP field selection for callers without a fixed field (e.g. the JIT differential
+/// tests): reads `RISCV_MOP_FIELD` (default `M31`); an unrecognized value panics. Intentionally
+/// not cached, so a single process can build JITs for different fields by changing the variable
+/// between builds. Production pipelines should pass their field to `preprocess_bytecode`
+/// explicitly instead of relying on process env.
 pub fn mop_field() -> MopField {
     match std::env::var("RISCV_MOP_FIELD") {
         Ok(s) => match s.to_ascii_lowercase().as_str() {
@@ -1361,7 +1365,11 @@ fn emit_bb_montgomery_mul(ops: &mut x64::Assembler) {
 }
 
 impl<I: ContextImpl> JittedCode<I> {
-    pub fn preprocess_bytecode(program: &[Instruction], cycles_bound: Option<u32>) -> Self {
+    pub fn preprocess_bytecode(
+        program: &[Instruction],
+        cycles_bound: Option<u32>,
+        mop_field: MopField,
+    ) -> Self {
         let mut ops = x64::Assembler::new().unwrap();
         let start = ops.offset();
 
@@ -1484,9 +1492,6 @@ impl<I: ContextImpl> JittedCode<I> {
             let ts_bound = (cycles_bound as u64) * TIMESTAMP_STEP + INITIAL_TIMESTAMP;
             println!("Timestamp limit is 0x{:x}", ts_bound);
         }
-
-        // Prime field for the MOP (Zimop) opcodes, chosen once for the whole build (default M31).
-        let mop_field = mop_field();
 
         let mut i = 0;
         while i < program.len() {
@@ -2402,15 +2407,17 @@ impl<I: ContextImpl> JittedCode<I> {
                     assert!(rd == 0);
 
                     if I::PROVIDES_FLATTENED_NON_DETERMINISM {
-                        // effectively NOP, just touch registers
-                        touch_register_and_increment_timestamp!(ops, rs1);
+                        // effectively NOP. rs1's value is read WITHOUT a timestamp touch
+                        // (the interpreter's nd_write only touches x0 — circuits read x0).
+                        bump_timestamp!(ops, 1);
                         pre_bump_timestamp_and_touch!(ops, 1, 0);
                         bump_timestamp!(ops, 2);
                         record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                         i += 1;
                     } else {
                         load_into(&mut ops, rs1, SCRATCH_REGISTER);
-                        touch_register_and_increment_timestamp!(ops, rs1);
+                        // rs1 read carries no timestamp touch (see flattened branch).
+                        bump_timestamp!(ops, 1);
                         dynasm!(ops
                             ; mov rdx, rsp
                             ;; before_call!(ops)
@@ -2761,7 +2768,7 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
 
         // Profiling baseline: when RISCV_PROFILE_SKIP_RUN is set we do all of the
         // setup (decode + JIT compile + the large allocations) but skip execution,
@@ -2833,7 +2840,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
 
         runner.run(
             &mut context,
@@ -2870,7 +2877,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         let mut memory: Box<MemoryHolder> = unsafe { Box::new_zeroed().assume_init() };
         let mut trace: Box<TraceChunk> = unsafe { Box::new_zeroed().assume_init() };
 
-        let runner = Self::preprocess_bytecode(instructions, cycles_bound);
+        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field());
         runner.run(
             &mut context,
             memory.as_mut(),
@@ -2926,7 +2933,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
 
         runner.run(
             &mut context,
