@@ -19,27 +19,32 @@ path = "src/main.rs"
 
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
-trace_and_split = { workspace = true }
 setups = { workspace = true }
+common_constants = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 prover_examples = { path = "../../circuit_defs/prover_examples", default-features = false }
-worker = {path = "../../worker"}
+worker = { path = "../../worker" }
 clap = { workspace = true }
-blake2s_u32 = { workspace = true }
-execution_utils = { path = "../../execution_utils", default-features = false, features = ["prover", "verifier_binaries"] }
 riscv_transpiler = { path = "../../riscv_transpiler" }
 field = { workspace = true }
 
-blake2_with_compression_verifier = { path = "../../circuit_defs/blake2_with_compression/verifier", optional = true, default-features = false }
-
 verifier_common = { workspace = true }
 
-full_statement_verifier = { path = "../../full_statement_verifier", default-features = false, optional = true }
+# Recursion protocol helpers (ND streams, chain, fsv binaries) + native
+# verification (`verifiers` comes in via the security_* feature blocks).
+full_statement_verifier = { path = "../../full_statement_verifier", default-features = false, features = [
+    "proof_utils",
+    "replace_csr",
+    "host_utils",
+] }
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
 sha3 = { package = "sha3", version = "*" }
+log = "0.4"
 
+# GPU proving stack (behind the `gpu` feature).
 execution_prover = { workspace = true, optional = true, default-features = false }
+program_prover = { workspace = true, optional = true, default-features = false }
 
 env_logger = "0.11"
 base64 = "0.21.7"
@@ -49,38 +54,26 @@ base64 = "0.21.7"
 default = ["security_80"]
 
 security_80 = [
-    "execution_utils/security_80",
-    "execution_utils/verifier_80",
     "prover_examples/security_80",
     "verifier_common/security_80",
-    "full_statement_verifier",
-    "full_statement_verifier/verifiers",
-    "full_statement_verifier/replace_csr",
-    "blake2_with_compression_verifier",
+    "full_statement_verifier/security_80",
     "verifier_common/replace_csr",
     "verifier_common/proof_utils",
     "field/no_inline",
     "execution_prover?/security_80",
-    "full_statement_verifier?/security_80",
-    "blake2_with_compression_verifier?/security_80",
+    "program_prover?/security_80",
 ]
 security_100 = [
-    "execution_utils/security_100",
-    "execution_utils/verifier_100",
     "prover_examples/security_100",
     "verifier_common/security_100",
-    "full_statement_verifier",
-    "full_statement_verifier/verifiers",
-    "full_statement_verifier/replace_csr",
-    "blake2_with_compression_verifier",
+    "full_statement_verifier/security_100",
     "verifier_common/replace_csr",
     "verifier_common/proof_utils",
     "field/no_inline",
     "execution_prover?/security_100",
-    "full_statement_verifier?/security_100",
-    "blake2_with_compression_verifier?/security_100",
+    "program_prover?/security_100",
 ]
 
 debug_logs = ["prover/debug_logs", "prover_examples/debug_logs"]
 # if enabled - allow GPU for proving.
-gpu = ["prover_examples/gpu", "execution_prover", "execution_utils/gpu_prover"]
+gpu = ["dep:execution_prover", "dep:program_prover"]

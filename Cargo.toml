@@ -40,7 +40,7 @@ members = [
 
     "reduced_keccak",
 
-    # "tools/cli",
+    "tools/cli",
     "tools/pow_config_generator",
 
     "circuit_defs/blake2_g_function",
