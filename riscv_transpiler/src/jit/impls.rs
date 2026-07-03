@@ -349,14 +349,13 @@ pub(crate) fn packed_ts_off(name: InstructionName, rs1: u32, rs2: u32, rd: u32) 
     //     model touches x0 at +2, so use 0;
     //   * ND-write: rd==0 and the eager model writes x0 at +2 (`pre_bump(1,0)`), so keep
     //     the natural rd=0 (the rs2 axis also names x0 at +1, dominated by +2);
-    //   * JALR with rd==0: eager touches x0 only at +1 (via the rs2 axis), NOT at +2, so
-    //     steer the rd axis to the sentinel 32 to avoid a spurious x0@+2.
+    //   * JALR with rd==0 keeps the natural rd=0: the interpreter's `write_register`
+    //     stamps x0 at +2 even for a discarded write (jalr x0 / ret), so the rd axis
+    //     must credit x0@+2 (the rs2 axis's x0@+1 is dominated).
     let p_rd = if matches!(name, Op::Sb | Op::Sh | Op::Sw) {
         32
     } else if matches!(name, Op::Branch) {
         0
-    } else if rd == 0 && matches!(name, Op::Jalr) {
-        32
     } else {
         rd as usize
     };
@@ -2169,8 +2168,12 @@ impl<I: ContextImpl> JittedCode<I> {
                         touch_register_and_bump_timestamp!(ops, rd, 2);
                         store_result(&mut ops, rd);
                     } else {
+                        // rd == 0: the interpreter stamps x0 at +1 (touch_x0) AND at +2
+                        // (write_register with reg_idx 0 — a discarded write still bumps
+                        // the timestamp), so the eager model must touch x0 twice.
                         pre_bump_timestamp_and_touch!(ops, 1, 0);
-                        bump_timestamp!(ops, 2);
+                        pre_bump_timestamp_and_touch!(ops, 1, 0);
+                        bump_timestamp!(ops, 1);
                     }
                     record_circuit_type(&mut ops, CounterType::BranchSlt, 1);
 
