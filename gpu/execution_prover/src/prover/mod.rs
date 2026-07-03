@@ -3,6 +3,7 @@
 //! results were collected — a programming bug worth panicking on. Other
 //! fallible operations use `.expect("…")` with a specific message.
 
+mod artifacts;
 mod binary;
 mod cache;
 mod config;
@@ -12,6 +13,7 @@ mod pipeline;
 mod proof_artifacts;
 mod result;
 
+pub use artifacts::{CircuitArtifact, ProgramArtifacts};
 pub use circuit_prover::UnsupportedGpuSecurityLevel;
 pub use config::{ExecutionKind, ExecutionProverConfiguration};
 pub use result::{CommitMemoryResult, ProveResult};

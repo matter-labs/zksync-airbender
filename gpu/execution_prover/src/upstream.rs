@@ -57,9 +57,11 @@ pub use setups::unrolled_circuits::{
 };
 pub use setups::{inits_and_teardowns, read_binary};
 
-// `trace_and_split` — Fiat-Shamir transform for the permutation argument.
-// pr-332 renamed the unrolled transform and added a separate unified one
-// (`fs_transform_unified_for_permutation_argument`, absorbing per-circuit
-// inits-and-teardowns top bits). The unified execution kind still derives its
-// challenges through the unrolled-shaped transform here and must migrate.
+// `trace_and_split` — Fiat-Shamir transforms for the permutation argument.
+// pr-332 split the transform per execution kind: the unrolled one absorbs
+// per-family cap lists plus a dedicated inits-and-teardowns slot, the unified
+// one absorbs one (inits-and-teardowns top bits, memory cap) pair per unified
+// circuit (i&t are inline in the unified circuit). `derive_proof_artifacts`
+// dispatches on `ExecutionKind`.
+pub use trace_and_split::fs_transform_unified_for_permutation_argument;
 pub use trace_and_split::fs_transform_unrolled_for_permutation_argument as fs_transform_for_permutation_argument;

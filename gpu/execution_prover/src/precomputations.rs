@@ -58,6 +58,13 @@ impl LazyGpuGKRSetupHost {
         }
     }
 
+    /// The CPU-side setup this lazy host wraps. Exposed for program-level
+    /// consumers (`program_prover`) that recompute setup merkle caps on the
+    /// CPU via `GKRSetup::commit` when assembling a `ProgramProof`.
+    pub fn cpu_setup(&self) -> &Arc<CpuGKRSetup<BF>> {
+        &self.cpu_setup
+    }
+
     /// First call: builds the host on `context` (one-shot stream sync inside
     /// `precompute_from_cpu_setup`); subsequent calls return the cached Arc.
     /// `OnceLock::get_or_try_init` is atomic: concurrent workers race once and
