@@ -23,6 +23,6 @@ pub(crate) type A = ConcurrentStaticHostAllocator;
 pub use circuit_prover::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
 pub use gpu_core::primitives::machine_type::MachineType;
 pub use prover::{
-    BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ExecutionProverConfiguration,
-    ProveResult,
+    BinaryHandle, CircuitArtifact, CommitMemoryResult, ExecutionKind, ExecutionProver,
+    ExecutionProverConfiguration, ProgramArtifacts, ProveResult,
 };
