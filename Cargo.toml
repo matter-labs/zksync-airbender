@@ -15,7 +15,7 @@ members = [
     "verifier_common",
     "verifier_generator",
     "witness_eval_generator",
-    "gpu_witness_eval_generator",
+    "gpu/witness_eval_generator",
     "verifier",
     "full_statement_verifier",
 
@@ -94,7 +94,7 @@ default-members = [
     "verifier_generator",
     "worker",
     "witness_eval_generator",
-    "gpu_witness_eval_generator",
+    "gpu/witness_eval_generator",
     # The one GPU-cluster crate with no CUDA dep (pure CPU model); safe as a default member.
     "gpu/gkr_model",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
@@ -160,7 +160,7 @@ non_determinism_source = { path = "./non_determinism_source", default-features =
 riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
 execution_utils = { path = "./execution_utils", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
-gpu_witness_eval_generator = { path = "./gpu_witness_eval_generator", default-features = false }
+gpu_witness_eval_generator = { path = "./gpu/witness_eval_generator", default-features = false }
 gpu_core = { path = "./gpu/core" }
 gpu_native_build = { path = "./gpu/native_build" }
 gpu_cub = { path = "./gpu/cub" }

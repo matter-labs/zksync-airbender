@@ -12,7 +12,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - field/ - native optimised cpu prover and verifier Mersenne31 basic and extension field implementations
 - full_statement_verifier/ - full stark verifier logic, with support for chunking
 - gpu/circuit_prover/ - main Rust->CUDA gpu prover implementation
-- gpu_witness_eval_generator/ - Rust->CUDA gpu prover's witness generator
+
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate
 - prover/ - main cpu prover implementation with its 5 stages
 - riscv_common/ - custom RiscV bytecode to be used by "kernel" OS programs
@@ -42,7 +42,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
         - witness_evaluator/ - code to help evaluate our special witness generation closures
 - gpu: 
     - gpu/circuit_prover/ - rather comprehensive mix of cuda and rust glue code, to mirror our cpu prover
-    - gpu_witness_eval_generator/ - code to help evaluate our special witness generation closures
+    - witness_eval_generator/ - (crate `gpu_witness_eval_generator`) Rust->CUDA witness-generation codegen for the GPU prover
 
 ## AIR Circuits
 - cs/
