@@ -9,11 +9,11 @@ use cli_lib::prover_utils::{
     CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
     ProofTarget, ProverBackend,
 };
-use execution_utils::setups::read_binary;
 use reqwest::blocking::Client;
+use setups::read_binary;
+use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
 use riscv_transpiler::ir::{
-    preprocess_bytecode, DecodingOptions, FullUnsignedMachineDecoderConfig,
-    ReducedMachineDecoderConfig,
+    DecodingOptions, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use riscv_transpiler::vm::{DelegationsCounters, RamWithRomRegion, SimpleTape, State, VM};
 use serde::Serialize;
@@ -278,6 +278,18 @@ fn main() {
         .format_target(false)
         .init();
 
+    // Proving (and the embedded verifiers) needs a much bigger stack than the
+    // default main-thread stack; run all commands on a big-stack thread
+    // (equivalent to RUST_MIN_STACK=1GiB for spawned threads).
+    std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(run_cli)
+        .expect("failed to spawn main worker thread")
+        .join()
+        .expect("main worker thread panicked");
+}
+
+fn run_cli() {
     let cli = Cli::parse();
 
     match cli.command {
@@ -309,7 +321,7 @@ fn main() {
                 gpu_replay_threads,
             );
 
-            let prover = ProgramProver::new(source, prover_config)
+            let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
             let artifact = prover
                 .prove_words(batch_id, input_words)
@@ -341,7 +353,7 @@ fn main() {
                 gpu_replay_threads,
             );
 
-            let prover = ProgramProver::new(source, prover_config)
+            let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
 
             fs::create_dir_all(&output_dir).expect("Failed to create output directory");
@@ -400,7 +412,7 @@ fn main() {
                 8,
             );
 
-            let prover = ProgramProver::new(source, prover_config)
+            let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
             let artifact = prover
                 .continue_artifact(input_artifact)
@@ -503,19 +515,23 @@ fn run_binary_with_decoder<D: DecodingOptions>(
 ) -> ([u32; 32], bool) {
     // The CLI now mirrors the active proving path: ROM comes from `.bin`, while
     // instruction decoding comes from the paired `.text` section.
-    let instructions = preprocess_bytecode::<D>(text_section);
+    let instructions = preprocess_bytecode::<D, true>(text_section);
     let tape = SimpleTape::new(&instructions);
-    let mut ram =
-        RamWithRomRegion::<{ prover::common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-            binary_image,
-            DEFAULT_RUN_RAM_BOUND_BYTES,
-        );
+    let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
+        binary_image,
+        DEFAULT_RUN_RAM_BOUND_BYTES,
+    );
 
     // We only need final registers for `cli run`, so counters are enough and
     // the no-op snapshotter keeps the execution path lightweight.
     let mut state = State::initial_with_counters(DelegationsCounters::default());
     let mut non_determinism_source = QuasiUARTSource::new_with_reads(input_data);
-    let finished = VM::<DelegationsCounters>::run_basic_unrolled(
+    let finished = VM::<DelegationsCounters>::run_basic_unrolled::<
+        _,
+        _,
+        _,
+        prover::field::baby_bear::base::BabyBearField,
+    >(
         &mut state,
         &mut ram,
         &mut (),
