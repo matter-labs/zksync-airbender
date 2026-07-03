@@ -9,18 +9,6 @@ impl ExecutionProver {
     pub fn with_configuration(
         configuration: ExecutionProverConfiguration,
     ) -> Result<Self, UnsupportedGpuSecurityLevel> {
-        // The JIT simulator picks the MOP (Zimop) prime field from
-        // `RISCV_MOP_FIELD` at each build, DEFAULTING TO M31
-        // (`riscv_transpiler::jit::impls::mop_field`). This prover stack is
-        // BabyBear end to end — the replay worker replays with
-        // `gpu_core::primitives::field::BF` (= BabyBearField, workers/cpu.rs)
-        // and the GKR circuits' MOP tables are BabyBear — so an M31-JIT
-        // simulation silently diverges from the traced witness on any
-        // mop-bearing binary. The per-circuit proofs stay self-consistent and
-        // the divergence only surfaces as a global memory-permutation closure
-        // failure in the full-statement verifier. Pin the JIT field before any
-        // worker thread can build jitted code.
-        std::env::set_var("RISCV_MOP_FIELD", "babybear");
         let configuration = configuration.validate()?;
         let ExecutionProverConfiguration {
             prover_context_config,

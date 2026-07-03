@@ -224,7 +224,15 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
                         preprocess_bytecode::<ReducedMachineDecoderConfig, false>(&text_section)
                     }
                 };
-                let jitted_code = JittedCode::preprocess_bytecode(&instructions, cycles_bound);
+                // This prover stack is BabyBear end to end: the replay worker
+                // replays with `gpu_core::primitives::field::BF` and the GKR
+                // circuits' MOP tables are BabyBear, so the JIT must simulate
+                // MOP (Zimop) opcodes over the same field.
+                let jitted_code = JittedCode::preprocess_bytecode(
+                    &instructions,
+                    cycles_bound,
+                    riscv_transpiler::jit::MopField::BabyBear,
+                );
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiled bytecode");
                 let jitted_code = Arc::new(jitted_code);
                 guard.insert(jitted_code.clone());
