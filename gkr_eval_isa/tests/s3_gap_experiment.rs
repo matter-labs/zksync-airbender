@@ -1129,6 +1129,78 @@ fn replay_plan_matches_score_and_reproduces_residency() {
 }
 
 #[test]
+fn peak_with_cached_treats_cached_mul_as_leaf_with_own_production_cone() {
+    use s3_gap::instance::{NodeKind, OracleInstance, OracleNode};
+    use s3_planner::forkset;
+
+    fn n(id: u32, kind: NodeKind, children: Vec<u32>) -> OracleNode {
+        OracleNode {
+            id,
+            kind,
+            width: 4,
+            real_dram: matches!(kind, NodeKind::Read),
+            children,
+        }
+    }
+
+    // A shared, NON-fusing Mul (its factors are folds, so it does not stream) that is a
+    // child of two Add roots. Streaming `analyze` folds the Mul's own peak into each Add
+    // root's peak; caching the Mul makes it a 0-transient LEAF in the roots' cones (peak
+    // contribution 0) while it retains its own production-cone peak. This is the exact
+    // residency-aware behavior Task-2's cost model needs.
+    //
+    //   A1 = Add(r0, r1)      A2 = Add(r3, r4)     (both non-streamable, peak 0)
+    //   M  = Mul(A1, A2)      (2 non-streamable children -> production peak = 4)
+    //   A3 = Add(r7, r8)      (non-streamable, peak 0)
+    //   root0 = Add(M, A3)    root1 = Add(M, r7)   (M shared: 2 consumers)
+    let inst = OracleInstance {
+        budget: 16,
+        reloadable_values: vec![],
+        roots: vec![10, 11],
+        nodes: vec![
+            n(0, NodeKind::Read, vec![]),
+            n(1, NodeKind::Read, vec![]),
+            n(2, NodeKind::Add, vec![0, 1]), // A1
+            n(3, NodeKind::Read, vec![]),
+            n(4, NodeKind::Read, vec![]),
+            n(5, NodeKind::Add, vec![3, 4]), // A2
+            n(6, NodeKind::Mul, vec![2, 5]), // M (shared)
+            n(7, NodeKind::Read, vec![]),
+            n(8, NodeKind::Read, vec![]),
+            n(9, NodeKind::Add, vec![7, 8]),  // A3
+            n(10, NodeKind::Add, vec![6, 9]), // root0 = M + A3
+            n(11, NodeKind::Add, vec![6, 7]), // root1 = M + r7
+        ],
+    };
+    let n_nodes = inst.nodes.len();
+
+    let streaming = forkset::analyze(&inst).peak;
+    // No-cache identity: peak_with_cached with nothing cached == streaming peak.
+    assert_eq!(
+        forkset::peak_with_cached(&inst, &vec![false; n_nodes]),
+        streaming,
+        "no-cache identity: peak_with_cached(all-false) must equal analyze().peak"
+    );
+
+    // Streaming: M does not fuse (folded factors), so it contributes its own peak (4) to
+    // each Add root -> root peak 4.
+    assert_eq!(streaming[6], 4, "M production peak (two folded factors)");
+    assert_eq!(streaming[10], 4, "root0 streams M's peak");
+    assert_eq!(streaming[11], 4, "root1 streams M's peak");
+
+    // Cache M: it becomes a 0-transient leaf in BOTH roots' cones (their peaks drop to 0),
+    // while M's own entry keeps its production-cone peak.
+    let mut cached = vec![false; n_nodes];
+    cached[6] = true;
+    let with_cached = forkset::peak_with_cached(&inst, &cached);
+
+    assert_ne!(with_cached, streaming, "caching M must change the peak vector");
+    assert_eq!(with_cached[6], 4, "cached M retains its own production-cone peak");
+    assert_eq!(with_cached[10], 0, "cached M is a 0-transient leaf in root0's cone");
+    assert_eq!(with_cached[11], 0, "cached M is a 0-transient leaf in root1's cone");
+}
+
+#[test]
 fn replay_plan_still_serializes_schedule_events_after_runtime_pruning() {
     use s3_gap::instance::{extract_instance_with_remap, relation_units};
     use s3_planner::metaheuristic::{

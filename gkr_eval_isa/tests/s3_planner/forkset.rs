@@ -120,6 +120,53 @@ pub fn analyze(inst: &OracleInstance) -> ForkInfo {
     }
 }
 
+/// Residency-aware cone peak. Identical to the `peak` computed in `analyze`
+/// EXCEPT that every `cached[v]` value is a streaming LEAF (peak 0, streamable)
+/// in its CONSUMERS' cones — it is read from a cell, 0 transient — while its OWN
+/// entry `peak[v]` still holds the Sethi-Ullman peak of PRODUCING it
+/// (`Mul(x,y)`→cell) with its factors handled normally. `cached[v] == resident[v]`.
+/// Length == `inst.nodes.len()`; `peak_with_cached(inst, &vec![false; n]) ==
+/// analyze(inst).peak` (the no-cache identity).
+pub fn peak_with_cached(inst: &OracleInstance, cached: &[bool]) -> Vec<u32> {
+    let n = inst.nodes.len();
+    let mut streamable = vec![false; n];
+    let mut peak = vec![0u32; n];
+    for v in 0..n {
+        let node = &inst.nodes[v];
+        if node.children.is_empty() {
+            streamable[v] = true;
+            peak[v] = 0;
+            continue;
+        }
+        // ── unchanged fold recurrence (its OWN production peak) ──────────────
+        // Children that cannot stream force their own accumulator pass. This
+        // filters CHILDREN's `streamable` only — never `v`'s own — so computing
+        // it before `streamable[v]` (the reorder vs `analyze`) is behavior-
+        // preserving for the non-cached case.
+        let mut fold_peaks: Vec<u32> = node
+            .children
+            .iter()
+            .filter(|&&c| !streamable[c as usize])
+            .map(|&c| peak[c as usize])
+            .collect();
+        peak[v] = if fold_peaks.is_empty() {
+            0
+        } else if fold_peaks.len() == 1 {
+            fold_peaks[0]
+        } else {
+            fold_peaks.sort_unstable_by(|a, b| b.cmp(a));
+            fold_peaks[0].max(node.width as u32 + fold_peaks[1])
+        };
+        // ── ONLY change vs `analyze`: a cached node is a 0-transient leaf for
+        //    its consumers (regardless of kind); a non-cached node keeps the
+        //    streaming rule (Mul with all-streamable children fuses). ─────────
+        streamable[v] = cached[v]
+            || (matches!(node.kind, NodeKind::Mul)
+                && node.children.iter().all(|&c| streamable[c as usize]));
+    }
+    peak
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

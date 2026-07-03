@@ -1109,7 +1109,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         {
             self.consume_site(site_idx);
             if !self.resident[root as usize] {
-                self.maybe_admit(root, site_idx);
+                self.maybe_admit(root, site_idx, self.inst.roots[root_occurrence]);
             }
         }
         self.mark_reloadable_available(root);
@@ -1176,7 +1176,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             }
         }
 
-        self.maybe_admit(value, site_idx);
+        self.maybe_admit(value, site_idx, self.inst.roots[root_occurrence]);
         self.resident[value as usize]
     }
 
@@ -1214,7 +1214,70 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         self.reloadable_available[value as usize] && self.is_reloadable(value)
     }
 
-    fn maybe_admit(&mut self, value: u32, site_idx: usize) {
+    /// True iff `value` is the FIRST fusable-Mul child (by input index) of `add`, i.e.
+    /// the offload-free cache-produce slot. A shared Mul may child several Adds; using
+    /// the demanding `add` (`sites[site_idx].consumer()`) picks the per-occurrence
+    /// producer (structural proxy for the emitter's "cache-produce products FIRST").
+    fn is_first_cache_produce_in_add(&self, add: u32, value: u32) -> bool {
+        self.inst.nodes[add as usize]
+            .children
+            .iter()
+            .copied()
+            .find(|&c| {
+                matches!(self.inst.nodes[c as usize].kind, NodeKind::Mul)
+                    && self.classes[c as usize] == ValueClass::Intermediate
+            })
+            == Some(value)
+    }
+
+    /// Residency-aware admit bound: the MAX live cell-width over the three scheduling
+    /// instants of caching `value` (its `Mul`→cell) inside its producing `add`, with
+    /// `excluded` residents treated as tentatively evicted (cells freed AND subtrees no
+    /// longer leaves). `first`/`w_off` are the per-occurrence offload terms (computed
+    /// once by the caller). A resident is counted exactly once — its cell in `r` (or
+    /// `r + width` once `value`'s own cell exists) — and its subtree is excluded from the
+    /// transient peak, so charging all residents plus the peak is the invariant, not a
+    /// double-count.
+    fn admit_need(
+        &mut self,
+        value: u32,
+        root_value: u32,
+        first: bool,
+        w_off: usize,
+        excluded: &[usize],
+    ) -> usize {
+        let width = self.inst.nodes[value as usize].width as usize; // == w_p
+        // Residents live just BEFORE value's cell, minus the tentatively-evicted victims.
+        let mut r = self.resident_width;
+        for &v in excluded {
+            r -= self.inst.nodes[v].width as usize;
+        }
+        // One residency-aware pass with `value` cached (and `excluded` NOT cached) yields
+        // both peaks: peaks[value] = value's own production-cone transient (cached
+        // descendants as leaves); peaks[root] = the REMAINING cone transient with `value`
+        // now a leaf. `value` is not double-counted (its cell is in `r + width`; its
+        // subtree is excluded from `ccp`).
+        let saved_value = self.resident[value as usize];
+        let saved: Vec<bool> = excluded.iter().map(|&v| self.resident[v]).collect();
+        self.resident[value as usize] = true;
+        for &v in excluded {
+            self.resident[v] = false;
+        }
+        let peaks = forkset::peak_with_cached(self.inst, &self.resident);
+        self.resident[value as usize] = saved_value;
+        for (&v, s) in excluded.iter().zip(saved) {
+            self.resident[v] = s;
+        }
+        let pp = peaks[value as usize] as usize;
+        let ccp = peaks[root_value as usize] as usize;
+
+        let production = r + pp + w_off; // Mul computed; value's cell not yet stored
+        let offload = if first { 0 } else { r + width + w_off }; // partial temp + cell both live
+        let consumption = r + width + ccp; // value cached; rest of the cone still folds
+        production.max(offload).max(consumption)
+    }
+
+    fn maybe_admit(&mut self, value: u32, site_idx: usize, root_value: u32) {
         if self.resident[value as usize] {
             self.admit_stats.already_resident += 1;
             return;
@@ -1227,17 +1290,36 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
 
         self.evict_dead_residents(site_idx);
 
-        let width = self.inst.nodes[value as usize].width as usize;
-        if self.used_width() + width <= self.inst.budget {
+        // Per-occurrence offload term (Open decisions 1 & 3): a fusable Mul cache-produced
+        // now offloads the running partial only when it is NOT the first fusable-Mul child
+        // of its producing `add`. `w_off` is the Add's own width (Base=1 / Ext=4), a
+        // deterministic upper bound on the partial (matches the emitter's `partial_field`
+        // cell). At the root-output pseudo-site the consumer is the root value itself,
+        // which is never a child of itself -> is_cache_produce=false -> first=true ->
+        // w_off=0.
+        let add = self.sites[site_idx].consumer();
+        let is_cache_produce = matches!(self.inst.nodes[value as usize].kind, NodeKind::Mul)
+            && self.classes[value as usize] == ValueClass::Intermediate
+            && self.inst.nodes[add as usize].children.contains(&value);
+        let first = !is_cache_produce || self.is_first_cache_produce_in_add(add, value);
+        let w_off = if first { 0 } else { self.inst.nodes[add as usize].width as usize };
+
+        if self.admit_need(value, root_value, first, w_off, &[]) <= self.inst.budget {
             self.admit_stats.free_capacity += 1;
             self.admit_value(value, site_idx);
+            debug_assert!(self.resident_width <= self.inst.budget);
             return;
         }
         let incoming_priority = self.current_priority(value);
-        let mut planned_used_width = self.used_width();
-        let mut victims = Vec::new();
+        let mut victims: Vec<usize> = Vec::new();
 
-        while planned_used_width + width > self.inst.budget {
+        loop {
+            // `need` is linear in the resident width; evicting an OUTSIDER drops every
+            // instant by its width, while evicting an IN-CONE resident also re-exposes its
+            // subtree — both handled by recomputing `admit_need` over the tentative set.
+            if self.admit_need(value, root_value, first, w_off, &victims) <= self.inst.budget {
+                break;
+            }
             let Some(victim) = self.lowest_priority_resident_excluding(&victims) else {
                 self.admit_stats.pressure_no_victim += 1;
                 return;
@@ -1247,7 +1329,6 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
                 self.trace_event(CacheTraceEvent::PressureReject { site_idx, value });
                 return;
             }
-            planned_used_width -= self.inst.nodes[victim].width as usize;
             victims.push(victim);
         }
 
@@ -1270,7 +1351,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             }
         }
 
-        if self.used_width() + width <= self.inst.budget {
+        if self.admit_need(value, root_value, first, w_off, &[]) <= self.inst.budget {
             self.admit_stats.pressure_admitted += 1;
             self.trace_event(CacheTraceEvent::PressureAdmit {
                 site_idx,
@@ -1278,6 +1359,7 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
                 next_priority_site_idx: self.current_priority_site_idx(value),
             });
             self.admit_value(value, site_idx);
+            debug_assert!(self.resident_width <= self.inst.budget);
         }
     }
 
@@ -1364,13 +1446,21 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
     /// scheduled.
     fn enforce_cone_fit(&mut self, root_occurrence: usize) {
         let root = self.inst.roots[root_occurrence];
-        let cone_peak = self.fork_info.peak[root as usize] as usize;
+        // Residency-aware cone peak: in-cone cached values are 0-transient leaves (read
+        // from a cell), so they are NOT in this transient peak — they are charged instead
+        // as their cells in `resident_width` below. This is the §"invariant" partition
+        // (each resident counted exactly once). Evicting an OUTSIDER never changes
+        // `peak_with_cached[root]` (an outsider is not in `root`'s cone), so the peak is
+        // computed ONCE, before the loop.
+        let peaks = forkset::peak_with_cached(self.inst, &self.resident);
+        let cone_peak = peaks[root as usize] as usize;
         if cone_peak > self.inst.budget {
             self.feasible = false;
             return;
         }
         loop {
-            if self.outsider_resident_width(root) + cone_peak <= self.inst.budget {
+            // INVARIANT: all resident cells + this cone's transient peak <= budget.
+            if self.resident_width + cone_peak <= self.inst.budget {
                 return;
             }
             let Some(victim) = self.lowest_priority_outsider(root) else {
@@ -1395,6 +1485,11 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         self.cone_of[root as usize].binary_search(&(value as u32)).is_err()
     }
 
+    // Dead after the Task-2 residency-aware gate (the cone-fit bound now charges ALL
+    // residents via `resident_width`, not just outsiders). Retained (not deleted)
+    // because the deferred Belady realignment (Open decision 4) reuses this exact
+    // outsider-width pattern; see `leaf_residual_capacity`.
+    #[allow(dead_code)]
     fn outsider_resident_width(&self, root: u32) -> usize {
         (0..self.resident.len())
             .filter(|&v| self.resident[v] && self.is_outsider(root, v))
@@ -1418,6 +1513,9 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
             .map(|(idx, _)| idx)
     }
 
+    // Dead after the Task-2 residency-aware gate replaced the `used_width + width`
+    // admit check with the three-instant `admit_need` MAX.
+    #[allow(dead_code)]
     fn used_width(&self) -> usize {
         self.resident_width
     }
@@ -1929,6 +2027,12 @@ pub(crate) mod tests {
         root_value: u32,
         resident_non_leaf: &[bool],
     ) -> usize {
+        // NOTE (Task-2, Open decision 4): this secondary Belady priority hint still uses
+        // the streaming `analyze().peak` (`fork_info.peak`) + outsider-only width, NOT the
+        // residency-aware `peak_with_cached` + full `resident_width` gate that
+        // `enforce_cone_fit`/`maybe_admit` now use. It is intentionally left un-realigned
+        // in this task (out of scope); it disagrees with the core gate but only steers a
+        // priority heuristic, never feasibility.
         let cone_peak = fork_info.peak[root_value as usize] as usize;
         let outsider_width: usize = resident_non_leaf
             .iter()
