@@ -572,8 +572,9 @@ fn test_program_prover_recursion_layer_verify() {
 /// (~1.7k cycles), so the layer-0 verifier measures far below the unified
 /// switch threshold and the CPU flow would bridge immediately; we force one
 /// unrolled rung first so the loop machinery (measure → prove → chain) is
-/// exercised, then bridge over the recursion proof. Blake modes are fixed to
-/// blake2_with_compression (the JIT lacks the g-function delegation).
+/// exercised, then bridge over the recursion proof. Blake modes are
+/// env-selectable like the CPU pipeline (default blake2_with_compression;
+/// the g-function variants need a JIT delegation that doesn't exist).
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
@@ -634,20 +635,15 @@ fn run_gpu_recursive_pipeline(
     force_first_rung: bool,
 ) {
     use crate::upstream::{
-        build_unified_stream, compute_end_params, native_verify_unified, native_verify_unrolled,
-        unified_switch_cycles, FsvRecursionChain,
+        bridge_blake_mode, build_unified_stream, compute_end_params, final_blake_mode,
+        load_fsv_program, native_verify_unified, native_verify_unrolled, unified_switch_cycles,
+        unrolled_blake_mode, FsvProgram, FsvRecursionChain,
     };
     use crate::upstream::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 
     // Mirrors prover_examples::recursion's private bounds.
     const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 28;
     const RAM_BOUND: usize = 1 << 30;
-
-    fn fsv(name: &str) -> (Vec<u32>, Vec<u32>) {
-        let (_, bin) = read_binary(&test_artifact(&format!("tools/gkr_verifier/{name}.bin")));
-        let (_, text) = read_binary(&test_artifact(&format!("tools/gkr_verifier/{name}.text")));
-        (bin, text)
-    }
 
     // Mirrors prover_examples::recursion::measure_verifier_cycles (which wraps
     // run_unrolled_machine_in_full — calling that across crates trips a rustc
@@ -721,10 +717,24 @@ fn run_gpu_recursive_pipeline(
     let mut chain = FsvRecursionChain::begin(&base_end_params);
 
     // === Stages 2-3: unrolled recursion loop. ===
+    // Blake modes are env-selectable exactly like the CPU pipeline
+    // (RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE /
+    // RECURSION_FINAL_BLAKE). Defaults are blake2_with_compression; the
+    // g-function variants can't run here (the JIT lacks that delegation).
+    let fsv_dir = test_artifact("tools/gkr_verifier");
+    let unrolled_blake = unrolled_blake_mode();
+    let bridge_blake = bridge_blake_mode();
+    let final_blake = final_blake_mode();
+    log::info!(
+        "blake modes: unrolled={}, bridge={}, final={}",
+        unrolled_blake.tag(),
+        bridge_blake.tag(),
+        final_blake.tag()
+    );
     let (unrolled_base_bin, unrolled_base_text) =
-        fsv("fsv_unrolled_base_layer_sec_80_blake2_with_compression");
+        load_fsv_program(&fsv_dir, FsvProgram::UnrolledBaseLayer, unrolled_blake);
     let (unrolled_rec_bin, unrolled_rec_text) =
-        fsv("fsv_unrolled_recursion_layer_sec_80_blake2_with_compression");
+        load_fsv_program(&fsv_dir, FsvProgram::UnrolledRecursionLayer, unrolled_blake);
 
     let mut proof = base_proof;
     let mut setups = base_setups;
@@ -778,12 +788,15 @@ fn run_gpu_recursive_pipeline(
         layer += 1;
     }
 
-    // === Stage 4: bridge — the unrolled verifier proved in unified mode. ===
-    let (bridge_bin, bridge_text) = if input_is_base {
-        (&unrolled_base_bin, &unrolled_base_text)
+    // === Stage 4: bridge — the unrolled verifier proved in unified mode
+    //     (reloaded in the bridge-selected blake variant, like the CPU flow). ===
+    let bridge_program = if input_is_base {
+        FsvProgram::UnrolledBaseLayer
     } else {
-        (&unrolled_rec_bin, &unrolled_rec_text)
+        FsvProgram::UnrolledRecursionLayer
     };
+    let (bridge_bin, bridge_text) = load_fsv_program(&fsv_dir, bridge_program, bridge_blake);
+    let (bridge_bin, bridge_text) = (&bridge_bin, &bridge_text);
     let bridge_handle = prover.add_binary(
         ExecutionKind::Unified,
         MachineType::Reduced,
@@ -811,7 +824,7 @@ fn run_gpu_recursive_pipeline(
 
     // === Stage 5: final — fsv_unified_recursion_layer in unified mode. ===
     let (final_bin, final_text) =
-        fsv("fsv_unified_recursion_layer_sec_80_blake2_with_compression");
+        load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_blake);
     let final_handle = prover.add_binary(
         ExecutionKind::Unified,
         MachineType::Reduced,

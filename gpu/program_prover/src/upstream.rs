@@ -38,9 +38,11 @@ pub use verifier_common::transcript::Blake2sBufferingTranscript;
 // upstream to export as library code. These replace the deleted
 // `interim_upstream` byte-mirrors.
 pub use full_statement_verifier::host_utils::{
-    build_unified_stream, build_unrolled_stream, compute_end_params, unified_switch_cycles,
+    bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
+    final_blake_mode, load_fsv_program, unified_switch_cycles, unrolled_blake_mode,
     FsvRecursionChain, DEFAULT_UNIFIED_SWITCH_CYCLES,
 };
+pub use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 #[cfg(feature = "verifiers")]
 pub use full_statement_verifier::host_utils::{native_verify_unrolled, native_verify_unified};
 pub use setups::Setups;
