@@ -1873,6 +1873,150 @@ fn produce_circuit_schedule(
     Some(sched)
 }
 
+// ── Task 3: pin the Task-2 residency-aware feasibility bound ─────────────────
+
+/// POSITIVE side: for a schedule the corrected producer's own replay engine emits, the
+/// residency-aware cone-fit invariant must hold at EVERY step. `resident_before` is
+/// exactly the residency state `enforce_cone_fit(occ)` leaves behind on successful
+/// return (see the design doc's "Task-2 edits" (b): the cone peak is computed once
+/// before the eviction loop and only outsiders are evicted), so recomputing
+/// `peak_with_cached` over `resident_before` and re-checking it against `root`
+/// reconstructs the gate's own bound from outside the `Replay`.
+#[test]
+fn residency_aware_bound_holds_at_every_step_on_real_fixture() {
+    use s3_gap::instance::extract_instance;
+    use s3_gap::instance::relation_units;
+    use s3_planner::forkset;
+    use s3_planner::metaheuristic::{
+        decode_grouped_occurrence_order, enumerate_demand_sites, project_genome_to_units,
+        replay_plan, seeded_smoke_population, unit_members,
+    };
+
+    let (layer, cross) =
+        try_load_l0("add_sub_lui_auipc_mop_layout_gkr.json").expect("add_sub L0 must load");
+    let inst = extract_instance(&layer, &cross, REAL_BUDGET);
+    assert!(!inst.roots.is_empty(), "add_sub L0 must have atom roots");
+
+    let sites = enumerate_demand_sites(&inst);
+    let units = unit_members(&relation_units(&layer));
+    let flat = seeded_smoke_population(&inst, &sites, 1, 0);
+    let genome = project_genome_to_units(&flat[0], &units);
+
+    let (score, steps) = replay_plan(&inst, &sites, &genome, &units);
+    assert!(
+        score.feasible,
+        "producer-emitted schedule must be feasible at budget {REAL_BUDGET}"
+    );
+
+    let occurrence_order = decode_grouped_occurrence_order(&inst, &genome, &units);
+    assert_eq!(steps.len(), occurrence_order.len(), "one step per occurrence");
+
+    let mut checked = 0usize;
+    for (si, (step, &occ)) in steps.iter().zip(&occurrence_order).enumerate() {
+        let root = inst.roots[occ];
+
+        // Weaker-but-real fallback: the residency SET alone never exceeds budget.
+        let before_width: usize = step
+            .resident_before
+            .iter()
+            .map(|&v| inst.nodes[v as usize].width as usize)
+            .sum();
+        let after_width: usize = step
+            .resident_after
+            .iter()
+            .map(|&v| inst.nodes[v as usize].width as usize)
+            .sum();
+        assert!(
+            before_width <= inst.budget,
+            "step {si}: resident_before width {before_width} > budget {}",
+            inst.budget
+        );
+        assert!(
+            after_width <= inst.budget,
+            "step {si}: resident_after width {after_width} > budget {}",
+            inst.budget
+        );
+
+        // The precise three-instant/cone-entry bound: resident_width(resident_before) +
+        // peak_with_cached(inst, resident_before)[root] <= budget.
+        let mut cached = vec![false; inst.nodes.len()];
+        for &v in &step.resident_before {
+            cached[v as usize] = true;
+        }
+        let peaks = forkset::peak_with_cached(&inst, &cached);
+        let cone_peak = peaks[root as usize] as usize;
+        assert!(
+            before_width + cone_peak <= inst.budget,
+            "step {si} (root {root}): resident_width {before_width} + cone_peak {cone_peak} \
+             > budget {} — residency-aware bound violated",
+            inst.budget
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "no steps checked — fixture/harness broken");
+}
+
+/// NEGATIVE side: hand-built regression pin for the Task-2 fix (design doc §2, "why the
+/// current producer was incoherent"). Under the OLD model, `enforce_cone_fit` charged
+/// only OUTSIDER resident cells (`outsider_resident_width`) plus a STATIC,
+/// caching-agnostic streaming peak (`fork_info.peak`) — an in-cone cached value was
+/// charged ZERO in both terms even though its cell genuinely occupies the budget.
+///
+/// Here X and Y are each cached at their own first-demanding root (each admission is
+/// individually gated by the three-instant `maybe_admit` bound and never exceeds
+/// budget on its own). A LATER root B then consumes X and Y directly, so both are
+/// IN-CONE of B (never outsiders — nothing is evictable there), plus a third,
+/// never-cached fold-of-folds subtree W that forces its own accumulator spill (peak 4).
+/// `resident_width` = X(4) + Y(4) = 8 exactly fills `budget` = 8, leaving no room for
+/// B's own transient peak. The corrected residency-aware bound
+/// (`resident_width + peak_with_cached[root] <= budget`) must reject this — 8 + 4 = 12
+/// > 8, and no outsider exists to evict — where the OLD bound
+/// (`outsider_resident_width(B)=0 + static_peak[B]=4 = 4 <= 8`) would have accepted it.
+#[test]
+fn cone_fit_rejects_in_cone_cache_footprint_that_old_streaming_model_missed() {
+    use s3_gap::instance::{NodeKind, OracleInstance, OracleNode};
+    use s3_planner::metaheuristic::{enumerate_demand_sites, score_candidate, Genome};
+
+    fn n(id: u32, kind: NodeKind, width: u8, real_dram: bool, children: Vec<u32>) -> OracleNode {
+        OracleNode { id, kind, width, real_dram, children }
+    }
+
+    let inst = OracleInstance {
+        budget: 8,
+        reloadable_values: vec![],
+        roots: vec![2, 3, 9], // A1, A2, B — processed in this order under Genome::neutral
+        nodes: vec![
+            n(0, NodeKind::Read, 4, true, vec![]),      // X
+            n(1, NodeKind::Read, 4, true, vec![]),      // Y
+            n(2, NodeKind::Add, 4, false, vec![0]),     // A1 (s0): first demand of X -> cached
+            n(3, NodeKind::Add, 4, false, vec![1]),     // A2 (s1): first demand of Y -> cached
+            n(4, NodeKind::Read, 1, true, vec![]),      // r_g
+            n(5, NodeKind::Read, 1, true, vec![]),      // r_h
+            n(6, NodeKind::Add, 1, false, vec![4]),     // g = Add(r_g), peak 0
+            n(7, NodeKind::Add, 1, false, vec![5]),     // h = Add(r_h), peak 0
+            n(8, NodeKind::Add, 4, false, vec![6, 7]),  // W = Add(g,h), fold-of-folds, peak 4
+            n(9, NodeKind::Add, 4, false, vec![0, 1, 8]), // B (s2): Add(X, Y, W)
+        ],
+    };
+    let sites = enumerate_demand_sites(&inst);
+    let genome = Genome::neutral(&inst, &sites);
+
+    let score = score_candidate(&inst, &sites, &genome);
+
+    // Sanity-check the premise: X and Y must both have been legitimately admitted
+    // (each individually within budget) before B is ever reached.
+    assert_eq!(
+        score.admitted, 2,
+        "setup broken: X and Y must both be cached before B's cone-fit runs"
+    );
+    assert!(
+        !score.feasible,
+        "residency-aware cone-fit must reject B: resident X(4)+Y(4)=8 fills budget 8, \
+         leaving no room for B's own transient peak (4) — the old outsider-only + \
+         static-peak bound would have wrongly accepted this"
+    );
+}
+
 #[test]
 fn produce_all_schedules() {
     if std::env::var("GKR_PRODUCE_SCHEDULES").is_err() || std::env::var("CI").is_ok() {

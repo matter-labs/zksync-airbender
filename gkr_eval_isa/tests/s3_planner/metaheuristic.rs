@@ -1437,13 +1437,17 @@ impl<'a, S: ReplaySite> Replay<'a, S> {
         self.bulk_consume_pruned_descendants(range);
     }
 
-    /// (C) cone-fit: computing `root`'s cone needs its single-accumulator spill peak
-    /// (`fork_info.peak[root]`) of cells on top of the resident values that are
-    /// OUTSIDERS to this cone. In-cone residents shield their subtrees and are folded
-    /// into the conservative static peak (matching `inner_dp`'s (C) check), so they are
-    /// not charged here. Evict the lowest-keep unborrowed outsider until it fits; if the
-    /// peak alone exceeds the budget, or no outsider can be freed, the cone cannot be
-    /// scheduled.
+    /// (C) cone-fit: the residency-aware bound. Total live cell-width at this instant is
+    /// ALL currently-resident cells (`self.resident_width`, not just outsiders) plus
+    /// `root`'s residency-aware transient peak (`peak_with_cached`), in which every
+    /// already-resident/cached value is a 0-transient LEAF for its consumers (it is read
+    /// from its cell, not recomputed) while its own production cone is still priced
+    /// normally. This is the invariant "resident cells + this cone's transient peak <=
+    /// budget" — a cached value is charged exactly once (its cell), never as a free
+    /// streamed term. Evict the lowest-keep unborrowed OUTSIDER (never an in-cone
+    /// resident — those are needed by this cone and shield their own subtrees) until it
+    /// fits; if the peak alone exceeds the budget, or no outsider can be freed, the cone
+    /// cannot be scheduled.
     fn enforce_cone_fit(&mut self, root_occurrence: usize) {
         let root = self.inst.roots[root_occurrence];
         // Residency-aware cone peak: in-cone cached values are 0-transient leaves (read
