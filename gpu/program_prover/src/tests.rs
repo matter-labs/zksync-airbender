@@ -558,3 +558,240 @@ fn test_program_prover_recursion_layer_verify() {
     );
     log::info!("recursion layer verified natively; output registers: {output:?}");
 }
+
+/// Full GPU recursion ladder, mirroring `prover_examples::recursion`'s
+/// `test_recursive_proving_pipeline_zksync_os` but with our test workload
+/// (hashed_fibonacci) and every proof produced by the GPU `ExecutionProver`:
+///
+///   base (unrolled, full-unsigned ISA)
+///   → unrolled recursion loop (reduced ISA, fsv verifier binaries)
+///   → bridge (the unrolled verifier proved in UNIFIED mode)
+///   → final (fsv_unified_recursion_layer, unified mode)
+///
+/// with the recursion hash chain threaded through and every rung verified
+/// natively. Deviation from the CPU pipeline: the base workload is tiny
+/// (~1.7k cycles), so the layer-0 verifier measures far below the unified
+/// switch threshold and the CPU flow would bridge immediately; we force one
+/// unrolled rung first so the loop machinery (measure → prove → chain) is
+/// exercised, then bridge over the recursion proof. Blake modes are fixed to
+/// blake2_with_compression (the JIT lacks the g-function delegation).
+#[test]
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+#[ignore]
+#[serial]
+fn test_program_prover_recursive_pipeline() {
+    use crate::interim_upstream::{
+        begin_chain, build_unified_stream, compute_end_params, continue_chain,
+        native_verify_unified, native_verify_unrolled, UNIFIED_SWITCH_CYCLES,
+    };
+    use crate::upstream::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+
+    // Mirrors prover_examples::recursion's private bounds.
+    const UNROLLED_RECURSION_CYCLES_BOUND: usize = 1 << 28;
+    const RAM_BOUND: usize = 1 << 30;
+
+    fn fsv(name: &str) -> (Vec<u32>, Vec<u32>) {
+        let (_, bin) = read_binary(&test_artifact(&format!("tools/gkr_verifier/{name}.bin")));
+        let (_, text) = read_binary(&test_artifact(&format!("tools/gkr_verifier/{name}.text")));
+        (bin, text)
+    }
+
+    // Mirrors prover_examples::recursion::measure_verifier_cycles (which wraps
+    // run_unrolled_machine_in_full — calling that across crates trips a rustc
+    // E0391 normalization cycle on its const-generic return type, so the
+    // reduced-machine VM run is inlined here).
+    fn measure_verifier_cycles(bin: &[u32], text: &[u32], stream: Vec<u32>) -> u64 {
+        use prover::field::baby_bear::base::BabyBearField;
+        use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
+        use riscv_transpiler::ir::ReducedMachineDecoderConfig;
+        use riscv_transpiler::vm::{
+            DelegationsAndUnifiedCounters, RamWithRomRegion, SimpleSnapshotter, SimpleTape,
+            State, VM,
+        };
+        const ROM_BITS: usize = common_constants::ROM_SECOND_WORD_BITS;
+
+        let instructions: Vec<Instruction> =
+            preprocess_bytecode::<ReducedMachineDecoderConfig, true>(text);
+        let tape = SimpleTape::new(&instructions);
+        let mut ram = RamWithRomRegion::<ROM_BITS>::from_rom_content(bin, RAM_BOUND);
+        let mut state = State::initial_with_counters(DelegationsAndUnifiedCounters::default());
+        let mut snapshotter =
+            SimpleSnapshotter::<DelegationsAndUnifiedCounters, ROM_BITS>::new_with_cycle_limit(
+                UNROLLED_RECURSION_CYCLES_BOUND,
+                state,
+            );
+        let mut non_determinism = QuasiUARTSource::new_with_reads(stream);
+        let finished = VM::<DelegationsAndUnifiedCounters>::run_basic_unrolled::<
+            _,
+            _,
+            _,
+            BabyBearField,
+        >(
+            &mut state,
+            &mut ram,
+            &mut snapshotter,
+            &tape,
+            UNROLLED_RECURSION_CYCLES_BOUND,
+            &mut non_determinism,
+        );
+        assert!(finished, "verifier program must reach its end state");
+        (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
+    }
+
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Info)
+        .try_init();
+    let configuration = ExecutionProverConfiguration::default();
+    let security_level = configuration.security_level;
+    let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
+    let worker = worker::Worker::new();
+
+    // === Stage 1: base layer. ===
+    let (_, binary_image) = read_binary(&test_artifact(
+        "examples/hashed_fibonacci/app_blake2_with_compression.bin",
+    ));
+    let (_, text_section) = read_binary(&test_artifact(
+        "examples/hashed_fibonacci/app_blake2_with_compression.text",
+    ));
+    let base_handle = prover.add_binary(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        binary_image,
+        text_section,
+        None,
+    );
+    let result = prover.commit_memory_and_prove(
+        0,
+        &base_handle,
+        QuasiUARTSource::new_with_reads(vec![100, 5]),
+    );
+    let artifacts = prover.program_artifacts(&base_handle);
+    let (base_proof, base_setups) =
+        assemble_program_proof(&artifacts, result, security_level, &worker);
+    native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
+    log::info!("stage 1: base layer proved + verified ({} cycles)", proof_cycles(&base_proof));
+
+    let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
+    let (mut chain_hash, mut chain_preimage) = begin_chain(&base_end_params);
+
+    // === Stages 2-3: unrolled recursion loop. ===
+    let (unrolled_base_bin, unrolled_base_text) =
+        fsv("fsv_unrolled_base_layer_sec_80_blake2_with_compression");
+    let (unrolled_rec_bin, unrolled_rec_text) =
+        fsv("fsv_unrolled_recursion_layer_sec_80_blake2_with_compression");
+
+    let mut proof = base_proof;
+    let mut setups = base_setups;
+    let mut input_is_base = true;
+    let mut layer = 0u32;
+
+    loop {
+        let (bin, text) = if input_is_base {
+            (&unrolled_base_bin, &unrolled_base_text)
+        } else {
+            (&unrolled_rec_bin, &unrolled_rec_text)
+        };
+        let measured =
+            measure_verifier_cycles(bin, text, build_unrolled_stream(&setups, &proof));
+        log::info!("layer-{layer} verifier measures {measured} cycles");
+        // Forced first rung: our tiny base measures below the threshold
+        // immediately; run one unrolled recursion layer anyway (see doc).
+        if layer > 0 && measured < UNIFIED_SWITCH_CYCLES {
+            log::info!("... below {UNIFIED_SWITCH_CYCLES} — switching to the unified machine");
+            break;
+        }
+
+        let fsv_handle = prover.add_binary(
+            ExecutionKind::Unrolled,
+            MachineType::Reduced,
+            bin.clone(),
+            text.clone(),
+            None,
+        );
+        let result = prover.commit_memory_and_prove(
+            0,
+            &fsv_handle,
+            QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
+        );
+        let artifacts = prover.program_artifacts(&fsv_handle);
+        let (mut new_proof, new_setups) =
+            assemble_program_proof(&artifacts, result, security_level, &worker);
+        new_proof.recursion_chain_hash = Some(chain_hash);
+        new_proof.recursion_chain_preimage = Some(chain_preimage);
+        native_verify_unrolled(build_unrolled_stream(&new_setups, &new_proof), false);
+        log::info!(
+            "stage 2: unrolled recursion layer {layer} proved + verified ({} cycles)",
+            proof_cycles(&new_proof)
+        );
+
+        let end_params = compute_end_params(&new_setups, new_proof.final_pc);
+        let (h, p) = continue_chain(&chain_hash, &chain_preimage, &end_params);
+        chain_hash = h;
+        chain_preimage = p;
+        proof = new_proof;
+        setups = new_setups;
+        input_is_base = false;
+        layer += 1;
+    }
+
+    // === Stage 4: bridge — the unrolled verifier proved in unified mode. ===
+    let (bridge_bin, bridge_text) = if input_is_base {
+        (&unrolled_base_bin, &unrolled_base_text)
+    } else {
+        (&unrolled_rec_bin, &unrolled_rec_text)
+    };
+    let bridge_handle = prover.add_binary(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        bridge_bin.clone(),
+        bridge_text.clone(),
+        None,
+    );
+    let result = prover.commit_memory_and_prove(
+        0,
+        &bridge_handle,
+        QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
+    );
+    let artifacts = prover.program_artifacts(&bridge_handle);
+    let (mut bridge_proof, bridge_setups) =
+        assemble_program_proof(&artifacts, result, security_level, &worker);
+    bridge_proof.recursion_chain_hash = Some(chain_hash);
+    bridge_proof.recursion_chain_preimage = Some(chain_preimage);
+    native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof), false);
+    log::info!(
+        "stage 4: bridge proved in unified mode + verified ({} cycles)",
+        proof_cycles(&bridge_proof)
+    );
+
+    let bridge_end_params = compute_end_params(&bridge_setups, bridge_proof.final_pc);
+    let (h, p) = continue_chain(&chain_hash, &chain_preimage, &bridge_end_params);
+    chain_hash = h;
+    chain_preimage = p;
+
+    // === Stage 5: final — fsv_unified_recursion_layer in unified mode. ===
+    let (final_bin, final_text) =
+        fsv("fsv_unified_recursion_layer_sec_80_blake2_with_compression");
+    let final_handle = prover.add_binary(
+        ExecutionKind::Unified,
+        MachineType::Reduced,
+        final_bin,
+        final_text,
+        None,
+    );
+    let result = prover.commit_memory_and_prove(
+        0,
+        &final_handle,
+        QuasiUARTSource::new_with_reads(build_unified_stream(&bridge_setups, &bridge_proof)),
+    );
+    let artifacts = prover.program_artifacts(&final_handle);
+    let (mut final_proof, final_setups) =
+        assemble_program_proof(&artifacts, result, security_level, &worker);
+    final_proof.recursion_chain_hash = Some(chain_hash);
+    final_proof.recursion_chain_preimage = Some(chain_preimage);
+    let output = native_verify_unified(build_unified_stream(&final_setups, &final_proof), false);
+    log::info!(
+        "stage 5: final unified recursion proof verified ({} cycles); output registers: {output:?}",
+        proof_cycles(&final_proof)
+    );
+}
