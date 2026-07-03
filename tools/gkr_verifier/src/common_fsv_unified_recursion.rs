@@ -15,7 +15,7 @@ unsafe fn workload() -> ! {
     let Ok(regs) = full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer::<
         CSRBasedSource,
         PanicErrorCreator,
-        true,
+        { full_statement_verifier::verifier_common::USE_REDUCED_BLAKE2_ROUNDS },
     >(&mut CSRBasedSource);
     zksync_os_finish_success_extended(&regs);
 }

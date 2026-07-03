@@ -34,6 +34,10 @@ pub mod statement_common;
 #[cfg(feature = "proof_utils")]
 pub mod program_proof;
 
+#[cfg(feature = "host_utils")]
+pub mod host_utils;
+pub mod recursion_chain;
+
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 mod verifier_imports {
     pub(super) use core::mem::MaybeUninit;

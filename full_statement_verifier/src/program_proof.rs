@@ -1,5 +1,6 @@
 extern crate alloc;
 
+use crate::recursion_chain::RecursionChain;
 use alloc::collections::BTreeMap;
 use common_constants::{
     ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
@@ -9,6 +10,7 @@ use common_constants::{
     MUL_DIV_CIRCUIT_FAMILY_IDX, REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
     SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
 };
+use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use verifier_common::cs::definitions::TimestampScalar;
 use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
 use verifier_common::cs::utils::split_timestamp;
@@ -48,6 +50,49 @@ impl ProgramProof {
         } else {
             0
         }
+    }
+
+    /// Executed cycle count implied by the proof's final timestamp.
+    #[must_use]
+    pub const fn executed_cycles(&self) -> u64 {
+        (self.final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
+    }
+
+    /// Record the recursion chain this proof extends (both the hash and its
+    /// preimage — the verifier requires the pair to be consistent).
+    pub fn set_recursion_chain<const REDUCED_ROUNDS: bool>(
+        &mut self,
+        chain: &RecursionChain<REDUCED_ROUNDS>,
+    ) {
+        self.recursion_chain_hash = Some(chain.hash());
+        self.recursion_chain_preimage = Some(chain.preimage());
+    }
+
+    /// Full NDS word stream for an unrolled (multi-circuit) proof: the setup
+    /// caps prefix followed by [`Self::flatten_for_verification`]. This is the
+    /// exact stream the `fsv_unrolled_*` verifiers consume.
+    ///
+    /// `flattened_setup_caps` are the per-circuit setup caps as flattened words
+    /// (`MerkleTreeCap::flatten_single`), in ascending circuit-family order.
+    pub fn build_unrolled_stream<'a>(
+        &self,
+        flattened_setup_caps: impl Iterator<Item = &'a [u32]>,
+    ) -> Vec<u32> {
+        let mut stream: Vec<u32> = flattened_setup_caps.flatten().copied().collect();
+        stream.extend(self.flatten_for_verification());
+        stream
+    }
+
+    /// Full NDS word stream for a unified (single-circuit) proof: the setup cap
+    /// prefix followed by [`Self::flatten_unified_for_verification`]. This is
+    /// the exact stream the `fsv_unified_*` verifiers consume.
+    pub fn build_unified_stream<'a>(
+        &self,
+        flattened_setup_caps: impl Iterator<Item = &'a [u32]>,
+    ) -> Vec<u32> {
+        let mut stream: Vec<u32> = flattened_setup_caps.flatten().copied().collect();
+        stream.extend(self.flatten_unified_for_verification());
+        stream
     }
 
     pub fn flatten_for_verification(&self) -> Vec<u32> {

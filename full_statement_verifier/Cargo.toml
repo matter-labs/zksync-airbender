@@ -14,7 +14,8 @@ common_constants = { workspace = true }
 verifier_common = { workspace = true, default-features = false }
 serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
 
-# setups = { workspace = true, default-features = false } // TODO: import as dependency if we make it no-std
+# Host-only (pulls the full prover stack) — gated behind `host_utils`, never in RISC-V builds.
+setups = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = "*"
@@ -37,5 +38,9 @@ modular_ops = ["verifier_common/modular_ops"]
 verifier_program = ["modular_ops"]
 replace_csr = ["verifier_common/replace_csr"]
 proof_utils = ["verifier_common/proof_utils"]
+# Host-side recursion-driver helpers (setup-map streams, native verification,
+# fsv binary loading). Implies `proof_utils` (std build + `ProgramProof`); the
+# native_verify_* wrappers additionally need `verifiers` + a security level.
+host_utils = ["proof_utils", "dep:setups"]
 default = ["security_80", "replace_csr", "verifiers", "proof_utils"]
 # default = ["security_80"]

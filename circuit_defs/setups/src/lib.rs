@@ -191,6 +191,11 @@ pub fn make_setup_for_with_mem_circuit<
 
 use prover::definitions::DEFAULT_CAP_SIZE;
 
+/// Per-program setup-params map, keyed by circuit family index. The recursion
+/// drivers and the full-statement verifier both consume the caps in this
+/// (ascending-key) order.
+pub type Setups = std::collections::BTreeMap<u32, UnrolledCircuitSetupParams>;
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UnrolledCircuitSetupParams {
     pub family_idx: u32,
@@ -199,6 +204,31 @@ pub struct UnrolledCircuitSetupParams {
     // #[serde(bound(deserialize = "MerkleTreeCap<DEFAULT_CAP_SIZE>: serde::Deserialize<'de>"))]
     // #[serde(bound(serialize = "MerkleTreeCap<DEFAULT_CAP_SIZE>: serde::Serialize"))]
     pub setup_caps: MerkleTreeCap<DEFAULT_CAP_SIZE>,
+}
+
+impl UnrolledCircuitSetupParams {
+    /// Build the params from a committed setup tree's cap, converting the
+    /// var-length cap into the fixed [`DEFAULT_CAP_SIZE`] one.
+    ///
+    /// # Panics
+    /// If the cap does not have exactly [`DEFAULT_CAP_SIZE`] leafs.
+    #[must_use]
+    pub fn from_setup_tree_cap(
+        family_idx: u32,
+        capacity: u32,
+        cap: prover::merkle_trees::MerkleTreeCapVarLength,
+    ) -> Self {
+        let num_leafs = cap.cap.len();
+        Self {
+            family_idx,
+            capacity,
+            setup_caps: MerkleTreeCap {
+                cap: cap.cap.try_into().unwrap_or_else(|_| {
+                    panic!("setup tree cap has {num_leafs} leafs, expected {DEFAULT_CAP_SIZE}")
+                }),
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

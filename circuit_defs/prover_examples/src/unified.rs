@@ -633,18 +633,13 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
 
         risc_v_setup_params.insert(
             REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
-            UnrolledCircuitSetupParams {
-                family_idx: REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
-                capacity: trace_len as u32,
-                setup_caps: MerkleTreeCap {
-                    cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                        BabyBearField,
-                    >>::get_cap(&setup_commitment.tree)
-                    .cap
-                    .try_into()
-                    .unwrap(),
-                },
-            },
+            UnrolledCircuitSetupParams::from_setup_tree_cap(
+                REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
+                trace_len as u32,
+                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
+                    &setup_commitment.tree,
+                ),
+            ),
         );
 
         let UnrolledCircuitWitnessEvalFn::Unified {

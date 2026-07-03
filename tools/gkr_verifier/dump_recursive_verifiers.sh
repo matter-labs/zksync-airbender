@@ -16,10 +16,11 @@
 # We do NOT build the unified base-layer verifier — the recursion pipeline never
 # uses it (it only verifies a unified proof at the recursion layer).
 #
-# Output files are e.g. `fsv_unrolled_recursion_layer_sec_80_blake2_g_function.{bin,elf,text}`,
-# which is what `recursion.rs::fsv_program_blake` loads based on the
-# RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE / RECURSION_FINAL_BLAKE
-# environment variables.
+# Output files are e.g. `fsv_unrolled_recursion_layer_sec_80_blake2_g_function.{bin,elf,text}`.
+# The naming contract lives in `verifier_common::fsv_binaries` (FsvProgram::file_stem);
+# drivers load the files via `full_statement_verifier::host_utils::load_fsv_program`,
+# selecting variants with the RECURSION_UNROLLED_BLAKE / RECURSION_BRIDGE_BLAKE /
+# RECURSION_FINAL_BLAKE environment variables.
 #
 # Variant defaults to `caches` to match the prover, which runs with
 # `use_caches = true`. Override with: ./dump_recursive_verifiers.sh --variant no_caches

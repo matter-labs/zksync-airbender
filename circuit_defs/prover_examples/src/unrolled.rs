@@ -1081,18 +1081,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
                 risc_v_setup_params.insert(
                     family_idx as u32,
-                    UnrolledCircuitSetupParams {
-                        family_idx: family_idx as u32,
-                        capacity: trace_len as u32,
-                        setup_caps: MerkleTreeCap {
-                            cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                                BabyBearField,
-                            >>::get_cap(&setup_commitment.tree)
-                            .cap
-                            .try_into()
-                            .unwrap(),
-                        },
-                    },
+                    UnrolledCircuitSetupParams::from_setup_tree_cap(
+                        family_idx as u32,
+                        trace_len as u32,
+                        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
+                            BabyBearField,
+                        >>::get_cap(&setup_commitment.tree),
+                    ),
                 );
             }
 
@@ -1119,18 +1114,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         risc_v_setup_params.insert(
             family_idx as u32,
-            UnrolledCircuitSetupParams {
-                family_idx: family_idx as u32,
-                capacity: trace_len as u32,
-                setup_caps: MerkleTreeCap {
-                    cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                        BabyBearField,
-                    >>::get_cap(&setup_commitment.tree)
-                    .cap
-                    .try_into()
-                    .unwrap(),
-                },
-            },
+            UnrolledCircuitSetupParams::from_setup_tree_cap(
+                family_idx as u32,
+                trace_len as u32,
+                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
+                    &setup_commitment.tree,
+                ),
+            ),
         );
 
         let UnrolledCircuitWitnessEvalFn::NonMemory {
@@ -1259,18 +1249,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
                 risc_v_setup_params.insert(
                     family_idx as u32,
-                    UnrolledCircuitSetupParams {
-                        family_idx: family_idx as u32,
-                        capacity: trace_len as u32,
-                        setup_caps: MerkleTreeCap {
-                            cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                                BabyBearField,
-                            >>::get_cap(&setup_commitment.tree)
-                            .cap
-                            .try_into()
-                            .unwrap(),
-                        },
-                    },
+                    UnrolledCircuitSetupParams::from_setup_tree_cap(
+                        family_idx as u32,
+                        trace_len as u32,
+                        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
+                            BabyBearField,
+                        >>::get_cap(&setup_commitment.tree),
+                    ),
                 );
             }
             continue;
@@ -1296,18 +1281,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         risc_v_setup_params.insert(
             family_idx as u32,
-            UnrolledCircuitSetupParams {
-                family_idx: family_idx as u32,
-                capacity: trace_len as u32,
-                setup_caps: MerkleTreeCap {
-                    cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                        BabyBearField,
-                    >>::get_cap(&setup_commitment.tree)
-                    .cap
-                    .try_into()
-                    .unwrap(),
-                },
-            },
+            UnrolledCircuitSetupParams::from_setup_tree_cap(
+                family_idx as u32,
+                trace_len as u32,
+                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
+                    &setup_commitment.tree,
+                ),
+            ),
         );
 
         let UnrolledCircuitWitnessEvalFn::Memory {

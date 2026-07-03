@@ -61,6 +61,8 @@ pub use non_determinism_source;
 pub use prover;
 pub use transcript;
 pub mod errors;
+#[cfg(feature = "proof_utils")]
+pub mod fsv_binaries;
 pub mod gkr;
 pub mod structs;
 #[cfg(feature = "proof_utils")]
