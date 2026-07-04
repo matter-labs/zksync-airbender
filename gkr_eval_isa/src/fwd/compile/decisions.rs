@@ -78,6 +78,7 @@ pub struct SiteKey {
 /// genome/scorer — is expected to cover every site `OccurrenceStreams::build`
 /// would visit; `OccurrenceStreams::build` itself defaults a missing entry to
 /// `0.0` rather than panicking, see its doc).
+#[derive(Clone, Debug)]
 pub struct SiteDecisions {
     map: BTreeMap<SiteKey, f64>,
 }

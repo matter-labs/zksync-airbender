@@ -30,7 +30,7 @@
 //! (`child_operand_field`, `classify_additive_child`, `split_reduction`,
 //! `field_from_u8`/`sign_from_u8`, `is_*` predicates). Only operand delivery differs.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use cs::gkr_compiler::dag_ir::{
     DagLayer, DemandKind, Expr, ExprId, LayerSchedule, ReadPlace, ReplayEvent, RootId, SinkInfo,
@@ -44,11 +44,35 @@ use super::arith::{
     child_operand_field, classify_additive_child, field_from_u8, is_constant_one,
     is_neg_one_factor, is_zero_expr, sign_from_u8, AdditiveChild,
 };
+use super::decisions::OccurrenceStreams;
 use super::place::{ValueId, VInstrKind, VirtualInstr, VirtualOp};
 use super::schedule::split_reduction;
 use super::schedule_residency::MaterializeMap;
 use super::MaterializePolicy;
 use crate::fwd::compile::CompileError;
+
+/// Width (in cells) of a value's residency footprint under `MaterializePolicy::Decisions`
+/// (Task 3): `Base` = 1, `Ext` = 4 — mirrors `place::width_of`/the traffic-tally convention
+/// used elsewhere in this crate (`mod.rs::tally_operand`).
+fn resident_width(field: OperandField) -> usize {
+    match field {
+        OperandField::Base => 1,
+        OperandField::Ext => 4,
+    }
+}
+
+/// Task 3: `MaterializePolicy::Decisions` residency state — present only under that
+/// policy (`None` for `LegacyRecompute`/`Materialize`). `resident` is the width-weighted
+/// resident set, a `BTreeMap` (per the brief's determinism requirement: eviction-candidate
+/// enumeration must not depend on hash-iteration order). `VirtualLower::defined` mirrors
+/// `resident`'s keys — `defined` stays the single policy-agnostic "is this value's cell
+/// servable" source of truth read everywhere else in this file; `resident` is Decisions'
+/// own bookkeeping for width/priority-driven admission and eviction.
+struct DecisionsState {
+    streams: OccurrenceStreams,
+    resident: BTreeMap<ExprId, OperandField>,
+    budget: usize,
+}
 
 /// BabyBear field −1 (= P−1), the canonical additive-inverse-of-1 representative.
 const BABYBEAR_NEG_ONE: u32 = 0x78000001 - 1;
@@ -199,6 +223,9 @@ struct VirtualLower<'a> {
     admitted_this_step: HashSet<ExprId>,
     /// Values with a `Recompute` `Demand` in the step being replayed.
     recompute_this_step: HashSet<ExprId>,
+    /// Task 3 (`Decisions` only): residency state driven by `SiteDecisions`/
+    /// `OccurrenceStreams`. `None` under `LegacyRecompute`/`Materialize`.
+    decisions: Option<DecisionsState>,
 }
 
 impl<'a> VirtualLower<'a> {
@@ -250,6 +277,115 @@ impl<'a> VirtualLower<'a> {
             defines: Some(v),
             is_dram_read: false,
         });
+    }
+
+    // ── Task 3: `Decisions`-policy residency (admission / eviction) ────────────────
+
+    /// Consume one occurrence off `v`'s demand stream (`Decisions` only; a no-op under
+    /// `LegacyRecompute`/`Materialize`). MUST be called exactly once per demand site the
+    /// lowering visits for `v` — every `lower_operand_virtual` call and every root's own
+    /// top-level output demand (the driver loop) — so `effective_priority` keeps reading
+    /// the CURRENT stream front. Call this BEFORE any hit/miss branching on `v`.
+    fn serve_occurrence(&mut self, v: ExprId) {
+        if let Some(ds) = &mut self.decisions {
+            ds.streams.serve(v);
+        }
+    }
+
+    /// Attempt to admit a just-produced value `v` (occupying `field`'s width) into the
+    /// `Decisions` resident set. Only meaningful under `MaterializePolicy::Decisions`
+    /// (returns `false` otherwise). On success, `v` is inserted into both `resident` and
+    /// `defined` (and any evicted victims are removed from both) — the caller still needs
+    /// to emit the physical evict-to-cell instruction.
+    ///
+    /// Precondition: `v`'s CURRENT occurrence has already been `serve_occurrence`d, so
+    /// `effective_priority(v)` reflects `v`'s NEXT (future) occurrence — the one admission
+    /// is deciding whether to preserve residency for (brief: "≥1 remaining occurrence").
+    ///
+    /// Capacity (brief): width-weighted vs `budget`, headroom 0. If admitting `v` requires
+    /// eviction, victims are the min-effective-priority residents (`total_cmp`, `ExprId`
+    /// tie-break; a dead/`None`-priority resident sorts as -infinity, evicted first). If
+    /// even the weakest resident's priority is >= the admitting occurrence's priority (or
+    /// there isn't enough to evict), admission is SKIPPED — no partial eviction.
+    fn try_admit(&mut self, v: ExprId, field: OperandField) -> bool {
+        let Some(ds) = &mut self.decisions else { return false };
+        let Some(admitting_priority) = ds.streams.effective_priority(v) else {
+            return false; // no remaining occurrence: not worth caching
+        };
+        let need = resident_width(field);
+        let used: usize = ds.resident.values().copied().map(resident_width).sum();
+        if used + need <= ds.budget {
+            ds.resident.insert(v, field);
+            self.defined.insert(v);
+            return true;
+        }
+
+        // Over budget: rank eviction candidates ascending by (effective priority, ExprId).
+        let mut candidates: Vec<(f64, ExprId, OperandField)> = ds
+            .resident
+            .iter()
+            .map(|(&id, &f)| {
+                let p = ds.streams.effective_priority(id).unwrap_or(f64::NEG_INFINITY);
+                (p, id, f)
+            })
+            .collect();
+        candidates.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+
+        let mut freed = 0usize;
+        let mut to_evict: Vec<ExprId> = Vec::new();
+        for (priority, id, f) in candidates {
+            if used + need <= ds.budget + freed {
+                break;
+            }
+            if priority >= admitting_priority {
+                return false; // weakest remaining victim is at least as valuable: skip
+            }
+            freed += resident_width(f);
+            to_evict.push(id);
+        }
+        if used + need > ds.budget + freed {
+            return false; // ran out of candidates without freeing enough
+        }
+        for id in to_evict {
+            ds.resident.remove(&id);
+            self.defined.remove(&id);
+        }
+        ds.resident.insert(v, field);
+        self.defined.insert(v);
+        true
+    }
+
+    /// Finalize a just-produced value (its true value is now in the acc): decide whether
+    /// it becomes resident (readable later as `Value(expr_id)`) or a one-off fresh temp,
+    /// then evict it out of the acc into a cell. Returns the operand naming whichever cell
+    /// it landed in.
+    ///
+    /// - `LegacyRecompute`/`Materialize`: static membership in `resident_target` (the
+    ///   schedule's realized `resident_after` set; unchanged Task-1 behavior).
+    /// - `Decisions`: `try_admit` (Task 3) — `resident_target` is ignored (always empty
+    ///   under `Decisions`, since only the schedule-driven policies populate it).
+    fn finalize_produced(
+        &mut self,
+        expr_id: ExprId,
+        field: OperandField,
+        resident_target: &HashSet<ExprId>,
+    ) -> VirtualOp {
+        let admitted = if matches!(self.policy, MaterializePolicy::Decisions { .. }) {
+            self.try_admit(expr_id, field)
+        } else {
+            resident_target.contains(&expr_id)
+        };
+        if admitted {
+            self.widths.insert(expr_id, field);
+            self.emit_evict_to_cell(expr_id, field);
+            self.defined.insert(expr_id); // idempotent under `Decisions` (try_admit already did this)
+            VirtualOp::Value(expr_id)
+        } else {
+            let t = self.fresh_internal();
+            self.widths.insert(t, field);
+            self.emit_evict_to_cell(t, field);
+            VirtualOp::Value(t)
+        }
     }
 
     fn push_fold(&mut self, field: OperandField, ops: Vec<VirtualOp>, is_add: bool, sign: Sign) {
@@ -339,33 +475,42 @@ impl<'a> VirtualLower<'a> {
         expected: OperandField,
         resident_target: &HashSet<ExprId>,
     ) -> Result<VirtualOp, CompileError> {
+        // Task 3 (`Decisions` only, no-op otherwise): this call IS a demand site — one
+        // occurrence off `expr_id`'s stream, consumed before any hit/miss branching so
+        // `effective_priority` reflects the NEXT occurrence for any admission decision
+        // taken below (`try_admit`'s precondition).
+        self.serve_occurrence(expr_id);
+
         // 1. Truly defined-resident → serve from its cell (value-safe).
         if self.defined.contains(&expr_id) {
             return Ok(VirtualOp::Value(expr_id));
         }
-        // 2. A source or resolution-pruned leaf resolves to one operand line.
+        // 2. A source or resolution-pruned leaf resolves to one operand line. Under
+        //    `Decisions`, a leaf can ALSO be admitted into residency (Task 3: caching
+        //    isn't limited to compound recomputes — brief's `read_leaf_cacheable`) so a
+        //    repeatedly-read DRAM/const/etc. leaf can be served from a cell later.
         if layer.resolutions.contains_key(&expr_id)
             || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
         {
-            return self.source_to_vop(layer, expr_id);
+            let op = self.source_to_vop(layer, expr_id)?;
+            if matches!(self.policy, MaterializePolicy::Decisions { .. }) {
+                let field = child_operand_field(layer, expr_id, expected, &self.cross);
+                if self.try_admit(expr_id, field) {
+                    self.emit_init_field(op, field);
+                    self.widths.insert(expr_id, field);
+                    self.emit_evict_to_cell(expr_id, field);
+                    self.defined.insert(expr_id);
+                    return Ok(VirtualOp::Value(expr_id));
+                }
+            }
+            return Ok(op);
         }
-        // 3. Compound: recompute the cone into the acc, then evict to a cell. If this
-        //    value is a scheduled resident (admitted this step) we define it under its
-        //    own ExprId so later uses serve it; otherwise a fresh internal temp.
+        // 3. Compound: recompute the cone into the acc, then finalize residency (Task 1
+        //    schedule-driven `resident_target`, or Task 3 `Decisions` admission).
         let field = child_operand_field(layer, expr_id, expected, &self.cross);
         self.compile_expr_virtual(layer, expr_id, field, resident_target)?;
         self.materialize_if_root(expr_id, true);
-        if resident_target.contains(&expr_id) {
-            self.widths.insert(expr_id, field);
-            self.emit_evict_to_cell(expr_id, field);
-            self.defined.insert(expr_id);
-            Ok(VirtualOp::Value(expr_id))
-        } else {
-            let t = self.fresh_internal();
-            self.widths.insert(t, field);
-            self.emit_evict_to_cell(t, field);
-            Ok(VirtualOp::Value(t))
-        }
+        Ok(self.finalize_produced(expr_id, field, resident_target))
     }
 
     // ── expression lowering into the accumulator (mirrors arith::compile_expr) ────
@@ -423,7 +568,15 @@ impl<'a> VirtualLower<'a> {
             );
             return Ok(());
         }
-        if self.policy == MaterializePolicy::Materialize {
+        // `Decisions` (Task 3) deliberately does NOT take the `compile_add_materialize`
+        // branch: it reuses this SAME virtual/FMA-partition path as `LegacyRecompute` so
+        // its admit/evict decisions replay in lock-step with `OccurrenceStreams::build`'s
+        // demand order (which mirrors ONLY this path — see `decisions.rs`'s module doc).
+        // Routing `Decisions` through `compile_add_materialize` instead would visit an
+        // `Add`'s children in a DIFFERENT order (original encounter order, not
+        // addends-before-products), silently misaligning `serve_occurrence` calls against
+        // the precomputed streams and rotting the scorer's effective priorities.
+        if matches!(self.policy, MaterializePolicy::Materialize) {
             return self.compile_add_materialize(layer, &children, expected, resident_target);
         }
         if self.try_compile_fma_virtual(layer, &children, expected, resident_target)?.is_some() {
@@ -1039,6 +1192,18 @@ pub(crate) fn lower_layer_virtual(
         }
     }
 
+    // Task 3: under `Decisions`, precompute the demand-order occurrence streams ONCE
+    // (mirrors the emitter's actual `Add`/`Mul` virtual-lowering traversal — see
+    // `decisions.rs`'s module doc) before `policy` is moved into `st` below.
+    let decisions_state = match &policy {
+        MaterializePolicy::Decisions { decisions, budget } => Some(DecisionsState {
+            streams: OccurrenceStreams::build(layer, &schedule.order, decisions),
+            resident: BTreeMap::new(),
+            budget: *budget,
+        }),
+        MaterializePolicy::LegacyRecompute | MaterializePolicy::Materialize => None,
+    };
+
     let mut st = VirtualLower {
         ctx,
         cross,
@@ -1057,6 +1222,7 @@ pub(crate) fn lower_layer_virtual(
         cache_root_exprs,
         admitted_this_step: HashSet::new(),
         recompute_this_step: HashSet::new(),
+        decisions: decisions_state,
     };
 
     let mut resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)> =
@@ -1076,7 +1242,7 @@ pub(crate) fn lower_layer_virtual(
         // Under `Materialize`, derive the event-local decision inputs for this step from
         // its `Admit`/`Demand` events (authoritative — NOT `resident_after`, Constraint 1).
         // `LegacyRecompute` leaves these empty, so `compile_add_materialize` never fires.
-        if st.policy == MaterializePolicy::Materialize {
+        if matches!(st.policy, MaterializePolicy::Materialize) {
             let step = &schedule.steps[p];
             rb = step.resident_before.iter().copied().collect();
             ra = step.resident_after.iter().copied().collect();
@@ -1113,7 +1279,13 @@ pub(crate) fn lower_layer_virtual(
         // cone-fit drops + explicit evicts, realized as a set difference). This bounds
         // the served/held set to the schedule's residency so cell pressure tracks the
         // (validated ≤ budget) plan — we never serve a value whose cell may be reused.
-        st.defined.retain(|v| rb.contains(v));
+        // Task 3: `Decisions` residency is NOT schedule-step-scoped — it persists across
+        // root/step boundaries under its OWN admission/eviction bookkeeping (`try_admit`),
+        // so it is exempt from this per-step clear (`rb` is meaningless under `Decisions`,
+        // which never populates it).
+        if !matches!(st.policy, MaterializePolicy::Decisions { .. }) {
+            st.defined.retain(|v| rb.contains(v));
+        }
         let before = sorted_real(&st.defined);
 
         // Process the ordered atom root. Shared sub-values that the schedule keeps
@@ -1132,13 +1304,24 @@ pub(crate) fn lower_layer_virtual(
                         .as_ref()
                         .expect("Compute root has a materialize sink");
                     let expected = super::operand_field_of(sink);
+                    // Task 3: a root's own output is itself a demand site (mirrors
+                    // `decisions.rs::build`'s `SiteConsumer::RootOutput` push) — served
+                    // exactly once here, hit or miss, before branching on residency.
+                    if matches!(st.policy, MaterializePolicy::Decisions { .. }) {
+                        st.serve_occurrence(expr);
+                    }
                     if st.defined.contains(&expr) {
                         st.materialize_if_root(expr, false);
                     } else {
                         st.compile_expr_virtual(layer, expr, expected, &ra)?;
                         st.materialize_if_root(expr, true);
-                        if ra.contains(&expr) && !st.defined.contains(&expr) {
-                            let field = child_operand_field(layer, expr, expected, &st.cross);
+                        let field = child_operand_field(layer, expr, expected, &st.cross);
+                        let admit = if matches!(st.policy, MaterializePolicy::Decisions { .. }) {
+                            st.try_admit(expr, field)
+                        } else {
+                            ra.contains(&expr) && !st.defined.contains(&expr)
+                        };
+                        if admit {
                             st.widths.insert(expr, field);
                             st.emit_evict_to_cell(expr, field);
                             st.defined.insert(expr);
