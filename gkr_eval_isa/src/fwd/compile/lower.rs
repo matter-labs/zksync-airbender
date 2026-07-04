@@ -69,6 +69,56 @@ struct DecisionsState {
     streams: OccurrenceStreams,
     resident: BTreeMap<ExprId, OperandField>,
     budget: usize,
+    /// Authoritative running count of width-weighted cells currently claimed by
+    /// EITHER a resident (`resident`'s values) OR an in-flight expression temp
+    /// (`pending_temps`). This is the demand-driven eviction tracker (replaces the
+    /// deleted static `resident_cap_for_order` pre-reservation): incremented at
+    /// every `emit_evict_to_cell` (real ExprId admission or fresh internal temp),
+    /// decremented when a temp's single consuming read is emitted (see
+    /// `VirtualLower::emit`'s pending-temp release scan) or when a resident is
+    /// force-evicted (`evict_to_fit`). Dead residents (occurrence stream
+    /// exhausted) are NOT proactively released — they sort first
+    /// (`f64::NEG_INFINITY` effective priority) whenever eviction next runs, which
+    /// is a safe (conservative, never-underestimating) simplification: holding a
+    /// dead resident a little longer than strictly necessary can only make the
+    /// tracker MORE conservative relative to `plan_placement`'s independent
+    /// liveness model, never less.
+    live_width: usize,
+    /// Fresh-internal temp `ValueId`s that have been evicted to a cell
+    /// (`emit_evict_to_cell`) but not yet consumed by their one-and-only reading
+    /// instruction. Every temp minted by `alloc_temp_evicting` is read exactly
+    /// once (by construction of this emitter's fold/reduction call sites), so
+    /// membership here is release-once: `VirtualLower::emit`'s reads-scan removes
+    /// an entry (and its width from `live_width`) the instant it sees that temp
+    /// read as a `VirtualOp::Value` operand — the SAME instruction
+    /// `place::compute_live_ranges` will record as that value's `last_use`, so
+    /// this tracker's per-temp interval exactly matches `plan_placement`'s.
+    pending_temps: std::collections::HashSet<ValueId>,
+    /// Outstanding deferred-consumption count for EVERY `VirtualOp::Value(id)`
+    /// `lower_operand_virtual`/`finalize_produced` has returned to a caller but that
+    /// caller has not yet emitted a consuming read for (`defer_read` increments;
+    /// `VirtualLower::emit`'s reads-scan decrements, dropping the entry at 0).
+    /// Tracked for BOTH temps and residents, but consulted only for residents:
+    /// `evict_to_fit` must never pick a resident with a nonzero count as an
+    /// eviction victim. Without this, a resident already resolved into a sibling
+    /// child's pending operand slot (e.g. `compile_reduction_virtual`'s
+    /// "pre-materialize every child" loop — child A resolves to a resident HIT,
+    /// child B's compound lowering then triggers admission-or-temp eviction
+    /// pressure) could be evicted while child A's fold instruction reading it is
+    /// still queued for LATER emission: `plan_placement` will still see that value
+    /// live through its real (later) `last_use` instruction regardless of this
+    /// emitter's bookkeeping, so freeing its width immediately on eviction would
+    /// be a genuine underestimate relative to `plan_placement` — exactly the
+    /// invariant this whole tracker must not violate.
+    pending_reads: std::collections::HashMap<ValueId, usize>,
+    /// Real `ExprId`s ever evicted (admission-time or temp-pressure-forced) during
+    /// this layer compile. Once evicted, an `ExprId` may never be re-admitted
+    /// (`try_admit` checks this first) — this rules out a value acquiring a SECOND
+    /// `defines` instruction, which would otherwise make `plan_placement`'s
+    /// `def = first defining instr` / `last_use = max read instr` model span both
+    /// generations as one long (and possibly WIDER-than-tracked) interval, a real
+    /// underestimate risk relative to the tracker's own gap-aware accounting.
+    never_readmit: HashSet<ExprId>,
 }
 
 /// BabyBear field −1 (= P−1), the canonical additive-inverse-of-1 representative.
@@ -219,8 +269,49 @@ struct VirtualLower<'a> {
 
 impl<'a> VirtualLower<'a> {
     fn emit(&mut self, vi: VInstr) {
+        // Demand-driven eviction (Decisions only): this instruction's `reads` is the
+        // exact set `place::compute_live_ranges` will scan too — release any pending
+        // temp the instant its one-and-only consuming read appears here, so the
+        // tracker's live_width tracks the SAME instant `plan_placement` will treat as
+        // that temp's `last_use`.
+        if let Some(ds) = &mut self.decisions {
+            if !ds.pending_temps.is_empty() || !ds.pending_reads.is_empty() {
+                let place_instr = vi.to_place();
+                for op in &place_instr.reads {
+                    if let VirtualOp::Value(id) = op {
+                        // Drain one outstanding deferred-consumption slot (see
+                        // `pending_reads`'s doc) — gates eviction candidacy, independent
+                        // of the temp-width release below.
+                        if let Some(cnt) = ds.pending_reads.get_mut(id) {
+                            *cnt -= 1;
+                            if *cnt == 0 {
+                                ds.pending_reads.remove(id);
+                            }
+                        }
+                        if ds.pending_temps.remove(id) {
+                            let width = resident_width(
+                                *self.widths.get(id).expect("pending temp must have a recorded width"),
+                            );
+                            ds.live_width = ds.live_width.saturating_sub(width);
+                        }
+                    }
+                }
+            }
+        }
         self.out.push(vi);
         self.step_of_instr.push(self.cur_step);
+    }
+
+    /// Register a `VirtualOp::Value(id)` about to be returned to a caller that will
+    /// consume it LATER (not inline) — increments `pending_reads[id]` so
+    /// `evict_to_fit` won't pick `id` as an eviction victim while this reference is
+    /// still outstanding (see `pending_reads`'s doc). The single choke point for
+    /// every `Value`-producing exit of `lower_operand_virtual`/`finalize_produced`.
+    fn defer_read(&mut self, id: ValueId) -> VirtualOp {
+        if let Some(ds) = &mut self.decisions {
+            *ds.pending_reads.entry(id).or_insert(0) += 1;
+        }
+        VirtualOp::Value(id)
     }
 
     fn fresh_internal(&mut self) -> ValueId {
@@ -297,22 +388,57 @@ impl<'a> VirtualLower<'a> {
     /// even the weakest resident's priority is >= the admitting occurrence's priority (or
     /// there isn't enough to evict), admission is SKIPPED — no partial eviction.
     fn try_admit(&mut self, v: ExprId, field: OperandField) -> bool {
-        let Some(ds) = &mut self.decisions else { return false };
+        let Some(ds) = &self.decisions else { return false };
+        if ds.never_readmit.contains(&v) {
+            return false; // once evicted, never re-admitted (see `never_readmit`'s doc)
+        }
         let Some(admitting_priority) = ds.streams.effective_priority(v) else {
             return false; // no remaining occurrence: not worth caching
         };
         let need = resident_width(field);
-        let used: usize = ds.resident.values().copied().map(resident_width).sum();
-        if used + need <= ds.budget {
-            ds.resident.insert(v, field);
-            self.defined.insert(v);
+        if !self.evict_to_fit(need, Some(admitting_priority)) {
+            return false;
+        }
+        let ds = self.decisions.as_mut().expect("checked Some above");
+        ds.resident.insert(v, field);
+        ds.live_width += need;
+        self.defined.insert(v);
+        true
+    }
+
+    /// Demand-driven eviction (replaces the deleted static `resident_cap_for_order`
+    /// pre-reservation): free at least `need` width-weighted cells by evicting
+    /// lowest-effective-priority residents (ascending `(effective priority, ExprId)`,
+    /// `total_cmp`; a dead/no-remaining-occurrence resident's priority reads as
+    /// `f64::NEG_INFINITY`, so it is always evicted before any live one).
+    ///
+    /// - `admitting_priority = Some(p)` (an ADMISSION deciding whether `v` is worth
+    ///   caching): all-or-nothing, no partial eviction — if the weakest remaining
+    ///   victim's priority is already `>= p`, the eviction (and thus the admission)
+    ///   is skipped; `false` means "don't admit", not "infeasible".
+    /// - `admitting_priority = None` (a MANDATORY expression-temp allocation: the
+    ///   compile cannot proceed without this cell, caching value is irrelevant):
+    ///   forced, priority-unconditional eviction — evict lowest-priority residents
+    ///   regardless of their value until `need` fits or the resident set is
+    ///   exhausted. `false` here means genuine infeasibility.
+    ///
+    /// Every evicted `ExprId` is recorded in `never_readmit` (see its doc).
+    fn evict_to_fit(&mut self, need: usize, admitting_priority: Option<f64>) -> bool {
+        let Some(ds) = &self.decisions else { return false };
+        if ds.live_width + need <= ds.budget {
             return true;
         }
-
-        // Over budget: rank eviction candidates ascending by (effective priority, ExprId).
+        // Exclude any resident with an outstanding deferred-consumption reference
+        // (`pending_reads` > 0): a sibling child already resolved a `Value(id)` read
+        // for it that is still queued for a LATER emission (see `pending_reads`'s
+        // doc). Evicting it now would free width the tracker would then hand out to
+        // something else, while `plan_placement` still holds `id` live through that
+        // later read — a genuine underestimate. Skipping it here costs nothing but a
+        // possibly-suboptimal victim choice; it is never a correctness gap.
         let mut candidates: Vec<(f64, ExprId, OperandField)> = ds
             .resident
             .iter()
+            .filter(|&(&id, _)| ds.pending_reads.get(&id).copied().unwrap_or(0) == 0)
             .map(|(&id, &f)| {
                 let p = ds.streams.effective_priority(id).unwrap_or(f64::NEG_INFINITY);
                 (p, id, f)
@@ -320,28 +446,61 @@ impl<'a> VirtualLower<'a> {
             .collect();
         candidates.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
 
+        let budget = ds.budget;
+        let live_width = ds.live_width;
         let mut freed = 0usize;
-        let mut to_evict: Vec<ExprId> = Vec::new();
+        let mut to_evict: Vec<(ExprId, OperandField)> = Vec::new();
         for (priority, id, f) in candidates {
-            if used + need <= ds.budget + freed {
+            if live_width - freed + need <= budget {
                 break;
             }
-            if priority >= admitting_priority {
-                return false; // weakest remaining victim is at least as valuable: skip
+            if let Some(admitting_priority) = admitting_priority {
+                if priority >= admitting_priority {
+                    return false; // weakest remaining victim is at least as valuable: skip
+                }
             }
             freed += resident_width(f);
-            to_evict.push(id);
+            to_evict.push((id, f));
         }
-        if used + need > ds.budget + freed {
+        if live_width - freed + need > budget {
             return false; // ran out of candidates without freeing enough
         }
-        for id in to_evict {
+        let ds = self.decisions.as_mut().expect("checked Some above");
+        for (id, f) in to_evict {
             ds.resident.remove(&id);
             self.defined.remove(&id);
+            ds.live_width -= resident_width(f);
+            ds.never_readmit.insert(id);
         }
-        ds.resident.insert(v, field);
-        self.defined.insert(v);
         true
+    }
+
+    /// Allocate a fresh internal expression-temp's cell under demand-driven eviction
+    /// pressure: force-evict residents (`evict_to_fit(.., None)`, mandatory —
+    /// temps are structurally required for the compile to proceed, unlike an
+    /// admission which can simply decline) until `field`'s width fits, then mint the
+    /// temp, register it as pending (single-use release, see `pending_temps`'s doc),
+    /// and physically evict it to a cell. `LegacyRecompute` (`self.decisions.is_none()`)
+    /// skips all tracking — its only feasibility gate is `plan_placement`.
+    fn alloc_temp_evicting(&mut self, field: OperandField) -> Result<ValueId, CompileError> {
+        if self.decisions.is_some() {
+            let need = resident_width(field);
+            if !self.evict_to_fit(need, None) {
+                let ds = self.decisions.as_ref().expect("checked Some above");
+                return Err(CompileError::BudgetBelowFloor {
+                    floor: ds.live_width + need,
+                    budget: ds.budget,
+                });
+            }
+        }
+        let t = self.fresh_internal();
+        self.widths.insert(t, field);
+        if let Some(ds) = &mut self.decisions {
+            ds.live_width += resident_width(field);
+            ds.pending_temps.insert(t);
+        }
+        self.emit_evict_to_cell(t, field);
+        Ok(t)
     }
 
     /// Finalize a just-produced value (its true value is now in the acc): decide whether
@@ -360,7 +519,7 @@ impl<'a> VirtualLower<'a> {
         expr_id: ExprId,
         field: OperandField,
         resident_target: &HashSet<ExprId>,
-    ) -> VirtualOp {
+    ) -> Result<VirtualOp, CompileError> {
         let admitted = if matches!(self.policy, MaterializePolicy::Decisions { .. }) {
             self.try_admit(expr_id, field)
         } else {
@@ -370,12 +529,10 @@ impl<'a> VirtualLower<'a> {
             self.widths.insert(expr_id, field);
             self.emit_evict_to_cell(expr_id, field);
             self.defined.insert(expr_id); // idempotent under `Decisions` (try_admit already did this)
-            VirtualOp::Value(expr_id)
+            Ok(self.defer_read(expr_id))
         } else {
-            let t = self.fresh_internal();
-            self.widths.insert(t, field);
-            self.emit_evict_to_cell(t, field);
-            VirtualOp::Value(t)
+            let t = self.alloc_temp_evicting(field)?;
+            Ok(self.defer_read(t))
         }
     }
 
@@ -474,7 +631,7 @@ impl<'a> VirtualLower<'a> {
 
         // 1. Truly defined-resident → serve from its cell (value-safe).
         if self.defined.contains(&expr_id) {
-            return Ok(VirtualOp::Value(expr_id));
+            return Ok(self.defer_read(expr_id));
         }
         // 2. A source or resolution-pruned leaf resolves to one operand line. Under
         //    `Decisions`, a leaf can ALSO be admitted into residency (Task 3: caching
@@ -491,7 +648,7 @@ impl<'a> VirtualLower<'a> {
                     self.widths.insert(expr_id, field);
                     self.emit_evict_to_cell(expr_id, field);
                     self.defined.insert(expr_id);
-                    return Ok(VirtualOp::Value(expr_id));
+                    return Ok(self.defer_read(expr_id));
                 }
             }
             return Ok(op);
@@ -501,7 +658,7 @@ impl<'a> VirtualLower<'a> {
         let field = child_operand_field(layer, expr_id, expected, &self.cross);
         self.compile_expr_virtual(layer, expr_id, field, resident_target)?;
         self.materialize_if_root(expr_id, true);
-        Ok(self.finalize_produced(expr_id, field, resident_target))
+        self.finalize_produced(expr_id, field, resident_target)
     }
 
     // ── expression lowering into the accumulator (mirrors arith::compile_expr) ────
@@ -828,9 +985,7 @@ impl<'a> VirtualLower<'a> {
         self.push_fold(field, ops[idx..idx + first].to_vec(), is_add, Sign::Plus);
         idx += first;
         for size in chunks {
-            let t = self.fresh_internal();
-            self.widths.insert(t, field);
-            self.emit_evict_to_cell(t, field);
+            let t = self.alloc_temp_evicting(field)?;
             let chunk = &ops[idx..idx + size];
             idx += size;
             self.emit_init(chunk[0].clone());
@@ -1020,6 +1175,10 @@ pub(crate) fn lower_layer_virtual(
             streams: OccurrenceStreams::build(layer, &schedule.order, &ctx.actions, decisions),
             resident: BTreeMap::new(),
             budget: *budget,
+            live_width: 0,
+            pending_temps: std::collections::HashSet::new(),
+            pending_reads: std::collections::HashMap::new(),
+            never_readmit: HashSet::new(),
         }),
         MaterializePolicy::LegacyRecompute => None,
     };

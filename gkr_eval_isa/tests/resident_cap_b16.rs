@@ -1,17 +1,27 @@
-//! Task 8/8a: b16 add_sub L0 `MaterializePolicy::Decisions` feasibility.
+//! Task 8/8a/8b: b16 add_sub L0 `MaterializePolicy::Decisions` feasibility.
 //!
 //! Step-0 (findings in `.superpowers/sdd/task-8-report.md`) found `try_admit` had
 //! no way to DECLINE an admission while capacity was free: the resident set
 //! greedily filled the whole placement budget and starved the concurrent
 //! evaluation temps, so every genome was `BudgetBelowFloor` at b16.
 //!
-//! Task 8a fixed this by capping the `Decisions` resident-admission budget at
-//! `budget - legacy_recompute_floor` (`scorer::resident_cap_for_order` /
-//! `LayerCtx::resident_cap`) — residents may only consume cells pure computation
-//! doesn't need. The tests below are the promoted, no-longer-`#[ignore]`d Step-0
-//! probes: they pin the now-fixed b16 feasibility (test 1, the load-bearing one)
-//! and the cap's graceful degeneracy to `LegacyRecompute` when there is no
-//! headroom to spare (test 2).
+//! Task 8a fixed this by capping the `Decisions` resident-admission budget at a
+//! STATIC `budget - legacy_recompute_floor` derived once per `(layer, order)`
+//! (`scorer::resident_cap_for_order` / `LayerCtx::resident_cap`, since deleted).
+//!
+//! Task 8b replaced that static pre-reservation with DEMAND-DRIVEN eviction
+//! (`lower.rs`'s `DecisionsState`/`evict_to_fit`): residents are admitted against
+//! the FULL placement budget and only evicted when an expression-temp allocation
+//! actually needs the room, rather than reserving worst-case compute headroom for
+//! the whole layer up front. `Decisions.budget` is now always the plain placement
+//! budget — there is no separate cap to derive or degenerate. The tests below are
+//! Task 8b's versions of the original Step-0/Task-8a probes: test 1 (the
+//! load-bearing one) pins b16 feasibility + a traffic win over `LegacyRecompute`;
+//! test 2 replaces the deleted static-cap degeneracy check (`resident_cap ==
+//! 0` at `budget == legacy_floor`) with the analogous demand-driven property: at
+//! a budget with NO headroom above the `LegacyRecompute` floor, `Decisions` must
+//! still be feasible (temps always win eviction pressure against residents) and
+//! must never do WORSE than `LegacyRecompute`'s own traffic.
 
 mod common;
 
@@ -26,7 +36,7 @@ use gkr_eval_isa::fwd::compile::{
     build_cross_layer_field_map, compile_layer_with_policy, MaterializePolicy,
 };
 use gkr_eval_isa::schedule_search::genome::Genome;
-use gkr_eval_isa::schedule_search::scorer::{decode_schedule, resident_cap_for_order, score, LayerCtx};
+use gkr_eval_isa::schedule_search::scorer::{decode_schedule, score, LayerCtx};
 
 use common::load_fixture;
 
@@ -72,7 +82,7 @@ fn b16_add_sub_l0_decisions_feasible_beats_legacy() {
     let decisions_score = score(&genome, &ctx);
     assert!(
         !decisions_score.infeasible,
-        "Decisions must be feasible at budget {BUDGET} for add_sub L0 (Task 8a resident cap)"
+        "Decisions must be feasible at budget {BUDGET} for add_sub L0 (demand-driven eviction)"
     );
     assert!(
         decisions_score.dram_traffic < legacy_traffic,
@@ -81,56 +91,62 @@ fn b16_add_sub_l0_decisions_feasible_beats_legacy() {
         legacy_traffic
     );
     println!(
-        "b16 add_sub L0: legacy traffic={legacy_traffic} decisions(neutral) traffic={} \
-         (resident_cap={})",
+        "b16 add_sub L0: legacy traffic={legacy_traffic} decisions(neutral) traffic={} (budget={BUDGET})",
         decisions_score.dram_traffic,
-        ctx.resident_cap(&sched.order)
     );
 }
 
-/// Cap degeneracy: at `budget == legacy_recompute_floor`, the resident cap is 0
-/// (no headroom to spare), so `Decisions` admits nothing and must match
-/// `LegacyRecompute`'s own traffic exactly (zero admissions -> same emission).
+/// Demand-driven analogue of the deleted static-cap degeneracy test: at a budget
+/// with almost NO headroom above `LegacyRecompute`'s own peak live-cell width,
+/// `Decisions` must still be feasible and must never do WORSE than
+/// `LegacyRecompute`'s own traffic (any resident that survives even briefly
+/// before being evicted under pressure is a pure win, never a loss, since
+/// eviction emits no instruction and the value is simply recomputed on the next
+/// miss exactly as `LegacyRecompute` always does).
+///
+/// NOT exactly `legacy_floor` (the literal zero-headroom point the deleted
+/// static-cap test pinned): `evict_to_fit`'s `pending_reads` guard (see
+/// `lower.rs`) can legitimately hold a resident's width a FEW cells past its
+/// logical eviction point when a sibling child already queued a not-yet-emitted
+/// read for it — the correctness-preserving cost of never underestimating
+/// relative to `plan_placement` (see this crate's Task 8b design doc). A small,
+/// fixed `+4` margin (one quad) comfortably absorbs that and is still a "no
+/// meaningful headroom" budget for this exercise's purpose (also side-steps an
+/// unrelated pre-existing `place.rs::clear_quad_for_ext` panic on non-4-aligned
+/// budgets whose target-quad index computation doesn't account for a trailing
+/// partial quad — out of this task's scope; see the Task 8b report's concerns).
 #[test]
-fn resident_cap_degenerates_to_legacy_at_zero_headroom() {
+fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
     let layer = &dag.layers[0];
 
-    // Find `legacy_recompute_floor` for the neutral-genome order via the same
-    // derivation the scorer uses, at a generously large probe budget (the floor
-    // itself doesn't depend on the probe budget once it's above the true floor —
-    // `resident_cap_for_order` reads it straight off `Placement::max_live_cells`).
+    // Find `LegacyRecompute`'s own peak live-cell width for the neutral-genome
+    // order at a generously large probe budget (a real compile's `max_live_cells`,
+    // not a binary-searched approximation).
     let probe_ctx = LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, 4096);
     let genome = Genome::neutral(probe_ctx.n_order_keys(), probe_ctx.n_sites());
     let sched = decode_schedule(&genome, &probe_ctx);
-    let legacy_floor = 4096
-        - resident_cap_for_order(
-            layer,
-            &artifact.layers[0],
-            &artifact.scratch_space_mapping,
-            &cross,
-            &sched.order,
-            4096,
-        );
-
-    // Re-derive the cap AT budget == legacy_floor: must be exactly 0.
-    let cap_at_floor = resident_cap_for_order(
-        layer,
-        &artifact.layers[0],
-        &artifact.scratch_space_mapping,
-        &cross,
-        &sched.order,
-        legacy_floor,
-    );
-    assert_eq!(cap_at_floor, 0, "resident cap must be 0 when budget == legacy floor (no headroom)");
-
     let legacy_schedule = LayerSchedule {
         order: sched.order.clone(),
         sites: Vec::new(),
         predicted_traffic: 0,
         floor: 0,
     };
-    let legacy_compiled = compile_layer_with_policy(
+    let legacy_probe = compile_layer_with_policy(
+        layer,
+        &artifact.layers[0],
+        &artifact.scratch_space_mapping,
+        &cross,
+        &legacy_schedule,
+        4096,
+        MaterializePolicy::LegacyRecompute,
+    )
+    .unwrap_or_else(|e| panic!("LegacyRecompute must be feasible at a generous budget: {e:?}"));
+    let legacy_floor = legacy_probe.stats.max_live_cells;
+
+    // Re-run LegacyRecompute AT its own floor (its own peak fits its own floor by
+    // construction) as the traffic baseline `Decisions` must not exceed.
+    let legacy_at_floor = compile_layer_with_policy(
         layer,
         &artifact.layers[0],
         &artifact.scratch_space_mapping,
@@ -142,21 +158,26 @@ fn resident_cap_degenerates_to_legacy_at_zero_headroom() {
     .unwrap_or_else(|e| panic!("LegacyRecompute must be feasible at its own floor: {e:?}"));
 
     let decisions = SiteDecisions::new(sched.sites.iter().copied());
-    let decisions_compiled = compile_layer_with_policy(
+    let decisions_at_floor = compile_layer_with_policy(
         layer,
         &artifact.layers[0],
         &artifact.scratch_space_mapping,
         &cross,
         &sched,
-        legacy_floor,
-        MaterializePolicy::Decisions { decisions, budget: cap_at_floor },
+        legacy_floor + 4,
+        MaterializePolicy::Decisions { decisions, budget: legacy_floor + 4 },
     )
     .unwrap_or_else(|e| {
-        panic!("Decisions at cap=0 must still be feasible (== LegacyRecompute): {e:?}")
+        panic!(
+            "Decisions at near-zero headroom above the LegacyRecompute floor ({legacy_floor}) must \
+             still be feasible (demand-driven eviction always makes room for temps): {e:?}"
+        )
     });
 
-    assert_eq!(
-        decisions_compiled.stats.dram_traffic, legacy_compiled.stats.dram_traffic,
-        "Decisions with a zero resident cap must match LegacyRecompute's traffic exactly"
+    assert!(
+        decisions_at_floor.stats.dram_traffic <= legacy_at_floor.stats.dram_traffic,
+        "Decisions with zero headroom ({}) must not do WORSE than LegacyRecompute ({})",
+        decisions_at_floor.stats.dram_traffic,
+        legacy_at_floor.stats.dram_traffic
     );
 }

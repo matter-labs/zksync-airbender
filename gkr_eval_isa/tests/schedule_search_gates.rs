@@ -22,19 +22,22 @@ use gkr_eval_isa::fwd::compile::{
 };
 use gkr_eval_isa::schedule_search::genome::Genome;
 use gkr_eval_isa::schedule_search::producer::produce_circuit_schedule;
-use gkr_eval_isa::schedule_search::scorer::{objective_key, resident_cap_for_order, score, LayerCtx};
+use gkr_eval_isa::schedule_search::scorer::{objective_key, score, LayerCtx};
 use gkr_eval_isa::schedule_search::search::SearchConfig;
 
 use common::{compiled_circuit_dir, load_fixture, schedule_stem};
 
 /// The real production budget convention (`*_schedule_b16_gkr.json`) — used by the
-/// `#[ignore]`d regen entry point below AND (Task 8a) the mini GATE-D roundtrip.
+/// `#[ignore]`d regen entry point below AND (Task 8a/8b) the mini GATE-D roundtrip.
 /// NOTE (Task 8a, supersedes the old task-6-report.md "known gap" note): b16 add_sub
 /// L0 was `Decisions`-admission-infeasible for EVERY genome because `try_admit` had
 /// no way to decline an admission while capacity was free — the resident set
 /// greedily filled the whole placement budget and starved the concurrent evaluation
-/// temps. Fixed by capping resident admission at `budget - legacy_recompute_floor`
-/// (`scorer::resident_cap_for_order`, `.superpowers/sdd/task-8-report.md`); 16 is now
+/// temps. Task 8a fixed this with a static resident cap (`budget -
+/// legacy_recompute_floor`); Task 8b replaced that cap with demand-driven eviction
+/// (`lower.rs`'s `DecisionsState`/`evict_to_fit`, `.superpowers/sdd/task-8-report.md`)
+/// that evicts residents on-demand under temp pressure instead of pre-reserving a
+/// fixed headroom — `Decisions.budget` is now the plain placement budget. 16 is
 /// feasible and is the pinned budget for both the regen entry point and the mini
 /// GATE-D search below.
 const REAL_BUDGET: usize = 16;
@@ -149,20 +152,10 @@ fn small_search_roundtrip_add_sub() {
         if ls.order.is_empty() {
             continue;
         }
-        // Task 8a: `score()` compiled the winning schedule with the resident set
-        // capped at `resident_cap_for_order(..., ls.order, SEARCH_TEST_BUDGET)`, not
-        // the raw placement budget — reproducing `predicted_traffic` exactly means
-        // applying the SAME cap derivation here (deterministic in `(layer, order,
-        // budget)`, so recomputing it from the persisted `ls.order` is exact, not an
-        // approximation).
-        let cap = resident_cap_for_order(
-            layer,
-            &artifact.layers[li],
-            &artifact.scratch_space_mapping,
-            &cross,
-            &ls.order,
-            SEARCH_TEST_BUDGET,
-        );
+        // Task 8b: `score()` compiled the winning schedule with `Decisions.budget ==
+        // SEARCH_TEST_BUDGET` directly (demand-driven eviction, no separate
+        // resident-admission cap to re-derive) — reproducing `predicted_traffic`
+        // exactly just means recompiling at that same budget.
         let decisions = SiteDecisions::new(ls.sites.iter().copied());
         let compiled = compile_layer_with_policy(
             layer,
@@ -171,7 +164,7 @@ fn small_search_roundtrip_add_sub() {
             &cross,
             ls,
             SEARCH_TEST_BUDGET,
-            MaterializePolicy::Decisions { decisions, budget: cap },
+            MaterializePolicy::Decisions { decisions, budget: SEARCH_TEST_BUDGET },
         )
         .unwrap_or_else(|e| panic!("layer {li}: winning schedule failed to recompile: {e:?}"));
         assert_eq!(

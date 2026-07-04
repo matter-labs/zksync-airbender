@@ -421,7 +421,13 @@ fn decisions_value_parity_any_priorities() {
             (root_output(RootId(0), r0), hi),
             (root_output(RootId(1), r1), lo),
         ]);
-        let compiled = compile(&layer, &sched, 16, MaterializePolicy::Decisions { decisions, budget: 1 });
+        // Task 8b: `Decisions.budget` is now the SAME single budget that bounds
+        // placement (demand-driven eviction — no separate resident-admission cap;
+        // see `lower.rs`'s `DecisionsState`), so both arguments must agree. `2` is
+        // the tightest budget this Mul(s,s)/Mul(s,z) shape can compile at (two
+        // concurrent Base operands for a product's lhs/rhs) while still forcing
+        // admission/eviction to fire under the extreme adversarial priorities.
+        let compiled = compile(&layer, &sched, 2, MaterializePolicy::Decisions { decisions, budget: 2 });
 
         for row in [0usize, 1, 2, 5] {
             let outs = interpret_layer_row(&compiled, &layer, &resolvers(&sr), row).unwrap();

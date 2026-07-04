@@ -18,7 +18,6 @@ use gkr_eval_isa::fwd::compile::{
 };
 use gkr_eval_isa::fwd::context::CompiledLayer;
 use gkr_eval_isa::fwd::interp::interpret_layer_row;
-use gkr_eval_isa::schedule_search::scorer::resident_cap_for_order;
 
 // ── Task 8: committed corpus + Decisions compile of a committed schedule ──────────
 
@@ -40,14 +39,13 @@ const COMMITTED_CORPUS: &[(&str, &str)] = &[
 ];
 
 /// Compile every scheduled layer of a committed schedule under
-/// `MaterializePolicy::Decisions` built from the stored `sites`, with the resident
-/// admission cap re-derived from the stored `order` via
-/// `scorer::resident_cap_for_order` — the SAME deterministic `(layer, order, budget)`
-/// derivation `scorer::score` applied when the producer created the artifact, so
-/// this reproduces the producer's compile exactly (GATE-D's premise). Returns
-/// `None` for layers the producer skipped (empty `order` — mirrors
-/// `compile_circuit`'s own `layer_needs_compile` skip; the producer shares that
-/// predicate, so empty-`order` schedules exist only for genuinely skippable layers).
+/// `MaterializePolicy::Decisions` built from the stored `sites`, at the stored
+/// `budget` directly (post demand-driven-eviction: `Decisions.budget` IS the
+/// placement budget — no separate resident-admission cap to re-derive; see
+/// `lower.rs`'s `DecisionsState`/`evict_to_fit`). Returns `None` for layers the
+/// producer skipped (empty `order` — mirrors `compile_circuit`'s own
+/// `layer_needs_compile` skip; the producer shares that predicate, so
+/// empty-`order` schedules exist only for genuinely skippable layers).
 fn compile_committed_decisions(
     dag: &cs::gkr_compiler::dag_ir::DagCircuit,
     sched: &CircuitSchedule,
@@ -64,14 +62,6 @@ fn compile_committed_decisions(
             if !layer_needs_compile(ls.order.is_empty(), layer) {
                 return None;
             }
-            let cap = resident_cap_for_order(
-                layer,
-                &artifact.layers[li],
-                &artifact.scratch_space_mapping,
-                &cross,
-                &ls.order,
-                sched.budget,
-            );
             let decisions = SiteDecisions::new(ls.sites.iter().copied());
             Some(
                 compile_layer_with_policy(
@@ -81,12 +71,63 @@ fn compile_committed_decisions(
                     &cross,
                     ls,
                     sched.budget,
-                    MaterializePolicy::Decisions { decisions, budget: cap },
+                    MaterializePolicy::Decisions { decisions, budget: sched.budget },
                 )
                 .unwrap_or_else(|e| panic!("[{name}] L{li}: Decisions compile: {e:?}")),
             )
         })
         .collect()
+}
+
+/// **Load-bearing** (Task 8b): the demand-driven eviction tracker in `lower.rs`
+/// must never UNDERESTIMATE relative to `plan_placement`'s independent liveness
+/// model — i.e. "the tracker admitted this" must imply "`plan_placement` fits it
+/// at the same budget". `compile_layer_with_policy` (`mod.rs`) already chains the
+/// two: it runs the tracker-driven emitter FIRST, then calls `plan_placement` on
+/// the resulting instruction stream at the SAME `budget`, and only returns `Ok`
+/// if BOTH succeed — so any tracker/placement disagreement surfaces as an `Err`
+/// here (never a silently-wrong compile), which this test turns into a loud,
+/// dedicated failure across the ENTIRE committed corpus rather than relying on
+/// the incidental panics inside GATE-V/GATE-D's own compiles.
+#[test]
+fn tracker_admission_implies_placement_feasible_on_committed_corpus() {
+    let mut layers_checked = 0usize;
+    for (name, stem) in COMMITTED_CORPUS {
+        let (dag, sched, artifact) = load_committed(name, stem);
+        let cross = build_cross_layer_field_map(&dag);
+        for (li, (layer, ls)) in dag.layers.iter().zip(&sched.layers).enumerate() {
+            if !layer_needs_compile(ls.order.is_empty(), layer) {
+                continue;
+            }
+            let decisions = SiteDecisions::new(ls.sites.iter().copied());
+            let compiled = compile_layer_with_policy(
+                layer,
+                &artifact.layers[li],
+                &artifact.scratch_space_mapping,
+                &cross,
+                ls,
+                sched.budget,
+                MaterializePolicy::Decisions { decisions, budget: sched.budget },
+            );
+            assert!(
+                compiled.is_ok(),
+                "{name} L{li}: demand-driven tracker admitted a schedule that \
+                 plan_placement's independent model rejects at budget {}: {:?}",
+                sched.budget,
+                compiled.err()
+            );
+            assert!(
+                compiled.unwrap().stats.max_live_cells <= sched.budget,
+                "{name} L{li}: placement peak exceeds the budget the tracker admitted at"
+            );
+            layers_checked += 1;
+        }
+    }
+    assert!(layers_checked > 0, "vacuous");
+    eprintln!(
+        "[tracker-placement-agreement] {layers_checked} layers across {} fixtures: OK",
+        COMMITTED_CORPUS.len()
+    );
 }
 
 // ── Task 1 (event-local `MaterializePolicy::Materialize` cache-produce-vs-fuse) ──
