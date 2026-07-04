@@ -9,8 +9,10 @@ use super::{Expr, ExprId, SourceId, SourceInfo, SourceKind};
 /// An interning arena for DAG IR nodes.
 ///
 /// `intern_source` deduplicates `SourceKind` values.
-/// `add` / `mul` flatten nested same-op children, sort operands by `ExprId`
-/// (ascending), keep repeated operands, and then intern the canonical `Expr`.
+/// `add` / `mul` sort operands by `ExprId` (ascending), keep repeated
+/// operands, and intern the canonical `Expr`. Nested same-op children are
+/// flattened only under the legacy `with_flatten(true)` knob (test-support);
+/// the default (`new()`) keeps them nested for the simplify pipeline.
 ///
 /// `cache_aliases` maps each `GKRAddress::Cached` address materialized as a
 /// cache value in THIS layer to the **shared `ExprId`** of that value (in-layer
@@ -35,8 +37,10 @@ pub struct ArenaBuilder {
     fenced: HashSet<ExprId>,
 
     /// Controls whether `canonicalize` flattens nested same-op children.
-    /// When `true` (default), nested same-kind children are flattened into their parent.
-    /// When `false`, nested children survive as operands.
+    /// When `false` (the default via `new()`), nested children survive as
+    /// operands — the unflattened shape the simplify pipeline expects.
+    /// When `true` (the legacy build-time-flatten knob, test-support only),
+    /// nested same-kind children are flattened into their parent.
     flatten_nested: bool,
 }
 
@@ -53,10 +57,11 @@ impl ArenaBuilder {
 
     /// Create an `ArenaBuilder` with a configurable flattening behavior.
     ///
-    /// When `flatten_nested` is `true` (default via `new()`), nested same-op
-    /// children are flattened into their parent. When `false`, nested children
-    /// survive as operands, allowing fan-out-aware simplification passes to work
-    /// on an unflattened DAG.
+    /// When `flatten_nested` is `false` (the default via `new()`), nested
+    /// children survive as operands, allowing fan-out-aware simplification
+    /// passes to work on the unflattened DAG. When `true` (the legacy
+    /// build-time-flatten knob, test-support only — see `lower_dag_legacy`),
+    /// nested same-op children are flattened into their parent.
     pub fn with_flatten(flatten_nested: bool) -> Self {
         Self {
             sources: Vec::new(),
