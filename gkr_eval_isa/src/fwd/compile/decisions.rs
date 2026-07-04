@@ -51,9 +51,10 @@
 //! `LookupValue` source as if it had one synthetic child, `query`, at
 //! `input_index: 0`.
 
+use super::super::context::ForwardAction;
 use super::arith::{classify_additive_child, is_constant_one, is_neg_one_factor, is_zero_expr, AdditiveChild};
 use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, RootId, SourceKind};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 // ── SiteKey / SiteConsumer ───────────────────────────────────────────────────
 
@@ -103,21 +104,84 @@ pub struct OccurrenceStreams {
 }
 
 impl OccurrenceStreams {
-    /// Build from (order, decisions, layer): for each root in `order`, replay
-    /// the emitter's actual demand order (see module doc for exactly which
-    /// `lower.rs` spans this mirrors, and the option-(b) rationale). `order`
-    /// is authoritative over `RootId` numeric value — roots are visited in
-    /// `order`'s sequence, not sorted by id.
+    /// Build from (order, actions, decisions, layer): for each root in
+    /// `order`, replay the emitter's actual demand order (see module doc for
+    /// exactly which `lower.rs` spans this mirrors, and the option-(b)
+    /// rationale). `order` is authoritative over `RootId` numeric value —
+    /// roots are visited in `order`'s sequence, not sorted by id.
+    ///
+    /// SERVE/BUILD 1:1 ALIGNMENT INVARIANT: `lower_layer_virtual` (lower.rs
+    /// ~:1298-1346) does NOT call `serve_occurrence` for every root in
+    /// `order` — only `ForwardAction::Compute` roots not yet in its `exposed`
+    /// set actually reach `lower_operand_virtual`'s demand walk.
+    /// `ForwardAction::CopyAlias` and `ForwardAction::SkipScratchPrefill`
+    /// roots never serve anything, and a `Compute` root whose `ExprId` a
+    /// PRIOR root (any RootId, sharing that expr) already exposed is skipped
+    /// too (`materialize_if_root`'s de-dup, lower.rs:1074-1102, exposes every
+    /// sibling `Compute`-action root sharing the materialized expr, not just
+    /// `rid` itself). If `build` pushed a site for a root the lowering will
+    /// skip, that site would sit at the FRONT of its value's queue forever
+    /// unconsumed, so a later, genuinely-served occurrence of the same value
+    /// would read the phantom's stale priority instead of its own — silently
+    /// corrupting `effective_priority`/admission decisions (search-quality
+    /// bug, not a soundness one, but a real one). So `build` replicates the
+    /// SAME `ForwardAction` classification and `exposed`-dedup the lowering
+    /// applies before contributing any site for a root: a root the lowering
+    /// would skip contributes ZERO occurrences (no `RootOutput` site, no
+    /// interior demand walk).
     ///
     /// A site missing from `d` defaults to priority `0.0` (this pure builder
     /// never fails on incomplete decisions; callers that need full coverage
     /// should assert it themselves before calling `build`).
-    pub fn build(layer: &DagLayer, order: &[RootId], d: &SiteDecisions) -> Self {
+    pub fn build(
+        layer: &DagLayer,
+        order: &[RootId],
+        actions: &HashMap<RootId, ForwardAction>,
+        d: &SiteDecisions,
+    ) -> Self {
         let mut flat: Vec<SiteKey> = Vec::new();
+        // Mirrors `VirtualLower::exposed` (lower.rs:211): a root, once exposed,
+        // never serves again — whether by its own visit or by a sibling
+        // `Compute`-action root sharing its `ExprId` (see doc above).
+        let mut exposed: BTreeSet<RootId> = BTreeSet::new();
         for &root_id in order {
-            let root_expr = layer.roots[root_id.0 as usize].expr;
-            flat.push(SiteKey { root: root_id, consumer: SiteConsumer::RootOutput, value: root_expr });
-            demand_expand(layer, root_id, root_expr, &mut flat);
+            if exposed.contains(&root_id) {
+                continue;
+            }
+            match actions.get(&root_id) {
+                Some(ForwardAction::Compute) => {
+                    let root_expr = layer.roots[root_id.0 as usize].expr;
+                    flat.push(SiteKey {
+                        root: root_id,
+                        consumer: SiteConsumer::RootOutput,
+                        value: root_expr,
+                    });
+                    demand_expand(layer, root_id, root_expr, &mut flat);
+                    exposed.insert(root_id);
+                    // Mirrors `materialize_if_root`'s dedup (lower.rs:1074-1102):
+                    // exposing `root_expr` exposes EVERY `Compute`-action root
+                    // sharing that expr, not just `root_id`, regardless of
+                    // whether that sibling has been visited in `order` yet.
+                    for (idx, other) in layer.roots.iter().enumerate() {
+                        let other_id = RootId(idx as u32);
+                        if other_id != root_id
+                            && other.expr == root_expr
+                            && matches!(actions.get(&other_id), Some(ForwardAction::Compute))
+                        {
+                            exposed.insert(other_id);
+                        }
+                    }
+                }
+                Some(ForwardAction::CopyAlias { .. }) => {
+                    // lower.rs:1332-1345: emits an alias root_output, but never
+                    // reaches `lower_operand_virtual` — no demand site at all.
+                    exposed.insert(root_id);
+                }
+                Some(ForwardAction::SkipScratchPrefill) | None => {
+                    // lower.rs:1346: emits nothing, not exposed either (matches
+                    // — contributes zero occurrences either way).
+                }
+            }
         }
 
         let mut streams: BTreeMap<ExprId, VecDeque<(SiteKey, f64)>> = BTreeMap::new();
@@ -297,6 +361,16 @@ mod tests {
         Root { expr, materialize: None, claim: None }
     }
 
+    /// Every `RootId` in `order` classified `ForwardAction::Compute` — the
+    /// vast majority of this module's tests are about the demand-order
+    /// traversal `demand_expand` performs for an ALREADY-served root, not
+    /// about the `ForwardAction`/`exposed` gating itself (that gating is
+    /// covered directly by the `build_*` tests below), so they opt every
+    /// root in.
+    fn all_compute(order: &[RootId]) -> HashMap<RootId, ForwardAction> {
+        order.iter().map(|&r| (r, ForwardAction::Compute)).collect()
+    }
+
     /// Priorities advance per served site: after serving v's first occurrence,
     /// the effective priority is the SECOND occurrence's gene, within the same
     /// root.
@@ -317,7 +391,7 @@ mod tests {
         let site1 = SiteKey { root: RootId(0), consumer: SiteConsumer::Expr { expr: add_id, input_index: 1 }, value: v };
         let decisions = SiteDecisions::new([(site0, 1.0), (site1, 2.0)]);
 
-        let mut streams = OccurrenceStreams::build(&layer, &order, &decisions);
+        let mut streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
         assert_eq!(streams.effective_priority(v), Some(1.0));
         streams.serve(v);
         assert_eq!(streams.effective_priority(v), Some(2.0), "front must move to the second occurrence's gene");
@@ -336,7 +410,7 @@ mod tests {
         let order = [RootId(0)];
         let decisions = SiteDecisions::new([]);
 
-        let mut streams = OccurrenceStreams::build(&layer, &order, &decisions);
+        let mut streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
         streams.serve(v);
         streams.serve(v);
         assert_eq!(streams.effective_priority(v), None);
@@ -360,7 +434,7 @@ mod tests {
         let site_root0 = SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: v };
         let decisions = SiteDecisions::new([(site_root1, 10.0), (site_root0, 20.0)]);
 
-        let streams = OccurrenceStreams::build(&layer, &order, &decisions);
+        let streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
         // If roots were visited in ascending RootId order this would be 20.0.
         assert_eq!(
             streams.effective_priority(v),
@@ -399,7 +473,7 @@ mod tests {
         let order = [RootId(0)];
         let decisions = SiteDecisions::new([]);
 
-        let mut streams = OccurrenceStreams::build(&layer, &order, &decisions);
+        let mut streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
         // Each of addend_a, addend_b, l, r has exactly one occurrence; serving
         // them in the expected order must drain each stream to None, and
         // serving out of order must NOT drain a not-yet-reached value's stream
@@ -454,11 +528,159 @@ mod tests {
         };
         let decisions = SiteDecisions::new([(expected_key, 42.0)]);
 
-        let streams = OccurrenceStreams::build(&layer, &order, &decisions);
+        let streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
         assert_eq!(
             streams.effective_priority(query),
             Some(42.0),
             "query edge must be demanded at Expr{{lv_expr, input_index:0}}"
+        );
+    }
+
+    // ── serve/build alignment regression tests ──────────────────────────────
+
+    /// A `CopyAlias`-classified root contributes ZERO occurrences: even though
+    /// its `root.expr` is a compound value that would, if walked, demand a
+    /// shared leaf, the real lowering (lower.rs:1332-1345) never reaches
+    /// `lower_operand_virtual` for a `CopyAlias` root, so `build` must not
+    /// either. Regression for the phantom-occurrence finding: before the fix,
+    /// `build` walked EVERY root in `order` unconditionally, so the
+    /// CopyAlias root's phantom demand for `v` sat at the front of `v`'s
+    /// queue with a default (0.0) priority, ahead of the genuine later
+    /// occurrence's real (42.0) priority.
+    #[test]
+    fn copy_alias_root_contributes_no_occurrences() {
+        use cs::definitions::GKRAddress;
+
+        let v = ExprId(0);
+        let alias_wrapper = ExprId(1); // CopyAlias root's expr: Add([v]) — would demand v if walked.
+        let real_wrapper = ExprId(2); // A genuinely-served Compute root's expr: also Add([v]).
+        let layer = layer_with(
+            vec![const_source(9)],
+            vec![
+                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)), // 0 = v
+                Expr::Add(vec![v]),                                  // 1 = alias_wrapper
+                Expr::Add(vec![v]),                                  // 2 = real_wrapper
+            ],
+            vec![root(alias_wrapper), root(real_wrapper)],
+        );
+        let order = [RootId(0), RootId(1)];
+        let actions: HashMap<RootId, ForwardAction> = [
+            (
+                RootId(0),
+                ForwardAction::CopyAlias {
+                    src_addr: GKRAddress::BaseLayerWitness(0),
+                    dst_addr: GKRAddress::BaseLayerWitness(1),
+                },
+            ),
+            (RootId(1), ForwardAction::Compute),
+        ]
+        .into_iter()
+        .collect();
+
+        let real_site = SiteKey {
+            root: RootId(1),
+            consumer: SiteConsumer::Expr { expr: real_wrapper, input_index: 0 },
+            value: v,
+        };
+        let decisions = SiteDecisions::new([(real_site, 42.0)]);
+
+        let mut streams = OccurrenceStreams::build(&layer, &order, &actions, &decisions);
+        assert_eq!(
+            streams.effective_priority(v),
+            Some(42.0),
+            "the CopyAlias root's phantom demand for v must not precede the real occurrence"
+        );
+        streams.serve(v);
+        assert_eq!(
+            streams.effective_priority(v),
+            None,
+            "v must have exactly ONE occurrence (the genuine one) — no leftover phantom"
+        );
+        // The CopyAlias root's own RootOutput must not appear either.
+        assert_eq!(
+            streams.effective_priority(alias_wrapper),
+            None,
+            "a CopyAlias root's own RootOutput must contribute no occurrence"
+        );
+    }
+
+    /// Two `Compute` roots sharing the SAME `ExprId` in `order`: the second
+    /// contributes NO phantom (mirrors `materialize_if_root`'s cross-root
+    /// `exposed` dedup, lower.rs:1074-1102) — neither its own `RootOutput`
+    /// site nor a duplicate interior demand walk. A later genuine occurrence
+    /// of a value shared with the first root's expr gets its OWN priority,
+    /// not a phantom's default.
+    #[test]
+    fn shared_expr_second_root_contributes_no_phantom() {
+        let v = ExprId(0);
+        let shared_expr = ExprId(1); // Add([v]) — root.expr of BOTH RootId(0) and RootId(1).
+        let real_wrapper = ExprId(2); // A separate later genuine occurrence of v.
+        let layer = layer_with(
+            vec![const_source(4)],
+            vec![
+                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)), // 0 = v
+                Expr::Add(vec![v]),                                  // 1 = shared_expr
+                Expr::Add(vec![v]),                                  // 2 = real_wrapper
+            ],
+            vec![root(shared_expr), root(shared_expr), root(real_wrapper)],
+        );
+        let order = [RootId(0), RootId(1), RootId(2)];
+        let actions: HashMap<RootId, ForwardAction> = [
+            (RootId(0), ForwardAction::Compute),
+            (RootId(1), ForwardAction::Compute),
+            (RootId(2), ForwardAction::Compute),
+        ]
+        .into_iter()
+        .collect();
+
+        let root_output_site =
+            SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: shared_expr };
+        let r0_demand_site = SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::Expr { expr: shared_expr, input_index: 0 },
+            value: v,
+        };
+        let real_site = SiteKey {
+            root: RootId(2),
+            consumer: SiteConsumer::Expr { expr: real_wrapper, input_index: 0 },
+            value: v,
+        };
+        let decisions = SiteDecisions::new([
+            (root_output_site, 5.0),
+            (r0_demand_site, 3.0),
+            (real_site, 77.0),
+        ]);
+
+        let mut streams = OccurrenceStreams::build(&layer, &order, &actions, &decisions);
+
+        // shared_expr: exactly ONE RootOutput occurrence (RootId(0)'s) — RootId(1)'s
+        // visit, sharing the same expr, must not add a second.
+        assert_eq!(streams.effective_priority(shared_expr), Some(5.0));
+        streams.serve(shared_expr);
+        assert_eq!(
+            streams.effective_priority(shared_expr),
+            None,
+            "RootId(1) sharing shared_expr with the already-exposed RootId(0) must not \
+             contribute a phantom second RootOutput occurrence"
+        );
+
+        // v: RootId(0)'s genuine interior demand (3.0), then RootId(2)'s genuine later
+        // occurrence (77.0) — RootId(1)'s redundant re-walk of shared_expr must not
+        // insert a phantom 0.0 entry between them.
+        assert_eq!(streams.effective_priority(v), Some(3.0));
+        streams.serve(v);
+        assert_eq!(
+            streams.effective_priority(v),
+            Some(77.0),
+            "after RootId(0)'s genuine occurrence of v is served, the NEXT must be \
+             RootId(2)'s genuine occurrence (77.0), not a phantom (0.0) from RootId(1)'s \
+             deduped re-walk of shared_expr"
+        );
+        streams.serve(v);
+        assert_eq!(
+            streams.effective_priority(v),
+            None,
+            "v must have exactly two occurrences (RootId(0)'s and RootId(2)'s), not three"
         );
     }
 }

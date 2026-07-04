@@ -1197,7 +1197,7 @@ pub(crate) fn lower_layer_virtual(
     // `decisions.rs`'s module doc) before `policy` is moved into `st` below.
     let decisions_state = match &policy {
         MaterializePolicy::Decisions { decisions, budget } => Some(DecisionsState {
-            streams: OccurrenceStreams::build(layer, &schedule.order, decisions),
+            streams: OccurrenceStreams::build(layer, &schedule.order, &ctx.actions, decisions),
             resident: BTreeMap::new(),
             budget: *budget,
         }),
