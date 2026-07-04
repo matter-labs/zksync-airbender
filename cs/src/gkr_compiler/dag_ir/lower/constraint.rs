@@ -11,8 +11,8 @@
 //! - `EnforceConstraintsMaxQuadratic` → one constraint root whose expr is:
 //!   ```text
 //!   Σ_((a,b), terms) Σ_(c,p in terms) c · rho^p · a · b
-//! + Σ_(a, terms)     Σ_(c,p in terms) c · rho^p · a
-//! + Σ_(c,p)                           c · rho^p
+//!   + Σ_(a, terms)     Σ_(c,p in terms) c · rho^p · a
+//!   + Σ_(c,p)                           c · rho^p
 //!   ```
 //!   where `rho = Challenge(ConstraintAggregation, One)` (or `Static(p)` for
 //!   `p != 1`).
