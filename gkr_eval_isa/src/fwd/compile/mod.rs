@@ -308,9 +308,10 @@ pub fn compile_layer_with_policy(
     // phantom cells for values realized elsewhere in the cone and mis-report lifetimes.
     // The realized residency is recorded separately in `resident_realized` (H5). Exact
     // per-event residency alignment to the schedule sets is Task-5 work.
-    let free_steps: Vec<cs::gkr_compiler::dag_ir::StepPlan> = schedule
-        .steps
-        .iter()
+    // Step boundaries derive from `schedule.order` (one step per ordered root) — NOT
+    // from `schedule.steps`, which the compile path no longer reads outside the
+    // `MaterializePolicy::Materialize` arm.
+    let free_steps: Vec<cs::gkr_compiler::dag_ir::StepPlan> = (0..schedule.order.len())
         .map(|_| cs::gkr_compiler::dag_ir::StepPlan {
             resident_before: vec![],
             events: vec![],

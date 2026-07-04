@@ -1064,14 +1064,22 @@ pub(crate) fn lower_layer_virtual(
 
     for (p, &rid) in schedule.order.iter().enumerate() {
         st.cur_step = p;
-        let step = &schedule.steps[p];
-        let rb: HashSet<ExprId> = step.resident_before.iter().copied().collect();
-        let ra: HashSet<ExprId> = step.resident_after.iter().copied().collect();
+
+        // Step-boundary residency inputs. ONLY the `Materialize` arm reads the schedule's
+        // `StepPlan` residency sets and events (the arm — and the reads — go away in a
+        // later task). `LegacyRecompute` is BLIND to `schedule.steps`: empty-rb semantics
+        // unconditionally, i.e. `st.defined` is cleared at every step boundary (pure
+        // per-step recompute).
+        let mut rb: HashSet<ExprId> = HashSet::new();
+        let mut ra: HashSet<ExprId> = HashSet::new();
 
         // Under `Materialize`, derive the event-local decision inputs for this step from
         // its `Admit`/`Demand` events (authoritative — NOT `resident_after`, Constraint 1).
         // `LegacyRecompute` leaves these empty, so `compile_add_materialize` never fires.
         if st.policy == MaterializePolicy::Materialize {
+            let step = &schedule.steps[p];
+            rb = step.resident_before.iter().copied().collect();
+            ra = step.resident_after.iter().copied().collect();
             let mut admitted: HashSet<ExprId> = HashSet::new();
             let mut recompute: HashSet<ExprId> = HashSet::new();
             for ev in &step.events {

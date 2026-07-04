@@ -641,6 +641,129 @@ mod task8_nested_shapes {
     }
 }
 
+// ── StepPlan decoupling (sub-project-2 Task 1): `LegacyRecompute` must be blind to
+//    the schedule's `steps` residency sets — step boundaries derive from `order` only. ──
+mod stepplan_decoupling {
+    use std::collections::{BTreeMap, HashMap};
+
+    use cs::gkr_compiler::dag_ir::{
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, LayerSchedule, ReadPlace,
+        Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo,
+        SourceKind, StepPlan,
+    };
+    use cs::gkr_compiler::{
+        GKRLayerDescription, GateArtifacts, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
+        NoFieldStructuredExpression,
+    };
+
+    use gkr_eval_isa::fwd::compile::{compile_layer_with_policy, MaterializePolicy};
+
+    fn witness(col: usize) -> SourceInfo {
+        SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: col } } }
+    }
+
+    fn atom_root(expr: ExprId, slot: usize) -> Root {
+        Root {
+            expr,
+            materialize: Some(SinkInfo { kind: SinkKind::Export { slot }, field: FieldKind::Base }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(slot),
+                },
+            }),
+        }
+    }
+
+    fn compute_artifact_layer() -> GKRLayerDescription {
+        let relation = NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint {
+            input: NoFieldMaxQuadraticGKRRelation {
+                quadratic_terms: Box::new([]),
+                linear_terms: Box::new([]),
+                constant: 0,
+            },
+            expression: NoFieldStructuredExpression::Constant(0),
+        };
+        GKRLayerDescription {
+            layer: 0,
+            gates: vec![GateArtifacts { output_layer: 0, enforced_relation: relation }],
+            gates_with_external_connections: vec![],
+            cached_relations: BTreeMap::new(),
+            intermediate_layer_width: None,
+        }
+    }
+
+    /// Post-decoupling, LegacyRecompute must be blind to `steps` residency sets:
+    /// a genuinely-carried resident (s in resident_after[0] ∩ resident_before[1])
+    /// must no longer change the emitted program vs empty steps.
+    #[test]
+    fn legacy_recompute_ignores_step_residency_sets() {
+        // s = Add(x,y) shared by R0 = Mul(s,s) and R1 = Mul(s,z).
+        let layer = DagLayer {
+            sources: vec![witness(0), witness(1), witness(2)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0 = x
+                Expr::Source(SourceId(1)),             // 1 = y
+                Expr::Source(SourceId(2)),             // 2 = z
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 3 = s = x + y (shared)
+                Expr::Mul(vec![ExprId(3), ExprId(3)]), // 4 = R0 = s * s
+                Expr::Mul(vec![ExprId(3), ExprId(2)]), // 5 = R1 = s * z
+            ],
+            roots: vec![atom_root(ExprId(4), 0), atom_root(ExprId(5), 1)],
+            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            resolutions: BTreeMap::new(),
+        };
+        let s = ExprId(3);
+        let order = vec![RootId(0), RootId(1)];
+
+        // A REAL carried resident: s leaves step 0 resident and enters step 1 resident
+        // (junk ids would be ignored by the lazy realizer and the test would be vacuous).
+        let resident_steps = vec![
+            StepPlan { resident_before: vec![], events: vec![], resident_after: vec![s] },
+            StepPlan { resident_before: vec![s], events: vec![], resident_after: vec![] },
+        ];
+        let empty_steps = vec![
+            StepPlan { resident_before: vec![], events: vec![], resident_after: vec![] },
+            StepPlan { resident_before: vec![], events: vec![], resident_after: vec![] },
+        ];
+        let sched_resident = LayerSchedule {
+            order: order.clone(),
+            steps: resident_steps,
+            predicted_traffic: 0,
+            floor: 0,
+        };
+        let sched_empty =
+            LayerSchedule { order, steps: empty_steps, predicted_traffic: 0, floor: 0 };
+
+        let art = compute_artifact_layer();
+        let cross: HashMap<ReadPlace, FieldKind> = HashMap::new();
+        let compile = |sched: &LayerSchedule| {
+            compile_layer_with_policy(
+                &layer,
+                &art,
+                &BTreeMap::new(),
+                &cross,
+                sched,
+                16,
+                MaterializePolicy::LegacyRecompute,
+            )
+            .expect("compile_layer_with_policy")
+        };
+        let with_residents = compile(&sched_resident);
+        let with_empty = compile(&sched_empty);
+
+        assert_eq!(
+            with_residents.program, with_empty.program,
+            "LegacyRecompute must ignore StepPlan residency sets (emitted programs differ)"
+        );
+        assert_eq!(
+            with_residents.resident_realized, with_empty.resident_realized,
+            "LegacyRecompute realized residency must not track StepPlan sets"
+        );
+    }
+}
+
 #[test]
 #[ignore = "committed schedules stale under DAG simplification; regenerated by the sub-project-2 compile-in-loop scorer (spec .agents/specs/2026-07-04-gkr-dag-simplify-design.md §6)"]
 fn compile_circuit_loads_validates_and_compiles_all_layers() {
