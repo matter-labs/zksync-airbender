@@ -4,6 +4,7 @@
   "layers": [
     {
       "order": [
+        22,
         23,
         24,
         25,
@@ -14,7 +15,6 @@
         30,
         31,
         32,
-        22,
         33,
         34,
         35,
@@ -30,14 +30,14 @@
         45,
         46,
         47,
-        48,
-        49,
         50,
         51,
-        52,
-        53,
+        48,
+        49,
         54,
         55,
+        52,
+        53,
         56,
         57,
         58,
@@ -57,3957 +57,3499 @@
         72,
         73
       ],
-      "steps": [
-        {
-          "resident_before": [],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 17,
-                "input_index": 2,
-                "value": 4,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 4,
-                "input_index": 0,
-                "value": 2,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 2
-              }
-            },
-            {
-              "Admit": {
-                "value": 4
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 7,
-                "input_index": 0,
-                "value": 5,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 10,
-                "input_index": 0,
-                "value": 8,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 17,
-                "input_index": 5,
-                "value": 13,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 13,
-                "input_index": 0,
-                "value": 11,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 11
-              }
-            },
-            {
-              "Admit": {
-                "value": 13
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 17,
-                "input_index": 6,
-                "value": 16,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 16,
-                "input_index": 0,
-                "value": 14,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 14
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 28,
-                "input_index": 2,
-                "value": 19,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 19,
-                "input_index": 1,
-                "value": 18,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 18
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 21,
-                "input_index": 1,
-                "value": 20,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 23,
-                "input_index": 1,
-                "value": 22,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 28,
-                "input_index": 5,
-                "value": 25,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 25,
-                "input_index": 1,
-                "value": 24,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 4
-              }
-            },
-            {
-              "Admit": {
-                "value": 24
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 28,
-                "input_index": 6,
-                "value": 27,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 27,
-                "input_index": 1,
-                "value": 26,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 26
-              }
-            }
-          ],
-          "resident_after": [
-            2,
-            11,
-            13,
-            14,
-            18,
-            24,
-            26
-          ]
-        },
-        {
-          "resident_before": [
-            2,
-            11,
-            13,
-            14,
-            18,
-            24,
-            26
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 33,
-                "input_index": 2,
-                "value": 4,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 4,
-                "input_index": 0,
-                "value": 2,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 33,
-                "input_index": 3,
-                "value": 13,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 33,
-                "input_index": 4,
-                "value": 16,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 16,
-                "input_index": 0,
-                "value": 14,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 33,
-                "input_index": 5,
-                "value": 30,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 30,
-                "input_index": 1,
-                "value": 29,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 2
-              }
-            },
-            {
-              "Evict": {
-                "value": 13
-              }
-            },
-            {
-              "Admit": {
-                "value": 29
-              }
-            },
-            {
-              "Admit": {
-                "value": 30
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 33,
-                "input_index": 6,
-                "value": 32,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 32,
-                "input_index": 1,
-                "value": 31,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 31
-              }
-            },
-            {
-              "Evict": {
-                "value": 30
-              }
-            },
-            {
-              "Admit": {
-                "value": 32
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 37,
-                "input_index": 2,
-                "value": 19,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 19,
-                "input_index": 1,
-                "value": 18,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 37,
-                "input_index": 3,
-                "value": 25,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 25,
-                "input_index": 1,
-                "value": 24,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 37,
-                "input_index": 4,
-                "value": 27,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 27,
-                "input_index": 1,
-                "value": 26,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 37,
-                "input_index": 5,
-                "value": 32,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 35,
-                "input_index": 0,
-                "value": 29,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            18,
-            24,
-            26,
-            29,
-            31,
-            32
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            18,
-            24,
-            26,
-            29,
-            31,
-            32
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 48,
-                "input_index": 2,
-                "value": 39,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 39,
-                "input_index": 1,
-                "value": 38,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 18
-              }
-            },
-            {
-              "Admit": {
-                "value": 38
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 41,
-                "input_index": 1,
-                "value": 40,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 43,
-                "input_index": 1,
-                "value": 42,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 45,
-                "input_index": 1,
-                "value": 44,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 47,
-                "input_index": 1,
-                "value": 46,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 55,
-                "input_index": 1,
-                "value": 30,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 30,
-                "input_index": 1,
-                "value": 29,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 55,
-                "input_index": 2,
-                "value": 32,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 55,
-                "input_index": 4,
-                "value": 50,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 52,
-                "input_index": 1,
-                "value": 51,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 54,
-                "input_index": 1,
-                "value": 53,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            24,
-            26,
-            29,
-            31,
-            32,
-            38
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            24,
-            26,
-            29,
-            31,
-            32,
-            38
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 62,
-                "input_index": 2,
-                "value": 32,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 62,
-                "input_index": 3,
-                "value": 39,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 39,
-                "input_index": 1,
-                "value": 38,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 56,
-                "input_index": 0,
-                "value": 29,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 59,
-                "input_index": 1,
-                "value": 58,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 29
-              }
-            },
-            {
-              "Evict": {
-                "value": 31
-              }
-            },
-            {
-              "Evict": {
-                "value": 32
-              }
-            },
-            {
-              "Evict": {
-                "value": 38
-              }
-            },
-            {
-              "Admit": {
-                "value": 58
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 61,
-                "input_index": 1,
-                "value": 60,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 60
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 71,
-                "input_index": 2,
-                "value": 50,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 64,
-                "input_index": 1,
-                "value": 63,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 63
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 66,
-                "input_index": 1,
-                "value": 65,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 65
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 68,
-                "input_index": 1,
-                "value": 67,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 67
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 70,
-                "input_index": 1,
-                "value": 69,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 69
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 277,
-                "input_index": 0,
-                "value": 122,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 122
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 277,
-                "input_index": 1,
-                "value": 157,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 157
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 278,
-                "input_index": 0,
-                "value": 125,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 125
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 278,
-                "input_index": 1,
-                "value": 157,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            157,
-            125
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            157,
-            125
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 280,
-                "input_index": 0,
-                "value": 58,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 280,
-                "input_index": 1,
-                "value": 119,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 157
-              }
-            },
-            {
-              "Admit": {
-                "value": 119
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 282,
-                "input_index": 0,
-                "value": 120,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 120
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 282,
-                "input_index": 1,
-                "value": 281,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 281
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 283,
-                "input_index": 0,
-                "value": 11,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 283,
-                "input_index": 1,
-                "value": 122,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 284,
-                "input_index": 0,
-                "value": 11,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 284,
-                "input_index": 1,
-                "value": 125,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 286,
-                "input_index": 0,
-                "value": 60,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 286,
-                "input_index": 1,
-                "value": 119,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 288,
-                "input_index": 0,
-                "value": 120,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 288,
-                "input_index": 1,
-                "value": 287,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 287
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 289,
-                "input_index": 0,
-                "value": 14,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 289,
-                "input_index": 1,
-                "value": 122,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 290,
-                "input_index": 0,
-                "value": 14,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 290,
-                "input_index": 1,
-                "value": 125,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 292,
-                "input_index": 0,
-                "value": 119,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 292,
-                "input_index": 1,
-                "value": 281,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 293,
-                "input_index": 0,
-                "value": 58,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 293,
-                "input_index": 1,
-                "value": 120,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 295,
-                "input_index": 0,
-                "value": 119,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 295,
-                "input_index": 1,
-                "value": 287,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 296,
-                "input_index": 0,
-                "value": 60,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 296,
-                "input_index": 1,
-                "value": 120,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 298,
-                "input_index": 0,
-                "value": 11,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 298,
-                "input_index": 1,
-                "value": 119,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 299,
-                "input_index": 0,
-                "value": 11,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 299,
-                "input_index": 1,
-                "value": 120,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 300,
-                "input_index": 0,
-                "value": 58,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 300,
-                "input_index": 1,
-                "value": 122,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 301,
-                "input_index": 0,
-                "value": 125,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 301,
-                "input_index": 1,
-                "value": 281,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Evict": {
-                "value": 11
-              }
-            },
-            {
-              "Admit": {
-                "value": 272
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 303,
-                "input_index": 0,
-                "value": 14,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 303,
-                "input_index": 1,
-                "value": 119,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 304,
-                "input_index": 0,
-                "value": 14,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 304,
-                "input_index": 1,
-                "value": 120,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 305,
-                "input_index": 0,
-                "value": 60,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 305,
-                "input_index": 1,
-                "value": 122,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 306,
-                "input_index": 0,
-                "value": 125,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 306,
-                "input_index": 1,
-                "value": 287,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 308,
-                "input_index": 0,
-                "value": 122,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 308,
-                "input_index": 1,
-                "value": 281,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 309,
-                "input_index": 0,
-                "value": 58,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 309,
-                "input_index": 1,
-                "value": 125,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 311,
-                "input_index": 0,
-                "value": 122,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 311,
-                "input_index": 1,
-                "value": 287,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 312,
-                "input_index": 0,
-                "value": 60,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 312,
-                "input_index": 1,
-                "value": 125,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 314,
-                "input_index": 0,
-                "value": 24,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 314,
-                "input_index": 1,
-                "value": 119,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 315,
-                "input_index": 0,
-                "value": 24,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 315,
-                "input_index": 1,
-                "value": 120,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 316,
-                "input_index": 0,
-                "value": 24,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 316,
-                "input_index": 1,
-                "value": 122,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 317,
-                "input_index": 0,
-                "value": 24,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 317,
-                "input_index": 1,
-                "value": 125,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 319,
-                "input_index": 0,
-                "value": 26,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 319,
-                "input_index": 1,
-                "value": 119,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 320,
-                "input_index": 0,
-                "value": 26,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 320,
-                "input_index": 1,
-                "value": 120,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 321,
-                "input_index": 0,
-                "value": 26,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 321,
-                "input_index": 1,
-                "value": 122,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 322,
-                "input_index": 0,
-                "value": 26,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 322,
-                "input_index": 1,
-                "value": 125,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 324,
-                "input_index": 0,
-                "value": 122,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 324,
-                "input_index": 1,
-                "value": 125,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            14,
-            24,
-            26,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            122,
-            125,
-            119,
-            120,
-            281,
-            287
-          ],
-          "events": [
-            {
-              "Evict": {
-                "value": 14
-              }
-            },
-            {
-              "Evict": {
-                "value": 24
-              }
-            },
-            {
-              "Evict": {
-                "value": 26
-              }
-            },
-            {
-              "Evict": {
-                "value": 122
-              }
-            },
-            {
-              "Evict": {
-                "value": 125
-              }
-            },
-            {
-              "Evict": {
-                "value": 119
-              }
-            },
-            {
-              "Evict": {
-                "value": 120
-              }
-            },
-            {
-              "Admit": {
-                "value": 325
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325
-          ],
-          "events": [
-            {
-              "Admit": {
-                "value": 326
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 335,
-                "input_index": 1,
-                "value": 329,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 335,
-                "input_index": 2,
-                "value": 332,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 332,
-                "input_index": 0,
-                "value": 58,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Admit": {
-                "value": 332
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326,
-            332
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326,
-            332
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 337,
-                "input_index": 0,
-                "value": 332,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326,
-            332
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326,
-            332
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 340,
-                "input_index": 0,
-                "value": 60,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 340,
-                "input_index": 1,
-                "value": 281,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            58,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326,
-            332
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 338,
-                "input_index": 0,
-                "value": 60,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 339,
-                "input_index": 0,
-                "value": 281,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 344,
-                "input_index": 0,
-                "value": 287,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 344,
-                "input_index": 1,
-                "value": 325,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 342,
-                "input_index": 0,
-                "value": 287,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 343,
-                "input_index": 0,
-                "value": 325,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 348,
-                "input_index": 0,
-                "value": 67,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 348,
-                "input_index": 1,
-                "value": 326,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 346,
-                "input_index": 0,
-                "value": 326,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 347,
-                "input_index": 0,
-                "value": 67,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [],
-          "resident_after": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            60,
-            63,
-            65,
-            67,
-            69,
-            281,
-            287,
-            325,
-            326
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 355,
-                "input_index": 1,
-                "value": 350,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 355,
-                "input_index": 2,
-                "value": 352,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 352,
-                "input_index": 0,
-                "value": 63,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Evict": {
-                "value": 60
-              }
-            },
-            {
-              "Evict": {
-                "value": 67
-              }
-            },
-            {
-              "Evict": {
-                "value": 69
-              }
-            },
-            {
-              "Evict": {
-                "value": 281
-              }
-            },
-            {
-              "Evict": {
-                "value": 287
-              }
-            },
-            {
-              "Evict": {
-                "value": 325
-              }
-            },
-            {
-              "Evict": {
-                "value": 326
-              }
-            },
-            {
-              "Admit": {
-                "value": 352
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            63,
-            65,
-            352
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            63,
-            65,
-            352
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 357,
-                "input_index": 0,
-                "value": 352,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            63,
-            65,
-            352
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            63,
-            65,
-            352
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 360,
-                "input_index": 0,
-                "value": 65,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 360,
-                "input_index": 1,
-                "value": 78,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 63
-              }
-            },
-            {
-              "Evict": {
-                "value": 352
-              }
-            },
-            {
-              "Admit": {
-                "value": 78
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            65,
-            78
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            65,
-            78
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 358,
-                "input_index": 0,
-                "value": 65,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 359,
-                "input_index": 0,
-                "value": 78,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            65,
-            78
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            65,
-            78
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 364,
-                "input_index": 0,
-                "value": 82,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 65
-              }
-            },
-            {
-              "Evict": {
-                "value": 78
-              }
-            },
-            {
-              "Admit": {
-                "value": 82
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 364,
-                "input_index": 1,
-                "value": 86,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Admit": {
-                "value": 86
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            82,
-            86
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            82,
-            86
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 362,
-                "input_index": 0,
-                "value": 82,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 363,
-                "input_index": 0,
-                "value": 86,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            82,
-            86
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            82,
-            86
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 368,
-                "input_index": 0,
-                "value": 89,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 82
-              }
-            },
-            {
-              "Evict": {
-                "value": 86
-              }
-            },
-            {
-              "Admit": {
-                "value": 89
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 368,
-                "input_index": 1,
-                "value": 94,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Admit": {
-                "value": 94
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            89,
-            94
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            89,
-            94
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 366,
-                "input_index": 0,
-                "value": 89,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 367,
-                "input_index": 0,
-                "value": 94,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            272,
-            89,
-            94
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            89,
-            94
-          ],
-          "events": [],
-          "resident_after": [
-            272,
-            89,
-            94
-          ]
-        },
-        {
-          "resident_before": [
-            272,
-            89,
-            94
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 373,
-                "input_index": 0,
-                "value": 272,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 373,
-                "input_index": 1,
-                "value": 372,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 272
-              }
-            },
-            {
-              "Evict": {
-                "value": 89
-              }
-            },
-            {
-              "Evict": {
-                "value": 94
-              }
-            },
-            {
-              "Admit": {
-                "value": 372
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 375,
-                "input_index": 1,
-                "value": 370,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 375,
-                "input_index": 2,
-                "value": 371,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Admit": {
-                "value": 371
-              }
-            }
-          ],
-          "resident_after": [
-            372,
-            371
-          ]
-        },
-        {
-          "resident_before": [
-            372,
-            371
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 377,
-                "input_index": 0,
-                "value": 371,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 377,
-                "input_index": 1,
-                "value": 372,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            372,
-            371
-          ]
-        },
-        {
-          "resident_before": [
-            372,
-            371
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 380,
-                "input_index": 0,
-                "value": 174,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 372
-              }
-            },
-            {
-              "Evict": {
-                "value": 371
-              }
-            },
-            {
-              "Admit": {
-                "value": 174
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 380,
-                "input_index": 1,
-                "value": 194,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Admit": {
-                "value": 194
-              }
-            }
-          ],
-          "resident_after": [
-            174,
-            194
-          ]
-        },
-        {
-          "resident_before": [
-            174,
-            194
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 378,
-                "input_index": 0,
-                "value": 174,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 379,
-                "input_index": 0,
-                "value": 194,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            174,
-            194
-          ]
-        },
-        {
-          "resident_before": [
-            174,
-            194
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 384,
-                "input_index": 0,
-                "value": 213,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 174
-              }
-            },
-            {
-              "Evict": {
-                "value": 194
-              }
-            },
-            {
-              "Admit": {
-                "value": 213
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 384,
-                "input_index": 1,
-                "value": 233,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Admit": {
-                "value": 233
-              }
-            }
-          ],
-          "resident_after": [
-            213,
-            233
-          ]
-        },
-        {
-          "resident_before": [
-            213,
-            233
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 382,
-                "input_index": 0,
-                "value": 213,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 383,
-                "input_index": 0,
-                "value": 233,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            213,
-            233
-          ]
-        },
-        {
-          "resident_before": [
-            213,
-            233
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 388,
-                "input_index": 0,
-                "value": 252,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 213
-              }
-            },
-            {
-              "Evict": {
-                "value": 233
-              }
-            },
-            {
-              "Admit": {
-                "value": 252
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 388,
-                "input_index": 1,
-                "value": 271,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Admit": {
-                "value": 271
-              }
-            }
-          ],
-          "resident_after": [
-            252,
-            271
-          ]
-        },
-        {
-          "resident_before": [
-            252,
-            271
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 386,
-                "input_index": 0,
-                "value": 252,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 387,
-                "input_index": 0,
-                "value": 271,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            252,
-            271
-          ]
-        }
+      "sites": [
+        [
+          {
+            "root": 22,
+            "consumer": "RootOutput",
+            "value": 272
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 3,
+                "input_index": 0
+              }
+            },
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 6,
+                "input_index": 0
+              }
+            },
+            "value": 4
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 9,
+                "input_index": 0
+              }
+            },
+            "value": 7
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 12,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 15,
+                "input_index": 0
+              }
+            },
+            "value": 13
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 16,
+                "input_index": 1
+              }
+            },
+            "value": 3
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 16,
+                "input_index": 4
+              }
+            },
+            "value": 12
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 16,
+                "input_index": 5
+              }
+            },
+            "value": 15
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 18,
+                "input_index": 1
+              }
+            },
+            "value": 17
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 20,
+                "input_index": 1
+              }
+            },
+            "value": 19
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 22,
+                "input_index": 1
+              }
+            },
+            "value": 21
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 24,
+                "input_index": 1
+              }
+            },
+            "value": 23
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 26,
+                "input_index": 1
+              }
+            },
+            "value": 25
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 27,
+                "input_index": 1
+              }
+            },
+            "value": 18
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 27,
+                "input_index": 4
+              }
+            },
+            "value": 24
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 27,
+                "input_index": 5
+              }
+            },
+            "value": 26
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 273,
+                "input_index": 0
+              }
+            },
+            "value": 16
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 273,
+                "input_index": 1
+              }
+            },
+            "value": 27
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 3,
+                "input_index": 0
+              }
+            },
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 12,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 15,
+                "input_index": 0
+              }
+            },
+            "value": 13
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 18,
+                "input_index": 1
+              }
+            },
+            "value": 17
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 24,
+                "input_index": 1
+              }
+            },
+            "value": 23
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 26,
+                "input_index": 1
+              }
+            },
+            "value": 25
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 29,
+                "input_index": 1
+              }
+            },
+            "value": 28
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 31,
+                "input_index": 1
+              }
+            },
+            "value": 30
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 32,
+                "input_index": 1
+              }
+            },
+            "value": 3
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 32,
+                "input_index": 2
+              }
+            },
+            "value": 12
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 32,
+                "input_index": 3
+              }
+            },
+            "value": 15
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 32,
+                "input_index": 4
+              }
+            },
+            "value": 29
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 32,
+                "input_index": 5
+              }
+            },
+            "value": 31
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 34,
+                "input_index": 0
+              }
+            },
+            "value": 28
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 36,
+                "input_index": 1
+              }
+            },
+            "value": 18
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 36,
+                "input_index": 2
+              }
+            },
+            "value": 24
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 36,
+                "input_index": 3
+              }
+            },
+            "value": 26
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 36,
+                "input_index": 4
+              }
+            },
+            "value": 31
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 274,
+                "input_index": 0
+              }
+            },
+            "value": 32
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 274,
+                "input_index": 1
+              }
+            },
+            "value": 36
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 29,
+                "input_index": 1
+              }
+            },
+            "value": 28
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 31,
+                "input_index": 1
+              }
+            },
+            "value": 30
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 38,
+                "input_index": 1
+              }
+            },
+            "value": 37
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 40,
+                "input_index": 1
+              }
+            },
+            "value": 39
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 42,
+                "input_index": 1
+              }
+            },
+            "value": 41
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 47,
+                "input_index": 1
+              }
+            },
+            "value": 38
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 52,
+                "input_index": 1
+              }
+            },
+            "value": 51
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 54,
+                "input_index": 1
+              }
+            },
+            "value": 53
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 55,
+                "input_index": 1
+              }
+            },
+            "value": 29
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 55,
+                "input_index": 2
+              }
+            },
+            "value": 31
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 55,
+                "input_index": 4
+              }
+            },
+            "value": 50
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 275,
+                "input_index": 0
+              }
+            },
+            "value": 47
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 275,
+                "input_index": 1
+              }
+            },
+            "value": 55
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 31,
+                "input_index": 1
+              }
+            },
+            "value": 30
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 38,
+                "input_index": 1
+              }
+            },
+            "value": 37
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 56,
+                "input_index": 0
+              }
+            },
+            "value": 28
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 59,
+                "input_index": 1
+              }
+            },
+            "value": 58
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 61,
+                "input_index": 1
+              }
+            },
+            "value": 60
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 62,
+                "input_index": 1
+              }
+            },
+            "value": 31
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 62,
+                "input_index": 2
+              }
+            },
+            "value": 38
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 64,
+                "input_index": 1
+              }
+            },
+            "value": 63
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 66,
+                "input_index": 1
+              }
+            },
+            "value": 65
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 68,
+                "input_index": 1
+              }
+            },
+            "value": 67
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 70,
+                "input_index": 1
+              }
+            },
+            "value": 69
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 71,
+                "input_index": 2
+              }
+            },
+            "value": 50
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 276,
+                "input_index": 0
+              }
+            },
+            "value": 62
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 276,
+                "input_index": 1
+              }
+            },
+            "value": 71
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 277,
+                "input_index": 0
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 277,
+                "input_index": 1
+              }
+            },
+            "value": 157
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 278,
+                "input_index": 0
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 278,
+                "input_index": 1
+              }
+            },
+            "value": 157
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 280,
+                "input_index": 0
+              }
+            },
+            "value": 58
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 280,
+                "input_index": 1
+              }
+            },
+            "value": 119
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 282,
+                "input_index": 0
+              }
+            },
+            "value": 120
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 282,
+                "input_index": 1
+              }
+            },
+            "value": 281
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 283,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 283,
+                "input_index": 1
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 284,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 284,
+                "input_index": 1
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 286,
+                "input_index": 0
+              }
+            },
+            "value": 60
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 286,
+                "input_index": 1
+              }
+            },
+            "value": 119
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 288,
+                "input_index": 0
+              }
+            },
+            "value": 120
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 288,
+                "input_index": 1
+              }
+            },
+            "value": 287
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 289,
+                "input_index": 0
+              }
+            },
+            "value": 13
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 289,
+                "input_index": 1
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 290,
+                "input_index": 0
+              }
+            },
+            "value": 13
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 290,
+                "input_index": 1
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 30,
+            "consumer": {
+              "Expr": {
+                "expr": 292,
+                "input_index": 0
+              }
+            },
+            "value": 119
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 30,
+            "consumer": {
+              "Expr": {
+                "expr": 292,
+                "input_index": 1
+              }
+            },
+            "value": 281
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 30,
+            "consumer": {
+              "Expr": {
+                "expr": 293,
+                "input_index": 0
+              }
+            },
+            "value": 58
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 30,
+            "consumer": {
+              "Expr": {
+                "expr": 293,
+                "input_index": 1
+              }
+            },
+            "value": 120
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 31,
+            "consumer": {
+              "Expr": {
+                "expr": 295,
+                "input_index": 0
+              }
+            },
+            "value": 119
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 31,
+            "consumer": {
+              "Expr": {
+                "expr": 295,
+                "input_index": 1
+              }
+            },
+            "value": 287
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 31,
+            "consumer": {
+              "Expr": {
+                "expr": 296,
+                "input_index": 0
+              }
+            },
+            "value": 60
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 31,
+            "consumer": {
+              "Expr": {
+                "expr": 296,
+                "input_index": 1
+              }
+            },
+            "value": 120
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 298,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 298,
+                "input_index": 1
+              }
+            },
+            "value": 119
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 299,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 299,
+                "input_index": 1
+              }
+            },
+            "value": 120
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 300,
+                "input_index": 0
+              }
+            },
+            "value": 58
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 300,
+                "input_index": 1
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 301,
+                "input_index": 0
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 301,
+                "input_index": 1
+              }
+            },
+            "value": 281
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 303,
+                "input_index": 0
+              }
+            },
+            "value": 13
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 303,
+                "input_index": 1
+              }
+            },
+            "value": 119
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 304,
+                "input_index": 0
+              }
+            },
+            "value": 13
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 304,
+                "input_index": 1
+              }
+            },
+            "value": 120
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 305,
+                "input_index": 0
+              }
+            },
+            "value": 60
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 305,
+                "input_index": 1
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 306,
+                "input_index": 0
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 306,
+                "input_index": 1
+              }
+            },
+            "value": 287
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 34,
+            "consumer": {
+              "Expr": {
+                "expr": 308,
+                "input_index": 0
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 34,
+            "consumer": {
+              "Expr": {
+                "expr": 308,
+                "input_index": 1
+              }
+            },
+            "value": 281
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 34,
+            "consumer": {
+              "Expr": {
+                "expr": 309,
+                "input_index": 0
+              }
+            },
+            "value": 58
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 34,
+            "consumer": {
+              "Expr": {
+                "expr": 309,
+                "input_index": 1
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 311,
+                "input_index": 0
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 311,
+                "input_index": 1
+              }
+            },
+            "value": 287
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 312,
+                "input_index": 0
+              }
+            },
+            "value": 60
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 312,
+                "input_index": 1
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 314,
+                "input_index": 0
+              }
+            },
+            "value": 23
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 314,
+                "input_index": 1
+              }
+            },
+            "value": 119
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 315,
+                "input_index": 0
+              }
+            },
+            "value": 23
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 315,
+                "input_index": 1
+              }
+            },
+            "value": 120
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 316,
+                "input_index": 0
+              }
+            },
+            "value": 23
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 316,
+                "input_index": 1
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 317,
+                "input_index": 0
+              }
+            },
+            "value": 23
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 317,
+                "input_index": 1
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 319,
+                "input_index": 0
+              }
+            },
+            "value": 25
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 319,
+                "input_index": 1
+              }
+            },
+            "value": 119
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 320,
+                "input_index": 0
+              }
+            },
+            "value": 25
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 320,
+                "input_index": 1
+              }
+            },
+            "value": 120
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 321,
+                "input_index": 0
+              }
+            },
+            "value": 25
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 321,
+                "input_index": 1
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 322,
+                "input_index": 0
+              }
+            },
+            "value": 25
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 322,
+                "input_index": 1
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 38,
+            "consumer": {
+              "Expr": {
+                "expr": 324,
+                "input_index": 0
+              }
+            },
+            "value": 122
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 38,
+            "consumer": {
+              "Expr": {
+                "expr": 324,
+                "input_index": 1
+              }
+            },
+            "value": 125
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 39,
+            "consumer": "RootOutput",
+            "value": 325
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 40,
+            "consumer": "RootOutput",
+            "value": 326
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 41,
+            "consumer": "RootOutput",
+            "value": 176
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 42,
+            "consumer": "RootOutput",
+            "value": 196
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": "RootOutput",
+            "value": 214
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 46,
+            "consumer": "RootOutput",
+            "value": 234
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 47,
+            "consumer": "RootOutput",
+            "value": 253
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 48,
+            "consumer": {
+              "Expr": {
+                "expr": 333,
+                "input_index": 0
+              }
+            },
+            "value": 58
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 48,
+            "consumer": {
+              "Expr": {
+                "expr": 334,
+                "input_index": 2
+              }
+            },
+            "value": 333
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 48,
+            "consumer": {
+              "Expr": {
+                "expr": 335,
+                "input_index": 0
+              }
+            },
+            "value": 331
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 49,
+            "consumer": {
+              "Expr": {
+                "expr": 333,
+                "input_index": 0
+              }
+            },
+            "value": 58
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 49,
+            "consumer": {
+              "Expr": {
+                "expr": 336,
+                "input_index": 0
+              }
+            },
+            "value": 331
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 49,
+            "consumer": {
+              "Expr": {
+                "expr": 336,
+                "input_index": 1
+              }
+            },
+            "value": 333
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 50,
+            "consumer": {
+              "Expr": {
+                "expr": 337,
+                "input_index": 0
+              }
+            },
+            "value": 60
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 50,
+            "consumer": {
+              "Expr": {
+                "expr": 338,
+                "input_index": 0
+              }
+            },
+            "value": 281
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 50,
+            "consumer": {
+              "Expr": {
+                "expr": 339,
+                "input_index": 0
+              }
+            },
+            "value": 337
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 50,
+            "consumer": {
+              "Expr": {
+                "expr": 339,
+                "input_index": 1
+              }
+            },
+            "value": 338
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 51,
+            "consumer": {
+              "Expr": {
+                "expr": 337,
+                "input_index": 0
+              }
+            },
+            "value": 60
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 51,
+            "consumer": {
+              "Expr": {
+                "expr": 338,
+                "input_index": 0
+              }
+            },
+            "value": 281
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 51,
+            "consumer": {
+              "Expr": {
+                "expr": 340,
+                "input_index": 0
+              }
+            },
+            "value": 337
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 51,
+            "consumer": {
+              "Expr": {
+                "expr": 340,
+                "input_index": 1
+              }
+            },
+            "value": 338
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 52,
+            "consumer": {
+              "Expr": {
+                "expr": 341,
+                "input_index": 0
+              }
+            },
+            "value": 287
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 52,
+            "consumer": {
+              "Expr": {
+                "expr": 342,
+                "input_index": 0
+              }
+            },
+            "value": 325
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 52,
+            "consumer": {
+              "Expr": {
+                "expr": 343,
+                "input_index": 0
+              }
+            },
+            "value": 341
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 52,
+            "consumer": {
+              "Expr": {
+                "expr": 343,
+                "input_index": 1
+              }
+            },
+            "value": 342
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 341,
+                "input_index": 0
+              }
+            },
+            "value": 287
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 342,
+                "input_index": 0
+              }
+            },
+            "value": 325
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 344,
+                "input_index": 0
+              }
+            },
+            "value": 341
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 344,
+                "input_index": 1
+              }
+            },
+            "value": 342
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 345,
+                "input_index": 0
+              }
+            },
+            "value": 326
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 346,
+                "input_index": 0
+              }
+            },
+            "value": 67
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 347,
+                "input_index": 0
+              }
+            },
+            "value": 345
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 347,
+                "input_index": 1
+              }
+            },
+            "value": 346
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 55,
+            "consumer": {
+              "Expr": {
+                "expr": 345,
+                "input_index": 0
+              }
+            },
+            "value": 326
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 55,
+            "consumer": {
+              "Expr": {
+                "expr": 346,
+                "input_index": 0
+              }
+            },
+            "value": 67
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 55,
+            "consumer": {
+              "Expr": {
+                "expr": 348,
+                "input_index": 0
+              }
+            },
+            "value": 345
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 55,
+            "consumer": {
+              "Expr": {
+                "expr": 348,
+                "input_index": 1
+              }
+            },
+            "value": 346
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 56,
+            "consumer": "RootOutput",
+            "value": 69
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 57,
+            "consumer": {
+              "Expr": {
+                "expr": 352,
+                "input_index": 0
+              }
+            },
+            "value": 63
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 57,
+            "consumer": {
+              "Expr": {
+                "expr": 353,
+                "input_index": 2
+              }
+            },
+            "value": 352
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 57,
+            "consumer": {
+              "Expr": {
+                "expr": 354,
+                "input_index": 0
+              }
+            },
+            "value": 350
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 58,
+            "consumer": {
+              "Expr": {
+                "expr": 352,
+                "input_index": 0
+              }
+            },
+            "value": 63
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 58,
+            "consumer": {
+              "Expr": {
+                "expr": 355,
+                "input_index": 0
+              }
+            },
+            "value": 350
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 58,
+            "consumer": {
+              "Expr": {
+                "expr": 355,
+                "input_index": 1
+              }
+            },
+            "value": 352
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 59,
+            "consumer": {
+              "Expr": {
+                "expr": 356,
+                "input_index": 0
+              }
+            },
+            "value": 65
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 59,
+            "consumer": {
+              "Expr": {
+                "expr": 357,
+                "input_index": 0
+              }
+            },
+            "value": 78
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 59,
+            "consumer": {
+              "Expr": {
+                "expr": 358,
+                "input_index": 0
+              }
+            },
+            "value": 356
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 59,
+            "consumer": {
+              "Expr": {
+                "expr": 358,
+                "input_index": 1
+              }
+            },
+            "value": 357
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 60,
+            "consumer": {
+              "Expr": {
+                "expr": 356,
+                "input_index": 0
+              }
+            },
+            "value": 65
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 60,
+            "consumer": {
+              "Expr": {
+                "expr": 357,
+                "input_index": 0
+              }
+            },
+            "value": 78
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 60,
+            "consumer": {
+              "Expr": {
+                "expr": 359,
+                "input_index": 0
+              }
+            },
+            "value": 356
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 60,
+            "consumer": {
+              "Expr": {
+                "expr": 359,
+                "input_index": 1
+              }
+            },
+            "value": 357
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 61,
+            "consumer": {
+              "Expr": {
+                "expr": 360,
+                "input_index": 0
+              }
+            },
+            "value": 82
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 61,
+            "consumer": {
+              "Expr": {
+                "expr": 361,
+                "input_index": 0
+              }
+            },
+            "value": 86
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 61,
+            "consumer": {
+              "Expr": {
+                "expr": 362,
+                "input_index": 0
+              }
+            },
+            "value": 360
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 61,
+            "consumer": {
+              "Expr": {
+                "expr": 362,
+                "input_index": 1
+              }
+            },
+            "value": 361
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 62,
+            "consumer": {
+              "Expr": {
+                "expr": 360,
+                "input_index": 0
+              }
+            },
+            "value": 82
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 62,
+            "consumer": {
+              "Expr": {
+                "expr": 361,
+                "input_index": 0
+              }
+            },
+            "value": 86
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 62,
+            "consumer": {
+              "Expr": {
+                "expr": 363,
+                "input_index": 0
+              }
+            },
+            "value": 360
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 62,
+            "consumer": {
+              "Expr": {
+                "expr": 363,
+                "input_index": 1
+              }
+            },
+            "value": 361
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 63,
+            "consumer": {
+              "Expr": {
+                "expr": 364,
+                "input_index": 0
+              }
+            },
+            "value": 89
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 63,
+            "consumer": {
+              "Expr": {
+                "expr": 365,
+                "input_index": 0
+              }
+            },
+            "value": 94
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 63,
+            "consumer": {
+              "Expr": {
+                "expr": 366,
+                "input_index": 0
+              }
+            },
+            "value": 364
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 63,
+            "consumer": {
+              "Expr": {
+                "expr": 366,
+                "input_index": 1
+              }
+            },
+            "value": 365
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 64,
+            "consumer": {
+              "Expr": {
+                "expr": 364,
+                "input_index": 0
+              }
+            },
+            "value": 89
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 64,
+            "consumer": {
+              "Expr": {
+                "expr": 365,
+                "input_index": 0
+              }
+            },
+            "value": 94
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 64,
+            "consumer": {
+              "Expr": {
+                "expr": 367,
+                "input_index": 0
+              }
+            },
+            "value": 364
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 64,
+            "consumer": {
+              "Expr": {
+                "expr": 367,
+                "input_index": 1
+              }
+            },
+            "value": 365
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 65,
+            "consumer": "RootOutput",
+            "value": 97
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 66,
+            "consumer": {
+              "Expr": {
+                "expr": 368,
+                "input_index": 0
+              }
+            },
+            "value": 154
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 66,
+            "consumer": {
+              "Expr": {
+                "expr": 369,
+                "input_index": 0
+              }
+            },
+            "value": 272
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 66,
+            "consumer": {
+              "Expr": {
+                "expr": 369,
+                "input_index": 1
+              }
+            },
+            "value": 368
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 66,
+            "consumer": {
+              "Expr": {
+                "expr": 371,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 66,
+            "consumer": {
+              "Expr": {
+                "expr": 372,
+                "input_index": 2
+              }
+            },
+            "value": 371
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 67,
+            "consumer": {
+              "Expr": {
+                "expr": 368,
+                "input_index": 0
+              }
+            },
+            "value": 154
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 67,
+            "consumer": {
+              "Expr": {
+                "expr": 371,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 67,
+            "consumer": {
+              "Expr": {
+                "expr": 374,
+                "input_index": 0
+              }
+            },
+            "value": 368
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 67,
+            "consumer": {
+              "Expr": {
+                "expr": 374,
+                "input_index": 1
+              }
+            },
+            "value": 371
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 68,
+            "consumer": {
+              "Expr": {
+                "expr": 375,
+                "input_index": 0
+              }
+            },
+            "value": 174
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 68,
+            "consumer": {
+              "Expr": {
+                "expr": 376,
+                "input_index": 0
+              }
+            },
+            "value": 194
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 68,
+            "consumer": {
+              "Expr": {
+                "expr": 377,
+                "input_index": 0
+              }
+            },
+            "value": 375
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 68,
+            "consumer": {
+              "Expr": {
+                "expr": 377,
+                "input_index": 1
+              }
+            },
+            "value": 376
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 69,
+            "consumer": {
+              "Expr": {
+                "expr": 375,
+                "input_index": 0
+              }
+            },
+            "value": 174
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 69,
+            "consumer": {
+              "Expr": {
+                "expr": 376,
+                "input_index": 0
+              }
+            },
+            "value": 194
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 69,
+            "consumer": {
+              "Expr": {
+                "expr": 378,
+                "input_index": 0
+              }
+            },
+            "value": 375
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 69,
+            "consumer": {
+              "Expr": {
+                "expr": 378,
+                "input_index": 1
+              }
+            },
+            "value": 376
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 70,
+            "consumer": {
+              "Expr": {
+                "expr": 379,
+                "input_index": 0
+              }
+            },
+            "value": 213
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 70,
+            "consumer": {
+              "Expr": {
+                "expr": 380,
+                "input_index": 0
+              }
+            },
+            "value": 233
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 70,
+            "consumer": {
+              "Expr": {
+                "expr": 381,
+                "input_index": 0
+              }
+            },
+            "value": 379
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 70,
+            "consumer": {
+              "Expr": {
+                "expr": 381,
+                "input_index": 1
+              }
+            },
+            "value": 380
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 71,
+            "consumer": {
+              "Expr": {
+                "expr": 379,
+                "input_index": 0
+              }
+            },
+            "value": 213
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 71,
+            "consumer": {
+              "Expr": {
+                "expr": 380,
+                "input_index": 0
+              }
+            },
+            "value": 233
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 71,
+            "consumer": {
+              "Expr": {
+                "expr": 382,
+                "input_index": 0
+              }
+            },
+            "value": 379
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 71,
+            "consumer": {
+              "Expr": {
+                "expr": 382,
+                "input_index": 1
+              }
+            },
+            "value": 380
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 72,
+            "consumer": {
+              "Expr": {
+                "expr": 383,
+                "input_index": 0
+              }
+            },
+            "value": 252
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 72,
+            "consumer": {
+              "Expr": {
+                "expr": 384,
+                "input_index": 0
+              }
+            },
+            "value": 271
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 72,
+            "consumer": {
+              "Expr": {
+                "expr": 385,
+                "input_index": 0
+              }
+            },
+            "value": 383
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 72,
+            "consumer": {
+              "Expr": {
+                "expr": 385,
+                "input_index": 1
+              }
+            },
+            "value": 384
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 73,
+            "consumer": {
+              "Expr": {
+                "expr": 383,
+                "input_index": 0
+              }
+            },
+            "value": 252
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 73,
+            "consumer": {
+              "Expr": {
+                "expr": 384,
+                "input_index": 0
+              }
+            },
+            "value": 271
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 73,
+            "consumer": {
+              "Expr": {
+                "expr": 386,
+                "input_index": 0
+              }
+            },
+            "value": 383
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 73,
+            "consumer": {
+              "Expr": {
+                "expr": 386,
+                "input_index": 1
+              }
+            },
+            "value": 384
+          },
+          0.0
+        ]
       ],
-      "predicted_traffic": 45,
-      "floor": 45
+      "predicted_traffic": 47,
+      "floor": 33
     },
     {
       "order": [
         2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
         9,
-        10,
-        11,
-        12,
+        4,
         13,
         14,
-        15,
-        16,
+        10,
+        7,
+        8,
         17,
         18,
+        15,
+        11,
+        12,
         19,
         20,
+        16,
+        3,
+        5,
+        6,
         21,
         22
       ],
-      "steps": [
-        {
-          "resident_before": [],
-          "events": [],
-          "resident_after": []
-        },
-        {
-          "resident_before": [],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 53,
-                "input_index": 0,
-                "value": 51,
-                "kind": "Reload"
+      "sites": [
+        [
+          {
+            "root": 5,
+            "consumer": {
+              "Expr": {
+                "expr": 62,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 53,
-                "input_index": 1,
-                "value": 52,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": []
-        },
-        {
-          "resident_before": [],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 56,
-                "input_index": 0,
-                "value": 54,
-                "kind": "Reload"
+            "value": 61
+          },
+          0.3041423975718127
+        ],
+        [
+          {
+            "root": 5,
+            "consumer": {
+              "Expr": {
+                "expr": 63,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 56,
-                "input_index": 1,
-                "value": 55,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": []
-        },
-        {
-          "resident_before": [],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 63,
-                "input_index": 0,
-                "value": 58,
-                "kind": "Reload"
+            "value": 57
+          },
+          0.18353463518560753
+        ],
+        [
+          {
+            "root": 6,
+            "consumer": {
+              "Expr": {
+                "expr": 64,
+                "input_index": 0
               }
             },
-            {
-              "Admit": {
-                "value": 58
+            "value": 57
+          },
+          0.3008693087530583
+        ],
+        [
+          {
+            "root": 6,
+            "consumer": {
+              "Expr": {
+                "expr": 64,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 62,
-                "input_index": 0,
-                "value": 57,
-                "kind": "Reload"
+            "value": 61
+          },
+          0.31791028137691857
+        ],
+        [
+          {
+            "root": 7,
+            "consumer": {
+              "Expr": {
+                "expr": 67,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 62,
-                "input_index": 1,
-                "value": 61,
-                "kind": "Recompute"
+            "value": 66
+          },
+          -0.922340623550882
+        ],
+        [
+          {
+            "root": 7,
+            "consumer": {
+              "Expr": {
+                "expr": 70,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 61,
-                "input_index": 0,
-                "value": 59,
-                "kind": "Reload"
+            "value": 68
+          },
+          -0.11082508003301417
+        ],
+        [
+          {
+            "root": 8,
+            "consumer": {
+              "Expr": {
+                "expr": 72,
+                "input_index": 0
               }
             },
-            {
-              "Admit": {
-                "value": 59
+            "value": 66
+          },
+          -0.8571524641853019
+        ],
+        [
+          {
+            "root": 8,
+            "consumer": {
+              "Expr": {
+                "expr": 72,
+                "input_index": 1
               }
             },
-            {
-              "Admit": {
-                "value": 61
-              }
-            }
-          ],
-          "resident_after": [
-            58,
-            59,
-            61
-          ]
-        },
-        {
-          "resident_before": [
-            58,
-            59,
-            61
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 64,
-                "input_index": 0,
-                "value": 58,
-                "kind": "Resident"
+            "value": 68
+          },
+          0.5800969079865814
+        ],
+        [
+          {
+            "root": 11,
+            "consumer": {
+              "Expr": {
+                "expr": 79,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 64,
-                "input_index": 1,
-                "value": 61,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            58,
-            59,
-            61
-          ]
-        },
-        {
-          "resident_before": [
-            58,
-            59,
-            61
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 69,
-                "input_index": 0,
-                "value": 65,
-                "kind": "Reload"
+            "value": 78
+          },
+          -0.34425526810209983
+        ],
+        [
+          {
+            "root": 11,
+            "consumer": {
+              "Expr": {
+                "expr": 80,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 69,
-                "input_index": 1,
-                "value": 68,
-                "kind": "Reload"
+            "value": 75
+          },
+          0.3282912374194673
+        ],
+        [
+          {
+            "root": 12,
+            "consumer": {
+              "Expr": {
+                "expr": 81,
+                "input_index": 0
               }
             },
-            {
-              "Evict": {
-                "value": 58
+            "value": 75
+          },
+          0.32445136369958805
+        ],
+        [
+          {
+            "root": 12,
+            "consumer": {
+              "Expr": {
+                "expr": 81,
+                "input_index": 1
               }
             },
-            {
-              "Evict": {
-                "value": 59
+            "value": 78
+          },
+          0.8830442009444492
+        ],
+        [
+          {
+            "root": 13,
+            "consumer": {
+              "Expr": {
+                "expr": 84,
+                "input_index": 1
               }
             },
-            {
-              "Evict": {
-                "value": 61
+            "value": 83
+          },
+          0.22318436716270385
+        ],
+        [
+          {
+            "root": 13,
+            "consumer": {
+              "Expr": {
+                "expr": 87,
+                "input_index": 0
               }
             },
-            {
-              "Admit": {
-                "value": 68
+            "value": 85
+          },
+          -0.18617670200444936
+        ],
+        [
+          {
+            "root": 14,
+            "consumer": {
+              "Expr": {
+                "expr": 89,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 70,
-                "input_index": 0,
-                "value": 66,
-                "kind": "Reload"
+            "value": 83
+          },
+          0.47799246499430903
+        ],
+        [
+          {
+            "root": 14,
+            "consumer": {
+              "Expr": {
+                "expr": 89,
+                "input_index": 1
               }
             },
-            {
-              "Admit": {
-                "value": 66
+            "value": 85
+          },
+          -0.5343419299810732
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 92,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 70,
-                "input_index": 1,
-                "value": 67,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            68,
-            66
-          ]
-        },
-        {
-          "resident_before": [
-            68,
-            66
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 72,
-                "input_index": 0,
-                "value": 66,
-                "kind": "Resident"
+            "value": 29
+          },
+          0.8231797148001936
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 93,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 72,
-                "input_index": 1,
-                "value": 68,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            68,
-            66
-          ]
-        },
-        {
-          "resident_before": [
-            68,
-            66
-          ],
-          "events": [],
-          "resident_after": [
-            68,
-            66
-          ]
-        },
-        {
-          "resident_before": [
-            68,
-            66
-          ],
-          "events": [],
-          "resident_after": [
-            68,
-            66
-          ]
-        },
-        {
-          "resident_before": [
-            68,
-            66
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 80,
-                "input_index": 0,
-                "value": 76,
-                "kind": "Reload"
+            "value": 49
+          },
+          -0.9361912901247913
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 94,
+                "input_index": 0
               }
             },
-            {
-              "Evict": {
-                "value": 68
+            "value": 92
+          },
+          -0.1786595732398717
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 94,
+                "input_index": 1
               }
             },
-            {
-              "Evict": {
-                "value": 66
+            "value": 93
+          },
+          0.5039838524521159
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 92,
+                "input_index": 0
               }
             },
-            {
-              "Admit": {
-                "value": 76
+            "value": 29
+          },
+          -0.09405331516989235
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 93,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 79,
-                "input_index": 0,
-                "value": 75,
-                "kind": "Reload"
+            "value": 49
+          },
+          -0.20480992255061614
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 95,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 79,
-                "input_index": 1,
-                "value": 78,
-                "kind": "Recompute"
+            "value": 92
+          },
+          -0.24071858458473172
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 95,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 78,
-                "input_index": 1,
-                "value": 77,
-                "kind": "Reload"
+            "value": 93
+          },
+          0.12807405715938902
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 98,
+                "input_index": 1
               }
             },
-            {
-              "Admit": {
-                "value": 77
+            "value": 97
+          },
+          -0.5263882418651613
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 101,
+                "input_index": 0
               }
             },
-            {
-              "Admit": {
-                "value": 78
-              }
-            }
-          ],
-          "resident_after": [
-            76,
-            77,
-            78
-          ]
-        },
-        {
-          "resident_before": [
-            76,
-            77,
-            78
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 81,
-                "input_index": 0,
-                "value": 76,
-                "kind": "Resident"
+            "value": 99
+          },
+          -0.7060868111465801
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 103,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 81,
-                "input_index": 1,
-                "value": 78,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            76,
-            77,
-            78
-          ]
-        },
-        {
-          "resident_before": [
-            76,
-            77,
-            78
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 86,
-                "input_index": 0,
-                "value": 82,
-                "kind": "Reload"
+            "value": 97
+          },
+          0.8293063046620659
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 103,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 86,
-                "input_index": 1,
-                "value": 85,
-                "kind": "Reload"
+            "value": 99
+          },
+          0.8103166429904589
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 106,
+                "input_index": 1
               }
             },
-            {
-              "Evict": {
-                "value": 76
+            "value": 105
+          },
+          -0.06823260936488151
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 109,
+                "input_index": 0
               }
             },
-            {
-              "Evict": {
-                "value": 77
+            "value": 107
+          },
+          0.676159885280607
+        ],
+        [
+          {
+            "root": 22,
+            "consumer": {
+              "Expr": {
+                "expr": 111,
+                "input_index": 0
               }
             },
-            {
-              "Evict": {
-                "value": 78
+            "value": 105
+          },
+          0.9954231855450473
+        ],
+        [
+          {
+            "root": 22,
+            "consumer": {
+              "Expr": {
+                "expr": 111,
+                "input_index": 1
               }
             },
-            {
-              "Admit": {
-                "value": 85
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 87,
-                "input_index": 0,
-                "value": 83,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 83
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 87,
-                "input_index": 1,
-                "value": 84,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            85,
-            83
-          ]
-        },
-        {
-          "resident_before": [
-            85,
-            83
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 89,
-                "input_index": 0,
-                "value": 83,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 89,
-                "input_index": 1,
-                "value": 85,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            85,
-            83
-          ]
-        },
-        {
-          "resident_before": [
-            85,
-            83
-          ],
-          "events": [],
-          "resident_after": [
-            85,
-            83
-          ]
-        },
-        {
-          "resident_before": [
-            85,
-            83
-          ],
-          "events": [],
-          "resident_after": [
-            85,
-            83
-          ]
-        },
-        {
-          "resident_before": [
-            85,
-            83
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 94,
-                "input_index": 0,
-                "value": 29,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Evict": {
-                "value": 85
-              }
-            },
-            {
-              "Evict": {
-                "value": 83
-              }
-            },
-            {
-              "Admit": {
-                "value": 29
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 94,
-                "input_index": 1,
-                "value": 49,
-                "kind": "Recompute"
-              }
-            },
-            {
-              "Admit": {
-                "value": 49
-              }
-            }
-          ],
-          "resident_after": [
-            29,
-            49
-          ]
-        },
-        {
-          "resident_before": [
-            29,
-            49
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 92,
-                "input_index": 0,
-                "value": 29,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 93,
-                "input_index": 0,
-                "value": 49,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            29,
-            49
-          ]
-        },
-        {
-          "resident_before": [
-            29,
-            49
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 100,
-                "input_index": 0,
-                "value": 96,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 100,
-                "input_index": 1,
-                "value": 99,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 29
-              }
-            },
-            {
-              "Evict": {
-                "value": 49
-              }
-            },
-            {
-              "Admit": {
-                "value": 99
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 101,
-                "input_index": 0,
-                "value": 97,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 97
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 101,
-                "input_index": 1,
-                "value": 98,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            99,
-            97
-          ]
-        },
-        {
-          "resident_before": [
-            99,
-            97
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 103,
-                "input_index": 0,
-                "value": 97,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 103,
-                "input_index": 1,
-                "value": 99,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            99,
-            97
-          ]
-        },
-        {
-          "resident_before": [
-            99,
-            97
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 108,
-                "input_index": 0,
-                "value": 104,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 108,
-                "input_index": 1,
-                "value": 107,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 99
-              }
-            },
-            {
-              "Evict": {
-                "value": 97
-              }
-            },
-            {
-              "Admit": {
-                "value": 107
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 109,
-                "input_index": 0,
-                "value": 105,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 105
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 109,
-                "input_index": 1,
-                "value": 106,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            107,
-            105
-          ]
-        },
-        {
-          "resident_before": [
-            107,
-            105
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 111,
-                "input_index": 0,
-                "value": 105,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 111,
-                "input_index": 1,
-                "value": 107,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            107,
-            105
-          ]
-        }
+            "value": 107
+          },
+          0.6268885365755288
+        ]
       ],
-      "predicted_traffic": 115,
-      "floor": 115
+      "predicted_traffic": 103,
+      "floor": 98
     },
     {
       "order": [
@@ -4026,401 +3568,192 @@
         12,
         13
       ],
-      "steps": [
-        {
-          "resident_before": [],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 5,
-                "input_index": 0,
-                "value": 1,
-                "kind": "Reload"
+      "sites": [
+        [
+          {
+            "root": 0,
+            "consumer": {
+              "Expr": {
+                "expr": 5,
+                "input_index": 0
               }
             },
-            {
-              "Admit": {
-                "value": 1
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 1,
+            "consumer": {
+              "Expr": {
+                "expr": 9,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 4,
-                "input_index": 0,
-                "value": 0,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            1
-          ]
-        },
-        {
-          "resident_before": [
-            1
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 9,
-                "input_index": 0,
-                "value": 1,
-                "kind": "Resident"
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 2,
+            "consumer": {
+              "Expr": {
+                "expr": 13,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 8,
-                "input_index": 1,
-                "value": 7,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            1
-          ]
-        },
-        {
-          "resident_before": [
-            1
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 15,
-                "input_index": 0,
-                "value": 11,
-                "kind": "Reload"
+            "value": 12
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 2,
+            "consumer": {
+              "Expr": {
+                "expr": 16,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 15,
-                "input_index": 1,
-                "value": 14,
-                "kind": "Reload"
+            "value": 14
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 3,
+            "consumer": {
+              "Expr": {
+                "expr": 18,
+                "input_index": 0
               }
             },
-            {
-              "Evict": {
-                "value": 1
+            "value": 12
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 3,
+            "consumer": {
+              "Expr": {
+                "expr": 18,
+                "input_index": 1
               }
             },
-            {
-              "Admit": {
-                "value": 14
+            "value": 14
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 6,
+            "consumer": {
+              "Expr": {
+                "expr": 23,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 16,
-                "input_index": 0,
-                "value": 12,
-                "kind": "Reload"
+            "value": 22
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 6,
+            "consumer": {
+              "Expr": {
+                "expr": 26,
+                "input_index": 0
               }
             },
-            {
-              "Admit": {
-                "value": 12
+            "value": 24
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 7,
+            "consumer": {
+              "Expr": {
+                "expr": 28,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 16,
-                "input_index": 1,
-                "value": 13,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            14,
-            12
-          ]
-        },
-        {
-          "resident_before": [
-            14,
-            12
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 18,
-                "input_index": 0,
-                "value": 12,
-                "kind": "Resident"
+            "value": 22
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 7,
+            "consumer": {
+              "Expr": {
+                "expr": 28,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 18,
-                "input_index": 1,
-                "value": 14,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            14,
-            12
-          ]
-        },
-        {
-          "resident_before": [
-            14,
-            12
-          ],
-          "events": [],
-          "resident_after": [
-            14,
-            12
-          ]
-        },
-        {
-          "resident_before": [
-            14,
-            12
-          ],
-          "events": [],
-          "resident_after": [
-            14,
-            12
-          ]
-        },
-        {
-          "resident_before": [
-            14,
-            12
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 25,
-                "input_index": 0,
-                "value": 21,
-                "kind": "Reload"
+            "value": 24
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 10,
+            "consumer": {
+              "Expr": {
+                "expr": 33,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 25,
-                "input_index": 1,
-                "value": 24,
-                "kind": "Reload"
+            "value": 32
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 10,
+            "consumer": {
+              "Expr": {
+                "expr": 36,
+                "input_index": 0
               }
             },
-            {
-              "Evict": {
-                "value": 14
+            "value": 34
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 11,
+            "consumer": {
+              "Expr": {
+                "expr": 38,
+                "input_index": 0
               }
             },
-            {
-              "Evict": {
-                "value": 12
+            "value": 32
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 11,
+            "consumer": {
+              "Expr": {
+                "expr": 38,
+                "input_index": 1
               }
             },
-            {
-              "Admit": {
-                "value": 24
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 26,
-                "input_index": 0,
-                "value": 22,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 22
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 26,
-                "input_index": 1,
-                "value": 23,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            24,
-            22
-          ]
-        },
-        {
-          "resident_before": [
-            24,
-            22
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 28,
-                "input_index": 0,
-                "value": 22,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 28,
-                "input_index": 1,
-                "value": 24,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            24,
-            22
-          ]
-        },
-        {
-          "resident_before": [
-            24,
-            22
-          ],
-          "events": [],
-          "resident_after": [
-            24,
-            22
-          ]
-        },
-        {
-          "resident_before": [
-            24,
-            22
-          ],
-          "events": [],
-          "resident_after": [
-            24,
-            22
-          ]
-        },
-        {
-          "resident_before": [
-            24,
-            22
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 35,
-                "input_index": 0,
-                "value": 31,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 35,
-                "input_index": 1,
-                "value": 34,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 24
-              }
-            },
-            {
-              "Evict": {
-                "value": 22
-              }
-            },
-            {
-              "Admit": {
-                "value": 34
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 36,
-                "input_index": 0,
-                "value": 32,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 32
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 36,
-                "input_index": 1,
-                "value": 33,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            34,
-            32
-          ]
-        },
-        {
-          "resident_before": [
-            34,
-            32
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 38,
-                "input_index": 0,
-                "value": 32,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 38,
-                "input_index": 1,
-                "value": 34,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            34,
-            32
-          ]
-        },
-        {
-          "resident_before": [
-            34,
-            32
-          ],
-          "events": [],
-          "resident_after": [
-            34,
-            32
-          ]
-        },
-        {
-          "resident_before": [
-            34,
-            32
-          ],
-          "events": [],
-          "resident_after": [
-            34,
-            32
-          ]
-        }
+            "value": 34
+          },
+          0.0
+        ]
       ],
-      "predicted_traffic": 81,
-      "floor": 81
+      "predicted_traffic": 63,
+      "floor": 57
     },
     {
       "order": [
@@ -4433,295 +3766,166 @@
         6,
         7
       ],
-      "steps": [
-        {
-          "resident_before": [],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 4,
-                "input_index": 0,
-                "value": 0,
-                "kind": "Reload"
+      "sites": [
+        [
+          {
+            "root": 0,
+            "consumer": {
+              "Expr": {
+                "expr": 2,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 4,
-                "input_index": 1,
-                "value": 3,
-                "kind": "Reload"
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 0,
+            "consumer": {
+              "Expr": {
+                "expr": 5,
+                "input_index": 0
               }
             },
-            {
-              "Admit": {
-                "value": 3
+            "value": 3
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 1,
+            "consumer": {
+              "Expr": {
+                "expr": 7,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 5,
-                "input_index": 0,
-                "value": 1,
-                "kind": "Reload"
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 1,
+            "consumer": {
+              "Expr": {
+                "expr": 7,
+                "input_index": 1
               }
             },
-            {
-              "Admit": {
-                "value": 1
+            "value": 3
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 2,
+            "consumer": {
+              "Expr": {
+                "expr": 10,
+                "input_index": 1
               }
             },
-            {
-              "Demand": {
-                "consumer": 5,
-                "input_index": 1,
-                "value": 2,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            3,
-            1
-          ]
-        },
-        {
-          "resident_before": [
-            3,
-            1
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 7,
-                "input_index": 0,
-                "value": 1,
-                "kind": "Resident"
+            "value": 9
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 2,
+            "consumer": {
+              "Expr": {
+                "expr": 13,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 7,
-                "input_index": 1,
-                "value": 3,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            3,
-            1
-          ]
-        },
-        {
-          "resident_before": [
-            3,
-            1
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 12,
-                "input_index": 0,
-                "value": 8,
-                "kind": "Reload"
+            "value": 11
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 3,
+            "consumer": {
+              "Expr": {
+                "expr": 15,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 12,
-                "input_index": 1,
-                "value": 11,
-                "kind": "Reload"
+            "value": 9
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 3,
+            "consumer": {
+              "Expr": {
+                "expr": 15,
+                "input_index": 1
               }
             },
-            {
-              "Evict": {
-                "value": 3
+            "value": 11
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 4,
+            "consumer": {
+              "Expr": {
+                "expr": 18,
+                "input_index": 1
               }
             },
-            {
-              "Evict": {
-                "value": 1
+            "value": 17
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 4,
+            "consumer": {
+              "Expr": {
+                "expr": 21,
+                "input_index": 0
               }
             },
-            {
-              "Admit": {
-                "value": 11
+            "value": 19
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 5,
+            "consumer": {
+              "Expr": {
+                "expr": 23,
+                "input_index": 0
               }
             },
-            {
-              "Demand": {
-                "consumer": 13,
-                "input_index": 0,
-                "value": 9,
-                "kind": "Reload"
+            "value": 17
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 5,
+            "consumer": {
+              "Expr": {
+                "expr": 23,
+                "input_index": 1
               }
             },
-            {
-              "Admit": {
-                "value": 9
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 13,
-                "input_index": 1,
-                "value": 10,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            9
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            9
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 15,
-                "input_index": 0,
-                "value": 9,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 15,
-                "input_index": 1,
-                "value": 11,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            11,
-            9
-          ]
-        },
-        {
-          "resident_before": [
-            11,
-            9
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 20,
-                "input_index": 0,
-                "value": 16,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 20,
-                "input_index": 1,
-                "value": 19,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Evict": {
-                "value": 11
-              }
-            },
-            {
-              "Evict": {
-                "value": 9
-              }
-            },
-            {
-              "Admit": {
-                "value": 19
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 21,
-                "input_index": 0,
-                "value": 17,
-                "kind": "Reload"
-              }
-            },
-            {
-              "Admit": {
-                "value": 17
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 21,
-                "input_index": 1,
-                "value": 18,
-                "kind": "Reload"
-              }
-            }
-          ],
-          "resident_after": [
-            19,
-            17
-          ]
-        },
-        {
-          "resident_before": [
-            19,
-            17
-          ],
-          "events": [
-            {
-              "Demand": {
-                "consumer": 23,
-                "input_index": 0,
-                "value": 17,
-                "kind": "Resident"
-              }
-            },
-            {
-              "Demand": {
-                "consumer": 23,
-                "input_index": 1,
-                "value": 19,
-                "kind": "Resident"
-              }
-            }
-          ],
-          "resident_after": [
-            19,
-            17
-          ]
-        },
-        {
-          "resident_before": [
-            19,
-            17
-          ],
-          "events": [],
-          "resident_after": [
-            19,
-            17
-          ]
-        },
-        {
-          "resident_before": [
-            19,
-            17
-          ],
-          "events": [],
-          "resident_after": [
-            19,
-            17
-          ]
-        }
+            "value": 19
+          },
+          0.0
+        ]
       ],
-      "predicted_traffic": 56,
-      "floor": 56
+      "predicted_traffic": 50,
+      "floor": 48
     }
   ]
 }
