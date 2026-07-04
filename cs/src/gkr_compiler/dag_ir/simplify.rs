@@ -145,7 +145,7 @@ impl Rebuild<'_> {
                 .map(|f| f == FieldKind::Base)
                 .unwrap_or(false),
             Expr::Add(children) | Expr::Mul(children) => {
-                children.clone().iter().all(|&c| self.provably_base(c))
+                children.iter().all(|&c| self.provably_base(c))
             }
         };
         self.provably_base_memo.insert(old, result);
@@ -246,7 +246,13 @@ impl Rebuild<'_> {
                                 self.arena.add(vec![c])
                             }
                         }
-                        1 => rest[0],
+                        1 => {
+                            // All-constant fold implies provably-base today; assert protects
+                            // against future as_const/source_field drift.
+                            debug_assert!(self.as_const(rest[0]).is_none() || self.provably_base(old),
+                                "constant replacement must be provably base");
+                            rest[0]
+                        }
                         _ => self.arena.add(rest),
                     }
                 }
@@ -306,7 +312,13 @@ impl Rebuild<'_> {
                                     self.arena.mul(vec![c])
                                 }
                             }
-                            1 => rest[0],
+                            1 => {
+                                // All-constant fold implies provably-base today; assert protects
+                                // against future as_const/source_field drift.
+                                debug_assert!(self.as_const(rest[0]).is_none() || self.provably_base(old),
+                                    "constant replacement must be provably base");
+                                rest[0]
+                            }
                             _ => self.arena.mul(rest),
                         }
                     }
@@ -353,9 +365,9 @@ mod tests {
 
     /// Build a `Read{LayerOutput}` source expr — `source_field` returns `Err`
     /// for this place, so `provably_base` is `false` (NOT provably base).
-    fn read_like(a: &mut ArenaBuilder) -> ExprId {
+    fn read_like(a: &mut ArenaBuilder, offset: usize) -> ExprId {
         let s = a.intern_source(SourceKind::Read {
-            place: ReadPlace::LayerOutput { layer: 0, offset: 0 },
+            place: ReadPlace::LayerOutput { layer: 0, offset },
         });
         a.source_expr(s)
     }
@@ -563,7 +575,7 @@ mod tests {
     fn double_negation_cancels() {
         let mut a = ArenaBuilder::with_flatten(false);
         let neg1 = const_expr(&mut a, 2013265920); // p-1
-        let x = read_like(&mut a); // NOT provably base is fine here
+        let x = read_like(&mut a, 101); // NOT provably base is fine here
         let inner = a.mul(vec![neg1, x]);
         let outer = a.mul(vec![neg1, inner]); // inner fan-out 1 → flattens
         let layer = layer_of(
@@ -640,17 +652,17 @@ mod tests {
         // Add(const 2, const 3, x) → Add(const 5, x)
         let c2 = const_expr(&mut a, 2);
         let c3 = const_expr(&mut a, 3);
-        let x = read_like(&mut a);
+        let x = read_like(&mut a, 101);
         let add_node = a.add(vec![c2, c3, x]);
 
         // Mul(1, x) → x
         let one = const_expr(&mut a, 1);
-        let y = read_like(&mut a);
+        let y = read_like(&mut a, 102);
         let mul_node = a.mul(vec![one, y]);
 
         // Add(0, x) → x
         let zero = const_expr(&mut a, 0);
-        let z = read_like(&mut a);
+        let z = read_like(&mut a, 103);
         let add_zero_node = a.add(vec![zero, z]);
 
         let layer = layer_of(
@@ -690,10 +702,22 @@ mod tests {
             other => panic!("expected Add, got {:?}", other),
         }
 
-        assert_eq!(
-            out.roots[1].expr, out.roots[2].expr,
-            "Mul(1,y) and Add(0,z) both collapse to their non-identity operand"
-        );
+        // Both Mul(1,y) and Add(0,z) collapse to their respective non-identity operands.
+        // Since y and z are distinct nodes (different read offsets), they collapse to distinct IDs.
+        match &out.exprs[out.roots[1].expr.0 as usize] {
+            Expr::Source(sid) => assert!(
+                matches!(&out.sources[sid.0 as usize].kind, SourceKind::Read { .. }),
+                "Mul(1,y) must collapse to y (a Read source)"
+            ),
+            other => panic!("expected Mul(1,y) to collapse to a source, got {:?}", other),
+        }
+        match &out.exprs[out.roots[2].expr.0 as usize] {
+            Expr::Source(sid) => assert!(
+                matches!(&out.sources[sid.0 as usize].kind, SourceKind::Read { .. }),
+                "Add(0,z) must collapse to z (a Read source)"
+            ),
+            other => panic!("expected Add(0,z) to collapse to a source, got {:?}", other),
+        }
     }
 
     /// LookupValue.query is remapped AND keeps its subtree alive.
