@@ -22,28 +22,28 @@ use gkr_eval_isa::fwd::compile::{
 };
 use gkr_eval_isa::schedule_search::genome::Genome;
 use gkr_eval_isa::schedule_search::producer::produce_circuit_schedule;
-use gkr_eval_isa::schedule_search::scorer::{objective_key, score, LayerCtx};
+use gkr_eval_isa::schedule_search::scorer::{objective_key, resident_cap_for_order, score, LayerCtx};
 use gkr_eval_isa::schedule_search::search::SearchConfig;
 
 use common::{compiled_circuit_dir, load_fixture, schedule_stem};
 
-/// The real production budget convention (`*_schedule_b16_gkr.json`) — used ONLY by
-/// the `#[ignore]`d regen entry point below, which this task does not actually run.
-/// NOTE (known gap, see task-6-report.md): under the current `Decisions` emitter
-/// admission model, add_sub L0's neutral genome needs budget ~40 to become feasible
-/// at all (probed while writing this test: infeasible through budget 32, feasible at
-/// 40); reaching production's aspirational 16 for this layer needs either a much
-/// stronger search than this task's reimplementation or an emitter admission-model
-/// improvement — both out of this task's scope (compile-in-loop wiring, not search-
-/// quality/emitter tuning).
+/// The real production budget convention (`*_schedule_b16_gkr.json`) — used by the
+/// `#[ignore]`d regen entry point below AND (Task 8a) the mini GATE-D roundtrip.
+/// NOTE (Task 8a, supersedes the old task-6-report.md "known gap" note): b16 add_sub
+/// L0 was `Decisions`-admission-infeasible for EVERY genome because `try_admit` had
+/// no way to decline an admission while capacity was free — the resident set
+/// greedily filled the whole placement budget and starved the concurrent evaluation
+/// temps. Fixed by capping resident admission at `budget - legacy_recompute_floor`
+/// (`scorer::resident_cap_for_order`, `.superpowers/sdd/task-8-report.md`); 16 is now
+/// feasible and is the pinned budget for both the regen entry point and the mini
+/// GATE-D search below.
 const REAL_BUDGET: usize = 16;
 /// A generously large budget for tests that just need SOME feasible compile to compare
 /// against (not a search-quality claim).
 const GENEROUS_BUDGET: usize = 4096;
-/// A budget the tiny (`pop=4, evals=40`) mini-GATE-D search reliably satisfies for
-/// add_sub L0 (probed: feasible from budget 40 up; 64 leaves headroom) — see the
-/// `REAL_BUDGET` doc above for why this isn't 16.
-const SEARCH_TEST_BUDGET: usize = 64;
+/// The mini (`pop=4, evals=40`) GATE-D search now runs at the real production budget
+/// (Task 8a unblocked b16 — see `REAL_BUDGET`'s doc).
+const SEARCH_TEST_BUDGET: usize = REAL_BUDGET;
 const ADD_SUB: &str = "add_sub_lui_auipc_mop_layout_gkr.json";
 
 /// Every compiled cache-layout GKR circuit fixture in `cs/compiled_circuits` (the
@@ -149,6 +149,20 @@ fn small_search_roundtrip_add_sub() {
         if ls.order.is_empty() {
             continue;
         }
+        // Task 8a: `score()` compiled the winning schedule with the resident set
+        // capped at `resident_cap_for_order(..., ls.order, SEARCH_TEST_BUDGET)`, not
+        // the raw placement budget — reproducing `predicted_traffic` exactly means
+        // applying the SAME cap derivation here (deterministic in `(layer, order,
+        // budget)`, so recomputing it from the persisted `ls.order` is exact, not an
+        // approximation).
+        let cap = resident_cap_for_order(
+            layer,
+            &artifact.layers[li],
+            &artifact.scratch_space_mapping,
+            &cross,
+            &ls.order,
+            SEARCH_TEST_BUDGET,
+        );
         let decisions = SiteDecisions::new(ls.sites.iter().copied());
         let compiled = compile_layer_with_policy(
             layer,
@@ -157,7 +171,7 @@ fn small_search_roundtrip_add_sub() {
             &cross,
             ls,
             SEARCH_TEST_BUDGET,
-            MaterializePolicy::Decisions { decisions, budget: SEARCH_TEST_BUDGET },
+            MaterializePolicy::Decisions { decisions, budget: cap },
         )
         .unwrap_or_else(|e| panic!("layer {li}: winning schedule failed to recompile: {e:?}"));
         assert_eq!(

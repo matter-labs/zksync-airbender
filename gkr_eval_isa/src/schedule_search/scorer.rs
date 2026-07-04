@@ -9,9 +9,11 @@
 //! the real emitter (`fwd::compile::lower`) does. `score` has no such model —
 //! it IS the real emitter, run once per candidate.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::Mutex;
 
-use cs::gkr_compiler::dag_ir::{DagLayer, FieldKind, ReadPlace, RootId, SiteKey};
+use cs::definitions::GKRAddress;
+use cs::gkr_compiler::dag_ir::{DagLayer, FieldKind, LayerSchedule, ReadPlace, RootId, SiteKey};
 use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription};
 use field::baby_bear::base::BabyBearField;
 
@@ -41,6 +43,17 @@ pub struct LayerCtx<'a> {
     /// `floor::dag_traffic_floor_with_actions(layer, cross_layer_fields, actions)` —
     /// recorded into the winning `LayerSchedule`, not used by `score` itself.
     pub floor: usize,
+    /// Task 8a memo cache for [`resident_cap_for_order`], keyed by the concrete
+    /// root `order` a genome decodes to: many genomes across a search share the
+    /// same order (only `cache_priority` genes differ — `Genome::perturb_one_gene`
+    /// mutates one gene at a time and there are usually far more sites than
+    /// units), so memoizing avoids re-paying the extra `LegacyRecompute` compile
+    /// on every rescoring of the same order. `Mutex` (not `RefCell`) because
+    /// `score`/`decode_schedule` take `&LayerCtx` shared across candidates AND the
+    /// search fans candidates out across threads (`search.rs`'s `scope.spawn`) —
+    /// interior mutability only, no effect on the (pure, deterministic) value
+    /// computed per key, so lock contention never changes the result.
+    resident_cap_cache: Mutex<HashMap<Vec<RootId>, usize>>,
 }
 
 impl<'a> LayerCtx<'a> {
@@ -72,6 +85,7 @@ impl<'a> LayerCtx<'a> {
             units: relation_units(layer),
             sites: enumerate_sites(layer),
             floor,
+            resident_cap_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -82,6 +96,81 @@ impl<'a> LayerCtx<'a> {
     pub fn n_sites(&self) -> usize {
         self.sites.len()
     }
+
+    /// Task 8a: the `Decisions` resident-admission cap for `order` at this ctx's
+    /// `budget` (memoized — see `resident_cap_cache`'s doc). See
+    /// [`resident_cap_for_order`] for the derivation.
+    pub fn resident_cap(&self, order: &[RootId]) -> usize {
+        if let Some(&cap) = self.resident_cap_cache.lock().unwrap().get(order) {
+            return cap;
+        }
+        let cap = resident_cap_for_order(
+            self.layer,
+            self.artifact_layer,
+            self.scratch_mapping,
+            self.cross_layer_fields,
+            order,
+            self.budget,
+        );
+        self.resident_cap_cache.lock().unwrap().insert(order.to_vec(), cap);
+        cap
+    }
+}
+
+/// Task 8a: `Decisions`' resident-admission budget declines below the full
+/// placement `budget` by the COMPUTE HEADROOM `(layer, order)` needs — the
+/// placement floor of the exact same layer/order compiled under pure
+/// `MaterializePolicy::LegacyRecompute` (no residency at all). Rationale (see
+/// `.superpowers/sdd/task-8-report.md`'s Step-0 probes): `try_admit` cannot
+/// decline an admission while resident capacity is free, so an uncapped
+/// resident set greedily fills the WHOLE placement budget and starves the
+/// concurrent evaluation temps `plan_placement` must also fit in the same
+/// cells — that is exactly the b16 `BudgetBelowFloor` regression. Capping
+/// residents at `budget - legacy_floor` guarantees residents only ever
+/// consume cells pure recomputation didn't need; at `cap == 0` `Decisions`
+/// degenerates gracefully to `LegacyRecompute`'s own feasibility (no partial
+/// admission is possible below width 1 anyway).
+///
+/// `legacy_floor` is read directly off `Placement::max_live_cells` (via
+/// `CompileStats::max_live_cells`) from a real compile at `budget` under
+/// `LegacyRecompute` — the ACTUAL peak live-cell width that schedule uses,
+/// not a binary-searched approximation. If even `LegacyRecompute` doesn't fit
+/// `budget` (should not happen for any budget this producer is ever run at,
+/// per the Step-0 probes showing legacy feasible from budget 8), the reported
+/// `CompileError::BudgetBelowFloor::floor` is used as a (necessarily
+/// conservative — it's only the pressure point nearest instr 0) headroom
+/// estimate, which saturates the cap to 0 (full `LegacyRecompute` fallback).
+///
+/// Deterministic: a pure function of `(layer, order, budget)` (`LegacyRecompute`
+/// has no genome/priority dependence at all).
+pub fn resident_cap_for_order(
+    layer: &DagLayer,
+    artifact_layer: &GKRLayerDescription,
+    scratch_mapping: &BTreeMap<GKRAddress, usize>,
+    cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
+    order: &[RootId],
+    budget: usize,
+) -> usize {
+    let legacy_schedule =
+        LayerSchedule { order: order.to_vec(), sites: Vec::new(), predicted_traffic: 0, floor: 0 };
+    let legacy_floor = match compile_layer_with_policy(
+        layer,
+        artifact_layer,
+        scratch_mapping,
+        cross_layer_fields,
+        &legacy_schedule,
+        budget,
+        MaterializePolicy::LegacyRecompute,
+    ) {
+        Ok(compiled) => compiled.stats.max_live_cells,
+        Err(CompileError::BudgetBelowFloor { floor, .. }) => floor,
+        Err(e) => panic!(
+            "resident_cap_for_order: unexpected LegacyRecompute compile error {:?} (order len={})",
+            e,
+            order.len()
+        ),
+    };
+    budget.saturating_sub(legacy_floor)
 }
 
 /// Lexicographic candidate objective: `infeasible` dominates (any feasible
@@ -127,8 +216,9 @@ pub fn decode_schedule(genome: &Genome, ctx: &LayerCtx) -> cs::gkr_compiler::dag
 /// than silently ranking the candidate out.
 pub fn score(genome: &Genome, ctx: &LayerCtx) -> CandidateScore {
     let schedule = decode_schedule(genome, ctx);
+    let resident_cap = ctx.resident_cap(&schedule.order);
     let decisions = SiteDecisions::new(schedule.sites.iter().copied());
-    let policy = MaterializePolicy::Decisions { decisions, budget: ctx.budget };
+    let policy = MaterializePolicy::Decisions { decisions, budget: resident_cap };
     match compile_layer_with_policy(
         ctx.layer,
         ctx.artifact_layer,
