@@ -123,7 +123,18 @@ fn tracker_admission_implies_placement_feasible_on_committed_corpus() {
             layers_checked += 1;
         }
     }
-    assert!(layers_checked > 0, "vacuous");
+    // Pinned to the exact corpus layer count (11 fixtures / 53 scheduled
+    // layers) rather than a vacuous `> 0`, per Task 8b review: a `> 0` bound
+    // can't catch a silent skip if a future corpus/fixture change starts
+    // dropping layers (e.g. a `layer_needs_compile` regression that skips
+    // more than the genuinely-skippable ones).
+    assert_eq!(
+        layers_checked, 53,
+        "expected exactly 53 scheduled layers across the 11-fixture corpus; \
+         a different count means layers are being silently skipped or added \
+         (layer_needs_compile drift, corpus edit, etc.) — update this pin \
+         deliberately if the corpus itself changed"
+    );
     eprintln!(
         "[tracker-placement-agreement] {layers_checked} layers across {} fixtures: OK",
         COMMITTED_CORPUS.len()
