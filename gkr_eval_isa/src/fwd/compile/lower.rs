@@ -8,21 +8,20 @@
 //! the stream onto `place::VirtualInstr`, runs the Task-1 lifetime-overlap allocator,
 //! and materializes the rich stream to concrete ISA `Instr`.
 //!
-//! Value/admit model (T3a: value-correct, traffic deferred to Task 5):
-//!   - Track `defined: HashSet<ExprId>` mirroring the schedule's residency SETS
-//!     (`resident_before`/`resident_after`); an `ExprId` is *defined-resident* once we
-//!     have physically evicted its value into a cell (`Mov DstFromAcc Cell(v)`).
+//! Value/admit model:
+//!   - Track `defined: HashSet<ExprId>` — an `ExprId` is *defined-resident* once we have
+//!     physically evicted its value into a cell (`Mov DstFromAcc Cell(v)`).
 //!   - Serve an operand as `VirtualOp::Value(v)` ONLY when `v` is truly defined-resident
 //!     (value-safe). A source / resolution leaf resolves to its backing / `Special`.
 //!     Any other compound is RECOMPUTED by descending its cone (pure, value-safe) — we
 //!     never read a stale cell, so value correctness is robust to reorder/drift.
-//!   - Residency is realized from the schedule's SETS (not the `Demand` event kinds):
-//!     at every step we top up `defined` to the step's residents and drop the rest.
-//!     This is the "recompute wherever Resident/Reload cannot be safely realized"
-//!     fallback the T3a brief permits; the `DemandKind`-exact traffic replay is Task 5.
+//!   - `LegacyRecompute` clears `defined` at every step boundary (pure per-step
+//!     recompute; schema v2 (Task 4) has no persisted per-step residency to realize
+//!     from). `Decisions` (Task 3) instead owns residency across the whole layer via
+//!     `SiteDecisions`/`OccurrenceStreams`-driven admit/evict (`try_admit`).
 //!   - Cache (materialize-only) roots are committed to their `CacheOutput` sink when
 //!     their shared `ExprId` is produced/recomputed, and exposed as `root_outputs` so
-//!     the Task-5 cache-value gate is non-vacuous.
+//!     the cache-value gate is non-vacuous.
 //!
 //! Arithmetic (fold splitting, FMA fusion, field-homogeneous grouping, `-1`/`0`
 //! strength reduction, over-arity chunking) is a faithful re-implementation of
@@ -33,8 +32,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use cs::gkr_compiler::dag_ir::{
-    DagLayer, DemandKind, Expr, ExprId, LayerSchedule, ReadPlace, ReplayEvent, RootId, SinkInfo,
-    SinkKind, SourceKind,
+    DagLayer, Expr, ExprId, LayerSchedule, ReadPlace, RootId, SourceKind,
 };
 
 use super::super::context::{DagForwardContext, ForwardAction};
@@ -47,7 +45,7 @@ use super::arith::{
 use super::decisions::OccurrenceStreams;
 use super::place::{ValueId, VInstrKind, VirtualInstr, VirtualOp};
 use super::schedule::split_reduction;
-use super::schedule_residency::MaterializeMap;
+use super::MaterializeMap;
 use super::MaterializePolicy;
 use crate::fwd::compile::CompileError;
 
@@ -62,7 +60,7 @@ fn resident_width(field: OperandField) -> usize {
 }
 
 /// Task 3: `MaterializePolicy::Decisions` residency state — present only under that
-/// policy (`None` for `LegacyRecompute`/`Materialize`). `resident` is the width-weighted
+/// policy (`None` for `LegacyRecompute`). `resident` is the width-weighted
 /// resident set, a `BTreeMap` (per the brief's determinism requirement: eviction-candidate
 /// enumeration must not depend on hash-iteration order). `VirtualLower::defined` mirrors
 /// `resident`'s keys — `defined` stays the single policy-agnostic "is this value's cell
@@ -212,19 +210,11 @@ struct VirtualLower<'a> {
     root_outputs: Vec<(RootId, VirtualRootOutput)>,
     /// Interned resolution-leaf descriptors (`ExprId → ctx.specials` index).
     desc_by_expr: HashMap<ExprId, u16>,
-    /// Emission policy. `LegacyRecompute` = the lazy realize-from-sets + recompute path
-    /// (default, unchanged); `Materialize` = the event-local cache-produce vs fuse path.
+    /// Emission policy. `LegacyRecompute` = the per-step-clear + recompute path (default);
+    /// `Decisions` = the emitter-owned residency policy (Task 3).
     policy: MaterializePolicy,
-    /// `ExprId`s that appear as a direct child of some `Add` in this layer (layer-global).
-    add_child_exprs: HashSet<ExprId>,
-    /// Cache-root expr ids (`materialize: Some(Cache{..})`): NEVER fusable (layer-global).
-    cache_root_exprs: HashSet<ExprId>,
-    /// Values `Admit`ed in the step being replayed (authoritative; NOT `resident_after`).
-    admitted_this_step: HashSet<ExprId>,
-    /// Values with a `Recompute` `Demand` in the step being replayed.
-    recompute_this_step: HashSet<ExprId>,
     /// Task 3 (`Decisions` only): residency state driven by `SiteDecisions`/
-    /// `OccurrenceStreams`. `None` under `LegacyRecompute`/`Materialize`.
+    /// `OccurrenceStreams`. `None` under `LegacyRecompute`.
     decisions: Option<DecisionsState>,
 }
 
@@ -282,7 +272,7 @@ impl<'a> VirtualLower<'a> {
     // ── Task 3: `Decisions`-policy residency (admission / eviction) ────────────────
 
     /// Consume one occurrence off `v`'s demand stream (`Decisions` only; a no-op under
-    /// `LegacyRecompute`/`Materialize`). MUST be called exactly once per demand site the
+    /// `LegacyRecompute`). MUST be called exactly once per demand site the
     /// lowering visits for `v` — every `lower_operand_virtual` call and every root's own
     /// top-level output demand (the driver loop) — so `effective_priority` keeps reading
     /// the CURRENT stream front. Call this BEFORE any hit/miss branching on `v`.
@@ -360,10 +350,12 @@ impl<'a> VirtualLower<'a> {
     /// then evict it out of the acc into a cell. Returns the operand naming whichever cell
     /// it landed in.
     ///
-    /// - `LegacyRecompute`/`Materialize`: static membership in `resident_target` (the
-    ///   schedule's realized `resident_after` set; unchanged Task-1 behavior).
+    /// - `LegacyRecompute`: static membership in `resident_target` (always empty — schema
+    ///   v2 has no persisted per-step residency; `LegacyRecompute` is pure per-step
+    ///   recompute, unchanged Task-1 behavior otherwise).
     /// - `Decisions`: `try_admit` (Task 3) — `resident_target` is ignored (always empty
-    ///   under `Decisions`, since only the schedule-driven policies populate it).
+    ///   under `Decisions` too, since only `finalize_produced`'s caller ever populates it,
+    ///   and no policy does anymore).
     fn finalize_produced(
         &mut self,
         expr_id: ExprId,
@@ -568,171 +560,16 @@ impl<'a> VirtualLower<'a> {
             );
             return Ok(());
         }
-        // `Decisions` (Task 3) deliberately does NOT take the `compile_add_materialize`
-        // branch: it reuses this SAME virtual/FMA-partition path as `LegacyRecompute` so
-        // its admit/evict decisions replay in lock-step with `OccurrenceStreams::build`'s
-        // demand order (which mirrors ONLY this path — see `decisions.rs`'s module doc).
-        // Routing `Decisions` through `compile_add_materialize` instead would visit an
-        // `Add`'s children in a DIFFERENT order (original encounter order, not
-        // addends-before-products), silently misaligning `serve_occurrence` calls against
-        // the precomputed streams and rotting the scorer's effective priorities.
-        if matches!(self.policy, MaterializePolicy::Materialize) {
-            return self.compile_add_materialize(layer, &children, expected, resident_target);
-        }
         if self.try_compile_fma_virtual(layer, &children, expected, resident_target)?.is_some() {
             return Ok(());
         }
         self.compile_reduction_virtual(layer, &children, true, false, expected, resident_target)
     }
 
-    /// A FUSABLE product (Global Constraint 2): a `Mul` that is a direct child of an
-    /// `Add` in this layer and is NOT a cache root. Cache-root `Mul`s flow through the
-    /// existing materialize/`Resident`/`Reload` path unchanged; only fusable products
-    /// participate in the event-local cache-produce-vs-fuse decision.
-    fn is_fusable_product(&self, layer: &DagLayer, p: ExprId) -> bool {
-        matches!(layer.exprs[p.0 as usize], Expr::Mul(_))
-            && self.add_child_exprs.contains(&p)
-            && !self.cache_root_exprs.contains(&p)
-    }
-
-    /// Event-local per-step decision (Global Constraint 1): a fusable product `p` whose
-    /// current step has BOTH a `Recompute` `Demand` for `p` and an `Admit{p}` event is
-    /// CACHE-PRODUCED (`Mul`→cell). A `Recompute` without a same-step `Admit` fuses; a
-    /// `Resident` read is served from `p`'s already-defined cell (the `defined` check).
-    fn cache_produce_now(&self, p: ExprId) -> bool {
-        self.admitted_this_step.contains(&p) && self.recompute_this_step.contains(&p)
-    }
-
-    /// Materialize-policy `Add` lowering (Global Constraints 1–5): split the fusable
-    /// `Mul`-in-`Add` children by their event-local decision. CACHE-PRODUCE products are
-    /// emitted FIRST as real `Mul`→cell (`defines = p`, TRUE signed value); already-cached
-    /// (`Resident`/defined) fusable products are read as `Value(p)` addends (the cell holds
-    /// the signed value, so their contribution sign is `Plus`); remaining fusable products
-    /// FUSE (`Fma`) exactly as the legacy path. Non-fusable (cache-root) binary products
-    /// keep the legacy fuse resolution. Then plain addends fold in, then the fused `Fma`s.
-    fn compile_add_materialize(
-        &mut self,
-        layer: &DagLayer,
-        children: &[ExprId],
-        expected: OperandField,
-        resident_target: &HashSet<ExprId>,
-    ) -> Result<(), CompileError> {
-        // Cache-produce products: (sign, p, p-field, lhs-field, lhs-op, rhs-field, rhs-op).
-        let mut cache_produce: Vec<(
-            Sign,
-            ExprId,
-            OperandField,
-            OperandField,
-            VirtualOp,
-            OperandField,
-            VirtualOp,
-        )> = Vec::new();
-        // Fused products: (sign, lhs-field, lhs-op, rhs-field, rhs-op).
-        let mut fused: Vec<(Sign, OperandField, VirtualOp, OperandField, VirtualOp)> = Vec::new();
-        // Plain addends + resident-read fusable products: (field, op, sign).
-        let mut addend_ops: Vec<(OperandField, VirtualOp, Sign)> = Vec::new();
-
-        // Lower every operand up front (a compound child clobbers the acc during its own
-        // lowering, so all operand deliveries must precede the acc-based emission below).
-        for &c in children {
-            match classify_additive_child(layer, c) {
-                AdditiveChild::Product { sign, lhs, rhs } => {
-                    let fusable = self.is_fusable_product(layer, c);
-                    if fusable && self.defined.contains(&c) {
-                        // Already cached (this step's `Resident`, or an earlier cache-produce):
-                        // the cell holds `p`'s TRUE signed value, so add it with sign `Plus`.
-                        let f = child_operand_field(layer, c, expected, &self.cross);
-                        let op = self.lower_operand_virtual(layer, c, expected, resident_target)?;
-                        addend_ops.push((f, op, Sign::Plus));
-                    } else if fusable && self.cache_produce_now(c) {
-                        let pf = child_operand_field(layer, c, expected, &self.cross);
-                        let lf = child_operand_field(layer, lhs, expected, &self.cross);
-                        let rf = child_operand_field(layer, rhs, expected, &self.cross);
-                        let lhs_op =
-                            self.lower_operand_virtual(layer, lhs, expected, resident_target)?;
-                        let rhs_op =
-                            self.lower_operand_virtual(layer, rhs, expected, resident_target)?;
-                        cache_produce.push((sign, c, pf, lf, lhs_op, rf, rhs_op));
-                    } else {
-                        // Fuse: a fusable product without a cache-produce decision, or a
-                        // cache-root binary product (kept on the legacy fuse resolution).
-                        let lf = child_operand_field(layer, lhs, expected, &self.cross);
-                        let rf = child_operand_field(layer, rhs, expected, &self.cross);
-                        let lhs_op =
-                            self.lower_operand_virtual(layer, lhs, expected, resident_target)?;
-                        let rhs_op =
-                            self.lower_operand_virtual(layer, rhs, expected, resident_target)?;
-                        fused.push((sign, lf, lhs_op, rf, rhs_op));
-                    }
-                }
-                AdditiveChild::Addend { sign, id } => {
-                    let f = child_operand_field(layer, id, expected, &self.cross);
-                    let op = self.lower_operand_virtual(layer, id, expected, resident_target)?;
-                    addend_ops.push((f, op, sign));
-                }
-            }
-        }
-
-        // ── Seed the accumulator: CACHE-PRODUCE products FIRST (empty-acc, Constraint 4). ──
-        let mut acc_field = OperandField::Base;
-        let mut seeded = false;
-        for (i, (sign, p, pf, lf, lhs_op, rf, rhs_op)) in cache_produce.iter().enumerate() {
-            if i > 0 {
-                // Offload the live partial to a fresh temp, produce this product, add back.
-                // The temp holds the PREVIOUS accumulator, so it must be evicted AND folded
-                // back at the accumulator's OWN field (`acc_field`) — NOT this product's
-                // field (`*pf`), which can differ (e.g. base×base vs a product with an Ext
-                // factor). `acc_field` is still the pre-product field here (it is only
-                // widened at the end of the iteration, after this fold).
-                let partial_field = acc_field;
-                let t = self.fresh_internal();
-                self.widths.insert(t, partial_field);
-                self.emit_evict_to_cell(t, partial_field);
-                self.produce_product_into_acc(*sign, *lf, lhs_op, *rf, rhs_op);
-                self.widths.insert(*p, *pf);
-                self.emit_evict_to_cell(*p, *pf);
-                self.defined.insert(*p);
-                self.push_fold(partial_field, vec![VirtualOp::Value(t)], true, Sign::Plus);
-            } else {
-                self.produce_product_into_acc(*sign, *lf, lhs_op, *rf, rhs_op);
-                self.widths.insert(*p, *pf);
-                self.emit_evict_to_cell(*p, *pf);
-                self.defined.insert(*p);
-                seeded = true;
-            }
-            if *pf == OperandField::Ext {
-                acc_field = OperandField::Ext;
-            }
-        }
-
-        // If no cache-produce seeded the acc, seed from an addend, else from a fused product.
-        let mut seed_addend: Option<usize> = None;
-        if !seeded {
-            if !addend_ops.is_empty() {
-                seed_addend = Some(self.seed_from_addends(&addend_ops));
-            } else if !fused.is_empty() {
-                let s = fused.iter().position(|(sg, ..)| *sg == Sign::Plus).unwrap_or(0);
-                let (ssign, lf0, lhs0, rf0, rhs0) = fused.remove(s);
-                self.produce_product_into_acc(ssign, lf0, &lhs0, rf0, &rhs0);
-            } else {
-                // Degenerate (all children filtered to zero): value-safe 0.
-                self.emit_init_field(
-                    VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::Zero as u16 },
-                    OperandField::Base,
-                );
-            }
-        }
-
-        // Fold the (non-seed) addends into the acc, then the remaining FUSED products.
-        self.fold_addends_into_acc(&addend_ops, seed_addend)?;
-        self.emit_fma_products(fused);
-        Ok(())
-    }
-
     /// Pick + emit the accumulator seed among `addend_ops` (a Base-Plus term, else any
     /// Plus, else any Base, else the first), applying a `Minus` seed as a unary negate.
     /// Returns the chosen seed index. Precondition: `addend_ops` is non-empty. Shared by
-    /// `try_compile_fma_virtual` and `compile_add_materialize` (one seed heuristic).
+    /// `try_compile_fma_virtual` (one seed heuristic).
     fn seed_from_addends(&mut self, addend_ops: &[(OperandField, VirtualOp, Sign)]) -> usize {
         let seed = addend_ops
             .iter()
@@ -749,7 +586,7 @@ impl<'a> VirtualLower<'a> {
 
     /// Fold `addend_ops` (skipping the already-seeded `skip` index, if any) into the acc,
     /// grouped by (field, sign) so each homogeneous group is one ADD (MAX_ARITY-split).
-    /// Shared by `try_compile_fma_virtual` and `compile_add_materialize`.
+    /// Used by `try_compile_fma_virtual`.
     fn fold_addends_into_acc(
         &mut self,
         addend_ops: &[(OperandField, VirtualOp, Sign)],
@@ -786,7 +623,7 @@ impl<'a> VirtualLower<'a> {
 
     /// Fold binary products into the acc as FMA pairs, canonicalized (H5) and grouped by
     /// (field_lhs, field_rhs, sign) so commutative same-shape pairs share one chunked FMA.
-    /// Shared by `try_compile_fma_virtual` and `compile_add_materialize`.
+    /// Used by `try_compile_fma_virtual`.
     fn emit_fma_products(
         &mut self,
         products: Vec<(Sign, OperandField, VirtualOp, OperandField, VirtualOp)>,
@@ -1164,21 +1001,6 @@ pub(crate) fn lower_layer_virtual(
         layer.exprs.len()
     );
 
-    // Layer-global fusability inputs (Global Constraint 2): the set of exprs that appear
-    // as a direct child of some `Add`, and the set of cache-root exprs (never fusable).
-    let mut add_child_exprs: HashSet<ExprId> = HashSet::new();
-    for e in &layer.exprs {
-        if let Expr::Add(children) = e {
-            add_child_exprs.extend(children.iter().copied());
-        }
-    }
-    let mut cache_root_exprs: HashSet<ExprId> = HashSet::new();
-    for root in &layer.roots {
-        if let Some(SinkInfo { kind: SinkKind::Cache { .. }, .. }) = &root.materialize {
-            cache_root_exprs.insert(root.expr);
-        }
-    }
-
     // Compute roots by shared ExprId: intern each sink's backing once.
     let mut expr_to_compute: HashMap<ExprId, Vec<(RootId, u8, u16, OperandField)>> = HashMap::new();
     for (idx, root) in layer.roots.iter().enumerate() {
@@ -1201,7 +1023,7 @@ pub(crate) fn lower_layer_virtual(
             resident: BTreeMap::new(),
             budget: *budget,
         }),
-        MaterializePolicy::LegacyRecompute | MaterializePolicy::Materialize => None,
+        MaterializePolicy::LegacyRecompute => None,
     };
 
     let mut st = VirtualLower {
@@ -1218,10 +1040,6 @@ pub(crate) fn lower_layer_virtual(
         root_outputs: Vec::new(),
         desc_by_expr,
         policy,
-        add_child_exprs,
-        cache_root_exprs,
-        admitted_this_step: HashSet::new(),
-        recompute_this_step: HashSet::new(),
         decisions: decisions_state,
     };
 
@@ -1231,49 +1049,13 @@ pub(crate) fn lower_layer_virtual(
     for (p, &rid) in schedule.order.iter().enumerate() {
         st.cur_step = p;
 
-        // Step-boundary residency inputs. ONLY the `Materialize` arm reads the schedule's
-        // `StepPlan` residency sets and events (the arm — and the reads — go away in a
-        // later task). `LegacyRecompute` is BLIND to `schedule.steps`: empty-rb semantics
-        // unconditionally, i.e. `st.defined` is cleared at every step boundary (pure
-        // per-step recompute).
-        let mut rb: HashSet<ExprId> = HashSet::new();
-        let mut ra: HashSet<ExprId> = HashSet::new();
-
-        // Under `Materialize`, derive the event-local decision inputs for this step from
-        // its `Admit`/`Demand` events (authoritative — NOT `resident_after`, Constraint 1).
-        // `LegacyRecompute` leaves these empty, so `compile_add_materialize` never fires.
-        if matches!(st.policy, MaterializePolicy::Materialize) {
-            let step = &schedule.steps[p];
-            rb = step.resident_before.iter().copied().collect();
-            ra = step.resident_after.iter().copied().collect();
-            let mut admitted: HashSet<ExprId> = HashSet::new();
-            let mut recompute: HashSet<ExprId> = HashSet::new();
-            for ev in &step.events {
-                match ev {
-                    ReplayEvent::Admit { value } => {
-                        admitted.insert(*value);
-                    }
-                    ReplayEvent::Demand { value, kind, .. } => match kind {
-                        DemandKind::Recompute => {
-                            recompute.insert(*value);
-                        }
-                        DemandKind::Reload => {
-                            // Constraint 5: a fusable (`Intermediate`) product is never
-                            // reloaded — reloadability is a cache-root-only property.
-                            debug_assert!(
-                                !st.is_fusable_product(layer, *value),
-                                "Reload demand targets fusable Intermediate product {}",
-                                value.0
-                            );
-                        }
-                        DemandKind::Resident => {}
-                    },
-                    ReplayEvent::Evict { .. } => {}
-                }
-            }
-            st.admitted_this_step = admitted;
-            st.recompute_this_step = recompute;
-        }
+        // Step-boundary residency inputs. Schema v2 (Task 4) has no persisted per-step
+        // residency at all (`LayerSchedule` carries `order` + `sites`, not a step replay),
+        // so both sets are unconditionally empty: `LegacyRecompute` clears `st.defined` at
+        // every step boundary (pure per-step recompute); `Decisions` ignores `rb`/`ra`
+        // entirely (its residency is schedule-step-independent — see below).
+        let rb: HashSet<ExprId> = HashSet::new();
+        let ra: HashSet<ExprId> = HashSet::new();
 
         // Drop values the schedule no longer keeps resident entering this step (implicit
         // cone-fit drops + explicit evicts, realized as a set difference). This bounds

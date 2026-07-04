@@ -4,8 +4,9 @@
 //!
 //! Layer/schedule builders follow `tests/stage3_schedule_driven.rs`'s `task1`/`task8`
 //! synthetic patterns (single-gate `Compute`-classified artifact layer, `atom_root`
-//! Export sinks, a trivial all-empty-`StepPlan` schedule — `Decisions`, like
-//! `LegacyRecompute`, is blind to `schedule.steps`).
+//! Export sinks, a trivial schedule with an empty `sites` genome — schema v2
+//! (Task 4) has no persisted per-step residency at all, and `Decisions`, like
+//! `LegacyRecompute`, drives root-compile order purely from `order`).
 
 mod common;
 use common::{resolvers, SyntheticResolvers};
@@ -15,7 +16,7 @@ use std::collections::{BTreeMap, HashMap};
 use cs::gkr_compiler::dag_ir::{
     eval_layer_root, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
     DagLayer, Expr, ExprId, FieldKind, LayerSchedule, ReadPlace, Root, RootGroup, RootId,
-    RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind, StepPlan,
+    RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
 };
 use cs::gkr_compiler::{
     GKRLayerDescription, GateArtifacts, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
@@ -75,14 +76,10 @@ fn compute_artifact_layer() -> GKRLayerDescription {
     }
 }
 
-/// A trivial no-op schedule: `Decisions`, like `LegacyRecompute`, never reads
-/// `schedule.steps` — only `order` drives root-compile order.
+/// A trivial no-op schedule: `Decisions`, like `LegacyRecompute`, only reads `order` —
+/// schema v2 has no persisted per-step residency for either policy to consult.
 fn trivial_schedule(order: Vec<RootId>) -> LayerSchedule {
-    let steps = order
-        .iter()
-        .map(|_| StepPlan { resident_before: vec![], events: vec![], resident_after: vec![] })
-        .collect();
-    LayerSchedule { order, steps, predicted_traffic: 0, floor: 0 }
+    LayerSchedule { order, sites: vec![], predicted_traffic: 0, floor: 0 }
 }
 
 fn root_output(root: RootId, value: ExprId) -> SiteKey {

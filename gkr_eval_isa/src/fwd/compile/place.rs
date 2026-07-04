@@ -3,8 +3,10 @@
 //!
 //! Pure over synthetic inputs — no `arith.rs`/`compile_layer` dependency. Consumes a
 //! flat, already-scheduled instruction stream (`VirtualInstr`) plus the per-step
-//! `resident_before`/`resident_after` membership (`StepPlan`, from `cs::dag_ir`) and
-//! produces a concrete cell assignment (`Placement`).
+//! `resident_before`/`resident_after` membership ([`ResidencyStep`], a local,
+//! schedule-schema-agnostic type — post-schema-v2 (Task 4) the caller always hands
+//! this module residency-FREE steps; see `mod.rs::compile_layer_with_policy`'s
+//! `free_steps`) and produces a concrete cell assignment (`Placement`).
 //!
 //! `CellAllocator` (`schedule.rs`) is strictly first-fit and hands back whatever cell
 //! it picks — it cannot place a value at a *chosen* cell. Two things this module needs
@@ -23,10 +25,22 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{ExprId, StepPlan};
+use cs::gkr_compiler::dag_ir::ExprId;
 
 use crate::fwd::compile::CompileError;
 use crate::fwd::isa::{LdcSub, OperandField, Sign};
+
+/// Per-step resident-set membership this allocator's lifetime analysis reads
+/// (`resident_before`/`resident_after`). Local to this module — NOT the persisted
+/// schedule schema (`cs::dag_ir::LayerSchedule`, schema v2, has no per-step residency
+/// anymore; see module doc). `mod.rs::compile_layer_with_policy` always passes
+/// residency-free steps (both sets empty) since the emitter now realizes residency
+/// lazily rather than from a persisted plan.
+#[derive(Clone, Debug, Default)]
+pub struct ResidencyStep {
+    pub resident_before: Vec<ExprId>,
+    pub resident_after: Vec<ExprId>,
+}
 
 pub type ValueId = ExprId;
 
@@ -68,7 +82,7 @@ pub struct VirtualInstr {
 
 pub struct PlacementInput<'a> {
     pub instrs: &'a [VirtualInstr],
-    pub steps: &'a [StepPlan],
+    pub steps: &'a [ResidencyStep],
     pub step_of_instr: &'a [usize],
     pub widths: &'a HashMap<ValueId, OperandField>,
     pub budget: usize,
@@ -480,7 +494,7 @@ pub fn plan_placement(input: &PlacementInput) -> Result<Placement, CompileError>
 mod tests {
     use super::*; // brings VInstrKind, VirtualOp, VirtualInstr, RelocStep, PlacementInput, plan_placement, clear_quad_for_ext
     use crate::fwd::isa::{OperandField as F, Sign};
-    use cs::gkr_compiler::dag_ir::{ExprId, StepPlan};
+    use cs::gkr_compiler::dag_ir::ExprId;
     use std::collections::HashMap;
 
     fn v(n: u32) -> ExprId {
@@ -488,10 +502,9 @@ mod tests {
     }
 
     // Helper: one step whose resident sets are the given ExprId lists.
-    fn step(before: &[u32], after: &[u32]) -> StepPlan {
-        StepPlan {
+    fn step(before: &[u32], after: &[u32]) -> ResidencyStep {
+        ResidencyStep {
             resident_before: before.iter().map(|&x| v(x)).collect(),
-            events: vec![],
             resident_after: after.iter().map(|&x| v(x)).collect(),
         }
     }
