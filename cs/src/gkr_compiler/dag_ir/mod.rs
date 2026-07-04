@@ -19,5 +19,8 @@ pub use validate::*;
 pub mod schedule;
 pub use schedule::*;
 
+mod simplify;
+pub use simplify::simplify_circuit;
+
 #[cfg(test)]
 mod coverage_tests;
