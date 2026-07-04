@@ -5,7 +5,23 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::{ArenaBuilder, DagCircuit, DagLayer, Expr, ExprId, Root, SourceKind};
+use super::{
+    field_infer::source_field, ArenaBuilder, DagCircuit, DagLayer, Expr, ExprId, FieldKind, Root,
+    SourceKind,
+};
+
+/// BabyBear field modulus (matches `eval.rs`'s concrete field).
+const P: u64 = 2013265921;
+
+/// BabyBear addition mod `P`.
+fn fold_add(a: u32, b: u32) -> u32 {
+    ((a as u64 + b as u64) % P) as u32
+}
+
+/// BabyBear multiplication mod `P`.
+fn fold_mul(a: u32, b: u32) -> u32 {
+    ((a as u64 * b as u64) % P) as u32
+}
 
 pub fn simplify_circuit(dag: DagCircuit) -> DagCircuit {
     DagCircuit {
@@ -63,6 +79,7 @@ pub(crate) fn simplify_layer(layer: &DagLayer) -> DagLayer {
         // ahead of that use.
         fenced: layer.resolutions.keys().copied().collect(),
         fan_out: fan_out(layer),
+        provably_base_memo: HashMap::new(),
     };
     let roots: Vec<Root> = layer
         .roots
@@ -109,9 +126,50 @@ struct Rebuild<'a> {
     /// Consumer-edge counts over the OLD layer, used to decide fan-out==1
     /// flatten in the Add/Mul arms below.
     fan_out: HashMap<ExprId, usize>,
+    /// Memoized `provably_base` results, keyed by OLD `ExprId`.
+    provably_base_memo: HashMap<ExprId, bool>,
 }
 
 impl Rebuild<'_> {
+    /// Bottom-up, memoized: is the OLD-layer subtree at `old` guaranteed to be
+    /// Base-field-valued? A `Read{LayerOutput|CacheOutput}` source is
+    /// `Err(_)` from `source_field` — NOT provably base (conservative).
+    /// `Challenge` sources are `Ok(Ext)` — NOT provably base. Add/Mul are
+    /// provably base iff every child is.
+    fn provably_base(&mut self, old: ExprId) -> bool {
+        if let Some(&v) = self.provably_base_memo.get(&old) {
+            return v;
+        }
+        let result = match &self.layer.exprs[old.0 as usize] {
+            Expr::Source(sid) => source_field(&self.layer.sources[sid.0 as usize].kind)
+                .map(|f| f == FieldKind::Base)
+                .unwrap_or(false),
+            Expr::Add(children) | Expr::Mul(children) => {
+                children.clone().iter().all(|&c| self.provably_base(c))
+            }
+        };
+        self.provably_base_memo.insert(old, result);
+        result
+    }
+
+    /// If the rebuilt (NEW) node `new` is `Source(Constant { value })`, return
+    /// `value`.
+    fn as_const(&self, new: ExprId) -> Option<u32> {
+        match &self.arena.exprs()[new.0 as usize] {
+            Expr::Source(sid) => match &self.arena.sources()[sid.0 as usize].kind {
+                SourceKind::Constant { value } => Some(*value),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Intern a fresh `Constant` source expr in the NEW arena.
+    fn const_expr(&mut self, v: u32) -> ExprId {
+        let s = self.arena.intern_source(SourceKind::Constant { value: v });
+        self.arena.source_expr(s)
+    }
+
     fn rebuild(&mut self, old: ExprId) -> ExprId {
         if let Some(&new) = self.map.get(&old) {
             return new;
@@ -159,7 +217,38 @@ impl Rebuild<'_> {
                             flat.push(self.rebuild(c));
                         }
                     }
-                    self.arena.add(flat)
+                    // const-fold: merge all Constant operands
+                    let mut acc: Option<u32> = None;
+                    let mut rest: Vec<ExprId> = Vec::with_capacity(flat.len());
+                    for id in flat {
+                        match self.as_const(id) {
+                            Some(v) => acc = Some(match acc {
+                                Some(a) => fold_add(a, v),
+                                None => v,
+                            }),
+                            None => rest.push(id),
+                        }
+                    }
+                    // identity: drop a folded 0 when other operands remain
+                    match acc {
+                        Some(0) if !rest.is_empty() => {}
+                        Some(v) => rest.push(self.const_expr(v)),
+                        None => {}
+                    }
+                    // collapse (Add unit = 0)
+                    match rest.len() {
+                        0 => {
+                            let v = acc.unwrap_or(0);
+                            if self.provably_base(old) {
+                                self.const_expr(v)
+                            } else {
+                                let c = self.const_expr(v);
+                                self.arena.add(vec![c])
+                            }
+                        }
+                        1 => rest[0],
+                        _ => self.arena.add(rest),
+                    }
                 }
             }
             Expr::Mul(children) => {
@@ -180,7 +269,47 @@ impl Rebuild<'_> {
                             flat.push(self.rebuild(c));
                         }
                     }
-                    self.arena.mul(flat)
+                    // const-fold: merge all Constant operands
+                    let mut acc: Option<u32> = None;
+                    let mut rest: Vec<ExprId> = Vec::with_capacity(flat.len());
+                    for id in flat {
+                        match self.as_const(id) {
+                            Some(v) => acc = Some(match acc {
+                                Some(a) => fold_mul(a, v),
+                                None => v,
+                            }),
+                            None => rest.push(id),
+                        }
+                    }
+                    // annihilator: folded const 0 AND the OLD node is provably
+                    // base → the whole product is Constant(0). Otherwise (not
+                    // provably base — e.g. an Ext factor present) keep the
+                    // folded Constant(0) as an operand: replacing an Ext-valued
+                    // node with a Base constant would break field preservation.
+                    if acc == Some(0) && self.provably_base(old) {
+                        self.const_expr(0)
+                    } else {
+                        // identity: drop a folded 1 when other operands remain
+                        match acc {
+                            Some(1) if !rest.is_empty() => {}
+                            Some(v) => rest.push(self.const_expr(v)),
+                            None => {}
+                        }
+                        // collapse (Mul unit = 1)
+                        match rest.len() {
+                            0 => {
+                                let v = acc.unwrap_or(1);
+                                if self.provably_base(old) {
+                                    self.const_expr(v)
+                                } else {
+                                    let c = self.const_expr(v);
+                                    self.arena.mul(vec![c])
+                                }
+                            }
+                            1 => rest[0],
+                            _ => self.arena.mul(rest),
+                        }
+                    }
                 }
             }
         };
@@ -194,7 +323,42 @@ impl Rebuild<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gkr_compiler::dag_ir::{BatchingOrder, LookupValueKind, ResolutionStrategy};
+    use crate::gkr_compiler::dag_ir::{
+        BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, LookupValueKind, ReadPlace,
+        ResolutionStrategy,
+    };
+
+    /// Task 5 will add a real fixpoint wrapper; until then, iterate manually.
+    fn simplify_layer_fixpoint(layer: &DagLayer) -> DagLayer {
+        simplify_layer(&simplify_layer(layer))
+    }
+
+    /// Build a `Constant` source expr with the given BabyBear value.
+    fn const_expr(a: &mut ArenaBuilder, value: u32) -> ExprId {
+        let s = a.intern_source(SourceKind::Constant { value });
+        a.source_expr(s)
+    }
+
+    /// Build a `Challenge` source expr (Ext field) — used to test the
+    /// field-preservation guard on the annihilator/collapse rewrites.
+    fn challenge_expr(a: &mut ArenaBuilder) -> ExprId {
+        let s = a.intern_source(SourceKind::Challenge {
+            reference: ChallengeRef {
+                key: ChallengeKey::LookupAdditive,
+                power: ChallengePower::One,
+            },
+        });
+        a.source_expr(s)
+    }
+
+    /// Build a `Read{LayerOutput}` source expr — `source_field` returns `Err`
+    /// for this place, so `provably_base` is `false` (NOT provably base).
+    fn read_like(a: &mut ArenaBuilder) -> ExprId {
+        let s = a.intern_source(SourceKind::Read {
+            place: ReadPlace::LayerOutput { layer: 0, offset: 0 },
+        });
+        a.source_expr(s)
+    }
 
     /// Hand-build a `DagLayer` from an in-progress `ArenaBuilder` plus roots and
     /// resolutions; `batching` is irrelevant to these tests so it's left empty.
@@ -236,11 +400,14 @@ mod tests {
         assert_eq!(out.roots.len(), 1);
     }
 
-    /// Three distinct `Constant` sources standing in for read-like leaves
-    /// (no folding exists yet, so constants are fine for flatten/CSE tests).
+    /// Three distinct `Read` sources standing in for read-like leaves. Task 4
+    /// added const-folding, so these must NOT be `Constant` sources (folding
+    /// would collapse the flatten/CSE fixtures below into a single constant).
     fn three_read_like_sources(a: &mut ArenaBuilder) -> (ExprId, ExprId, ExprId) {
-        let mut mk = |value: u32| {
-            let s = a.intern_source(SourceKind::Constant { value });
+        let mut mk = |offset: usize| {
+            let s = a.intern_source(SourceKind::Read {
+                place: ReadPlace::LayerOutput { layer: 0, offset },
+            });
             a.source_expr(s)
         };
         (mk(101), mk(102), mk(103))
@@ -389,6 +556,144 @@ mod tests {
             Expr::Add(ops) => assert_eq!(ops.len(), 2, "query edge must keep fan-out at 2, got {:?}", ops),
             other => panic!("expected Add, got {:?}", other),
         }
+    }
+
+    /// Sign-pair cancellation = flatten + const-fold + identity: -1 * -1 * x → x.
+    #[test]
+    fn double_negation_cancels() {
+        let mut a = ArenaBuilder::with_flatten(false);
+        let neg1 = const_expr(&mut a, 2013265920); // p-1
+        let x = read_like(&mut a); // NOT provably base is fine here
+        let inner = a.mul(vec![neg1, x]);
+        let outer = a.mul(vec![neg1, inner]); // inner fan-out 1 → flattens
+        let layer = layer_of(
+            a,
+            vec![Root {
+                expr: outer,
+                materialize: None,
+                claim: None,
+            }],
+            BTreeMap::new(),
+        );
+        let out = simplify_layer_fixpoint(&layer); // Task 5 wrapper; until then two manual passes
+        assert!(
+            matches!(&out.exprs[out.roots[0].expr.0 as usize], Expr::Source(_)),
+            "Mul(-1, Mul(-1, x)) must collapse to x, got {:?}",
+            out.exprs
+        );
+    }
+
+    /// Base annihilator: Mul(0, base) → Constant(0).
+    #[test]
+    fn base_zero_annihilates() {
+        let mut a = ArenaBuilder::with_flatten(false);
+        let zero = const_expr(&mut a, 0);
+        let five = const_expr(&mut a, 5);
+        let m = a.mul(vec![zero, five]);
+        let layer = layer_of(
+            a,
+            vec![Root {
+                expr: m,
+                materialize: None,
+                claim: None,
+            }],
+            BTreeMap::new(),
+        );
+        let out = simplify_layer(&layer);
+        match &out.exprs[out.roots[0].expr.0 as usize] {
+            Expr::Source(sid) => assert_eq!(
+                out.sources[sid.0 as usize].kind,
+                SourceKind::Constant { value: 0 },
+                "Mul(0, 5) must collapse to Constant(0)"
+            ),
+            other => panic!("expected a single Constant(0) source expr, got {:?}", other),
+        }
+    }
+
+    /// Ext-guard: Mul(0, challenge) is NOT rewritten to a constant.
+    #[test]
+    fn ext_zero_product_is_suppressed() {
+        let mut a = ArenaBuilder::with_flatten(false);
+        let zero = const_expr(&mut a, 0);
+        let ch = challenge_expr(&mut a); // SourceKind::Challenge → Ext
+        let m = a.mul(vec![zero, ch]);
+        let layer = layer_of(
+            a,
+            vec![Root {
+                expr: m,
+                materialize: None,
+                claim: None,
+            }],
+            BTreeMap::new(),
+        );
+        let out = simplify_layer(&layer);
+        match &out.exprs[out.roots[0].expr.0 as usize] {
+            Expr::Mul(ops) => assert_eq!(ops.len(), 2, "Ext zero product must stay a Mul"),
+            other => panic!("field-preservation violated: {:?}", other),
+        }
+    }
+
+    /// Identity drops + collapse: Add(0, x) → x; Mul(1, x) → x; constants fold pairwise.
+    #[test]
+    fn identities_and_folding() {
+        let mut a = ArenaBuilder::with_flatten(false);
+        // Add(const 2, const 3, x) → Add(const 5, x)
+        let c2 = const_expr(&mut a, 2);
+        let c3 = const_expr(&mut a, 3);
+        let x = read_like(&mut a);
+        let add_node = a.add(vec![c2, c3, x]);
+
+        // Mul(1, x) → x
+        let one = const_expr(&mut a, 1);
+        let y = read_like(&mut a);
+        let mul_node = a.mul(vec![one, y]);
+
+        // Add(0, x) → x
+        let zero = const_expr(&mut a, 0);
+        let z = read_like(&mut a);
+        let add_zero_node = a.add(vec![zero, z]);
+
+        let layer = layer_of(
+            a,
+            vec![
+                Root {
+                    expr: add_node,
+                    materialize: None,
+                    claim: None,
+                },
+                Root {
+                    expr: mul_node,
+                    materialize: None,
+                    claim: None,
+                },
+                Root {
+                    expr: add_zero_node,
+                    materialize: None,
+                    claim: None,
+                },
+            ],
+            BTreeMap::new(),
+        );
+        let out = simplify_layer(&layer);
+
+        match &out.exprs[out.roots[0].expr.0 as usize] {
+            Expr::Add(ops) => {
+                assert_eq!(ops.len(), 2, "Add(2,3,x) → Add(5, x), got {:?}", ops);
+                let has_five = ops.iter().any(|&id| match &out.exprs[id.0 as usize] {
+                    Expr::Source(sid) => {
+                        out.sources[sid.0 as usize].kind == SourceKind::Constant { value: 5 }
+                    }
+                    _ => false,
+                });
+                assert!(has_five, "folded constant must be 5, got {:?}", ops);
+            }
+            other => panic!("expected Add, got {:?}", other),
+        }
+
+        assert_eq!(
+            out.roots[1].expr, out.roots[2].expr,
+            "Mul(1,y) and Add(0,z) both collapse to their non-identity operand"
+        );
     }
 
     /// LookupValue.query is remapped AND keeps its subtree alive.
