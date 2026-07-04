@@ -33,10 +33,25 @@ pub struct ArenaBuilder {
     /// is recorded in the `resolutions` side-table; they must survive as single
     /// operands in root-reachable expressions so the validator can find them.
     fenced: HashSet<ExprId>,
+
+    /// Controls whether `canonicalize` flattens nested same-op children.
+    /// When `true` (default), nested same-kind children are flattened into their parent.
+    /// When `false`, nested children survive as operands.
+    flatten_nested: bool,
 }
 
 impl ArenaBuilder {
     pub fn new() -> Self {
+        Self::with_flatten(true)
+    }
+
+    /// Create an `ArenaBuilder` with a configurable flattening behavior.
+    ///
+    /// When `flatten_nested` is `true` (default via `new()`), nested same-op
+    /// children are flattened into their parent. When `false`, nested children
+    /// survive as operands, allowing fan-out-aware simplification passes to work
+    /// on an unflattened DAG.
+    pub fn with_flatten(flatten_nested: bool) -> Self {
         Self {
             sources: Vec::new(),
             source_map: HashMap::new(),
@@ -44,6 +59,7 @@ impl ArenaBuilder {
             expr_map: HashMap::new(),
             cache_aliases: HashMap::new(),
             fenced: HashSet::new(),
+            flatten_nested,
         }
     }
 
@@ -142,12 +158,15 @@ impl ArenaBuilder {
     /// `is_add == false` → flatten `Expr::Mul` children.
     ///
     /// Because each child was itself interned-and-canonicalized, it is already
-    /// flat; one level of recursion is sufficient.
+    /// flat; one level of recursion is sufficient (when flattening is enabled).
     ///
     /// **Exception**: a *fenced* child (marked via [`fenced_add`]) is never
     /// flattened — it survives as a single operand. This is the deliberate
     /// lookup/setup fold-leaf boundary; a canonical `Add`/`Mul` MAY contain a
     /// same-kind child at that boundary.
+    ///
+    /// When `self.flatten_nested` is `false`, nested same-op children are NOT
+    /// flattened, allowing simplification passes to analyze fan-out structure.
     fn canonicalize(&self, operands: Vec<ExprId>, is_add: bool) -> Vec<ExprId> {
         let mut flat: Vec<ExprId> = Vec::with_capacity(operands.len());
         for id in operands {
@@ -157,7 +176,7 @@ impl ArenaBuilder {
             } else {
                 matches!(expr, Expr::Mul(_))
             };
-            let should_flatten = same_kind && !self.fenced.contains(&id);
+            let should_flatten = self.flatten_nested && same_kind && !self.fenced.contains(&id);
             if should_flatten {
                 match expr {
                     Expr::Add(children) | Expr::Mul(children) => {
@@ -309,6 +328,22 @@ mod tests {
             Expr::Add(ops) => {
                 assert_eq!(ops.len(), 2, "fenced child must survive as one operand, got {:?}", ops);
                 assert!(ops.contains(&bc), "the fenced node itself must be a direct operand, got {:?}", ops);
+            }
+            other => panic!("expected Add, got {:?}", other),
+        }
+    }
+
+    /// Under `with_flatten(false)`, a nested same-op child survives as one operand.
+    #[test]
+    fn unflattened_add_keeps_nested_child() {
+        let mut arena = ArenaBuilder::with_flatten(false);
+        let (a, b, c) = make_sources(&mut arena);
+        let bc = arena.add(vec![b, c]);
+        let nested = arena.add(vec![a, bc]);
+        match &arena.exprs()[nested.0 as usize] {
+            Expr::Add(ops) => {
+                assert_eq!(ops.len(), 2, "nested Add must survive, got {:?}", ops);
+                assert!(ops.contains(&bc));
             }
             other => panic!("expected Add, got {:?}", other),
         }
