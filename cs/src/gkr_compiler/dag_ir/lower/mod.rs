@@ -63,10 +63,26 @@ use crate::gkr_compiler::{
 };
 
 use super::{
-    ArenaBuilder, BatchingOrder, ClaimInfo, DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind,
-    FillSource, RangeWidth, ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin,
-    RootSlot, SinkInfo, SinkKind, SourceKind, VirtualSetupKind,
+    simplify_circuit, ArenaBuilder, BatchingOrder, ClaimInfo, DagCircuit, DagGlobals, DagLayer,
+    ExprId, FieldKind, FillSource, RangeWidth, ReadPlace, ResolutionStrategy, Root, RootGroup,
+    RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceKind, VirtualSetupKind,
 };
+
+/// Which arena/pass pipeline `lower_layer` should use.
+///
+/// `Simplified` (the production path via [`lower_dag`]) builds an unflattened
+/// arena (`ArenaBuilder::with_flatten(false)`) so `simplify_circuit`'s
+/// fan-out-aware rewrites see the real DAG shape; `lower_dag` runs the
+/// simplify pass once all layers are lowered. `Legacy` (via
+/// [`lower_dag_legacy`], test-support only) reconstructs the pre-simplification
+/// pipeline: build-time flattening on, no simplify pass — used for
+/// differential gates that need the un-simplified reference shape (spec
+/// G-diff-b).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LowerMode {
+    Simplified,
+    Legacy,
+}
 
 /// Map a `GKRAddress` to the DAG-IR `SourceKind` for an input read.
 ///
@@ -701,9 +717,18 @@ fn check_decoder_masks<'a>(
 fn lower_layer<F: PrimeField + PartialEq>(
     artifact: &GKRCircuitArtifact<F>,
     layer_index: usize,
+    mode: LowerMode,
 ) -> Result<DagLayer, String> {
     let layer = &artifact.layers[layer_index];
-    let mut arena = ArenaBuilder::new();
+    let mut arena = match mode {
+        // Unflattened: `simplify_circuit` (run once by `lower_dag` after all
+        // layers are lowered) is a fan-out-aware rewrite over the real DAG
+        // shape, so build-time flattening must be off here.
+        LowerMode::Simplified => ArenaBuilder::with_flatten(false),
+        // Pre-simplification reference shape: build-time flattening on, matching
+        // the pipeline `lower_dag_legacy` reconstructs.
+        LowerMode::Legacy => ArenaBuilder::with_flatten(true),
+    };
     let mut out = LayerOut::new();
 
     // Reduced base-field `−1`, used to encode subtractions as `a + (−1)·b` (there
@@ -795,6 +820,21 @@ fn lower_layer<F: PrimeField + PartialEq>(
             .collect(),
     };
 
+    // Derived-fence invariant: every arena-fenced node (multi-column fold-leaf
+    // `Add`s marked non-flattenable — see `ArenaBuilder::fenced_add`) must be a
+    // `resolutions` key, since fencing exists ONLY to keep those leaves
+    // single-operand and findable by the resolution-driven forward evaluator.
+    // A fenced node with no resolution entry means the derived-fence rule
+    // (fence ⟺ resolution key) was violated upstream — surface it as an error,
+    // not a silent miscompile.
+    for f in arena.fenced() {
+        if !out.resolutions.contains_key(f) {
+            return Err(format!(
+                "dag_ir: fenced node {f:?} has no resolution entry — derived-fence rule violated"
+            ));
+        }
+    }
+
     Ok(DagLayer {
         sources: arena.sources().to_vec(),
         exprs: arena.exprs().to_vec(),
@@ -808,11 +848,40 @@ fn lower_layer<F: PrimeField + PartialEq>(
 ///
 /// Returns `Err(...)` (never panics) for any relation family not yet lowered, so
 /// staged tests fail cleanly while implemented families succeed.
+///
+/// Production path: each layer is lowered over an unflattened arena
+/// (`LowerMode::Simplified`), then the whole circuit is run once through
+/// `simplify_circuit` (a fixpoint, always value-preserving pass — see
+/// `simplify.rs`). See [`lower_dag_legacy`] for the pre-simplification
+/// reference pipeline kept for differential tests.
 pub fn lower_dag<F: PrimeField + PartialEq>(
     artifact: &GKRCircuitArtifact<F>,
 ) -> Result<DagCircuit, String> {
     let layers = (0..artifact.layers.len())
-        .map(|i| lower_layer(artifact, i))
+        .map(|i| lower_layer(artifact, i, LowerMode::Simplified))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let dag = DagCircuit {
+        layers,
+        globals: DagGlobals {
+            trace_len: artifact.trace_len,
+            scratch: BTreeMap::new(),
+        },
+    };
+    Ok(simplify_circuit(dag))
+}
+
+/// Lower a compiled `GKRCircuitArtifact` into a `DagCircuit` via the
+/// pre-simplification pipeline: build-time arena flattening ON, and NO
+/// `simplify_circuit` pass.
+///
+/// Test-support only: reconstructs the pre-simplification pipeline for
+/// differential gates (spec G-diff-b). Production code must call [`lower_dag`].
+pub fn lower_dag_legacy<F: PrimeField + PartialEq>(
+    artifact: &GKRCircuitArtifact<F>,
+) -> Result<DagCircuit, String> {
+    let layers = (0..artifact.layers.len())
+        .map(|i| lower_layer(artifact, i, LowerMode::Legacy))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(DagCircuit {

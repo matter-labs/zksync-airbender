@@ -41,8 +41,14 @@ pub struct ArenaBuilder {
 }
 
 impl ArenaBuilder {
+    /// Default constructor: unflattened arena (`with_flatten(false)`).
+    ///
+    /// This is the production shape `simplify_circuit`'s fan-out-aware rewrites
+    /// expect (see `lower::LowerMode::Simplified`). Build-time flattening
+    /// (`with_flatten(true)`) is now a legacy knob kept for the pre-simplification
+    /// reference pipeline (`lower_dag_legacy`) and tests that document it.
     pub fn new() -> Self {
-        Self::with_flatten(true)
+        Self::with_flatten(false)
     }
 
     /// Create an `ArenaBuilder` with a configurable flattening behavior.
@@ -140,6 +146,15 @@ impl ArenaBuilder {
         &self.exprs
     }
 
+    /// The set of `ExprId`s marked non-flattenable via [`fenced_add`].
+    ///
+    /// Used by `lower_layer`'s derived-fence assertion: every fenced node must
+    /// be a key in the layer's `resolutions` map (fencing exists only to keep
+    /// resolution-driven fold leaves single-operand and findable).
+    pub(super) fn fenced(&self) -> &HashSet<ExprId> {
+        &self.fenced
+    }
+
     // ── internals ────────────────────────────────────────────────────────────
 
     fn intern_expr(&mut self, expr: Expr) -> ExprId {
@@ -226,10 +241,11 @@ mod tests {
         assert_eq!(ab, ba, "add([a,b]) and add([b,a]) should be the same ExprId");
     }
 
-    /// `add([a, add([b, c])])` must intern to the same `ExprId` as `add([a, b, c])`.
+    /// `add([a, add([b, c])])` must intern to the same `ExprId` as `add([a, b, c])`
+    /// under the legacy build-time-flattening knob (`with_flatten(true)`).
     #[test]
     fn add_flatten_nested() {
-        let mut arena = ArenaBuilder::new();
+        let mut arena = ArenaBuilder::with_flatten(true);
         let (a, b, c) = make_sources(&mut arena);
 
         let bc = arena.add(vec![b, c]);
@@ -239,6 +255,30 @@ mod tests {
             nested, flat,
             "add([a, add([b,c])]) and add([a,b,c]) should be the same ExprId"
         );
+    }
+
+    /// `ArenaBuilder::new()` (default, unflattened) must PRESERVE nested `Add`
+    /// structure: `add([a, add([b,c])])` stays a 2-operand `Add`, distinct from
+    /// the fully-flattened `add([a,b,c])`.
+    #[test]
+    fn add_new_preserves_nesting() {
+        let mut arena = ArenaBuilder::new();
+        let (a, b, c) = make_sources(&mut arena);
+
+        let bc = arena.add(vec![b, c]);
+        let nested = arena.add(vec![a, bc]);
+        let flat = arena.add(vec![a, b, c]);
+        assert_ne!(
+            nested, flat,
+            "new() must NOT flatten nested Add children (legacy knob is with_flatten(true))"
+        );
+        match &arena.exprs()[nested.0 as usize] {
+            Expr::Add(ops) => {
+                assert_eq!(ops.len(), 2, "nested Add must survive as 2 operands, got {:?}", ops);
+                assert!(ops.contains(&bc), "the nested Add itself must be a direct operand");
+            }
+            other => panic!("expected Add, got {:?}", other),
+        }
     }
 
     /// Two `intern_source` calls with identical `Constant` must return the same `SourceId`.
@@ -279,10 +319,11 @@ mod tests {
         assert_eq!(ab, ba, "mul([a,b]) and mul([b,a]) should be the same ExprId");
     }
 
-    /// `mul([a, mul([b, c])])` must intern to the same `ExprId` as `mul([a, b, c])`.
+    /// `mul([a, mul([b, c])])` must intern to the same `ExprId` as `mul([a, b, c])`
+    /// under the legacy build-time-flattening knob (`with_flatten(true)`).
     #[test]
     fn mul_flatten_nested() {
-        let mut arena = ArenaBuilder::new();
+        let mut arena = ArenaBuilder::with_flatten(true);
         let (a, b, c) = make_sources(&mut arena);
 
         let bc = arena.mul(vec![b, c]);
@@ -292,6 +333,30 @@ mod tests {
             nested, flat,
             "mul([a, mul([b,c])]) and mul([a,b,c]) should be the same ExprId"
         );
+    }
+
+    /// `ArenaBuilder::new()` (default, unflattened) must PRESERVE nested `Mul`
+    /// structure: `mul([a, mul([b,c])])` stays a 2-operand `Mul`, distinct from
+    /// the fully-flattened `mul([a,b,c])`.
+    #[test]
+    fn mul_new_preserves_nesting() {
+        let mut arena = ArenaBuilder::new();
+        let (a, b, c) = make_sources(&mut arena);
+
+        let bc = arena.mul(vec![b, c]);
+        let nested = arena.mul(vec![a, bc]);
+        let flat = arena.mul(vec![a, b, c]);
+        assert_ne!(
+            nested, flat,
+            "new() must NOT flatten nested Mul children (legacy knob is with_flatten(true))"
+        );
+        match &arena.exprs()[nested.0 as usize] {
+            Expr::Mul(ops) => {
+                assert_eq!(ops.len(), 2, "nested Mul must survive as 2 operands, got {:?}", ops);
+                assert!(ops.contains(&bc), "the nested Mul itself must be a direct operand");
+            }
+            other => panic!("expected Mul, got {:?}", other),
+        }
     }
 
     /// Cross-kind: `add` and `mul` do NOT flatten each other.
