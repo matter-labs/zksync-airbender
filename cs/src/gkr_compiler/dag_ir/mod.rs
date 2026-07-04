@@ -19,7 +19,7 @@ pub use validate::*;
 pub mod schedule;
 pub use schedule::*;
 
-mod simplify;
+pub(crate) mod simplify;
 pub use simplify::simplify_circuit;
 
 #[cfg(test)]

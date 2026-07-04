@@ -25,8 +25,32 @@ fn fold_mul(a: u32, b: u32) -> u32 {
 
 pub fn simplify_circuit(dag: DagCircuit) -> DagCircuit {
     DagCircuit {
-        layers: dag.layers.iter().map(simplify_layer).collect(),
+        layers: dag.layers.iter().map(simplify_layer_fixpoint).collect(),
         globals: dag.globals,
+    }
+}
+
+/// Iterate `simplify_layer` to a fixpoint: each pass can expose a further
+/// rewrite (e.g. a flatten that lands two constants adjacent, enabling another
+/// const-fold pass), so a single call is not guaranteed maximally simplified.
+/// `DagLayer: PartialEq` covers `sources`, `exprs`, `roots`, and
+/// `resolutions`, so equality is a genuine fixpoint check. The `iters < 16`
+/// guard catches a runaway (non-terminating or oscillating) rewrite rather
+/// than looping forever.
+pub(crate) fn simplify_layer_fixpoint(layer: &DagLayer) -> DagLayer {
+    let mut prev = layer.clone();
+    let mut iters = 0;
+    loop {
+        let next = simplify_layer(&prev);
+        iters += 1;
+        assert!(
+            iters < 16,
+            "simplify_layer_fixpoint: exceeded 16 iterations without converging"
+        );
+        if next == prev {
+            return next;
+        }
+        prev = next;
     }
 }
 
@@ -35,7 +59,7 @@ pub fn simplify_circuit(dag: DagCircuit) -> DagCircuit {
 /// occurrence (once per root), and each reachable `LookupValue.query` edge.
 /// Reachability traverses children AND query edges; dead arena nodes never
 /// appear in the result.
-fn fan_out(layer: &DagLayer) -> HashMap<ExprId, usize> {
+pub(crate) fn fan_out(layer: &DagLayer) -> HashMap<ExprId, usize> {
     let mut counts: HashMap<ExprId, usize> = HashMap::new();
     let mut seen: HashSet<ExprId> = HashSet::new();
     let mut worklist: Vec<ExprId> = Vec::new();
@@ -130,26 +154,36 @@ struct Rebuild<'a> {
     provably_base_memo: HashMap<ExprId, bool>,
 }
 
-impl Rebuild<'_> {
-    /// Bottom-up, memoized: is the OLD-layer subtree at `old` guaranteed to be
-    /// Base-field-valued? A `Read{LayerOutput|CacheOutput}` source is
-    /// `Err(_)` from `source_field` — NOT provably base (conservative).
-    /// `Challenge` sources are `Ok(Ext)` — NOT provably base. Add/Mul are
-    /// provably base iff every child is.
-    fn provably_base(&mut self, old: ExprId) -> bool {
-        if let Some(&v) = self.provably_base_memo.get(&old) {
-            return v;
+/// Bottom-up, memoized: is the subtree at `old` (in `layer`) guaranteed to be
+/// Base-field-valued? A `Read{LayerOutput|CacheOutput}` source is `Err(_)`
+/// from `source_field` — NOT provably base (conservative). `Challenge`
+/// sources are `Ok(Ext)` — NOT provably base. Add/Mul are provably base iff
+/// every child is. Shared between `simplify`'s annihilator/collapse rewrites
+/// and `validate_simplified`'s Mul-retains-Constant(0) exception, so both
+/// sides agree on what "provably Base" means.
+pub(crate) fn provably_base(
+    layer: &DagLayer,
+    memo: &mut HashMap<ExprId, bool>,
+    old: ExprId,
+) -> bool {
+    if let Some(&v) = memo.get(&old) {
+        return v;
+    }
+    let result = match &layer.exprs[old.0 as usize] {
+        Expr::Source(sid) => source_field(&layer.sources[sid.0 as usize].kind)
+            .map(|f| f == FieldKind::Base)
+            .unwrap_or(false),
+        Expr::Add(children) | Expr::Mul(children) => {
+            children.iter().all(|&c| provably_base(layer, memo, c))
         }
-        let result = match &self.layer.exprs[old.0 as usize] {
-            Expr::Source(sid) => source_field(&self.layer.sources[sid.0 as usize].kind)
-                .map(|f| f == FieldKind::Base)
-                .unwrap_or(false),
-            Expr::Add(children) | Expr::Mul(children) => {
-                children.iter().all(|&c| self.provably_base(c))
-            }
-        };
-        self.provably_base_memo.insert(old, result);
-        result
+    };
+    memo.insert(old, result);
+    result
+}
+
+impl Rebuild<'_> {
+    fn provably_base(&mut self, old: ExprId) -> bool {
+        provably_base(self.layer, &mut self.provably_base_memo, old)
     }
 
     /// If the rebuilt (NEW) node `new` is `Source(Constant { value })`, return
@@ -336,14 +370,10 @@ impl Rebuild<'_> {
 mod tests {
     use super::*;
     use crate::gkr_compiler::dag_ir::{
-        BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, LookupValueKind, ReadPlace,
-        ResolutionStrategy,
+        validate_simplified, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
+        DagCircuit, DagGlobals, LookupValueKind, ReadPlace, ResolutionStrategy, RootGroup,
+        RootOrigin, RootSlot,
     };
-
-    /// Task 5 will add a real fixpoint wrapper; until then, iterate manually.
-    fn simplify_layer_fixpoint(layer: &DagLayer) -> DagLayer {
-        simplify_layer(&simplify_layer(layer))
-    }
 
     /// Build a `Constant` source expr with the given BabyBear value.
     fn const_expr(a: &mut ArenaBuilder, value: u32) -> ExprId {
@@ -370,6 +400,14 @@ mod tests {
             place: ReadPlace::LayerOutput { layer: 0, offset },
         });
         a.source_expr(s)
+    }
+
+    /// Wrap a single `DagLayer` in a minimal `DagCircuit`.
+    fn circuit_of(layer: DagLayer) -> DagCircuit {
+        DagCircuit {
+            layers: vec![layer],
+            globals: Default::default(),
+        }
     }
 
     /// Hand-build a `DagLayer` from an in-progress `ArenaBuilder` plus roots and
@@ -770,5 +808,78 @@ mod tests {
             SourceKind::Constant { value: 3 },
             "query edge points at the rebuilt constant"
         );
+    }
+
+    /// Task 5: `simplify_circuit` (via `simplify_layer_fixpoint`) drives the
+    /// double-negation layer to a form that satisfies `validate_simplified`.
+    #[test]
+    fn fixpoint_output_validates_as_simplified() {
+        let mut a = ArenaBuilder::with_flatten(false);
+        let neg1 = const_expr(&mut a, 2013265920); // p-1
+        let x = read_like(&mut a, 101);
+        let inner = a.mul(vec![neg1, x]);
+        let outer = a.mul(vec![neg1, inner]); // inner fan-out 1 → flattens
+        let layer = layer_of(
+            a,
+            vec![Root {
+                expr: outer,
+                materialize: None,
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Constraint(0),
+                    },
+                }),
+            }],
+            BTreeMap::new(),
+        );
+        let mut circuit = circuit_of(layer);
+        circuit.layers[0].batching = BatchingOrder {
+            roots: vec![super::super::RootId(0)],
+        };
+        let out = simplify_circuit(circuit);
+        validate_simplified(&out).unwrap();
+    }
+
+    /// The field-suppression exception is part of the invariant: an Ext-valued
+    /// zero product survives simplify as a Mul retaining Constant(0) and must
+    /// pass `validate_simplified` (codex finding 5 — do not defer this to
+    /// Task 8; the Task 7 corpus gate depends on the exception being right).
+    #[test]
+    fn ext_zero_product_passes_validate_simplified() {
+        let mut a = ArenaBuilder::with_flatten(false);
+        let zero = const_expr(&mut a, 0);
+        let ch = challenge_expr(&mut a); // SourceKind::Challenge → Ext
+        let m = a.mul(vec![zero, ch]);
+        let layer = layer_of(
+            a,
+            vec![Root {
+                expr: m,
+                materialize: None,
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Constraint(0),
+                    },
+                }),
+            }],
+            BTreeMap::new(),
+        );
+        let mut circuit = circuit_of(layer);
+        circuit.layers[0].batching = BatchingOrder {
+            roots: vec![super::super::RootId(0)],
+        };
+        let out = simplify_circuit(circuit);
+        match &out.layers[0].exprs[out.layers[0].roots[0].expr.0 as usize] {
+            Expr::Mul(ops) => assert_eq!(ops.len(), 2, "Ext zero product must stay a Mul"),
+            other => panic!("field-preservation violated: {:?}", other),
+        }
+        assert!(
+            super::super::validate(&out).is_ok(),
+            "plain validate must accept the Ext zero-product circuit"
+        );
+        validate_simplified(&out).unwrap();
     }
 }

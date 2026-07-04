@@ -846,6 +846,113 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
     Ok(())
 }
 
+// ── `simplify_layer` output invariant (Task 5) ────────────────────────────────
+
+/// Structurally validate that every layer of `dag` is a fixpoint of
+/// `simplify_layer` — i.e. running `simplify_layer` on it again would be a
+/// no-op. For every ROOT-REACHABLE, non-fenced (`layer.resolutions` keys are
+/// exempt) `Add`/`Mul` node:
+/// - no same-op child with fan-out==1 (a non-fenced child) — would flatten;
+/// - at most one `Constant` operand — multiple would const-fold;
+/// - no `Constant(0)` operand in `Add`, no `Constant(1)` operand in `Mul` —
+///   identity would drop it;
+/// - no empty or unary non-fenced `Add`/`Mul` — collapse would fire;
+/// - EXCEPTION: a `Mul` retaining a `Constant(0)` operand is legal iff the
+///   node is NOT provably Base (the field-suppressed annihilator guard: an
+///   Ext-valued zero product is intentionally NOT rewritten to a Base
+///   constant).
+///
+/// `dag` need not otherwise satisfy [`validate`]'s artifact-shape invariants;
+/// this is a narrower, simplify-specific check reusable on hand-built or
+/// intermediate DAGs.
+pub fn validate_simplified(dag: &DagCircuit) -> Result<(), String> {
+    for (li, layer) in dag.layers.iter().enumerate() {
+        let fenced: HashSet<ExprId> = layer.resolutions.keys().copied().collect();
+        let reachable = collect_root_reachable_exprs(layer);
+        let fan_out = super::simplify::fan_out(layer);
+        let mut base_memo: HashMap<ExprId, bool> = HashMap::new();
+        for &e in &reachable {
+            let id = ExprId(e);
+            if fenced.contains(&id) {
+                continue;
+            }
+            let (is_add, children) = match &layer.exprs[e as usize] {
+                Expr::Add(c) => (true, c),
+                Expr::Mul(c) => (false, c),
+                Expr::Source(_) => continue,
+            };
+            let op_name = if is_add { "Add" } else { "Mul" };
+
+            if children.len() < 2 {
+                return Err(format!(
+                    "layer {li} expr {:?}: non-fenced {op_name} has {} operand(s), \
+                     must have >=2 (empty/unary op would have been collapsed)",
+                    id,
+                    children.len()
+                ));
+            }
+
+            let mut const_count = 0usize;
+            let mut const_zero = false;
+            let mut const_one = false;
+            for &c in children {
+                let same_op = matches!(
+                    (&layer.exprs[c.0 as usize], is_add),
+                    (Expr::Add(_), true) | (Expr::Mul(_), false)
+                );
+                if same_op
+                    && !fenced.contains(&c)
+                    && fan_out.get(&c).copied().unwrap_or(0) == 1
+                {
+                    return Err(format!(
+                        "layer {li} expr {:?}: unflattened same-op fan-out-1 child {:?} \
+                         (simplify_layer would flatten this)",
+                        id, c
+                    ));
+                }
+                if let Expr::Source(sid) = &layer.exprs[c.0 as usize] {
+                    if let SourceKind::Constant { value } = layer.sources[sid.0 as usize].kind {
+                        const_count += 1;
+                        const_zero |= value == 0;
+                        const_one |= value == 1;
+                    }
+                }
+            }
+
+            if const_count > 1 {
+                return Err(format!(
+                    "layer {li} expr {:?}: {op_name} retains {const_count} Constant operands, \
+                     must be const-folded to at most 1",
+                    id
+                ));
+            }
+            if is_add && const_zero {
+                return Err(format!(
+                    "layer {li} expr {:?}: Add retains a Constant(0) operand (identity not applied)",
+                    id
+                ));
+            }
+            if !is_add && const_one {
+                return Err(format!(
+                    "layer {li} expr {:?}: Mul retains a Constant(1) operand (identity not applied)",
+                    id
+                ));
+            }
+            if !is_add && const_zero {
+                // Field-suppressed annihilator exception: legal iff NOT provably Base.
+                if super::simplify::provably_base(layer, &mut base_memo, id) {
+                    return Err(format!(
+                        "layer {li} expr {:?}: Mul retains a Constant(0) operand but the node \
+                         is provably Base — the annihilator rewrite should have fired",
+                        id
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 // ── Lowered-expression digest (constraint-root structural fingerprint) ─────────
 
 /// A deterministic structural digest of the interned `Expr` subtree rooted at
