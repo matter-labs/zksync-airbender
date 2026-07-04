@@ -1,5 +1,6 @@
 pub mod analyze;
 pub mod arith;
+pub mod decisions;
 mod lower;
 pub mod negate;
 mod place;
