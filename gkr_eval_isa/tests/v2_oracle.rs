@@ -1143,6 +1143,7 @@ fn base_to_ext_lift_passes() {
 
 #[test]
 #[should_panic(expected = "non-base")]
+#[cfg_attr(not(debug_assertions), ignore = "debug_assert-based should_panic")]
 fn ext_to_base_truncation_fails() {
     // (b) An ext value with a non-zero high limb stored to a base-width dst must
     // be REJECTED (the zero-high-limb relation), never silently truncated.

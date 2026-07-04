@@ -535,7 +535,7 @@ fn materialize_vinstr(
 /// `compile_circuit_with_policy` and the on-demand schedule producer
 /// (`schedule_search::producer::produce_circuit_schedule`) call this so the
 /// two skip decisions cannot drift (Task 6 review finding).
-pub(crate) fn layer_needs_compile(order_is_empty: bool, layer: &DagLayer) -> bool {
+pub fn layer_needs_compile(order_is_empty: bool, layer: &DagLayer) -> bool {
     !(order_is_empty && layer.roots.iter().all(|r| r.materialize.is_none()))
 }
 

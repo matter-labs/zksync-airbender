@@ -13,7 +13,8 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 use gkr_eval_isa::fwd::compile::decisions::SiteDecisions;
 use gkr_eval_isa::fwd::compile::{
-    build_cross_layer_field_map, compile_circuit, compile_layer_with_policy, MaterializePolicy,
+    build_cross_layer_field_map, compile_circuit, compile_layer_with_policy, layer_needs_compile,
+    MaterializePolicy,
 };
 use gkr_eval_isa::fwd::context::CompiledLayer;
 use gkr_eval_isa::fwd::interp::interpret_layer_row;
@@ -60,7 +61,7 @@ fn compile_committed_decisions(
         .zip(&sched.layers)
         .enumerate()
         .map(|(li, (layer, ls))| {
-            if ls.order.is_empty() {
+            if !layer_needs_compile(ls.order.is_empty(), layer) {
                 return None;
             }
             let cap = resident_cap_for_order(
