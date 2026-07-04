@@ -435,6 +435,21 @@ pub fn plan_placement(input: &PlacementInput) -> Result<Placement, CompileError>
             let field = *input.widths.get(&v).expect("every placed value needs a recorded width");
             match field {
                 OperandField::Base => {
+                    // Mirror the Ext branch's graceful bound check below: a fully-occupied
+                    // `occ` (no free cell at all — `live == budget`) has no candidate cell
+                    // for `place_base` to pick, and previously reached its
+                    // `.expect("caller guarantees a free cell exists...")` unconditionally.
+                    // That `expect` documented an invariant the CALLER (this loop) was
+                    // supposed to uphold but didn't check — a genuinely over-budget
+                    // candidate (as the Task 6 compile-in-loop scorer routinely produces
+                    // while searching) hit it and panicked instead of returning
+                    // `Err(BudgetBelowFloor)` like every other placement-pressure path does.
+                    if occ.live >= input.budget {
+                        return Err(CompileError::BudgetBelowFloor {
+                            floor: occ.live + 1,
+                            budget: input.budget,
+                        });
+                    }
                     let cell = place_base(&occ);
                     occ.occupy(cell as usize, 1, v);
                     cell_of_value.insert(v, cell);
