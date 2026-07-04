@@ -93,7 +93,15 @@ use std::collections::{BTreeSet, HashSet};
 pub fn enumerate_site_domain(layer: &DagLayer) -> BTreeSet<SiteKey> {
     let n = layer.exprs.len();
     let mut consumers = vec![0u32; n];
-    for e in &layer.exprs {
+    for (idx, e) in layer.exprs.iter().enumerate() {
+        // A resolution-pruned fold-leaf is fenced by the real emitter (`lower.rs`'s
+        // `layer.resolutions.contains_key` gate, checked before ever matching on the
+        // expr kind): its children are peeked, never walked. Its own child edges are
+        // therefore not real forward demands — skip them so a value ONLY "consumed"
+        // under a fenced fold-leaf doesn't spuriously reach the >=2 fan-out gate.
+        if layer.resolutions.contains_key(&ExprId(idx as u32)) {
+            continue;
+        }
         if let Expr::Add(children) | Expr::Mul(children) = e {
             for &c in children {
                 consumers[c.0 as usize] += 1;
@@ -101,7 +109,15 @@ pub fn enumerate_site_domain(layer: &DagLayer) -> BTreeSet<SiteKey> {
         }
     }
     for root in &layer.roots {
-        consumers[root.expr.0 as usize] += 1;
+        // Claim-only Constraint roots (`materialize: None`) are backward-only: they
+        // are never in `order` and the forward lowerer never demands their expr
+        // through a root-output slot (`lower.rs:1008` skips them — no materialize
+        // sink). Only count a root occurrence as a forward consumer when it carries
+        // a materialize sink (Output or Cache) — mirrors `floor.rs`'s
+        // `r.materialize.is_some()` root filter.
+        if root.materialize.is_some() {
+            consumers[root.expr.0 as usize] += 1;
+        }
     }
     for src in &layer.sources {
         if let SourceKind::LookupValue { query, .. } = &src.kind {
@@ -136,6 +152,15 @@ fn walk_demand(
     out: &mut BTreeSet<SiteKey>,
 ) {
     if !visited.insert((root, value)) {
+        return;
+    }
+    // Resolution-pruned leaf: the real emitter fences it as a terminal Special
+    // (`lower.rs:484,517` — `layer.resolutions.contains_key` gate, checked before any
+    // Source/Add/Mul match) and never walks the cone underneath. `value` itself may
+    // still be demanded and thus a site (already handled by the caller's
+    // `push_if_site` before this call, or by the root-output push above) — only the
+    // walk BELOW it is fenced here, mirroring `floor.rs`'s identical guard.
+    if layer.resolutions.contains_key(&value) {
         return;
     }
     match &layer.exprs[value.0 as usize] {
@@ -685,6 +710,107 @@ mod tests {
         // edges from q = 3 >= 2); the two operand edges into q are sites too.
         assert!(domain.contains(&SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: ExprId(2) }));
         assert_eq!(domain.len(), 3);
+    }
+
+    fn constraint_root(expr: ExprId, relation_index: usize) -> Root {
+        // Claim-only Constraint root: backward-only, never in `order`, never a
+        // forward demand (`materialize: None`).
+        Root {
+            expr,
+            materialize: None,
+            claim: Some(ClaimInfo { origin: RootOrigin {
+                group: RootGroup::Gates, relation_index, slot: RootSlot::Constraint(0),
+            } }),
+        }
+    }
+
+    fn cache_root(expr: ExprId, layer_idx: usize, offset: usize) -> Root {
+        // Materialize-only Cache root: not an atom root (no claim), but its inline
+        // materialize write IS a genuine forward demand — must still count.
+        Root { expr, materialize: Some(SinkInfo { kind: SinkKind::Cache { layer: layer_idx, offset }, field: FieldKind::Base }), claim: None }
+    }
+
+    #[test]
+    fn constraint_root_occurrence_does_not_count_as_forward_consumer() {
+        // s = Add(x, y) is an atom root's own output AND ALSO a claim-only Constraint
+        // root's expr sharing the same value. Before the fix this double-counted s's
+        // consumers (1 atom-root reg + 1 constraint-root reg = 2), wrongly making it
+        // a RootOutput site; the Constraint occurrence is backward-only and must not
+        // count, leaving consumers[s] = 1 -> no site.
+        let layer = DagLayer {
+            sources: vec![witness(0), witness(1)],
+            exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1)), Expr::Add(vec![ExprId(0), ExprId(1)])],
+            roots: vec![atom_root(ExprId(2), 0), constraint_root(ExprId(2), 1)],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            resolutions: BTreeMap::new(),
+        };
+        assert!(enumerate_site_domain(&layer).is_empty());
+    }
+
+    #[test]
+    fn cache_root_occurrence_still_counts_as_forward_consumer() {
+        // s = Add(x, y) is reused: one operand edge (into q = Mul(s, z)) plus a
+        // materialize-only Cache root sharing the same expr. The Cache root's inline
+        // materialize write is a genuine forward demand, so it must still count
+        // toward the >=2 fan-out gate (unlike the Constraint case above).
+        let layer = DagLayer {
+            sources: vec![witness(0), witness(1), witness(2)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Source(SourceId(2)),
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 3 = s
+                Expr::Mul(vec![ExprId(3), ExprId(2)]), // 4 = q = s * z
+            ],
+            roots: vec![atom_root(ExprId(4), 0), cache_root(ExprId(3), 0, 0)],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            resolutions: BTreeMap::new(),
+        };
+        let domain = enumerate_site_domain(&layer);
+        assert!(domain.iter().any(|k| k.value == ExprId(3)), "s must still be a site: domain {domain:?}");
+    }
+
+    #[test]
+    fn resolution_cone_is_fenced_but_real_edges_outside_it_still_produce_sites() {
+        // w = Add(x, y) sits BOTH (a) genuinely reused, twice, as rootA's Mul operands
+        // (real forward demand) AND (b) as a child of a resolution-pruned fold-leaf
+        // (rootB's own expr) that the real emitter fences as a terminal Special
+        // (`lower.rs:484/517`) and never descends into. Before the fix, the counting
+        // pass and the walk both ignored `layer.resolutions`, so w's fan-out would be
+        // inflated (4, not 2) and phantom SiteKeys attributing demands to the fenced
+        // fold-leaf would appear alongside the two genuine ones.
+        let layer = DagLayer {
+            sources: vec![witness(0), witness(1)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0 = x
+                Expr::Source(SourceId(1)),             // 1 = y
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 2 = w
+                Expr::Add(vec![ExprId(2), ExprId(2)]), // 3 = fold-leaf = w + w (RESOLUTION-PRUNED)
+                Expr::Mul(vec![ExprId(2), ExprId(2)]), // 4 = rootA = w * w (real, unfenced)
+            ],
+            roots: vec![atom_root(ExprId(4), 0), atom_root(ExprId(3), 1)],
+            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            resolutions: [(ExprId(3), ResolutionStrategy::PeekSetup)].into_iter().collect(),
+        };
+        let domain = enumerate_site_domain(&layer);
+        // w's two REAL operand edges (from rootA's Mul) are sites.
+        assert!(domain.contains(&SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::Expr { expr: ExprId(4), input_index: 0 },
+            value: ExprId(2),
+        }));
+        assert!(domain.contains(&SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::Expr { expr: ExprId(4), input_index: 1 },
+            value: ExprId(2),
+        }));
+        // No site is ever attributed to the fenced fold-leaf as a consumer: its cone
+        // is never walked, so w's two occurrences as ITS children contribute nothing.
+        assert!(domain
+            .iter()
+            .all(|k| !matches!(k.consumer, SiteConsumer::Expr { expr, .. } if expr == ExprId(3))));
+        // Exactly the two real sites for w (no phantom extras).
+        assert_eq!(domain.iter().filter(|k| k.value == ExprId(2)).count(), 2, "domain: {domain:?}");
     }
 
     #[test]

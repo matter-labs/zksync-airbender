@@ -1474,14 +1474,20 @@ fn new_norm_sites(layer: &DagLayer) -> std::collections::BTreeSet<NormSite> {
         .collect()
 }
 
-/// Layer-wide consumer counts in cs's (authoritative) counting: Add/Mul operand
-/// edges + EVERY root occurrence + `LookupValue.query` edges. Used only by the
-/// old-side RamSource fan-out normalization — the comparison target itself comes
-/// from `enumerate_sites`, not from this mirror.
+/// Layer-wide consumer counts in cs's (authoritative, POST-FIX) counting:
+/// Add/Mul operand edges of non-resolution-fenced exprs + materialize-bearing
+/// root occurrences (Output + Cache; NOT claim-only Constraint) + `LookupValue.
+/// query` edges. Mirrors `cs::gkr_compiler::dag_ir::schedule::enumerate_site_domain`'s
+/// counting pass exactly. Used only by the old-side RamSource fan-out
+/// normalization — the comparison target itself comes from `enumerate_sites`,
+/// not from this mirror.
 fn cs_consumer_counts(layer: &DagLayer) -> Vec<u32> {
-    use cs::gkr_compiler::dag_ir::{Expr, SourceKind};
+    use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
     let mut counts = vec![0u32; layer.exprs.len()];
-    for e in &layer.exprs {
+    for (idx, e) in layer.exprs.iter().enumerate() {
+        if layer.resolutions.contains_key(&ExprId(idx as u32)) {
+            continue;
+        }
         if let Expr::Add(ch) | Expr::Mul(ch) = e {
             for c in ch {
                 counts[c.0 as usize] += 1;
@@ -1489,7 +1495,9 @@ fn cs_consumer_counts(layer: &DagLayer) -> Vec<u32> {
         }
     }
     for r in &layer.roots {
-        counts[r.expr.0 as usize] += 1;
+        if r.materialize.is_some() {
+            counts[r.expr.0 as usize] += 1;
+        }
     }
     for s in &layer.sources {
         if let SourceKind::LookupValue { query, .. } = &s.kind {
@@ -1508,13 +1516,20 @@ struct SiteWalkCfg {
     /// `LookupValue.query` edges are demand edges + consumers (cs). The old
     /// OracleInstance flattens LookupValue to a childless Literal (codex finding).
     include_query: bool,
-    /// EVERY root occurrence counts as a consumer, including materialize-only
-    /// Cache roots and claim-only Constraint roots (cs). The old pipeline counts
-    /// only atom-root occurrences (`inst.roots`).
+    /// Materialize-only Cache roots ALSO count as a consumer (cs — a Cache root's
+    /// inline materialize write is a genuine forward demand), not just atom roots.
+    /// The old pipeline counts only atom-root occurrences (`inst.roots`).
+    /// Claim-only Constraint roots never count on EITHER side (cs was fixed:
+    /// backward-only, never a forward demand — `schedule.rs`'s
+    /// `root.materialize.is_some()` gate mirrors `floor.rs`'s root filter), so this
+    /// knob is Cache-only now, not "every root".
     all_roots: bool,
     /// Resolution-pruned exprs are childless terminals and edges under their
-    /// cones do not exist (old `extract_instance` → `NodeKind::Special`). cs's
-    /// walker + counting ignore `layer.resolutions` entirely.
+    /// cones do not exist (old `extract_instance` → `NodeKind::Special`; cs's
+    /// walker + counting now ALSO fence `layer.resolutions`, matching the real
+    /// emitter's `layer.resolutions.contains_key` gate ahead of any Source/Add/Mul
+    /// match — `lower.rs:484,517`). Both `cs_like()` and `old_like()` prune now,
+    /// so this knob is an always-true no-op kept only to document the alignment.
     prune_resolutions: bool,
     /// Consumer counts consider only edges from atom-cone-reachable exprs (old:
     /// counts live on OracleInstance nodes). cs counts edges of EVERY expr in
@@ -1527,7 +1542,7 @@ impl SiteWalkCfg {
         SiteWalkCfg {
             include_query: true,
             all_roots: true,
-            prune_resolutions: false,
+            prune_resolutions: true,
             reachable_counts: false,
         }
     }
@@ -1594,7 +1609,11 @@ fn dag_sites(layer: &DagLayer, cfg: SiteWalkCfg) -> std::collections::BTreeSet<N
         }
     }
     for r in &layer.roots {
-        if cfg.all_roots || (r.materialize.is_some() && r.claim.is_some()) {
+        // cs_like: materialize-only (Output + Cache; NOT claim-only Constraint —
+        // see the `all_roots` doc). old_like: atom-only (materialize && claim).
+        let counts_here =
+            if cfg.all_roots { r.materialize.is_some() } else { r.materialize.is_some() && r.claim.is_some() };
+        if counts_here {
             counts[r.expr.0 as usize] += 1;
         }
     }
@@ -1662,7 +1681,6 @@ fn site_enumeration_matches_oracle_instance_derivation() {
         let mut fixture_sites = 0usize;
         let mut fixture_query = 0usize;
         let mut fixture_nonatom = 0usize;
-        let mut fixture_resolution = 0usize;
         for (li, layer) in dag.layers.iter().enumerate() {
             let new = new_norm_sites(layer);
 
@@ -1722,7 +1740,7 @@ fn site_enumeration_matches_oracle_instance_derivation() {
                 old.insert((site.root, consumer, value_old));
             }
 
-            // NORMALIZATION 1 (codex finding, brief step 1): EXTEND the old side
+            // NORMALIZATION (codex finding, brief step 1): EXTEND the old side
             // with the site delta the old OracleInstance representation is
             // structurally blind to, recomputed from the DagLayer by the
             // independent `dag_sites` walker. Headlined by the query-edge class
@@ -1731,21 +1749,27 @@ fn site_enumeration_matches_oracle_instance_derivation() {
             // consumer sites, sites inside query cones, and sites whose fan-out
             // only reaches 2 counting the query edge are all invisible old-side.
             //
-            // The full cross-check surfaced TWO MORE old-side blind spots of the
-            // same kind (both flagged in the Task-5 report, not silently blessed):
-            //   - non-atom root occurrences: cs counts materialize-only Cache and
-            //     claim-only Constraint root occurrences as consumers; the old
-            //     pipeline counts only atom-root occurrences (`inst.roots`) — so a
-            //     single-expr-consumer Cache value (e.g. add_sub L0 e16) is a site
-            //     new-side only. SUSPECT: a single-use cache value has no
-            //     reload-reuse (its materialization is a free streamed write at
-            //     the compute point, per the materialized-cache cost model).
-            //   - resolution-pruned cones: cs's walker + counting ignore
-            //     `layer.resolutions`; the old extraction makes pruned exprs
-            //     childless `Special` terminals — so sites under pruned cones
-            //     (e.g. bigint L0 under e1032) are new-side only. The production
-            //     emitter's `decisions::demand_expand` ALSO descends without a
-            //     resolutions check, so cs and the emitter agree with each other.
+            // One more old-side blind spot of the same kind survives (Task-5
+            // reviewer finding, sanctioned — NOT a bug): non-atom root
+            // occurrences. cs counts materialize-only Cache root occurrences as
+            // consumers (a Cache root's inline materialize write is a genuine
+            // forward demand); the old pipeline counts only atom-root occurrences
+            // (`inst.roots`) — so a single-expr-consumer Cache value (e.g. add_sub
+            // L0 e16) is a site new-side only.
+            //
+            // Two blind spots the Task-5 report ALSO flagged were REAL BUGS, now
+            // fixed in `cs::gkr_compiler::dag_ir::schedule::enumerate_site_domain`
+            // and mirrored in `gkr_eval_isa::fwd::compile::decisions::demand_expand`
+            // (this task) — they are no longer part of the normalization surface:
+            //   - claim-only Constraint root occurrences are backward-only (never
+            //     in `order`, never forward-demanded — `lower.rs:1008` skips them,
+            //     no materialize sink) and must NOT count as a forward consumer;
+            //     `all_roots` above is Cache-only now, matching the fix.
+            //   - resolution-pruned cones must be fenced exactly like the real
+            //     emitter (`layer.resolutions.contains_key`, checked ahead of any
+            //     Source/Add/Mul match, `lower.rs:484,517`): a fenced expr's
+            //     children are never walked or counted. `cs_like()` now prunes
+            //     too, so `cs_full`/`old_visible` agree on this axis.
             let cs_full = dag_sites(layer, SiteWalkCfg::cs_like());
             let old_visible = dag_sites(layer, SiteWalkCfg::old_like());
             let delta: BTreeSet<NormSite> =
@@ -1765,15 +1789,8 @@ fn site_enumeration_matches_oracle_instance_derivation() {
                     SiteWalkCfg { all_roots: false, ..SiteWalkCfg::cs_like() },
                 ))
                 .count();
-            let resolution_delta_n = cs_full
-                .difference(&dag_sites(
-                    layer,
-                    SiteWalkCfg { prune_resolutions: true, ..SiteWalkCfg::cs_like() },
-                ))
-                .count();
             fixture_query += query_delta.len();
             fixture_nonatom += nonatom_delta_n;
-            fixture_resolution += resolution_delta_n;
 
             let old_extended: BTreeSet<NormSite> = old.union(&delta).copied().collect();
 
@@ -1797,7 +1814,7 @@ fn site_enumeration_matches_oracle_instance_derivation() {
         }
         eprintln!(
             "[T5-XCHK] {fixture}: {fixture_sites} sites ({fixture_query} query-edge, \
-             {fixture_nonatom} non-atom-root, {fixture_resolution} resolution-cone)",
+             {fixture_nonatom} non-atom-root [Cache-only])",
         );
         total_sites += fixture_sites;
         if fixture_query > 0 {

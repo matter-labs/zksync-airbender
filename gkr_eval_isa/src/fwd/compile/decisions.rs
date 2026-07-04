@@ -215,6 +215,17 @@ impl OccurrenceStreams {
 /// semantics. Pushes one `SiteKey` per demanded operand (consumer = `value`
 /// at that operand's position) and recurses into any compound operand.
 fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec<SiteKey>) {
+    // Resolution-pruned leaf: `lower.rs`'s virtual lowering fences it as a terminal
+    // Special BEFORE any Source/Add/Mul match (`lower_operand_virtual` step 2,
+    // lower.rs:484; `compile_expr_virtual`, lower.rs:517 — both check
+    // `layer.resolutions.contains_key` first) and never walks the cone underneath.
+    // `value` itself may still be a demand site (already pushed by the caller —
+    // `push_and_expand` or the root-output push in `build` — before this call); only
+    // the walk BELOW it is fenced here, so `OccurrenceStreams` never queues a
+    // phantom occurrence for a value the emitter never actually serves.
+    if layer.resolutions.contains_key(&value) {
+        return;
+    }
     match &layer.exprs[value.0 as usize] {
         Expr::Source(src_id) => {
             // NEW semantics (not in lower.rs): treat `query` as a synthetic
@@ -681,6 +692,68 @@ mod tests {
             streams.effective_priority(v),
             None,
             "v must have exactly two occurrences (RootId(0)'s and RootId(2)'s), not three"
+        );
+    }
+
+    /// A resolution-pruned fold-leaf fences its own children — matches the real
+    /// emitter (`lower.rs:484,517`: `layer.resolutions.contains_key` is checked
+    /// BEFORE any Source/Add/Mul match, so a fenced leaf's cone is never walked).
+    /// `demand_expand` must apply the same fence: a value sitting BOTH under a
+    /// resolution cone (phantom, unfenced-emitter-would-never-serve) AND as a
+    /// genuine unfenced operand elsewhere must get exactly one queued occurrence
+    /// (from the unfenced site), at its own real priority — the under-cone
+    /// occurrence must contribute NOTHING (no phantom entry, no stale-front
+    /// corruption of the kind this module's doc already documents for
+    /// CopyAlias/shared-expr roots).
+    #[test]
+    fn resolution_cone_children_are_not_demand_sites() {
+        let x = ExprId(0);
+        let w = ExprId(1); // w = Add(x, x)
+        let fold_leaf = ExprId(2); // fold_leaf = Add(w, w) — RESOLUTION-PRUNED
+        let mut layer = layer_with(
+            vec![const_source(7)],
+            vec![
+                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)), // 0 = x
+                Expr::Add(vec![x, x]),                               // 1 = w
+                Expr::Add(vec![w, w]),                               // 2 = fold_leaf (fenced)
+            ],
+            vec![root(fold_leaf), root(w)],
+        );
+        layer.resolutions.insert(fold_leaf, cs::gkr_compiler::dag_ir::ResolutionStrategy::PeekSetup);
+
+        // fold_leaf's root (RootId(0)) is visited FIRST — if its cone were walked
+        // (unfixed), phantom occurrences for w (and, transitively, x) would land at
+        // the FRONT of their queues, ahead of RootId(1)'s genuine demand below.
+        let order = [RootId(0), RootId(1)];
+        let real_site = SiteKey { root: RootId(1), consumer: SiteConsumer::RootOutput, value: w };
+        let decisions = SiteDecisions::new([(real_site, 5.0)]);
+
+        let mut streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
+        assert_eq!(
+            streams.effective_priority(w),
+            Some(5.0),
+            "w's only queued occurrence must be RootId(1)'s genuine RootOutput demand, \
+             not a phantom (0.0) from walking under the fenced fold_leaf"
+        );
+        streams.serve(w);
+        assert_eq!(
+            streams.effective_priority(w),
+            None,
+            "w must have exactly one occurrence — the fenced cone contributes zero"
+        );
+        // x is demanded genuinely twice — both operands of w's own Add(x, x),
+        // walked once via RootId(1)'s real RootOutput demand of w. If fold_leaf's
+        // fenced cone were ALSO walked (unfixed), w's Add(x, x) would be re-visited
+        // a second time from beneath the fence (root 0), doubling x's occurrence
+        // count to 4 (`demand_expand` has no memoization, unlike cs's walker).
+        assert_eq!(streams.effective_priority(x), Some(0.0));
+        streams.serve(x);
+        assert_eq!(streams.effective_priority(x), Some(0.0));
+        streams.serve(x);
+        assert_eq!(
+            streams.effective_priority(x),
+            None,
+            "x must have exactly two occurrences — both from RootId(1)'s real walk of w"
         );
     }
 }
