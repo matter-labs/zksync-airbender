@@ -38,8 +38,8 @@ pub struct LayerCtx<'a> {
     /// Structural demand-site domain (`structure::enumerate_sites(layer)`); one
     /// [`Genome::cache_priority`] gene per entry, same order.
     pub sites: Vec<SiteKey>,
-    /// `floor::dag_traffic_floor(layer, cross_layer_fields)` — recorded into the
-    /// winning `LayerSchedule`, not used by `score` itself.
+    /// `floor::dag_traffic_floor_with_actions(layer, cross_layer_fields, actions)` —
+    /// recorded into the winning `LayerSchedule`, not used by `score` itself.
     pub floor: usize,
 }
 

@@ -3,17 +3,19 @@
 //! schedules into one `CircuitSchedule` at `budget`.
 //!
 //! Layer gating: a layer with zero atom roots (`structure::relation_units`
-//! empty — no `materialize.is_some() && claim.is_some()` root) has nothing to
-//! schedule; it gets the trivial `LayerSchedule{order: [], sites: [], ...}`
-//! `compile_circuit` already special-cases (its own
-//! `ls.order.is_empty() && layer.roots.iter().all(|r| r.materialize.is_none())`
-//! skip). Earlier drafts of this producer (deleted alongside the v1
-//! `StepPlan` schema in Task 4 — see the tombstone in
-//! `gkr_eval_isa/tests/s3_gap_experiment.rs`) referred to this gate as
-//! `layer_is_compiled`; that name no longer exists anywhere in the tree, so
-//! this promotion re-establishes the predicate directly against Task 5's
-//! `relation_units` rather than resurrecting a name with no surviving
-//! definition to mirror.
+//! empty, i.e. its schedule's `order` will be empty) is only skipped as a
+//! trivial `LayerSchedule{order: [], sites: [], ...}` if it ALSO has no
+//! materialize-bearing root at all — the exact same
+//! `fwd::compile::layer_needs_compile` predicate `compile_circuit` uses to
+//! decide whether to run `compile_layer`. A layer can have zero atom roots
+//! (e.g. no `claim`-bearing root) yet still carry a materialize-only root
+//! (a `Cache` root with no `claim`); such a layer still needs a real
+//! `search_layer` pass so its cache placement gets decided for real, so this
+//! producer must NOT skip it — using a separate, looser gate here previously
+//! let the producer emit an empty schedule for a layer `compile_circuit`
+//! would refuse to skip, which `compile_layer_with_policy` would then choke
+//! on at compile time (Task 6 review finding). Sharing one predicate makes
+//! the two skip decisions structurally unable to drift.
 
 use std::collections::HashMap;
 
@@ -21,7 +23,7 @@ use cs::gkr_compiler::dag_ir::{CircuitSchedule, DagCircuit, FieldKind, LayerSche
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 
-use crate::fwd::compile::build_cross_layer_field_map;
+use crate::fwd::compile::{build_cross_layer_field_map, layer_needs_compile};
 
 use super::scorer::LayerCtx;
 use super::search::{search_layer, SearchConfig};
@@ -41,15 +43,17 @@ pub fn produce_circuit_schedule(
     let mut layers: Vec<LayerSchedule> = Vec::with_capacity(dag.layers.len());
 
     for (li, layer) in dag.layers.iter().enumerate() {
-        if relation_units(layer).is_empty() {
-            // No atom roots: trivial empty schedule. `floor: 0`, NOT
-            // `dag_traffic_floor` — a materialize-only (e.g. Cache-root) layer can
-            // have a nonzero DAG floor, and the validator requires
-            // `floor <= predicted_traffic` (0 here, since nothing was searched);
-            // this also mirrors the deleted v1 producer's empty branch exactly.
+        let order_would_be_empty = relation_units(layer).is_empty();
+        if !layer_needs_compile(order_would_be_empty, layer) {
+            // No atom roots AND no materialize-bearing root: trivial empty
+            // schedule, mirroring `compile_circuit`'s own skip exactly (see
+            // `layer_needs_compile`). `floor: 0`, NOT `dag_traffic_floor` —
+            // nothing was searched, and the validator requires
+            // `floor <= predicted_traffic` (0 here); this also mirrors the
+            // deleted v1 producer's empty branch exactly.
             layers.push(LayerSchedule { order: vec![], sites: vec![], predicted_traffic: 0, floor: 0 });
             println!(
-                "schedule_search: layer {li}: no atom roots, skipped (nodes={}, sites=0)",
+                "schedule_search: layer {li}: no atom roots, no materialize roots, skipped (nodes={}, sites=0)",
                 layer.exprs.len()
             );
             continue;

@@ -524,6 +524,21 @@ fn materialize_vinstr(
     })
 }
 
+/// Shared skip predicate (ground truth for "does this layer need compiling"):
+/// a layer is trivially skippable iff its schedule's `order` is empty AND no
+/// root in the layer carries a `materialize` sink. `order.is_empty()` alone is
+/// NOT sufficient — a layer can have zero atom roots (empty `order`, since
+/// `schedule_search::structure::relation_units` only counts
+/// `materialize.is_some() && claim.is_some()` roots) while still carrying a
+/// materialize-only root (e.g. a `Cache` root with no `claim`), which still
+/// needs a real `compile_layer` pass to emit its materialization. Both
+/// `compile_circuit_with_policy` and the on-demand schedule producer
+/// (`schedule_search::producer::produce_circuit_schedule`) call this so the
+/// two skip decisions cannot drift (Task 6 review finding).
+pub(crate) fn layer_needs_compile(order_is_empty: bool, layer: &DagLayer) -> bool {
+    !(order_is_empty && layer.roots.iter().all(|r| r.materialize.is_none()))
+}
+
 /// Compile a whole circuit from its committed `CircuitSchedule` (OP-3).
 ///
 /// Builds the whole-circuit cross-layer field map once, then compiles each layer from
@@ -556,7 +571,7 @@ pub fn compile_circuit_with_policy(
     let mut layers = Vec::with_capacity(dag.layers.len());
     for (li, layer) in dag.layers.iter().enumerate() {
         let ls = &schedule.layers[li];
-        if ls.order.is_empty() && layer.roots.iter().all(|r| r.materialize.is_none()) {
+        if !layer_needs_compile(ls.order.is_empty(), layer) {
             layers.push(CompiledLayer {
                 program: Program::default(),
                 ctx: DagForwardContext::default(),
@@ -600,5 +615,52 @@ mod tests {
         };
         let map = build_materialize_map(&layer);
         assert_eq!(map.0.get(&ExprId(7)), Some(&vec![sink]));
+    }
+
+    /// Review finding (Task 6): a layer with a materialize-only root (a `Cache`
+    /// root with no `claim`) and no atom roots has an empty `relation_units` —
+    /// so its schedule's `order` would be `[]` — but `layer_needs_compile` must
+    /// still say "needs compile" so `compile_circuit` runs `compile_layer`
+    /// instead of skipping, and so the producer (which uses
+    /// `relation_units(layer).is_empty()` as its own `order_is_empty` proxy)
+    /// stays consistent with `compile_circuit`'s ground-truth skip decision.
+    #[test]
+    fn layer_needs_compile_true_for_materialize_only_root_with_empty_order() {
+        let sink = SinkInfo { kind: SinkKind::Cache { layer: 0, offset: 0 }, field: FieldKind::Ext };
+        let layer = DagLayer {
+            sources: vec![],
+            exprs: vec![Expr::Source(SourceId(0))],
+            roots: vec![Root { expr: ExprId(7), materialize: Some(sink), claim: None }],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            resolutions: BTreeMap::new(),
+        };
+
+        // Producer's proxy for "would this layer's order be empty": no atom
+        // (materialize+claim) roots.
+        let order_would_be_empty = crate::schedule_search::structure::relation_units(&layer).is_empty();
+        assert!(order_would_be_empty, "materialize-only root has no claim, so it is not an atom root");
+
+        // Ground truth: `compile_circuit` must NOT skip this layer.
+        assert!(
+            layer_needs_compile(order_would_be_empty, &layer),
+            "a materialize-bearing root must force compile_layer even with an empty order"
+        );
+    }
+
+    /// Companion case: a layer with genuinely nothing (no roots at all) must
+    /// still be skippable — `layer_needs_compile` isn't unconditionally `true`.
+    #[test]
+    fn layer_needs_compile_false_for_empty_layer() {
+        let layer = DagLayer {
+            sources: vec![],
+            exprs: vec![],
+            roots: vec![],
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: BTreeMap::new(),
+        };
+        let order_would_be_empty =
+            crate::schedule_search::structure::relation_units(&layer).is_empty();
+        assert!(order_would_be_empty);
+        assert!(!layer_needs_compile(order_would_be_empty, &layer));
     }
 }
