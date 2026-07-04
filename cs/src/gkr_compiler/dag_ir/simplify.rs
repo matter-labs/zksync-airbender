@@ -179,8 +179,10 @@ mod tests {
         };
         let layer = layer_of(a, vec![root], BTreeMap::new());
         let out = simplify_layer(&layer);
-        // find the LookupValue source in the output and follow its query
-        let lv_src = out
+        // Both the Constant source and the LookupValue source survive.
+        assert_eq!(out.sources.len(), 2, "query subtree stays alive: {:?}", out.sources);
+        // Find the LookupValue source in the output and follow its query edge.
+        let query = out
             .sources
             .iter()
             .find_map(|s| match &s.kind {
@@ -188,8 +190,20 @@ mod tests {
                 _ => None,
             })
             .expect("LookupValue survives");
-        assert!(
-            matches!(&out.exprs[lv_src.0 as usize], Expr::Source(_)),
+        // The rebuilt query edge must point at a genuinely-rebuilt Constant(3)
+        // — not a stale old ExprId copied through without rebuild(query),
+        // which in this layout would self-refer to the LookupValue node.
+        assert_ne!(
+            query, out.roots[0].expr,
+            "query must not point at the LookupValue node itself"
+        );
+        let sid = match &out.exprs[query.0 as usize] {
+            Expr::Source(sid) => *sid,
+            other => panic!("query edge must point at a Source expr, got {:?}", other),
+        };
+        assert_eq!(
+            out.sources[sid.0 as usize].kind,
+            SourceKind::Constant { value: 3 },
             "query edge points at the rebuilt constant"
         );
     }
