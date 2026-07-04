@@ -372,7 +372,7 @@ mod tests {
     use crate::gkr_compiler::dag_ir::{
         validate_simplified, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
         DagCircuit, DagGlobals, LookupValueKind, ReadPlace, ResolutionStrategy, RootGroup,
-        RootOrigin, RootSlot,
+        RootOrigin, RootSlot, SinkInfo, SinkKind,
     };
 
     /// Build a `Constant` source expr with the given BabyBear value.
@@ -879,6 +879,44 @@ mod tests {
         assert!(
             super::super::validate(&out).is_ok(),
             "plain validate must accept the Ext zero-product circuit"
+        );
+        validate_simplified(&out).unwrap();
+    }
+
+    /// Task 8: the Ext-zero-sink variant of the field-suppression exception — a
+    /// MATERIALIZED (not just claimed) Ext-field root over `Mul(0, challenge)`
+    /// must also keep its `Mul` shape (spec §3 field constraint) and pass
+    /// `validate_simplified`. `ext_zero_product_passes_validate_simplified`
+    /// above pins the claim-root case; this pins the `SinkInfo`-materialize
+    /// case (a `Scratch` sink), which exercises a different code path in
+    /// `validate`/`validate_simplified` (sink field vs. claim field checks).
+    #[test]
+    fn ext_zero_materialized_sink_passes_validate_simplified() {
+        let mut a = ArenaBuilder::with_flatten(false);
+        let zero = const_expr(&mut a, 0);
+        let ch = challenge_expr(&mut a); // SourceKind::Challenge → Ext
+        let m = a.mul(vec![zero, ch]);
+        let layer = layer_of(
+            a,
+            vec![Root {
+                expr: m,
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Scratch { slot: 0 },
+                    field: FieldKind::Ext,
+                }),
+                claim: None,
+            }],
+            BTreeMap::new(),
+        );
+        let circuit = circuit_of(layer);
+        let out = simplify_circuit(circuit);
+        match &out.layers[0].exprs[out.layers[0].roots[0].expr.0 as usize] {
+            Expr::Mul(ops) => assert_eq!(ops.len(), 2, "Ext zero product must stay a Mul"),
+            other => panic!("field-preservation violated: {:?}", other),
+        }
+        assert!(
+            super::super::validate(&out).is_ok(),
+            "plain validate must accept the Ext zero-product materialized-sink circuit"
         );
         validate_simplified(&out).unwrap();
     }
