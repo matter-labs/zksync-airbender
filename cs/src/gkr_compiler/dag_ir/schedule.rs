@@ -119,6 +119,14 @@ pub fn enumerate_site_domain(layer: &DagLayer) -> BTreeSet<SiteKey> {
             consumers[root.expr.0 as usize] += 1;
         }
     }
+    // KNOWN LOOSENESS (Task-5 review, carried forward): this query-edge fan-out tally
+    // is unconditional over `layer.sources` — a `LookupValue` source reachable ONLY
+    // under a fenced resolution cone still bumps its query's consumer count, even
+    // though the emitter never walks that cone (the fences above only stop the
+    // expr-edge counting/walk, not this source-table sweep). Domain-side only: it can
+    // classify a value as a site (>= 2 fan-out) that the forward emitter demands less
+    // often, never the reverse — so a stored schedule stays validator-compatible; the
+    // extra site is just a decision the emitter may never consult.
     for src in &layer.sources {
         if let SourceKind::LookupValue { query, .. } = &src.kind {
             consumers[query.0 as usize] += 1;

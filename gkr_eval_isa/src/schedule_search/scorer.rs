@@ -51,7 +51,18 @@ impl<'a> LayerCtx<'a> {
         cross_layer_fields: &'a HashMap<ReadPlace, FieldKind>,
         budget: usize,
     ) -> Self {
-        let floor = super::floor::dag_traffic_floor(layer, cross_layer_fields);
+        // Action-aware floor (NOT the plain DAG floor): CopyAlias/SkipScratchPrefill
+        // roots are never lowered, so their cones must not count toward the bound the
+        // producer records against the compile metric — see
+        // `floor::dag_traffic_floor_with_actions`'s doc.
+        let actions = crate::fwd::context::build_forward_actions(
+            layer,
+            artifact_layer,
+            &artifact.scratch_space_mapping,
+        )
+        .unwrap_or_else(|e| panic!("LayerCtx::new: build_forward_actions failed: {e:?}"));
+        let floor =
+            super::floor::dag_traffic_floor_with_actions(layer, cross_layer_fields, &actions);
         Self {
             layer,
             artifact_layer,
