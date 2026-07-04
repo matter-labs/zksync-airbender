@@ -17,11 +17,11 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{
-    build_cross_layer_field_map, CircuitSchedule, DagCircuit, FieldKind, LayerSchedule, ReadPlace,
-};
+use cs::gkr_compiler::dag_ir::{CircuitSchedule, DagCircuit, FieldKind, LayerSchedule, ReadPlace};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+
+use crate::fwd::compile::build_cross_layer_field_map;
 
 use super::floor::dag_traffic_floor;
 use super::scorer::LayerCtx;
