@@ -96,24 +96,12 @@ fn load_committed_schedule(stem: &str) -> Option<cs::gkr_compiler::dag_ir::Circu
     serde_json::from_slice(&bytes).ok()
 }
 
-/// M7 baseline: the schedule-driven compiler's width-weighted DRAM traffic for an L0
-/// fixture. Post-T3b this compiles the committed b16 schedule (`compile_circuit`) and
-/// returns layer 0's `stats.dram_traffic` — the same cell-weighted metric the gap
-/// experiment compares C/E/J/D in. Returns `None` when the fixture cannot load OR has no
-/// committed schedule (e.g. the `_no_caches` variants) — those rows report
-/// `PROD_COMPILE_FAILED` and are skipped. `budget` is retained for signature stability;
-/// the committed schedule is b16 (== `REAL_BUDGET`).
-fn production_l0_traffic(fixture: &str, _budget: usize) -> Option<u64> {
-    let artifact = load_fixture(&compiled_circuit_dir().join(fixture))?;
-    let dag = lower_dag(&artifact).ok()?;
-    validate(&dag).ok()?;
-    let stem = fixture
-        .trim_end_matches("_layout_gkr.json")
-        .trim_end_matches("_layout_no_caches_gkr.json");
-    let sched = load_committed_schedule(stem)?;
-    let compiled = compile_circuit(&dag, &sched, &artifact).ok()?;
-    Some(compiled.layers.first()?.stats.dram_traffic as u64)
-}
+// DELETED (Task 7): `production_l0_traffic` (M7 baseline wrapper around
+// `compile_circuit` + `load_committed_schedule`) was orphaned — no test called it
+// after the Task 6 scorer cutover (the full-size bracket row inlines the same
+// compile-and-read-traffic sequence directly; see the `c = match
+// load_committed_schedule(...)` block below). `load_committed_schedule` itself
+// stays; it is still used there.
 
 /// Wrap a single (possibly downscaled) layer into a `DagCircuit` so `validate()`
 /// can run on it, and so `build_cross_layer_field_map` can re-derive its fields.
