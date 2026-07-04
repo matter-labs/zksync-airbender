@@ -79,6 +79,10 @@ impl ArenaBuilder {
     /// Called once, after all cache values are materialized and before any gate
     /// is lowered, so a subsequent read of a same-layer cache address IS the
     /// materialized value's shared `ExprId` (DAG sharing, not a `Prior` root).
+    ///
+    /// Build-time-only: this map lives on the `ArenaBuilder` and is never
+    /// consulted or remapped by `simplify_circuit` — it is fully consumed by
+    /// the time `lower_layer` returns the `DagLayer`.
     pub fn set_cache_aliases(&mut self, aliases: HashMap<GKRAddress, ExprId>) {
         self.cache_aliases = aliases;
     }

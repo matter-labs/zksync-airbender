@@ -63,9 +63,10 @@ use crate::gkr_compiler::{
 };
 
 use super::{
-    simplify_circuit, ArenaBuilder, BatchingOrder, ClaimInfo, DagCircuit, DagGlobals, DagLayer,
-    ExprId, FieldKind, FillSource, RangeWidth, ReadPlace, ResolutionStrategy, Root, RootGroup,
-    RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceKind, VirtualSetupKind,
+    simplify::SIMPLIFY_MODULUS, simplify_circuit, ArenaBuilder, BatchingOrder, ClaimInfo,
+    DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind, FillSource, RangeWidth, ReadPlace,
+    ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind,
+    SourceKind, VirtualSetupKind,
 };
 
 /// Which arena/pass pipeline `lower_layer` should use.
@@ -857,6 +858,13 @@ fn lower_layer<F: PrimeField + PartialEq>(
 pub fn lower_dag<F: PrimeField + PartialEq>(
     artifact: &GKRCircuitArtifact<F>,
 ) -> Result<DagCircuit, String> {
+    if F::CHARACTERISTICS as u64 != SIMPLIFY_MODULUS {
+        return Err(format!(
+            "dag_ir: simplify pass is hardcoded to modulus {SIMPLIFY_MODULUS} (BabyBear) but \
+             field characteristic is {}; dag_ir simplify would silently const-fold mod the wrong prime",
+            F::CHARACTERISTICS
+        ));
+    }
     let layers = (0..artifact.layers.len())
         .map(|i| lower_layer(artifact, i, LowerMode::Simplified))
         .collect::<Result<Vec<_>, _>>()?;
@@ -880,6 +888,13 @@ pub fn lower_dag<F: PrimeField + PartialEq>(
 pub fn lower_dag_legacy<F: PrimeField + PartialEq>(
     artifact: &GKRCircuitArtifact<F>,
 ) -> Result<DagCircuit, String> {
+    if F::CHARACTERISTICS as u64 != SIMPLIFY_MODULUS {
+        return Err(format!(
+            "dag_ir: simplify pass is hardcoded to modulus {SIMPLIFY_MODULUS} (BabyBear) but \
+             field characteristic is {}; dag_ir simplify would silently const-fold mod the wrong prime",
+            F::CHARACTERISTICS
+        ));
+    }
     let layers = (0..artifact.layers.len())
         .map(|i| lower_layer(artifact, i, LowerMode::Legacy))
         .collect::<Result<Vec<_>, _>>()?;

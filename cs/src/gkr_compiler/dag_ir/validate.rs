@@ -2130,4 +2130,186 @@ mod tests {
         let f = resolve_expr_field(ExprId(0), &circuit.layers[1], &cross).expect("resolves");
         assert_eq!(f, FieldKind::Ext);
     }
+
+    // ── Final-review Task 2: `validate_simplified` negative-path coverage ─────
+    //
+    // Each test hand-builds a one-layer `DagLayer` directly via `sources`/`exprs`
+    // vecs (bypassing `ArenaBuilder`/`simplify_layer` entirely) so the specific
+    // un-simplified shape survives to `validate_simplified` unchanged, then
+    // asserts the call is `Err` and the message names the violated invariant.
+
+    /// A `Read{Scratch}` source expr — `source_field` reports it `Base`
+    /// (see `source_field_read_scratch_is_base`), so it stands in for a
+    /// generic non-constant Base-valued leaf without accidentally folding.
+    fn scratch_read(slot: usize) -> SourceInfo {
+        SourceInfo { kind: SourceKind::Read { place: ReadPlace::Scratch { slot } } }
+    }
+
+    fn root_of(expr: ExprId) -> Root {
+        Root { expr, materialize: None, claim: None }
+    }
+
+    /// (i) A non-fenced same-op child with fan-out == 1: `Add(Add(x, y), z)`
+    /// where the inner `Add` is consumed exactly once. `simplify_layer` would
+    /// flatten this; `validate_simplified` must reject it directly.
+    #[test]
+    fn validate_simplified_rejects_unflattened_fanout1_child() {
+        let sx = scratch_read(0);
+        let sy = scratch_read(1);
+        let sz = scratch_read(2);
+        let sources = vec![sx, sy, sz];
+        let exprs = vec![
+            Expr::Source(SourceId(0)), // x
+            Expr::Source(SourceId(1)), // y
+            Expr::Source(SourceId(2)), // z
+            Expr::Add(vec![ExprId(0), ExprId(1)]), // inner Add(x, y), fan-out 1
+            Expr::Add(vec![ExprId(3), ExprId(2)]), // outer Add(inner, z) — root
+        ];
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots: vec![root_of(ExprId(4))],
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: BTreeMap::new(),
+        };
+        let err = validate_simplified(&circuit_of(layer))
+            .expect_err("unflattened same-op fan-out-1 child must be rejected");
+        assert!(
+            err.contains("would flatten this"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// (ii) Two `Constant` operands on the same node: `Add(Constant(2), Constant(3))`
+    /// built directly, bypassing const-folding.
+    #[test]
+    fn validate_simplified_rejects_two_constant_operands() {
+        let sources = vec![
+            SourceInfo { kind: SourceKind::Constant { value: 2 } },
+            SourceInfo { kind: SourceKind::Constant { value: 3 } },
+        ];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+            Expr::Add(vec![ExprId(0), ExprId(1)]),
+        ];
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots: vec![root_of(ExprId(2))],
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: BTreeMap::new(),
+        };
+        let err = validate_simplified(&circuit_of(layer))
+            .expect_err("two Constant operands must be rejected");
+        assert!(
+            err.contains("must be const-folded to at most 1"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// (iii) An `Add` with a `Constant(0)` operand (identity not applied).
+    #[test]
+    fn validate_simplified_rejects_add_retaining_constant_zero() {
+        let sx = scratch_read(0);
+        let sources = vec![SourceInfo { kind: SourceKind::Constant { value: 0 } }, sx];
+        let exprs = vec![
+            Expr::Source(SourceId(0)), // Constant(0)
+            Expr::Source(SourceId(1)), // x
+            Expr::Add(vec![ExprId(0), ExprId(1)]),
+        ];
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots: vec![root_of(ExprId(2))],
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: BTreeMap::new(),
+        };
+        let err = validate_simplified(&circuit_of(layer))
+            .expect_err("Add retaining Constant(0) must be rejected");
+        assert!(
+            err.contains("Add retains a Constant(0) operand"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// (iv) A `Mul` with a `Constant(1)` operand (identity not applied).
+    #[test]
+    fn validate_simplified_rejects_mul_retaining_constant_one() {
+        let sx = scratch_read(0);
+        let sources = vec![SourceInfo { kind: SourceKind::Constant { value: 1 } }, sx];
+        let exprs = vec![
+            Expr::Source(SourceId(0)), // Constant(1)
+            Expr::Source(SourceId(1)), // x
+            Expr::Mul(vec![ExprId(0), ExprId(1)]),
+        ];
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots: vec![root_of(ExprId(2))],
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: BTreeMap::new(),
+        };
+        let err = validate_simplified(&circuit_of(layer))
+            .expect_err("Mul retaining Constant(1) must be rejected");
+        assert!(
+            err.contains("Mul retains a Constant(1) operand"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// (v) A unary (single-child) non-fenced `Add` node — caught by the
+    /// `children.len() < 2` check before any const-fold inspection runs.
+    #[test]
+    fn validate_simplified_rejects_unary_add() {
+        let sx = scratch_read(0);
+        let sources = vec![sx];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Add(vec![ExprId(0)]),
+        ];
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots: vec![root_of(ExprId(1))],
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: BTreeMap::new(),
+        };
+        let err = validate_simplified(&circuit_of(layer))
+            .expect_err("unary non-fenced Add must be rejected");
+        assert!(
+            err.contains("must have >=2"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// (vi) A `Mul` that IS provably Base (both operands are Base per
+    /// `source_field`: `Constant` and `Read{Scratch}`) yet still retains a
+    /// `Constant(0)` operand. The field-suppression exception only excuses a
+    /// retained `Constant(0)` when the node is NOT provably Base (an Ext
+    /// factor is present) — here every child is provably Base, so the
+    /// annihilator rewrite should have fired and the exception must NOT apply.
+    #[test]
+    fn validate_simplified_rejects_provably_base_mul_retaining_constant_zero() {
+        let sx = scratch_read(0);
+        let sources = vec![SourceInfo { kind: SourceKind::Constant { value: 0 } }, sx];
+        let exprs = vec![
+            Expr::Source(SourceId(0)), // Constant(0) — Base
+            Expr::Source(SourceId(1)), // Read{Scratch} — also Base
+            Expr::Mul(vec![ExprId(0), ExprId(1)]),
+        ];
+        let layer = DagLayer {
+            sources,
+            exprs,
+            roots: vec![root_of(ExprId(2))],
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: BTreeMap::new(),
+        };
+        let err = validate_simplified(&circuit_of(layer))
+            .expect_err("provably-base Mul retaining Constant(0) must be rejected");
+        assert!(
+            err.contains("is provably Base"),
+            "unexpected error: {err}"
+        );
+    }
 }

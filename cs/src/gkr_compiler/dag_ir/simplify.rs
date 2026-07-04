@@ -10,8 +10,12 @@ use super::{
     SourceKind,
 };
 
-/// BabyBear field modulus (matches `eval.rs`'s concrete field).
-const P: u64 = 2013265921;
+/// BabyBear field modulus (matches `eval.rs`'s concrete field). Public so
+/// `lower_dag`/`lower_dag_legacy` can assert the actual `F::CHARACTERISTICS`
+/// matches before this module's hardcoded const-folding runs.
+pub(crate) const SIMPLIFY_MODULUS: u64 = 2013265921;
+/// Local alias to keep the fold helpers below unchanged.
+const P: u64 = SIMPLIFY_MODULUS;
 
 /// BabyBear addition mod `P`.
 fn fold_add(a: u32, b: u32) -> u32 {
@@ -200,6 +204,9 @@ impl Rebuild<'_> {
 
     /// Intern a fresh `Constant` source expr in the NEW arena.
     fn const_expr(&mut self, v: u32) -> ExprId {
+        // All callers pass already-reduced fold results (`fold_add`/`fold_mul`
+        // output, or a value copied from an existing reduced Constant).
+        debug_assert!((v as u64) < SIMPLIFY_MODULUS, "const_expr: value {v} not reduced mod {SIMPLIFY_MODULUS}");
         let s = self.arena.intern_source(SourceKind::Constant { value: v });
         self.arena.source_expr(s)
     }
@@ -276,8 +283,17 @@ impl Rebuild<'_> {
                             if self.provably_base(old) {
                                 self.const_expr(v)
                             } else {
-                                let c = self.const_expr(v);
-                                self.arena.add(vec![c])
+                                // Dead by induction: `rest.len() == 0` means every
+                                // (rebuilt) operand was a `Constant` source, and
+                                // `Constant` is always `FieldKind::Base` (see
+                                // `source_field`), so `provably_base(old)` is true
+                                // by the Add/Mul "every child is" rule above. A
+                                // regression here would silently emit a bogus
+                                // unary Add wrapping a Base constant as if it were
+                                // Ext — fail loudly instead.
+                                unreachable!(
+                                    "all-constant Add operand list implies provably_base; guard regression"
+                                );
                             }
                         }
                         1 => {
@@ -342,8 +358,20 @@ impl Rebuild<'_> {
                                 if self.provably_base(old) {
                                     self.const_expr(v)
                                 } else {
-                                    let c = self.const_expr(v);
-                                    self.arena.mul(vec![c])
+                                    // Dead by induction: `rest.len() == 0` here
+                                    // means every (rebuilt) operand was a
+                                    // `Constant` source (the `acc == Some(0)`
+                                    // case above always leaves a Constant(0) in
+                                    // `rest`, so this can only be reached via
+                                    // all-constant operands folding to 1), and
+                                    // `Constant` is always `FieldKind::Base`, so
+                                    // `provably_base(old)` is true by the Mul
+                                    // "every child is" rule — fail loudly on
+                                    // regression instead of emitting a bogus
+                                    // unary Mul.
+                                    unreachable!(
+                                        "all-constant Mul operand list implies provably_base; guard regression"
+                                    );
                                 }
                             }
                             1 => {
