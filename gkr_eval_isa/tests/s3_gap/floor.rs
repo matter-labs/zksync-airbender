@@ -3,54 +3,13 @@ use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, SinkInfo, SinkKind, SourceId,
     SourceInfo, SourceKind, BatchingOrder,
 };
-use gkr_eval_isa::fwd::compile::expr_operand_field;
-use gkr_eval_isa::fwd::isa::OperandField;
 use std::collections::BTreeMap;
 
-/// DAG-intrinsic width-weighted DRAM traffic floor `D`.
-///
-/// Σ width over **distinct `SourceKind::Read` leaves** reachable from
-/// materialize-bearing top exprs (`root.materialize.is_some()` — Output + Cache,
-/// skipping claim-only Constraint roots). `VirtualSetup`/`Constant`/`Challenge`/
-/// `LookupValue` are zero traffic. (Part B: there is no `Prior` source any more —
-/// same-layer cache reuse is a recomputed shared `ExprId`, reached transitively
-/// through the cone that holds it.) Resolution-pruned exprs are treated as terminals
-/// (contribute 0, not descended). Order/budget-independent.
-pub fn dag_traffic_floor(layer: &DagLayer, cross: &HashMap<ReadPlace, FieldKind>) -> usize {
-    use std::collections::HashSet;
-    let mut seen_expr: HashSet<u32> = HashSet::new();
-    let mut distinct_reads: HashSet<usize> = HashSet::new(); // SourceId index
-    let mut total = 0usize;
-    let mut stack: Vec<u32> = layer
-        .roots
-        .iter()
-        // Materialize-bearing roots (Output + Cache); skip claim-only Constraint roots.
-        .filter_map(|r| r.materialize.is_some().then_some(r.expr.0))
-        .collect();
-    while let Some(eid) = stack.pop() {
-        if !seen_expr.insert(eid) {
-            continue;
-        }
-        // Resolution-pruned → special terminal: 0 traffic, do NOT descend.
-        // MUST mirror Task-3 extraction's pruning so D and the instance agree.
-        if layer.resolutions.contains_key(&ExprId(eid)) {
-            continue;
-        }
-        match &layer.exprs[eid as usize] {
-            Expr::Source(sid) => {
-                if let SourceKind::Read { .. } = &layer.sources[sid.0 as usize].kind {
-                    if distinct_reads.insert(sid.0 as usize) {
-                        let f = expr_operand_field(layer, ExprId(eid), cross);
-                        total += if f == OperandField::Ext { 4 } else { 1 };
-                    }
-                }
-                // VirtualSetup / Constant / Challenge / LookupValue → 0 traffic.
-            }
-            Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().map(|c| c.0)),
-        }
-    }
-    total
-}
+/// Promoted to production in Task 5 (`gkr_eval_isa::schedule_search::floor`);
+/// this thin re-export keeps the test-side call sites alive until Task 7
+/// retires the `s3_gap` tree (`dag_simplify_parity.rs` already imports the
+/// promoted path directly).
+pub use gkr_eval_isa::schedule_search::floor::dag_traffic_floor;
 
 // Module-level (OUTSIDE `mod tests`) so instance.rs / Task 3 can reuse by path
 // `crate::s3_gap::floor::tests_support_two_reads_one_prior`.

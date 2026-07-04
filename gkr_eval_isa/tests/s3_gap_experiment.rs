@@ -1432,3 +1432,462 @@ fn cone_fit_rejects_in_cone_cache_footprint_that_old_streaming_model_missed() {
 
 // `produce_all_schedules` (the GKR_PRODUCE_SCHEDULES-gated artifact writer) DELETED
 // alongside `produce_circuit_schedule` above — see that tombstone.
+
+// ── Task 5: DagLayer-native site enumeration cross-check ─────────────────────
+//
+// The new production enumerator (`gkr_eval_isa::schedule_search::structure::
+// enumerate_sites`, a thin wrap of cs's `enumerate_site_domain`) must reproduce the
+// old OracleInstance-based site multiset (`enumerate_cache_priority_sites` over
+// `extract_instance`) on every corpus layer — modulo two DOCUMENTED representation
+// asymmetries of the old pipeline (normalized below, each cited at its use site).
+
+/// Site normal form both enumerations map into: `(atom-root occurrence index,
+/// consumer, value ExprId)`. Occurrence index (not `RootId`) because the old
+/// `OracleInstance` only numbers atom-root occurrences; `atom_root_ids` bridges.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum NormConsumer {
+    Expr { expr: u32, input_index: u32 },
+    RootOutput,
+}
+type NormSite = (u32, NormConsumer, u32);
+
+/// New side: `schedule_search::structure::enumerate_sites` mapped to the normal form.
+fn new_norm_sites(layer: &DagLayer) -> std::collections::BTreeSet<NormSite> {
+    use cs::gkr_compiler::dag_ir::SiteConsumer;
+    use gkr_eval_isa::schedule_search::structure::enumerate_sites;
+    let occ_of: HashMap<u32, u32> = atom_root_ids(layer)
+        .iter()
+        .enumerate()
+        .map(|(occ, rid)| (rid.0, occ as u32))
+        .collect();
+    enumerate_sites(layer)
+        .into_iter()
+        .map(|s| {
+            let consumer = match s.consumer {
+                SiteConsumer::Expr { expr, input_index } => {
+                    NormConsumer::Expr { expr: expr.0, input_index }
+                }
+                SiteConsumer::RootOutput => NormConsumer::RootOutput,
+            };
+            (occ_of[&s.root.0], consumer, s.value.0)
+        })
+        .collect()
+}
+
+/// Layer-wide consumer counts in cs's (authoritative) counting: Add/Mul operand
+/// edges + EVERY root occurrence + `LookupValue.query` edges. Used only by the
+/// old-side RamSource fan-out normalization — the comparison target itself comes
+/// from `enumerate_sites`, not from this mirror.
+fn cs_consumer_counts(layer: &DagLayer) -> Vec<u32> {
+    use cs::gkr_compiler::dag_ir::{Expr, SourceKind};
+    let mut counts = vec![0u32; layer.exprs.len()];
+    for e in &layer.exprs {
+        if let Expr::Add(ch) | Expr::Mul(ch) = e {
+            for c in ch {
+                counts[c.0 as usize] += 1;
+            }
+        }
+    }
+    for r in &layer.roots {
+        counts[r.expr.0 as usize] += 1;
+    }
+    for s in &layer.sources {
+        if let SourceKind::LookupValue { query, .. } = &s.kind {
+            counts[query.0 as usize] += 1;
+        }
+    }
+    counts
+}
+
+/// Site-walk visibility semantics for `dag_sites` — one knob per representational
+/// asymmetry between cs's `enumerate_site_domain` and the old OracleInstance
+/// pipeline. `cs_like()` mirrors cs; `old_like()` mirrors what the old pipeline can
+/// see; single-knob intermediates attribute the delta per asymmetry class.
+#[derive(Clone, Copy)]
+struct SiteWalkCfg {
+    /// `LookupValue.query` edges are demand edges + consumers (cs). The old
+    /// OracleInstance flattens LookupValue to a childless Literal (codex finding).
+    include_query: bool,
+    /// EVERY root occurrence counts as a consumer, including materialize-only
+    /// Cache roots and claim-only Constraint roots (cs). The old pipeline counts
+    /// only atom-root occurrences (`inst.roots`).
+    all_roots: bool,
+    /// Resolution-pruned exprs are childless terminals and edges under their
+    /// cones do not exist (old `extract_instance` → `NodeKind::Special`). cs's
+    /// walker + counting ignore `layer.resolutions` entirely.
+    prune_resolutions: bool,
+    /// Consumer counts consider only edges from atom-cone-reachable exprs (old:
+    /// counts live on OracleInstance nodes). cs counts edges of EVERY expr in
+    /// `layer.exprs`, reachable or not.
+    reachable_counts: bool,
+}
+
+impl SiteWalkCfg {
+    fn cs_like() -> Self {
+        SiteWalkCfg {
+            include_query: true,
+            all_roots: true,
+            prune_resolutions: false,
+            reachable_counts: false,
+        }
+    }
+    fn old_like() -> Self {
+        SiteWalkCfg {
+            include_query: false,
+            all_roots: false,
+            prune_resolutions: true,
+            reachable_counts: true,
+        }
+    }
+}
+
+/// Independent test-side site walker over the raw `DagLayer` (iterative worklists,
+/// no code shared with cs's recursive implementation), parameterized by
+/// `SiteWalkCfg`. `dag_sites(l, cs_like) \ dag_sites(l, old_like)` is the full
+/// site delta the old OracleInstance pipeline structurally cannot see; flipping
+/// one knob at a time attributes it per asymmetry class.
+fn dag_sites(layer: &DagLayer, cfg: SiteWalkCfg) -> std::collections::BTreeSet<NormSite> {
+    use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
+    use std::collections::{BTreeSet, HashSet};
+
+    let pruned =
+        |eid: u32| cfg.prune_resolutions && layer.resolutions.contains_key(&ExprId(eid));
+    // Demand children of `eid` under this cfg (pruned exprs are terminals; a
+    // LookupValue's query is one synthetic child at input_index 0 when included).
+    let children_of = |eid: u32| -> Vec<ExprId> {
+        if pruned(eid) {
+            return vec![];
+        }
+        match &layer.exprs[eid as usize] {
+            Expr::Add(ch) | Expr::Mul(ch) => ch.clone(),
+            Expr::Source(sid) => match &layer.sources[sid.0 as usize].kind {
+                SourceKind::LookupValue { query, .. } if cfg.include_query => vec![*query],
+                _ => vec![],
+            },
+        }
+    };
+
+    let atom_roots = atom_root_ids(layer);
+
+    // Exprs whose outgoing edges participate in consumer counts.
+    let counting_exprs: Vec<u32> = if cfg.reachable_counts {
+        let mut seen: HashSet<u32> = HashSet::new();
+        let mut stack: Vec<u32> =
+            atom_roots.iter().map(|rid| layer.roots[rid.0 as usize].expr.0).collect();
+        while let Some(eid) = stack.pop() {
+            if !seen.insert(eid) {
+                continue;
+            }
+            stack.extend(children_of(eid).iter().map(|c| c.0));
+        }
+        seen.into_iter().collect()
+    } else {
+        (0..layer.exprs.len() as u32).collect()
+    };
+
+    let mut counts = vec![0u32; layer.exprs.len()];
+    for &eid in &counting_exprs {
+        // Query edges are counted through `children_of` for Source exprs; Add/Mul
+        // operand edges likewise — one uniform edge definition per cfg.
+        for c in children_of(eid) {
+            counts[c.0 as usize] += 1;
+        }
+    }
+    for r in &layer.roots {
+        if cfg.all_roots || (r.materialize.is_some() && r.claim.is_some()) {
+            counts[r.expr.0 as usize] += 1;
+        }
+    }
+
+    let is_root_expr: HashSet<u32> = layer.roots.iter().map(|r| r.expr.0).collect();
+    let cacheable = |eid: u32| -> bool {
+        is_root_expr.contains(&eid)
+            || match &layer.exprs[eid as usize] {
+                Expr::Add(_) | Expr::Mul(_) => true,
+                Expr::Source(sid) => {
+                    matches!(layer.sources[sid.0 as usize].kind, SourceKind::Read { .. })
+                }
+            }
+    };
+    let is_site = |eid: u32| counts[eid as usize] >= 2 && cacheable(eid);
+
+    let mut out: BTreeSet<NormSite> = BTreeSet::new();
+    for (occ, rid) in atom_roots.iter().enumerate() {
+        let occ = occ as u32;
+        let top = layer.roots[rid.0 as usize].expr.0;
+        if is_site(top) {
+            out.insert((occ, NormConsumer::RootOutput, top));
+        }
+        let mut stack: Vec<u32> = vec![top];
+        let mut seen: HashSet<u32> = HashSet::new();
+        while let Some(parent) = stack.pop() {
+            if !seen.insert(parent) {
+                continue;
+            }
+            for (idx, c) in children_of(parent).iter().enumerate() {
+                if is_site(c.0) {
+                    out.insert((
+                        occ,
+                        NormConsumer::Expr { expr: parent, input_index: idx as u32 },
+                        c.0,
+                    ));
+                }
+                stack.push(c.0);
+            }
+        }
+    }
+    out
+}
+
+/// New DagLayer-native enumeration must reproduce the old OracleInstance-based
+/// site multiset on every corpus layer — WITH the query-edge normalization
+/// (codex finding 3): the old OracleInstance maps SourceKind::LookupValue to a
+/// childless Literal (s3_gap/instance.rs:218-227), so query-edge consumer
+/// sites are INVISIBLE to the old enumeration. Normalize by EXTENDING the
+/// old-side normal form with query-edge consumers recomputed from the
+/// DagLayer, then assert multiset equality — a bare intersection check would
+/// pass vacuously and protect nothing.
+#[test]
+fn site_enumeration_matches_oracle_instance_derivation() {
+    use s3_gap::instance::extract_instance_with_remap;
+    use s3_planner::metaheuristic::{
+        classify_values, enumerate_cache_priority_sites, ValueClass, ROOT_OUTPUT_INPUT_INDEX,
+    };
+    use std::collections::BTreeSet;
+
+    let mut total_sites = 0usize;
+    let mut any_query_fixture = false;
+    for fixture in ALL_FIXTURES {
+        let (dag, _artifact, cross) = load_layer_source(fixture);
+        let mut fixture_sites = 0usize;
+        let mut fixture_query = 0usize;
+        let mut fixture_nonatom = 0usize;
+        let mut fixture_resolution = 0usize;
+        for (li, layer) in dag.layers.iter().enumerate() {
+            let new = new_norm_sites(layer);
+
+            // Unit-grouping keying parity (self-review gate): the promoted
+            // `schedule_search::structure::relation_units` (Vec<Vec<RootId>>) must
+            // group exactly as the old grouped-genome keying (per-occurrence unit
+            // ids from `s3_gap::instance::relation_units`), bridged through
+            // `atom_root_ids`' occurrence order.
+            {
+                use gkr_eval_isa::schedule_search::structure::relation_units as new_units;
+                use s3_gap::instance::relation_units as old_unit_of;
+                use s3_planner::metaheuristic::unit_members;
+                let atoms = atom_root_ids(layer);
+                let old_grouped: Vec<Vec<RootId>> = unit_members(&old_unit_of(layer))
+                    .into_iter()
+                    .map(|members| members.into_iter().map(|occ| atoms[occ]).collect())
+                    .collect();
+                assert_eq!(
+                    new_units(layer),
+                    old_grouped,
+                    "{fixture} L{li}: relation_units grouping must match the old \
+                     grouped-genome keying"
+                );
+            }
+
+            // ── OLD side: OracleInstance-based enumeration → normal form ──────
+            let (inst, remap) = extract_instance_with_remap(layer, &cross, REAL_BUDGET);
+            let inv: HashMap<u32, u32> = remap.iter().map(|(&old, &new)| (new, old)).collect();
+            let classes = classify_values(&inst);
+            // Counts INCLUDING query edges — used only for the RamSource fan-out
+            // normalization below (the value's true layer-wide fan-out; query edges
+            // must count, else a Read consumed once as operand + once via query
+            // would be wrongly dropped from the old side).
+            let counts_q = cs_consumer_counts(layer);
+            let mut old: BTreeSet<NormSite> = BTreeSet::new();
+            for site in enumerate_cache_priority_sites(&inst) {
+                let value_old = inv[&site.value];
+                // NORMALIZATION (Task-4 reviewer finding): the old `classify_values`
+                // (s3_planner/metaheuristic.rs:233) classifies a real_dram Read leaf
+                // as RamSource REGARDLESS of fan-out — single-use DRAM reads were v1
+                // sites. cs's `enumerate_site_domain` applies the consumer-count >= 2
+                // gate uniformly (the spec's definition, authoritative). Filter the
+                // old side's RamSource sites to fan-out >= 2 before comparing.
+                // (Keyed on the VALUE's class, not `site.class`, because the old
+                // root-output push hardcodes `class: CachedRootOutput` even for a
+                // RamSource-classified root value.)
+                if classes[site.value as usize] == ValueClass::RamSource
+                    && counts_q[value_old as usize] < 2
+                {
+                    continue;
+                }
+                let consumer = if site.input_index == ROOT_OUTPUT_INPUT_INDEX {
+                    NormConsumer::RootOutput
+                } else {
+                    NormConsumer::Expr { expr: inv[&site.consumer], input_index: site.input_index }
+                };
+                old.insert((site.root, consumer, value_old));
+            }
+
+            // NORMALIZATION 1 (codex finding, brief step 1): EXTEND the old side
+            // with the site delta the old OracleInstance representation is
+            // structurally blind to, recomputed from the DagLayer by the
+            // independent `dag_sites` walker. Headlined by the query-edge class
+            // — the old OracleInstance flattens `SourceKind::LookupValue` to a
+            // childless Literal (s3_gap/instance.rs:218-227), so query-edge
+            // consumer sites, sites inside query cones, and sites whose fan-out
+            // only reaches 2 counting the query edge are all invisible old-side.
+            //
+            // The full cross-check surfaced TWO MORE old-side blind spots of the
+            // same kind (both flagged in the Task-5 report, not silently blessed):
+            //   - non-atom root occurrences: cs counts materialize-only Cache and
+            //     claim-only Constraint root occurrences as consumers; the old
+            //     pipeline counts only atom-root occurrences (`inst.roots`) — so a
+            //     single-expr-consumer Cache value (e.g. add_sub L0 e16) is a site
+            //     new-side only. SUSPECT: a single-use cache value has no
+            //     reload-reuse (its materialization is a free streamed write at
+            //     the compute point, per the materialized-cache cost model).
+            //   - resolution-pruned cones: cs's walker + counting ignore
+            //     `layer.resolutions`; the old extraction makes pruned exprs
+            //     childless `Special` terminals — so sites under pruned cones
+            //     (e.g. bigint L0 under e1032) are new-side only. The production
+            //     emitter's `decisions::demand_expand` ALSO descends without a
+            //     resolutions check, so cs and the emitter agree with each other.
+            let cs_full = dag_sites(layer, SiteWalkCfg::cs_like());
+            let old_visible = dag_sites(layer, SiteWalkCfg::old_like());
+            let delta: BTreeSet<NormSite> =
+                cs_full.difference(&old_visible).copied().collect();
+            // Per-class attribution (single-knob flips) for the report/vacuity
+            // guard; classes may overlap so these are attributions, not a partition.
+            let query_delta: BTreeSet<NormSite> = cs_full
+                .difference(&dag_sites(
+                    layer,
+                    SiteWalkCfg { include_query: false, ..SiteWalkCfg::cs_like() },
+                ))
+                .copied()
+                .collect();
+            let nonatom_delta_n = cs_full
+                .difference(&dag_sites(
+                    layer,
+                    SiteWalkCfg { all_roots: false, ..SiteWalkCfg::cs_like() },
+                ))
+                .count();
+            let resolution_delta_n = cs_full
+                .difference(&dag_sites(
+                    layer,
+                    SiteWalkCfg { prune_resolutions: true, ..SiteWalkCfg::cs_like() },
+                ))
+                .count();
+            fixture_query += query_delta.len();
+            fixture_nonatom += nonatom_delta_n;
+            fixture_resolution += resolution_delta_n;
+
+            let old_extended: BTreeSet<NormSite> = old.union(&delta).copied().collect();
+
+            let missing: Vec<_> = old_extended.difference(&new).take(5).collect();
+            let extra: Vec<_> = new.difference(&old_extended).take(5).collect();
+            assert!(
+                missing.is_empty() && extra.is_empty(),
+                "{fixture} L{li}: site multiset mismatch\n old∪delta−new (first 5): {missing:?}\n new−old∪delta (first 5): {extra:?}\n |old∪delta|={} |new|={}",
+                old_extended.len(),
+                new.len()
+            );
+            // The extension must not do the old pipeline's work for it: every
+            // old-visible site must come from the genuinely old enumeration.
+            let unexplained: Vec<_> = old_visible.difference(&old).take(5).collect();
+            assert!(
+                unexplained.is_empty(),
+                "{fixture} L{li}: old-visible sites missing from the old enumeration \
+                 (walker/old divergence, first 5): {unexplained:?}"
+            );
+            fixture_sites += new.len();
+        }
+        eprintln!(
+            "[T5-XCHK] {fixture}: {fixture_sites} sites ({fixture_query} query-edge, \
+             {fixture_nonatom} non-atom-root, {fixture_resolution} resolution-cone)",
+        );
+        total_sites += fixture_sites;
+        if fixture_query > 0 {
+            any_query_fixture = true;
+        }
+    }
+    // Vacuity guards (brief): the corpus must actually exercise the enumerator.
+    assert!(total_sites > 0, "vacuous cross-check: no sites in the whole corpus");
+    if !any_query_fixture {
+        eprintln!(
+            "WARNING: no fixture contributed a query-edge site — the query-edge \
+             normalization was not exercised by this corpus"
+        );
+    }
+}
+
+/// Synthetic query-edge site test (independent of the corpus): a value consumed
+/// once as a normal operand and once via LookupValue.query has fan-out 2 and
+/// yields site(s) with the correct root context.
+#[test]
+fn query_edge_counts_as_site_consumer() {
+    use cs::gkr_compiler::dag_ir::{
+        BatchingOrder, ClaimInfo, Expr, ExprId, FieldKind, LookupValueKind, Root, RootGroup,
+        RootOrigin, RootSlot, SinkInfo, SinkKind, SiteConsumer, SiteKey, SourceId, SourceInfo,
+        SourceKind,
+    };
+    use gkr_eval_isa::schedule_search::structure::enumerate_sites;
+    use std::collections::BTreeMap;
+
+    // e0 = Read (cacheable value under test)
+    // e1 = LookupValue{query: e0}  (query edge — 2nd consumer of e0)
+    // e2 = Add([e0, e1])           (operand edge — 1st consumer of e0)
+    // root0 (atom) = e2.
+    let layer = DagLayer {
+        sources: vec![
+            SourceInfo {
+                kind: SourceKind::Read {
+                    place: cs::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 0 },
+                },
+            },
+            SourceInfo {
+                kind: SourceKind::LookupValue {
+                    kind: LookupValueKind::RangeCheck16Index,
+                    set_index: 0,
+                    query: ExprId(0),
+                },
+            },
+        ],
+        exprs: vec![
+            Expr::Source(SourceId(0)),             // e0
+            Expr::Source(SourceId(1)),             // e1
+            Expr::Add(vec![ExprId(0), ExprId(1)]), // e2
+        ],
+        roots: vec![Root {
+            expr: ExprId(2),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                field: FieldKind::Base,
+            }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(0),
+                },
+            }),
+        }],
+        batching: BatchingOrder { roots: vec![] },
+        resolutions: BTreeMap::new(),
+    };
+
+    // e0's fan-out is 2 ONLY because the query edge counts as a consumer: one
+    // operand edge (e2's slot 0) + one query edge (e1's synthetic slot 0).
+    let sites = enumerate_sites(&layer);
+    let expected = vec![
+        SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::Expr { expr: ExprId(1), input_index: 0 },
+            value: ExprId(0),
+        },
+        SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::Expr { expr: ExprId(2), input_index: 0 },
+            value: ExprId(0),
+        },
+    ];
+    assert_eq!(
+        sites, expected,
+        "value consumed once as operand + once via LookupValue.query must yield \
+         exactly its two demand sites, both in root 0's context"
+    );
+}
+

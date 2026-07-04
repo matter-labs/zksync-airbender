@@ -11,5 +11,7 @@ pub mod isa;
 pub mod isa_v2;
 pub mod report;
 pub mod report_v2;
+pub mod schedule_search;
+
 #[doc(hidden)]
 pub mod test_support;

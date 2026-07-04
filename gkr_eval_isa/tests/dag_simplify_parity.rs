@@ -9,14 +9,6 @@
 //! into this file for a single extra metric was judged not worth the coupling. If
 //! wanted, add it to `s3_gap_experiment.rs` instead (brief explicitly allows this).
 mod common;
-// `s3_gap` as a whole (as included by `s3_gap_experiment.rs`) pulls in sibling
-// submodules (`cluster`/`instance`/`pack`/`driver`/`report`) whose `#[cfg(test)]`
-// blocks reference `crate::load_layer_source`, a helper defined in
-// `s3_gap_experiment.rs` itself — not available in this binary's crate root. Only
-// `floor.rs` is self-contained (deps are `cs`/`gkr_eval_isa` only), so include just
-// that module rather than the full `s3_gap` tree.
-#[path = "s3_gap/floor.rs"]
-mod floor;
 
 use common::{load_fixture, resolvers, sample_rows, SyntheticResolvers};
 
@@ -27,7 +19,9 @@ use cs::gkr_compiler::dag_ir::{
     RootId, SourceKind,
 };
 
-use floor::dag_traffic_floor;
+// Task 5 promoted `dag_traffic_floor` to production (previously the test-side
+// `s3_gap/floor.rs` copy, included here via `#[path]`).
+use gkr_eval_isa::schedule_search::floor::dag_traffic_floor;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 
 const CORPUS: &[&str] = &[
