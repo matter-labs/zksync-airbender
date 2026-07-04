@@ -9,4 +9,7 @@
 pub mod decode;
 pub mod floor;
 pub mod genome;
+pub mod producer;
+pub mod scorer;
+pub mod search;
 pub mod structure;

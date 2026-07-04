@@ -57,20 +57,14 @@ use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, RootId, SourceKind};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 // ── SiteKey / SiteConsumer ───────────────────────────────────────────────────
-
-/// Site identity, mirrors schema-v2 `SiteKey` (Task 4) exactly.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum SiteConsumer {
-    Expr { expr: ExprId, input_index: u32 },
-    RootOutput,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct SiteKey {
-    pub root: RootId,
-    pub consumer: SiteConsumer,
-    pub value: ExprId,
-}
+//
+// Task 6 unification: these used to be a byte-for-byte mirror copy of cs's
+// schema-v2 types (`cs::gkr_compiler::dag_ir::{SiteKey, SiteConsumer}`,
+// `cs/src/gkr_compiler/dag_ir/schedule.rs`). cs is now the single source of
+// truth (its doc comment on `SiteKey` already said as much); re-exported here
+// so every existing `decisions::{SiteKey, SiteConsumer}` call site keeps
+// working unchanged.
+pub use cs::gkr_compiler::dag_ir::{SiteConsumer, SiteKey};
 
 // ── SiteDecisions ────────────────────────────────────────────────────────────
 
