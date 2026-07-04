@@ -45,7 +45,6 @@ use super::arith::{
 use super::decisions::OccurrenceStreams;
 use super::place::{ValueId, VInstrKind, VirtualInstr, VirtualOp};
 use super::schedule::split_reduction;
-use super::MaterializeMap;
 use super::MaterializePolicy;
 use crate::fwd::compile::CompileError;
 
@@ -976,7 +975,6 @@ pub(crate) fn lower_layer_virtual(
     layer: &DagLayer,
     schedule: &LayerSchedule,
     ctx: &mut DagForwardContext,
-    _mat: &MaterializeMap,
     this_layer: usize,
     policy: MaterializePolicy,
 ) -> Result<

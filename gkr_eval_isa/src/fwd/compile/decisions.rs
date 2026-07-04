@@ -127,6 +127,51 @@ impl OccurrenceStreams {
     /// A site missing from `d` defaults to priority `0.0` (this pure builder
     /// never fails on incomplete decisions; callers that need full coverage
     /// should assert it themselves before calling `build`).
+    ///
+    /// STATE-DEPENDENT SERVE/BUILD DIVERGENCE: this `order`-classification
+    /// replay (above) covers which roots serve at all; it does NOT capture
+    /// two further ways the ACTUAL lowering's demand walk can diverge from
+    /// `build`'s per-root site count once residency is active — both only
+    /// possible under `MaterializePolicy::Decisions`, never under
+    /// `LegacyRecompute`:
+    ///
+    /// (a) Residency HIT short-circuit — when `lower_operand_virtual` finds a
+    /// value already resident, it returns the cell immediately without
+    /// recursing into that value's operand cone (lower.rs:477), so none of
+    /// the interior sites `build` pushed for that cone's sub-expressions get
+    /// consumed by this occurrence. The queues for those sub-values shift
+    /// anyway (this occurrence's front entry is simply skipped over by the
+    /// NEXT genuinely-served occurrence), so `effective_priority` reads a gene
+    /// one occurrence earlier than the demand walk that produced it, and
+    /// remaining-occurrence-count-driven dead-detection lags by however many
+    /// hits happened.
+    ///
+    /// (b) Compound-miss sibling exposure — `materialize_if_root` (lower.rs
+    /// ~:314) exposes every sibling `Compute`-action root sharing a
+    /// just-materialized expr, not only the root being lowered. A sibling
+    /// root's own later `RootOutput` serve is then skipped by the `exposed`
+    /// check `build` also replicates in its top-level loop, but if that
+    /// sibling's compound expression contains reads `build` still walked
+    /// on the ASSUMPTION it would be independently served, the site
+    /// bookkeeping for that interior read is similarly one occurrence ahead
+    /// of what the lowering actually demands.
+    ///
+    /// This is ACCEPTABLE: the divergence is deterministic (same for `build`
+    /// and the lowering on every run), it never changes emitted VALUES (the
+    /// lowering's own residency/exposed state, not `build`'s streams, decides
+    /// what gets materialized — `build` only estimates priorities), and the
+    /// compile-in-loop scorer's fitness is the real compile's actual traffic,
+    /// so GATE-D (value-exact, schedule-driven) is unaffected regardless of
+    /// how stale a priority read is. The real cost is that stored
+    /// `cache_priority` genes stop mapping 1:1 to the `SiteKey`s that name
+    /// them once caching is active for that circuit: a gene "named" for one
+    /// occurrence can end up scored against a different, nearby occurrence's
+    /// admission decision. Search still converges because this is a bounded,
+    /// deterministic perturbation, not noise — but any future warm-start or
+    /// gene-transfer work (reusing a `SiteDecisions` across schedules/runs)
+    /// MUST NOT assume site-to-gene alignment is exact once residency is on;
+    /// it is only exact under `LegacyRecompute` (no residency, no hits, no
+    /// compound-miss exposure).
     pub fn build(
         layer: &DagLayer,
         order: &[RootId],

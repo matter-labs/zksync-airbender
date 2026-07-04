@@ -230,9 +230,8 @@ pub fn lower_layer_stream(
     let mut ctx = DagForwardContext::default();
     ctx.actions = build_forward_actions(layer, artifact_layer, scratch_mapping)?;
     ctx.cross_layer_fields = cross_layer_fields.clone();
-    let mat = build_materialize_map(layer);
     let (vinstrs, step_of, _vouts, _rr) =
-        lower_layer_virtual(layer, schedule, &mut ctx, &mat, artifact_layer.layer, policy)?;
+        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, policy)?;
     Ok(vinstrs
         .iter()
         .zip(step_of)
@@ -313,9 +312,8 @@ pub fn compile_layer_with_policy(
     ctx.cross_layer_fields = cross_layer_fields.clone();
 
     // Phase 1 — lower to a rich virtual-instruction stream.
-    let mat = build_materialize_map(layer);
     let (vinstrs, step_of, vouts, resident_realized) =
-        lower_layer_virtual(layer, schedule, &mut ctx, &mat, artifact_layer.layer, policy)?;
+        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, policy)?;
 
     // Per-ValueId width: every defined value's own field. All values placement touches
     // are defined (via a `defines` instr) or read as `Value` (hence defined earlier), so
@@ -554,6 +552,12 @@ pub fn compile_circuit(
 
 /// `compile_circuit` with an explicit `MaterializePolicy` (Task 1), threaded per layer.
 /// Committed schedules MUST use `LegacyRecompute` (they overflow under `Materialize`).
+///
+/// `policy` is CLONED per layer (a `MaterializePolicy::Decisions` payload carries a whole
+/// `SiteDecisions`), so any `Decisions` passed in is per-layer-scoped by construction: its
+/// `SiteKey`s are layer-local, not circuit-global. Callers driving a committed schedule
+/// (the compile-in-loop scorer's gates) must compile per layer with that layer's own
+/// `Decisions`, not reuse one `Decisions` across layers.
 pub fn compile_circuit_with_policy(
     dag: &DagCircuit,
     schedule: &CircuitSchedule,
