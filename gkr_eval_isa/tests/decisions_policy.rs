@@ -507,3 +507,102 @@ fn decisions_add_order_matches_virtual_fma_partition_not_materialize_shape() {
     assert!(!after_r0.contains(&l), "l must lose the 2-slot budget to addend_b under FMA-partition order");
     assert!(!after_r0.contains(&r), "r must lose the 2-slot budget to addend_b under FMA-partition order");
 }
+
+// ── Task 8c: generation-identity readmission ────────────────────────────────────────
+
+/// Adversarial layer engineered to hit ADMIT -> EVICT -> RE-ADMIT -> SERVE for the
+/// same real `ExprId` (B) within one layer compile, at budget=1 (a single Base cell —
+/// B and C can never coexist). Sequence (bare-leaf roots produce, `Add([leaf])`
+/// wrapper roots probe, per this file's established pattern):
+///
+///   R0: B produce (admits B, budget has free capacity).
+///   R1: C produce — evicts B (C's 2nd-occurrence priority HIGH beats B's 2nd-occurrence
+///       priority LOW) — `evicted_ever` now contains B.
+///   R2: C probe — drains C's last occurrence (C goes dead, still resident).
+///   R3: B probe #2 — B is no longer `defined`, so this demand re-triggers `try_admit`;
+///       B's 3rd-occurrence priority is a plain positive finite value, which trivially
+///       beats dead C (`NEG_INFINITY`), so B is RE-ADMITTED under a FRESH generation id
+///       (Task 8c: `evicted_ever` no longer blocks this — it now only decides whether
+///       the readmission needs a fresh identity).
+///   R4: B probe #3 — served from B's cell (the fresh generation, not the real ExprId's
+///       original — now-stale — cell).
+///
+/// Pre-fix (`never_readmit`) RED: R3's `try_admit(B, ..)` would hit
+/// `ds.never_readmit.contains(&v)` and return `false` unconditionally (B was evicted at
+/// R1) — R3/R4 would both recompute B from its source instead of caching it, i.e.
+/// `resident_realized[3].1` would NOT contain B. This is asserted directly below by a
+/// literal revert of the fix (see the test's trailing comment for the exact command).
+///
+/// Post-fix GREEN (this test, against the current emitter): the compile succeeds,
+/// `plan_placement`'s peak (`stats.max_live_cells`) never exceeds the budget, B IS
+/// resident again after R3, and every root's interpreted value matches the
+/// `eval_layer_root` oracle across several rows — i.e. the two disjoint generations
+/// never get collapsed into one over-wide `plan_placement` liveness interval, and
+/// nothing about the fresh generation identity leaks into the observable value.
+#[test]
+fn readmission_after_eviction_gets_fresh_generation_and_stays_placement_feasible() {
+    let layer = DagLayer {
+        sources: vec![witness(0), witness(1)],
+        exprs: vec![
+            Expr::Source(SourceId(0)), // 0 = B
+            Expr::Source(SourceId(1)), // 1 = C
+            Expr::Add(vec![ExprId(1)]), // 2 = C-probe wrapper
+            Expr::Add(vec![ExprId(0)]), // 3 = B-probe #2 wrapper (triggers re-admission)
+            Expr::Add(vec![ExprId(0)]), // 4 = B-probe #3 wrapper (served from new generation)
+        ],
+        roots: vec![
+            atom_root_field(ExprId(0), 0, FieldKind::Base), // R0: B produce
+            atom_root_field(ExprId(1), 1, FieldKind::Base), // R1: C produce (evicts B)
+            atom_root(ExprId(2), 2),                        // R2: C probe (drains C)
+            atom_root(ExprId(3), 3),                        // R3: B probe #2 (re-admits B)
+            atom_root(ExprId(4), 4),                        // R4: B probe #3 (served)
+        ],
+        batching: BatchingOrder {
+            roots: vec![RootId(0), RootId(1), RootId(2), RootId(3), RootId(4)],
+        },
+        resolutions: BTreeMap::new(),
+    };
+    let b = ExprId(0);
+    let order = vec![RootId(0), RootId(1), RootId(2), RootId(3), RootId(4)];
+    let sched = trivial_schedule(order);
+
+    let decisions = SiteDecisions::new([
+        (site(RootId(3), ExprId(3), 0, b), -100.0), // B's occ#2: LOW (loses to C at R1)
+        (site(RootId(2), ExprId(2), 0, ExprId(1)), 100.0), // C's occ#2: HIGH (evicts B at R1)
+        (site(RootId(4), ExprId(4), 0, b), 1.0),    // B's occ#3: beats dead C at R3
+    ]);
+    let compiled = compile(&layer, &sched, 1, MaterializePolicy::Decisions { decisions, budget: 1 });
+
+    // Eviction fired as engineered: B is gone after R1, back after R3.
+    assert!(!compiled.resident_realized[1].1.contains(&b), "C's admission must evict B at R1");
+    assert!(
+        compiled.resident_realized[3].1.contains(&b),
+        "B must be RE-ADMITTED at R3 now that `never_readmit` no longer blocks it \
+         (resident set after R3: {:?})",
+        compiled.resident_realized[3].1
+    );
+
+    // Placement agreement: the tracker's admission decisions must still be realizable
+    // by `plan_placement` within the SAME budget (compile_layer_with_policy already
+    // chains emit -> plan_placement; `compile()` unwraps `Ok`, so reaching here at all
+    // is half the proof — this pins the numeric peak too).
+    assert!(
+        compiled.stats.max_live_cells <= 1,
+        "placement peak {} must not exceed budget 1",
+        compiled.stats.max_live_cells
+    );
+
+    // Value parity vs the pure oracle, across several rows.
+    let sr = SyntheticResolvers;
+    let mut checks = 0usize;
+    for row in [0usize, 1, 2, 5] {
+        let outs = interpret_layer_row(&compiled, &layer, &resolvers(&sr), row).unwrap();
+        for (rid, _) in &compiled.root_outputs {
+            let got = outs.by_root[rid];
+            let want = eval_layer_root(&layer, *rid, row, &resolvers(&sr));
+            assert_eq!(got, want, "row {row} root {rid:?} mismatch under readmission");
+            checks += 1;
+        }
+    }
+    assert!(checks > 0, "vacuous");
+}

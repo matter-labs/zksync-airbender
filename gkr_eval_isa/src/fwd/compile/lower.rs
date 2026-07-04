@@ -112,13 +112,27 @@ struct DecisionsState {
     /// invariant this whole tracker must not violate.
     pending_reads: std::collections::HashMap<ValueId, usize>,
     /// Real `ExprId`s ever evicted (admission-time or temp-pressure-forced) during
-    /// this layer compile. Once evicted, an `ExprId` may never be re-admitted
-    /// (`try_admit` checks this first) — this rules out a value acquiring a SECOND
-    /// `defines` instruction, which would otherwise make `plan_placement`'s
-    /// `def = first defining instr` / `last_use = max read instr` model span both
-    /// generations as one long (and possibly WIDER-than-tracked) interval, a real
-    /// underestimate risk relative to the tracker's own gap-aware accounting.
-    never_readmit: HashSet<ExprId>,
+    /// this layer compile. No longer a re-admission ban (Task 8c lifted that
+    /// restriction — see `generation`): it is consulted ONLY to decide whether the
+    /// NEXT admission of this `ExprId` needs a fresh generation identity (it has a
+    /// prior `defines` instruction already emitted) or can reuse the real `ExprId`
+    /// as its own cell identity (this is its first-ever admission).
+    evicted_ever: HashSet<ExprId>,
+    /// Task 8c: `ExprId → current serving `ValueId`` indirection. A real `ExprId`'s
+    /// FIRST admission serves as itself (`generation[v] == v`, the common case, kept
+    /// out of this map implicitly — absence means "= v"). Every RE-admission (after
+    /// an eviction recorded in `evicted_ever`) mints a fresh internal `ValueId`
+    /// (`fresh_internal`, same disjoint-from-real-ExprId range fresh temps use) and
+    /// records it here — so each generation gets its OWN `defines` instruction and
+    /// its OWN short `[def, last_use]` interval under `plan_placement`'s
+    /// `compute_live_ranges`, instead of one value acquiring a second `defines` that
+    /// would collapse two disjoint generations into a single (possibly wider than
+    /// tracked) span — the exact underestimate risk the deleted `never_readmit` ban
+    /// existed to rule out structurally. Every resident-serving read (`defined`-hit
+    /// in `lower_operand_virtual`, and `materialize_if_root`'s from-cell path) must
+    /// go through `current_value_id` to read the CURRENT generation, not the real
+    /// `ExprId`, once a value has ever been re-admitted.
+    generation: HashMap<ExprId, ValueId>,
 }
 
 /// BabyBear field −1 (= P−1), the canonical additive-inverse-of-1 representative.
@@ -387,23 +401,41 @@ impl<'a> VirtualLower<'a> {
     /// tie-break; a dead/`None`-priority resident sorts as -infinity, evicted first). If
     /// even the weakest resident's priority is >= the admitting occurrence's priority (or
     /// there isn't enough to evict), admission is SKIPPED — no partial eviction.
-    fn try_admit(&mut self, v: ExprId, field: OperandField) -> bool {
-        let Some(ds) = &self.decisions else { return false };
-        if ds.never_readmit.contains(&v) {
-            return false; // once evicted, never re-admitted (see `never_readmit`'s doc)
-        }
-        let Some(admitting_priority) = ds.streams.effective_priority(v) else {
-            return false; // no remaining occurrence: not worth caching
-        };
+    ///
+    /// Task 8c: on success, returns `Some(id)` naming the `ValueId` the caller must
+    /// physically evict-to-cell (`emit_evict_to_cell(id, field)`) and read thereafter
+    /// — `v` itself on `v`'s first-ever admission, or a FRESH internal generation id
+    /// if `v` was evicted at some earlier point in this layer compile (see
+    /// `generation`'s doc). The bookkeeping side effects (`resident`/`generation`/
+    /// `live_width`/`defined`) are all applied here; emitting the physical
+    /// evict-to-cell instruction stays the caller's job since callers differ on
+    /// whether the acc already holds `v`'s value at this point (a leaf must
+    /// `emit_init_field` first) or already does (a just-recomputed compound/root).
+    fn try_admit(&mut self, v: ExprId, field: OperandField) -> Option<ValueId> {
+        let admitting_priority = self.decisions.as_ref()?.streams.effective_priority(v)?;
         let need = resident_width(field);
         if !self.evict_to_fit(need, Some(admitting_priority)) {
-            return false;
+            return None;
         }
+        let evicted_before =
+            self.decisions.as_ref().expect("checked Some above").evicted_ever.contains(&v);
+        let gen_id = if evicted_before { self.fresh_internal() } else { v };
         let ds = self.decisions.as_mut().expect("checked Some above");
         ds.resident.insert(v, field);
+        ds.generation.insert(v, gen_id);
         ds.live_width += need;
         self.defined.insert(v);
-        true
+        Some(gen_id)
+    }
+
+    /// Task 8c: the `ValueId` currently serving real `ExprId` `real` — `real` itself
+    /// unless it has ever been re-admitted after an eviction, in which case it is the
+    /// fresh generation id `try_admit` minted (see `generation`'s doc). Every read of
+    /// a `defined`-resident real `ExprId` MUST go through this (not use `real`
+    /// directly), so it lands on the physical cell the CURRENT generation's
+    /// `defines` instruction produced.
+    fn current_value_id(&self, real: ExprId) -> ValueId {
+        self.decisions.as_ref().and_then(|ds| ds.generation.get(&real).copied()).unwrap_or(real)
     }
 
     /// Demand-driven eviction (replaces the deleted static `resident_cap_for_order`
@@ -422,7 +454,8 @@ impl<'a> VirtualLower<'a> {
     ///   regardless of their value until `need` fits or the resident set is
     ///   exhausted. `false` here means genuine infeasibility.
     ///
-    /// Every evicted `ExprId` is recorded in `never_readmit` (see its doc).
+    /// Every evicted `ExprId` is recorded in `evicted_ever` (see its doc) so its NEXT
+    /// admission, if any, mints a fresh generation id instead of reusing `id`.
     fn evict_to_fit(&mut self, need: usize, admitting_priority: Option<f64>) -> bool {
         let Some(ds) = &self.decisions else { return false };
         if ds.live_width + need <= ds.budget {
@@ -434,11 +467,16 @@ impl<'a> VirtualLower<'a> {
         // doc). Evicting it now would free width the tracker would then hand out to
         // something else, while `plan_placement` still holds `id` live through that
         // later read — a genuine underestimate. Skipping it here costs nothing but a
-        // possibly-suboptimal victim choice; it is never a correctness gap.
+        // possibly-suboptimal victim choice; it is never a correctness gap. The
+        // pending-reads lookup is keyed by the CURRENT generation id (`generation`),
+        // not the real `ExprId`, since that is what `defer_read` incremented against.
         let mut candidates: Vec<(f64, ExprId, OperandField)> = ds
             .resident
             .iter()
-            .filter(|&(&id, _)| ds.pending_reads.get(&id).copied().unwrap_or(0) == 0)
+            .filter(|&(&id, _)| {
+                let gen_id = ds.generation.get(&id).copied().unwrap_or(id);
+                ds.pending_reads.get(&gen_id).copied().unwrap_or(0) == 0
+            })
             .map(|(&id, &f)| {
                 let p = ds.streams.effective_priority(id).unwrap_or(f64::NEG_INFINITY);
                 (p, id, f)
@@ -470,7 +508,7 @@ impl<'a> VirtualLower<'a> {
             ds.resident.remove(&id);
             self.defined.remove(&id);
             ds.live_width -= resident_width(f);
-            ds.never_readmit.insert(id);
+            ds.evicted_ever.insert(id);
         }
         true
     }
@@ -522,14 +560,16 @@ impl<'a> VirtualLower<'a> {
     ) -> Result<VirtualOp, CompileError> {
         let admitted = if matches!(self.policy, MaterializePolicy::Decisions { .. }) {
             self.try_admit(expr_id, field)
+        } else if resident_target.contains(&expr_id) {
+            Some(expr_id)
         } else {
-            resident_target.contains(&expr_id)
+            None
         };
-        if admitted {
-            self.widths.insert(expr_id, field);
-            self.emit_evict_to_cell(expr_id, field);
+        if let Some(gen_id) = admitted {
+            self.widths.insert(gen_id, field);
+            self.emit_evict_to_cell(gen_id, field);
             self.defined.insert(expr_id); // idempotent under `Decisions` (try_admit already did this)
-            Ok(self.defer_read(expr_id))
+            Ok(self.defer_read(gen_id))
         } else {
             let t = self.alloc_temp_evicting(field)?;
             Ok(self.defer_read(t))
@@ -629,9 +669,11 @@ impl<'a> VirtualLower<'a> {
         // taken below (`try_admit`'s precondition).
         self.serve_occurrence(expr_id);
 
-        // 1. Truly defined-resident → serve from its cell (value-safe).
+        // 1. Truly defined-resident → serve from its CURRENT generation's cell
+        //    (Task 8c: `expr_id` itself unless it was re-admitted after an eviction).
         if self.defined.contains(&expr_id) {
-            return Ok(self.defer_read(expr_id));
+            let gen_id = self.current_value_id(expr_id);
+            return Ok(self.defer_read(gen_id));
         }
         // 2. A source or resolution-pruned leaf resolves to one operand line. Under
         //    `Decisions`, a leaf can ALSO be admitted into residency (Task 3: caching
@@ -643,12 +685,12 @@ impl<'a> VirtualLower<'a> {
             let op = self.source_to_vop(layer, expr_id)?;
             if matches!(self.policy, MaterializePolicy::Decisions { .. }) {
                 let field = child_operand_field(layer, expr_id, expected, &self.cross);
-                if self.try_admit(expr_id, field) {
+                if let Some(gen_id) = self.try_admit(expr_id, field) {
                     self.emit_init_field(op, field);
-                    self.widths.insert(expr_id, field);
-                    self.emit_evict_to_cell(expr_id, field);
+                    self.widths.insert(gen_id, field);
+                    self.emit_evict_to_cell(gen_id, field);
                     self.defined.insert(expr_id);
-                    return Ok(self.defer_read(expr_id));
+                    return Ok(self.defer_read(gen_id));
                 }
             }
             return Ok(op);
@@ -1062,8 +1104,24 @@ impl<'a> VirtualLower<'a> {
     /// Emit the committed write(s) for every Compute root whose expr is `expr_id`, and
     /// expose each as a `root_output`. `from_acc` reads the accumulator (value just
     /// computed); otherwise the value is read from its resident cell.
+    ///
+    /// Root/cache-sink transparency under Task 8c (verified, not assumed): this
+    /// function's OWN bookkeeping (`expr_to_compute` keyed by the real `ExprId`,
+    /// `root_outputs`/`exposed` keyed by `RootId`) never touches `generation` — a
+    /// root's external identity (which `RootId` it is, which `(slot, col)` it
+    /// materializes to) is exactly what it was before this task. The only thing
+    /// generation indirection changes is WHICH PHYSICAL CELL the `from_acc = false`
+    /// branch reads from: a root's expr CAN be evicted-then-re-admitted before the
+    /// driver reaches the root's own turn (it's an ordinary `ExprId`, read like any
+    /// other value by whatever else in the layer references it), so the read must go
+    /// through `current_value_id` the same as every other resident-serving read.
+    /// This is safe because roots are produced (written to their backing) exactly
+    /// once regardless: `exposed` gates re-entry into this function entirely, so a
+    /// LATER re-admission of the same `ExprId` (after this root's write already
+    /// happened) can never trigger a second materialize write here.
     fn materialize_if_root(&mut self, expr_id: ExprId, from_acc: bool) {
         let Some(roots) = self.expr_to_compute.get(&expr_id).cloned() else { return };
+        let src_id = self.current_value_id(expr_id);
         for (rid, slot, col, field) in roots {
             if self.exposed.contains(&rid) {
                 continue;
@@ -1082,7 +1140,7 @@ impl<'a> VirtualLower<'a> {
                     dir: MovDir::DstFromSrc,
                     field,
                     dst: Some(VDst::GlobalMaterialize { slot, col }),
-                    src: Some(VirtualOp::Value(expr_id)),
+                    src: Some(VirtualOp::Value(src_id)),
                     defines: None,
                     is_dram_read: false,
                 });
@@ -1178,7 +1236,8 @@ pub(crate) fn lower_layer_virtual(
             live_width: 0,
             pending_temps: std::collections::HashSet::new(),
             pending_reads: std::collections::HashMap::new(),
-            never_readmit: HashSet::new(),
+            evicted_ever: HashSet::new(),
+            generation: HashMap::new(),
         }),
         MaterializePolicy::LegacyRecompute => None,
     };
@@ -1257,12 +1316,14 @@ pub(crate) fn lower_layer_virtual(
                         let field = child_operand_field(layer, expr, expected, &st.cross);
                         let admit = if matches!(st.policy, MaterializePolicy::Decisions { .. }) {
                             st.try_admit(expr, field)
+                        } else if ra.contains(&expr) && !st.defined.contains(&expr) {
+                            Some(expr)
                         } else {
-                            ra.contains(&expr) && !st.defined.contains(&expr)
+                            None
                         };
-                        if admit {
-                            st.widths.insert(expr, field);
-                            st.emit_evict_to_cell(expr, field);
+                        if let Some(gen_id) = admit {
+                            st.widths.insert(gen_id, field);
+                            st.emit_evict_to_cell(gen_id, field);
                             st.defined.insert(expr);
                         }
                     }
