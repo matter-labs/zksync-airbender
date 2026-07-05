@@ -2,6 +2,10 @@
 //! the production stage-3 `compile_circuit` path and that every compiled
 //! layer's encoded program round-trips (spec §5 canonical pre-gate). Also
 //! prints the LDC feasibility table (spec §4 size probe).
+//!
+//! Task 6: the four semantic gates (G-PTR → G-CPU → G-DEV → G-ALIAS, spec §7)
+//! are factored into `run_all_gates(stem)` and driven by one `#[test]` per
+//! circuit so failures are attributable to a circuit.
 
 // Host-only (no GPU): the three scoped circuits compile via the production path
 // and every compiled layer's encoded program round-trips. Prints the LDC
@@ -31,94 +35,89 @@ fn fwd_vm_circuits_compile_and_size_probe() {
     }
 }
 
-// G-CPU (spec §7): CPU fwd-VM interpreter on D2H real data == D2H flat outputs,
-// sampled rows, every non-skipped root, every compiled add_sub layer.
-// First-ever real-data run of the fwd VM.
-#[test]
-#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+/// The full fwd-VM gate suite for one circuit, run in spec §7 order:
+/// G-PTR → G-CPU → G-DEV → G-ALIAS, over every compiled layer, both
+/// residencies where the program fits the LDC constant array.
+///
+/// - **G-PTR**: every column-table read pointer equals the independently
+///   re-derived storage_column pointer; every materialized pair has a
+///   non-null, interp-owned (NOT storage) write pointer; specials pointers
+///   match their re-derived sources; capacity asserts fire on overflow.
+/// - **G-CPU**: CPU fwd-VM interpreter on D2H real data == D2H flat outputs,
+///   sampled rows, every non-skipped root (plus the SP2 differential pre-gate).
+/// - **G-DEV + G-ALIAS**: device interpreter bit-exact vs flat, all rows,
+///   every compiled layer, both residencies where the program fits LDC.
 #[cfg(not(no_cuda))]
-#[serial_test::serial]
-fn fwd_vm_gcpu_add_sub() {
+fn run_all_gates(stem: &str) {
+    use super::lower::{assert_gptr, build_fwd_vm_device_setup, run_gdev_layer};
     use super::resolvers::{sample_rows, HostSnapshot, HostStorageResolvers};
     use crate::prover::gkr::forward::bench_interp::fixture::CircuitFixture;
     use gkr_eval_isa::fwd::compile::layer_needs_compile;
     use gkr_eval_isa::fwd::interp::interpret_layer_row_with_peeks;
 
-    let fixture = CircuitFixture::build("add_sub_lui_auipc_mop");
-    let c = super::compile::load_fwd_vm_circuit("add_sub_lui_auipc_mop");
-    let mut checks = 0usize;
+    let fixture = CircuitFixture::build(stem);
+    let c = super::compile::load_fwd_vm_circuit(stem);
+
+    let mut layers_gated = 0usize;
+    let mut cpu_checks = 0usize;
     for (li, layer) in c.dag.layers.iter().enumerate() {
         if !layer_needs_compile(c.sched.layers[li].order.is_empty(), layer) {
             continue;
         }
         let cl = &c.compiled.layers[li];
+
+        // ── G-PTR: structural pointer re-derivation. ──
+        let setup = build_fwd_vm_device_setup(&fixture, &c, li);
+        assert_gptr(&fixture, &c, li, &setup);
+        drop(setup);
+
+        // ── G-CPU: CPU fwd-VM on real data == flat, sampled rows. ──
         let snap = HostSnapshot::capture_for_layer(&fixture, cl, layer);
         let host = HostStorageResolvers::new(&snap, &fixture);
         let r = host.resolvers();
+        let rows = sample_rows(fixture.trace_len);
         // SP2 differential pre-gate on real data (spec §6):
-        super::resolvers::validate_bindings_sampled(
-            cl,
-            layer,
-            &host,
-            &r,
-            &sample_rows(fixture.trace_len),
-        );
-        for &row in &sample_rows(fixture.trace_len) {
+        super::resolvers::validate_bindings_sampled(cl, layer, &host, &r, &rows);
+        for &row in &rows {
             let outs = interpret_layer_row_with_peeks(cl, layer, &r, &host, row)
-                .unwrap_or_else(|e| panic!("L{li} row {row}: {e:?}"));
+                .unwrap_or_else(|e| panic!("{stem} L{li} row {row}: {e:?}"));
             for (rid, out) in &cl.root_outputs {
                 let want = snap.flat_root_value(&fixture, &c, li, *rid, out, row);
-                assert_eq!(outs.by_root[rid], want, "L{li} root {rid:?} row {row}");
-                checks += 1;
+                assert_eq!(outs.by_root[rid], want, "{stem} L{li} root {rid:?} row {row}");
+                cpu_checks += 1;
             }
         }
+
+        // ── G-DEV + G-ALIAS: device interp bit-exact vs flat, all rows. ──
+        run_gdev_layer(&fixture, &c, li).unwrap_or_else(|e| panic!("{stem} L{li}: {e}"));
+
+        layers_gated += 1;
     }
-    assert!(checks > 0, "vacuous");
+    assert!(layers_gated > 0, "{stem}: no compiled layers gated — vacuous");
+    assert!(cpu_checks > 0, "{stem}: no G-CPU root checks — vacuous");
+    eprintln!("[fwdvm-gates] {stem}: {layers_gated} layers gated, {cpu_checks} G-CPU root checks");
 }
 
-// G-PTR (spec §7): every column-table read pointer equals the independently
-// re-derived storage_column pointer; every materialized pair has a non-null,
-// interp-owned (NOT storage) write pointer; specials pointers match their
-// re-derived sources; capacity asserts fire on overflow, never truncate.
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn fwd_vm_gates_add_sub() {
+    run_all_gates("add_sub_lui_auipc_mop");
+}
+
 #[test]
 #[ignore]
 #[cfg(not(no_cuda))]
 #[serial_test::serial]
-fn fwd_vm_gptr_add_sub() {
-    use crate::prover::gkr::forward::bench_interp::fixture::CircuitFixture;
-    use gkr_eval_isa::fwd::compile::layer_needs_compile;
-    use super::lower::build_fwd_vm_device_setup;
-
-    let fixture = CircuitFixture::build("add_sub_lui_auipc_mop");
-    let c = super::compile::load_fwd_vm_circuit("add_sub_lui_auipc_mop");
-    for (li, layer) in c.dag.layers.iter().enumerate() {
-        if !layer_needs_compile(c.sched.layers[li].order.is_empty(), layer) {
-            continue;
-        }
-        let setup = build_fwd_vm_device_setup(&fixture, &c, li);
-        super::lower::assert_gptr(&fixture, &c, li, &setup); // re-derivation compare
-    }
+fn fwd_vm_gates_bigint() {
+    run_all_gates("bigint_with_extended_control");
 }
 
-// G-DEV + G-ALIAS (spec §7): device interpreter bit-exact vs flat, all rows,
-// every compiled add_sub layer, both residencies where the program fits LDC.
 #[test]
 #[ignore]
 #[cfg(not(no_cuda))]
 #[serial_test::serial]
-fn fwd_vm_gdev_add_sub() {
-    use crate::prover::gkr::forward::bench_interp::fixture::CircuitFixture;
-    use gkr_eval_isa::fwd::compile::layer_needs_compile;
-
-    let fixture = CircuitFixture::build("add_sub_lui_auipc_mop");
-    let c = super::compile::load_fwd_vm_circuit("add_sub_lui_auipc_mop");
-    let mut layers = 0usize;
-    for (li, layer) in c.dag.layers.iter().enumerate() {
-        if !layer_needs_compile(c.sched.layers[li].order.is_empty(), layer) {
-            continue;
-        }
-        super::lower::run_gdev_layer(&fixture, &c, li).unwrap_or_else(|e| panic!("L{li}: {e}"));
-        layers += 1;
-    }
-    assert!(layers > 0, "vacuous");
+fn fwd_vm_gates_blake2() {
+    run_all_gates("blake2_with_extended_control");
 }
