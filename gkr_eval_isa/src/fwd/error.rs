@@ -35,6 +35,9 @@ pub enum CompileError {
     FieldMismatch(String),
     ExtCellMisaligned(u16),
     BudgetBelowFloor { floor: usize, budget: usize },
+    /// `validate_circuit_schedule` (or `load_committed_schedule` I/O/parse) failed;
+    /// the wrapped message is the validator's/serde's own diagnostic.
+    InvalidSchedule(String),
     Bind(BindError),
     Encode(EncodeError),
 }

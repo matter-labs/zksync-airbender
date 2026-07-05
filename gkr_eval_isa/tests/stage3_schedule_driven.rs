@@ -16,7 +16,45 @@ use gkr_eval_isa::fwd::compile::{
     build_cross_layer_field_map, compile_circuit, compile_layer, layer_needs_compile,
 };
 use gkr_eval_isa::fwd::context::CompiledLayer;
+use gkr_eval_isa::fwd::error::CompileError;
 use gkr_eval_isa::fwd::interp::interpret_layer_row;
+
+/// Production driver refuses an invalid schedule (spec §2.1): truncating one
+/// layer's stored sites must fail validate_circuit_schedule via compile_circuit.
+#[test]
+fn compile_circuit_rejects_stale_sites() {
+    // COMMITTED_CORPUS[0]: fixture name INCLUDES `.json`, stem does not (common::load_fixture
+    // vs common::schedule_path contracts — tests/common/mod.rs:105-115).
+    let (dag, mut sched, artifact) =
+        load_committed("add_sub_lui_auipc_mop_layout_gkr.json", "add_sub_lui_auipc_mop");
+    let li = sched
+        .layers
+        .iter()
+        .position(|ls| !ls.sites.is_empty())
+        .expect("some layer has sites");
+    sched.layers[li].sites.pop();
+    match compile_circuit(&dag, &sched, &artifact) {
+        Err(CompileError::InvalidSchedule(msg)) => {
+            assert!(msg.contains("site"), "validator message should name the site domain: {msg}")
+        }
+        other => panic!("expected InvalidSchedule, got {other:?}"),
+    }
+}
+
+/// The promoted loader round-trips a committed artifact and errors loudly on a
+/// missing path (no produce-on-missing fallback, spec §2.3).
+#[test]
+fn load_committed_schedule_roundtrip_and_missing() {
+    let ok = gkr_eval_isa::fwd::compile::load_committed_schedule(&schedule_path(
+        "add_sub_lui_auipc_mop",
+    ))
+    .expect("committed add_sub schedule loads");
+    assert!(!ok.layers.is_empty());
+    let err = gkr_eval_isa::fwd::compile::load_committed_schedule(std::path::Path::new(
+        "/nonexistent/nope_schedule_b16_gkr.json",
+    ));
+    assert!(matches!(err, Err(CompileError::InvalidSchedule(_))));
+}
 
 // ── Task 8: committed corpus + Decisions compile of a committed schedule ──────────
 
@@ -37,46 +75,13 @@ const COMMITTED_CORPUS: &[(&str, &str)] = &[
     ("unsigned_mul_div_layout_gkr.json", "unsigned_mul_div"),
 ];
 
-/// Compile every scheduled layer of a committed schedule with the decoded
-/// `SiteDecisions` built from the stored `sites`, at the stored
-/// `budget` directly (post demand-driven-eviction: `Decisions.budget` IS the
-/// placement budget — no separate resident-admission cap to re-derive; see
-/// `lower.rs`'s `DecisionsState`/`evict_to_fit`). Returns `None` for layers the
-/// producer skipped (empty `order` — mirrors `compile_circuit`'s own
-/// `layer_needs_compile` skip; the producer shares that predicate, so
-/// empty-`order` schedules exist only for genuinely skippable layers).
-fn compile_committed_decisions(
-    dag: &cs::gkr_compiler::dag_ir::DagCircuit,
-    sched: &CircuitSchedule,
-    artifact: &GKRCircuitArtifact<BabyBearField>,
-    name: &str,
-) -> Vec<Option<CompiledLayer>> {
-    assert_eq!(sched.layers.len(), dag.layers.len(), "{name}: schedule/dag layer count");
-    let cross = build_cross_layer_field_map(dag);
-    dag.layers
-        .iter()
-        .zip(&sched.layers)
-        .enumerate()
-        .map(|(li, (layer, ls))| {
-            if !layer_needs_compile(ls.order.is_empty(), layer) {
-                return None;
-            }
-            let decisions = SiteDecisions::new(ls.sites.iter().copied());
-            Some(
-                compile_layer(
-                    layer,
-                    &artifact.layers[li],
-                    &artifact.scratch_space_mapping,
-                    &cross,
-                    ls,
-                    sched.budget,
-                    Some(&decisions),
-                )
-                .unwrap_or_else(|e| panic!("[{name}] L{li}: Decisions compile: {e:?}")),
-            )
-        })
-        .collect()
-}
+// `compile_committed_decisions` (the hand-rolled per-layer Decisions-compile helper)
+// is DELETED (Task 3, T3-flip): GATE-V/GATE-D/GATE-F now drive the production
+// `compile_circuit` directly — it performs the identical stored-`sites` Decisions
+// compile per layer (plus the `validate_circuit_schedule` preflight `load_committed`
+// used to run separately). Consumers key off `layer_needs_compile` themselves to
+// find the same skipped-layer set `compile_circuit` skips (its `CompiledCircuit.layers`
+// is index-aligned with `dag.layers`; skipped layers are empty `CompiledLayer`s).
 
 /// **Load-bearing** (Task 8b): the demand-driven eviction tracker in `lower.rs`
 /// must never UNDERESTIMATE relative to `plan_placement`'s independent liveness
@@ -320,12 +325,16 @@ fn compile_circuit_loads_validates_and_compiles_all_layers() {
 fn schedule_driven_compile_matches_eval_oracle_add_sub() {
     let name = "add_sub_lui_auipc_mop_layout_gkr.json";
     let (dag, sched, artifact) = load_dag_sched(name);
-    let compiled = compile_committed_decisions(&dag, &sched, &artifact, name);
+    let compiled = compile_circuit(&dag, &sched, &artifact)
+        .unwrap_or_else(|e| panic!("[{name}] compile_circuit: {e:?}"));
     let sr = SyntheticResolvers; // unit struct
     let n = dag.globals.trace_len;
     let mut checks = 0usize;
     for (li, layer) in dag.layers.iter().enumerate() {
-        let Some(cl) = &compiled[li] else { continue };
+        if !layer_needs_compile(sched.layers[li].order.is_empty(), layer) {
+            continue;
+        }
+        let cl = &compiled.layers[li];
         for &row in &sample_rows(n) {
             let outs = interpret_layer_row(cl, layer, &resolvers(&sr), row).unwrap();
             for (rid, _) in &cl.root_outputs {
@@ -349,11 +358,8 @@ fn load_committed(
     let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
         .unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
     cs::gkr_compiler::dag_ir::validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
-    let sched: CircuitSchedule = serde_json::from_reader(
-        std::fs::File::open(schedule_path(stem))
-            .unwrap_or_else(|e| panic!("[{name}] open schedule {stem}: {e}")),
-    )
-    .unwrap_or_else(|e| panic!("[{name}] parse schedule {stem}: {e}"));
+    let sched = gkr_eval_isa::fwd::compile::load_committed_schedule(&schedule_path(stem))
+        .unwrap_or_else(|e| panic!("[{name}] load_committed_schedule {stem}: {e:?}"));
     cs::gkr_compiler::dag_ir::validate_circuit_schedule(&dag, &sched)
         .unwrap_or_else(|e| panic!("[{name}] validate_circuit_schedule: {e}"));
     (dag, sched, artifact)
@@ -372,12 +378,16 @@ fn all_committed_schedules_compile_and_match_oracle() {
     let mut total_checks = 0usize;
     for (name, stem) in COMMITTED_CORPUS {
         let (dag, sched, artifact) = load_committed(name, stem);
-        let compiled = compile_committed_decisions(&dag, &sched, &artifact, name);
-        assert_eq!(compiled.len(), dag.layers.len(), "{name} layer count");
+        let compiled = compile_circuit(&dag, &sched, &artifact)
+            .unwrap_or_else(|e| panic!("[{name}] compile_circuit: {e:?}"));
+        assert_eq!(compiled.layers.len(), dag.layers.len(), "{name} layer count");
 
         let n = dag.globals.trace_len;
         for (li, layer) in dag.layers.iter().enumerate() {
-            let Some(cl) = &compiled[li] else { continue };
+            if !layer_needs_compile(sched.layers[li].order.is_empty(), layer) {
+                continue;
+            }
+            let cl = &compiled.layers[li];
             for &row in &sample_rows(n) {
                 let outs = interpret_layer_row(cl, layer, &resolvers(&sr), row)
                     .unwrap_or_else(|e| panic!("[{name}] L{li} row {row} interp: {e:?}"));
@@ -391,7 +401,7 @@ fn all_committed_schedules_compile_and_match_oracle() {
             }
         }
         passed += 1;
-        eprintln!("[stage3-parity] {name}: OK ({} layers)", compiled.len());
+        eprintln!("[stage3-parity] {name}: OK ({} layers)", compiled.layers.len());
     }
     assert_eq!(passed, COMMITTED_CORPUS.len(), "all committed schedules must compile + match");
     assert!(total_checks > 0, "vacuous");
@@ -412,15 +422,16 @@ fn all_committed_schedules_compile_and_match_oracle() {
 fn all_committed_schedules_recompile_to_predicted_traffic() {
     for (name, stem) in COMMITTED_CORPUS {
         let (dag, sched, artifact) = load_committed(name, stem);
-        let compiled = compile_committed_decisions(&dag, &sched, &artifact, name);
-        for (li, (cl, ls)) in compiled.iter().zip(&sched.layers).enumerate() {
-            let Some(cl) = cl else {
+        let compiled = compile_circuit(&dag, &sched, &artifact)
+            .unwrap_or_else(|e| panic!("[{name}] compile_circuit: {e:?}"));
+        for (li, (cl, ls)) in compiled.layers.iter().zip(&sched.layers).enumerate() {
+            if !layer_needs_compile(ls.order.is_empty(), &dag.layers[li]) {
                 assert_eq!(
                     ls.predicted_traffic, 0,
                     "{name} L{li}: skipped layer must persist predicted_traffic=0"
                 );
                 continue;
-            };
+            }
             // GATE-D: emitter drift vs stored provenance.
             assert_eq!(
                 cl.stats.dram_traffic, ls.predicted_traffic,

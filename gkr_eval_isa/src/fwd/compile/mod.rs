@@ -497,27 +497,40 @@ pub fn layer_needs_compile(order_is_empty: bool, layer: &DagLayer) -> bool {
     !(order_is_empty && layer.roots.iter().all(|r| r.materialize.is_none()))
 }
 
-/// Compile a whole circuit from its committed `CircuitSchedule` (OP-3).
+/// Load one committed `*_schedule_b16_gkr.json`. Parse-only — structural
+/// validation against the circuit happens in `compile_circuit`
+/// (`validate_circuit_schedule`), so a caller cannot forget it. A missing or
+/// unparsable file is a hard error: there is NO produce-on-missing fallback
+/// (on-demand production is an explicit caller act via
+/// `schedule_search::producer::produce_circuit_schedule`).
+pub fn load_committed_schedule(path: &std::path::Path) -> Result<CircuitSchedule, CompileError> {
+    let bytes = std::fs::read(path).map_err(|e| {
+        CompileError::InvalidSchedule(format!("read {}: {e}", path.display()))
+    })?;
+    serde_json::from_slice(&bytes).map_err(|e| {
+        CompileError::InvalidSchedule(format!("parse {}: {e}", path.display()))
+    })
+}
+
+/// Compile a whole circuit from its committed `CircuitSchedule` (OP-3): the single
+/// production forward-program compile path.
 ///
-/// Builds the whole-circuit cross-layer field map once, then compiles each layer from
-/// its `LayerSchedule`. A layer with no atom roots and no materialize-bearing roots
-/// yields an empty `CompiledLayer`; otherwise `compile_layer`.
-///
-/// Committed schedules pass `None` per layer (the uncached baseline; they overflow under
-/// a resident-decisions policy). Sub-project 3 flips this to the schedule's stored
-/// per-layer `SiteDecisions`.
+/// Validates `schedule` against `dag` first (`validate_circuit_schedule` — order is a
+/// permutation of the atom-root set, the stored site-key set matches the structural
+/// domain exactly, priorities are finite, `floor <= predicted_traffic`); a stale or
+/// malformed schedule is rejected with `CompileError::InvalidSchedule` before any layer
+/// is touched. Then builds the whole-circuit cross-layer field map once and compiles
+/// each layer from its `LayerSchedule`'s stored `sites`, decoded into a `SiteDecisions`
+/// and run through the sub-project-2 residency machine at the schedule's `budget`. A
+/// layer with no atom roots and no materialize-bearing roots yields an empty
+/// `CompiledLayer`; otherwise `compile_layer`.
 pub fn compile_circuit(
     dag: &DagCircuit,
     schedule: &CircuitSchedule,
     artifact: &GKRCircuitArtifact<BabyBearField>,
 ) -> Result<CompiledCircuit, CompileError> {
-    if schedule.layers.len() != dag.layers.len() {
-        return Err(CompileError::FieldMismatch(format!(
-            "schedule has {} layers, circuit has {}",
-            schedule.layers.len(),
-            dag.layers.len()
-        )));
-    }
+    cs::gkr_compiler::dag_ir::validate_circuit_schedule(dag, schedule)
+        .map_err(CompileError::InvalidSchedule)?;
     let cross = build_cross_layer_field_map(dag);
     let mut layers = Vec::with_capacity(dag.layers.len());
     for (li, layer) in dag.layers.iter().enumerate() {
@@ -534,6 +547,7 @@ pub fn compile_circuit(
                 resident_realized: Vec::new(),
             });
         } else {
+            let decisions = SiteDecisions::new(ls.sites.iter().copied());
             layers.push(compile_layer(
                 layer,
                 &artifact.layers[li],
@@ -541,7 +555,7 @@ pub fn compile_circuit(
                 &cross,
                 ls,
                 schedule.budget,
-                None,
+                Some(&decisions),
             )?);
         }
     }
