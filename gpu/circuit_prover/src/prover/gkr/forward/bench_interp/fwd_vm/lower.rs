@@ -124,12 +124,23 @@ struct FwdVmKeepalive {
     /// buffer; synthesized here exactly like `materialize_virtual_setup_column`
     /// callers elsewhere in this bench harness).
     _virtual_setup_bufs: Vec<DeviceAllocation<BF>>,
+    /// Interp-owned poison-filled overlay columns for smem-rooted outputs
+    /// (codex finding F1, output isolation): the epilogue kernel (Task 4)
+    /// writes here, never into flat/production storage. Raw u32-backed for
+    /// the same reason as `_poison_bufs`.
+    _smem_out_bufs: Vec<DeviceAllocation<u32>>,
 }
 
 pub(crate) struct FwdVmDeviceSetup {
     pub desc: InterpDesc3,
     pub lanes: Vec<u16>,
     pub residency: InterpResidency,
+    /// Flat/production storage pointer for each smem-rooted output, in the
+    /// same order as `desc.out_cell`/`desc.out_ptr` — the GOLDEN comparison
+    /// target Task 4's G-DEV compares the interp-owned `out_ptr` write
+    /// against. NEVER handed to the device as a write target (output
+    /// isolation, codex F1); host-only bookkeeping.
+    pub out_golden_ptr: Vec<u64>,
     _keepalive: FwdVmKeepalive,
 }
 
@@ -497,21 +508,30 @@ pub(crate) fn build_fwd_vm_device_setup(
     let desc_fill_dev = alloc_upload(context, &desc_fill);
     let desc_param_dev = alloc_upload(context, &desc_param);
 
-    // ----- smem-rooted outputs (epilogue writes into their real destination;
-    // unlike Global materializes these are NOT read again within the ISA
-    // stream, so no isolation concern). -----
+    // ----- smem-rooted outputs (epilogue writes here). Output isolation
+    // (spec §4/§10, codex F1): out_ptr NEVER points into flat/production
+    // storage. Each output gets a fresh, poison-filled, interp-owned column
+    // (same treatment as the `GlobalMaterialize` overlay above); the flat
+    // destination (`addr`/`p`) is resolved only to serve as the GOLDEN
+    // comparison target for Task 4's G-DEV, kept in `out_golden_ptr`. -----
     let mut out_cell_host: Vec<u16> = Vec::new();
     let mut out_ptr_host: Vec<u64> = Vec::new();
     let mut out_is_e4_host: Vec<u8> = Vec::new();
+    let mut out_golden_ptr_host: Vec<u64> = Vec::new();
+    let mut smem_out_bufs: Vec<DeviceAllocation<u32>> = Vec::new();
     for (rid, out) in &cl.root_outputs {
         if let RootOutput::Cell(OutputCell::Smem(cell)) = out {
             let addr = root_flat_addr(layer, cl, *rid);
             let (is_e4, p) = fixture.storage_column(addr).unwrap_or_else(|| {
                 panic!("L{layer_idx}: smem-rooted output root {rid:?} addr {addr:?} not resident")
             });
+            let words = poison_words(t, is_e4);
+            let dev = alloc_upload(context, &words);
             out_cell_host.push(*cell);
-            out_ptr_host.push(p as u64);
+            out_ptr_host.push(dev.as_ptr() as u64);
             out_is_e4_host.push(is_e4 as u8);
+            out_golden_ptr_host.push(p as u64);
+            smem_out_bufs.push(dev);
         }
     }
     let n_outs = out_cell_host.len();
@@ -576,6 +596,7 @@ pub(crate) fn build_fwd_vm_device_setup(
         desc,
         lanes,
         residency: InterpResidency::Ldg,
+        out_golden_ptr: out_golden_ptr_host,
         _keepalive: FwdVmKeepalive {
             _lanes_dev: lanes_dev,
             _consts_dev: consts_dev,
@@ -597,6 +618,7 @@ pub(crate) fn build_fwd_vm_device_setup(
             _err_dev: err_dev,
             _poison_bufs: poison_bufs,
             _virtual_setup_bufs: virtual_setup_bufs,
+            _smem_out_bufs: smem_out_bufs,
         },
     }
 }
@@ -813,7 +835,10 @@ pub(crate) fn assert_gptr(
         }
     }
 
-    // ----- smem-rooted outputs re-derivation. -----
+    // ----- smem-rooted outputs re-derivation. Output isolation (spec §4,
+    // codex F1): out_ptr must be the interp-owned poison column, NEVER the
+    // flat storage_column pointer — the flat destination survives only
+    // host-side in `setup.out_golden_ptr` (Task 4's G-DEV golden). -----
     let mut expected: Vec<(RootId, u16)> = Vec::new();
     for (rid, out) in &cl.root_outputs {
         if let RootOutput::Cell(OutputCell::Smem(cell)) = out {
@@ -821,6 +846,16 @@ pub(crate) fn assert_gptr(
         }
     }
     assert_eq!(expected.len() as u32, setup.desc.n_outs, "L{layer_idx}: n_outs mismatch");
+    assert_eq!(
+        expected.len(),
+        setup.out_golden_ptr.len(),
+        "L{layer_idx}: out_golden_ptr length mismatch"
+    );
+    assert_eq!(
+        expected.len(),
+        setup._keepalive._smem_out_bufs.len(),
+        "L{layer_idx}: _smem_out_bufs length mismatch"
+    );
     if !expected.is_empty() {
         let cell_back = d2h_raw::<u16>(setup.desc.out_cell, expected.len(), context, 0u16);
         let ptr_back = d2h_raw::<u64>(setup.desc.out_ptr as *const u64, expected.len(), context, 0u64);
@@ -829,8 +864,35 @@ pub(crate) fn assert_gptr(
             assert_eq!(cell_back[i], *cell, "L{layer_idx}: out {i} cell");
             let addr = root_flat_addr(layer, cl, *rid);
             let (is_e4, p) = fixture.storage_column(addr).unwrap();
-            assert_eq!(ptr_back[i], p as u64, "L{layer_idx}: out {i} ptr != storage_column({addr:?})");
+            // Isolation: the device write target is NOT production storage.
+            assert_ne!(
+                ptr_back[i], p as u64,
+                "L{layer_idx}: out {i} ptr aliases storage_column({addr:?}) — output isolation \
+                 violated (codex F1)"
+            );
+            // The device write target IS the interp-owned poison column.
+            assert_eq!(
+                ptr_back[i],
+                setup._keepalive._smem_out_bufs[i].as_ptr() as u64,
+                "L{layer_idx}: out {i} ptr != interp-owned _smem_out_bufs[{i}]"
+            );
+            // The flat destination is preserved host-side as the golden.
+            assert_eq!(
+                setup.out_golden_ptr[i], p as u64,
+                "L{layer_idx}: out {i} out_golden_ptr != storage_column({addr:?})"
+            );
             assert_eq!((e4_back[i] != 0), is_e4, "L{layer_idx}: out {i} is_e4");
+        }
+        // Poison spot-check: no kernel has run yet, so the first lanes of the
+        // first interp-owned output buffer must still hold the poison pattern.
+        let buf0 = &setup._keepalive._smem_out_bufs[0];
+        let probe = buf0.len().min(8);
+        let lanes_back = d2h_raw::<u32>(buf0.as_ptr(), probe, context, 0u32);
+        for (j, w) in lanes_back.iter().enumerate() {
+            assert_eq!(
+                *w, POISON_U32,
+                "L{layer_idx}: out 0 poison lane {j} = {w:#010x}, expected {POISON_U32:#010x}"
+            );
         }
     }
 
