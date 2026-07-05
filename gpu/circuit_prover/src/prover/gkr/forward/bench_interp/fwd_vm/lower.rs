@@ -18,13 +18,13 @@ use std::ptr;
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
-use field::{Field, PrimeField};
+use field::{Field, FieldExtension, PrimeField};
 
 use cs::definitions::{GKRAddress, VirtualSetupPoly};
 use cs::gkr_compiler::dag_ir::{ChallengeRef, DagLayer, RangeWidth, ReadPlace, RootId};
 
 use gkr_eval_isa::fwd::binding::BackingKey;
-use gkr_eval_isa::fwd::context::{CompiledLayer, OutputCell, RootOutput};
+use gkr_eval_isa::fwd::context::{CompiledLayer, ForwardAction, OutputCell, RootOutput};
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, OperandField, OperandLine};
 use gkr_eval_isa::fwd::source::SpecialStrategy;
 
@@ -908,4 +908,155 @@ pub(crate) fn assert_gptr(
         "L{layer_idx}: program_lanes mismatch vs setup.lanes"
     );
     assert!(!setup.desc.program_ldg.is_null(), "L{layer_idx}: program_ldg is null");
+}
+
+// ── G-DEV + G-ALIAS (spec §7): device interpreter bit-exact vs flat ──────────
+
+/// D2H a device column and lift to `E4` per row (Bf columns lift via
+/// `from_base`, so a Bf/E4 width difference between the interp overlay and the
+/// flat storage still compares by VALUE).
+fn d2h_col_lifted(ptr: u64, is_e4: bool, t: usize, ctx: &ProverContext) -> Vec<E4> {
+    if is_e4 {
+        d2h_raw::<E4>(ptr as *const E4, t, ctx, Field::ZERO)
+    } else {
+        d2h_raw::<BF>(ptr as *const BF, t, ctx, Field::ZERO)
+            .into_iter()
+            .map(<E4 as FieldExtension<BF>>::from_base)
+            .collect()
+    }
+}
+
+fn compare_columns(label: &str, got: &[E4], want: &[E4]) -> Result<(), String> {
+    for (row, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+        if g != w {
+            return Err(format!("{label} row {row}: interp {g:?} != flat {w:?}"));
+        }
+    }
+    Ok(())
+}
+
+/// Run the fwd-VM kernel on one real-fixture (circuit, layer) point and gate it
+/// (spec §7):
+///
+/// - **G-DEV** (all-row bit-exact): every interp-owned output column — the
+///   smem-rooted epilogue columns AND the materialized `(slot,col)` overlay
+///   columns — equals the flat-produced reference column, every row.
+/// - **G-ALIAS** (codex spec-F5): for each `CopyAlias` action, the aliased
+///   source column equals the flat destination column, every row
+///   (pointer-equality shortcut when both resolve to the same device pointer).
+///
+/// Both residencies run against fresh poison-filled setups, so a stale LDG
+/// result cannot mask an LDC no-op; LDC is skipped only if the program exceeds
+/// the 28 KB constant array (never for add_sub, per the Task 1 probe).
+pub(crate) fn run_gdev_layer(
+    fixture: &CircuitFixture,
+    c: &FwdVmCircuit,
+    layer_idx: usize,
+) -> Result<(), String> {
+    let cl = &c.compiled.layers[layer_idx];
+    let context = fixture.context();
+    let t = fixture.trace_len;
+    let usage = collect_global_usage(cl);
+
+    // G-ALIAS is residency-independent (alias roots carry zero program lanes —
+    // the kernel never touches these columns); check once.
+    for (rid, out) in &cl.root_outputs {
+        if let RootOutput::Alias(_) = out {
+            let Some(ForwardAction::CopyAlias { src_addr, dst_addr }) = cl.ctx.actions.get(rid)
+            else {
+                return Err(format!("L{layer_idx}: alias root {rid:?} has no CopyAlias action"));
+            };
+            let (se4, sp) = fixture
+                .storage_column(*src_addr)
+                .ok_or_else(|| format!("L{layer_idx}: alias src {src_addr:?} not resident"))?;
+            let (de4, dp) = fixture
+                .storage_column(*dst_addr)
+                .ok_or_else(|| format!("L{layer_idx}: alias dst {dst_addr:?} not resident"))?;
+            if sp == dp {
+                continue; // same device pointer: trivially aliased
+            }
+            let src = d2h_col_lifted(sp as u64, se4, t, context);
+            let dst = d2h_col_lifted(dp as u64, de4, t, context);
+            compare_columns(
+                &format!("L{layer_idx} G-ALIAS root {rid:?} ({src_addr:?} -> {dst_addr:?})"),
+                &src,
+                &dst,
+            )?;
+        }
+    }
+
+    for residency in [InterpResidency::Ldg, InterpResidency::Ldc] {
+        let mut setup = build_fwd_vm_device_setup(fixture, c, layer_idx);
+        if residency == InterpResidency::Ldc {
+            let fits = super::super::upload_bench_program_to_constant(&setup.lanes)
+                .map_err(|e| format!("L{layer_idx} [Ldc] constant upload: {e:?}"))?;
+            if !fits {
+                continue; // program exceeds the 28 KB constant array
+            }
+            setup.desc.program_ldg = ptr::null();
+            setup.residency = InterpResidency::Ldc;
+        }
+
+        super::launch_fwd_vm(&setup.desc, residency, context)
+            .map_err(|e| format!("L{layer_idx} [{residency:?}] launch: {e:?}"))?;
+        context
+            .get_exec_stream()
+            .synchronize()
+            .map_err(|e| format!("L{layer_idx} [{residency:?}] sync: {e:?}"))?;
+
+        // Fail-closed gate: the kernel must have raised no FWDVM_ERR_* bit.
+        let err = d2h_raw::<u32>(setup.desc.error_flag as *const u32, 1, context, 0u32)[0];
+        if err != 0 {
+            return Err(format!("L{layer_idx} [{residency:?}]: kernel error_flag = {err:#x}"));
+        }
+
+        // G-DEV part 1: smem-rooted epilogue outputs vs their flat goldens
+        // (index-aligned with out_ptr/out_is_e4, lower.rs build order).
+        let n_outs = setup.desc.n_outs as usize;
+        if n_outs > 0 {
+            let ptr_back = d2h_raw::<u64>(setup.desc.out_ptr as *const u64, n_outs, context, 0u64);
+            let e4_back = d2h_raw::<u8>(setup.desc.out_is_e4, n_outs, context, 0u8);
+            for i in 0..n_outs {
+                let is_e4 = e4_back[i] != 0;
+                let got = d2h_col_lifted(ptr_back[i], is_e4, t, context);
+                let want = d2h_col_lifted(setup.out_golden_ptr[i], is_e4, t, context);
+                compare_columns(
+                    &format!("L{layer_idx} [{residency:?}] G-DEV smem-out {i}"),
+                    &got,
+                    &want,
+                )?;
+            }
+        }
+
+        // G-DEV part 2: materialized (slot,col) overlay columns vs the flat
+        // columns at the same backing address.
+        let total_cols = setup.desc.col_base[16] as usize;
+        let read_back =
+            d2h_raw::<u64>(setup.desc.col_read_ptr as *const u64, total_cols, context, 0u64);
+        for (&(slot, col), &field) in &usage.materialized {
+            let idx = (setup.desc.col_base[slot as usize] + col as u32) as usize;
+            let overlay_e4 = field == OperandField::Ext;
+            let key = cl
+                .ctx
+                .backings
+                .backing(slot)
+                .unwrap_or_else(|| panic!("L{layer_idx}: no backing for slot {slot}"));
+            let addr = backing_key_col_to_gkr_address(key, col)
+                .expect("materialized (slot,col) must map to a GKRAddress");
+            let (flat_e4, flat_ptr) = fixture.storage_column(addr).ok_or_else(|| {
+                format!("L{layer_idx}: materialized {addr:?} not resident in flat storage")
+            })?;
+            let got = d2h_col_lifted(read_back[idx], overlay_e4, t, context);
+            let want = d2h_col_lifted(flat_ptr as u64, flat_e4, t, context);
+            compare_columns(
+                &format!(
+                    "L{layer_idx} [{residency:?}] G-DEV overlay (slot {slot}, col {col}) {addr:?}"
+                ),
+                &got,
+                &want,
+            )?;
+        }
+    }
+
+    Ok(())
 }

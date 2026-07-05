@@ -99,3 +99,26 @@ fn fwd_vm_gptr_add_sub() {
         super::lower::assert_gptr(&fixture, &c, li, &setup); // re-derivation compare
     }
 }
+
+// G-DEV + G-ALIAS (spec §7): device interpreter bit-exact vs flat, all rows,
+// every compiled add_sub layer, both residencies where the program fits LDC.
+#[test]
+#[ignore]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn fwd_vm_gdev_add_sub() {
+    use crate::prover::gkr::forward::bench_interp::fixture::CircuitFixture;
+    use gkr_eval_isa::fwd::compile::layer_needs_compile;
+
+    let fixture = CircuitFixture::build("add_sub_lui_auipc_mop");
+    let c = super::compile::load_fwd_vm_circuit("add_sub_lui_auipc_mop");
+    let mut layers = 0usize;
+    for (li, layer) in c.dag.layers.iter().enumerate() {
+        if !layer_needs_compile(c.sched.layers[li].order.is_empty(), layer) {
+            continue;
+        }
+        super::lower::run_gdev_layer(&fixture, &c, li).unwrap_or_else(|e| panic!("L{li}: {e}"));
+        layers += 1;
+    }
+    assert!(layers > 0, "vacuous");
+}
