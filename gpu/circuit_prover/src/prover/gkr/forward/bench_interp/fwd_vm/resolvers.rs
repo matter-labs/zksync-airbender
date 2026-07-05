@@ -118,7 +118,7 @@ fn d2h_u32(slice: &DeviceSlice<u32>, ctx: &ProverContext) -> Vec<u32> {
     host
 }
 
-fn fixture_stage1(fixture: &CircuitFixture) -> &GpuGKRStage1Output {
+pub(crate) fn fixture_stage1(fixture: &CircuitFixture) -> &GpuGKRStage1Output {
     match &fixture.keepalive {
         CircuitKeepalive::Unrolled { stage1, .. } => stage1,
         CircuitKeepalive::Delegation(keepalive) => &keepalive.stage1,
@@ -141,7 +141,7 @@ fn sink_to_addr(kind: &SinkKind) -> GKRAddress {
 
 /// The flat-storage destination address of a non-skipped root: a `CopyAlias`
 /// action's `dst_addr`, else the root's `materialize` sink.
-fn root_flat_addr(layer: &DagLayer, cl: &CompiledLayer, rid: RootId) -> GKRAddress {
+pub(crate) fn root_flat_addr(layer: &DagLayer, cl: &CompiledLayer, rid: RootId) -> GKRAddress {
     if let Some(ForwardAction::CopyAlias { dst_addr, .. }) = cl.ctx.actions.get(&rid) {
         return *dst_addr;
     }
@@ -429,24 +429,32 @@ impl VirtualSetupResolver for HostStorageResolvers<'_> {
     }
 }
 
+/// The SAME `ChallengeRef` -> concrete `Ext` mapping the G-CPU gate (Task 2)
+/// uses, factored out so Task 3's device challenge-bank lowering sources
+/// challenge values from one place (spec §5: "the SAME mapping"). Any change
+/// to how a challenge resolves must land here once, for both call sites.
+pub(crate) fn challenge_value(fixture: &CircuitFixture, r: &ChallengeRef) -> Ext {
+    let base = match &r.key {
+        ChallengeKey::LookupMultiplicative => fixture.lookup_alpha,
+        ChallengeKey::LookupAdditive => fixture.lookup_additive_part,
+        ChallengeKey::PermutationAdditive => {
+            fixture.external_challenges.permutation_argument_additive_part
+        }
+        ChallengeKey::PermutationLinearization(slot) => {
+            fixture.external_challenges.permutation_argument_linearization_challenges
+                [perm_role(slot)]
+        }
+        ChallengeKey::ConstraintAggregation => panic!(
+            "challenge_value: ConstraintAggregation is not sourced for these circuits' forward \
+             programs (no materialized constraint roots): {r:?}"
+        ),
+    };
+    pow_of(base, &r.power)
+}
+
 impl ChallengeResolver for HostStorageResolvers<'_> {
     fn challenge(&self, r: &ChallengeRef) -> Ext {
-        let f = self.fixture;
-        let base = match &r.key {
-            ChallengeKey::LookupMultiplicative => f.lookup_alpha,
-            ChallengeKey::LookupAdditive => f.lookup_additive_part,
-            ChallengeKey::PermutationAdditive => {
-                f.external_challenges.permutation_argument_additive_part
-            }
-            ChallengeKey::PermutationLinearization(slot) => {
-                f.external_challenges.permutation_argument_linearization_challenges[perm_role(slot)]
-            }
-            ChallengeKey::ConstraintAggregation => panic!(
-                "HostStorageResolvers::challenge: ConstraintAggregation is not sourced for the \
-                 G-CPU gate (add_sub's forward program materializes no constraint roots): {r:?}"
-            ),
-        };
-        pow_of(base, &r.power)
+        challenge_value(self.fixture, r)
     }
 }
 

@@ -75,3 +75,27 @@ fn fwd_vm_gcpu_add_sub() {
     }
     assert!(checks > 0, "vacuous");
 }
+
+// G-PTR (spec §7): every column-table read pointer equals the independently
+// re-derived storage_column pointer; every materialized pair has a non-null,
+// interp-owned (NOT storage) write pointer; specials pointers match their
+// re-derived sources; capacity asserts fire on overflow, never truncate.
+#[test]
+#[ignore]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn fwd_vm_gptr_add_sub() {
+    use crate::prover::gkr::forward::bench_interp::fixture::CircuitFixture;
+    use gkr_eval_isa::fwd::compile::layer_needs_compile;
+    use super::lower::build_fwd_vm_device_setup;
+
+    let fixture = CircuitFixture::build("add_sub_lui_auipc_mop");
+    let c = super::compile::load_fwd_vm_circuit("add_sub_lui_auipc_mop");
+    for (li, layer) in c.dag.layers.iter().enumerate() {
+        if !layer_needs_compile(c.sched.layers[li].order.is_empty(), layer) {
+            continue;
+        }
+        let setup = build_fwd_vm_device_setup(&fixture, &c, li);
+        super::lower::assert_gptr(&fixture, &c, li, &setup); // re-derivation compare
+    }
+}

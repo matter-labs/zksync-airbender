@@ -5,5 +5,6 @@
 //! `bench_interp`, see `bench_interp/mod.rs`). No production wiring.
 
 pub(crate) mod compile;
+pub(crate) mod lower;
 pub(crate) mod resolvers;
 mod tests;
