@@ -230,8 +230,12 @@ pub fn lower_layer_stream(
     let mut ctx = DagForwardContext::default();
     ctx.actions = build_forward_actions(layer, artifact_layer, scratch_mapping)?;
     ctx.cross_layer_fields = cross_layer_fields.clone();
+    let (decisions, budget) = match &policy {
+        MaterializePolicy::LegacyRecompute => (None, 0),
+        MaterializePolicy::Decisions { decisions, budget } => (Some(decisions), *budget),
+    };
     let (vinstrs, step_of, _vouts, _rr) =
-        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, policy)?;
+        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, budget)?;
     Ok(vinstrs
         .iter()
         .zip(step_of)
@@ -312,8 +316,12 @@ pub fn compile_layer_with_policy(
     ctx.cross_layer_fields = cross_layer_fields.clone();
 
     // Phase 1 — lower to a rich virtual-instruction stream.
+    let (decisions, dbudget) = match &policy {
+        MaterializePolicy::LegacyRecompute => (None, 0),
+        MaterializePolicy::Decisions { decisions, budget } => (Some(decisions), *budget),
+    };
     let (vinstrs, step_of, vouts, resident_realized) =
-        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, policy)?;
+        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, dbudget)?;
 
     // Per-ValueId width: every defined value's own field. All values placement touches
     // are defined (via a `defines` instr) or read as `Value` (hence defined earlier), so

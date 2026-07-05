@@ -42,15 +42,14 @@ use super::arith::{
     child_operand_field, classify_additive_child, field_from_u8, is_constant_one,
     is_neg_one_factor, is_zero_expr, sign_from_u8, AdditiveChild,
 };
-use super::decisions::OccurrenceStreams;
+use super::decisions::{OccurrenceStreams, SiteDecisions};
 use super::place::{ValueId, VInstrKind, VirtualInstr, VirtualOp};
 use super::schedule::split_reduction;
-use super::MaterializePolicy;
 use crate::fwd::compile::CompileError;
 
-/// Width (in cells) of a value's residency footprint under `MaterializePolicy::Decisions`
-/// (Task 3): `Base` = 1, `Ext` = 4 — mirrors `place::width_of`/the traffic-tally convention
-/// used elsewhere in this crate (`mod.rs::tally_operand`).
+/// Width (in cells) of a value's residency footprint under the `Decisions` residency
+/// policy (Task 3): `Base` = 1, `Ext` = 4 — mirrors `place::width_of`/the traffic-tally
+/// convention used elsewhere in this crate (`mod.rs::tally_operand`).
 fn resident_width(field: OperandField) -> usize {
     match field {
         OperandField::Base => 1,
@@ -58,8 +57,8 @@ fn resident_width(field: OperandField) -> usize {
     }
 }
 
-/// Task 3: `MaterializePolicy::Decisions` residency state — present only under that
-/// policy (`None` for `LegacyRecompute`). `resident` is the width-weighted
+/// Task 3: `Decisions` residency state — present only when `VirtualLower::decisions`
+/// is `Some`. `resident` is the width-weighted
 /// resident set, a `BTreeMap` (per the brief's determinism requirement: eviction-candidate
 /// enumeration must not depend on hash-iteration order). `VirtualLower::defined` mirrors
 /// `resident`'s keys — `defined` stays the single policy-agnostic "is this value's cell
@@ -273,11 +272,10 @@ struct VirtualLower<'a> {
     root_outputs: Vec<(RootId, VirtualRootOutput)>,
     /// Interned resolution-leaf descriptors (`ExprId → ctx.specials` index).
     desc_by_expr: HashMap<ExprId, u16>,
-    /// Emission policy. `LegacyRecompute` = the per-step-clear + recompute path (default);
-    /// `Decisions` = the emitter-owned residency policy (Task 3).
-    policy: MaterializePolicy,
-    /// Task 3 (`Decisions` only): residency state driven by `SiteDecisions`/
-    /// `OccurrenceStreams`. `None` under `LegacyRecompute`.
+    /// Task 3 residency state driven by `SiteDecisions`/`OccurrenceStreams`. `Some` =
+    /// the emitter-owned residency policy; `None` = the per-step-clear + recompute
+    /// path (former `LegacyRecompute`, still the default for callers that pass no
+    /// decisions). This is now the ONLY mode carrier — no separate policy field.
     decisions: Option<DecisionsState>,
 }
 
@@ -387,8 +385,8 @@ impl<'a> VirtualLower<'a> {
     }
 
     /// Attempt to admit a just-produced value `v` (occupying `field`'s width) into the
-    /// `Decisions` resident set. Only meaningful under `MaterializePolicy::Decisions`
-    /// (returns `false` otherwise). On success, `v` is inserted into both `resident` and
+    /// `Decisions` resident set. Only meaningful when `self.decisions` is `Some`
+    /// (returns `None` otherwise). On success, `v` is inserted into both `resident` and
     /// `defined` (and any evicted victims are removed from both) — the caller still needs
     /// to emit the physical evict-to-cell instruction.
     ///
@@ -546,25 +544,15 @@ impl<'a> VirtualLower<'a> {
     /// then evict it out of the acc into a cell. Returns the operand naming whichever cell
     /// it landed in.
     ///
-    /// - `LegacyRecompute`: static membership in `resident_target` (always empty — schema
-    ///   v2 has no persisted per-step residency; `LegacyRecompute` is pure per-step
-    ///   recompute, unchanged Task-1 behavior otherwise).
-    /// - `Decisions`: `try_admit` (Task 3) — `resident_target` is ignored (always empty
-    ///   under `Decisions` too, since only `finalize_produced`'s caller ever populates it,
-    ///   and no policy does anymore).
+    /// - `decisions = None`: never resident — schema v2 has no persisted per-step
+    ///   residency, so this is pure per-step recompute (unchanged Task-1 behavior).
+    /// - `decisions = Some(..)`: `try_admit` (Task 3) decides.
     fn finalize_produced(
         &mut self,
         expr_id: ExprId,
         field: OperandField,
-        resident_target: &HashSet<ExprId>,
     ) -> Result<VirtualOp, CompileError> {
-        let admitted = if matches!(self.policy, MaterializePolicy::Decisions { .. }) {
-            self.try_admit(expr_id, field)
-        } else if resident_target.contains(&expr_id) {
-            Some(expr_id)
-        } else {
-            None
-        };
+        let admitted = if self.decisions.is_some() { self.try_admit(expr_id, field) } else { None };
         if let Some(gen_id) = admitted {
             self.widths.insert(gen_id, field);
             self.emit_evict_to_cell(gen_id, field);
@@ -661,7 +649,6 @@ impl<'a> VirtualLower<'a> {
         layer: &DagLayer,
         expr_id: ExprId,
         expected: OperandField,
-        resident_target: &HashSet<ExprId>,
     ) -> Result<VirtualOp, CompileError> {
         // Task 3 (`Decisions` only, no-op otherwise): this call IS a demand site — one
         // occurrence off `expr_id`'s stream, consumed before any hit/miss branching so
@@ -683,7 +670,7 @@ impl<'a> VirtualLower<'a> {
             || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
         {
             let op = self.source_to_vop(layer, expr_id)?;
-            if matches!(self.policy, MaterializePolicy::Decisions { .. }) {
+            if self.decisions.is_some() {
                 let field = child_operand_field(layer, expr_id, expected, &self.cross);
                 if let Some(gen_id) = self.try_admit(expr_id, field) {
                     self.emit_init_field(op, field);
@@ -695,12 +682,12 @@ impl<'a> VirtualLower<'a> {
             }
             return Ok(op);
         }
-        // 3. Compound: recompute the cone into the acc, then finalize residency (Task 1
-        //    schedule-driven `resident_target`, or Task 3 `Decisions` admission).
+        // 3. Compound: recompute the cone into the acc, then finalize residency (Task 3
+        //    `Decisions` admission; a no-op when `decisions` is `None`).
         let field = child_operand_field(layer, expr_id, expected, &self.cross);
-        self.compile_expr_virtual(layer, expr_id, field, resident_target)?;
+        self.compile_expr_virtual(layer, expr_id, field)?;
         self.materialize_if_root(expr_id, true);
-        self.finalize_produced(expr_id, field, resident_target)
+        self.finalize_produced(expr_id, field)
     }
 
     // ── expression lowering into the accumulator (mirrors arith::compile_expr) ────
@@ -710,7 +697,6 @@ impl<'a> VirtualLower<'a> {
         layer: &DagLayer,
         expr_id: ExprId,
         expected: OperandField,
-        resident_target: &HashSet<ExprId>,
     ) -> Result<(), CompileError> {
         if layer.resolutions.contains_key(&expr_id) {
             let desc = *self.desc_by_expr.get(&expr_id).ok_or_else(|| {
@@ -732,11 +718,11 @@ impl<'a> VirtualLower<'a> {
             }
             Expr::Add(children) => {
                 let ch = children.clone();
-                self.compile_add_virtual(layer, ch, expected, resident_target)
+                self.compile_add_virtual(layer, ch, expected)
             }
             Expr::Mul(children) => {
                 let ch = children.clone();
-                self.compile_mul_virtual(layer, ch, expected, resident_target)
+                self.compile_mul_virtual(layer, ch, expected)
             }
         }
     }
@@ -746,7 +732,6 @@ impl<'a> VirtualLower<'a> {
         layer: &DagLayer,
         children: Vec<ExprId>,
         expected: OperandField,
-        resident_target: &HashSet<ExprId>,
     ) -> Result<(), CompileError> {
         let children: Vec<ExprId> =
             children.into_iter().filter(|&c| !is_zero_expr(layer, c)).collect();
@@ -758,10 +743,10 @@ impl<'a> VirtualLower<'a> {
             );
             return Ok(());
         }
-        if self.try_compile_fma_virtual(layer, &children, expected, resident_target)?.is_some() {
+        if self.try_compile_fma_virtual(layer, &children, expected)?.is_some() {
             return Ok(());
         }
-        self.compile_reduction_virtual(layer, &children, true, false, expected, resident_target)
+        self.compile_reduction_virtual(layer, &children, true, false, expected)
     }
 
     /// Pick + emit the accumulator seed among `addend_ops` (a Base-Plus term, else any
@@ -864,7 +849,6 @@ impl<'a> VirtualLower<'a> {
         layer: &DagLayer,
         children: Vec<ExprId>,
         expected: OperandField,
-        resident_target: &HashSet<ExprId>,
     ) -> Result<(), CompileError> {
         // A product with any zero factor is 0 (annihilator). Short-circuit so a
         // `Constant{0}` factor never reaches source resolution (which forbids 0).
@@ -906,7 +890,7 @@ impl<'a> VirtualLower<'a> {
             }
             return Ok(());
         }
-        self.compile_reduction_virtual(layer, &surviving, false, negate, expected, resident_target)
+        self.compile_reduction_virtual(layer, &surviving, false, negate, expected)
     }
 
     /// Field-homogeneous reduction (mirrors arith::compile_reduction).
@@ -917,7 +901,6 @@ impl<'a> VirtualLower<'a> {
         is_add: bool,
         negate: bool,
         expected: OperandField,
-        resident_target: &HashSet<ExprId>,
     ) -> Result<(), CompileError> {
         debug_assert!(!children.is_empty());
         // Pre-materialize every child to an operand BEFORE seeding the acc (a compound
@@ -933,7 +916,7 @@ impl<'a> VirtualLower<'a> {
                 (c, Sign::Plus)
             };
             let field = child_operand_field(layer, to_lower, expected, &self.cross);
-            let op = self.lower_operand_virtual(layer, to_lower, expected, resident_target)?;
+            let op = self.lower_operand_virtual(layer, to_lower, expected)?;
             ops.push((field, op, sign));
         }
 
@@ -1046,7 +1029,6 @@ impl<'a> VirtualLower<'a> {
         layer: &DagLayer,
         children: &[ExprId],
         expected: OperandField,
-        resident_target: &HashSet<ExprId>,
     ) -> Result<Option<()>, CompileError> {
         let mut products: Vec<(Sign, ExprId, ExprId)> = Vec::with_capacity(children.len());
         let mut addends: Vec<(Sign, ExprId)> = Vec::new();
@@ -1064,7 +1046,7 @@ impl<'a> VirtualLower<'a> {
             Vec::with_capacity(addends.len());
         for &(sign, c) in &addends {
             let f = child_operand_field(layer, c, expected, &self.cross);
-            let op = self.lower_operand_virtual(layer, c, expected, resident_target)?;
+            let op = self.lower_operand_virtual(layer, c, expected)?;
             addend_ops.push((f, op, sign));
         }
         let mut lo: Vec<(Sign, OperandField, VirtualOp, OperandField, VirtualOp)> =
@@ -1072,8 +1054,8 @@ impl<'a> VirtualLower<'a> {
         for &(sign, lhs, rhs) in &products {
             let lf = child_operand_field(layer, lhs, expected, &self.cross);
             let rf = child_operand_field(layer, rhs, expected, &self.cross);
-            let lhs_op = self.lower_operand_virtual(layer, lhs, expected, resident_target)?;
-            let rhs_op = self.lower_operand_virtual(layer, rhs, expected, resident_target)?;
+            let lhs_op = self.lower_operand_virtual(layer, lhs, expected)?;
+            let rhs_op = self.lower_operand_virtual(layer, rhs, expected)?;
             lo.push((sign, lf, lhs_op, rf, rhs_op));
         }
 
@@ -1189,7 +1171,8 @@ pub(crate) fn lower_layer_virtual(
     schedule: &LayerSchedule,
     ctx: &mut DagForwardContext,
     this_layer: usize,
-    policy: MaterializePolicy,
+    decisions: Option<&SiteDecisions>,
+    budget: usize,
 ) -> Result<
     (
         Vec<VInstr>,
@@ -1227,20 +1210,17 @@ pub(crate) fn lower_layer_virtual(
 
     // Task 3: under `Decisions`, precompute the demand-order occurrence streams ONCE
     // (mirrors the emitter's actual `Add`/`Mul` virtual-lowering traversal — see
-    // `decisions.rs`'s module doc) before `policy` is moved into `st` below.
-    let decisions_state = match &policy {
-        MaterializePolicy::Decisions { decisions, budget } => Some(DecisionsState {
-            streams: OccurrenceStreams::build(layer, &schedule.order, &ctx.actions, decisions),
-            resident: BTreeMap::new(),
-            budget: *budget,
-            live_width: 0,
-            pending_temps: std::collections::HashSet::new(),
-            pending_reads: std::collections::HashMap::new(),
-            evicted_ever: HashSet::new(),
-            generation: HashMap::new(),
-        }),
-        MaterializePolicy::LegacyRecompute => None,
-    };
+    // `decisions.rs`'s module doc).
+    let decisions_state = decisions.map(|d| DecisionsState {
+        streams: OccurrenceStreams::build(layer, &schedule.order, &ctx.actions, d),
+        resident: BTreeMap::new(),
+        budget,
+        live_width: 0,
+        pending_temps: std::collections::HashSet::new(),
+        pending_reads: std::collections::HashMap::new(),
+        evicted_ever: HashSet::new(),
+        generation: HashMap::new(),
+    });
 
     let mut st = VirtualLower {
         ctx,
@@ -1255,7 +1235,6 @@ pub(crate) fn lower_layer_virtual(
         exposed: HashSet::new(),
         root_outputs: Vec::new(),
         desc_by_expr,
-        policy,
         decisions: decisions_state,
     };
 
@@ -1265,33 +1244,20 @@ pub(crate) fn lower_layer_virtual(
     for (p, &rid) in schedule.order.iter().enumerate() {
         st.cur_step = p;
 
-        // Step-boundary residency inputs. Schema v2 (Task 4) has no persisted per-step
-        // residency at all (`LayerSchedule` carries `order` + `sites`, not a step replay),
-        // so both sets are unconditionally empty: `LegacyRecompute` clears `st.defined` at
-        // every step boundary (pure per-step recompute); `Decisions` ignores `rb`/`ra`
-        // entirely (its residency is schedule-step-independent — see below).
-        let rb: HashSet<ExprId> = HashSet::new();
-        let ra: HashSet<ExprId> = HashSet::new();
-
-        // Drop values the schedule no longer keeps resident entering this step (implicit
-        // cone-fit drops + explicit evicts, realized as a set difference). This bounds
-        // the served/held set to the schedule's residency so cell pressure tracks the
-        // (validated ≤ budget) plan — we never serve a value whose cell may be reused.
-        // Task 3: `Decisions` residency is NOT schedule-step-scoped — it persists across
-        // root/step boundaries under its OWN admission/eviction bookkeeping (`try_admit`),
-        // so it is exempt from this per-step clear (`rb` is meaningless under `Decisions`,
-        // which never populates it).
-        if !matches!(st.policy, MaterializePolicy::Decisions { .. }) {
-            st.defined.retain(|v| rb.contains(v));
+        // Step-boundary residency. Schema v2 (Task 4) has no persisted per-step residency
+        // at all (`LayerSchedule` carries `order` + `sites`, not a step replay): under
+        // `decisions = None`, `st.defined` is cleared at every step boundary (pure
+        // per-step recompute); `Decisions` residency is NOT schedule-step-scoped — it
+        // persists across root/step boundaries under its OWN admission/eviction
+        // bookkeeping (`try_admit`), so it is exempt from this per-step clear.
+        if st.decisions.is_none() {
+            st.defined.clear();
         }
         let before = sorted_real(&st.defined);
 
-        // Process the ordered atom root. Shared sub-values that the schedule keeps
-        // resident (`resident_target = ra`) are defined LAZILY the first time a cone
-        // computes them (in `lower_operand_virtual`) and served thereafter — so the
-        // in-cone residents shield their subtrees (keeping the transient peak small,
-        // matching the optimizer's `cone_peak`) without an eager whole-set top-up that
-        // would over-hold `resident_before ∪ resident_after`.
+        // Process the ordered atom root. Under `decisions = None` every value not
+        // already resident is defined LAZILY (recompute) the first time a cone computes
+        // it and served thereafter.
         let action = st.ctx.actions.get(&rid).cloned();
         match action {
             Some(ForwardAction::Compute) => {
@@ -1305,22 +1271,17 @@ pub(crate) fn lower_layer_virtual(
                     // Task 3: a root's own output is itself a demand site (mirrors
                     // `decisions.rs::build`'s `SiteConsumer::RootOutput` push) — served
                     // exactly once here, hit or miss, before branching on residency.
-                    if matches!(st.policy, MaterializePolicy::Decisions { .. }) {
+                    if st.decisions.is_some() {
                         st.serve_occurrence(expr);
                     }
                     if st.defined.contains(&expr) {
                         st.materialize_if_root(expr, false);
                     } else {
-                        st.compile_expr_virtual(layer, expr, expected, &ra)?;
+                        st.compile_expr_virtual(layer, expr, expected)?;
                         st.materialize_if_root(expr, true);
                         let field = child_operand_field(layer, expr, expected, &st.cross);
-                        let admit = if matches!(st.policy, MaterializePolicy::Decisions { .. }) {
-                            st.try_admit(expr, field)
-                        } else if ra.contains(&expr) && !st.defined.contains(&expr) {
-                            Some(expr)
-                        } else {
-                            None
-                        };
+                        let admit =
+                            if st.decisions.is_some() { st.try_admit(expr, field) } else { None };
                         if let Some(gen_id) = admit {
                             st.widths.insert(gen_id, field);
                             st.emit_evict_to_cell(gen_id, field);
@@ -1362,13 +1323,12 @@ pub(crate) fn lower_layer_virtual(
         .map(|(&e, _)| e)
         .collect();
     pending.sort_by_key(|e| e.0);
-    let empty: HashSet<ExprId> = HashSet::new();
     for expr in pending {
         if st.defined.contains(&expr) {
             st.materialize_if_root(expr, false);
         } else {
             let field = child_operand_field(layer, expr, OperandField::Base, &st.cross);
-            st.compile_expr_virtual(layer, expr, field, &empty)?;
+            st.compile_expr_virtual(layer, expr, field)?;
             st.materialize_if_root(expr, true);
         }
     }

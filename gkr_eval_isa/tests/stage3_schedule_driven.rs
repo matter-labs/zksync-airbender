@@ -443,3 +443,39 @@ fn all_committed_schedules_recompile_to_predicted_traffic() {
         eprintln!("[gate-d] {name}: OK");
     }
 }
+
+// TEMPORARY (Task 1 A/B pin, deleted in Task 2): dump a per-layer fingerprint of
+// the LegacyRecompute compile of every committed fixture so the Option-threading
+// refactor can prove instruction-identity. Run with:
+//   cargo test -p gkr_eval_isa --test stage3_schedule_driven ab_snapshot -- --ignored --nocapture
+#[test]
+#[ignore]
+fn ab_snapshot_legacy_programs() {
+    let out = std::env::var("AB_SNAPSHOT_OUT").expect("set AB_SNAPSHOT_OUT=<path>");
+    let mut lines = Vec::new();
+    for (name, stem) in COMMITTED_CORPUS {
+        let (dag, sched, artifact) = load_committed(name, stem);
+        let cross = build_cross_layer_field_map(&dag);
+        for (li, (layer, ls)) in dag.layers.iter().zip(&sched.layers).enumerate() {
+            if !layer_needs_compile(ls.order.is_empty(), layer) {
+                continue;
+            }
+            let compiled = compile_layer_with_policy(
+                layer,
+                &artifact.layers[li],
+                &artifact.scratch_space_mapping,
+                &cross,
+                ls,
+                sched.budget,
+                MaterializePolicy::LegacyRecompute,
+            )
+            .unwrap_or_else(|e| panic!("[{name}] L{li}: {e:?}"));
+            lines.push(format!(
+                "{name} L{li} traffic={} lanes={} instrs={:?}",
+                compiled.stats.dram_traffic, compiled.stats.program_lanes,
+                compiled.program.instrs,
+            ));
+        }
+    }
+    std::fs::write(&out, lines.join("\n")).unwrap();
+}
