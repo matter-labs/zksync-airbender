@@ -14,7 +14,7 @@
 //! ## Implementation choice: option (b), replicated + locked
 //!
 //! The brief offers (a) a shared traversal fn used by both this builder and
-//! the future `MaterializePolicy::Decisions` lowering, or (b) replicate the
+//! the future `compile_layer`'s `decisions: Some(&SiteDecisions)` lowering, or (b) replicate the
 //! partition logic here and lock it with the interleaved-Add test. This file
 //! takes (b): `demand_expand` below re-derives the same child-visitation
 //! ORDER as `lower.rs`'s virtual (non-materialize) lowering, but it reuses —
@@ -132,8 +132,8 @@ impl OccurrenceStreams {
     /// replay (above) covers which roots serve at all; it does NOT capture
     /// two further ways the ACTUAL lowering's demand walk can diverge from
     /// `build`'s per-root site count once residency is active — both only
-    /// possible under `MaterializePolicy::Decisions`, never under
-    /// `LegacyRecompute`:
+    /// possible when `compile_layer` is given `decisions: Some(&SiteDecisions)`, never under
+    /// `decisions: None`:
     ///
     /// (a) Residency HIT short-circuit — when `lower_operand_virtual` finds a
     /// value already resident, it returns the cell immediately without

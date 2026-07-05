@@ -171,29 +171,6 @@ fn operand_field_of(sink: &SinkInfo) -> OperandField {
 // Stage-3 schedule-driven compile path. `lower.rs` holds the value/admit model.
 // ─────────────────────────────────────────────────────────────────────────────────
 
-/// Forward-emitter materialization policy (Task 1, extended Task 3; the Task 4 schema-v2
-/// break deleted the `Materialize` event-local variant along with its backing
-/// `StepPlan`/`ReplayEvent`/`DemandKind` schema — see `.superpowers/sdd/task-4-brief.md`).
-///
-/// `LegacyRecompute` (the DEFAULT) is the schedule-driven behavior: `defined` is cleared at
-/// every step boundary (pure per-step recompute — schema v2 has no persisted per-step
-/// residency to realize from), and a fusable `Mul`-in-`Add` is always FMA-fused.
-///
-/// `Decisions` (Task 3) is the emitter-owned residency policy the compile-in-loop scorer
-/// drives: it consumes Task 2's `SiteDecisions` (scorer-assigned per-site priority genes)
-/// and a width-weighted `budget`, admitting a just-produced value (leaf OR compound) into
-/// a resident set when it has ≥1 remaining occurrence and capacity allows, evicting the
-/// min-effective-priority resident on pressure. See `lower.rs`'s `DecisionsState`/
-/// `try_admit` for the state machine. `Decisions` reuses the SAME `Add`/`Mul` lowering path
-/// as `LegacyRecompute` so its admit/evict decisions replay in lock-step with
-/// `OccurrenceStreams::build`'s demand order — see `lower.rs`'s `compile_add_virtual` doc
-/// for why that alignment matters.
-#[derive(Clone, Debug)]
-pub enum MaterializePolicy {
-    LegacyRecompute,
-    Decisions { decisions: SiteDecisions, budget: usize },
-}
-
 /// Test-facing view of one Phase-1 lowered virtual instruction (Task 1 synthetic tests
 /// inspect emission SHAPE — cache-produce `Mul`→cell vs `Fma` fuse vs `Value` read —
 /// without depending on the crate-private `VInstr`/`VirtualOp` types).
@@ -216,24 +193,23 @@ pub struct LoweredInstr {
     pub value_reads: Vec<ExprId>,
 }
 
-/// Lower one layer's `VInstr` stream under `policy` and project it to `LoweredInstr`s.
-/// Test-only seam: runs Stage-3 Phase 1 (`lower_layer_virtual`) and exposes the emission
-/// shape so synthetic tests can assert the cache-produce/fuse/resident partition.
+/// Lower one layer's `VInstr` stream under `decisions`/`budget` and project it to
+/// `LoweredInstr`s. Test-only seam: runs Stage-3 Phase 1 (`lower_layer_virtual`) and
+/// exposes the emission shape so synthetic tests can assert the cache-produce/fuse/resident
+/// partition. `decisions: None` is the uncached (per-step recompute) baseline; `Some` runs
+/// the sub-project-2 residency machine at `budget`.
 pub fn lower_layer_stream(
     layer: &DagLayer,
     artifact_layer: &GKRLayerDescription,
     scratch_mapping: &BTreeMap<GKRAddress, usize>,
     cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
     schedule: &LayerSchedule,
-    policy: MaterializePolicy,
+    budget: usize,
+    decisions: Option<&SiteDecisions>,
 ) -> Result<Vec<LoweredInstr>, CompileError> {
     let mut ctx = DagForwardContext::default();
     ctx.actions = build_forward_actions(layer, artifact_layer, scratch_mapping)?;
     ctx.cross_layer_fields = cross_layer_fields.clone();
-    let (decisions, budget) = match &policy {
-        MaterializePolicy::LegacyRecompute => (None, 0),
-        MaterializePolicy::Decisions { decisions, budget } => (Some(decisions), *budget),
-    };
     let (vinstrs, step_of, _vouts, _rr) =
         lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, budget)?;
     Ok(vinstrs
@@ -278,8 +254,10 @@ pub struct CompiledCircuit {
 /// This is the single forward-program compile path (the old residency-coupled
 /// `compile_layer` was deleted in the T3b flip).
 ///
-/// Uses the DEFAULT `MaterializePolicy::LegacyRecompute` (unchanged Stage-3 behavior).
-/// Callers that need the event-local materialization path use `compile_layer_with_policy`.
+/// `decisions: None` is the uncached (per-step recompute) baseline (the old
+/// `LegacyRecompute`); `Some` runs the sub-project-2 residency machine at `budget`. The
+/// policy is threaded into Phase 1 (`lower_layer_virtual`); everything downstream
+/// (placement, materialize) is decisions-agnostic.
 pub fn compile_layer(
     layer: &DagLayer,
     artifact_layer: &GKRLayerDescription,
@@ -287,41 +265,15 @@ pub fn compile_layer(
     cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
     schedule: &LayerSchedule,
     budget: usize,
-) -> Result<CompiledLayer, CompileError> {
-    compile_layer_with_policy(
-        layer,
-        artifact_layer,
-        scratch_mapping,
-        cross_layer_fields,
-        schedule,
-        budget,
-        MaterializePolicy::LegacyRecompute,
-    )
-}
-
-/// `compile_layer` with an explicit `MaterializePolicy` (Task 1). The policy is threaded
-/// into Phase 1 (`lower_layer_virtual`); everything downstream (placement, materialize) is
-/// policy-agnostic.
-pub fn compile_layer_with_policy(
-    layer: &DagLayer,
-    artifact_layer: &GKRLayerDescription,
-    scratch_mapping: &BTreeMap<GKRAddress, usize>,
-    cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
-    schedule: &LayerSchedule,
-    budget: usize,
-    policy: MaterializePolicy,
+    decisions: Option<&SiteDecisions>,
 ) -> Result<CompiledLayer, CompileError> {
     let mut ctx = DagForwardContext::default();
     ctx.actions = build_forward_actions(layer, artifact_layer, scratch_mapping)?;
     ctx.cross_layer_fields = cross_layer_fields.clone();
 
     // Phase 1 — lower to a rich virtual-instruction stream.
-    let (decisions, dbudget) = match &policy {
-        MaterializePolicy::LegacyRecompute => (None, 0),
-        MaterializePolicy::Decisions { decisions, budget } => (Some(decisions), *budget),
-    };
     let (vinstrs, step_of, vouts, resident_realized) =
-        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, dbudget)?;
+        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, budget)?;
 
     // Per-ValueId width: every defined value's own field. All values placement touches
     // are defined (via a `defines` instr) or read as `Value` (hence defined earlier), so
@@ -538,7 +490,7 @@ fn materialize_vinstr(
 /// `materialize.is_some() && claim.is_some()` roots) while still carrying a
 /// materialize-only root (e.g. a `Cache` root with no `claim`), which still
 /// needs a real `compile_layer` pass to emit its materialization. Both
-/// `compile_circuit_with_policy` and the on-demand schedule producer
+/// `compile_circuit` and the on-demand schedule producer
 /// (`schedule_search::producer::produce_circuit_schedule`) call this so the
 /// two skip decisions cannot drift (Task 6 review finding).
 pub fn layer_needs_compile(order_is_empty: bool, layer: &DagLayer) -> bool {
@@ -550,27 +502,14 @@ pub fn layer_needs_compile(order_is_empty: bool, layer: &DagLayer) -> bool {
 /// Builds the whole-circuit cross-layer field map once, then compiles each layer from
 /// its `LayerSchedule`. A layer with no atom roots and no materialize-bearing roots
 /// yields an empty `CompiledLayer`; otherwise `compile_layer`.
+///
+/// Committed schedules pass `None` per layer (the uncached baseline; they overflow under
+/// a resident-decisions policy). Sub-project 3 flips this to the schedule's stored
+/// per-layer `SiteDecisions`.
 pub fn compile_circuit(
     dag: &DagCircuit,
     schedule: &CircuitSchedule,
     artifact: &GKRCircuitArtifact<BabyBearField>,
-) -> Result<CompiledCircuit, CompileError> {
-    compile_circuit_with_policy(dag, schedule, artifact, MaterializePolicy::LegacyRecompute)
-}
-
-/// `compile_circuit` with an explicit `MaterializePolicy` (Task 1), threaded per layer.
-/// Committed schedules MUST use `LegacyRecompute` (they overflow under `Materialize`).
-///
-/// `policy` is CLONED per layer (a `MaterializePolicy::Decisions` payload carries a whole
-/// `SiteDecisions`), so any `Decisions` passed in is per-layer-scoped by construction: its
-/// `SiteKey`s are layer-local, not circuit-global. Callers driving a committed schedule
-/// (the compile-in-loop scorer's gates) must compile per layer with that layer's own
-/// `Decisions`, not reuse one `Decisions` across layers.
-pub fn compile_circuit_with_policy(
-    dag: &DagCircuit,
-    schedule: &CircuitSchedule,
-    artifact: &GKRCircuitArtifact<BabyBearField>,
-    policy: MaterializePolicy,
 ) -> Result<CompiledCircuit, CompileError> {
     if schedule.layers.len() != dag.layers.len() {
         return Err(CompileError::FieldMismatch(format!(
@@ -595,14 +534,14 @@ pub fn compile_circuit_with_policy(
                 resident_realized: Vec::new(),
             });
         } else {
-            layers.push(compile_layer_with_policy(
+            layers.push(compile_layer(
                 layer,
                 &artifact.layers[li],
                 &artifact.scratch_space_mapping,
                 &cross,
                 ls,
                 schedule.budget,
-                policy.clone(),
+                None,
             )?);
         }
     }

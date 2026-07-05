@@ -1,4 +1,4 @@
-//! Task 3 target tests: `MaterializePolicy::Decisions` — emitter-owned residency,
+//! Task 3 target tests: `compile_layer`'s `decisions: Some(&SiteDecisions)` path — emitter-owned residency,
 //! capacity, and eviction, driven by Task 2's `SiteDecisions`/`OccurrenceStreams`.
 //! See `.superpowers/sdd/task-3-brief.md` for the exact semantics these tests pin.
 //!
@@ -24,7 +24,7 @@ use cs::gkr_compiler::{
 };
 
 use gkr_eval_isa::fwd::compile::decisions::{SiteConsumer, SiteDecisions, SiteKey};
-use gkr_eval_isa::fwd::compile::{compile_layer_with_policy, MaterializePolicy};
+use gkr_eval_isa::fwd::compile::compile_layer;
 use gkr_eval_isa::fwd::interp::interpret_layer_row;
 
 // ── shared synthetic-layer scaffolding (mirrors task1/task8 in stage3_schedule_driven) ──
@@ -94,20 +94,20 @@ fn compile(
     layer: &DagLayer,
     sched: &LayerSchedule,
     budget: usize,
-    policy: MaterializePolicy,
+    decisions: Option<&SiteDecisions>,
 ) -> gkr_eval_isa::fwd::context::CompiledLayer {
     let art = compute_artifact_layer();
     let cross: HashMap<ReadPlace, FieldKind> = HashMap::new();
-    compile_layer_with_policy(layer, &art, &BTreeMap::new(), &cross, sched, budget, policy)
-        .expect("compile_layer_with_policy")
+    compile_layer(layer, &art, &BTreeMap::new(), &cross, sched, budget, decisions)
+        .expect("compile_layer")
 }
 
-// ── Test 1: cache hit beats LegacyRecompute on instr count ─────────────────────────
+// ── Test 1: cache hit beats the uncached (`decisions: None`) compile on instr count ──
 
 /// High-priority reused value is served from residency (1 compute, no recompute):
-/// instr count strictly below the LegacyRecompute compile of the same layer.
+/// instr count strictly below the uncached (`decisions: None`) compile of the same layer.
 #[test]
-fn decisions_cache_hit_beats_legacy_recompute() {
+fn decisions_cache_hit_beats_uncached() {
     // s = Add(x,y) [compound, Base]; R0 = Mul(s, x2) demands s once, R1 = Mul(s, x3)
     // demands it a second time — a genuine `lower_operand_virtual` demand site (Mul
     // children are lowered individually, unlike an Add-child product).
@@ -142,19 +142,19 @@ fn decisions_cache_hit_beats_legacy_recompute() {
         (site(RootId(1), ExprId(4), 0, x), -100.0),
         (site(RootId(1), ExprId(4), 1, y), -100.0),
     ]);
-    let decisions_compiled = compile(
-        &layer,
-        &sched,
-        16,
-        MaterializePolicy::Decisions { decisions, budget: 1 },
-    );
-    let legacy_compiled = compile(&layer, &sched, 16, MaterializePolicy::LegacyRecompute);
+    let decisions_compiled = compile(&layer, &sched, 1, Some(&decisions));
+    let uncached_compiled = compile(&layer, &sched, 16, None);
+
+    // Absolute pins (captured pre-migration under the old enum's `LegacyRecompute` /
+    // `Decisions` cases, reproduced byte-for-byte here since `None` ≡ Legacy — Task 2 brief).
+    assert_eq!(decisions_compiled.program.instrs.len(), 11, "decisions instr-count pin");
+    assert_eq!(uncached_compiled.program.instrs.len(), 12, "uncached instr-count pin");
 
     assert!(
-        decisions_compiled.program.instrs.len() < legacy_compiled.program.instrs.len(),
-        "Decisions ({}) must emit strictly fewer instrs than LegacyRecompute ({}) once s is cached",
+        decisions_compiled.program.instrs.len() < uncached_compiled.program.instrs.len(),
+        "Decisions ({}) must emit strictly fewer instrs than uncached ({}) once s is cached",
         decisions_compiled.program.instrs.len(),
-        legacy_compiled.program.instrs.len()
+        uncached_compiled.program.instrs.len()
     );
 
     // Sanity: s really is resident after R0 (else the test would be vacuous).
@@ -205,7 +205,7 @@ fn eviction_respects_priority_and_width() {
             (site(RootId(2), ExprId(2), 0, b), b_priority),
             (site(RootId(3), ExprId(3), 0, e), e_priority),
         ]);
-        compile(&layer, &sched, 4, MaterializePolicy::Decisions { decisions, budget: 4 })
+        compile(&layer, &sched, 4, Some(&decisions))
     };
 
     // (a) B's priority LOWER than E's admitting priority: B is evicted, E admitted.
@@ -267,7 +267,7 @@ fn dead_values_evict_first() {
         (site(RootId(4), ExprId(4), 0, d), 5.0), // D's remaining-occurrence priority (read at R4)
         (site(RootId(5), ExprId(5), 0, c), 1.0), // C's remaining-occurrence priority (read at R5)
     ]);
-    let compiled = compile(&layer, &sched, 2, MaterializePolicy::Decisions { decisions, budget: 2 });
+    let compiled = compile(&layer, &sched, 2, Some(&decisions));
 
     // After R3 (index 3): A is gone (evicted, dead), D and C both survive.
     let after_r3 = &compiled.resident_realized[3].1;
@@ -301,11 +301,10 @@ fn read_leaf_cacheable() {
     let sched = trivial_schedule(order);
 
     let decisions = SiteDecisions::new([(site(RootId(1), ExprId(1), 0, w), 1.0)]);
-    let decisions_compiled =
-        compile(&layer, &sched, 16, MaterializePolicy::Decisions { decisions, budget: 16 });
-    let legacy_compiled = compile(&layer, &sched, 16, MaterializePolicy::LegacyRecompute);
+    let decisions_compiled = compile(&layer, &sched, 16, Some(&decisions));
+    let uncached_compiled = compile(&layer, &sched, 16, None);
 
-    assert_eq!(legacy_compiled.stats.dram_reads, 2, "LegacyRecompute reads W twice");
+    assert_eq!(uncached_compiled.stats.dram_reads, 2, "uncached (decisions: None) reads W twice");
     assert_eq!(
         decisions_compiled.stats.dram_reads, 1,
         "Decisions must cache W after its first read, removing the second DRAM read"
@@ -353,18 +352,10 @@ fn decisions_compile_is_deterministic() {
         ])
     };
 
-    let c1 = compile(
-        &layer,
-        &sched,
-        1,
-        MaterializePolicy::Decisions { decisions: build_decisions(), budget: 1 },
-    );
-    let c2 = compile(
-        &layer,
-        &sched,
-        1,
-        MaterializePolicy::Decisions { decisions: build_decisions(), budget: 1 },
-    );
+    let d1 = build_decisions();
+    let d2 = build_decisions();
+    let c1 = compile(&layer, &sched, 1, Some(&d1));
+    let c2 = compile(&layer, &sched, 1, Some(&d2));
 
     assert_eq!(c1.program, c2.program, "identical Decisions inputs must emit identical programs");
     assert_eq!(c1.resident_realized, c2.resident_realized, "residency snapshots must also match");
@@ -427,7 +418,7 @@ fn decisions_value_parity_any_priorities() {
         // the tightest budget this Mul(s,s)/Mul(s,z) shape can compile at (two
         // concurrent Base operands for a product's lhs/rhs) while still forcing
         // admission/eviction to fire under the extreme adversarial priorities.
-        let compiled = compile(&layer, &sched, 2, MaterializePolicy::Decisions { decisions, budget: 2 });
+        let compiled = compile(&layer, &sched, 2, Some(&decisions));
 
         for row in [0usize, 1, 2, 5] {
             let outs = interpret_layer_row(&compiled, &layer, &resolvers(&sr), row).unwrap();
@@ -494,7 +485,7 @@ fn decisions_add_order_matches_virtual_fma_partition_not_materialize_shape() {
         (root_output(RootId(3), l), 100.0),
         (root_output(RootId(4), r), 100.0),
     ]);
-    let compiled = compile(&layer, &sched, 2, MaterializePolicy::Decisions { decisions, budget: 2 });
+    let compiled = compile(&layer, &sched, 2, Some(&decisions));
 
     let after_r0 = &compiled.resident_realized[0].1;
     assert!(after_r0.contains(&addend_a), "addend_a is visited first under both orderings");
@@ -571,7 +562,7 @@ fn readmission_after_eviction_gets_fresh_generation_and_stays_placement_feasible
         (site(RootId(2), ExprId(2), 0, ExprId(1)), 100.0), // C's occ#2: HIGH (evicts B at R1)
         (site(RootId(4), ExprId(4), 0, b), 1.0),    // B's occ#3: beats dead C at R3
     ]);
-    let compiled = compile(&layer, &sched, 1, MaterializePolicy::Decisions { decisions, budget: 1 });
+    let compiled = compile(&layer, &sched, 1, Some(&decisions));
 
     // Eviction fired as engineered: B is gone after R1, back after R3.
     assert!(!compiled.resident_realized[1].1.contains(&b), "C's admission must evict B at R1");
@@ -583,7 +574,7 @@ fn readmission_after_eviction_gets_fresh_generation_and_stays_placement_feasible
     );
 
     // Placement agreement: the tracker's admission decisions must still be realizable
-    // by `plan_placement` within the SAME budget (compile_layer_with_policy already
+    // by `plan_placement` within the SAME budget (compile_layer already
     // chains emit -> plan_placement; `compile()` unwraps `Ok`, so reaching here at all
     // is half the proof — this pins the numeric peak too).
     assert!(

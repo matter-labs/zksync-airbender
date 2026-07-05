@@ -17,9 +17,7 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 
 use gkr_eval_isa::fwd::compile::decisions::SiteDecisions;
-use gkr_eval_isa::fwd::compile::{
-    build_cross_layer_field_map, compile_layer_with_policy, MaterializePolicy,
-};
+use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_layer};
 use gkr_eval_isa::schedule_search::genome::Genome;
 use gkr_eval_isa::schedule_search::producer::produce_circuit_schedule;
 use gkr_eval_isa::schedule_search::scorer::{objective_key, score, LayerCtx};
@@ -157,14 +155,14 @@ fn small_search_roundtrip_add_sub() {
         // resident-admission cap to re-derive) — reproducing `predicted_traffic`
         // exactly just means recompiling at that same budget.
         let decisions = SiteDecisions::new(ls.sites.iter().copied());
-        let compiled = compile_layer_with_policy(
+        let compiled = compile_layer(
             layer,
             &artifact.layers[li],
             &artifact.scratch_space_mapping,
             &cross,
             ls,
             SEARCH_TEST_BUDGET,
-            MaterializePolicy::Decisions { decisions, budget: SEARCH_TEST_BUDGET },
+            Some(&decisions),
         )
         .unwrap_or_else(|e| panic!("layer {li}: winning schedule failed to recompile: {e:?}"));
         assert_eq!(

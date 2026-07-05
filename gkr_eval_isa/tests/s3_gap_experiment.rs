@@ -963,8 +963,9 @@ fn s3_gap_multicircuit() {
 // DELETED (Task 6): `residency_aware_bound_holds_at_every_step_on_real_fixture` and
 // `cone_fit_rejects_in_cone_cache_footprint_that_old_streaming_model_missed` pinned the
 // deleted Replay engine's `enforce_cone_fit` residency bound; the emitter now owns
-// residency for real (`MaterializePolicy::Decisions`) and its budget behavior is a
-// compile result (`CompileError::BudgetBelowFloor`), not a simulated invariant.
+// residency for real (`compile_layer`'s `decisions: Some(&SiteDecisions)`) and its
+// budget behavior is a compile result (`CompileError::BudgetBelowFloor`), not a
+// simulated invariant.
 
 // `produce_all_schedules` (the GKR_PRODUCE_SCHEDULES-gated artifact writer) moved to
 // `tests/schedule_search_gates.rs`, backed by the library producer

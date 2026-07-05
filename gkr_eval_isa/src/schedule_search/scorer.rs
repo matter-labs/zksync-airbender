@@ -1,6 +1,6 @@
 //! Compile-in-loop fitness function (Task 6 spec §1): decode a [`Genome`] to a
-//! concrete `(order, SiteDecisions)` candidate, compile it for real under
-//! `MaterializePolicy::Decisions`, and read the resulting `CandidateScore` off
+//! concrete `(order, SiteDecisions)` candidate, compile it for real with the
+//! decoded `SiteDecisions`, and read the resulting `CandidateScore` off
 //! the ACTUAL compiled program — not a simulated replay.
 //!
 //! This replaces `gkr_eval_isa/tests/s3_planner/metaheuristic.rs`'s
@@ -16,7 +16,7 @@ use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription};
 use field::baby_bear::base::BabyBearField;
 
 use crate::fwd::compile::decisions::SiteDecisions;
-use crate::fwd::compile::{compile_layer_with_policy, MaterializePolicy};
+use crate::fwd::compile::compile_layer;
 use crate::fwd::error::CompileError;
 
 use super::decode::decode_order;
@@ -119,7 +119,7 @@ pub fn decode_schedule(genome: &Genome, ctx: &LayerCtx) -> cs::gkr_compiler::dag
 }
 
 /// The fitness function (Task 6 spec §1). Decodes `genome`, compiles it for
-/// real under `MaterializePolicy::Decisions`, and reads `CandidateScore` off
+/// real with the decoded `SiteDecisions`, and reads `CandidateScore` off
 /// the compiled program's stats. `Err(CompileError::BudgetBelowFloor)` is the
 /// only legitimately-infeasible outcome (not enough budget for this genome's
 /// residency choices); ANY other `Err` is a bug in decode/search — not a
@@ -128,15 +128,14 @@ pub fn decode_schedule(genome: &Genome, ctx: &LayerCtx) -> cs::gkr_compiler::dag
 pub fn score(genome: &Genome, ctx: &LayerCtx) -> CandidateScore {
     let schedule = decode_schedule(genome, ctx);
     let decisions = SiteDecisions::new(schedule.sites.iter().copied());
-    let policy = MaterializePolicy::Decisions { decisions, budget: ctx.budget };
-    match compile_layer_with_policy(
+    match compile_layer(
         ctx.layer,
         ctx.artifact_layer,
         ctx.scratch_mapping,
         ctx.cross_layer_fields,
         &schedule,
         ctx.budget,
-        policy,
+        Some(&decisions),
     ) {
         Ok(compiled) => CandidateScore {
             infeasible: false,

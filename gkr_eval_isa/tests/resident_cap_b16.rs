@@ -1,4 +1,4 @@
-//! Task 8/8a/8b: b16 add_sub L0 `MaterializePolicy::Decisions` feasibility.
+//! Task 8/8a/8b: b16 add_sub L0 `compile_layer`'s `decisions: Some(&SiteDecisions)` feasibility.
 //!
 //! Step-0 (findings in `.superpowers/sdd/task-8-report.md`) found `try_admit` had
 //! no way to DECLINE an admission while capacity was free: the resident set
@@ -22,6 +22,11 @@
 //! a budget with NO headroom above the `LegacyRecompute` floor, `Decisions` must
 //! still be feasible (temps always win eviction pressure against residents) and
 //! must never do WORSE than `LegacyRecompute`'s own traffic.
+//!
+//! Sub-project 3 note: the old materialization-policy enum and its `LegacyRecompute`
+//! case are gone (Task 2's public collapse). `compile_layer`'s `decisions: None` is the uncached baseline these tests
+//! call "LegacyRecompute" below; `Some(&SiteDecisions)` is the residency machine
+//! formerly named `Decisions`.
 
 mod common;
 
@@ -32,9 +37,7 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 
 use gkr_eval_isa::fwd::compile::decisions::SiteDecisions;
-use gkr_eval_isa::fwd::compile::{
-    build_cross_layer_field_map, compile_layer_with_policy, MaterializePolicy,
-};
+use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_layer};
 use gkr_eval_isa::schedule_search::genome::Genome;
 use gkr_eval_isa::schedule_search::scorer::{decode_schedule, score, LayerCtx};
 
@@ -66,14 +69,14 @@ fn b16_add_sub_l0_decisions_feasible_beats_legacy() {
     let genome = Genome::neutral(ctx.n_order_keys(), ctx.n_sites());
     let sched = decode_schedule(&genome, &ctx);
 
-    let legacy_traffic = compile_layer_with_policy(
+    let legacy_traffic = compile_layer(
         layer,
         &artifact.layers[0],
         &artifact.scratch_space_mapping,
         &cross,
         &sched,
         BUDGET,
-        MaterializePolicy::LegacyRecompute,
+        None,
     )
     .unwrap_or_else(|e| panic!("LegacyRecompute must be feasible at budget {BUDGET}: {e:?}"))
     .stats
@@ -84,6 +87,10 @@ fn b16_add_sub_l0_decisions_feasible_beats_legacy() {
         !decisions_score.infeasible,
         "Decisions must be feasible at budget {BUDGET} for add_sub L0 (demand-driven eviction)"
     );
+    // Absolute pins (captured pre-migration; `decisions: None` ≡ `LegacyRecompute` —
+    // Task 2 brief).
+    assert_eq!(legacy_traffic, 59, "legacy (decisions: None) traffic pin");
+    assert_eq!(decisions_score.dram_traffic, 43, "decisions(neutral) traffic pin");
     assert!(
         decisions_score.dram_traffic < legacy_traffic,
         "Decisions traffic ({}) must beat LegacyRecompute's ({}) at budget {BUDGET}",
@@ -132,40 +139,40 @@ fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
         predicted_traffic: 0,
         floor: 0,
     };
-    let legacy_probe = compile_layer_with_policy(
+    let legacy_probe = compile_layer(
         layer,
         &artifact.layers[0],
         &artifact.scratch_space_mapping,
         &cross,
         &legacy_schedule,
         4096,
-        MaterializePolicy::LegacyRecompute,
+        None,
     )
     .unwrap_or_else(|e| panic!("LegacyRecompute must be feasible at a generous budget: {e:?}"));
     let legacy_floor = legacy_probe.stats.max_live_cells;
 
     // Re-run LegacyRecompute AT its own floor (its own peak fits its own floor by
     // construction) as the traffic baseline `Decisions` must not exceed.
-    let legacy_at_floor = compile_layer_with_policy(
+    let legacy_at_floor = compile_layer(
         layer,
         &artifact.layers[0],
         &artifact.scratch_space_mapping,
         &cross,
         &legacy_schedule,
         legacy_floor,
-        MaterializePolicy::LegacyRecompute,
+        None,
     )
     .unwrap_or_else(|e| panic!("LegacyRecompute must be feasible at its own floor: {e:?}"));
 
     let decisions = SiteDecisions::new(sched.sites.iter().copied());
-    let decisions_at_floor = compile_layer_with_policy(
+    let decisions_at_floor = compile_layer(
         layer,
         &artifact.layers[0],
         &artifact.scratch_space_mapping,
         &cross,
         &sched,
         legacy_floor + 4,
-        MaterializePolicy::Decisions { decisions, budget: legacy_floor + 4 },
+        Some(&decisions),
     )
     .unwrap_or_else(|e| {
         panic!(
@@ -174,6 +181,11 @@ fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
         )
     });
 
+    // Absolute pins (captured pre-migration; `decisions: None` ≡ `LegacyRecompute` —
+    // Task 2 brief).
+    assert_eq!(legacy_floor, 8, "legacy floor (max_live_cells) pin");
+    assert_eq!(legacy_at_floor.stats.dram_traffic, 59, "legacy_at_floor traffic pin");
+    assert_eq!(decisions_at_floor.stats.dram_traffic, 47, "decisions_at_floor traffic pin");
     assert!(
         decisions_at_floor.stats.dram_traffic <= legacy_at_floor.stats.dram_traffic,
         "Decisions with zero headroom ({}) must not do WORSE than LegacyRecompute ({})",

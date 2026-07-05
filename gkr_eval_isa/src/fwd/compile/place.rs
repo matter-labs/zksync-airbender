@@ -5,7 +5,7 @@
 //! flat, already-scheduled instruction stream (`VirtualInstr`) plus the per-step
 //! `resident_before`/`resident_after` membership ([`ResidencyStep`], a local,
 //! schedule-schema-agnostic type — post-schema-v2 (Task 4) the caller always hands
-//! this module residency-FREE steps; see `mod.rs::compile_layer_with_policy`'s
+//! this module residency-FREE steps; see `mod.rs::compile_layer`'s
 //! `free_steps`) and produces a concrete cell assignment (`Placement`).
 //!
 //! `CellAllocator` (`schedule.rs`) is strictly first-fit and hands back whatever cell
@@ -33,7 +33,7 @@ use crate::fwd::isa::{LdcSub, OperandField, Sign};
 /// Per-step resident-set membership this allocator's lifetime analysis reads
 /// (`resident_before`/`resident_after`). Local to this module — NOT the persisted
 /// schedule schema (`cs::dag_ir::LayerSchedule`, schema v2, has no per-step residency
-/// anymore; see module doc). `mod.rs::compile_layer_with_policy` always passes
+/// anymore; see module doc). `mod.rs::compile_layer` always passes
 /// residency-free steps (both sets empty) since the emitter now realizes residency
 /// lazily rather than from a persisted plan.
 #[derive(Clone, Debug, Default)]

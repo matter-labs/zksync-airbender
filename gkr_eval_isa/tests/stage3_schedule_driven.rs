@@ -13,8 +13,7 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 use gkr_eval_isa::fwd::compile::decisions::SiteDecisions;
 use gkr_eval_isa::fwd::compile::{
-    build_cross_layer_field_map, compile_circuit, compile_layer_with_policy, layer_needs_compile,
-    MaterializePolicy,
+    build_cross_layer_field_map, compile_circuit, compile_layer, layer_needs_compile,
 };
 use gkr_eval_isa::fwd::context::CompiledLayer;
 use gkr_eval_isa::fwd::interp::interpret_layer_row;
@@ -38,8 +37,8 @@ const COMMITTED_CORPUS: &[(&str, &str)] = &[
     ("unsigned_mul_div_layout_gkr.json", "unsigned_mul_div"),
 ];
 
-/// Compile every scheduled layer of a committed schedule under
-/// `MaterializePolicy::Decisions` built from the stored `sites`, at the stored
+/// Compile every scheduled layer of a committed schedule with the decoded
+/// `SiteDecisions` built from the stored `sites`, at the stored
 /// `budget` directly (post demand-driven-eviction: `Decisions.budget` IS the
 /// placement budget — no separate resident-admission cap to re-derive; see
 /// `lower.rs`'s `DecisionsState`/`evict_to_fit`). Returns `None` for layers the
@@ -64,14 +63,14 @@ fn compile_committed_decisions(
             }
             let decisions = SiteDecisions::new(ls.sites.iter().copied());
             Some(
-                compile_layer_with_policy(
+                compile_layer(
                     layer,
                     &artifact.layers[li],
                     &artifact.scratch_space_mapping,
                     &cross,
                     ls,
                     sched.budget,
-                    MaterializePolicy::Decisions { decisions, budget: sched.budget },
+                    Some(&decisions),
                 )
                 .unwrap_or_else(|e| panic!("[{name}] L{li}: Decisions compile: {e:?}")),
             )
@@ -82,7 +81,7 @@ fn compile_committed_decisions(
 /// **Load-bearing** (Task 8b): the demand-driven eviction tracker in `lower.rs`
 /// must never UNDERESTIMATE relative to `plan_placement`'s independent liveness
 /// model — i.e. "the tracker admitted this" must imply "`plan_placement` fits it
-/// at the same budget". `compile_layer_with_policy` (`mod.rs`) already chains the
+/// at the same budget". `compile_layer` (`mod.rs`) already chains the
 /// two: it runs the tracker-driven emitter FIRST, then calls `plan_placement` on
 /// the resulting instruction stream at the SAME `budget`, and only returns `Ok`
 /// if BOTH succeed — so any tracker/placement disagreement surfaces as an `Err`
@@ -100,14 +99,14 @@ fn tracker_admission_implies_placement_feasible_on_committed_corpus() {
                 continue;
             }
             let decisions = SiteDecisions::new(ls.sites.iter().copied());
-            let compiled = compile_layer_with_policy(
+            let compiled = compile_layer(
                 layer,
                 &artifact.layers[li],
                 &artifact.scratch_space_mapping,
                 &cross,
                 ls,
                 sched.budget,
-                MaterializePolicy::Decisions { decisions, budget: sched.budget },
+                Some(&decisions),
             );
             assert!(
                 compiled.is_ok(),
@@ -141,22 +140,25 @@ fn tracker_admission_implies_placement_feasible_on_committed_corpus() {
     );
 }
 
-// ── Task 1 (event-local `MaterializePolicy::Materialize` cache-produce-vs-fuse) ──
+// ── Task 1 (event-local materialization-policy cache-produce-vs-fuse variant) ──
 //
 // DELETED (Task 4, schema v2): this module hand-built `StepPlan`/`ReplayEvent`/
-// `DemandKind` schedules and drove `MaterializePolicy::Materialize`, both deleted
-// along with the v1 event-replay schema (`.superpowers/sdd/task-4-brief.md`).
-// `MaterializePolicy` is now `{ LegacyRecompute, Decisions }` only.
+// `DemandKind` schedules and drove the (since-deleted) event-local materialize
+// variant, both deleted along with the v1 event-replay schema
+// (`.superpowers/sdd/task-4-brief.md`). The enum that once carried this — plus its
+// `LegacyRecompute`/`Decisions` cases — is itself gone (Task 2's public collapse):
+// `compile_layer`'s `decisions: Option<&SiteDecisions>` now carries the
+// `None`/`Some` distinction.
 
 // ── Task 8: emitter coverage for preserved nested same-op shapes ───────────────────
 //
 // The DAG simplify pipeline now PRESERVES fan-out>=2 same-op nested nodes (an
 // `Add` directly inside an `Add`, a `Mul` directly inside a `Mul`) instead of
-// unconditionally flattening them — a shape the emitter's `LegacyRecompute`
+// unconditionally flattening them — a shape the emitter's uncached (`decisions: None`)
 // lowering (`compile_add_virtual`/`compile_mul_virtual`, `lower.rs:431-465`)
 // never saw under the old flatten. These tests hand-build a synthetic layer with
 // each shape (shared nested node consumed by two roots — one same-op, one
-// cross-op) and pin that `compile_layer_with_policy` under `LegacyRecompute`
+// cross-op) and pin that `compile_layer` under `decisions: None`
 // still produces value-correct rows for both roots.
 mod task8_nested_shapes {
     use std::collections::{BTreeMap, HashMap};
@@ -171,7 +173,7 @@ mod task8_nested_shapes {
         NoFieldStructuredExpression,
     };
 
-    use gkr_eval_isa::fwd::compile::{compile_layer_with_policy, MaterializePolicy};
+    use gkr_eval_isa::fwd::compile::compile_layer;
     use gkr_eval_isa::fwd::interp::interpret_layer_row;
 
     use crate::common::{resolvers, SyntheticResolvers};
@@ -217,26 +219,18 @@ mod task8_nested_shapes {
 
     /// A trivial no-op schedule: no `sites` genome (schema v2 has no persisted
     /// per-step residency at all) — only `order` drives root-compile order under
-    /// `LegacyRecompute`, which lazily recomputes from the DAG shape.
+    /// the uncached (`decisions: None`) path, which lazily recomputes from the DAG shape.
     fn trivial_schedule(order: Vec<RootId>) -> LayerSchedule {
         LayerSchedule { order, sites: vec![], predicted_traffic: 0, floor: 0 }
     }
 
-    /// Compile `layer` under `LegacyRecompute` and assert every exposed root's
+    /// Compile `layer` under `decisions: None` and assert every exposed root's
     /// interpreted value matches `eval_layer_root` on every row in `rows`.
     fn assert_compiles_and_matches_oracle(layer: &DagLayer, sched: &LayerSchedule, rows: &[usize]) {
         let art = compute_artifact_layer();
         let cross: HashMap<ReadPlace, FieldKind> = HashMap::new();
-        let compiled = compile_layer_with_policy(
-            layer,
-            &art,
-            &BTreeMap::new(),
-            &cross,
-            sched,
-            16,
-            MaterializePolicy::LegacyRecompute,
-        )
-        .expect("compile_layer_with_policy");
+        let compiled = compile_layer(layer, &art, &BTreeMap::new(), &cross, sched, 16, None)
+            .expect("compile_layer");
         let sr = SyntheticResolvers;
         let mut checks = 0usize;
         for &row in rows {
@@ -442,40 +436,4 @@ fn all_committed_schedules_recompile_to_predicted_traffic() {
         }
         eprintln!("[gate-d] {name}: OK");
     }
-}
-
-// TEMPORARY (Task 1 A/B pin, deleted in Task 2): dump a per-layer fingerprint of
-// the LegacyRecompute compile of every committed fixture so the Option-threading
-// refactor can prove instruction-identity. Run with:
-//   cargo test -p gkr_eval_isa --test stage3_schedule_driven ab_snapshot -- --ignored --nocapture
-#[test]
-#[ignore]
-fn ab_snapshot_legacy_programs() {
-    let out = std::env::var("AB_SNAPSHOT_OUT").expect("set AB_SNAPSHOT_OUT=<path>");
-    let mut lines = Vec::new();
-    for (name, stem) in COMMITTED_CORPUS {
-        let (dag, sched, artifact) = load_committed(name, stem);
-        let cross = build_cross_layer_field_map(&dag);
-        for (li, (layer, ls)) in dag.layers.iter().zip(&sched.layers).enumerate() {
-            if !layer_needs_compile(ls.order.is_empty(), layer) {
-                continue;
-            }
-            let compiled = compile_layer_with_policy(
-                layer,
-                &artifact.layers[li],
-                &artifact.scratch_space_mapping,
-                &cross,
-                ls,
-                sched.budget,
-                MaterializePolicy::LegacyRecompute,
-            )
-            .unwrap_or_else(|e| panic!("[{name}] L{li}: {e:?}"));
-            lines.push(format!(
-                "{name} L{li} traffic={} lanes={} instrs={:?}",
-                compiled.stats.dram_traffic, compiled.stats.program_lanes,
-                compiled.program.instrs,
-            ));
-        }
-    }
-    std::fs::write(&out, lines.join("\n")).unwrap();
 }
