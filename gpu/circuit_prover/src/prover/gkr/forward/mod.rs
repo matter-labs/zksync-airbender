@@ -699,17 +699,47 @@ where
     Ok(batches)
 }
 
-fn schedule_materialized_single_lookup_inputs<E>(
+/// One replayable materialized single-lookup-input op: the allocated dst view,
+/// its `set_by_val` constant, and its `scale_and_add` terms with the source
+/// views **already resolved** (never a deferred `GKRAddress`). See
+/// `build_materialized_single_lookup_input_ops` for why the source views must be
+/// resolved at build time.
+pub(crate) struct MaterializedSingleLookupInputOp {
+    /// The base view allocated for this gate's output slot (same
+    /// `allocate_base_view` call as the prior inline path). A shared clone is
+    /// inserted into storage during build; this one is written by the launch.
+    dst_view: GpuBaseFieldPoly<BF>,
+    /// The `set_by_val` constant (`BF::from_u32_unchecked(input.constant)`).
+    constant: BF,
+    /// Per-term `(resolved source view, coeff)` for the `scale_and_add` chain,
+    /// in the gate's `input.linear_terms` order. The source view is resolved
+    /// at build time (a `GpuBaseFieldPoly` clone), NOT a `GKRAddress`.
+    terms: Vec<(GpuBaseFieldPoly<BF>, BF)>,
+}
+
+/// Build phase of `schedule_materialized_single_lookup_inputs`: produces a
+/// replayable plan (`MaterializedSingleLookupInputOp` per matched gate) and
+/// mutates `storage` exactly as the prior inline loop did.
+///
+/// Behavior preservation (codex plan-F2): the prior body ran, per gate, in one
+/// pass `{allocate dst → set_by_val → per-term resolve `get_base_layer` NOW +
+/// scale_and_add → insert dst}`. This build preserves that per-gate,
+/// address-visible order: allocate dst, resolve each term's source view
+/// **immediately** (capturing the resolved `GpuBaseFieldPoly` clone — never a
+/// deferred `GKRAddress`), then insert the output. Deferring resolution past the
+/// storage inserts would let a later gate's insert shadow an address an earlier
+/// gate resolved (a same-layer forward reference that the prior order cannot
+/// resolve) — a silent correctness break, not a refactor. This mirrors the
+/// already-split vector path (`build_materialized_vector_lookup_input_batches`),
+/// whose builder also resolves pointers during build.
+fn build_materialized_single_lookup_input_ops<E>(
     expected_output_layer: usize,
     layer: &GKRLayerDescription,
     storage: &mut GpuGKRStorage<BF, E>,
     trace_len: usize,
     context: &ProverContext,
-) -> CudaResult<()>
-where
-    Add: BinaryOp<BF, BF, BF>,
-    Mul: BinaryOp<BF, BF, BF>,
-{
+) -> CudaResult<Vec<MaterializedSingleLookupInputOp>> {
+    let mut ops = Vec::new();
     for gate in layer
         .gates
         .iter()
@@ -725,26 +755,105 @@ where
         assert_eq!(gate.output_layer, expected_output_layer);
         let dst_view = storage.allocate_base_view(expected_output_layer, *output, context)?;
         assert_eq!(dst_view.len(), trace_len);
-        // SAFETY: dst_view was just allocated for this gate's output slot;
-        // no other clone of this view is scheduled to write before this loop's
-        // ops (set_by_val + scale_and_add) complete.
-        let mut dst_chunk = unsafe { dst_view.as_mut_chunk_unchecked() };
-        set_by_val(
-            BF::from_u32_unchecked(input.constant),
-            &mut dst_chunk,
-            context.get_exec_stream(),
-        )?;
+        let constant = BF::from_u32_unchecked(input.constant);
+        // Resolve each term's source view NOW, before this gate's output is
+        // inserted below — identical to the prior inline order where the
+        // `get_base_layer` reads ran before `insert_base_field_at_layer`.
+        let mut terms = Vec::with_capacity(input.linear_terms.len());
         for (coeff, address) in input.linear_terms.iter() {
-            scale_and_add_base_column_in_place(
-                &mut dst_chunk,
-                storage.get_base_layer(*address),
-                BF::from_u32_unchecked(*coeff),
-                context,
-            )?;
+            let source_view = storage.get_base_layer(*address).clone();
+            terms.push((source_view, BF::from_u32_unchecked(*coeff)));
+        }
+        // Insert the output (a shared clone; the op keeps its own clone to
+        // write during launch). Same backing/offset as the prior single view.
+        storage.insert_base_field_at_layer(
+            expected_output_layer,
+            *output,
+            dst_view.clone_shared(),
+        );
+        ops.push(MaterializedSingleLookupInputOp {
+            dst_view,
+            constant,
+            terms,
+        });
+    }
+
+    Ok(ops)
+}
+
+/// Launch phase of `schedule_materialized_single_lookup_inputs`: consumes the
+/// pre-resolved plan and issues the kernels in the same per-gate order as the
+/// prior inline loop (`set_by_val` then the `scale_and_add` chain). Touches only
+/// pre-resolved views, so it does not read `storage` and is safely replayable.
+fn launch_materialized_single_lookup_input_ops(
+    ops: &[MaterializedSingleLookupInputOp],
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    Add: BinaryOp<BF, BF, BF>,
+    Mul: BinaryOp<BF, BF, BF>,
+{
+    for op in ops {
+        // Production always passes `trace_len == dst_view.len()`, so the capped
+        // views below are byte-identical to the full views (this is the prior
+        // inline behavior exactly). A capped-count timing replay (bench) passes
+        // a shorter power-of-two prefix; capping the dst/source views makes the
+        // `set_by_val`/`scale_and_add` kernels do proportional work, matching how
+        // the flat cache/desc launchers grid on `count`.
+        assert!(
+            trace_len <= op.dst_view.len() && trace_len.is_power_of_two(),
+            "single-lookup launch count {trace_len} must be a power-of-two prefix of dst len {}",
+            op.dst_view.len(),
+        );
+        let dst_capped = GpuBaseFieldPoly::from_arc(
+            Arc::clone(&op.dst_view.backing),
+            op.dst_view.offset,
+            trace_len,
+        );
+        // SAFETY: dst_view was allocated for this gate's output slot; no other
+        // clone of this view is scheduled to write before this op's kernels
+        // (set_by_val + scale_and_add) complete. (The storage-resident clone is
+        // read-only until a later layer.)
+        let mut dst_chunk = unsafe { dst_capped.as_mut_chunk_unchecked() };
+        set_by_val(op.constant, &mut dst_chunk, context.get_exec_stream())?;
+        for (source_view, coeff) in op.terms.iter() {
+            let source_capped = GpuBaseFieldPoly::from_arc(
+                Arc::clone(&source_view.backing),
+                source_view.offset,
+                trace_len,
+            );
+            scale_and_add_base_column_in_place(&mut dst_chunk, &source_capped, *coeff, context)?;
         }
         drop(dst_chunk);
-        storage.insert_base_field_at_layer(expected_output_layer, *output, dst_view);
     }
+
+    Ok(())
+}
+
+fn schedule_materialized_single_lookup_inputs<E>(
+    expected_output_layer: usize,
+    layer: &GKRLayerDescription,
+    storage: &mut GpuGKRStorage<BF, E>,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    Add: BinaryOp<BF, BF, BF>,
+    Mul: BinaryOp<BF, BF, BF>,
+{
+    // Behavior-preserving build/launch split (see the vector path at
+    // `schedule_materialized_vector_lookup_inputs`): build the plan — which
+    // mutates storage in the prior per-gate order — then launch it in the same
+    // order, byte-identical to the prior interleaved loop.
+    let ops = build_materialized_single_lookup_input_ops(
+        expected_output_layer,
+        layer,
+        storage,
+        trace_len,
+        context,
+    )?;
+    launch_materialized_single_lookup_input_ops(&ops, trace_len, context)?;
 
     Ok(())
 }

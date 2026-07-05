@@ -34,8 +34,9 @@ use super::super::kernels::{
 };
 use super::super::{
     bind_scratch_space_into_storage, build_cache_relation_batches,
-    build_materialized_vector_lookup_input_batches, hydrate_scratch_space_layer,
-    schedule_materialized_single_lookup_inputs,
+    build_materialized_single_lookup_input_ops, build_materialized_vector_lookup_input_batches,
+    hydrate_scratch_space_layer, launch_materialized_single_lookup_input_ops,
+    MaterializedSingleLookupInputOp,
 };
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::setup::{bootstrap_storage_from_trace_holders, GpuGKRForwardSetup};
@@ -291,13 +292,16 @@ pub(crate) enum FlatLaunch {
     /// `InitsOrTeardownsInitialPair` deferred materialization, re-launched from
     /// the captured plan via `materialize_flat_forward_plan_inits`.
     Inits(FlatForwardPlan<E4>),
-    /// `MaterializeSingleLookupInput` / `LinearBaseFieldRelation` inline
-    /// materialization. Launched once during fixture construction; NOT yet
-    /// replayable (its production launcher is not build/launch split). add_sub
-    /// L0 never hits this; bigint/blake2 do.
-    // Task 6: build/launch split for schedule_materialized_single_lookup_inputs
-    // so this launch becomes replayable for the multi-circuit A/B.
-    MaterializeSingle,
+    /// `MaterializeSingleLookupInput` / `LinearBaseFieldRelation`
+    /// materialization, now build/launch split
+    /// (`build_materialized_single_lookup_input_ops` +
+    /// `launch_materialized_single_lookup_input_ops`). Carries the built plan
+    /// (per-gate resolved source views), so it replays by re-issuing the same
+    /// `set_by_val` + `scale_and_add` kernels into the same storage buffers.
+    /// NOTE: none of the current 11 compiled circuits emit these two relations,
+    /// so this variant is never populated by today's corpus — the split keeps
+    /// the launch replayable for a future circuit that does emit one.
+    MaterializeSingle(Vec<MaterializedSingleLookupInputOp>),
 }
 
 /// Per-layer fixture (spec §6.1): the replayable flat-launch sequence plus the
@@ -365,16 +369,14 @@ pub(crate) struct CircuitFixture {
 }
 
 impl LayerFixture {
-    /// Number of REPLAYABLE flat-side launches (every captured launch except the
-    /// not-yet-split `MaterializeSingle` marker). This is the flat side's
-    /// per-layer launch count for the §6.2(A) report's multi-launch-asymmetry
-    /// column (spec §9): flat is a SUM of launches vs the interpreter's single
-    /// launch.
+    /// Number of REPLAYABLE flat-side launches. Every captured launch is now
+    /// replayable (the `MaterializeSingle` build/launch split closed the last
+    /// non-replayable seam), so this equals `flat_launches.len()`. This is the
+    /// flat side's per-layer launch count for the §6.2(A) report's
+    /// multi-launch-asymmetry column (spec §9): flat is a SUM of launches vs the
+    /// interpreter's single launch.
     pub(crate) fn replayable_launch_count(&self) -> usize {
-        self.flat_launches
-            .iter()
-            .filter(|l| !matches!(l, FlatLaunch::MaterializeSingle))
-            .count()
+        self.flat_launches.len()
     }
 }
 
@@ -535,15 +537,17 @@ impl CircuitFixture {
     /// apples-to-apples (spec §6.2(A); controller ruling). Correctness gates pass
     /// the full `trace_len` via `replay_layer`; only the timed region caps.
     pub(crate) fn replay_layer_count(&self, layer_idx: usize, count: usize) -> CudaResult<()> {
-        // Capped-count soundness: the current 3-circuit corpus never populates
-        // `FlatLaunch::Inits` (none of the circuits emit
-        // `InitsOrTeardownsInitialPair`), so the only launchers exercised here
-        // (`launch_forward_cache` / `launch_flat_forward_layer`) honor `count`
-        // cleanly. A future inits-bearing circuit timed at a capped count would
-        // hit `materialize_inits_and_teardowns_initial_pair_into`'s
+        // Capped-count soundness: the cache/desc launchers exercised here
+        // (`launch_forward_cache` / `launch_flat_forward_layer`) grid on `count`,
+        // and `launch_materialized_single_lookup_input_ops` (unused by today's
+        // corpus, but ready if a circuit emits it) caps its dst/source views to
+        // `count`, so all three honor
+        // a capped `count` cleanly. The one launcher that does NOT is
+        // `FlatLaunch::Inits`: a future inits-bearing circuit timed at a capped
+        // count would hit `materialize_inits_and_teardowns_initial_pair_into`'s
         // `assert_eq!(dst.len(), trace_len)` (its dst is full-trace-sized) and
-        // panic — that launcher would need its inits dst re-sliced to `count`
-        // before capping could be used on an Inits launch.
+        // would need its dst re-sliced to `count` first. The current 3-circuit
+        // corpus never populates `FlatLaunch::Inits`.
         let context = self.context();
         let trace_len = count;
         let layer = &self.layers[layer_idx];
@@ -575,8 +579,13 @@ impl CircuitFixture {
                         context,
                     )?;
                 }
-                FlatLaunch::MaterializeSingle => {
-                    // Not replayable yet (see the variant doc / Task 6 seam).
+                FlatLaunch::MaterializeSingle(ops) => {
+                    // Re-issue the pre-resolved set_by_val + scale_and_add
+                    // kernels into the same storage buffers. Idempotent given
+                    // the resident source columns (set_by_val resets dst to the
+                    // constant, then the terms re-add), so replay-twice is
+                    // identical — same as the flat cache/desc launches.
+                    launch_materialized_single_lookup_input_ops(ops, trace_len, context)?;
                 }
             }
         }
@@ -664,8 +673,9 @@ fn build_scratch_ref(
 /// fixture wants the per-launch flat sequence as the bench baseline, so omitting
 /// the fused path is deliberate, not an oversight.
 ///
-/// `MaterializeSingle` is launched (its production launcher is not split) but
-/// recorded as a non-replayable marker (Task 6 seam).
+/// `MaterializeSingle` is build/launch split like the cache/vector paths: the
+/// plan is built (mutating storage), launched immediately, and recorded for
+/// replay.
 #[allow(clippy::too_many_arguments)]
 fn capture_layer(
     layer_idx: usize,
@@ -723,28 +733,21 @@ fn capture_layer(
         flat_launches.push(FlatLaunch::MaterializeVec(batch));
     }
 
-    // (3) MaterializeSingleLookupInput / LinearBaseFieldRelation (inline; not
-    // yet split — launched here, recorded as a non-replayable marker).
-    let has_single = layer
-        .gates
-        .iter()
-        .chain(layer.gates_with_external_connections.iter())
-        .any(|gate| {
-            matches!(
-                &gate.enforced_relation,
-                NoFieldGKRRelation::MaterializeSingleLookupInput { .. }
-                    | NoFieldGKRRelation::LinearBaseFieldRelation { .. }
-            )
-        });
-    schedule_materialized_single_lookup_inputs(
+    // (3) MaterializeSingleLookupInput / LinearBaseFieldRelation (build/launch
+    // split): build the plan (mutates storage exactly as production), launch it
+    // immediately to populate storage for later layers, and record the plan for
+    // replay. An empty plan means the layer has no matched gate (the prior
+    // `has_single` check), so nothing is recorded.
+    let single_ops = build_materialized_single_lookup_input_ops(
         expected_output_layer,
         layer,
         storage,
         trace_len,
         context,
     )?;
-    if has_single {
-        flat_launches.push(FlatLaunch::MaterializeSingle);
+    launch_materialized_single_lookup_input_ops(&single_ops, trace_len, context)?;
+    if !single_ops.is_empty() {
+        flat_launches.push(FlatLaunch::MaterializeSingle(single_ops));
     }
 
     // (4) flat plan: build, launch deferred inits, then the chunked descs.

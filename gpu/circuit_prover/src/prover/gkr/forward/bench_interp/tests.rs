@@ -1251,11 +1251,7 @@ fn stage3_add_sub_fixture_smoke() {
     let context = fixture.context();
     for layer in &fixture.layers {
         // A meaningful smoke layer must have at least one replayable launch.
-        let replayable = layer
-            .flat_launches
-            .iter()
-            .filter(|l| !matches!(l, super::fixture::FlatLaunch::MaterializeSingle))
-            .count();
+        let replayable = layer.replayable_launch_count();
         if replayable == 0 {
             continue;
         }
@@ -1298,6 +1294,85 @@ fn stage3_add_sub_fixture_smoke() {
             first.len()
         );
     }
+}
+
+/// Task 5 replay-coverage (brief step 3): after the `MaterializeSingleLookupInput`
+/// / `LinearBaseFieldRelation` build/launch split, `FlatLaunch::MaterializeSingle`
+/// carries a replayable plan, so the fixture has NO non-replayable launches.
+///
+/// On the full blake2 (delegation) fixture this asserts:
+///  - every layer's `replayable_launch_count() == flat_launches.len()` (zero
+///    non-replayable launches — the last seam is closed), and
+///  - replaying each layer twice reproduces its materialized columns bytewise
+///    (the replay path is idempotent over ALL of blake2's real launches:
+///    cache, vector-lookup, and flat-desc — the "reproduce the same columns"
+///    property, exercised end-to-end on the delegation preamble).
+///
+/// NOTE (see the task-5 report): none of the 11 compiled circuits actually emit
+/// `MaterializeSingleLookupInput` / `LinearBaseFieldRelation` gates, so no
+/// `FlatLaunch::MaterializeSingle` is populated by the current corpus — this test
+/// covers the replay INVARIANT the split guarantees, but cannot exercise a
+/// non-empty MaterializeSingle plan until a circuit that emits one exists.
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
+#[cfg(not(no_cuda))]
+#[serial]
+fn stage3_blake2_materialize_single_replay_coverage() {
+    let fixture = CircuitFixture::build("blake2_with_extended_control");
+    assert!(!fixture.layers.is_empty(), "fixture has no layers");
+    let context = fixture.context();
+
+    // (1) Zero non-replayable launches on every layer (brief step 3).
+    let mut total_launches = 0usize;
+    for layer in &fixture.layers {
+        assert_eq!(
+            layer.replayable_launch_count(),
+            layer.flat_launches.len(),
+            "layer {}: has non-replayable launches",
+            layer.layer_idx
+        );
+        total_launches += layer.flat_launches.len();
+    }
+    assert!(total_launches > 0, "fixture captured no launches — vacuous");
+
+    // (2) Replay each layer twice; every layer's output columns must be
+    // bytewise identical across the two replays (replay reproduces the exact
+    // materialized columns — MaterializeSingle included, once a circuit emits it).
+    let mut layers_checked = 0usize;
+    for layer in &fixture.layers {
+        if layer.replayable_launch_count() == 0 {
+            continue;
+        }
+        fixture.replay_layer(layer.layer_idx).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let first = read_layer_outputs(&fixture, layer.layer_idx);
+
+        fixture.replay_layer(layer.layer_idx).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let second = read_layer_outputs(&fixture, layer.layer_idx);
+
+        assert_eq!(
+            first.len(),
+            second.len(),
+            "layer {}: output column count diverged across replays",
+            layer.layer_idx
+        );
+        for ((a_addr, a_e4, a_bytes), (b_addr, b_e4, b_bytes)) in first.iter().zip(second.iter()) {
+            assert_eq!(a_addr, b_addr, "layer {}: output address order", layer.layer_idx);
+            assert_eq!(a_e4, b_e4, "layer {}: output width {a_addr:?}", layer.layer_idx);
+            assert_eq!(
+                a_bytes, b_bytes,
+                "layer {}: output {a_addr:?} diverged across replays (non-replayable launch)",
+                layer.layer_idx
+            );
+        }
+        layers_checked += 1;
+    }
+    assert!(layers_checked > 0, "no replayable layers exercised — vacuous");
+    println!(
+        "blake2 replay coverage: {total_launches} launches, all replayable; \
+         {layers_checked} layers reproduced bytewise across 2 replays"
+    );
 }
 
 // ===========================================================================
@@ -1825,11 +1900,7 @@ fn stage3_run_point_correctness() {
         // launches (others carry no flat reference for the device-compare).
         let mut circuit_verified = false;
         for layer_idx in 0..fixture.layers.len() {
-            let replayable = fixture.layers[layer_idx]
-                .flat_launches
-                .iter()
-                .filter(|l| !matches!(l, super::fixture::FlatLaunch::MaterializeSingle))
-                .count();
+            let replayable = fixture.layers[layer_idx].replayable_launch_count();
             if layer_idx != 0 && replayable == 0 {
                 continue;
             }
@@ -2844,9 +2915,11 @@ fn stage3_fwd_interp_ncu_target() {
 ///   --ignored --nocapture
 /// ```
 ///
-/// (KNOWN GAP: a non-replayable `MaterializeSingle` launch, if the layer has one
-/// (bigint/blake2 L0), is NOT replayed — the flat capture omits that single
-/// materialization kernel vs. true production. Output goes to the ignored
+/// (A `MaterializeSingle` launch, if a layer ever has one, IS replayed now that
+/// its launcher is build/launch split — the capped-count replay re-issues its
+/// `set_by_val`/`scale_and_add` kernels over the first `count` rows, so its work
+/// is included in the flat baseline. No current circuit emits the underlying
+/// relations, so today this is a no-op here. Output goes to the ignored
 /// `target/profiling/ncu/` per `.agents/gpu_work.md`.)
 #[test]
 #[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
