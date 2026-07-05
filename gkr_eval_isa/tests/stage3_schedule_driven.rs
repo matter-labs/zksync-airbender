@@ -151,7 +151,7 @@ fn tracker_admission_implies_placement_feasible_on_committed_corpus() {
 // `DemandKind` schedules and drove the (since-deleted) event-local materialize
 // variant, both deleted along with the v1 event-replay schema
 // (`.superpowers/sdd/task-4-brief.md`). The enum that once carried this — plus its
-// `LegacyRecompute`/`Decisions` cases — is itself gone (Task 2's public collapse):
+// legacy-recompute/decisions cases — is itself gone (Task 2's public collapse):
 // `compile_layer`'s `decisions: Option<&SiteDecisions>` now carries the
 // `None`/`Some` distinction.
 
@@ -297,7 +297,8 @@ mod task8_nested_shapes {
 
 // ── StepPlan decoupling (former sub-project-2 Task 1 regression) ──────────────────
 //
-// DELETED (Task 4, schema v2): this module pinned that `LegacyRecompute` ignores the
+// DELETED (Task 4, schema v2): this module pinned that the legacy recompute path
+// (now `decisions: None`) ignores the
 // v1 schema's per-step `StepPlan.resident_*` sets. Schema v2 has no persisted
 // per-step residency at all (`LayerSchedule` = `order` + `sites`), so the property
 // this test guarded no longer has anything to regress against.
@@ -319,7 +320,7 @@ fn compile_circuit_loads_validates_and_compiles_all_layers() {
 }
 
 // Cone-value gate (spec §6.1), Task 8: re-pointed from `compile_circuit`
-// (`LegacyRecompute`) to the `Decisions` compile the committed schedules were
+// (then uncached recompute) to the `Decisions` compile the committed schedules were
 // actually produced under — every root's interpreted value == the eval.rs oracle.
 #[test]
 fn schedule_driven_compile_matches_eval_oracle_add_sub() {
@@ -365,7 +366,7 @@ fn load_committed(
     (dag, sched, artifact)
 }
 
-// GATE-V (Task 8, re-pointed from `compile_circuit`/`LegacyRecompute` to the
+// GATE-V (Task 8, re-pointed from `compile_circuit`'s uncached recompute to the
 // `Decisions` compile the schedules were produced under): corpus-wide value parity
 // over all 11 committed b16 schedules. Each fixture: lower → validate → load+validate
 // committed schedule → per-layer Decisions compile (stored `sites`, cap re-derived

@@ -103,26 +103,6 @@ pub fn expr_operand_field(
     arith::child_operand_field(layer, expr_id, super::isa::OperandField::Base, cross)
 }
 
-
-/// `ExprId -> ` the free streamed writes (`SinkInfo`s) that materialize it. Built
-/// from `DagLayer::roots`; a value with no materializing root has no entry. (Folded
-/// in from the former `schedule_residency` module — Task 4 deleted its other export,
-/// `implicit_drops`, along with the `StepPlan` schema it consumed, leaving this the
-/// module's only surviving item.)
-pub(crate) struct MaterializeMap(pub HashMap<ExprId, Vec<SinkInfo>>);
-
-/// Index a layer's roots by `expr`, keeping every materializing `SinkInfo`
-/// (a value may be written to more than one sink).
-pub(crate) fn build_materialize_map(layer: &DagLayer) -> MaterializeMap {
-    let mut m: HashMap<ExprId, Vec<SinkInfo>> = HashMap::new();
-    for root in &layer.roots {
-        if let Some(sink) = &root.materialize {
-            m.entry(root.expr).or_default().push(sink.clone());
-        }
-    }
-    MaterializeMap(m)
-}
-
 /// Map a sink to the backing `(key, col)` its value materializes into.
 /// Cache sinks land in `CacheOutput`; ordinary layer outputs in `LayerOutput`;
 /// scratch in `Scratch`. `this_layer` supplies the layer index for `Export`.
@@ -254,8 +234,8 @@ pub struct CompiledCircuit {
 /// This is the single forward-program compile path (the old residency-coupled
 /// `compile_layer` was deleted in the T3b flip).
 ///
-/// `decisions: None` is the uncached (per-step recompute) baseline (the old
-/// `LegacyRecompute`); `Some` runs the sub-project-2 residency machine at `budget`. The
+/// `decisions: None` is the uncached (per-step recompute) baseline;
+/// `Some` runs the sub-project-2 residency machine at `budget`. The
 /// policy is threaded into Phase 1 (`lower_layer_virtual`); everything downstream
 /// (placement, materialize) is decisions-agnostic.
 pub fn compile_layer(
@@ -567,20 +547,6 @@ mod tests {
     use super::*;
     use cs::gkr_compiler::dag_ir::{BatchingOrder, Expr, Root, SourceId};
     use std::collections::BTreeMap;
-
-    #[test]
-    fn build_materialize_map_indexes_cache_root_by_expr() {
-        let sink = SinkInfo { kind: SinkKind::Cache { layer: 0, offset: 0 }, field: FieldKind::Ext };
-        let layer = DagLayer {
-            sources: vec![],
-            exprs: vec![Expr::Source(SourceId(0))],
-            roots: vec![Root { expr: ExprId(7), materialize: Some(sink.clone()), claim: None }],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
-            resolutions: BTreeMap::new(),
-        };
-        let map = build_materialize_map(&layer);
-        assert_eq!(map.0.get(&ExprId(7)), Some(&vec![sink]));
-    }
 
     /// Review finding (Task 6): a layer with a materialize-only root (a `Cache`
     /// root with no `claim`) and no atom roots has an empty `relation_units` —

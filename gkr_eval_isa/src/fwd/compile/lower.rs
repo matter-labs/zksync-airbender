@@ -15,9 +15,10 @@
 //!     (value-safe). A source / resolution leaf resolves to its backing / `Special`.
 //!     Any other compound is RECOMPUTED by descending its cone (pure, value-safe) — we
 //!     never read a stale cell, so value correctness is robust to reorder/drift.
-//!   - `LegacyRecompute` clears `defined` at every step boundary (pure per-step
-//!     recompute; schema v2 (Task 4) has no persisted per-step residency to realize
-//!     from). `Decisions` (Task 3) instead owns residency across the whole layer via
+//!   - `decisions: None` never admits into `defined` (every insert site is
+//!     decisions-gated), so every step is pure recompute; schema v2 (Task 4) has no
+//!     persisted per-step residency to realize from. `Some(&SiteDecisions)` (Task 3)
+//!     instead owns residency across the whole layer via
 //!     `SiteDecisions`/`OccurrenceStreams`-driven admit/evict (`try_admit`).
 //!   - Cache (materialize-only) roots are committed to their `CacheOutput` sink when
 //!     their shared `ExprId` is produced/recomputed, and exposed as `root_outputs` so
@@ -273,9 +274,9 @@ struct VirtualLower<'a> {
     /// Interned resolution-leaf descriptors (`ExprId → ctx.specials` index).
     desc_by_expr: HashMap<ExprId, u16>,
     /// Task 3 residency state driven by `SiteDecisions`/`OccurrenceStreams`. `Some` =
-    /// the emitter-owned residency policy; `None` = the per-step-clear + recompute
-    /// path (former `LegacyRecompute`, still the default for callers that pass no
-    /// decisions). This is now the ONLY mode carrier — no separate policy field.
+    /// the emitter-owned residency policy; `None` = the uncached per-step-recompute
+    /// path (still the default for callers that pass no decisions). This is now the
+    /// ONLY mode carrier — no separate policy field.
     decisions: Option<DecisionsState>,
 }
 
@@ -373,8 +374,8 @@ impl<'a> VirtualLower<'a> {
 
     // ── Task 3: `Decisions`-policy residency (admission / eviction) ────────────────
 
-    /// Consume one occurrence off `v`'s demand stream (`Decisions` only; a no-op under
-    /// `LegacyRecompute`). MUST be called exactly once per demand site the
+    /// Consume one occurrence off `v`'s demand stream (`Some`-decisions only; a no-op
+    /// under `decisions: None`). MUST be called exactly once per demand site the
     /// lowering visits for `v` — every `lower_operand_virtual` call and every root's own
     /// top-level output demand (the driver loop) — so `effective_priority` keeps reading
     /// the CURRENT stream front. Call this BEFORE any hit/miss branching on `v`.
@@ -516,7 +517,7 @@ impl<'a> VirtualLower<'a> {
     /// temps are structurally required for the compile to proceed, unlike an
     /// admission which can simply decline) until `field`'s width fits, then mint the
     /// temp, register it as pending (single-use release, see `pending_temps`'s doc),
-    /// and physically evict it to a cell. `LegacyRecompute` (`self.decisions.is_none()`)
+    /// and physically evict it to a cell. `decisions: None` (`self.decisions.is_none()`)
     /// skips all tracking — its only feasibility gate is `plan_placement`.
     fn alloc_temp_evicting(&mut self, field: OperandField) -> Result<ValueId, CompileError> {
         if self.decisions.is_some() {
@@ -1245,14 +1246,12 @@ pub(crate) fn lower_layer_virtual(
         st.cur_step = p;
 
         // Step-boundary residency. Schema v2 (Task 4) has no persisted per-step residency
-        // at all (`LayerSchedule` carries `order` + `sites`, not a step replay): under
-        // `decisions = None`, `st.defined` is cleared at every step boundary (pure
-        // per-step recompute); `Decisions` residency is NOT schedule-step-scoped — it
-        // persists across root/step boundaries under its OWN admission/eviction
-        // bookkeeping (`try_admit`), so it is exempt from this per-step clear.
-        if st.decisions.is_none() {
-            st.defined.clear();
-        }
+        // at all (`LayerSchedule` carries `order` + `sites`, not a step replay). Under
+        // `decisions = None` nothing is ever admitted into `st.defined` (every insert
+        // site is decisions-gated), so it is empty at every step boundary — pure
+        // per-step recompute, no clear needed. `Some`-decisions residency is NOT
+        // schedule-step-scoped — it persists across root/step boundaries under its
+        // OWN admission/eviction bookkeeping (`try_admit`).
         let before = sorted_real(&st.defined);
 
         // Process the ordered atom root. Under `decisions = None` every value not

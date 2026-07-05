@@ -16,17 +16,17 @@
 //! the whole layer up front. `Decisions.budget` is now always the plain placement
 //! budget — there is no separate cap to derive or degenerate. The tests below are
 //! Task 8b's versions of the original Step-0/Task-8a probes: test 1 (the
-//! load-bearing one) pins b16 feasibility + a traffic win over `LegacyRecompute`;
+//! load-bearing one) pins b16 feasibility + a traffic win over `decisions: None`;
 //! test 2 replaces the deleted static-cap degeneracy check (`resident_cap ==
 //! 0` at `budget == legacy_floor`) with the analogous demand-driven property: at
-//! a budget with NO headroom above the `LegacyRecompute` floor, `Decisions` must
+//! a budget with NO headroom above the `decisions: None` floor, `Decisions` must
 //! still be feasible (temps always win eviction pressure against residents) and
-//! must never do WORSE than `LegacyRecompute`'s own traffic.
+//! must never do WORSE than `decisions: None`'s own traffic.
 //!
-//! Sub-project 3 note: the old materialization-policy enum and its `LegacyRecompute`
-//! case are gone (Task 2's public collapse). `compile_layer`'s `decisions: None` is the uncached baseline these tests
-//! call "LegacyRecompute" below; `Some(&SiteDecisions)` is the residency machine
-//! formerly named `Decisions`.
+//! Sub-project 3 note: the old materialization-policy enum and its legacy-recompute
+//! case are gone (Task 2's public collapse). `compile_layer`'s `decisions: None` is
+//! the uncached baseline these tests call "legacy" below; `Some(&SiteDecisions)` is
+//! the residency machine formerly named `Decisions`.
 
 mod common;
 
@@ -56,7 +56,7 @@ fn load_dag(
 }
 
 /// The load-bearing regression: b16 add_sub L0 under `Decisions` with a plain
-/// (neutral) genome is FEASIBLE, and its traffic beats `LegacyRecompute`'s at the
+/// (neutral) genome is FEASIBLE, and its traffic beats `decisions: None`'s at the
 /// same budget. This is exactly the scenario Step-0 found `BudgetBelowFloor` for
 /// every genome at every budget below ~40 (probe table in the Task-8 report).
 #[test]
@@ -78,7 +78,7 @@ fn b16_add_sub_l0_decisions_feasible_beats_legacy() {
         BUDGET,
         None,
     )
-    .unwrap_or_else(|e| panic!("LegacyRecompute must be feasible at budget {BUDGET}: {e:?}"))
+    .unwrap_or_else(|e| panic!("decisions: None must be feasible at budget {BUDGET}: {e:?}"))
     .stats
     .dram_traffic;
 
@@ -87,13 +87,13 @@ fn b16_add_sub_l0_decisions_feasible_beats_legacy() {
         !decisions_score.infeasible,
         "Decisions must be feasible at budget {BUDGET} for add_sub L0 (demand-driven eviction)"
     );
-    // Absolute pins (captured pre-migration; `decisions: None` ≡ `LegacyRecompute` —
-    // Task 2 brief).
+    // Absolute pins (captured pre-migration; `decisions: None` ≡ the old legacy
+    // recompute — Task 2 brief).
     assert_eq!(legacy_traffic, 59, "legacy (decisions: None) traffic pin");
     assert_eq!(decisions_score.dram_traffic, 43, "decisions(neutral) traffic pin");
     assert!(
         decisions_score.dram_traffic < legacy_traffic,
-        "Decisions traffic ({}) must beat LegacyRecompute's ({}) at budget {BUDGET}",
+        "Decisions traffic ({}) must beat the decisions-None baseline's ({}) at budget {BUDGET}",
         decisions_score.dram_traffic,
         legacy_traffic
     );
@@ -104,12 +104,12 @@ fn b16_add_sub_l0_decisions_feasible_beats_legacy() {
 }
 
 /// Demand-driven analogue of the deleted static-cap degeneracy test: at a budget
-/// with almost NO headroom above `LegacyRecompute`'s own peak live-cell width,
+/// with almost NO headroom above `decisions: None`'s own peak live-cell width,
 /// `Decisions` must still be feasible and must never do WORSE than
-/// `LegacyRecompute`'s own traffic (any resident that survives even briefly
+/// `decisions: None`'s own traffic (any resident that survives even briefly
 /// before being evicted under pressure is a pure win, never a loss, since
 /// eviction emits no instruction and the value is simply recomputed on the next
-/// miss exactly as `LegacyRecompute` always does).
+/// miss exactly as `decisions: None` always does).
 ///
 /// NOT exactly `legacy_floor` (the literal zero-headroom point the deleted
 /// static-cap test pinned): `evict_to_fit`'s `pending_reads` guard (see
@@ -127,7 +127,7 @@ fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
     let layer = &dag.layers[0];
 
-    // Find `LegacyRecompute`'s own peak live-cell width for the neutral-genome
+    // Find `decisions: None`'s own peak live-cell width for the neutral-genome
     // order at a generously large probe budget (a real compile's `max_live_cells`,
     // not a binary-searched approximation).
     let probe_ctx = LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, 4096);
@@ -148,10 +148,10 @@ fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
         4096,
         None,
     )
-    .unwrap_or_else(|e| panic!("LegacyRecompute must be feasible at a generous budget: {e:?}"));
+    .unwrap_or_else(|e| panic!("decisions: None must be feasible at a generous budget: {e:?}"));
     let legacy_floor = legacy_probe.stats.max_live_cells;
 
-    // Re-run LegacyRecompute AT its own floor (its own peak fits its own floor by
+    // Re-run the None-decisions baseline AT its own floor (its own peak fits its own floor by
     // construction) as the traffic baseline `Decisions` must not exceed.
     let legacy_at_floor = compile_layer(
         layer,
@@ -162,7 +162,7 @@ fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
         legacy_floor,
         None,
     )
-    .unwrap_or_else(|e| panic!("LegacyRecompute must be feasible at its own floor: {e:?}"));
+    .unwrap_or_else(|e| panic!("decisions: None must be feasible at its own floor: {e:?}"));
 
     let decisions = SiteDecisions::new(sched.sites.iter().copied());
     let decisions_at_floor = compile_layer(
@@ -176,19 +176,19 @@ fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
     )
     .unwrap_or_else(|e| {
         panic!(
-            "Decisions at near-zero headroom above the LegacyRecompute floor ({legacy_floor}) must \
+            "Decisions at near-zero headroom above the decisions-None floor ({legacy_floor}) must \
              still be feasible (demand-driven eviction always makes room for temps): {e:?}"
         )
     });
 
-    // Absolute pins (captured pre-migration; `decisions: None` ≡ `LegacyRecompute` —
-    // Task 2 brief).
+    // Absolute pins (captured pre-migration; `decisions: None` ≡ the old legacy
+    // recompute — Task 2 brief).
     assert_eq!(legacy_floor, 8, "legacy floor (max_live_cells) pin");
     assert_eq!(legacy_at_floor.stats.dram_traffic, 59, "legacy_at_floor traffic pin");
     assert_eq!(decisions_at_floor.stats.dram_traffic, 47, "decisions_at_floor traffic pin");
     assert!(
         decisions_at_floor.stats.dram_traffic <= legacy_at_floor.stats.dram_traffic,
-        "Decisions with zero headroom ({}) must not do WORSE than LegacyRecompute ({})",
+        "Decisions with zero headroom ({}) must not do WORSE than decisions-None ({})",
         decisions_at_floor.stats.dram_traffic,
         legacy_at_floor.stats.dram_traffic
     );

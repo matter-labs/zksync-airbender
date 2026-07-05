@@ -5,8 +5,8 @@
 //! Layer/schedule builders follow `tests/stage3_schedule_driven.rs`'s `task1`/`task8`
 //! synthetic patterns (single-gate `Compute`-classified artifact layer, `atom_root`
 //! Export sinks, a trivial schedule with an empty `sites` genome — schema v2
-//! (Task 4) has no persisted per-step residency at all, and `Decisions`, like
-//! `LegacyRecompute`, drives root-compile order purely from `order`).
+//! (Task 4) has no persisted per-step residency at all, and `Some`-decisions, like
+//! `decisions: None`, drives root-compile order purely from `order`).
 
 mod common;
 use common::{resolvers, SyntheticResolvers};
@@ -76,8 +76,8 @@ fn compute_artifact_layer() -> GKRLayerDescription {
     }
 }
 
-/// A trivial no-op schedule: `Decisions`, like `LegacyRecompute`, only reads `order` —
-/// schema v2 has no persisted per-step residency for either policy to consult.
+/// A trivial no-op schedule: `Some`-decisions, like `decisions: None`, only reads
+/// `order` — schema v2 has no persisted per-step residency for either mode to consult.
 fn trivial_schedule(order: Vec<RootId>) -> LayerSchedule {
     LayerSchedule { order, sites: vec![], predicted_traffic: 0, floor: 0 }
 }
@@ -145,8 +145,8 @@ fn decisions_cache_hit_beats_uncached() {
     let decisions_compiled = compile(&layer, &sched, 1, Some(&decisions));
     let uncached_compiled = compile(&layer, &sched, 16, None);
 
-    // Absolute pins (captured pre-migration under the old enum's `LegacyRecompute` /
-    // `Decisions` cases, reproduced byte-for-byte here since `None` ≡ Legacy — Task 2 brief).
+    // Absolute pins (captured pre-migration under the old enum's legacy-recompute /
+    // decisions cases, reproduced byte-for-byte here since `None` ≡ Legacy — Task 2 brief).
     assert_eq!(decisions_compiled.program.instrs.len(), 11, "decisions instr-count pin");
     assert_eq!(uncached_compiled.program.instrs.len(), 12, "uncached instr-count pin");
 

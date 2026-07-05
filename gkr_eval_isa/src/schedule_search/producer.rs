@@ -13,7 +13,7 @@
 //! `search_layer` pass so its cache placement gets decided for real, so this
 //! producer must NOT skip it — using a separate, looser gate here previously
 //! let the producer emit an empty schedule for a layer `compile_circuit`
-//! would refuse to skip, which `compile_layer_with_policy` would then choke
+//! would refuse to skip, which `compile_layer` would then choke
 //! on at compile time (Task 6 review finding). Sharing one predicate makes
 //! the two skip decisions structurally unable to drift.
 

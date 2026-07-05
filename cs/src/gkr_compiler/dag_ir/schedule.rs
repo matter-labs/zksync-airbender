@@ -3,7 +3,8 @@
 //! v2 replaces the v1 event-replay schema (`StepPlan`/`ReplayEvent`/`DemandKind`,
 //! deleted) with a **genome + provenance** shape: `order` (the searched root
 //! execution order) and `sites` (a per-site scorer-assigned priority gene, keyed by
-//! [`SiteKey`]). The emitter (`gkr_eval_isa`'s `MaterializePolicy::Decisions`) OWNS
+//! [`SiteKey`]). The emitter (`gkr_eval_isa`'s `compile_layer` with
+//! `decisions: Some(&SiteDecisions)`) OWNS
 //! residency at compile time — it replays `order` and, for each demand, decides
 //! admit/evict from the site's priority (see `gkr_eval_isa::fwd::compile::decisions`).
 //! There is no persisted step-by-step residency replay anymore: the schedule records

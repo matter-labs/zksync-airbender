@@ -170,7 +170,7 @@ impl OccurrenceStreams {
     /// deterministic perturbation, not noise — but any future warm-start or
     /// gene-transfer work (reusing a `SiteDecisions` across schedules/runs)
     /// MUST NOT assume site-to-gene alignment is exact once residency is on;
-    /// it is only exact under `LegacyRecompute` (no residency, no hits, no
+    /// it is only exact under `decisions: None` (no residency, no hits, no
     /// compound-miss exposure).
     pub fn build(
         layer: &DagLayer,
