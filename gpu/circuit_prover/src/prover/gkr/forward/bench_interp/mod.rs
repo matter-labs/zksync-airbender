@@ -9,6 +9,7 @@
 //! see dev-dependencies.
 
 mod fixture;
+pub(crate) mod fwd_vm;
 pub(crate) mod harness;
 mod interp_v2_gpu;
 mod lower;
