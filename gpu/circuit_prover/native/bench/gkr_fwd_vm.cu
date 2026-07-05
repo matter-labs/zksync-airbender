@@ -405,6 +405,9 @@ template <bool LDC> DEVICE_FORCEINLINE void vm_core(const interp_desc3 d, bf *ce
 #undef LANE
 }
 
+// Dynamic shared memory: the smem byte count is a launch parameter, so its
+// footprint is OPAQUE to ptxas — the compiler cannot fold it into occupancy or
+// __launch_bounds__, and real occupancy is silently capped at launch time.
 template <bool LDC> DEVICE_FORCEINLINE void vm_body(const interp_desc3 d) {
   extern __shared__ u32 fwd_vm_smem[];
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -416,7 +419,40 @@ template <bool LDC> DEVICE_FORCEINLINE void vm_body(const interp_desc3 d) {
   vm_core<LDC>(d, cell_base, gid);
 }
 
+// Static shared memory: N_CELLS is a compile-time constant, so the __shared__
+// footprint is visible to ptxas — it feeds the occupancy calculator and the
+// __launch_bounds__ register sizing (unlike the dynamic-smem body above). 128
+// threads only. Macro pattern: gkr_fwd_interp_v2.cu `interp2_body_static` /
+// `INTERP2_STATIC_LDG_KERNEL`. The `d.budget` bounds checks inside `vm_core`
+// remain valid: the host asserts `desc.budget == N_CELLS` before launching this
+// variant, so the cell file the checks bound against matches the static array.
+template <bool LDC, u32 N_CELLS> DEVICE_FORCEINLINE void vm_body_static(const interp_desc3 d) {
+  __shared__ bf fwd_vm_cells_s[N_CELLS * 128];
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= d.count)
+    return;
+  bf *cell_base = fwd_vm_cells_s + threadIdx.x;
+  for (u32 c = 0; c < N_CELLS; c++)
+    cell_base[c * 128] = bf::ZERO();
+  vm_core<LDC>(d, cell_base, gid);
+}
+
 EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_vm_ldg_kernel(const interp_desc3 desc) { vm_body<false>(desc); }
 EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_vm_ldc_kernel(const interp_desc3 desc) { vm_body<true>(desc); }
+
+// --- Static-smem LDC variant (128 threads, BUDGET=16 only) -----------------
+// minBlocks is the occupancy the static smem permits: SM shared capacity
+// (~100 KB on sm_120) / per-block footprint (N*128*4 B + ~1 KB driver), clamped
+// to the 12-block warp limit (4 warps/block). ptxas then sizes registers to
+// that smem-permitted occupancy instead of the dynamic body's hardcoded 4.
+// Only the committed budget-16 LDC form is instantiated: every corpus program
+// fits the __constant__ array (Task 1 probe: max 10911/14336 lanes), so an s16
+// LDC variant is the right static form. Mirrors INTERP2_STATIC_LDG_KERNEL.
+#define FWDVM_SMEM_BLOCKS(N) ((102400u / ((N) * 512u + 1024u)) > 12u ? 12u : ((102400u / ((N) * 512u + 1024u)) < 1u ? 1u : (102400u / ((N) * 512u + 1024u))))
+#define FWDVM_STATIC_LDC_KERNEL(N)                                                                                                                             \
+  EXTERN __launch_bounds__(128, FWDVM_SMEM_BLOCKS(N)) __global__ void ab_gkr_bench_fwd_vm_ldc_s##N##_kernel(const interp_desc3 desc) {                         \
+    vm_body_static<true, N>(desc);                                                                                                                             \
+  }
+FWDVM_STATIC_LDC_KERNEL(16)
 
 } // namespace airbender::prover::gkr::bench
