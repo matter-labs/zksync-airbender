@@ -66,7 +66,9 @@ pub fn produce_circuit_schedule(
 
         // Thread the per-layer incumbent (if any) through as a preserved seed so
         // the GA result never regresses below the persisted schedule's traffic.
-        let layer_incumbent = incumbent.map(|s| &s.layers[li]);
+        // `.get(li)` (not `[li]`) so a length-mismatched incumbent degrades to
+        // no-seed rather than panicking (Task-1 review Minor #3).
+        let layer_incumbent = incumbent.and_then(|s| s.layers.get(li));
         let outcome = search_layer(&ctx, cfg, layer_incumbent);
         let secs = outcome.wall.as_secs_f64().max(1e-9);
         let compiles_per_sec = outcome.compiles as f64 / secs;

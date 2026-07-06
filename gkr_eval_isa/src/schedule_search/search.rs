@@ -1153,11 +1153,17 @@ pub fn seeded_population(ctx: &LayerCtx, total: usize, run_offset: u64) -> Vec<G
 /// infeasible layer is a real problem, not a schedule — the deleted v1
 /// producer's F6 gate).
 ///
-/// `incumbent`, when `Some(ls)` (codex-P1), is a previously-persisted schedule
-/// for this layer: its exact genome ([`genome_from_schedule`]) is prepended to
-/// the seed population, so it is scored in the initial generation and — via
-/// elitism — can never be lost. The GA result is therefore always at least as
-/// good as the incumbent's traffic (the Task-2 non-regression invariant).
+/// `incumbent`, when `Some(ls)`, is a previously-persisted schedule for this
+/// layer. It drives a two-strategy ENSEMBLE that dominates either strategy alone:
+///   1. **from-scratch** — best exploration; finds better basins on some layers
+///      (bigint/keccak L0 reach lower traffic from scratch than by refining the
+///      incumbent, which as a strong seed collapses diversity around its basin);
+///   2. **incumbent-seeded** — best refinement; on other layers the GA improves
+///      *upon* the incumbent better than it explores blind (e.g. blake2-ext L0
+///      −13 seeded vs 0 from scratch).
+/// The best of the two is taken, then the incumbent itself is a post-hoc floor
+/// (kept if it beats both searches) — so the result is never worse than the
+/// persisted schedule (non-regression) and captures whichever strategy wins.
 pub fn search_layer(
     ctx: &LayerCtx,
     cfg: &SearchConfig,
@@ -1177,23 +1183,43 @@ pub fn search_layer(
         };
     }
 
-    let mut seeds = seeded_population(ctx, cfg.pop.min(cfg.evals), cfg.seed);
+    // Strategy 1: from-scratch (best exploration).
+    let seeds_fs = seeded_population(ctx, cfg.pop.min(cfg.evals), cfg.seed);
+    let opt_fs = optimize_from_population(ctx, seeds_fs, cfg);
+    let mut best_genome = opt_fs.best_genome;
+    let mut best_score = opt_fs.best_score;
+    let mut compiles = opt_fs.evals;
+
+    // Strategy 2: incumbent-seeded (best refinement of a good starting point).
     if let Some(ls) = incumbent {
-        // Prepend the incumbent's exact genome so it is scored in the initial
-        // population and preserved by elitism.
-        seeds.insert(0, genome_from_schedule(ls, ctx));
+        let mut seeds_seed = seeded_population(ctx, cfg.pop.min(cfg.evals), cfg.seed);
+        seeds_seed.insert(0, genome_from_schedule(ls, ctx));
+        let opt_seed = optimize_from_population(ctx, seeds_seed, cfg);
+        compiles += opt_seed.evals;
+        if objective_less(&opt_seed.best_score, &best_score) {
+            best_genome = opt_seed.best_genome;
+            best_score = opt_seed.best_score;
+        }
     }
-    let opt = optimize_from_population(ctx, seeds, cfg);
+
     assert!(
-        !opt.best_score.infeasible,
+        !best_score.infeasible,
         "search_layer: best candidate infeasible at budget {} ({} units, {} sites)",
         ctx.budget,
         ctx.n_order_keys(),
         ctx.n_sites()
     );
 
-    let mut schedule = super::scorer::decode_schedule(&opt.best_genome, ctx);
-    schedule.predicted_traffic = opt.best_score.dram_traffic;
+    let mut schedule = super::scorer::decode_schedule(&best_genome, ctx);
+    schedule.predicted_traffic = best_score.dram_traffic;
+
+    // Post-hoc non-regression floor: keep the incumbent if it beats both searches
+    // (never regress below the persisted schedule).
+    if let Some(inc) = incumbent {
+        if inc.predicted_traffic <= schedule.predicted_traffic {
+            schedule = inc.clone();
+        }
+    }
     assert!(
         schedule.floor <= schedule.predicted_traffic,
         "search_layer: floor {} above achieved traffic {}",
@@ -1201,7 +1227,7 @@ pub fn search_layer(
         schedule.predicted_traffic
     );
 
-    LayerSearchOutcome { schedule, compiles: opt.evals, wall: start.elapsed() }
+    LayerSearchOutcome { schedule, compiles, wall: start.elapsed() }
 }
 
 // ── Tests (ported subset of the prototype's search-mechanics suite) ──────────
