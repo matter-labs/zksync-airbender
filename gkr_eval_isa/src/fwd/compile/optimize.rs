@@ -10,7 +10,7 @@ use cs::gkr_compiler::dag_ir::ExprId;
 
 use super::lower::{VDst, VInstr};
 use super::place::{ValueId, VirtualOp};
-use crate::fwd::isa::MovDir;
+use crate::fwd::isa::{MovDir, Sign};
 
 /// Abstract accumulator contents at a program point. `Value(v)` means acc currently
 /// holds the same value the cell for `v` holds (established either by loading `v` or by
@@ -279,6 +279,98 @@ fn drop_dead_admissions(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> 
     changed
 }
 
+/// Can `vi` (the consumer at i+1) commute an operand with the accumulator seed?
+/// Mul: always. Add: only the Plus sign. Fma/minus-Add: no.
+fn op_commutes_with_seed(vi: &VInstr) -> bool {
+    matches!(vi, VInstr::Mul { .. })
+        || matches!(
+            vi,
+            VInstr::Add {
+                sign: Sign::Plus,
+                ..
+            }
+        )
+}
+
+/// Replace the first `Value(from)` operand of `vi` with `Value(to)`. Returns true on hit.
+fn retarget_value_operand(vi: &mut VInstr, from: ValueId, to: ValueId) -> bool {
+    let repl = |op: &mut VirtualOp| -> bool {
+        if matches!(op, VirtualOp::Value(x) if *x == from) {
+            *op = VirtualOp::Value(to);
+            true
+        } else {
+            false
+        }
+    };
+    match vi {
+        VInstr::Add { reads, .. } | VInstr::Mul { reads, .. } => {
+            for op in reads.iter_mut() {
+                if repl(op) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false, // only Add/Mul are commuted here
+    }
+}
+
+/// F2 (adjacent, sign-aware): `AccFromSrc Value(w); <commuting op reads Value(v)>` with
+/// `acc_before[reload] == Value(v)` → delete the reload and retarget the op's `Value(v)`
+/// operand to `Value(w)`. Acc keeps `v`; the op consumes `w` instead. No new ISA operand.
+fn commute_keep_in_acc(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool {
+    let ab = acc_before(vinstrs);
+    let mut del: BTreeSet<usize> = BTreeSet::new();
+    let mut i = 0usize;
+    while i + 1 < vinstrs.len() {
+        if del.contains(&i) {
+            i += 1;
+            continue;
+        }
+        let w = match &vinstrs[i] {
+            VInstr::Mov {
+                dir: MovDir::AccFromSrc,
+                src: Some(VirtualOp::Value(w)),
+                ..
+            } => *w,
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        let v = match ab[i] {
+            AccVal::Value(v) => v,
+            AccVal::Unknown => {
+                i += 1;
+                continue;
+            }
+        };
+        if v == w {
+            i += 1;
+            continue;
+        } // that's F4's job
+        // Defensive (codex answer #5): only commute into a consumer that produces no
+        // named value (all current Add/Mul folds have `defines: None`; guards against a
+        // future arith-defining VInstr whose def identity we'd have to preserve).
+        if vinstrs[i + 1].defines().is_some()
+            || !op_commutes_with_seed(&vinstrs[i + 1])
+            || !reads_value(&vinstrs[i + 1], v)
+        {
+            i += 1;
+            continue;
+        }
+        if retarget_value_operand(&mut vinstrs[i + 1], v, w) {
+            del.insert(i);
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    let changed = !del.is_empty();
+    delete_indices(vinstrs, step_of, &del);
+    changed
+}
+
 /// Optimize the lowered stream via a fixpoint of the rewrite rules.
 pub(crate) fn optimize_vinstrs(
     mut vinstrs: Vec<VInstr>,
@@ -293,6 +385,7 @@ pub(crate) fn optimize_vinstrs(
         let mut changed = false;
         changed |= fuse_leaf_loads(&mut vinstrs, &mut step_of);
         changed |= drop_redundant_reloads(&mut vinstrs, &mut step_of);
+        changed |= commute_keep_in_acc(&mut vinstrs, &mut step_of);
         changed |= drop_dead_admissions(&mut vinstrs, &mut step_of);
         if !changed {
             break;
@@ -534,6 +627,49 @@ mod tests {
         let mut step_of = vec![0, 0];
         let changed = drop_dead_admissions(&mut vinstrs, &mut step_of);
         assert!(!changed);
+    }
+
+    #[test]
+    fn f2_commutes_mul_to_keep_acc() {
+        let (v, w) = (ExprId(1), ExprId(2));
+        // acc aliases v (store), reload w, MUL *= v  ->  drop reload, MUL *= w (acc stays v)
+        let mut vinstrs = vec![
+            mov_store(v), // acc = Value(v)
+            mov_load(w),  // reload w
+            VInstr::Mul {
+                field: OperandField::Base,
+                reads: vec![VirtualOp::Value(v)],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let mut step_of = vec![0, 0, 0];
+        let changed = commute_keep_in_acc(&mut vinstrs, &mut step_of);
+        assert!(changed);
+        assert_eq!(vinstrs.len(), 2);
+        match &vinstrs[1] {
+            VInstr::Mul { reads, .. } => assert!(matches!(reads[0], VirtualOp::Value(x) if x == w)),
+            other => panic!("expected Mul reads=[w], got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn f2_does_not_commute_minus_add() {
+        let (v, w) = (ExprId(1), ExprId(2));
+        let mut vinstrs = vec![
+            mov_store(v),
+            mov_load(w),
+            VInstr::Add {
+                field: OperandField::Base,
+                sign: crate::fwd::isa::Sign::Minus,
+                reads: vec![VirtualOp::Value(v)],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let mut step_of = vec![0, 0, 0];
+        let changed = commute_keep_in_acc(&mut vinstrs, &mut step_of);
+        assert!(!changed, "minus-Add must not commute seed with operand");
     }
 
     #[test]
