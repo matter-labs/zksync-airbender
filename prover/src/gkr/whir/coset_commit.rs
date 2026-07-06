@@ -25,6 +25,7 @@ use super::queries::{BaseFieldQuery, ExtensionFieldQuery};
 use crate::definitions::DIGEST_SIZE_U32_WORDS;
 use crate::gkr::prover::stages::stage1::{
     compute_column_major_lde_single_coset, compute_column_major_lde_single_coset_with_offset,
+    compute_column_major_lde_single_coset_with_offset_serial,
 };
 use crate::merkle_trees::keccak256_for_everything_tree::{Digest32, Keccak256MerkleTreeWithCap};
 use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_cosets;
@@ -420,12 +421,44 @@ where
     column
 }
 
-/// Root of one coset's subtree (single coset, cap size 1 -> one root node).
-fn ext_coset_subtree_root<F, E, T>(
+/// Fully-serial (no worker) variant of [`ext_coset_column`], for computing many
+/// small cosets concurrently (one per worker thread).
+fn ext_coset_column_serial<F, E>(
     monomial_form: &[E],
     twiddles: &Twiddles<F, Global>,
     ctx: &ExtCommonCtx<F>,
     coset_index: usize,
+) -> Box<[E]>
+where
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+{
+    let offset = ctx.root_powers[coset_index];
+    #[allow(unused_mut)]
+    let mut column =
+        compute_column_major_lde_single_coset_with_offset_serial(monomial_form, twiddles, offset);
+    #[cfg(not(feature = "eval_leaves"))]
+    ctx.conv.apply_serial(&mut column, offset);
+    column
+}
+
+/// Compute the `group_size` LDE cosets that occupy top-tree physical slots
+/// `[group_index*group_size, +group_size)` and return the root of ONE shared
+/// subtree over them (cap size 1). The G cosets are laid out in physical order,
+/// so this root equals the corresponding ancestor node of the monolithic tree.
+///
+/// When `group_size == 1` this is the original single-coset path (the coset's own
+/// subtree root), computed with the worker-parallel LDE. When `group_size > 1`
+/// (chosen only when each coset's FFT is below the parallel threshold) the G coset
+/// columns are computed CONCURRENTLY — one per worker thread, each internally
+/// serial — and share a single subtree build.
+fn ext_group_subtree_root<F, E, T>(
+    monomial_form: &[E],
+    twiddles: &Twiddles<F, Global>,
+    ctx: &ExtCommonCtx<F>,
+    group_index: usize,
+    group_log2: u32,
+    cosets_log2: u32,
     worker: &Worker,
 ) -> [u32; DIGEST_SIZE_U32_WORDS]
 where
@@ -434,21 +467,64 @@ where
     T: ColumnMajorMerkleTreeConstructor<F>,
     [(); E::DEGREE]: Sized,
 {
-    let column = ext_coset_column::<F, E>(monomial_form, twiddles, ctx, coset_index, worker);
-    let col_ref: &[E] = &column;
-    let coset_cols: [&[E]; 1] = [col_ref];
-    let coset_slice: &[&[E]] = &coset_cols;
-    let trace: &[&[&[E]]] = std::slice::from_ref(&coset_slice);
-    let subtree = T::construct_from_cosets::<E, Global>(
-        trace,
-        ctx.values_per_leaf,
-        1,
-        true,
-        false,
-        false,
-        worker,
-    );
+    let group_size = 1usize << group_log2;
+    // Natural coset for physical slot `group_index*group_size + j`.
+    let nat = |j: usize| bitreverse_index((group_index << group_log2) + j, cosets_log2);
+
+    let columns: Vec<Box<[E]>> = if group_size == 1 {
+        vec![ext_coset_column::<F, E>(monomial_form, twiddles, ctx, nat(0), worker)]
+    } else {
+        parallel_collect(worker, group_size, |j| {
+            ext_coset_column_serial::<F, E>(monomial_form, twiddles, ctx, nat(j))
+        })
+    };
+
+    ext_group_root_from_columns::<F, E, T>(&columns, ctx.values_per_leaf, worker)
+}
+
+/// Build the shared subtree (cap 1) over `columns` (one extension column per coset,
+/// in physical order) and return its single root node.
+fn ext_group_root_from_columns<F, E, T>(
+    columns: &[Box<[E]>],
+    values_per_leaf: usize,
+    worker: &Worker,
+) -> [u32; DIGEST_SIZE_U32_WORDS]
+where
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    [(); E::DEGREE]: Sized,
+{
+    // trace shape is [coset][column][values]; one column per coset here.
+    let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
+    let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
+    let trace: &[&[&[E]]] = &coset_slices;
+    let subtree =
+        T::construct_from_cosets::<E, Global>(trace, values_per_leaf, 1, true, false, false, worker);
     subtree.get_cap().cap[0]
+}
+
+/// Choose the coset grouping (log2). Returns 0 (no grouping, per-coset roots)
+/// unless each coset's FFT is below the parallel-NTT serial cutoff — in which case
+/// grouping lets several cosets run concurrently. Group size is `floor_pow2(cores)`,
+/// capped so the top tree keeps `>= cap_size` leaves (`num_groups >= cap_size`).
+fn grouping_log2<E: Field>(
+    trace_len: usize,
+    cosets_log2: u32,
+    cap_size: usize,
+    worker: &Worker,
+) -> u32 {
+    // Mirrors `parallel_ct_ntt_bitreversed_to_natural`'s serial fallback cutoff.
+    const NTT_PAR_THRESHOLD: usize = 1 << 12;
+    let words = (core::mem::size_of::<E>() / core::mem::size_of::<u32>()).max(1);
+    let eff_threshold = NTT_PAR_THRESHOLD / words;
+    if trace_len >= eff_threshold {
+        return 0; // per-coset FFT is already worker-parallel; grouping would not help.
+    }
+    let threads_log2 = worker.get_num_cores().max(1).ilog2();
+    // num_groups = 2^(cosets_log2 - group_log2) must stay >= cap_size = 2^cap_log2.
+    let max_group_log2 = cosets_log2.saturating_sub(cap_size.trailing_zeros());
+    threads_log2.min(max_group_log2)
 }
 
 /// Coset-by-coset commitment of a single extension-field poly (given in monomial
@@ -464,6 +540,10 @@ where
     pub trace_len_log2: usize,
     pub lde_factor: usize,
     pub values_per_leaf: usize,
+    /// log2 of the coset grouping: each top-tree leaf is a shared subtree over
+    /// `2^group_log2` physically-adjacent cosets (0 = one coset per top leaf, the
+    /// original layout). > 0 only when the per-coset FFT runs serially.
+    pub group_log2: u32,
     pub top_tree: T,
     _marker: PhantomData<F>,
 }
@@ -490,40 +570,52 @@ where
     ) -> Self {
         assert!(lde_factor.is_power_of_two());
         assert!(cap_size <= lde_factor, "cap_size must be <= lde_factor");
+        assert!(cap_size.is_power_of_two());
         let trace_len_log2 = monomial_form.len().trailing_zeros() as usize;
+        let trace_len = 1usize << trace_len_log2;
         let cosets_log2 = lde_factor.trailing_zeros();
+
+        // Coset grouping: when each coset's FFT is below the parallel-NTT threshold it
+        // runs serially, leaving the worker's threads idle. In that regime, process
+        // `2^group_log2` cosets CONCURRENTLY (one serial FFT per thread) and build one
+        // shared subtree per group. `group_log2 = 0` reproduces the original layout.
+        let group_log2 = grouping_log2::<E>(trace_len, cosets_log2, cap_size, worker);
+        let group_size = 1usize << group_log2;
+        let num_groups = lde_factor >> group_log2;
 
         let step = if trace_len_log2 >= 20 {
             1
         } else {
-            (monomial_form.len() * lde_factor) >> 20
-        };
-        let step = step.max(1);
+            (num_groups.max(1) * group_size * trace_len) >> 20
+        }
+        .max(1);
         let t0 = std::time::Instant::now();
         // Hoist coset-independent factors (root_powers + coeff-conversion table).
-        let ctx = ExtCommonCtx::<F>::new(1usize << trace_len_log2, lde_factor, values_per_leaf);
-        let mut natural_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = Vec::with_capacity(lde_factor);
-        for coset_index in 0..lde_factor {
-            natural_roots.push(ext_coset_subtree_root::<F, E, T>(
+        let ctx = ExtCommonCtx::<F>::new(trace_len, lde_factor, values_per_leaf);
+        // Physical top-tree leaf `g` = root of the shared subtree over physical coset
+        // slots `[g*group_size, +group_size)`. (group_size == 1 -> per-coset roots.)
+        let mut physical_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = Vec::with_capacity(num_groups);
+        for group_index in 0..num_groups {
+            physical_roots.push(ext_group_subtree_root::<F, E, T>(
                 monomial_form,
                 twiddles,
                 &ctx,
-                coset_index,
+                group_index,
+                group_log2,
+                cosets_log2,
                 worker,
             ));
-            if (coset_index + 1) % step == 0 {
+            if (group_index + 1) % step == 0 {
                 println!(
-                    "[ext-coset-commit +{:6.1}s] coset {}/{} done (1 col of 2^{})",
+                    "[ext-coset-commit +{:6.1}s] group {}/{} done ({} cosets/group, 1 col of 2^{})",
                     t0.elapsed().as_secs_f64(),
-                    coset_index + 1,
-                    lde_factor,
+                    group_index + 1,
+                    num_groups,
+                    group_size,
                     trace_len_log2,
                 );
             }
         }
-        let physical_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = (0..lde_factor)
-            .map(|k| natural_roots[bitreverse_index(k, cosets_log2)])
-            .collect();
         let top_tree = T::build_over_leaf_hashes(physical_roots, cap_size, worker);
 
         Self {
@@ -531,6 +623,7 @@ where
             trace_len_log2,
             lde_factor,
             values_per_leaf,
+            group_log2,
             top_tree,
             _marker: PhantomData,
         }
@@ -553,20 +646,44 @@ where
         let physical_slot = bitreverse_index(coset_index, cosets_log2);
         let tree_index = physical_slot * coset_tree_size + internal_index;
 
-        let ctx = ExtCommonCtx::<F>::new(1usize << self.trace_len_log2, num_cosets, self.values_per_leaf);
-        let column = ext_coset_column::<F, E>(&self.monomial_form, twiddles, &ctx, coset_index, worker);
+        // The query's coset lives at position `slot_in_group` inside top-tree leaf
+        // `group_index`'s shared subtree. Recompute that whole group (grouping only
+        // activates for small cosets, so this is a handful of tiny FFTs), then read the
+        // leaf->group-root path from the group subtree and stitch the top-tree path.
+        let group_log2 = self.group_log2;
+        let group_size = 1usize << group_log2;
+        let group_index = physical_slot >> group_log2;
+        let slot_in_group = physical_slot & (group_size - 1);
+
+        let ctx =
+            ExtCommonCtx::<F>::new(1usize << self.trace_len_log2, num_cosets, self.values_per_leaf);
+        let columns: Vec<Box<[E]>> = if group_size == 1 {
+            vec![ext_coset_column::<F, E>(
+                &self.monomial_form,
+                twiddles,
+                &ctx,
+                coset_index,
+                worker,
+            )]
+        } else {
+            parallel_collect(worker, group_size, |j| {
+                let nat = bitreverse_index((group_index << group_log2) + j, cosets_log2);
+                ext_coset_column_serial::<F, E>(&self.monomial_form, twiddles, &ctx, nat)
+            })
+        };
+
+        let my_column = &columns[slot_in_group];
         let offsets =
             offsets_vec_for_leaf_construction(1usize << self.trace_len_log2, self.values_per_leaf);
         let values: Vec<E> = offsets
             .iter()
-            .map(|&off| column[off + internal_index])
+            .map(|&off| my_column[off + internal_index])
             .collect();
 
-        // within-coset path
-        let col_ref: &[E] = &column;
-        let coset_cols: [&[E]; 1] = [col_ref];
-        let coset_slice: &[&[E]] = &coset_cols;
-        let trace: &[&[&[E]]] = std::slice::from_ref(&coset_slice);
+        // shared subtree over the group -> path from this leaf up to the group root.
+        let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
+        let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
+        let trace: &[&[&[E]]] = &coset_slices;
         let subtree = T::construct_from_cosets::<E, Global>(
             trace,
             self.values_per_leaf,
@@ -576,10 +693,11 @@ where
             false,
             worker,
         );
-        let (_leaf, mut path) = subtree.get_proof::<Global>(internal_index);
+        let group_leaf_index = slot_in_group * coset_tree_size + internal_index;
+        let (_leaf, mut path) = subtree.get_proof::<Global>(group_leaf_index);
 
-        // top-tree path
-        let (_root, top_path) = self.top_tree.get_proof::<Global>(physical_slot);
+        // top-tree path (group root -> cap)
+        let (_root, top_path) = self.top_tree.get_proof::<Global>(group_index);
         path.extend_from_slice(&top_path);
 
         let query = ExtensionFieldQuery {
@@ -765,6 +883,49 @@ mod test {
                 leaf_h,
                 "leaf hash @ q={qi}"
             );
+        }
+    }
+
+    /// Coset grouping (computing several small cosets in parallel under one shared
+    /// subtree) is a pure implementation detail: the commitment/queries must be
+    /// byte-identical regardless of the worker's thread count. Uses a small trace
+    /// (2^7 < the NTT parallel threshold) so grouping activates when cores allow.
+    #[test]
+    fn ext_grouping_matches_across_thread_counts() {
+        let (tl, ld, vp, cap) = (7usize, 4usize, 1usize, 2usize);
+        let trace_len = 1usize << tl;
+        let lde_factor = 1usize << ld;
+        let vpl = 1usize << vp;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x9A9A_5C5C);
+        let monomial: Vec<Proth120> = (0..trace_len).map(|_| rand_proth(&mut rng)).collect();
+
+        // reference: single thread => no grouping (group_log2 == 0, original layout).
+        let w1 = Worker::new_with_num_threads(1);
+        let tw1 = Twiddles::<Proth120, Global>::new(trace_len, &w1);
+        let reference = CosetByCosetExtCommitment::<Proth120, Proth120, Tree>::commit(
+            &monomial, &tw1, lde_factor, vpl, cap, &w1,
+        );
+        assert_eq!(reference.group_log2, 0, "single thread should not group");
+
+        let tree_size = lde_factor * (trace_len / vpl);
+        for nthreads in [2usize, 4, 8] {
+            let w = Worker::new_with_num_threads(nthreads);
+            let tw = Twiddles::<Proth120, Global>::new(trace_len, &w);
+            let grouped = CosetByCosetExtCommitment::<Proth120, Proth120, Tree>::commit(
+                &monomial, &tw, lde_factor, vpl, cap, &w,
+            );
+            assert!(
+                grouped.group_log2 >= 1,
+                "grouping should activate with {nthreads} threads"
+            );
+            assert_eq!(reference.get_cap(), grouped.get_cap(), "cap @ {nthreads} threads");
+            for qi in 0..tree_size {
+                let (_rc, rv, rq) = reference.query(qi, &tw1, &w1);
+                let (_gc, gv, gq) = grouped.query(qi, &tw, &w);
+                assert_eq!(rv, gv, "values @ q={qi} nthreads={nthreads}");
+                assert_eq!(rq.index, gq.index, "index @ q={qi} nthreads={nthreads}");
+                assert_eq!(rq.path, gq.path, "path @ q={qi} nthreads={nthreads}");
+            }
         }
     }
 

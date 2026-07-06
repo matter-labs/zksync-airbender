@@ -1712,6 +1712,40 @@ impl<F: PrimeField + TwoAdicField> ExtCoeffConvCtx<F> {
             }
         });
     }
+
+    /// Fully-serial (no worker) variant of [`apply`](Self::apply). Used when many
+    /// small cosets are converted concurrently (one per worker thread), so the
+    /// per-coset conversion must not spawn its own worker scope. Bit-identical to
+    /// `apply` for the same `column`/`offset`.
+    pub(crate) fn apply_serial<E: FieldExtension<F> + Field>(&self, column: &mut [E], offset: F) {
+        if self.num_folding_rounds == 0 {
+            return;
+        }
+        let num_leaves = self.coset_gen_inv_powers.len();
+        let offset_inv = offset.inverse().unwrap();
+        let mut leaf_buf = vec![E::ZERO; self.values_per_leaf];
+        let mut scratch_a = vec![E::ZERO; self.values_per_leaf];
+        let mut scratch_b = vec![E::ZERO; self.values_per_leaf];
+        for leaf_idx in 0..num_leaves {
+            let mut base_root_inv = self.coset_gen_inv_powers[leaf_idx];
+            base_root_inv.mul_assign(&offset_inv);
+            for (k, &off) in self.offsets.iter().enumerate() {
+                leaf_buf[k] = column[off + leaf_idx];
+            }
+            evals_to_multilinear_coeffs(
+                &mut leaf_buf,
+                &base_root_inv,
+                &self.high_powers_offsets,
+                &self.two_inv,
+                self.num_folding_rounds,
+                &mut scratch_a,
+                &mut scratch_b,
+            );
+            for (k, &off) in self.offsets.iter().enumerate() {
+                column[off + leaf_idx] = leaf_buf[k];
+            }
+        }
+    }
 }
 
 /// Coefficient-form commit (default): rewrites each leaf from evaluation form to

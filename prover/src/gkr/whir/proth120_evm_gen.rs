@@ -33,12 +33,11 @@ use transcript::{Keccak256Seed, Keccak256Transcript};
 
 type Tree = Keccak256MerkleTreeWithCap<Global>;
 
-const NUM_ROUNDS: usize = 6;
 const NUM_WITNESS_COLS: usize = 8;
 
-/// One WHIR generation configuration (a whir.sol VARIANT). All per-round vectors
-/// have `NUM_ROUNDS` entries except `lde_factors`, which has `NUM_ROUNDS - 1` (the
-/// oracles committed after each of rounds 0..5).
+/// One WHIR generation configuration (a whir.sol VARIANT). The number of rounds is
+/// `folds.len()`; `queries`/`pow` have the same length, and `lde_factors` has one
+/// fewer (one per intermediate oracle, committed after each of rounds `0..len-1`).
 struct GenConfig {
     /// log2 of the message (per-column) size.
     message_log2: usize,
@@ -50,7 +49,7 @@ struct GenConfig {
     folds: Vec<usize>,
     /// number of queries per round.
     queries: Vec<usize>,
-    /// LDE factors of the intermediate oracles (rounds 1..NUM_ROUNDS).
+    /// LDE factors of the intermediate oracles (one per round after the first).
     lde_factors: Vec<usize>,
     /// PoW bits per round.
     pow: Vec<u32>,
@@ -69,10 +68,11 @@ fn rand_proth<R: Rng>(rng: &mut R) -> Proth120 {
 /// Full generation: random polys -> coset-by-coset base commitment -> `whir_fold`
 /// -> EVM calldata (+ JSON), written under `verifier_evm/whir/testdata`.
 fn run_generation(cfg: &GenConfig, worker: &Worker) {
-    assert_eq!(cfg.folds.len(), NUM_ROUNDS);
-    assert_eq!(cfg.queries.len(), NUM_ROUNDS);
-    assert_eq!(cfg.pow.len(), NUM_ROUNDS);
-    assert_eq!(cfg.lde_factors.len(), NUM_ROUNDS - 1);
+    let num_rounds = cfg.folds.len();
+    assert!(num_rounds >= 2, "WHIR needs at least 2 rounds");
+    assert_eq!(cfg.queries.len(), num_rounds);
+    assert_eq!(cfg.pow.len(), num_rounds);
+    assert_eq!(cfg.lde_factors.len(), num_rounds - 1);
 
     let t0 = std::time::Instant::now();
     let log = |msg: &str| println!("[whir-gen +{:6.1}s] {msg}", t0.elapsed().as_secs_f64());
@@ -303,7 +303,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     let plen = cd.len();
 
     let mut sc = 0usize; // sumcheck-poly cursor into proof.sumcheck_polys
-    for r in 0..NUM_ROUNDS {
+    for r in 0..num_rounds {
         for _ in 0..cfg.folds[r] {
             let sp = &proof.sumcheck_polys[sc];
             sc += 1;
@@ -311,7 +311,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
             cd.extend_from_slice(&be16(sp[1]));
             cd.extend_from_slice(&be16(sp[2]));
         }
-        if r < NUM_ROUNDS - 1 {
+        if r < num_rounds - 1 {
             for d in proof.intermediate_whir_oracles[r].commitment.cap.cap.iter() {
                 cd.extend_from_slice(&dig32(d));
             }
@@ -345,7 +345,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
             }
             cd.extend_from_slice(&proof.pow_nonces[r].to_be_bytes());
             for qq in 0..cfg.queries[r] {
-                let q = &proof.intermediate_whir_oracles[NUM_ROUNDS - 2].queries[qq];
+                let q = &proof.intermediate_whir_oracles[num_rounds - 2].queries[qq];
                 push_leaf(&mut cd, &q.leaf_values_concatenated, &q.path);
             }
         }
@@ -493,5 +493,215 @@ fn generate_whir_input_for_evm_production() {
         rng_seed: 0xC0FFEE,
         out_suffix: "_prod",
     };
+    run_generation(&cfg, &worker);
+}
+
+/// Compute a WHIR schedule in the SAME mode as VARIANT 4 — 100-bit security under
+/// the pessimistic conjecture (20% query margin), PoW capped at 30 bits — for a
+/// given folding plan, keeping every RS codeword pinned at `2^max_codeword_log2`.
+///
+/// Per round with LDE-bit count `cb` (= log2 of that round's oracle LDE factor):
+///   q   = ceil(1.2 * (100 - 30) / cb)            // queries at the max PoW
+///   pow = clamp(ceil(100 - q*cb/1.2), 0, 30)     // smallest PoW that keeps that q
+/// which reproduces VARIANT 4's `[17,12,8,6,5,4]` / `[30,30,27,25,21,24]` for its
+/// `cb = [5,7,11,15,19,23]`.
+///
+/// Folding plan: fold by `2^first_fold_log2` first, then by `2^fold_log2` while that
+/// does not overshoot the `2^final_log2` target (the last fold shrinks to land on it).
+fn pessimistic_config(
+    message_log2: usize,
+    first_lde_log2: usize,
+    first_fold_log2: usize,
+    fold_log2: usize,
+    max_codeword_log2: usize,
+    final_log2: usize,
+    out_suffix: &'static str,
+) -> GenConfig {
+    assert!(final_log2 < message_log2 && first_fold_log2 >= 1 && fold_log2 >= 1);
+
+    // folding plan: fold by 2^first_fold, then by 2^fold_log2 while it won't overshoot.
+    let mut folds = vec![first_fold_log2];
+    let mut folded = message_log2 - first_fold_log2;
+    while folded > final_log2 {
+        let f = fold_log2.min(folded - final_log2);
+        folds.push(f);
+        folded -= f;
+    }
+    assert_eq!(folded, final_log2);
+
+    config_from_folds(message_log2, first_lde_log2, folds, max_codeword_log2, out_suffix)
+}
+
+/// Compute a `GenConfig` in the pessimistic-conjecture mode (100-bit security, PoW
+/// capped at 30, 20% margin) for an EXPLICIT per-round folding plan, keeping every RS
+/// codeword pinned at `2^max_codeword_log2`. Used for non-uniform schedules.
+fn config_from_folds(
+    message_log2: usize,
+    first_lde_log2: usize,
+    folds: Vec<usize>,
+    max_codeword_log2: usize,
+    out_suffix: &'static str,
+) -> GenConfig {
+    const SECURITY: f64 = 100.0;
+    const MAX_POW: f64 = 30.0;
+    const MARGIN: f64 = 1.2; // pessimistic conjecture: +20% queries
+
+    assert_eq!(
+        message_log2 + first_lde_log2,
+        max_codeword_log2,
+        "first LDE must pin the base codeword to the max size"
+    );
+    assert!(folds.iter().all(|&f| f >= 1));
+    assert!(folds.iter().sum::<usize>() < message_log2);
+    let num_rounds = folds.len();
+
+    // per-round LDE-bit count `cb` + intermediate-oracle LDE factors (codeword pinned)
+    let mut cb = Vec::with_capacity(num_rounds);
+    cb.push(first_lde_log2 as u32);
+    let mut lde_factors = Vec::with_capacity(num_rounds - 1);
+    let mut folded = message_log2;
+    for &f in folds.iter().take(num_rounds - 1) {
+        folded -= f;
+        let lde_log2 = max_codeword_log2 - folded;
+        lde_factors.push(1usize << lde_log2);
+        cb.push(lde_log2 as u32);
+    }
+
+    // queries + PoW per round (pessimistic, 100-bit, PoW <= 30)
+    let mut queries = Vec::with_capacity(num_rounds);
+    let mut pow = Vec::with_capacity(num_rounds);
+    for &c in cb.iter() {
+        let c = c as f64;
+        let q = (MARGIN * (SECURITY - MAX_POW) / c).ceil();
+        let p = (SECURITY - q * c / MARGIN).ceil().clamp(0.0, MAX_POW);
+        queries.push(q as usize);
+        pow.push(p as u32);
+    }
+
+    GenConfig {
+        message_log2,
+        base_lde_log2: first_lde_log2,
+        cap_size: 8,
+        folds,
+        queries,
+        lde_factors,
+        pow,
+        rng_seed: 0xC0FFEE,
+        out_suffix,
+    }
+}
+
+/// Fast check (no proving): the schedule computer reproduces VARIANT 4 exactly for
+/// its parameters (proving it is the same mode) and yields the expected aggressive
+/// schedule, which meets 100-bit security every round.
+#[test]
+fn pessimistic_config_reproduces_variant4_and_aggressive() {
+    // VARIANT 4 parameters -> the hand-written production schedule, byte for byte.
+    let v4 = pessimistic_config(26, 5, 2, 4, 31, 4, "_check");
+    assert_eq!(v4.folds, vec![2, 4, 4, 4, 4, 4]);
+    assert_eq!(v4.queries, vec![17, 12, 8, 6, 5, 4]);
+    assert_eq!(v4.pow, vec![30, 30, 27, 25, 21, 24]);
+    assert_eq!(v4.lde_factors, vec![128, 2048, 32768, 524288, 8388608]);
+
+    // Aggressive v1: first fold 8, then 32/32/32/16 (uniform builder). 16 final coeffs.
+    let v1 = pessimistic_config(26, 6, 3, 5, 32, 4, "_agg");
+    assert_eq!(v1.folds, vec![3, 5, 5, 5, 4]);
+    assert_eq!(v1.queries, vec![14, 10, 6, 5, 4]);
+    assert_eq!(v1.pow, vec![30, 25, 30, 21, 20]);
+    assert_eq!(v1.lde_factors, vec![1 << 9, 1 << 14, 1 << 19, 1 << 24]);
+    assert_eq!(v1.folds.iter().sum::<usize>(), 26 - 4); // 2^4 = 16 coeffs
+
+    // Aggressive v2: fold by 2, then 16, then 32/32/32 (explicit non-uniform). 64 coeffs.
+    let v2 = config_from_folds(26, 6, vec![1, 4, 5, 5, 5], 32, "_agg2");
+    assert_eq!(v2.folds, vec![1, 4, 5, 5, 5]);
+    assert_eq!(v2.queries, vec![14, 12, 8, 6, 4]);
+    assert_eq!(v2.pow, vec![30, 30, 27, 20, 30]);
+    assert_eq!(v2.lde_factors, vec![1 << 7, 1 << 11, 1 << 16, 1 << 21]);
+    assert_eq!(v2.folds.iter().sum::<usize>(), 26 - 6); // 2^6 = 64 coeffs
+
+    // every round of each must reach 100-bit security: pow + q*cb/1.2 >= 100.
+    for (cfg, cbs) in [
+        (&v1, vec![6.0f64, 9.0, 14.0, 19.0, 24.0]),
+        (&v2, vec![6.0, 7.0, 11.0, 16.0, 21.0]),
+    ] {
+        for (i, &cb) in cbs.iter().enumerate() {
+            let bits = cfg.pow[i] as f64 + cfg.queries[i] as f64 * cb / 1.2;
+            assert!(bits >= 100.0 - 1e-9, "round {i}: only {bits} bits");
+        }
+    }
+}
+
+/// Small analogue of the aggressive config (message 2^12, base codeword 2^16): a
+/// LARGER first fold, aggressive folding after, a codeword pinned at the max, and a
+/// variable (non-6) round count — exercising `run_generation`'s round-agnostic path
+/// end-to-end (whir_fold + schedule-driven serializer) cheaply.
+#[test]
+fn generate_whir_smoke_aggressive() {
+    let worker = Worker::new_with_num_threads(4);
+    let cfg = pessimistic_config(12, 4, 2, 3, 16, 3, "_aggsmoke");
+    println!(
+        "[agg-smoke] rounds={} folds={:?} queries={:?} pow={:?} lde={:?}",
+        cfg.folds.len(),
+        cfg.folds,
+        cfg.queries,
+        cfg.pow,
+        cfg.lde_factors
+    );
+    run_generation(&cfg, &worker);
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../verifier_evm/whir/testdata");
+    let hex = format!("{dir}/proth120_whir_calldata_aggsmoke.hex");
+    assert!(std::fs::metadata(&hex).unwrap().len() > 0);
+    let _ = std::fs::remove_file(&hex);
+    let _ = std::fs::remove_file(format!("{dir}/proth120_whir_input_aggsmoke.json"));
+}
+
+/// Aggressive-folding production config: same 8+1 polys of 2^26 as VARIANT 4, first
+/// LDE 64 (=> base codeword 2^32), first fold by 8 then fold by 32 while possible down
+/// to 16 final coefficients, every RS codeword pinned at 2^32. 100-bit pessimistic
+/// security, PoW capped at 30 bits. EVM verifier: `whir_agg.sol` / `WhirVerifierAgg`.
+///   folds   = [3, 5, 5, 5, 4]   (fold by 8, 32, 32, 32, 16 => 2^4 = 16 final)
+///   cb      = [6, 9, 14, 19, 24]   q = [14, 10, 6, 5, 4]   pow = [30, 25, 30, 21, 20]
+/// HEAVY (2^32 codewords) — ignored by default; run via `gen_whir_agg.sh`.
+#[test]
+#[ignore = "aggressive production-sized (2^32 codewords): needs a big machine; run gen_whir_agg.sh"]
+fn generate_whir_input_for_evm_aggressive() {
+    let worker = Worker::new();
+    let cfg = pessimistic_config(26, 6, 3, 5, 32, 4, "_agg");
+    println!(
+        "[whir-agg] folds={:?} queries={:?} pow={:?} lde_factors={:?}",
+        cfg.folds, cfg.queries, cfg.pow, cfg.lde_factors
+    );
+    run_generation(&cfg, &worker);
+}
+
+/// Aggressive schedule v2 — same 8+1 polys of 2^26 and codeword pinned at 2^32, but
+/// fold by 2 in the FIRST round only (keeps the expensive 8-column base leaf small —
+/// see the proof-size analysis), then by 2^4, then aggressively by 2^5. Total 5 rounds,
+/// sum of folds 20 => 2^(26-20) = 2^6 = 64 final coefficients (a LARGER final poly than
+/// v1's 16, trading a bigger final-aggregate for smaller openings / a smaller proof).
+/// EVM verifier: `whir_agg2.sol` / `WhirVerifierAgg2`.
+///   folds   = [1, 4, 5, 5, 5]   (fold by 2, 16, 32, 32, 32 => 2^6 = 64 final)
+///   cb      = [6, 7, 11, 16, 21]   q = [14, 12, 8, 6, 4]   pow = [30, 30, 27, 20, 30]
+///   lde     = [128, 2048, 65536, 2097152]   final = 64 monomials (rfin 6)
+/// HEAVY (2^32 codewords) — ignored by default; run via `gen_whir_agg2.sh`.
+#[test]
+#[ignore = "aggressive-v2 production-sized (2^32 codewords): needs a big machine; run gen_whir_agg2.sh"]
+fn generate_whir_input_for_evm_aggressive_v2() {
+    let worker = Worker::new();
+    let cfg = config_from_folds(
+        26,                  // message_log2 (same input polys as VARIANT 4)
+        6,                   // first LDE factor 64 => base codeword 2^32
+        vec![1, 4, 5, 5, 5], // fold by 2, then 16, then 32/32/32 => 64 final coeffs
+        32,                  // max RS codeword 2^32
+        "_agg2",
+    );
+    println!(
+        "[whir-agg2] folds={:?} queries={:?} pow={:?} lde_factors={:?} final=2^{}",
+        cfg.folds,
+        cfg.queries,
+        cfg.pow,
+        cfg.lde_factors,
+        cfg.message_log2 - cfg.folds.iter().sum::<usize>(),
+    );
     run_generation(&cfg, &worker);
 }

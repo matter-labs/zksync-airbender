@@ -327,6 +327,37 @@ pub fn compute_column_major_lde_single_coset_with_offset<
     evals.into_boxed_slice()
 }
 
+/// Fully-serial (no worker) variant of
+/// [`compute_column_major_lde_single_coset_with_offset`]. Used when many small
+/// cosets are computed concurrently (one per worker thread), so each must avoid
+/// spawning its own parallel scope. Bit-identical to the parallel version (the
+/// parallel NTT/`distribute_powers`/bit-reversal all match their serial forms).
+pub fn compute_column_major_lde_single_coset_with_offset_serial<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    A: GoodAllocator,
+>(
+    monomial_form_normal_order: &[E],
+    twiddles: &Twiddles<F, A>,
+    offset: F,
+) -> Box<[E]> {
+    let trace_len_log2 = monomial_form_normal_order.len().trailing_zeros();
+    assert!(twiddles.forward_twiddles.len() >= (1 << (trace_len_log2 - 1)));
+    let selected_twiddles = &twiddles.forward_twiddles[..(1 << (trace_len_log2 - 1))];
+
+    let mut evals = monomial_form_normal_order.to_vec();
+    if offset != F::ONE {
+        distribute_powers_serial(&mut evals[..], F::ONE, offset);
+    }
+    bitreverse_enumeration_inplace(&mut evals[..]);
+    fft::naive::serial_ct_ntt_bitreversed_to_natural(
+        &mut evals[..],
+        trace_len_log2,
+        selected_twiddles,
+    );
+    evals.into_boxed_slice()
+}
+
 pub(crate) fn compute_column_major_monomial_form_from_main_domain<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
