@@ -46,44 +46,19 @@ pub const fn transcript_challenge_array_size(num_elements: usize, pow_bits: usiz
 /// soundness-conservative rounding direction.
 pub const BABYBEAR_EXT4_SIZE_LOG2: usize = 123;
 
-/// Permutation elements contributed per cycle: 1 machine-state + 3 memory accesses = 4 = `2^2`.
-const PERMUTATION_ELEMENTS_PER_CYCLE_LOG2: usize = 2;
-
-/// Delegation-capacity headroom. These `+2` bits set the ceiling to 4x the main-circuit worst
-/// case (`2^38 -> 2^40`) — this is the *ceiling* multiplier, NOT 4x headroom for delegations
-/// (the net room above a maxed main circuit is ~3x). The number of delegation circuit instances
-/// is bounded at runtime ONLY by [`MAX_PERMUTATION_ELEMENTS_LOG2`] (no compile-time cap); since
-/// each delegation circuit contributes only ~`2^25`–`2^26` permutation terms, this is far above
-/// any realistic program (delegations are negligible next to the `2^38` main worst case). A
-/// *policy* choice, deliberately conservative: it bites ONLY at security_100 (it inflates the
-/// auto-derived PoW by 1 bit per extra bit here); at security_80 the base soundness already
-/// exceeds 80 for any ceiling `<= 2^41`, so this value is behaviourally moot there.
-const DELEGATION_HEADROOM_LOG2: usize = 2;
-
-/// log2 ceiling on the total number of permutation-argument elements that share the
-/// memory/delegation external (linearization) challenges. The shared argument is ONE global
-/// multiset/grand-product equality over the union of all circuits' accesses, so its
-/// Schwartz–Zippel degree is this total element count.
+/// log2 ceiling on the TOTAL number of permutation-argument elements that share the
+/// memory/delegation external (linearization) challenges — the Schwartz–Zippel degree of the
+/// shared grand-product equality. Used purely to derive [`MEMORY_DELEGATION_POW_BITS`].
 ///
-/// Derived (not a magic number): main circuits contribute at most `MAX_NUMBER_OF_CYCLES * 4`
-/// elements, where `MAX_NUMBER_OF_CYCLES = 2^36` comes from the RAM timestamp layout exactly as
-/// `full_statement_verifier::MAX_CYCLES` computes it; the delegation headroom adds the policy
-/// margin. Currently `36 + 2 + 2 = 40`.
-///
-/// The coupling is structural, not by convention: BOTH the runtime assert in
-/// `full_statement_verifier::unrolled_proof_statement` AND the PoW derivation
-/// ([`memory_delegation_pow_bits`]) read this one constant, so they cannot drift — changing the
-/// cycle layout re-derives the PoW automatically. The `derivation_matches_expected_values`
-/// self-check pins the resulting value/base soundness as a tripwire: a layout change that moves
-/// it fails the test and forces a deliberate PoW-soundness re-review.
-pub const MAX_PERMUTATION_ELEMENTS_LOG2: usize = {
-    // Mirror full_statement_verifier::MAX_CYCLES: MAX_NUMBER_OF_CYCLES is
-    // `1 << (TIMESTAMP_COLUMNS_NUM_BITS * NUM_TIMESTAMP_COLUMNS_FOR_RAM - NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP)`.
-    let max_cycles_log2 = (cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS as usize
-        * cs::definitions::NUM_TIMESTAMP_COLUMNS_FOR_RAM)
-        - cs::definitions::NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP as usize;
-    max_cycles_log2 + PERMUTATION_ELEMENTS_PER_CYCLE_LOG2 + DELEGATION_HEADROOM_LOG2
-};
+/// A hardcoded, deliberately conservative limit — intentionally NOT derived from the max cycle
+/// count. Main RISC-V circuits contribute at most ~`2^38` elements (`total_cycles * 4`,
+/// `total_cycles < 2^36`), but delegation circuits add elements independently of the
+/// timestamp/cycle bound (they do not drive timestamps), so there is no clean logical link
+/// between max cycles and the total. `40` is a sane upper bound that is hardly reachable in
+/// practice; if some security level's PoW came out too high we would simply lower it. The
+/// runtime `assert!(total_permutation_elements < 1 << MAX_PERMUTATION_ELEMENTS_LOG2)` in
+/// `full_statement_verifier::unrolled_proof_statement` enforces it against the actual proof.
+pub const MAX_PERMUTATION_ELEMENTS_LOG2: usize = 40;
 
 /// Schwartz–Zippel base soundness (in bits) of the shared memory/delegation permutation
 /// argument *before* any proof-of-work. Each permutation key is a degree-1 affine form in the
@@ -140,9 +115,9 @@ mod memory_delegation_pow_tests {
 
     #[test]
     fn derivation_matches_expected_values() {
-        // Tripwire: the derived ceiling is currently 40 (cycles 2^36 * 4 + 4x delegation
-        // headroom). If the RAM timestamp layout changes this, re-review the PoW soundness
-        // before updating these expectations.
+        // Pins the PoW-derivation inputs. Deliberately changing MAX_PERMUTATION_ELEMENTS_LOG2
+        // (the policy ceiling) or the field size re-derives the PoW — update these expectations
+        // and re-review soundness when that happens.
         assert_eq!(MAX_PERMUTATION_ELEMENTS_LOG2, 40);
         // base = 123 - 40 - 2 = 81
         assert_eq!(
