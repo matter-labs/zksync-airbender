@@ -81,16 +81,137 @@ fn delete_indices(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>, del: &BTr
     });
 }
 
-/// Optimize the lowered stream. Identity for now; rules are added in later tasks.
+/// Does `vi` read the accumulator's current value (before possibly overwriting it)?
+/// AccFromSrc overwrites without reading; DstFromSrc doesn't touch acc. All arithmetic
+/// ops read acc, and DstFromAcc reads acc (to store it).
+fn reads_acc(vi: &VInstr) -> bool {
+    match vi {
+        VInstr::Mov {
+            dir: MovDir::AccFromSrc,
+            ..
+        }
+        | VInstr::Mov {
+            dir: MovDir::DstFromSrc,
+            ..
+        } => false,
+        VInstr::Mov {
+            dir: MovDir::DstFromAcc,
+            ..
+        } => true,
+        VInstr::Add { .. } | VInstr::Mul { .. } | VInstr::Fma { .. } => true,
+    }
+}
+
+/// Whether `vi` overwrites acc without first reading it (a "fresh" acc write).
+fn writes_acc_fresh(vi: &VInstr) -> bool {
+    matches!(
+        vi,
+        VInstr::Mov {
+            dir: MovDir::AccFromSrc,
+            ..
+        }
+    )
+}
+
+/// F1: `AccFromSrc(src); DstFromAcc(Cell/Global dst)` where the src value is dead after
+/// the store (the next acc-touching instr overwrites acc without reading it) → fuse to a
+/// single `DstFromSrc(dst, src)`. Returns true if any fusion happened.
+fn fuse_leaf_loads(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool {
+    let mut del: BTreeSet<usize> = BTreeSet::new();
+    let mut i = 0usize;
+    while i + 1 < vinstrs.len() {
+        let (load_src, load_field) = match &vinstrs[i] {
+            VInstr::Mov {
+                dir: MovDir::AccFromSrc,
+                src: Some(s),
+                field,
+                ..
+            } => (s.clone(), *field),
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        let store = matches!(
+            &vinstrs[i + 1],
+            VInstr::Mov {
+                dir: MovDir::DstFromAcc,
+                ..
+            }
+        );
+        if !store || del.contains(&i) {
+            i += 1;
+            continue;
+        }
+        // acc-liveness: scan from i+2 for the first instr that touches acc.
+        let mut acc_dead = true;
+        for vj in &vinstrs[i + 2..] {
+            if writes_acc_fresh(vj) {
+                acc_dead = true;
+                break;
+            }
+            if reads_acc(vj) {
+                acc_dead = false;
+                break;
+            }
+            // DstFromSrc doesn't touch acc — keep scanning.
+        }
+        if !acc_dead {
+            i += 1;
+            continue;
+        }
+        // codex-R3 guard: never fuse into a self-read/self-define. If the load source is
+        // `Value(x)` and the store defines that same `x` (cell x <- cell x), the fused
+        // `DstFromSrc Cell(x) <- Value(x)` would both define and read `x` at one instr,
+        // and placement (keyed by `(instr, ValueId)`) could resolve the read to the
+        // freshly-defined cell. Skip it.
+        if let VirtualOp::Value(x) = &load_src {
+            if vinstrs[i + 1].defines() == Some(*x) {
+                i += 1;
+                continue;
+            }
+        }
+        // Rewrite the store (i+1) into `DstFromSrc(dst <- load_src)`; delete the load (i).
+        // `dst`/`defines` on the store are unchanged; only dir/src/field/is_dram_read move.
+        if let VInstr::Mov {
+            dir,
+            field,
+            src,
+            is_dram_read,
+            ..
+        } = &mut vinstrs[i + 1]
+        {
+            *dir = MovDir::DstFromSrc;
+            *field = load_field;
+            *src = Some(load_src);
+            *is_dram_read = false; // a copy, not a fold DRAM read
+        }
+        del.insert(i);
+        i += 2;
+    }
+    let changed = !del.is_empty();
+    delete_indices(vinstrs, step_of, &del);
+    changed
+}
+
+/// Optimize the lowered stream via a fixpoint of the rewrite rules.
 pub(crate) fn optimize_vinstrs(
-    vinstrs: Vec<VInstr>,
-    step_of: Vec<usize>,
+    mut vinstrs: Vec<VInstr>,
+    mut step_of: Vec<usize>,
 ) -> (Vec<VInstr>, Vec<usize>) {
     debug_assert_eq!(
         vinstrs.len(),
         step_of.len(),
         "step_of must parallel vinstrs"
     );
+    loop {
+        let mut changed = false;
+        changed |= fuse_leaf_loads(&mut vinstrs, &mut step_of);
+        if !changed {
+            break;
+        }
+    }
+    debug_assert_eq!(vinstrs.len(), step_of.len());
     (vinstrs, step_of)
 }
 
@@ -117,6 +238,99 @@ mod tests {
             src: None,
             defines: Some(v),
             is_dram_read: false,
+        }
+    }
+
+    fn mov_load_global(slot: u8, col: u16) -> VInstr {
+        VInstr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(VirtualOp::Global { slot, col }),
+            defines: None,
+            is_dram_read: true,
+        }
+    }
+
+    #[test]
+    fn f1_fuses_leaf_load_when_acc_dead_after_store() {
+        let v = ExprId(5);
+        // acc <- GLOBAL; cellv <- acc; acc <- GLOBAL2  (third overwrites acc => leaf value dead)
+        let mut vinstrs = vec![mov_load_global(2, 4), mov_store(v), mov_load_global(2, 2)];
+        let mut step_of = vec![0, 0, 0];
+        let changed = fuse_leaf_loads(&mut vinstrs, &mut step_of);
+        assert!(changed);
+        assert_eq!(vinstrs.len(), 2); // load+store fused into one
+        assert_eq!(step_of.len(), 2);
+        // first instr is now DstFromSrc cellv <- GLOBAL
+        match &vinstrs[0] {
+            VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                dst: Some(VDst::Cell(w)),
+                src: Some(VirtualOp::Global { slot, col }),
+                ..
+            } => {
+                assert_eq!(*w, v);
+                assert_eq!((*slot, *col), (2, 4));
+            }
+            other => panic!("expected fused DstFromSrc, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn f1_does_not_fuse_when_acc_read_after_store() {
+        let v = ExprId(5);
+        // acc <- GLOBAL; cellv <- acc; MUL acc *= something  (MUL reads acc => leaf value live)
+        let mut vinstrs = vec![
+            mov_load_global(2, 4),
+            mov_store(v),
+            VInstr::Mul {
+                field: OperandField::Base,
+                reads: vec![VirtualOp::Ldc {
+                    sub: crate::fwd::isa::LdcSub::Const,
+                    idx: 0,
+                }],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let mut step_of = vec![0, 0, 0];
+        let changed = fuse_leaf_loads(&mut vinstrs, &mut step_of);
+        assert!(!changed);
+        assert_eq!(vinstrs.len(), 3);
+    }
+
+    #[test]
+    fn f1_skips_self_define_value_copy() {
+        // acc <- Value(v); cellv <- acc; acc <- GLOBAL  — fusing would make
+        // `DstFromSrc Cell(v) <- Value(v)` (self read+define). Must NOT fuse.
+        let v = ExprId(5);
+        let mut vinstrs = vec![mov_load(v), mov_store(v), mov_load_global(2, 2)];
+        let mut step_of = vec![0, 0, 0];
+        let changed = fuse_leaf_loads(&mut vinstrs, &mut step_of);
+        assert!(!changed, "self-define Value(v)->Cell(v) copy must not fuse");
+        assert_eq!(vinstrs.len(), 3);
+    }
+
+    #[test]
+    fn f1_fuses_value_copy_to_different_cell() {
+        // acc <- Value(w); cellv <- acc; acc <- GLOBAL  (w != v) — safe cell->cell copy.
+        let (v, w) = (ExprId(5), ExprId(6));
+        let mut vinstrs = vec![mov_load(w), mov_store(v), mov_load_global(2, 2)];
+        let mut step_of = vec![0, 0, 0];
+        let changed = fuse_leaf_loads(&mut vinstrs, &mut step_of);
+        assert!(changed);
+        assert_eq!(vinstrs.len(), 2);
+        match &vinstrs[0] {
+            VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                dst: Some(VDst::Cell(d)),
+                src: Some(VirtualOp::Value(s)),
+                ..
+            } => {
+                assert_eq!((*d, *s), (v, w));
+            }
+            other => panic!("expected DstFromSrc Cell(v)<-Value(w), got {other:?}"),
         }
     }
 
