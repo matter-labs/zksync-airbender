@@ -1,0 +1,28 @@
+{
+  "layers": [
+    {
+      "predicted_traffic": 147,
+      "floor": 114
+    },
+    {
+      "predicted_traffic": 553,
+      "floor": 546
+    },
+    {
+      "predicted_traffic": 343,
+      "floor": 336
+    },
+    {
+      "predicted_traffic": 181,
+      "floor": 176
+    },
+    {
+      "predicted_traffic": 99,
+      "floor": 96
+    },
+    {
+      "predicted_traffic": 57,
+      "floor": 57
+    }
+  ]
+}

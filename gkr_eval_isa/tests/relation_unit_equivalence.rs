@@ -1,29 +1,36 @@
-//! Phase 1 golden-equivalence regression: the regenerated relation-unit-shaped
-//! schedules (`cs/compiled_circuits/*_schedule_b16_gkr.json`, now `units:`) must be
-//! **content-identical** to the pre-Phase-1 flat-`order` schedules — only the JSON
-//! SHAPE changed (`order: Vec<RootId>` → `units: Vec<RelationUnit>`).
+//! Phase 2 non-regression + consistency gate for the committed relation-unit
+//! schedules (`cs/compiled_circuits/*_schedule_b16_gkr.json`).
 //!
-//! The golden snapshots in `tests/golden/*.golden.json` were captured (jq) from the
-//! OLD committed fixtures BEFORE regeneration and pin, per layer, the flat atom
-//! `order`, the `sites` genome, `predicted_traffic`, and `floor`. This test loads the
-//! REGENERATED (new-shape) committed fixture, validates it against the DAG, and
-//! asserts:
-//!   1. `LayerSchedule::atom_order()` (flattened `units`) == golden flat `order`;
-//!   2. `sites` == golden `sites` (typed f64 compare — the corpus priorities are all
-//!      dyadic, exact in f64, so this is an exact byte-for-content check);
-//!   3. `predicted_traffic` / `floor` == golden;
-//!   4. recompiling each layer's stored `(units, sites)` under `Decisions` at the
-//!      persisted budget reproduces `predicted_traffic` EXACTLY (emitter/artifact
-//!      cross-check — a GATE-D-equivalent applied to the reshaped artifact).
+//! A corpus regeneration (tuned memetic GA, seeded from the Phase-1 incumbent) is
+//! intentionally changing the committed schedules layer by layer in search of lower
+//! `predicted_traffic`, so the old byte-identical golden asserts no longer apply.
+//! This test instead checks that whatever the regenerated schedule looks like, it is
+//! (a) internally consistent — a valid, truthfully-costed compiled program — and
+//! (b) never worse than the pre-GA baseline captured in
+//! `tests/golden/{stem}_schedule_b16_gkr.pretraffic.json` (`{ "layers": [
+//! {"predicted_traffic", "floor"}, ... ] }`, one entry per DAG layer, in order).
 //!
-//! This is the Phase-1 gate. NEVER weaken it or hand-edit a fixture to make it pass.
+//! Per fixture, per layer:
+//!   1. Consistency: the committed schedule `validate_circuit_schedule`s against the
+//!      DAG, and recompiling the stored `(units, sites)` reproduces the persisted
+//!      `predicted_traffic` exactly (the emitter/artifact cross-check carried over
+//!      from Phase 1); `floor <= predicted_traffic`.
+//!   2. Non-regression: `floor` is structural and must equal the baseline `floor`
+//!      exactly; `predicted_traffic` must never exceed the baseline (the GA is
+//!      seeded from the Phase-1 incumbent, so it can only match or improve).
+//!   3. Improvement is informational per layer (some layers are already optimal —
+//!      no strict-improvement assert there) but is enforced in aggregate: the
+//!      corpus-wide sum of `predicted_traffic` must not regress versus baseline.
+//!
+//! Hand-editing a fixture or a `.pretraffic.json` baseline to make this pass
+//! defeats its purpose — regenerate honestly instead.
 
 mod common;
 use common::{compiled_circuit_dir, load_fixture};
 
 use std::path::PathBuf;
 
-use cs::gkr_compiler::dag_ir::{lower_dag, validate, validate_circuit_schedule, SiteKey};
+use cs::gkr_compiler::dag_ir::{lower_dag, validate, validate_circuit_schedule};
 use gkr_eval_isa::fwd::compile::decisions::SiteDecisions;
 use gkr_eval_isa::fwd::compile::{
     build_cross_layer_field_map, compile_layer, layer_needs_compile, load_committed_schedule,
@@ -31,7 +38,7 @@ use gkr_eval_isa::fwd::compile::{
 
 /// (layout fixture file, committed schedule stem) for all 11 cache-layout circuits —
 /// the stem differs from the fixture stem only for `inits_and_teardowns` (fixture is
-/// `..._preprocessed_layout_gkr.json`, schedule/golden stem is `inits_and_teardowns`).
+/// `..._preprocessed_layout_gkr.json`, schedule/baseline stem is `inits_and_teardowns`).
 /// Mirrors `stage3_schedule_driven::COMMITTED_CORPUS`.
 const COMMITTED_CORPUS: &[(&str, &str)] = &[
     ("add_sub_lui_auipc_mop_layout_gkr.json", "add_sub_lui_auipc_mop"),
@@ -47,22 +54,16 @@ const COMMITTED_CORPUS: &[(&str, &str)] = &[
     ("unsigned_mul_div_layout_gkr.json", "unsigned_mul_div"),
 ];
 
-/// The golden snapshot of ONE circuit's pre-Phase-1 schedule content. Deserialized
-/// with the SAME typed `(SiteKey, f64)` site shape the live schedule uses, so `sites`
-/// compares as typed f64 pairs (no int-vs-float `serde_json::Value` pitfall; the
-/// corpus priorities are all dyadic rationals that round-trip exactly).
+/// Pre-GA per-layer `(predicted_traffic, floor)` baseline for one circuit, captured
+/// from the committed schedules BEFORE the memetic-GA regeneration. The non-regression
+/// floor.
 #[derive(serde::Deserialize)]
-struct GoldenCircuit {
-    budget: usize,
-    circuit: String,
-    layers: Vec<GoldenLayer>,
+struct PretrafficBaseline {
+    layers: Vec<PretrafficLayer>,
 }
 
 #[derive(serde::Deserialize)]
-struct GoldenLayer {
-    /// The pre-Phase-1 flat atom execution order (bare `RootId` integers).
-    order: Vec<u32>,
-    sites: Vec<(SiteKey, f64)>,
+struct PretrafficLayer {
     predicted_traffic: usize,
     floor: usize,
 }
@@ -71,75 +72,64 @@ fn schedule_path(stem: &str) -> PathBuf {
     compiled_circuit_dir().join(format!("{stem}_schedule_b16_gkr.json"))
 }
 
-fn golden_path(stem: &str) -> PathBuf {
+fn pretraffic_path(stem: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/golden")
-        .join(format!("{stem}.golden.json"))
+        .join(format!("{stem}_schedule_b16_gkr.pretraffic.json"))
 }
 
-fn load_golden(stem: &str) -> GoldenCircuit {
-    let p = golden_path(stem);
-    let bytes = std::fs::read(&p).unwrap_or_else(|e| panic!("read golden {p:?}: {e}"));
-    serde_json::from_slice(&bytes).unwrap_or_else(|e| panic!("parse golden {p:?}: {e}"))
+fn load_pretraffic(stem: &str) -> PretrafficBaseline {
+    let p = pretraffic_path(stem);
+    let bytes = std::fs::read(&p)
+        .unwrap_or_else(|e| panic!("read pretraffic baseline {p:?}: {e} (must exist — regenerate it, don't skip this gate)"));
+    serde_json::from_slice(&bytes).unwrap_or_else(|e| panic!("parse pretraffic baseline {p:?}: {e}"))
 }
 
-/// Full-corpus Phase-1 equivalence gate (see module docs).
+/// Full-corpus Phase-2 non-regression + consistency gate (see module docs).
 #[test]
-fn regenerated_schedules_are_content_identical_to_golden() {
+fn regenerated_schedules_are_consistent_and_non_regressed() {
     let mut layers_checked = 0usize;
     let mut recompiled = 0usize;
+    let mut corpus_sum_new = 0usize;
+    let mut corpus_sum_baseline = 0usize;
+
     for (name, stem) in COMMITTED_CORPUS {
         let artifact = load_fixture(name);
         let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
         validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
 
-        // The regenerated, new-shape committed schedule. `load_committed_schedule`
-        // deserializes the `units:` form and would ERROR on a still-OLD `order:` file
-        // — so this test also proves the regen landed.
+        // The (possibly GA-regenerated) committed schedule. `load_committed_schedule`
+        // deserializes the `units:` form and would ERROR on a still-OLD `order:` file.
         let sched = load_committed_schedule(&schedule_path(stem))
             .unwrap_or_else(|e| panic!("[{name}] load_committed_schedule: {e:?}"));
         validate_circuit_schedule(&dag, &sched)
             .unwrap_or_else(|e| panic!("[{name}] validate_circuit_schedule: {e}"));
 
-        let golden = load_golden(stem);
-        assert_eq!(sched.budget, golden.budget, "[{name}] budget drift");
-        assert_eq!(sched.circuit, golden.circuit, "[{name}] circuit name drift");
+        let baseline = load_pretraffic(stem);
         assert_eq!(
             sched.layers.len(),
-            golden.layers.len(),
-            "[{name}] layer count drift"
+            baseline.layers.len(),
+            "[{name}] layer count drift vs pretraffic baseline"
         );
 
         let cross = build_cross_layer_field_map(&dag);
+        let mut circuit_sum_new = 0usize;
+        let mut circuit_sum_baseline = 0usize;
+
         for (li, (layer, ls)) in dag.layers.iter().zip(&sched.layers).enumerate() {
-            let g = &golden.layers[li];
+            let b = &baseline.layers[li];
 
-            // (1) Flattened atom order == golden flat `order` (the compiled program's
-            // root execution sequence is unchanged).
-            let atom_order: Vec<u32> = ls.atom_order().iter().map(|r| r.0).collect();
-            assert_eq!(
-                atom_order, g.order,
-                "[{name}] L{li}: atom_order (flattened units) != golden flat order"
-            );
-
-            // (2) sites genome identical (typed f64 pairs).
-            assert_eq!(ls.sites, g.sites, "[{name}] L{li}: sites genome drift");
-
-            // (3) provenance scalars identical.
-            assert_eq!(
-                ls.predicted_traffic, g.predicted_traffic,
-                "[{name}] L{li}: predicted_traffic drift"
-            );
-            assert_eq!(ls.floor, g.floor, "[{name}] L{li}: floor drift");
+            // (1) Consistency: floor <= predicted_traffic (soundness-adjacent sanity —
+            // floor is a lower bound on any valid schedule's traffic).
             assert!(
                 ls.floor <= ls.predicted_traffic || ls.units.is_empty(),
                 "[{name}] L{li}: floor above predicted_traffic"
             );
 
-            // (4) Recompile cross-check: the stored (units, sites) must reproduce
-            // predicted_traffic exactly under Decisions at the persisted budget —
-            // GATE-D applied to the reshaped artifact (proves the compiled program,
-            // and thus GPU parity, is preserved).
+            // (1') Consistency: recompiling the stored (units, sites) under Decisions
+            // at the persisted budget reproduces predicted_traffic EXACTLY — proves
+            // the persisted scalar is truthful, not stale (emitter/artifact
+            // cross-check, GATE-D-equivalent applied to the reshaped artifact).
             if layer_needs_compile(ls.units.is_empty(), layer) {
                 let decisions = SiteDecisions::new(ls.sites.iter().copied());
                 let compiled = compile_layer(
@@ -158,15 +148,49 @@ fn regenerated_schedules_are_content_identical_to_golden() {
                 );
                 recompiled += 1;
             }
+
+            // (2) Non-regression vs the pre-GA baseline. `floor` is structural (a
+            // property of the DAG layer, not the search), so it must be unchanged;
+            // `predicted_traffic` must never exceed the baseline — the GA is seeded
+            // from the Phase-1 incumbent, so it can only match or improve.
+            assert_eq!(
+                ls.floor, b.floor,
+                "[{name}] L{li}: floor changed vs pretraffic baseline ({} -> {}) — floor is structural, this should be impossible",
+                b.floor, ls.floor
+            );
+            assert!(
+                ls.predicted_traffic <= b.predicted_traffic,
+                "[{name}] L{li}: predicted_traffic regressed vs pretraffic baseline ({} -> {})",
+                b.predicted_traffic,
+                ls.predicted_traffic
+            );
+
+            circuit_sum_new += ls.predicted_traffic;
+            circuit_sum_baseline += b.predicted_traffic;
             layers_checked += 1;
         }
-        eprintln!("[relation-unit-equiv] {name}: OK ({} layers)", sched.layers.len());
+
+        eprintln!(
+            "[relation-unit-equiv] {name}: before={circuit_sum_baseline} after={circuit_sum_new} \
+             delta={} ({} layers)",
+            circuit_sum_new as i64 - circuit_sum_baseline as i64,
+            sched.layers.len()
+        );
+        corpus_sum_new += circuit_sum_new;
+        corpus_sum_baseline += circuit_sum_baseline;
     }
+
     assert!(layers_checked > 0, "vacuous: no layers checked");
     assert!(recompiled > 0, "vacuous: no layers recompiled");
+    assert!(
+        corpus_sum_new <= corpus_sum_baseline,
+        "corpus-wide predicted_traffic regressed vs pretraffic baseline ({corpus_sum_baseline} -> {corpus_sum_new})"
+    );
     eprintln!(
-        "[relation-unit-equiv] {}/{} fixtures, {layers_checked} layers checked, {recompiled} recompiled",
+        "[relation-unit-equiv] {}/{} fixtures, {layers_checked} layers checked, {recompiled} recompiled, \
+         corpus traffic before={corpus_sum_baseline} after={corpus_sum_new} delta={}",
         COMMITTED_CORPUS.len(),
-        COMMITTED_CORPUS.len()
+        COMMITTED_CORPUS.len(),
+        corpus_sum_new as i64 - corpus_sum_baseline as i64
     );
 }

@@ -139,10 +139,28 @@ fn small_search_roundtrip_add_sub() {
         "add_sub must have at least one scheduled layer"
     );
 
-    // Serde round-trip stays exact (f64 genes included).
+    // Serde round-trip: structure + integer fields exact; priority genes are
+    // continuous f64 and serde_json's DEFAULT parser is not guaranteed 1-ULP-exact
+    // (it was, trivially, when priorities were dyadic — the tuned GA now emits
+    // arbitrary f64). The property that actually matters — a loaded schedule
+    // recompiles to its recorded traffic — is asserted in the GATE-D loop below
+    // (on `back`) and by the production load gates; a sub-ULP priority shift never
+    // reorders a cache decision (all fixture gates pass on the loaded values).
     let json = serde_json::to_string(&sched).unwrap();
     let back: cs::gkr_compiler::dag_ir::CircuitSchedule = serde_json::from_str(&json).unwrap();
-    assert_eq!(back, sched);
+    assert_eq!(back.circuit, sched.circuit);
+    assert_eq!(back.budget, sched.budget);
+    assert_eq!(back.layers.len(), sched.layers.len());
+    for (b, s) in back.layers.iter().zip(&sched.layers) {
+        assert_eq!(b.units, s.units, "units must round-trip exactly");
+        assert_eq!(b.predicted_traffic, s.predicted_traffic);
+        assert_eq!(b.floor, s.floor);
+        assert_eq!(b.sites.len(), s.sites.len());
+        for ((bk, bv), (sk, sv)) in b.sites.iter().zip(&s.sites) {
+            assert_eq!(bk, sk, "site keys must round-trip exactly");
+            assert!((bv - sv).abs() < 1e-9, "site priority round-trip within tol: {bv} vs {sv}");
+        }
+    }
 
     // GATE-D: recompiling each searched layer from its persisted (order, sites) under
     // the same budget must reproduce predicted_traffic exactly.
@@ -207,12 +225,20 @@ fn produce_all_schedules() {
         let stem = fixture
             .trim_end_matches("_preprocessed_layout_gkr.json")
             .trim_end_matches("_layout_gkr.json");
-        // Task 1: no incumbent (`None`); Task 2 flips this to `Some(&old)` for the
-        // non-regression gate. The GA seeds from scratch here.
-        let mut sched = produce_circuit_schedule(&dag, &artifact, REAL_BUDGET, &cfg, None);
-        sched.circuit = stem.to_string();
         let out = compiled_circuit_dir()
-            .join(format!("{}_schedule_b{}_gkr.json", sched.circuit, REAL_BUDGET));
+            .join(format!("{stem}_schedule_b{REAL_BUDGET}_gkr.json"));
+        // Load the OLD committed schedule BEFORE overwriting and seed the GA with
+        // it: elitism then guarantees the regenerated schedule never regresses
+        // below the persisted traffic (non-regression by construction), while the
+        // tuned GA improves where it can. A missing committed file (should not
+        // happen — the corpus is fully committed) degrades to seed-from-scratch.
+        let incumbent = gkr_eval_isa::fwd::compile::load_committed_schedule(&out).ok();
+        if incumbent.is_none() {
+            eprintln!("NOTE: no committed incumbent for {stem}; seeding from scratch");
+        }
+        let mut sched =
+            produce_circuit_schedule(&dag, &artifact, REAL_BUDGET, &cfg, incumbent.as_ref());
+        sched.circuit = stem.to_string();
         let mut f = std::fs::File::create(&out).unwrap();
         serde_json::to_writer_pretty(&mut f, &sched).unwrap();
         eprintln!("wrote {}", out.display());
