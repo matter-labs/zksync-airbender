@@ -170,6 +170,10 @@ cuda_kernel!(
 );
 
 lde_intermediate!(ab_lde_first_10_stages_kernel);
+lde_intermediate!(ab_lde_first_9_stages_kernel);
+lde_intermediate!(ab_lde_first_8_stages_kernel);
+lde_intermediate!(ab_lde_first_7_stages_kernel);
+lde_intermediate!(ab_lde_first_6_stages_kernel);
 
 pub fn evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -1226,7 +1230,83 @@ pub fn monomials_to_evals_2_pass(
     Ok(())
 }
 
-fn lde_intermediate(
+// Computes grid dimensions for high-degree LDE kernels, targeting fractional occupancy.
+// num_cols_per_coset and cosets_in_tile are not required to be powers of 2.
+// The resulting grid prioritizes monomial reuse, because monomials are unique gmem data.
+// However, the grid is not guaranteed to yield good occupancy or load balancing
+// by itself. It's meant to work with an external multistream ping-ping approach,
+// where 2 grids in flight compensate for each other's tail effects.
+fn get_lde_grid_dims_for_occupancy_hint(
+    n: usize,
+    cosets_in_tile: usize,
+    num_cols_per_coset: usize,
+    func: &impl KernelFunction,
+    block_dim_x: usize,
+    vals_per_block: usize,
+    occupancy_hint_numerator: usize,
+    occupancy_hint_denominator: usize,
+    device_properties: &DeviceProperties
+) -> CudaResult<Dim3> {
+    assert!(n >= vals_per_block);
+    assert_eq!(n % vals_per_block, 0);
+
+    let max_blocks_per_sm = era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+        func,
+        block_dim_x as i32,
+        0, // dynamic_smem_size
+    )?;
+    let max_blocks_per_sm = max_blocks_per_sm as usize;
+
+    let full_occupancy = max_blocks_per_sm * device_properties.sm_count;
+    let target_blocks =
+        (full_occupancy * occupancy_hint_numerator).div_ceil(occupancy_hint_denominator);
+
+    let grid_dim_x = n / vals_per_block;
+
+    // First, if laying out blocks across n gives enough occupancy, we're done.
+    if grid_dim_x >= target_blocks {
+        let grid: Dim3 = (grid_dim_x as u32, 1, 1).into();
+        return Ok(grid);
+    }
+
+    // Second, see if we can achieve target occupancy by parallelizing over columns
+    // within each coset. Expose the parallelism via blockDim.y.
+    let grid_dim_y;
+    if grid_dim_x * num_cols_per_coset >= target_blocks {
+        grid_dim_y = target_blocks.div_ceil(grid_dim_x);
+        assert!(grid_dim_x * grid_dim_y >= target_blocks);
+        let grid = (grid_dim_x as u32, grid_dim_y as u32, 1).into();
+        return Ok(grid);
+    } else {
+        // Max out parallelism over columns within each coset (prioritize monomial reuse)
+        grid_dim_y = num_cols_per_coset;
+    }
+
+    // As a last resort, split the coset tile. Expose the parallelism via blockDim.z.
+    let xy_blocks = grid_dim_x * grid_dim_y;
+    let grid_dim_z = target_blocks.div_ceil(xy_blocks);
+    assert!(xy_blocks * grid_dim_z >= target_blocks);
+    // Technically, grid_dim_z can be > cosets_in_tile without affecting correctness.
+    // The grid would just include a bunch of spurious no-op blocks.
+    // But it would indicate a weird, non-performant geometry we don't expect in production.
+    assert!(grid_dim_z <= cosets_in_tile);
+    let grid = (grid_dim_x as u32, grid_dim_y as u32, grid_dim_z as u32).into();
+    return Ok(grid)
+}
+
+fn get_lde_config_for_log_n(log_n: usize) -> (usize, usize) {
+    let (block_dim_x, vals_per_block) = match log_n {
+        18 => (512, 1024),
+        17 => (256, 512),
+        16 => (128, 256),
+        15 => (64, 128),
+        14 => (128, 256),
+        _ => unimplemented!(),
+    };
+    (block_dim_x, vals_per_block)
+}
+
+pub fn lde_intermediate_size_with_coset_range(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -1234,22 +1314,47 @@ fn lde_intermediate(
     cosets_in_tile: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
+    occupancy_target_numerator: usize,
+    occupancy_target_denominator: usize,
+    device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let trace_len = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), trace_len);
     assert_eq!(inputs_matrix.cols(), num_cols_per_coset_stride);
+    assert!(outputs.len() >= trace_len * num_cols_per_coset_stride * cosets_in_tile);
     let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
     let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);
     let inputs_matrix = inputs_matrix.as_ptr_and_stride();
     let outputs_matrix_const = outputs_matrix.as_ptr_and_stride();
     let outputs_matrix_mut = outputs_matrix.as_mut_ptr_and_stride();
-    let log_k = 10;
-    const BLOCK_DIM_X: usize = 512;
-    let grid_dim_x = (1 << log_n) / BLOCK_DIM_X;
-    let grid_dim_y = num_cols_per_coset_stride;
-    let grid_dim: Dim3 = (grid_dim_x as u32, grid_dim_y as u32).into();
-    let config = CudaLaunchConfig::basic(grid_dim, BLOCK_DIM_X as u32, stream);
+    let log_k = log_n - 8;
+    let (block_dim_x, vals_per_block) = get_lde_config_for_log_n(log_n);
+    // let grid_dim_x = (1 << log_n) / vals_per_block;
+    // let grid_dim_y = num_cols_per_coset_stride;
+    // let grid_dim: Dim3 = (grid_dim_x as u32, grid_dim_y as u32).into();
+    let first_pass_function = match log_n {
+        18 => LdeIntermediateFunction(ab_lde_first_10_stages_kernel),
+        17 => LdeIntermediateFunction(ab_lde_first_9_stages_kernel),
+        16 => LdeIntermediateFunction(ab_lde_first_8_stages_kernel),
+        15 => LdeIntermediateFunction(ab_lde_first_7_stages_kernel),
+        14 => LdeIntermediateFunction(ab_lde_first_6_stages_kernel),
+        _ => unimplemented!(),
+    };
+    let grid_dim: Dim3 = get_lde_grid_dims_for_occupancy_hint(
+        trace_len,
+        cosets_in_tile,
+        num_cols_per_coset_stride,
+        &first_pass_function,
+        block_dim_x,
+        vals_per_block,
+        occupancy_target_numerator,
+        occupancy_target_denominator,
+        device_properties
+    )?;
+    println!("coset_factor_shift {} grid_dim.y {} grid_dim.z {} cosets_in_tile {} outputs.len() {}",
+             coset_factor_shift, grid_dim.y, grid_dim.z, cosets_in_tile, outputs.len());
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim_x as u32, stream);
     let args = LdeIntermediateArguments::new(
         inputs_matrix,
         outputs_matrix_mut,
@@ -1259,7 +1364,7 @@ fn lde_intermediate(
         num_cols_per_coset_stride as u32,
         cosets_in_tile as u32,
     );
-    LdeIntermediateFunction(ab_lde_first_10_stages_kernel).launch(&config, &args)?;
+    first_pass_function.launch(&config, &args)?;
     // Pass 2: noninitial_8 with start_stage = log_k.
     assert!(
         cosets_in_tile.is_power_of_two(),
@@ -1300,8 +1405,8 @@ fn lde_intermediate(
 ///
 /// Runs the same forward NTT across the full power-of-two LDE: all
 /// `num_cosets = 1 << log_lde_factor` cosets, starting at coset 0. Use
-/// [`bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range`] to
-/// process a caller-selected power-of-two coset subrange.
+/// [`lde_with_coset_range`] to process a caller-selected power-of-two
+/// coset subrange.
 ///
 /// For the compact 1-pass range (`log_n <= 12`) all cosets are batched into one
 /// launch via `gridDim.x`, eliminating the per-coset launch overhead that
@@ -1355,7 +1460,7 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset(
 /// powers of two, and the selected range must fit within the full LDE coset
 /// domain.
 #[allow(dead_code)]
-pub fn bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
+pub fn lde_with_coset_range(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -1363,7 +1468,8 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
     num_cosets: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
-    transposed_monomials: bool,
+    occupancy_hint_numerator: usize,
+    occupancy_hint_denominator: usize,
     ntt_ctx: &crate::ntt_twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
@@ -1374,8 +1480,9 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
         "num_cosets must be a power of 2 (got {num_cosets})"
     );
     // Temporary for testing
-    if log_n == 18 {
-        let result = lde_intermediate(
+    if (log_n <= 18) && (log_n >= 14) {
+        println!("Calling lde_intermediate");
+        let result = lde_intermediate_size_with_coset_range(
             inputs_matrix,
             outputs,
             log_n,
@@ -1383,6 +1490,9 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
             num_cosets,
             coset_index_base,
             num_cols_per_coset_stride,
+            occupancy_hint_numerator,
+            occupancy_hint_denominator, 
+            device_properties,
             stream,
         );
         return result;
@@ -1395,7 +1505,7 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
         num_cosets,
         coset_index_base,
         num_cols_per_coset_stride,
-        transposed_monomials,
+        /*transposed_monomials=*/false,
         ntt_ctx,
         d_table_scratch,
         stream,

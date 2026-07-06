@@ -7,8 +7,8 @@ option(GPU_NTT_ENABLE_LINEINFO "Enable lineinfo for CUDA profiling builds" OFF)
 add_library(gpu_ntt_native STATIC
         context.cuh
         context.cu
-        # dit_kernels_extern.cu
-        # dit_twiddle_fill.cu
+        dit_kernels_extern.cu
+        dit_twiddle_fill.cu
         evals_to_monomials_three_pass.cu
         evals_to_monomials_two_pass.cu
         hypercube.cu
