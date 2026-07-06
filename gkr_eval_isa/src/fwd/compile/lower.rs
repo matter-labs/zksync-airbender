@@ -411,6 +411,17 @@ impl<'a> VirtualLower<'a> {
     /// whether the acc already holds `v`'s value at this point (a leaf must
     /// `emit_init_field` first) or already does (a just-recomputed compound/root).
     fn try_admit(&mut self, v: ExprId, field: OperandField) -> Option<ValueId> {
+        // RR-invariant: admit into residency ONLY values the genome scores — cs's site
+        // domain (cacheable ∧ fan-out ≥ 2). Non-domain values (challenges, constants,
+        // virtual-setup / lookup leaves, and fan-out-1 values) carry zero DRAM traffic,
+        // so caching them cannot save a read — it only squats a residency slot that could
+        // hold a genuine DRAM value. This `try_admit` is the SINGLE admission choke (leaf
+        // path lower.rs:~684, compound/root via `finalize_produced`), so gating here makes
+        // "every evictable value is genome-backed" hold by construction. Checked before
+        // `effective_priority`/`evict_to_fit` so a refused value has no side effects.
+        if !self.decisions.as_ref()?.streams.is_admittable(v) {
+            return None;
+        }
         let admitting_priority = self.decisions.as_ref()?.streams.effective_priority(v)?;
         let need = resident_width(field);
         if !self.evict_to_fit(need, Some(admitting_priority)) {

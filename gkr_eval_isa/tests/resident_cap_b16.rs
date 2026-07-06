@@ -87,10 +87,14 @@ fn b16_add_sub_l0_decisions_feasible_beats_legacy() {
         !decisions_score.infeasible,
         "Decisions must be feasible at budget {BUDGET} for add_sub L0 (demand-driven eviction)"
     );
-    // Absolute pins (captured pre-migration; `decisions: None` ≡ the old legacy
-    // recompute — Task 2 brief).
+    // Absolute pins (`decisions: None` ≡ the old legacy recompute — Task 2 brief).
+    // decisions(neutral) dropped 43→34 with the RR site-gate fix: under a neutral genome
+    // (all priorities equal) the old emitter squatted residency cells on non-domain
+    // challenge/const leaves (priority 0.0, no DRAM saving), evicting genuine DRAM values
+    // that then had to be re-read; gating admission to the cs site domain frees those
+    // cells for real DRAM residents. legacy (None) is unaffected (never admits).
     assert_eq!(legacy_traffic, 59, "legacy (decisions: None) traffic pin");
-    assert_eq!(decisions_score.dram_traffic, 43, "decisions(neutral) traffic pin");
+    assert_eq!(decisions_score.dram_traffic, 34, "decisions(neutral) traffic pin");
     assert!(
         decisions_score.dram_traffic < legacy_traffic,
         "Decisions traffic ({}) must beat the decisions-None baseline's ({}) at budget {BUDGET}",
@@ -181,11 +185,13 @@ fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
         )
     });
 
-    // Absolute pins (captured pre-migration; `decisions: None` ≡ the old legacy
-    // recompute — Task 2 brief).
+    // Absolute pins (`decisions: None` ≡ the old legacy recompute — Task 2 brief).
+    // decisions_at_floor dropped 47→39 with the RR site-gate fix (same cause as the
+    // sibling test: non-domain leaves no longer squat residency cells). Relationship
+    // (Decisions never WORSE than None) still holds and is stronger.
     assert_eq!(legacy_floor, 8, "legacy floor (max_live_cells) pin");
     assert_eq!(legacy_at_floor.stats.dram_traffic, 59, "legacy_at_floor traffic pin");
-    assert_eq!(decisions_at_floor.stats.dram_traffic, 47, "decisions_at_floor traffic pin");
+    assert_eq!(decisions_at_floor.stats.dram_traffic, 39, "decisions_at_floor traffic pin");
     assert!(
         decisions_at_floor.stats.dram_traffic <= legacy_at_floor.stats.dram_traffic,
         "Decisions with zero headroom ({}) must not do WORSE than decisions-None ({})",

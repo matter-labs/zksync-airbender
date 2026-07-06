@@ -53,7 +53,7 @@
 
 use super::super::context::ForwardAction;
 use super::arith::{classify_additive_child, is_constant_one, is_neg_one_factor, is_zero_expr, AdditiveChild};
-use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, RootId, SourceKind};
+use cs::gkr_compiler::dag_ir::{enumerate_site_domain, DagLayer, Expr, ExprId, RootId, SourceKind};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 // ── SiteKey / SiteConsumer ───────────────────────────────────────────────────
@@ -70,9 +70,11 @@ pub use cs::gkr_compiler::dag_ir::{SiteConsumer, SiteKey};
 
 /// Per-layer decisions handed to the emitter: a site's scorer-assigned
 /// priority gene. Absent entries read as `None` (caller — normally the
-/// genome/scorer — is expected to cover every site `OccurrenceStreams::build`
-/// would visit; `OccurrenceStreams::build` itself defaults a missing entry to
-/// `0.0` rather than panicking, see its doc).
+/// genome/scorer — is expected to cover every site in cs's `enumerate_site_domain`).
+/// `OccurrenceStreams::build` streams only site-domain values and defaults a missing
+/// gene on a surviving (domain) occurrence to `0.0` rather than panicking (the
+/// documented per-occurrence site↔gene looseness); a non-domain value is dropped
+/// entirely and never admitted (see `build`'s doc + `is_admittable`).
 #[derive(Clone, Debug)]
 pub struct SiteDecisions {
     map: BTreeMap<SiteKey, f64>,
@@ -95,6 +97,13 @@ impl SiteDecisions {
 pub struct OccurrenceStreams {
     /// value -> queue of (site, priority) in traversal order; front = next.
     streams: BTreeMap<ExprId, VecDeque<(SiteKey, f64)>>,
+    /// The genome-scored site domain (cs's `enumerate_site_domain`: cacheable ∧
+    /// fan-out ≥ 2), by value. `try_admit` refuses any value NOT in this set, so a
+    /// challenge / constant / virtual-setup / lookup leaf, or any fan-out-1 value, is
+    /// never admitted into residency (the `streams` themselves stay unfiltered — see
+    /// `build`). This is the enforcement point for RR's "any evictable value has a
+    /// genome backing" invariant; read via `is_admittable`.
+    admittable: BTreeSet<ExprId>,
 }
 
 impl OccurrenceStreams {
@@ -223,12 +232,31 @@ impl OccurrenceStreams {
             }
         }
 
+        // The `streams` (demand-order occurrences per value) are built UNFILTERED — the
+        // walk order and its phantom/fence/query-edge semantics are locked by this
+        // module's unit tests and consumed by `serve`. The RR-invariant (admit into
+        // residency ONLY genome-scored values) is enforced at the single admission choke
+        // (`try_admit`) via `admittable`, not by pruning the walk: gating admission (not
+        // the walk) keeps `serve`/occurrence-counting consistent with the emitter's real
+        // traversal while still refusing every non-domain value.
+        //
+        // `admittable` = cs's `enumerate_site_domain` (cacheable ∧ fan-out ≥ 2), by
+        // VALUE. cs is the single source of truth (the same set the producer/genome
+        // build from and the schedule validator checks). Keyed by value — not full
+        // `SiteKey` — deliberately, so the emitter-vs-cs consumer-field divergence (FMA
+        // re-parenting, elision reindex, neg-one fold) is irrelevant: `is_site` depends
+        // only on the value, so every genuinely cacheable∧fan-out≥2 value stays
+        // admissible with its existing per-occurrence priorities and no legitimate
+        // caching is lost; only challenges / constants / virtual-setup / lookup / and
+        // fan-out-1 values are refused.
+        let admittable: BTreeSet<ExprId> =
+            enumerate_site_domain(layer).into_iter().map(|k| k.value).collect();
         let mut streams: BTreeMap<ExprId, VecDeque<(SiteKey, f64)>> = BTreeMap::new();
         for key in flat {
             let priority = d.get(&key).unwrap_or(0.0);
             streams.entry(key.value).or_default().push_back((key, priority));
         }
-        Self { streams }
+        Self { streams, admittable }
     }
 
     /// Effective priority of `v` = priority of its FRONT unserved occurrence;
@@ -243,6 +271,14 @@ impl OccurrenceStreams {
         if let Some(q) = self.streams.get_mut(&v) {
             q.pop_front();
         }
+    }
+
+    /// RR-invariant: whether `v` is in the genome-scored site domain (cs's
+    /// `enumerate_site_domain`: cacheable ∧ fan-out ≥ 2). Values outside it have no
+    /// occurrence stream and must never be admitted into residency. Consulted by
+    /// `try_admit`'s debug_assert to make that guarantee loud.
+    pub fn is_admittable(&self, v: ExprId) -> bool {
+        self.admittable.contains(&v)
     }
 }
 

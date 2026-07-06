@@ -41,6 +41,10 @@ fn challenge() -> SourceInfo {
     }
 }
 
+fn constant(value: u32) -> SourceInfo {
+    SourceInfo { kind: SourceKind::Constant { value } }
+}
+
 /// An atom (Output+claim) root over `expr`, materialized to `Export { slot }` at `field`.
 fn atom_root_field(expr: ExprId, slot: usize, field: FieldKind) -> Root {
     Root {
@@ -159,9 +163,12 @@ fn decisions_cache_hit_beats_uncached() {
     let decisions_compiled = compile(&layer, &sched, 1, Some(&decisions));
     let uncached_compiled = compile(&layer, &sched, 16, None);
 
-    // Absolute pins (captured pre-migration under the old enum's legacy-recompute /
-    // decisions cases, reproduced byte-for-byte here since `None` ≡ Legacy — Task 2 brief).
-    assert_eq!(decisions_compiled.program.instrs.len(), 11, "decisions instr-count pin");
+    // Absolute pins (`None` ≡ Legacy — Task 2 brief). decisions dropped 11→9 with the RR
+    // site-gate fix: x/y are fan-out-1 leaves (cs consumers==1), so they are no longer
+    // admissible — the old emitter's structurally-inevitable transient admit+evict of
+    // x/y (demand_expand re-walks s's cone on every s occurrence) is gone. The property
+    // under test (s cached, Decisions strictly beats uncached) still holds (9 < 12).
+    assert_eq!(decisions_compiled.program.instrs.len(), 9, "decisions instr-count pin");
     assert_eq!(uncached_compiled.program.instrs.len(), 12, "uncached instr-count pin");
 
     assert!(
@@ -234,6 +241,79 @@ fn eviction_respects_priority_and_width() {
     let after_r1_higher = &higher.resident_realized[1].1;
     assert!(after_r1_higher.contains(&b), "higher-priority B must survive E's admission attempt");
     assert!(!after_r1_higher.contains(&e), "E must NOT be admitted over a higher-priority B");
+}
+
+// ── Test 2b: non-domain leaves (interior challenge/const) are never admitted ─────────
+
+/// RR-invariant (site-gate fix): the emitter must NEVER admit a non-domain value into
+/// residency. A challenge or constant used as an INTERIOR operand (not itself a root's
+/// materialized expr) carries zero DRAM traffic — it is an `Ldc` read, not a backing
+/// read — so caching it cannot save a read; it only squats a residency slot. Even with
+/// spare budget AND a genome that explicitly assigns those interior sites a huge
+/// priority, `try_admit`'s `is_admittable` gate (cs `enumerate_site_domain`: cacheable ∧
+/// fan-out ≥ 2) refuses them. A genuinely cacheable reused DRAM leaf in the same layer is
+/// still admitted, so the gate is discriminating, not blanket-refusing. Pre-fix, the
+/// neutral/spare-budget path opportunistically cached these — the `chalA(...)`/`#2`-in-
+/// smem disassembly that motivated this fix.
+#[test]
+fn interior_challenge_and_constant_are_never_admitted_even_with_high_priority_genes() {
+    // e0/e1 = w0/w1 (DRAM Read leaves); e2 = c (challenge); e3 = k (constant). c is a Mul
+    // factor in R0 and R1 (fan-out 2); k is an Add addend in R2 and R3 (fan-out 2); w0 is
+    // reused in R0 and R2 (fan-out 2). None of c/k/w0 is any root's expr, so c/k stay
+    // non-cacheable (interior challenge/const) while w0 is a legit cacheable∧fan-out≥2
+    // DRAM leaf. (A challenge that IS a root's own expr is a materialized backing and thus
+    // legitimately cacheable — see `eviction_respects_priority_and_width`; this test
+    // isolates the INTERIOR-operand case the disasm exposed.)
+    let (w0, c, k) = (ExprId(0), ExprId(2), ExprId(3));
+    let layer = DagLayer {
+        sources: vec![witness(0), witness(1), challenge(), constant(7)],
+        exprs: vec![
+            Expr::Source(SourceId(0)),             // 0 = w0 (DRAM, reused)
+            Expr::Source(SourceId(1)),             // 1 = w1 (DRAM)
+            Expr::Source(SourceId(2)),             // 2 = c  (challenge, interior)
+            Expr::Source(SourceId(3)),             // 3 = k  (constant, interior)
+            Expr::Mul(vec![ExprId(0), ExprId(2)]), // 4 = R0 = w0 * c
+            Expr::Mul(vec![ExprId(1), ExprId(2)]), // 5 = R1 = w1 * c
+            Expr::Add(vec![ExprId(0), ExprId(3)]), // 6 = R2 = w0 + k
+            Expr::Add(vec![ExprId(1), ExprId(3)]), // 7 = R3 = w1 + k
+        ],
+        roots: vec![
+            atom_root(ExprId(4), 0),
+            atom_root(ExprId(5), 1),
+            atom_root(ExprId(6), 2),
+            atom_root(ExprId(7), 3),
+        ],
+        batching: BatchingOrder { roots: vec![RootId(0), RootId(1), RootId(2), RootId(3)] },
+        resolutions: BTreeMap::new(),
+    };
+    let order = vec![RootId(0), RootId(1), RootId(2), RootId(3)];
+    let sched = trivial_schedule(order);
+    // Adversarial genome: MAX priority on c's and k's interior 2nd-occurrence demand
+    // sites. Pre-fix (or with the gate removed) this forced their admission; post-fix
+    // `is_admittable` refuses them regardless of gene value.
+    let decisions = SiteDecisions::new([
+        (site(RootId(1), ExprId(5), 1, c), 1000.0),
+        (site(RootId(3), ExprId(7), 1, k), 1000.0),
+    ]);
+    let compiled = compile(&layer, &sched, 16, Some(&decisions));
+
+    for (step, (_, after)) in compiled.resident_realized.iter().enumerate() {
+        assert!(
+            !after.contains(&c),
+            "interior challenge {c:?} must NEVER be resident (non-domain), but was after step {step}: {after:?}"
+        );
+        assert!(
+            !after.contains(&k),
+            "interior constant {k:?} must NEVER be resident (non-domain), but was after step {step}: {after:?}"
+        );
+    }
+    // Non-vacuous: the genuinely cacheable reused DRAM leaf w0 IS admitted at some step
+    // (spare budget), so the gate discriminates rather than refusing everything.
+    assert!(
+        compiled.resident_realized.iter().any(|(_, after)| after.contains(&w0)),
+        "reused DRAM leaf {w0:?} (cacheable ∧ fan-out≥2) must still be admitted; snapshots: {:?}",
+        compiled.resident_realized.iter().map(|(_, a)| a).collect::<Vec<_>>()
+    );
 }
 
 // ── Test 3: dead residents evict before any live one ───────────────────────────────
