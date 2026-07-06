@@ -120,10 +120,11 @@ fn compile(
         .expect("compile_layer")
 }
 
-// ── Test 1: cache hit beats the uncached (`decisions: None`) compile on instr count ──
+// ── Test 1: cache hit beats the uncached (`decisions: None`) compile on the caching metric ──
 
-/// High-priority reused value is served from residency (1 compute, no recompute):
-/// instr count strictly below the uncached (`decisions: None`) compile of the same layer.
+/// High-priority reused value is served from residency (1 compute, no recompute): the cached
+/// compile reads strictly less DRAM traffic than the uncached compile of the same layer, and
+/// computes the shared expression `s` exactly once rather than twice.
 #[test]
 fn decisions_cache_hit_beats_uncached() {
     // s = Add(x,y) [compound, Base]; R0 = Mul(s, x2) demands s once, R1 = Mul(s, x3)
@@ -163,19 +164,39 @@ fn decisions_cache_hit_beats_uncached() {
     let decisions_compiled = compile(&layer, &sched, 1, Some(&decisions));
     let uncached_compiled = compile(&layer, &sched, 16, None);
 
-    // Absolute pins (`None` ≡ Legacy — Task 2 brief). decisions dropped 11→9 with the RR
-    // site-gate fix: x/y are fan-out-1 leaves (cs consumers==1), so they are no longer
-    // admissible — the old emitter's structurally-inevitable transient admit+evict of
-    // x/y (demand_expand re-walks s's cone on every s occurrence) is gone. The property
-    // under test (s cached, Decisions strictly beats uncached) still holds (9 < 12).
-    assert_eq!(decisions_compiled.program.instrs.len(), 9, "decisions instr-count pin");
-    assert_eq!(uncached_compiled.program.instrs.len(), 12, "uncached instr-count pin");
+    // The caching benefit here is a DRAM-traffic / recompute win, NOT an instruction-count
+    // win. On this trivial synthetic (`s` is a single Add of two leaves), caching `s` costs
+    // a store + reload (2 MOVs) that exactly TIES recomputing `s` (load + add, 2 ops) on
+    // instruction count — so both programs are 8 instrs after the codegen-quality pass.
+    // History: the RR site-gate fix shrank the old transient x/y admit+evict overhead
+    // (11→9 decisions); the F5 dead-admission rule then peeled the last transient x/y
+    // admission that reached a cell but was never read back out of BOTH paths (uncached
+    // 12→8, decisions 9→8), which is why raw instr count no longer separates them. What
+    // caching actually buys is measured by `dram_traffic` (the S3 primary objective) and the
+    // recompute count below.
+    assert_eq!(decisions_compiled.program.instrs.len(), 8, "decisions instr-count pin (tied post-F5)");
+    assert_eq!(uncached_compiled.program.instrs.len(), 8, "uncached instr-count pin (tied post-F5)");
 
+    // "1 compute, no recompute": `s` is the layer's only Add, computed ONCE when cached and
+    // TWICE when uncached (recomputed for R1).
+    assert_eq!(
+        decisions_compiled.stats.op_counts[gkr_eval_isa::fwd::stats::OP_ADD], 1,
+        "cached: s (the only Add) computed exactly once",
+    );
+    assert_eq!(
+        uncached_compiled.stats.op_counts[gkr_eval_isa::fwd::stats::OP_ADD], 2,
+        "uncached: s recomputed for R1 → the Add appears twice",
+    );
+
+    // The caching win: strictly less DRAM traffic. Cached reads x,y,x2,x3 once each (=4);
+    // uncached re-reads x,y to recompute s (=6). This is the property the test exists to pin.
+    assert_eq!(decisions_compiled.stats.dram_traffic, 4, "cached DRAM-traffic pin");
+    assert_eq!(uncached_compiled.stats.dram_traffic, 6, "uncached DRAM-traffic pin");
     assert!(
-        decisions_compiled.program.instrs.len() < uncached_compiled.program.instrs.len(),
-        "Decisions ({}) must emit strictly fewer instrs than uncached ({}) once s is cached",
-        decisions_compiled.program.instrs.len(),
-        uncached_compiled.program.instrs.len()
+        decisions_compiled.stats.dram_traffic < uncached_compiled.stats.dram_traffic,
+        "Decisions ({}) must read strictly less DRAM traffic than uncached ({}) once s is cached",
+        decisions_compiled.stats.dram_traffic,
+        uncached_compiled.stats.dram_traffic,
     );
 
     // Sanity: s really is resident after R0 (else the test would be vacuous).
