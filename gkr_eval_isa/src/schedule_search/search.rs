@@ -745,7 +745,7 @@ pub fn search_layer(ctx: &LayerCtx, cfg: &SearchConfig) -> LayerSearchOutcome {
         // (the validator requires floor <= predicted_traffic, and an
         // unsearched layer records no achieved traffic).
         return LayerSearchOutcome {
-            schedule: LayerSchedule { order: vec![], sites: vec![], predicted_traffic: 0, floor: 0 },
+            schedule: LayerSchedule { units: vec![], sites: vec![], predicted_traffic: 0, floor: 0 },
             compiles: 0,
             wall: start.elapsed(),
         };

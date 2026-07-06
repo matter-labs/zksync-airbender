@@ -271,9 +271,9 @@ pub fn compile_layer(
     // residency-free `ResidencyStep`s (place.rs's local, schema-agnostic type — schema
     // v2 (Task 4) has no persisted per-step residency at all to inject phantom cells
     // from). The realized residency is recorded separately in `resident_realized` (H5).
-    // Step boundaries derive from `schedule.order` (one step per ordered root).
+    // Step boundaries derive from `schedule.atom_order()` (one step per ordered atom root).
     let free_steps: Vec<ResidencyStep> =
-        (0..schedule.order.len()).map(|_| ResidencyStep::default()).collect();
+        (0..schedule.atom_order().len()).map(|_| ResidencyStep::default()).collect();
     let place_instrs: Vec<self::place::VirtualInstr> = vinstrs.iter().map(|vi| vi.to_place()).collect();
     let placement = plan_placement(&PlacementInput {
         instrs: &place_instrs,
@@ -463,10 +463,10 @@ fn materialize_vinstr(
 }
 
 /// Shared skip predicate (ground truth for "does this layer need compiling"):
-/// a layer is trivially skippable iff its schedule's `order` is empty AND no
-/// root in the layer carries a `materialize` sink. `order.is_empty()` alone is
-/// NOT sufficient — a layer can have zero atom roots (empty `order`, since
-/// `schedule_search::structure::relation_units` only counts
+/// a layer is trivially skippable iff its schedule's `units` are empty (⟺ empty
+/// atom order) AND no root in the layer carries a `materialize` sink.
+/// `units.is_empty()` alone is NOT sufficient — a layer can have zero atom roots
+/// (empty `units`, since `schedule_search::structure::relation_units` only counts
 /// `materialize.is_some() && claim.is_some()` roots) while still carrying a
 /// materialize-only root (e.g. a `Cache` root with no `claim`), which still
 /// needs a real `compile_layer` pass to emit its materialization. Both
@@ -495,8 +495,8 @@ pub fn load_committed_schedule(path: &std::path::Path) -> Result<CircuitSchedule
 /// Compile a whole circuit from its committed `CircuitSchedule` (OP-3): the single
 /// production forward-program compile path.
 ///
-/// Validates `schedule` against `dag` first (`validate_circuit_schedule` — order is a
-/// permutation of the atom-root set, the stored site-key set matches the structural
+/// Validates `schedule` against `dag` first (`validate_circuit_schedule` — units match
+/// the canonical relation-unit decomposition, the stored site-key set matches the structural
 /// domain exactly, priorities are finite, `floor <= predicted_traffic`); a stale or
 /// malformed schedule is rejected with `CompileError::InvalidSchedule` before any layer
 /// is touched. Then builds the whole-circuit cross-layer field map once and compiles
@@ -515,7 +515,7 @@ pub fn compile_circuit(
     let mut layers = Vec::with_capacity(dag.layers.len());
     for (li, layer) in dag.layers.iter().enumerate() {
         let ls = &schedule.layers[li];
-        if !layer_needs_compile(ls.order.is_empty(), layer) {
+        if !layer_needs_compile(ls.units.is_empty(), layer) {
             layers.push(CompiledLayer {
                 program: Program::default(),
                 ctx: DagForwardContext::default(),
@@ -550,7 +550,7 @@ mod tests {
 
     /// Review finding (Task 6): a layer with a materialize-only root (a `Cache`
     /// root with no `claim`) and no atom roots has an empty `relation_units` —
-    /// so its schedule's `order` would be `[]` — but `layer_needs_compile` must
+    /// so its schedule's `units` would be `[]` — but `layer_needs_compile` must
     /// still say "needs compile" so `compile_circuit` runs `compile_layer`
     /// instead of skipping, and so the producer (which uses
     /// `relation_units(layer).is_empty()` as its own `order_is_empty` proxy)

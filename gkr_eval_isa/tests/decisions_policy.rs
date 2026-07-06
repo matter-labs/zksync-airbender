@@ -77,9 +77,23 @@ fn compute_artifact_layer() -> GKRLayerDescription {
 }
 
 /// A trivial no-op schedule: `Some`-decisions, like `decisions: None`, only reads
-/// `order` — schema v2 has no persisted per-step residency for either mode to consult.
+/// the atom order — schema v2 has no persisted per-step residency for either mode
+/// to consult. Phase 1: the flat `order` is carried as one `RelationUnit`'s
+/// `atom_roots` (every root here is `(Gates, 0)`, matching the canonical
+/// single-unit decomposition), so `atom_order()` reproduces `order` exactly.
 fn trivial_schedule(order: Vec<RootId>) -> LayerSchedule {
-    LayerSchedule { order, sites: vec![], predicted_traffic: 0, floor: 0 }
+    use cs::gkr_compiler::dag_ir::RelationUnit;
+    let units = if order.is_empty() {
+        vec![]
+    } else {
+        vec![RelationUnit {
+            group: RootGroup::Gates,
+            relation_index: 0,
+            atom_roots: order,
+            cache_roots: vec![],
+        }]
+    };
+    LayerSchedule { units, sites: vec![], predicted_traffic: 0, floor: 0 }
 }
 
 fn root_output(root: RootId, value: ExprId) -> SiteKey {

@@ -52,6 +52,15 @@ pub fn relation_units(layer: &DagLayer) -> Vec<Vec<RootId>> {
     units
 }
 
+/// Canonical relation units with cache ownership — cs-owned single source of
+/// truth ([`cs::gkr_compiler::dag_ir::relation_units_with_caches`]); wrapped here
+/// for the search. Panics on the unsupported cross-layer/cache-only cache class
+/// (a producer-time invariant, not a search-tunable outcome).
+pub fn relation_units_with_caches(layer: &DagLayer) -> Vec<cs::gkr_compiler::dag_ir::RelationUnit> {
+    cs::gkr_compiler::dag_ir::relation_units_with_caches(layer)
+        .unwrap_or_else(|e| panic!("relation_units_with_caches: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

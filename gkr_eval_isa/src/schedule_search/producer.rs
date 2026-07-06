@@ -3,8 +3,8 @@
 //! schedules into one `CircuitSchedule` at `budget`.
 //!
 //! Layer gating: a layer with zero atom roots (`structure::relation_units`
-//! empty, i.e. its schedule's `order` will be empty) is only skipped as a
-//! trivial `LayerSchedule{order: [], sites: [], ...}` if it ALSO has no
+//! empty, i.e. its schedule's `units` will be empty) is only skipped as a
+//! trivial `LayerSchedule{units: [], sites: [], ...}` if it ALSO has no
 //! materialize-bearing root at all — the exact same
 //! `fwd::compile::layer_needs_compile` predicate `compile_circuit` uses to
 //! decide whether to run `compile_layer`. A layer can have zero atom roots
@@ -51,7 +51,7 @@ pub fn produce_circuit_schedule(
             // nothing was searched, and the validator requires
             // `floor <= predicted_traffic` (0 here); this also mirrors the
             // deleted v1 producer's empty branch exactly.
-            layers.push(LayerSchedule { order: vec![], sites: vec![], predicted_traffic: 0, floor: 0 });
+            layers.push(LayerSchedule { units: vec![], sites: vec![], predicted_traffic: 0, floor: 0 });
             println!(
                 "schedule_search: layer {li}: no atom roots, no materialize roots, skipped (nodes={}, sites=0)",
                 layer.exprs.len()

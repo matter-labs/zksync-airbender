@@ -100,7 +100,7 @@ fn tracker_admission_implies_placement_feasible_on_committed_corpus() {
         let (dag, sched, artifact) = load_committed(name, stem);
         let cross = build_cross_layer_field_map(&dag);
         for (li, (layer, ls)) in dag.layers.iter().zip(&sched.layers).enumerate() {
-            if !layer_needs_compile(ls.order.is_empty(), layer) {
+            if !layer_needs_compile(ls.units.is_empty(), layer) {
                 continue;
             }
             let decisions = SiteDecisions::new(ls.sites.iter().copied());
@@ -223,10 +223,24 @@ mod task8_nested_shapes {
     }
 
     /// A trivial no-op schedule: no `sites` genome (schema v2 has no persisted
-    /// per-step residency at all) — only `order` drives root-compile order under
-    /// the uncached (`decisions: None`) path, which lazily recomputes from the DAG shape.
+    /// per-step residency at all) — only the atom order drives root-compile order
+    /// under the uncached (`decisions: None`) path, which lazily recomputes from
+    /// the DAG shape. Phase 1: the flat `order` is carried as one `RelationUnit`'s
+    /// `atom_roots` (these tests' roots all share `(Gates, 0)`, so this matches the
+    /// canonical single-unit decomposition), giving `atom_order() == order`.
     fn trivial_schedule(order: Vec<RootId>) -> LayerSchedule {
-        LayerSchedule { order, sites: vec![], predicted_traffic: 0, floor: 0 }
+        use cs::gkr_compiler::dag_ir::RelationUnit;
+        let units = if order.is_empty() {
+            vec![]
+        } else {
+            vec![RelationUnit {
+                group: RootGroup::Gates,
+                relation_index: 0,
+                atom_roots: order,
+                cache_roots: vec![],
+            }]
+        };
+        LayerSchedule { units, sites: vec![], predicted_traffic: 0, floor: 0 }
     }
 
     /// Compile `layer` under `decisions: None` and assert every exposed root's
@@ -332,7 +346,7 @@ fn schedule_driven_compile_matches_eval_oracle_add_sub() {
     let n = dag.globals.trace_len;
     let mut checks = 0usize;
     for (li, layer) in dag.layers.iter().enumerate() {
-        if !layer_needs_compile(sched.layers[li].order.is_empty(), layer) {
+        if !layer_needs_compile(sched.layers[li].units.is_empty(), layer) {
             continue;
         }
         let cl = &compiled.layers[li];
@@ -385,7 +399,7 @@ fn all_committed_schedules_compile_and_match_oracle() {
 
         let n = dag.globals.trace_len;
         for (li, layer) in dag.layers.iter().enumerate() {
-            if !layer_needs_compile(sched.layers[li].order.is_empty(), layer) {
+            if !layer_needs_compile(sched.layers[li].units.is_empty(), layer) {
                 continue;
             }
             let cl = &compiled.layers[li];
@@ -426,7 +440,7 @@ fn all_committed_schedules_recompile_to_predicted_traffic() {
         let compiled = compile_circuit(&dag, &sched, &artifact)
             .unwrap_or_else(|e| panic!("[{name}] compile_circuit: {e:?}"));
         for (li, (cl, ls)) in compiled.layers.iter().zip(&sched.layers).enumerate() {
-            if !layer_needs_compile(ls.order.is_empty(), &dag.layers[li]) {
+            if !layer_needs_compile(ls.units.is_empty(), &dag.layers[li]) {
                 assert_eq!(
                     ls.predicted_traffic, 0,
                     "{name} L{li}: skipped layer must persist predicted_traffic=0"

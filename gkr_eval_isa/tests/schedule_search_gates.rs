@@ -135,7 +135,7 @@ fn small_search_roundtrip_add_sub() {
     assert_eq!(sched.budget, SEARCH_TEST_BUDGET);
     validate_circuit_schedule(&dag, &sched).expect("search output must validate");
     assert!(
-        sched.layers.iter().any(|l| !l.order.is_empty()),
+        sched.layers.iter().any(|l| !l.units.is_empty()),
         "add_sub must have at least one scheduled layer"
     );
 
@@ -147,7 +147,7 @@ fn small_search_roundtrip_add_sub() {
     // GATE-D: recompiling each searched layer from its persisted (order, sites) under
     // the same budget must reproduce predicted_traffic exactly.
     for (li, (layer, ls)) in dag.layers.iter().zip(&back.layers).enumerate() {
-        if ls.order.is_empty() {
+        if ls.units.is_empty() {
             continue;
         }
         // Task 8b: `score()` compiled the winning schedule with `Decisions.budget ==

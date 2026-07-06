@@ -19,9 +19,9 @@ use crate::fwd::compile::decisions::SiteDecisions;
 use crate::fwd::compile::compile_layer;
 use crate::fwd::error::CompileError;
 
-use super::decode::decode_order;
+use super::decode::decode_unit_order;
 use super::genome::Genome;
-use super::structure::{enumerate_sites, relation_units};
+use super::structure::enumerate_sites;
 
 /// Everything [`score`] needs for one layer at one budget, computed once per
 /// layer by the producer (Task 6 §"Producer requirements") and shared across
@@ -32,9 +32,17 @@ pub struct LayerCtx<'a> {
     pub scratch_mapping: &'a std::collections::BTreeMap<cs::definitions::GKRAddress, usize>,
     pub cross_layer_fields: &'a HashMap<ReadPlace, FieldKind>,
     pub budget: usize,
-    /// Atom-root scheduling units (`structure::relation_units(layer)`); one
-    /// [`Genome::root_order_key`] gene per entry.
+    /// Atom-root scheduling units; one [`Genome::root_order_key`] gene per entry.
+    /// Derived as a projection of [`Self::units_with_caches`]
+    /// (`u.atom_roots.clone()`), NOT from a separate `relation_units` call, so
+    /// `units[i] == units_with_caches[i].atom_roots` holds by construction and the
+    /// genome key index `i` maps to the same relation in both (codex-P2).
     pub units: Vec<Vec<RootId>>,
+    /// Canonical relation units WITH cache ownership
+    /// (`structure::relation_units_with_caches(layer)`) — the single grouping
+    /// source. `decode_schedule` reorders these by the genome unit permutation
+    /// and clones them into the decoded `LayerSchedule.units`.
+    pub units_with_caches: Vec<cs::gkr_compiler::dag_ir::RelationUnit>,
     /// Structural demand-site domain (`structure::enumerate_sites(layer)`); one
     /// [`Genome::cache_priority`] gene per entry, same order.
     pub sites: Vec<SiteKey>,
@@ -63,13 +71,21 @@ impl<'a> LayerCtx<'a> {
         .unwrap_or_else(|e| panic!("LayerCtx::new: build_forward_actions failed: {e:?}"));
         let floor =
             super::floor::dag_traffic_floor_with_actions(layer, cross_layer_fields, &actions);
+        // Single grouping source (codex-P2): derive the atom-only genome-sizing
+        // `units` as a projection of `units_with_caches` so both vectors share
+        // one unit order — the same genome always decodes to the same flat atom
+        // order.
+        let units_with_caches = super::structure::relation_units_with_caches(layer);
+        let units: Vec<Vec<RootId>> =
+            units_with_caches.iter().map(|u| u.atom_roots.clone()).collect();
         Self {
             layer,
             artifact_layer,
             scratch_mapping: &artifact.scratch_space_mapping,
             cross_layer_fields,
             budget,
-            units: relation_units(layer),
+            units,
+            units_with_caches,
             sites: enumerate_sites(layer),
             floor,
         }
@@ -112,10 +128,12 @@ pub fn decode_schedule(genome: &Genome, ctx: &LayerCtx) -> cs::gkr_compiler::dag
         ctx.sites.len(),
         "genome cache_priority length must match ctx site domain"
     );
-    let order = decode_order(&genome.root_order_key, &ctx.units);
+    let unit_perm = decode_unit_order(&genome.root_order_key);
+    let units: Vec<cs::gkr_compiler::dag_ir::RelationUnit> =
+        unit_perm.iter().map(|&u| ctx.units_with_caches[u].clone()).collect();
     let sites: Vec<(SiteKey, f64)> =
         ctx.sites.iter().copied().zip(genome.cache_priority.iter().copied()).collect();
-    cs::gkr_compiler::dag_ir::LayerSchedule { order, sites, predicted_traffic: 0, floor: ctx.floor }
+    cs::gkr_compiler::dag_ir::LayerSchedule { units, sites, predicted_traffic: 0, floor: ctx.floor }
 }
 
 /// The fitness function (Task 6 spec §1). Decodes `genome`, compiles it for

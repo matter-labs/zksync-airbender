@@ -134,7 +134,7 @@ fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
     let genome = Genome::neutral(probe_ctx.n_order_keys(), probe_ctx.n_sites());
     let sched = decode_schedule(&genome, &probe_ctx);
     let legacy_schedule = LayerSchedule {
-        order: sched.order.clone(),
+        units: sched.units.clone(),
         sites: Vec::new(),
         predicted_traffic: 0,
         floor: 0,

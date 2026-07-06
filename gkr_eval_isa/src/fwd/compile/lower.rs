@@ -1159,7 +1159,7 @@ fn canonical_fma_pair_v(
 // The Phase-1 driver.
 // ─────────────────────────────────────────────────────────────────────────────────
 
-/// Walk `schedule.order`, lowering each atom root's expression to a rich `VInstr`
+/// Walk `schedule.atom_order()`, lowering each atom root's expression to a rich `VInstr`
 /// stream with symbolic operands + realizing the schedule's residency SETS.
 ///
 /// Returns `(instrs, step_of_instr, root_outputs, resident_realized)`. The 4th element
@@ -1189,6 +1189,12 @@ pub(crate) fn lower_layer_virtual(
     let desc_by_expr = materialize_descriptors(&graph.descriptors, layer, ctx);
     let cross = ctx.cross_layer_fields.clone();
 
+    // Flat atom execution order (Phase 1: `schedule.units` → flattened atom roots).
+    // `cache_roots` are deliberately NOT part of this stream — they never enter the
+    // occurrence/priority streams; materialize-only roots are handled by the final
+    // sweep below.
+    let atom_order = schedule.atom_order();
+
     // Internal ValueIds live in a disjoint HIGH range (assert real ExprIds stay below).
     assert!(
         (layer.exprs.len() as u64) < INTERNAL_BASE as u64,
@@ -1213,7 +1219,7 @@ pub(crate) fn lower_layer_virtual(
     // (mirrors the emitter's actual `Add`/`Mul` virtual-lowering traversal — see
     // `decisions.rs`'s module doc).
     let decisions_state = decisions.map(|d| DecisionsState {
-        streams: OccurrenceStreams::build(layer, &schedule.order, &ctx.actions, d),
+        streams: OccurrenceStreams::build(layer, &atom_order, &ctx.actions, d),
         resident: BTreeMap::new(),
         budget,
         live_width: 0,
@@ -1240,9 +1246,9 @@ pub(crate) fn lower_layer_virtual(
     };
 
     let mut resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)> =
-        Vec::with_capacity(schedule.order.len());
+        Vec::with_capacity(atom_order.len());
 
-    for (p, &rid) in schedule.order.iter().enumerate() {
+    for (p, &rid) in atom_order.iter().enumerate() {
         st.cur_step = p;
 
         // Step-boundary residency. Schema v2 (Task 4) has no persisted per-step residency
@@ -1314,7 +1320,7 @@ pub(crate) fn lower_layer_virtual(
 
     // Final sweep: expose any Compute root (typically cross-layer-only Cache roots) not
     // reached by the ordered walk, so the Task-5 cache-value gate is non-vacuous.
-    st.cur_step = schedule.order.len().saturating_sub(1);
+    st.cur_step = atom_order.len().saturating_sub(1);
     let mut pending: Vec<ExprId> = st
         .expr_to_compute
         .iter()
