@@ -56,6 +56,13 @@ pub struct SearchConfig {
     pub mutation_rate: f64,  // GKR_SCHEDULE_MUT_RATE (per-gene probability)
     pub mutation_sigma: f64, // GKR_SCHEDULE_MUT_SIGMA
     pub local_steps: usize,  // GKR_SCHEDULE_LOCAL_STEPS
+    /// Number of the generation's best offspring (objective order) that receive
+    /// memetic local descent. `0` = pure GA (no hill-climb). Rationing local
+    /// descent to the top few offspring — rather than every offspring — is what
+    /// prevents the local search from collapsing population diversity in ~2
+    /// generations (the premature-convergence failure the Phase-B ablation
+    /// surfaced). `GKR_SCHEDULE_LOCAL_ELITE`.
+    pub local_elite: usize,
 }
 
 impl Default for SearchConfig {
@@ -70,6 +77,7 @@ impl Default for SearchConfig {
             mutation_rate: 0.1,
             mutation_sigma: 0.15,
             local_steps: 2,
+            local_elite: 4,
         }
     }
 }
@@ -120,6 +128,7 @@ pub fn search_config_from_env() -> SearchConfig {
         mutation_rate: parse_f64_env("GKR_SCHEDULE_MUT_RATE", defaults.mutation_rate),
         mutation_sigma: parse_f64_env("GKR_SCHEDULE_MUT_SIGMA", defaults.mutation_sigma),
         local_steps: parse_usize_env("GKR_SCHEDULE_LOCAL_STEPS", defaults.local_steps),
+        local_elite: parse_usize_env("GKR_SCHEDULE_LOCAL_ELITE", defaults.local_elite),
     };
     assert!(cfg.pop > 0, "GKR_SCHEDULE_POP must be positive");
     assert!(cfg.evals > 0, "GKR_SCHEDULE_EVALS must be positive");
@@ -642,16 +651,16 @@ pub fn ga_local_descent(
 // ── Generational memetic GA driver ──────────────────────────────────────────
 
 /// Generational memetic GA. Seeds an initial population, then each generation:
-/// carry `elitism` best unchanged, breed the rest by tournament selection +
-/// BLX-alpha crossover + Gaussian mutation, and hill-climb each offspring with
-/// the existing neighbor moves. All compiles (population + offspring + local
+/// carry the `elitism` best unchanged, breed the rest by tournament selection +
+/// BLX-alpha crossover + Gaussian mutation, **score the whole offspring cohort in
+/// one parallel batch** (all cores), then apply memetic local descent to only the
+/// best `local_elite` offspring. All compiles (population + offspring + local
 /// descent) count against `cfg.evals`. Deterministic given `cfg.seed` (breeding
 /// RNG is sequential; scoring is parallel but RNG-free and index-stable).
 pub fn optimize_from_population(ctx: &LayerCtx, seeds: Vec<Genome>, cfg: &SearchConfig) -> OptimizerResult {
     // Single shared code path: production is `optimize_instrumented` with the
-    // default (full-GA) ablation and telemetry off. The default ablation
-    // preserves the exact RNG draw order of the historical loop, so this is
-    // byte-identical to the pre-instrumentation driver (see the determinism gate
+    // default (full-GA) ablation and telemetry off — behaviour-inert defaults, so
+    // the result is identical with telemetry on or off (the determinism gate
     // `optimize_instrumented_default_matches_production` in `tests/ga_investigation.rs`).
     optimize_instrumented(ctx, seeds, cfg, GaAblation::default(), false).result
 }
@@ -763,18 +772,17 @@ pub fn optimize_instrumented(
         pop.sort_by(|a, b| objective_key(&a.1).cmp(&objective_key(&b.1)));
         let mut next: Vec<(Genome, CandidateScore)> =
             pop.iter().take(cfg.elitism.min(pop.len())).cloned().collect();
-
-        // Per-generation telemetry accumulators (unused when `!collect`).
-        let mut offspring = 0usize;
-        let mut xover_improved = 0usize;
-        let mut mut_improved = 0usize;
-        let mut ld_improved = 0usize;
-        let mut ld_gain_sum = 0.0f64;
-        let mut ld_gain_n = 0usize;
         let gen_best_before = objective_key(&best.1);
 
-        while next.len() < cfg.pop && evals < budget {
-            // ── Breed one offspring (post-crossover, pre-mutation `child`) ──
+        // ── 1) Breed the whole offspring cohort (RNG-sequential, cheap). ──
+        // Cap by the remaining eval budget so the batch score never overshoots.
+        let cohort_cap = cfg.pop.saturating_sub(next.len()).min(budget - evals);
+        let mut cohort: Vec<Genome> = Vec::with_capacity(cohort_cap);
+        // Per-child attribution meta (telemetry): (better-parent score, did_crossover, mutated).
+        let mut meta: Vec<(Option<CandidateScore>, bool, bool)> = Vec::with_capacity(cohort_cap);
+        // Post-crossover-pre-mutation children (telemetry only) for the operator split.
+        let mut pre_children: Vec<Genome> = Vec::new();
+        for _ in 0..cohort_cap {
             let (mut child, s_parent, did_crossover) = if ablation.random_search {
                 // Fresh uniformly-random genome: keys in [0,1], priorities in
                 // [-BOUND, BOUND]. Bypasses selection/crossover/mutation.
@@ -792,11 +800,10 @@ pub fn optimize_instrumented(
                 let p1 = pop[i1].0.clone();
                 let p2 = pop[i2].0.clone();
                 // Default (`ablation.crossover == true`) still draws exactly one
-                // `next_unit()` here — matches the historical stream. A disabled
-                // crossover short-circuits the draw (ablation stream diverges).
+                // `next_unit()` here. A disabled crossover short-circuits the draw
+                // (ablation stream diverges — intended).
                 let did_crossover = ablation.crossover && rng.next_unit() < cfg.crossover_rate;
                 let child = if did_crossover { ga_crossover(&p1, &p2, &mut rng) } else { p1.clone() };
-                // Better-parent fitness (crossover) / p1 fitness (clone) for attribution.
                 let s_parent = if did_crossover {
                     if objective_less(&pop[i1].1, &pop[i2].1) { pop[i1].1 } else { pop[i2].1 }
                 } else {
@@ -804,90 +811,127 @@ pub fn optimize_instrumented(
                 };
                 (child, Some(s_parent), did_crossover)
             };
-
-            // Extra, uncounted, RNG-free measurement: post-crossover-pre-mutation
-            // fitness (only when collecting and an operator split is meaningful).
-            let pre_mut_score = if collect && !ablation.random_search {
-                Some(score(&child, ctx))
-            } else {
-                None
-            };
-
+            if collect && !ablation.random_search {
+                pre_children.push(child.clone());
+            }
             let mutation_ran = ablation.mutation && !ablation.random_search;
             if mutation_ran {
                 ga_mutate(&mut child, cfg.mutation_rate, cfg.mutation_sigma, &mut rng);
             }
-            assert_normalized_genome(&child); // clamps guarantee this; loud if a bug slips a NaN through
+            assert_normalized_genome(&child); // clamps guarantee this; loud if a NaN slips through
+            meta.push((s_parent, did_crossover, mutation_ran));
+            cohort.push(child);
+        }
+        let bred = cohort.len();
+        if bred == 0 {
+            break; // budget exhausted; no filler
+        }
 
-            // Score the child (counted), then memetic hill-climb (also counted).
-            if evals >= budget {
-                break; // codex-P4: no filler; loop exits on budget
+        // ── 2) Score the WHOLE cohort in one parallel batch (all cores). ──
+        let entries: Vec<_> =
+            cohort.iter().cloned().enumerate().map(|(i, g)| (i, g, None)).collect();
+        let scored = score_genomes_parallel(ctx, entries, workers); // index-stable
+        evals += bred;
+        let mut cohort_scored: Vec<(Genome, CandidateScore)> =
+            scored.into_iter().map(|s| (s.genome, s.score)).collect();
+        let post_mut_scores: Vec<CandidateScore> = cohort_scored.iter().map(|(_, s)| *s).collect();
+
+        // Telemetry-only: pre-mutation batch score (RNG-free, uncounted) for the split.
+        let pre_scores: Vec<CandidateScore> = if collect && !pre_children.is_empty() {
+            let e: Vec<_> =
+                pre_children.iter().cloned().enumerate().map(|(i, g)| (i, g, None)).collect();
+            score_genomes_parallel(ctx, e, workers).into_iter().map(|s| s.score).collect()
+        } else {
+            Vec::new()
+        };
+
+        // ── 3) Rationed memetic local descent: only the best `local_elite`
+        // offspring are polished (best-first, deterministic order), until the
+        // budget is spent. Rationing is what stops local search from collapsing
+        // diversity every generation (the Phase-B premature-convergence finding).
+        let mut ld_gained = vec![false; bred];
+        if ablation.local_descent && cfg.local_elite > 0 {
+            let mut order: Vec<usize> = (0..bred).collect();
+            order.sort_by(|&a, &b| {
+                objective_key(&cohort_scored[a].1)
+                    .cmp(&objective_key(&cohort_scored[b].1))
+                    .then(a.cmp(&b))
+            });
+            for &i in order.iter().take(cfg.local_elite) {
+                if evals >= budget {
+                    break;
+                }
+                let (g0, s0) = cohort_scored[i].clone();
+                let (g, s) = ga_local_descent(ctx, g0, s0, cfg.local_steps, &mut evals, budget);
+                if objective_less(&s, &cohort_scored[i].1) {
+                    ld_gained[i] = true;
+                }
+                cohort_scored[i] = (g, s);
             }
-            let cs = score_genomes_parallel(ctx, vec![(0, child.clone(), None)], workers);
-            evals += 1;
-            let post_mut_score = cs[0].score;
-            let (g, sc) = if ablation.local_descent {
-                ga_local_descent(ctx, child, post_mut_score, cfg.local_steps, &mut evals, budget)
-            } else {
-                (child, post_mut_score)
-            };
+        }
 
-            // ── Operator attribution (telemetry only; no RNG, no evals) ──
+        // ── Operator attribution + best/provenance update (no RNG). ──
+        let mut xover_improved = 0usize;
+        let mut mut_improved = 0usize;
+        let mut ld_improved = 0usize;
+        let mut ld_gain_sum = 0.0f64;
+        let mut ld_gain_n = 0usize;
+        for i in 0..bred {
+            let (s_parent, did_crossover, mutated) = meta[i];
+            let pre = pre_scores.get(i).copied();
             if collect {
                 if did_crossover {
-                    if let (Some(pm), Some(sp)) = (pre_mut_score, s_parent) {
+                    if let (Some(pm), Some(sp)) = (pre, s_parent) {
                         if objective_less(&pm, &sp) {
                             xover_improved += 1;
                         }
                     }
                 }
-                if mutation_ran {
-                    if let Some(pm) = pre_mut_score {
-                        if objective_less(&post_mut_score, &pm) {
+                if mutated {
+                    if let Some(pm) = pre {
+                        if objective_less(&post_mut_scores[i], &pm) {
                             mut_improved += 1;
                         }
                     }
                 }
-                if ablation.local_descent {
-                    if objective_less(&sc, &post_mut_score) {
-                        ld_improved += 1;
-                    }
-                    if !sc.infeasible && !post_mut_score.infeasible {
-                        ld_gain_sum += post_mut_score.dram_traffic as f64 - sc.dram_traffic as f64;
+                if ld_gained[i] {
+                    ld_improved += 1;
+                    let now = cohort_scored[i].1;
+                    if !now.infeasible && !post_mut_scores[i].infeasible {
+                        ld_gain_sum += post_mut_scores[i].dram_traffic as f64 - now.dram_traffic as f64;
                         ld_gain_n += 1;
                     }
                 }
             }
-
+            let sc = cohort_scored[i].1;
             if objective_less(&sc, &best.1) {
-                best = (g.clone(), sc);
+                best = (cohort_scored[i].0.clone(), sc);
                 if collect {
-                    // Last stage that strictly improved en route to this genome.
                     let mut origin = "seed";
                     if did_crossover {
-                        if let (Some(pm), Some(sp)) = (pre_mut_score, s_parent) {
+                        if let (Some(pm), Some(sp)) = (pre, s_parent) {
                             if objective_less(&pm, &sp) {
                                 origin = "crossover";
                             }
                         }
                     }
-                    if mutation_ran {
-                        if let Some(pm) = pre_mut_score {
-                            if objective_less(&post_mut_score, &pm) {
+                    if mutated {
+                        if let Some(pm) = pre {
+                            if objective_less(&post_mut_scores[i], &pm) {
                                 origin = "mutation";
                             }
                         }
                     }
-                    if ablation.local_descent && objective_less(&sc, &post_mut_score) {
+                    if ld_gained[i] {
                         origin = "local_descent";
                     }
                     winner_origin = origin;
                 }
             }
-            next.push((g, sc));
-            offspring += 1;
         }
-        // Preserve population size when budget cut a generation short.
+
+        // ── Form the next generation (elites + scored cohort), pad if cut short. ──
+        next.extend(cohort_scored);
         while next.len() < cfg.pop && next.len() < pop.len() {
             next.push(pop[next.len()].clone());
         }
@@ -903,7 +947,7 @@ pub fn optimize_instrumented(
                 mean: m,
                 diversity_order: dord,
                 diversity_prio: dpri,
-                offspring,
+                offspring: bred,
                 crossover_improved: xover_improved,
                 mutation_improved: mut_improved,
                 local_descent_improved: ld_improved,
