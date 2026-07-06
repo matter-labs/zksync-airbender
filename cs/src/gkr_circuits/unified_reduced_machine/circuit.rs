@@ -93,7 +93,7 @@ const UNIFIED_SCRATCH_BOOL_COUNT: usize = {
 
 pub(super) const F1_SCRATCH_VARS: usize = 0;
 pub(super) const F2_SCRATCH_VARS: usize = 4; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source
-pub(super) const F3_SCRATCH_VARS: usize = 23; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points + 2 rd_old low-byte split points (xor-rotate, unified-only)
+pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points (xor-rotate reuses the rs2 split: rs2 aliases rd at decode)
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
 
 /// Shared base-layer scratch-Variable pool size = max across families.
@@ -358,7 +358,6 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
-        rd_read_limbs,
         core::array::from_fn::<_, F3_SCRATCH_VARS, _>(|i| scratch_vars[i]),
     );
     let pc_in = inputs.cycle_start_state.pc;

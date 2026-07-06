@@ -270,7 +270,10 @@ impl ProgramProof {
             BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
         ];
 
-        // delegation proofs
+        // delegation proofs. The unified statement reads a count word for EVERY delegation
+        // type unconditionally, so absent types must contribute an explicit 0 (mirroring
+        // `flatten_for_verification`) — skipping them would misalign the whole stream for
+        // proofs that don't carry all delegation circuits.
         for k in DELEGATION_TYPES.iter() {
             if let Some(compiled_circuit) = self.compiled_delegation_circuits.get(k) {
                 if let Some(proofs) = self.delegation_proofs.get(&k) {
@@ -287,7 +290,7 @@ impl ProgramProof {
                     responses.push(0u32);
                 }
             } else {
-                // skip
+                responses.push(0u32);
             }
         }
 

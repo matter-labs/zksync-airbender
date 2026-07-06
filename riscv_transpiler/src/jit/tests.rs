@@ -258,7 +258,9 @@ fn test_jit_zimop_ixor_rot() {
             prog.push(Instruction::new(Add, 0, 0, rs1, v1)); // rs1 = v1
         }
         prog.push(Instruction::new(Add, 0, 0, rd, v2)); // rd = v2 (its OLD value)
-        prog.push(Instruction::new(ZimopIXorRot, rs1, 0, rd, rot));
+        // rs2 aliases rd, mirroring the decoder (`preprocess_bytecode` sets rs2 := rd so the
+        // second XOR operand flows through the rs2 read port).
+        prog.push(Instruction::new(ZimopIXorRot, rs1, rd, rd, rot));
         prog.push(Instruction::new(Jal, 0, 0, 0, 0)); // jal x0, 0 = self-loop = exit
 
         // rs1's value as actually seen by the opcode after setup.

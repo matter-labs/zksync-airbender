@@ -167,9 +167,15 @@ where
             }
             it_circuits_seen += 1;
         } else {
-            // we ask for conventional values
+            // Leading instances do NOT contribute inits/teardowns, yet their `top_bits` are
+            // still FS-committed above. Pin them to 0 so the prover has no "free will" over
+            // those committed values (and to match the prover, which assigns all-zero
+            // `top_bits` to the non-i/t-carrying instances).
             for top_bit in proof_output.inits_and_teardowns_top_bits.iter() {
-                assert_eq!(*top_bit, 0);
+                assert_eq!(
+                    *top_bit, 0,
+                    "non-i/t (leading) instance must report zero top_bits"
+                );
             }
         }
     }

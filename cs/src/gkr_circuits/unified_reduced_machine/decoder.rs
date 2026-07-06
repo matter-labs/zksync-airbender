@@ -146,13 +146,14 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
         }
 
         // `ZimopIXorRot` (rd = (rs1 ^ rd_old) >>> rot) is a UNIFIED-ONLY shift/binop-family opcode;
-        // the standalone `ShiftBinaryDecoder` returns `Err`. The VM keeps rs2 = x0 and reads rd_old
-        // via the rd slot (like fma), so rd_index = rd; the rotation amount (only the 4 Blake2 values
-        // {16,12,8,7}) is mapped to the per-rotation xor-rotate table id and carried in `funct3`
+        // the standalone `ShiftBinaryDecoder` returns `Err`. `preprocess_bytecode` sets rs2 := rd,
+        // so rd's old value flows through the rs2 read port (sub-slot +1) and the circuit reuses
+        // the rs2 byte decomposition; the rotation amount (only the 4 Blake2 values {16,12,8,7})
+        // is mapped to the per-rotation xor-rotate table id and carried in `funct3`
         // (table_id = funct3). `imm` is zeroed (the rotation now lives in funct3).
         if preprocessed_opcode.name == InstructionName::ZimopIXorRot {
             assert_ne!(preprocessed_opcode.rd, 0);
-            assert_eq!(preprocessed_opcode.rs2, 0);
+            assert_eq!(preprocessed_opcode.rs2, preprocessed_opcode.rd);
             let rotation_table_id = match preprocessed_opcode.imm {
                 16 => TableType::XorRotate16,
                 12 => TableType::XorRotate12,
@@ -171,7 +172,7 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
             return Ok(ExecutorFamilyDecoderData {
                 imm: 0,
                 rs1_index: preprocessed_opcode.rs1,
-                rs2_index: 0,
+                rs2_index: preprocessed_opcode.rs2 as u16,
                 rd_index: preprocessed_opcode.rd,
                 funct3: Some(rotation_table_id as u8),
                 funct7: None,
@@ -276,8 +277,9 @@ mod tests {
             (7, TableType::XorRotate7),
         ];
         for (rot, expected_table) in cases {
-            // rd = (rs1 ^ rd_old) >>> rot : rs1=1, rs2=0 (formal), rd=3, imm=rotation.
-            let xr = Instruction::new(InstructionName::ZimopIXorRot, 1, 0, 3, rot);
+            // rd = (rs1 ^ rd_old) >>> rot : rs1=1, rs2=rd=3 (decode aliases rs2 to rd so
+            // rd_old flows through the rs2 read port), imm=rotation.
+            let xr = Instruction::new(InstructionName::ZimopIXorRot, 1, 3, 3, rot);
 
             // Standalone shift/binop decoder rejects it (unified-only opcode).
             assert!(ShiftBinaryDecoder.define_decoder_subspace(xr).is_err());
@@ -292,7 +294,10 @@ mod tests {
                 "ZimopIXorRot should set exactly bit FAMILY_3_XOR_ROT_BIT"
             );
             assert_eq!(decoded.rs1_index, 1);
-            assert_eq!(decoded.rs2_index, 0, "rs2 is formal x0");
+            assert_eq!(
+                decoded.rs2_index, 3,
+                "rs2 aliases rd (rd_old via the rs2 port)"
+            );
             assert_eq!(decoded.rd_index, 3);
             assert_eq!(decoded.imm, 0, "imm zeroed; rotation lives in funct3");
             assert_eq!(

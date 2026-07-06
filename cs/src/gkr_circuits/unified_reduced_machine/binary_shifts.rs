@@ -8,9 +8,12 @@ use crate::types::Boolean;
 use crate::witness_placer::*;
 use field::PrimeField;
 
-/// Family 3 (binary ops / shifts) constraints for the unified circuit. Mirrors the
-/// standalone inner; rd-write constraints are gated on `is_binary_op + is_shift`
-/// so non-Family-3 cycles don't pin rd_write_limbs.
+/// Family 3 (binary ops / shifts / xor-rotate) constraints for the unified circuit.
+/// Mirrors the standalone inner; rd-write constraints are gated on
+/// `is_binary_op + is_shift + is_xor_rot` so non-Family-3 cycles don't pin
+/// rd_write_limbs. Xor-rotate's second operand (rd's old value) arrives through the
+/// rs2 read port — `preprocess_bytecode` aliases rs2 := rd — so it shares the rs2
+/// byte decomposition with the binary ops.
 pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
@@ -19,7 +22,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     rs1_limbs: [Variable; 2],
     rs2_limbs: [Variable; 2],
     rd_write_limbs: [Variable; 2],
-    rd_read_limbs: [Variable; 2],
     scratch_space: [Variable; F3_SCRATCH_VARS],
 ) -> Vec<LookupRequest<F>> {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
@@ -39,7 +41,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // - for binary ops we need just 5: one for sign-extension of the immediate, and 4 for outputs
     // - for shift we need 17: 4x4 for output contributions, and one for truncated shift amount
 
-    const _: () = assert!(F3_SCRATCH_VARS == 23);
+    const _: () = assert!(F3_SCRATCH_VARS == 21);
     let [binary_ops_imm_sign_ext, binop_output_0, binop_output_1, binop_output_2, binop_output_3, ..] =
         scratch_space;
     let binary_ops_outputs = [
@@ -58,10 +60,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let rs1_b2 = scratch_space[18];
     let rs2_b0 = scratch_space[19];
     let rs2_b2 = scratch_space[20];
-    // xor-rotate (unified-only) reads rd_old (rd_read_limbs) as the 2nd XOR operand; split its
-    // low bytes the same way as rs1/rs2. These slots are unused by binary-op / shift rows.
-    let rd_old_b0 = scratch_space[21];
-    let rd_old_b2 = scratch_space[22];
     let hi_byte = |lo_limb: Variable, lo_byte: Variable| -> Constraint<F> {
         let mut c = Constraint::from(lo_limb);
         c -= Constraint::from(lo_byte);
@@ -81,12 +79,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         Constraint::from(rs2_b2),
         hi_byte(rs2_limbs[1], rs2_b2),
     ];
-    let rd_old_bytes: [Constraint<F>; 4] = [
-        Constraint::from(rd_old_b0),
-        hi_byte(rd_read_limbs[0], rd_old_b0),
-        Constraint::from(rd_old_b2),
-        hi_byte(rd_read_limbs[1], rd_old_b2),
-    ];
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let rs1_lo = placer.get_u16(rs1_limbs[0]);
@@ -97,11 +89,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
             placer.assign_u8(rs1_b2, &rs1_hi.truncate());
             placer.assign_u8(rs2_b0, &rs2_lo.truncate());
             placer.assign_u8(rs2_b2, &rs2_hi.truncate());
-            // rd_old low bytes (xor-rotate 2nd operand).
-            let rd_old_lo = placer.get_u16(rd_read_limbs[0]);
-            let rd_old_hi = placer.get_u16(rd_read_limbs[1]);
-            placer.assign_u8(rd_old_b0, &rd_old_lo.truncate());
-            placer.assign_u8(rd_old_b2, &rd_old_hi.truncate());
         };
         cs.set_values(value_fn);
     }
@@ -190,12 +177,13 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     }
 
     // then xor-rotate (unified-only): per byte, look up the funct3-selected XorRotate{r} table on
-    // (rs1_byte, rd_old_byte) -> the 4 contribution bytes T_i = rotate_right((rs1^rd_old) byte at
-    // byte 0, r). Reuses the shift_output_chunks scratch (shift and xor-rot are mutually exclusive).
+    // (rs1_byte, rs2_byte) -> the 4 contribution bytes T_i = rotate_right((rs1^rs2) byte at
+    // byte 0, r). rs2 aliases rd at decode, so rs2 carries rd_old and its byte decomposition is
+    // reused. Reuses the shift_output_chunks scratch (shift and xor-rot are mutually exclusive).
     {
         for i in 0..4 {
             let a = rs1_bytes[i].clone();
-            let b = rd_old_bytes[i].clone();
+            let b = rs2_bytes[i].clone();
             let outs = shift_output_chunks[i];
             peek_lookup_values_unconstrained_into_variables(
                 cs,
@@ -274,8 +262,9 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
 
         // xor-rotate: the XorRotate{r} table is (a, b, o0, o1, o2, o3) — inputs at cols 0,1,
         // the 4 contribution bytes at cols 2..6 (reusing the shift_output_chunks scratch).
+        // rs2 carries rd_old (aliased at decode), so the byte split is shared with binops.
         constraints[0] += Term::from(is_xor_rot) * rs1_bytes[i].clone();
-        constraints[1] += Term::from(is_xor_rot) * rd_old_bytes[i].clone();
+        constraints[1] += Term::from(is_xor_rot) * rs2_bytes[i].clone();
         for j in 0..4 {
             constraints[2 + j] += Term::from(is_xor_rot) * Term::from(shift_outputs[j]);
         }

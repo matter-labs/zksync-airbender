@@ -738,10 +738,15 @@ pub fn preprocess_bytecode<
                                     mopi_number,
                                 )
                             } else if OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD {
+                                // rs2 := rd — the second XOR operand is rd's old value, routed
+                                // through the rs2 read port (sub-slot +1) so the circuit reuses
+                                // the rs2 byte decomposition instead of splitting rd_old
+                                // separately. The MOP-I encoding has no rs2 field; imm carries
+                                // only the rotation.
                                 Instruction::pure_from_imm(
                                     InstructionName::ZimopIXorRot,
                                     formal_rs1,
-                                    0,
+                                    rd,
                                     rd,
                                     mopi_number,
                                 )

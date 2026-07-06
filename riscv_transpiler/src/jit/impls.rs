@@ -2050,18 +2050,19 @@ impl<I: ContextImpl> JittedCode<I> {
 
                 // MOP-I xor-rotate (Zimop): rd = (rd_old ^ rs1).rotate_right(imm). Mirrors the
                 // reference `binary_shifts_family::mopi::mopi_xor_rot`: it reads rs1 (sub-slot
-                // +0), touches x0 (rs2 is always 0, sub-slot +1), reads rd's OLD value WITHOUT
-                // a timestamp touch, then writes rd (sub-slot +2); ShiftBinary family. The
-                // packed slot `(rs1, rs2=0, rd)` reconstructs exactly these touches.
+                // +0), reads rd's OLD value through the rs2 port (rs2 aliases rd at decode,
+                // sub-slot +1), then writes rd (sub-slot +2); ShiftBinary family. The packed
+                // slot `(rs1, rs2=rd, rd)` reconstructs exactly these touches.
                 Op::ZimopIXorRot => {
                     assert!(rd != 0);
-                    debug_assert_eq!(rs2, 0);
+                    debug_assert_eq!(rs2, rd);
                     let out = destination_gpr(rd); // rd's GPR, or RAX for an XMM-resident rd
                     touch_register_and_increment_timestamp!(ops, rs1); // rs1 @ +0
-                    touch_register_and_increment_timestamp!(ops, rs2); // x0 @ +1 (rs2 == 0)
+                    touch_register_and_increment_timestamp!(ops, rs2); // rd_old via rs2 @ +1 (rs2 == rd)
                                                                        // Materialize rd's OLD value into `out`. A GPR-mapped rd already lives in
-                                                                       // `out`; an XMM-resident rd (out == RAX) must be extracted first. This read
-                                                                       // is value-only (no timestamp touch), matching the reference.
+                                                                       // `out`; an XMM-resident rd (out == RAX) must be extracted first. The
+                                                                       // timestamp touch above is the rs2 read; the value itself is unchanged
+                                                                       // until store_result.
                     if rv_to_gpr(rd).is_none() {
                         load_into(&mut ops, rd, out);
                     }
