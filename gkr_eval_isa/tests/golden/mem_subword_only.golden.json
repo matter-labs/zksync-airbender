@@ -1,280 +1,45 @@
 {
-  "circuit": "mem_subword_only",
   "budget": 16,
+  "circuit": "mem_subword_only",
   "layers": [
     {
-      "units": [
-        {
-          "group": "Gates",
-          "relation_index": 0,
-          "atom_roots": [
-            16
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 3,
-          "atom_roots": [
-            19
-          ],
-          "cache_roots": [
-            4,
-            5
-          ]
-        },
-        {
-          "group": "Gates",
-          "relation_index": 4,
-          "atom_roots": [
-            20
-          ],
-          "cache_roots": [
-            6,
-            7
-          ]
-        },
-        {
-          "group": "Gates",
-          "relation_index": 2,
-          "atom_roots": [
-            18
-          ],
-          "cache_roots": [
-            2,
-            3
-          ]
-        },
-        {
-          "group": "Gates",
-          "relation_index": 1,
-          "atom_roots": [
-            17
-          ],
-          "cache_roots": [
-            0,
-            1
-          ]
-        },
-        {
-          "group": "Gates",
-          "relation_index": 5,
-          "atom_roots": [
-            21
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 6,
-          "atom_roots": [
-            22
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 7,
-          "atom_roots": [
-            23
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 8,
-          "atom_roots": [
-            24
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 9,
-          "atom_roots": [
-            25
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 10,
-          "atom_roots": [
-            26
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 11,
-          "atom_roots": [
-            27
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 12,
-          "atom_roots": [
-            28
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 13,
-          "atom_roots": [
-            29
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 14,
-          "atom_roots": [
-            30
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 15,
-          "atom_roots": [
-            31
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 16,
-          "atom_roots": [
-            32
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 17,
-          "atom_roots": [
-            33
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 18,
-          "atom_roots": [
-            34
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 19,
-          "atom_roots": [
-            35
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 20,
-          "atom_roots": [
-            36
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 21,
-          "atom_roots": [
-            37
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 22,
-          "atom_roots": [
-            38,
-            39
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 23,
-          "atom_roots": [
-            40
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 24,
-          "atom_roots": [
-            41,
-            42
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 25,
-          "atom_roots": [
-            43,
-            44
-          ],
-          "cache_roots": [
-            8
-          ]
-        },
-        {
-          "group": "Gates",
-          "relation_index": 26,
-          "atom_roots": [
-            45,
-            46
-          ],
-          "cache_roots": [
-            9,
-            10
-          ]
-        },
-        {
-          "group": "Gates",
-          "relation_index": 27,
-          "atom_roots": [
-            47,
-            48
-          ],
-          "cache_roots": [
-            11,
-            12
-          ]
-        },
-        {
-          "group": "Gates",
-          "relation_index": 28,
-          "atom_roots": [
-            49
-          ],
-          "cache_roots": [
-            13
-          ]
-        },
-        {
-          "group": "Gates",
-          "relation_index": 29,
-          "atom_roots": [
-            50,
-            51
-          ],
-          "cache_roots": [
-            14,
-            15
-          ]
-        }
+      "order": [
+        16,
+        19,
+        20,
+        18,
+        17,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51
       ],
       "sites": [
         [
@@ -3487,125 +3252,25 @@
       "floor": 32
     },
     {
-      "units": [
-        {
-          "group": "Gates",
-          "relation_index": 0,
-          "atom_roots": [
-            1
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 1,
-          "atom_roots": [
-            2
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 2,
-          "atom_roots": [
-            3
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 3,
-          "atom_roots": [
-            4
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 4,
-          "atom_roots": [
-            5
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 5,
-          "atom_roots": [
-            6
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 6,
-          "atom_roots": [
-            7
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 7,
-          "atom_roots": [
-            8,
-            9
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 8,
-          "atom_roots": [
-            10
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 9,
-          "atom_roots": [
-            11,
-            12
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 10,
-          "atom_roots": [
-            13,
-            14
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 11,
-          "atom_roots": [
-            15
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 12,
-          "atom_roots": [
-            16
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 13,
-          "atom_roots": [
-            17,
-            18
-          ],
-          "cache_roots": [
-            0
-          ]
-        }
+      "order": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
       ],
       "sites": [
         [
@@ -4016,68 +3681,17 @@
       "floor": 58
     },
     {
-      "units": [
-        {
-          "group": "Gates",
-          "relation_index": 0,
-          "atom_roots": [
-            1
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 1,
-          "atom_roots": [
-            2
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 2,
-          "atom_roots": [
-            3,
-            4
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 3,
-          "atom_roots": [
-            5,
-            6
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 4,
-          "atom_roots": [
-            7
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 5,
-          "atom_roots": [
-            8
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "Gates",
-          "relation_index": 6,
-          "atom_roots": [
-            9,
-            10
-          ],
-          "cache_roots": [
-            0
-          ]
-        }
+      "order": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
       ],
       "sites": [
         [
@@ -4293,64 +3907,15 @@
       "floor": 42
     },
     {
-      "units": [
-        {
-          "group": "GatesExternal",
-          "relation_index": 0,
-          "atom_roots": [
-            0,
-            1
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "GatesExternal",
-          "relation_index": 1,
-          "atom_roots": [
-            2
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "GatesExternal",
-          "relation_index": 2,
-          "atom_roots": [
-            3
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "GatesExternal",
-          "relation_index": 3,
-          "atom_roots": [
-            4
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "GatesExternal",
-          "relation_index": 4,
-          "atom_roots": [
-            5
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "GatesExternal",
-          "relation_index": 5,
-          "atom_roots": [
-            6
-          ],
-          "cache_roots": []
-        },
-        {
-          "group": "GatesExternal",
-          "relation_index": 6,
-          "atom_roots": [
-            7
-          ],
-          "cache_roots": []
-        }
+      "order": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
       ],
       "sites": [
         [
