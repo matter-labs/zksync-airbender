@@ -239,8 +239,33 @@ fn produce_all_schedules() {
         let mut sched =
             produce_circuit_schedule(&dag, &artifact, REAL_BUDGET, &cfg, incumbent.as_ref());
         sched.circuit = stem.to_string();
-        let mut f = std::fs::File::create(&out).unwrap();
-        serde_json::to_writer_pretty(&mut f, &sched).unwrap();
-        eprintln!("wrote {}", out.display());
+
+        // Persist ONLY on a strict corpus-traffic improvement over the committed
+        // incumbent. Rationale (RR): the search never regresses (per-layer floor),
+        // so re-running compounds — but re-serializing a NON-improving schedule
+        // still churns the committed bytes, because the incumbent was loaded through
+        // serde_json whose default f64 parser is not 1-ULP-exact, so a kept
+        // (floored) layer round-trips to slightly different priority bytes at
+        // identical traffic. Skipping the write when traffic did not strictly
+        // improve makes regen IDEMPOTENT: once no circuit improves, no file is
+        // rewritten, so iterating to a fixed point terminates (byte-stable) and the
+        // committed corpus is self-verifying (`regen == no-op`).
+        let new_traffic: usize = sched.layers.iter().map(|l| l.predicted_traffic).sum();
+        let old_traffic =
+            incumbent.as_ref().map(|s| s.layers.iter().map(|l| l.predicted_traffic).sum::<usize>());
+        match old_traffic {
+            Some(old) if new_traffic >= old => {
+                eprintln!("kept {stem} (traffic {new_traffic} >= committed {old}; no rewrite)");
+            }
+            _ => {
+                let mut f = std::fs::File::create(&out).unwrap();
+                serde_json::to_writer_pretty(&mut f, &sched).unwrap();
+                eprintln!(
+                    "wrote {} (traffic {new_traffic}{})",
+                    out.display(),
+                    old_traffic.map(|o| format!(" < committed {o}")).unwrap_or_default()
+                );
+            }
+        }
     }
 }
