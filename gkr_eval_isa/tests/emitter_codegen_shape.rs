@@ -5,7 +5,7 @@ mod common;
 
 use common::load_dag_sched;
 use gkr_eval_isa::fwd::compile::compile_circuit;
-use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandLine};
+use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine};
 
 const ADD_SUB: &str = "add_sub_lui_auipc_mop_layout_gkr.json";
 
@@ -44,5 +44,32 @@ fn no_leaf_load_through_acc() {
             w[0],
             w[1]
         );
+    }
+}
+
+/// F4: no `DstFromAcc(Smem c); AccFromSrc(Smem c)` adjacency (a spill immediately
+/// reloaded — acc already holds it).
+#[test]
+fn no_spill_immediate_reload() {
+    let instrs = add_sub_l0_instrs();
+    for w in instrs.windows(2) {
+        if let (
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                dst: Some(DstLine::Smem { cell: c0 }),
+                ..
+            },
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                src: Some(OperandLine::Smem { cell: c1 }),
+                ..
+            },
+        ) = (&w[0], &w[1])
+        {
+            assert_ne!(
+                c0, c1,
+                "F4 violated: spill to cell {c0} immediately reloaded"
+            );
+        }
     }
 }

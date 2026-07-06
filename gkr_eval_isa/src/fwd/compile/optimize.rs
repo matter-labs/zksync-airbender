@@ -194,6 +194,28 @@ fn fuse_leaf_loads(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool 
     changed
 }
 
+/// F4 (+ spill-immediate-reload): delete a `Mov AccFromSrc Value(v)` whose acc-before is
+/// already `Value(v)` — the reload is a no-op. General redundant-reload elimination.
+fn drop_redundant_reloads(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool {
+    let ab = acc_before(vinstrs);
+    let mut del: BTreeSet<usize> = BTreeSet::new();
+    for (i, vi) in vinstrs.iter().enumerate() {
+        if let VInstr::Mov {
+            dir: MovDir::AccFromSrc,
+            src: Some(VirtualOp::Value(v)),
+            ..
+        } = vi
+        {
+            if ab[i] == AccVal::Value(*v) {
+                del.insert(i);
+            }
+        }
+    }
+    let changed = !del.is_empty();
+    delete_indices(vinstrs, step_of, &del);
+    changed
+}
+
 /// Optimize the lowered stream via a fixpoint of the rewrite rules.
 pub(crate) fn optimize_vinstrs(
     mut vinstrs: Vec<VInstr>,
@@ -207,6 +229,7 @@ pub(crate) fn optimize_vinstrs(
     loop {
         let mut changed = false;
         changed |= fuse_leaf_loads(&mut vinstrs, &mut step_of);
+        changed |= drop_redundant_reloads(&mut vinstrs, &mut step_of);
         if !changed {
             break;
         }
@@ -336,9 +359,24 @@ mod tests {
 
     #[test]
     fn identity_optimize_preserves_stream_and_lockstep() {
-        let v = ExprId(0);
-        let vinstrs = vec![mov_store(v), mov_load(v)];
-        let step_of = vec![0, 0];
+        // Neither F1 nor F4 applies: a leaf load into acc not immediately followed by a
+        // store (so F1's adjacency doesn't match), followed by an arithmetic op that reads
+        // acc but isn't an `AccFromSrc(Value)` reload (so F4 doesn't match either). Note:
+        // `[mov_store(v), mov_load(v)]` is NOT an identity input anymore — F4 correctly
+        // deletes the redundant reload there (see `f4_deletes_reload_of_value_already_in_acc`).
+        let vinstrs = vec![
+            mov_load_global(2, 4),
+            VInstr::Mul {
+                field: OperandField::Base,
+                reads: vec![VirtualOp::Ldc {
+                    sub: crate::fwd::isa::LdcSub::Const,
+                    idx: 0,
+                }],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let step_of = vec![0, 1];
         let (out, step) = optimize_vinstrs(vinstrs.clone(), step_of.clone());
         assert_eq!(out.len(), vinstrs.len());
         assert_eq!(step, step_of);
@@ -350,5 +388,33 @@ mod tests {
         let stream = vec![mov_store(v), mov_load(v)];
         let ab = acc_before(&stream);
         assert_eq!(ab, vec![AccVal::Unknown, AccVal::Value(v)]); // before store Unknown; before load acc aliases v
+    }
+
+    #[test]
+    fn f4_deletes_reload_of_value_already_in_acc() {
+        let v = ExprId(3);
+        // cellv <- acc (acc now aliases v); acc <- v  => second is redundant
+        let mut vinstrs = vec![mov_store(v), mov_load(v)];
+        let mut step_of = vec![0, 0];
+        let changed = drop_redundant_reloads(&mut vinstrs, &mut step_of);
+        assert!(changed);
+        assert_eq!(vinstrs.len(), 1);
+        assert!(matches!(
+            vinstrs[0],
+            VInstr::Mov {
+                dir: MovDir::DstFromAcc,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn f4_keeps_reload_when_acc_holds_other_value() {
+        let (v, w) = (ExprId(3), ExprId(4));
+        let mut vinstrs = vec![mov_store(v), mov_load(w)]; // acc=v, then reload w — needed
+        let mut step_of = vec![0, 0];
+        let changed = drop_redundant_reloads(&mut vinstrs, &mut step_of);
+        assert!(!changed);
+        assert_eq!(vinstrs.len(), 2);
     }
 }
