@@ -22,6 +22,10 @@ pub fn decode_unit_order(unit_key: &[f64]) -> Vec<usize> {
     order
 }
 
+/// NOTE (Phase 1): no longer on the live schedule decode path (`scorer::decode_schedule`
+/// now orders `units_with_caches` directly); retained as the executable pin of the
+/// unit-contiguity / member-expansion invariant its tests assert.
+///
 /// Expand a unit-keyed genome to a concrete root execution order: order the
 /// units by key ([`decode_unit_order`]), then concatenate each unit's members
 /// in their given (canonical, first-occurrence) order. A unit is indivisible

@@ -128,6 +128,11 @@ pub fn decode_schedule(genome: &Genome, ctx: &LayerCtx) -> cs::gkr_compiler::dag
         ctx.sites.len(),
         "genome cache_priority length must match ctx site domain"
     );
+    assert_eq!(
+        genome.root_order_key.len(),
+        ctx.units_with_caches.len(),
+        "genome root_order_key length must match ctx units"
+    );
     let unit_perm = decode_unit_order(&genome.root_order_key);
     let units: Vec<cs::gkr_compiler::dag_ir::RelationUnit> =
         unit_perm.iter().map(|&u| ctx.units_with_caches[u].clone()).collect();
