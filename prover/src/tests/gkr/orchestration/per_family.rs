@@ -572,3 +572,93 @@ where
 
     full_trace
 }
+
+/// Memory-family counterpart of [`build_nonmem_family_full_trace`]: replay into
+/// a `MemDestinationHolder`, build a `MemoryCircuitOracle`, compute the full
+/// witness trace, and (optionally) run the memory-trace consistency check.
+/// Used by the malicious-proof generator to obtain a mem-family trace it can
+/// mutate before proving.
+#[allow(clippy::too_many_arguments)]
+pub fn build_mem_family_full_trace<const CIRCUIT_TYPE: u8, C>(
+    snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
+    tape: &SimpleTape,
+    expected_final_state: &State<C>,
+    cycles_bound: usize,
+    num_calls: usize,
+    circuit: &GKRCircuitArtifact<BabyBearField>,
+    table_driver: &TableDriver<BabyBearField>,
+    decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
+    eval_fn: fn(&mut ColumnMajorWitnessProxy<'_, MemoryCircuitOracle<'_>, BabyBearField>),
+    num_cycles_per_chunk: usize,
+    run_memory_consistency_check: bool,
+    worker: &Worker,
+) -> GKRFullWitnessTrace<BabyBearField, Global, Global>
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
+    let mut state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = MemDestinationHolder::<CIRCUIT_TYPE> {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
+        &mut state,
+        &mut ram,
+        tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(*expected_final_state, state);
+
+    let oracle = MemoryCircuitOracle {
+        inner: &buffer[..],
+        decoder_table: decoder_table_data,
+    };
+
+    let memory_trace = if run_memory_consistency_check {
+        println!("Computing memory trace");
+        Some(evaluate_gkr_memory_witness_for_executor_family::<
+            BabyBearField,
+            _,
+            _,
+            _,
+        >(
+            circuit,
+            num_cycles_per_chunk,
+            &oracle,
+            worker,
+            None,
+            Global,
+            Global,
+        ))
+    } else {
+        None
+    };
+
+    println!("Computing full trace");
+    let full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
+        circuit,
+        eval_fn,
+        num_cycles_per_chunk,
+        &oracle,
+        table_driver,
+        worker,
+        None,
+        Global,
+        Global,
+    );
+
+    if let Some(memory_trace) = &memory_trace {
+        ensure_memory_trace_consistency(memory_trace, &full_trace);
+    }
+
+    full_trace
+}

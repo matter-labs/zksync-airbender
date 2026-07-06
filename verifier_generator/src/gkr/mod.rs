@@ -8,9 +8,19 @@ pub use crate::utils::{
     BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
 use prover::common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
-use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
+use prover::cs::definitions::gkr::{AddressSpaceType, RamWordRepresentation};
+use prover::cs::definitions::{
+    GKRAddress, VirtualSetupPoly, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+};
 use prover::cs::gkr_compiler::{
-    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, OutputType,
+    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation,
+    NoFieldSpecialMemoryContributionRelation, OutputType,
 };
 use prover::gkr::prover::WhirSchedule;
 use prover::gkr::prover_config::pow_bits;
@@ -513,6 +523,12 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
     let mut vsetup_descs: Vec<(usize, usize, usize)> = Vec::new();
     let mut vsetup_deps: Vec<usize> = Vec::new();
 
+    // MemoryTuple caches: (cached_idx, relation). Bound below by an unrolled per-relation
+    // block that reproduces `evaluate_memory_tuple_from_claims` exactly. Without this, the
+    // memory-permutation grand product certifies nothing about the committed base columns
+    let mut memtuple_relations: Vec<(usize, &NoFieldSpecialMemoryContributionRelation)> =
+        Vec::new();
+
     let find_idx = |addr: &GKRAddress| -> usize {
         target_addrs
             .iter()
@@ -566,7 +582,9 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
                 }
                 vsetup_descs.push((cached_idx, dep_start, setup_addrs.len()));
             }
-            NoFieldGKRCacheRelation::MemoryTuple(_) => {}
+            NoFieldGKRCacheRelation::MemoryTuple(rel) => {
+                memtuple_relations.push((cached_idx, rel));
+            }
         }
     }
 
@@ -735,7 +753,296 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
         });
     }
 
+    let vsetup_count = vsetup_descs.len();
+    for (mt_idx, (cached_idx, rel)) in memtuple_relations.iter().enumerate() {
+        let relation_idx = vsetup_count + mt_idx;
+        let block =
+            emit_memory_tuple_check::<MW>(rel, *cached_idx, layer_idx, relation_idx, &find_idx);
+        checks.extend(block);
+    }
+
     checks
+}
+
+/// Emit a straight-line check binding a single MemoryTuple cache to the committed base columns
+fn emit_memory_tuple_check<MW: FieldWrapper>(
+    rel: &NoFieldSpecialMemoryContributionRelation,
+    cached_idx: usize,
+    layer_idx: usize,
+    relation_idx: usize,
+    dep: &impl Fn(&GKRAddress) -> usize,
+) -> TokenStream {
+    let quartic_struct = MW::quartic_struct();
+    let field_struct = MW::field_struct();
+
+    // Resolve a base-layer memory column offset to its claim index in prev_claims.
+    let claim = |offset: usize| -> TokenStream {
+        let idx = dep(&GKRAddress::BaseLayerMemory(offset));
+        quote! { *state.prev_claims.get_unchecked(#idx) }
+    };
+
+    let challenge = |idx: usize| -> TokenStream {
+        quote! { external_challenges.permutation_argument_linearization_challenges[#idx] }
+    };
+
+    let base_const = |value: u32| -> TokenStream {
+        let repr = MW::coeff_to_internal_repr(value);
+        quote! { #field_struct::from_reduced_raw_repr(#repr) }
+    };
+
+    let mut body = TokenStream::new();
+
+    // result = permutation_argument_additive_part
+    body.extend(quote! {
+        let mut expected: #quartic_struct =
+            external_challenges.permutation_argument_additive_part;
+    });
+
+    match rel.address_space {
+        CompiledAddressSpaceRelationStrict::Constant(c) => {
+            let bc = base_const(c);
+            let add = MW::add_assign_base(quote! { expected }, quote! { c_addr_space });
+            body.extend(quote! {
+                let c_addr_space = #bc;
+                #add;
+            });
+        }
+        CompiledAddressSpaceRelationStrict::IsRam(offset) => {
+            assert_eq!(AddressSpaceType::RAM as u8, 1);
+            let cl = claim(offset);
+            let add = MW::add_assign(quote! { expected }, quote! { as_claim });
+            body.extend(quote! {
+                let as_claim = #cl;
+                #add;
+            });
+        }
+        CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+            assert_eq!(AddressSpaceType::Register as u8, 0);
+            let cl = claim(offset);
+            let one = MW::quartic_from_base(MW::field_one());
+            let sub = MW::sub_assign(quote! { as_term }, quote! { as_claim });
+            let add = MW::add_assign(quote! { expected }, quote! { as_term });
+            body.extend(quote! {
+                let as_claim = #cl;
+                let mut as_term: #quartic_struct = #one;
+                #sub;
+                #add;
+            });
+        }
+    }
+
+    match &rel.address {
+        &CompiledAddressStrict::ConstantU16(c) => {
+            let ch = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX);
+            let bc = base_const(c as u32);
+            let mul = MW::mul_assign_by_base(quote! { t_addr }, quote! { #bc });
+            let add = MW::add_assign(quote! { expected }, quote! { t_addr });
+            body.extend(quote! {
+                let mut t_addr: #quartic_struct = #ch;
+                #mul;
+                #add;
+            });
+        }
+        &CompiledAddressStrict::Constant(c) => {
+            let ch = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX);
+            let bc = base_const(c);
+            let mul = MW::mul_assign_by_base(quote! { t_addr }, quote! { #bc });
+            let add = MW::add_assign(quote! { expected }, quote! { t_addr });
+            body.extend(quote! {
+                let mut t_addr: #quartic_struct = #ch;
+                #mul;
+                #add;
+            });
+        }
+        &CompiledAddressStrict::U16Space(offset) => {
+            let ch = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX);
+            let cl = claim(offset);
+            let mul = MW::mul_assign(quote! { t_addr }, quote! { addr_claim });
+            let add = MW::add_assign(quote! { expected }, quote! { t_addr });
+            body.extend(quote! {
+                let mut t_addr: #quartic_struct = #ch;
+                let addr_claim = #cl;
+                #mul;
+                #add;
+            });
+        }
+        &CompiledAddressStrict::U32Space([low, high]) => {
+            for (ch_idx, offset) in [
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX, low),
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, high),
+            ] {
+                let ch = challenge(ch_idx);
+                let cl = claim(offset);
+                let mul = MW::mul_assign(quote! { t_addr }, quote! { addr_claim });
+                let add = MW::add_assign(quote! { expected }, quote! { t_addr });
+                body.extend(quote! {
+                    {
+                        let mut t_addr: #quartic_struct = #ch;
+                        let addr_claim = #cl;
+                        #mul;
+                        #add;
+                    }
+                });
+            }
+        }
+        CompiledAddressStrict::U32SpaceSpecialIndirect {
+            low_base,
+            low_dynamic_offset,
+            low_offset,
+            high,
+        } => {
+            let ch_low = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX);
+            let base_cl = claim(*low_base);
+            let off_bc = base_const(*low_offset);
+            let add_off = MW::add_assign_base(quote! { low }, quote! { #off_bc });
+            let mut dyn_block = TokenStream::new();
+            if let Some((c, offset)) = *low_dynamic_offset {
+                let dyn_cl = claim(offset);
+                let c_bc = base_const(c as u32);
+                let mul = MW::mul_assign_by_base(quote! { var_offset }, quote! { #c_bc });
+                let add = MW::add_assign(quote! { low }, quote! { var_offset });
+                dyn_block.extend(quote! {
+                    let mut var_offset = #dyn_cl;
+                    #mul;
+                    #add;
+                });
+            }
+            let mul_low = MW::mul_assign(quote! { t_low }, quote! { low });
+            let add_low = MW::add_assign(quote! { expected }, quote! { t_low });
+
+            let ch_high = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX);
+            let high_cl = claim(*high);
+            let mul_high = MW::mul_assign(quote! { t_high }, quote! { high });
+            let add_high = MW::add_assign(quote! { expected }, quote! { t_high });
+
+            body.extend(quote! {
+                {
+                    let mut t_low: #quartic_struct = #ch_low;
+                    let mut low = #base_cl;
+                    #add_off;
+                    #dyn_block
+                    #mul_low;
+                    #add_low;
+                }
+                {
+                    let mut t_high: #quartic_struct = #ch_high;
+                    let high = #high_cl;
+                    #mul_high;
+                    #add_high;
+                }
+            });
+        }
+        CompiledAddressStrict::U32SpaceGeneric(..) => {
+            // The prover leaves this variant as `todo!()`. Fail closed at generation time so a
+            // silently-unbound cache can never be emitted.
+            unimplemented!(
+                "MemoryTuple cache binding for CompiledAddressStrict::U32SpaceGeneric is not \
+                 implemented (prover reference is `todo!()`); emitting a verifier for a circuit \
+                 that uses it would leave the cache unbound"
+            );
+        }
+    }
+
+    match rel.timestamp {
+        CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Normal(ts) => {
+            let ch_low = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX);
+            let ts_low_cl = claim(ts[0]);
+            let off_bc = base_const(rel.timestamp_offset);
+            let add_off = MW::add_assign_base(quote! { ts_low }, quote! { #off_bc });
+            let mul_low = MW::mul_assign(quote! { t_ts }, quote! { ts_low });
+            let add_low = MW::add_assign(quote! { expected }, quote! { t_ts });
+
+            let ch_high = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX);
+            let ts_high_cl = claim(ts[1]);
+            let mul_high = MW::mul_assign(quote! { t_ts }, quote! { ts_high });
+            let add_high = MW::add_assign(quote! { expected }, quote! { t_ts });
+
+            body.extend(quote! {
+                {
+                    let mut t_ts: #quartic_struct = #ch_low;
+                    let mut ts_low = #ts_low_cl;
+                    #add_off;
+                    #mul_low;
+                    #add_low;
+                }
+                {
+                    let mut t_ts: #quartic_struct = #ch_high;
+                    let ts_high = #ts_high_cl;
+                    #mul_high;
+                    #add_high;
+                }
+            });
+        }
+    }
+
+    match rel.value {
+        RamWordRepresentation::Zero => {}
+        RamWordRepresentation::U16Limbs(read_value) => {
+            for (ch_idx, offset) in [
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, read_value[0]),
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, read_value[1]),
+            ] {
+                let ch = challenge(ch_idx);
+                let cl = claim(offset);
+                let mul = MW::mul_assign(quote! { t_val }, quote! { val_claim });
+                let add = MW::add_assign(quote! { expected }, quote! { t_val });
+                body.extend(quote! {
+                    {
+                        let mut t_val: #quartic_struct = #ch;
+                        let val_claim = #cl;
+                        #mul;
+                        #add;
+                    }
+                });
+            }
+        }
+        RamWordRepresentation::U8Limbs(read_value) => {
+            let shift = base_const(1u32 << 8);
+            for (ch_idx, offset_low, offset_high) in [
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                    read_value[0],
+                    read_value[1],
+                ),
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                    read_value[2],
+                    read_value[3],
+                ),
+            ] {
+                let ch = challenge(ch_idx);
+                let low_cl = claim(offset_low);
+                let high_cl = claim(offset_high);
+                let mul_shift =
+                    MW::mul_assign_by_base(quote! { combined }, quote! { #shift });
+                let add_low = MW::add_assign(quote! { combined }, quote! { low });
+                let mul = MW::mul_assign(quote! { t_val }, quote! { combined });
+                let add = MW::add_assign(quote! { expected }, quote! { t_val });
+                body.extend(quote! {
+                    {
+                        let low = #low_cl;
+                        let mut combined = #high_cl;
+                        #mul_shift;
+                        #add_low;
+                        let mut t_val: #quartic_struct = #ch;
+                        #mul;
+                        #add;
+                    }
+                });
+            }
+        }
+    }
+
+    quote! {
+        {
+            #body
+            let cached = *state.prev_claims.get_unchecked(#cached_idx);
+            if expected != cached {
+                return Err(E::gkr_permutation_cache_relation_failed(#layer_idx, #relation_idx));
+            }
+        }
+    }
 }
 
 #[allow(clippy::needless_range_loop)]

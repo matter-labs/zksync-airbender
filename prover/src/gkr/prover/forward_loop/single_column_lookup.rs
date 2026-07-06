@@ -50,7 +50,17 @@ pub(crate) fn evaluate_single_column_lookup_relation<
                         assert_eq!(value as u16, mapping_index);
                     }
 
-                    let mapped_value = F::from_u32_unchecked(mapping_index as u32);
+                    #[cfg_attr(not(feature = "gkr_test_forge"), allow(unused_mut))]
+                    let mut mapped_value = F::from_u32_unchecked(mapping_index as u32);
+                    
+                    // Test-only negative control (feature `gkr_test_forge`, off in
+                    // production): forging this BOUND cache must be rejected.
+                    #[cfg(feature = "gkr_test_forge")]
+                    crate::gkr::prover::test_forge::perturb(
+                        crate::gkr::prover::test_forge::ForgeSite::SingleColumnLookupCache,
+                        row,
+                        &mut mapped_value,
+                    );
                     dest[i].write(mapped_value);
                 }
             },
@@ -90,7 +100,17 @@ pub(crate) fn evaluate_single_column_lookup_relation<
                         assert_eq!(value, mapping_index);
                     }
 
-                    let mapped_value = F::from_u32_unchecked(mapping_index);
+                    #[cfg_attr(not(feature = "gkr_test_forge"), allow(unused_mut))]
+                    let mut mapped_value = F::from_u32_unchecked(mapping_index);
+                    
+                    // Test-only negative control (feature `gkr_test_forge`, off in
+                    // production): forging this BOUND cache must be rejected.
+                    #[cfg(feature = "gkr_test_forge")]
+                    crate::gkr::prover::test_forge::perturb(
+                        crate::gkr::prover::test_forge::ForgeSite::SingleColumnLookupCache,
+                        row,
+                        &mut mapped_value,
+                    );
                     dest[i].write(mapped_value);
                 }
             },

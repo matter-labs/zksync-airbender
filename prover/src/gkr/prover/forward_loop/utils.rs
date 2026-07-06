@@ -187,11 +187,23 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
                 let dest = ext_dest.pop().unwrap();
                 for i in 0..chunk_size {
                     let absolute_row_idx = chunk_start + i;
-                    let result = evaluate_memory_query(
+                    #[cfg_attr(not(feature = "gkr_test_forge"), allow(unused_mut))]
+                    let mut result = evaluate_memory_query(
                         rel,
                         absolute_row_idx,
                         sources_ref,
                         external_challenges,
+                    );
+                    
+                    // Test-only (feature `gkr_test_forge`, off in production): a
+                    // registered forge perturbs this MemoryTuple cache eval so a
+                    // verifier test can assert the binding check rejects it. No-op /
+                    // absent when the feature is off.
+                    #[cfg(feature = "gkr_test_forge")]
+                    crate::gkr::prover::test_forge::perturb(
+                        crate::gkr::prover::test_forge::ForgeSite::MemTupleCache,
+                        absolute_row_idx,
+                        &mut result,
                     );
 
                     dest.get_unchecked_mut(i).write(result);

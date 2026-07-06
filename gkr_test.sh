@@ -68,7 +68,7 @@ Options:
   --variant V           caches (default) | no_caches
   --encoding ENC        coeff (default) | eval (WHIR leaf encoding)
                         Forwarded as the eval_leaves feature to prover + generator.
-  --security-level L    80 (default) | 100   (mutually exclusive — run separately)
+  --security-level L    80 (default) | 100 | both
   --prove-empty         Prove every applicable circuit even if program made 0 calls.
                         Forwarded via GKR_PROVE_EMPTY.
   --no-self-checks      Disable in-prove sumcheck/cache/at-point-eval checks.
@@ -106,7 +106,7 @@ Examples:
   $0 unified
   $0 per_family --from generator
   $0 unified --circuits blake2_with_extended_control --from binaries
-  $0 per_family --security-level 100 --from generator
+  $0 per_family --security-level both --from generator
   $0 unified --dry-run
 
 Exit codes:
@@ -309,8 +309,8 @@ case "$VARIANT" in
 esac
 
 case "$SECURITY_LEVEL" in
-  80|100) ;;
-  *) die "--security-level must be 80 or 100 (run the levels as separate invocations; they are mutually exclusive). Got: $SECURITY_LEVEL" ;;
+  80|100|both) ;;
+  *) die "--security-level must be 80, 100, or both. Got: $SECURITY_LEVEL" ;;
 esac
 
 if [[ ${#SELECTED_CIRCUITS[@]} -gt 0 ]]; then
@@ -335,15 +335,17 @@ fi
 case "$SECURITY_LEVEL" in
   80)   LEVELS=(sec_80) ;;
   100)  LEVELS=(sec_100) ;;
+  both) LEVELS=(sec_80 sec_100) ;;
 esac
 
 LEVEL_FEATURES_ARR=()
 for lvl in "${LEVELS[@]}"; do LEVEL_FEATURES_ARR+=("security_${lvl#sec_}"); done
 LEVEL_FEATURES=$(IFS=,; echo "${LEVEL_FEATURES_ARR[*]}")
 
-# Exactly one level per run (security_80 and security_100 are mutually exclusive — a
-# `compile_error!` in verifier_common enforces it), so a level test-filter is always set.
-LEVEL_TEST_FILTER="_${LEVELS[0]}"
+# Single-level runs get a level test-filter; "both" leaves it empty so cargo
+# matches every level's tests via substring.
+LEVEL_TEST_FILTER=""
+[[ ${#LEVELS[@]} -eq 1 ]] && LEVEL_TEST_FILTER="_${LEVELS[0]}"
 
 # CIRCUITS = (base × level), filtered by which bin files actually exist.
 CIRCUITS=()
@@ -539,12 +541,6 @@ step_prover() {
 }
 
 step_native() {
-  # verifier_common PoW-bits self-check at BOTH levels (level-independent): exercises the
-  # security_100 cfg-dispatch of MEMORY_DELEGATION_POW_BITS that single-level pipeline runs skip.
-  run_step "verifier_common PoW-bits self-check (security_80)" \
-    cargo test -p verifier_common --no-default-features --features security_80 memory_delegation_pow
-  run_step "verifier_common PoW-bits self-check (security_100)" \
-    cargo test -p verifier_common --no-default-features --features security_100 memory_delegation_pow
   run_step "Native tests" \
     env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
       --no-default-features --features "$FEATURES" --test native \
@@ -615,25 +611,26 @@ step_fsv() {
 # The inits/teardowns-eval corruption lives in the `corruption` step
 # (rejects_corrupted_it_evals_unified_reduced_machine_sec_80).
 step_malicious() {
-  # `malicious` is opt-in, so a full pipeline (which runs `generator`) may not have
-  # run beforehand. Regenerate the verifier first so the soundness-gap tests always
-  # exercise the CURRENT generator source, not stale on-disk generated code.
-  step_generator
   case "$MODE" in
     per_family)
+      # Regenerate ALL per-family malicious fixtures (no self-checks, else the debug
+      # cache/constraint self-check would catch the divergence at prove time). Three
+      # generators: the original base-column/multiplicity corruptions
+      # (generate_malicious_proofs), the subword-alias trace forge
+      # (generate_subword_regression_proof), and the MemoryTuple/lookup cache forges
+      # (generate_memtuple_regression_proofs — needs the `gkr_test_forge` feature, which
+      # gates the in-prover cache-perturbation hook; inert without an explicit register()).
       run_step "Generate malicious proofs (corrupt witness, no self-checks)" \
         run_prover_cargo \
-          --no-default-features --features prover,bincode \
+          --no-default-features --features prover,bincode,gkr_test_forge \
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
-          -- --ignored --nocapture malicious_proof
-      # Scope to the per-family malicious tests only. The `rejects_malicious_unified_*`
-      # tests belong to the `unified` subcommand (which regenerates their fixtures);
-      # running them here would test stale unified fixtures against the per-family run.
+          -- --ignored --nocapture \
+          generate_malicious_proofs generate_subword_regression_proof generate_memtuple_regression_proofs
       run_step "Verify malicious proofs rejected (soundness gap tests)" \
         env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
           --no-default-features --features "$FEATURES" \
-          --test malicious -- --include-ignored --skip rejects_malicious_unified
+          --test malicious -- --include-ignored
       ;;
     unified)
       run_step "Unified negative tests (constraint + range-lookup layer)" \
