@@ -162,6 +162,9 @@ pub struct OptimizerResult {
 
 // ── Deterministic RNG helpers (prototype splitmix64 / unit_draw / SmokeRng) ──
 
+// Only reached from the retained RNG tests below (`--lib` non-test builds
+// never call it), so it warns dead-code outside `cfg(test)`; kept deliberately.
+#[allow(dead_code)]
 fn splitmix64(seed: u64) -> u64 {
     let mut z = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -171,6 +174,8 @@ fn splitmix64(seed: u64) -> u64 {
 
 /// Deterministic sample in `[0, 1)` from a seed (top 53 bits of a splitmix64
 /// hash) — keeps the optimizer's annealing reproducible across runs.
+// Only reached from the retained RNG tests below; kept deliberately.
+#[allow(dead_code)]
 fn unit_draw(seed: u64) -> f64 {
     (splitmix64(seed) >> 11) as f64 / (1u64 << 53) as f64
 }
@@ -221,6 +226,9 @@ struct ScoredGenome {
     index: usize,
     genome: Genome,
     score: CandidateScore,
+    // Tagged by neighbor moves, retained for future consumers (e.g. move-family
+    // reporting); not yet read anywhere.
+    #[allow(dead_code)]
     family: Option<MoveFamily>,
 }
 
@@ -547,6 +555,7 @@ pub fn ga_local_descent(
 pub fn optimize_from_population(ctx: &LayerCtx, seeds: Vec<Genome>, cfg: &SearchConfig) -> OptimizerResult {
     let budget = cfg.evals;
     assert!(budget > 0, "eval budget must be positive");
+    assert!(cfg.elitism < cfg.pop, "elitism ({}) must be < pop ({})", cfg.elitism, cfg.pop);
     let seeds = if seeds.is_empty() {
         vec![Genome::neutral(ctx.n_order_keys(), ctx.n_sites())]
     } else {
@@ -952,11 +961,16 @@ mod tests {
     }
 
     #[test]
-    fn search_config_from_env_with_no_overrides_is_default() {
-        // No GA env vars set in the unit-test process -> parse yields the pinned
-        // default. (`SearchConfig` dropped `Eq` for its f64 fields; `assert_eq!`
-        // needs only `PartialEq + Debug`.)
-        let cfg = search_config_from_env();
-        assert_eq!(cfg, SearchConfig::default());
+    fn search_config_default_has_pinned_values() {
+        let cfg = SearchConfig::default();
+        assert_eq!(cfg.pop, 64);
+        assert_eq!(cfg.evals, 20_000);
+        assert_eq!(cfg.seed, 0);
+        assert_eq!(cfg.tournament, 3);
+        assert_eq!(cfg.elitism, 2);
+        assert_eq!(cfg.crossover_rate, 0.9);
+        assert_eq!(cfg.mutation_rate, 0.1);
+        assert_eq!(cfg.mutation_sigma, 0.15);
+        assert_eq!(cfg.local_steps, 2);
     }
 }
