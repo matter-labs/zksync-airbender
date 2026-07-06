@@ -3,6 +3,7 @@ pub mod arith;
 pub mod decisions;
 mod lower;
 pub mod negate;
+mod optimize;
 mod place;
 pub mod resolution;
 pub mod schedule;
@@ -254,6 +255,10 @@ pub fn compile_layer(
     // Phase 1 — lower to a rich virtual-instruction stream.
     let (vinstrs, step_of, vouts, resident_realized) =
         lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, budget)?;
+
+    // Phase 1.5 — value-preserving peephole (F1/F4/F2/F5). `resident_realized` above stays
+    // the lowering-time admission diagnostic (pre-optimization; consumed by decisions_policy).
+    let (vinstrs, step_of) = self::optimize::optimize_vinstrs(vinstrs, step_of);
 
     // Per-ValueId width: every defined value's own field. All values placement touches
     // are defined (via a `defines` instr) or read as `Value` (hence defined earlier), so
