@@ -40,6 +40,16 @@ const NEIGHBOR_BATCH_CAP: usize = 128;
 
 // ── SearchConfig (env-overridable, same contract as the deleted v1 producer) ─
 
+/// Crossover operator family. `Blx` = per-gene BLX-alpha on both gene vectors
+/// (production default — [`ga_crossover_blx`]); `Order` = permutation-preserving
+/// order crossover (OX) on the unit-order genes + BLX-alpha on the continuous
+/// cache-priority genes ([`ga_crossover_order`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CrossoverKind {
+    Blx,
+    Order,
+}
+
 /// Search knobs. Env overrides (checked by [`search_config_from_env`]):
 /// `GKR_SCHEDULE_POP` / `GKR_SCHEDULE_EVALS` / `GKR_SCHEDULE_SEED` — the same
 /// variable names (and validation) the deleted v1 producer used
@@ -63,6 +73,9 @@ pub struct SearchConfig {
     /// generations (the premature-convergence failure the Phase-B ablation
     /// surfaced). `GKR_SCHEDULE_LOCAL_ELITE`.
     pub local_elite: usize,
+    /// Crossover operator applied to the unit-order genes. `GKR_SCHEDULE_XOVER_KIND`
+    /// (`blx` | `order`). Default `Blx` keeps production behavior unchanged.
+    pub crossover_kind: CrossoverKind,
 }
 
 impl Default for SearchConfig {
@@ -77,7 +90,13 @@ impl Default for SearchConfig {
             mutation_rate: 0.1,
             mutation_sigma: 0.15,
             local_steps: 2,
-            local_elite: 4,
+            // Tuning verdict (Phase-B sweeps, .agents/specs/2026-07-06-gkr-ga-investigation-design.md):
+            // pure GA (no memetic local descent) + order-crossover is the winner —
+            // local descent, even rationed, over-exploits and collapses diversity;
+            // OX inherits parent sub-orderings (BLX-alpha on raw keys destroyed them).
+            // Beats the old beam+SA search by up to -8 on the hard layers.
+            local_elite: 0,
+            crossover_kind: CrossoverKind::Order,
         }
     }
 }
@@ -110,6 +129,18 @@ fn parse_f64_env(name: &str, default: f64) -> f64 {
     }
 }
 
+fn parse_crossover_kind_env(name: &str, default: CrossoverKind) -> CrossoverKind {
+    match std::env::var(name) {
+        Ok(raw) => match raw.as_str() {
+            "blx" => CrossoverKind::Blx,
+            "order" => CrossoverKind::Order,
+            other => panic!("{name} must be \"blx\" or \"order\", got {other:?}"),
+        },
+        Err(std::env::VarError::NotPresent) => default,
+        Err(err) => panic!("failed to read {name}: {err}"),
+    }
+}
+
 /// [`SearchConfig`] from the environment, with the v1 producer's validation:
 /// malformed values PANIC (a silently-ignored typo in a regen run would burn
 /// hours), `pop`/`evals` must be positive and `pop < evals`. The GA knobs add:
@@ -129,6 +160,7 @@ pub fn search_config_from_env() -> SearchConfig {
         mutation_sigma: parse_f64_env("GKR_SCHEDULE_MUT_SIGMA", defaults.mutation_sigma),
         local_steps: parse_usize_env("GKR_SCHEDULE_LOCAL_STEPS", defaults.local_steps),
         local_elite: parse_usize_env("GKR_SCHEDULE_LOCAL_ELITE", defaults.local_elite),
+        crossover_kind: parse_crossover_kind_env("GKR_SCHEDULE_XOVER_KIND", defaults.crossover_kind),
     };
     assert!(cfg.pop > 0, "GKR_SCHEDULE_POP must be positive");
     assert!(cfg.evals > 0, "GKR_SCHEDULE_EVALS must be positive");
@@ -543,16 +575,76 @@ fn blx_alpha(a: f64, b: f64, lo: f64, hi: f64, rng: &mut SeedRng) -> f64 {
     (low + rng.next_unit() * (high - low)).clamp(lo, hi)
 }
 
+/// Dispatch to the configured crossover operator. The BLX arm is the historical
+/// production path (byte-identical RNG stream); the Order arm swaps in
+/// permutation-preserving OX for the unit-order genes (cache-priority stays BLX).
+fn ga_crossover(p1: &Genome, p2: &Genome, kind: CrossoverKind, rng: &mut SeedRng) -> Genome {
+    match kind {
+        CrossoverKind::Blx => ga_crossover_blx(p1, p2, rng),
+        CrossoverKind::Order => ga_crossover_order(p1, p2, rng),
+    }
+}
+
 /// Per-gene BLX-alpha crossover over both gene vectors. Random keys stay in
 /// `[0,1]` (any value decodes to a valid unit permutation — atomicity preserved);
 /// priorities stay in `[-BOUND, BOUND]`.
-fn ga_crossover(p1: &Genome, p2: &Genome, rng: &mut SeedRng) -> Genome {
+fn ga_crossover_blx(p1: &Genome, p2: &Genome, rng: &mut SeedRng) -> Genome {
     let root_order_key = p1
         .root_order_key
         .iter()
         .zip(&p2.root_order_key)
         .map(|(&a, &b)| blx_alpha(a, b, 0.0, 1.0, rng))
         .collect();
+    let cache_priority = p1
+        .cache_priority
+        .iter()
+        .zip(&p2.cache_priority)
+        .map(|(&a, &b)| blx_alpha(a, b, -CACHE_PRIORITY_BOUND, CACHE_PRIORITY_BOUND, rng))
+        .collect();
+    Genome { root_order_key, cache_priority }
+}
+
+/// Order crossover (OX) on the unit-order permutation + BLX-alpha on the
+/// continuous cache-priority genes. BLX blends both parents' raw random keys
+/// per-gene, which destroys both orderings; OX decodes each parent to its unit
+/// permutation, copies a contiguous segment from `p1`, then fills the rest in
+/// `p2`'s relative order — inheriting real ordering structure from both parents.
+/// The child permutation is re-encoded as distinct keys in `(0,1)` so
+/// [`decode_unit_order`] reproduces it exactly.
+fn ga_crossover_order(p1: &Genome, p2: &Genome, rng: &mut SeedRng) -> Genome {
+    let n = p1.root_order_key.len();
+    let o1 = decode_unit_order(&p1.root_order_key);
+    let o2 = decode_unit_order(&p2.root_order_key);
+    let child_order = if n <= 1 {
+        o1
+    } else {
+        let a = (rng.next_u64() as usize) % n;
+        let b = (rng.next_u64() as usize) % n;
+        let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+        let mut in_child = vec![false; n];
+        let mut child = vec![usize::MAX; n];
+        for k in lo..=hi {
+            child[k] = o1[k];
+            in_child[o1[k]] = true;
+        }
+        let mut fill = 0usize;
+        for &u in &o2 {
+            if in_child[u] {
+                continue;
+            }
+            while fill < n && child[fill] != usize::MAX {
+                fill += 1;
+            }
+            child[fill] = u;
+            in_child[u] = true;
+        }
+        child
+    };
+    // Re-encode child permutation as distinct keys in (0,1) so decode reproduces it exactly.
+    let mut root_order_key = vec![0.0f64; n];
+    for (pos, &unit) in child_order.iter().enumerate() {
+        root_order_key[unit] = (pos as f64 + 0.5) / n as f64;
+    }
     let cache_priority = p1
         .cache_priority
         .iter()
@@ -803,7 +895,8 @@ pub fn optimize_instrumented(
                 // `next_unit()` here. A disabled crossover short-circuits the draw
                 // (ablation stream diverges — intended).
                 let did_crossover = ablation.crossover && rng.next_unit() < cfg.crossover_rate;
-                let child = if did_crossover { ga_crossover(&p1, &p2, &mut rng) } else { p1.clone() };
+                let child =
+                    if did_crossover { ga_crossover(&p1, &p2, cfg.crossover_kind, &mut rng) } else { p1.clone() };
                 let s_parent = if did_crossover {
                     if objective_less(&pop[i1].1, &pop[i2].1) { pop[i1].1 } else { pop[i2].1 }
                 } else {
@@ -1167,10 +1260,59 @@ mod tests {
         for g in &mut p2.cache_priority {
             *g = rng.next_signed();
         }
-        let child = ga_crossover(&p1, &p2, &mut rng);
+        let child = ga_crossover_blx(&p1, &p2, &mut rng);
         assert_eq!(child.root_order_key.len(), 5);
         assert_eq!(child.cache_priority.len(), 3);
         assert_normalized_genome(&child);
+    }
+
+    #[test]
+    fn ga_crossover_order_is_a_valid_permutation() {
+        let mut rng = SeedRng::new(2024);
+        // p1 decodes to [0,1,2,3,4]; p2 decodes to the reverse [4,3,2,1,0].
+        let n = 5usize;
+        let denom = n as f64;
+        let p1 = Genome {
+            root_order_key: (0..n).map(|i| i as f64 / denom).collect(),
+            cache_priority: vec![0.2, -0.3],
+        };
+        let p2 = Genome {
+            root_order_key: (0..n).map(|i| (n - 1 - i) as f64 / denom).collect(),
+            cache_priority: vec![-0.1, 0.4],
+        };
+        assert_eq!(decode_unit_order(&p1.root_order_key), vec![0, 1, 2, 3, 4]);
+        assert_eq!(decode_unit_order(&p2.root_order_key), vec![4, 3, 2, 1, 0]);
+
+        let o1 = decode_unit_order(&p1.root_order_key);
+        let o2 = decode_unit_order(&p2.root_order_key);
+        for _ in 0..200 {
+            let child = ga_crossover_order(&p1, &p2, &mut rng);
+            assert_eq!(child.root_order_key.len(), n);
+            assert_eq!(child.cache_priority.len(), 2);
+            assert_normalized_genome(&child);
+            // Child decodes to a permutation of 0..n (each unit exactly once).
+            let c = decode_unit_order(&child.root_order_key);
+            let mut sorted = c.clone();
+            sorted.sort_unstable();
+            assert_eq!(sorted, (0..n).collect::<Vec<_>>(), "child must be a permutation of 0..n");
+            // Exact OX property (child inherits p1's chosen segment): there EXISTS
+            // some segment [lo, hi] such that child[lo..=hi] == p1's o1[lo..=hi] AND
+            // the remaining elements appear in child in p2's relative order.
+            let valid = (0..n).any(|lo| {
+                (lo..n).any(|hi| {
+                    if c[lo..=hi] != o1[lo..=hi] {
+                        return false;
+                    }
+                    let seg = &o1[lo..=hi];
+                    let rem_child: Vec<usize> =
+                        (0..n).filter(|&k| k < lo || k > hi).map(|k| c[k]).collect();
+                    let rem_expected: Vec<usize> =
+                        o2.iter().copied().filter(|u| !seg.contains(u)).collect();
+                    rem_child == rem_expected
+                })
+            });
+            assert!(valid, "child must be a valid OX offspring of (o1, o2): {c:?}");
+        }
     }
 
     #[test]
@@ -1316,5 +1458,7 @@ mod tests {
         assert_eq!(cfg.mutation_rate, 0.1);
         assert_eq!(cfg.mutation_sigma, 0.15);
         assert_eq!(cfg.local_steps, 2);
+        assert_eq!(cfg.local_elite, 0);
+        assert_eq!(cfg.crossover_kind, CrossoverKind::Order);
     }
 }
