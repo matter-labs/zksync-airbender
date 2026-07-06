@@ -28,14 +28,18 @@ pub struct CircuitSchedule {
     pub layers: Vec<LayerSchedule>,
 }
 
-/// Schedule for one layer. Empty (`order: []`) when the layer has no atom roots.
+/// Schedule for one layer. Empty (`units: []`) when the layer has no atom roots.
 ///
 /// No `Eq`/`Hash`: `sites` carries an `f64` priority gene.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LayerSchedule {
-    /// Atom roots (`materialize.is_some() && claim.is_some()`) in execution order;
-    /// a permutation of exactly this layer's atom-root set.
-    pub order: Vec<RootId>,
+    /// The GKR relations (gates) of this layer as self-describing scheduling units,
+    /// in execution order. Each [`RelationUnit`] carries its atom roots (the
+    /// sumcheck-claim-bearing outputs) plus the Cache intermediate roots it owns
+    /// 1:1. The set of units, and each unit's atom/cache roots, must match the
+    /// canonical [`relation_units_with_caches`] decomposition exactly (validator
+    /// check a). Flat atom execution order = [`LayerSchedule::atom_order`].
+    pub units: Vec<RelationUnit>,
     /// Every structural demand site (see [`enumerate_site_domain`]) paired with the
     /// scorer-assigned priority gene the emitter reads at admit/evict time. The
     /// stored key set must equal `enumerate_site_domain(layer)` exactly (validator
@@ -45,6 +49,28 @@ pub struct LayerSchedule {
     pub predicted_traffic: usize,
     /// `dag_traffic_floor` for this layer (lower bound; validation).
     pub floor: usize,
+}
+
+/// One GKR relation (gate) as a scheduling unit: its atom roots (claim+materialize,
+/// the sumcheck-claim-bearing outputs) plus the Cache-sink intermediate roots it
+/// owns 1:1. Identity `(group, relation_index)` mirrors `claim.origin`. Execution
+/// order = the enclosing `LayerSchedule.units` vec order; atom/cache roots within a
+/// unit are in canonical `layer.roots` order.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RelationUnit {
+    pub group: RootGroup,
+    pub relation_index: usize,
+    pub atom_roots: Vec<RootId>,
+    pub cache_roots: Vec<RootId>,
+}
+
+impl LayerSchedule {
+    /// Flattened atom-root execution order: concatenate each unit's `atom_roots`
+    /// in unit (execution) order. This is exactly the sequence the emitter
+    /// consumes and equals the pre-Phase-1 flat `order` field.
+    pub fn atom_order(&self) -> Vec<RootId> {
+        self.units.iter().flat_map(|u| u.atom_roots.iter().copied()).collect()
+    }
 }
 
 /// Identity of one demand site: a specific consumer's specific operand slot (or a
@@ -77,7 +103,7 @@ pub fn field_cells(field: FieldKind) -> usize {
 // this with search-only ordering/grouping rather than duplicating it.
 // ─────────────────────────────────────────────────────────────────────────────────
 
-use crate::gkr_compiler::dag_ir::{DagCircuit, DagLayer, Expr, SourceKind};
+use crate::gkr_compiler::dag_ir::{DagCircuit, DagLayer, Expr, RootGroup, SinkKind, SourceKind};
 use std::collections::{BTreeSet, HashSet};
 
 /// Every structural demand site in `layer`: per atom-root occurrence, walk Add/Mul
@@ -233,11 +259,128 @@ fn is_cacheable(layer: &DagLayer, value: ExprId) -> bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
+// Canonical relation-unit decomposition (cs-owned; no gkr_eval_isa dependency).
+// The search (`gkr_eval_isa::schedule_search::structure`) wraps this and the
+// validator checks stored schedules against it.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+/// Canonical relation units for `layer`, in first-occurrence order: atom roots
+/// grouped by `claim.origin (group, relation_index)` (members in `layer.roots`
+/// order), each Cache-sink+claim-None root assigned to the unique SAME-LAYER
+/// relation that consumes its value.
+///
+/// Layer-local by design (a `&DagLayer` cannot see later layers). A Cache root
+/// with no same-layer consuming relation — a cache-only layer or a cache read
+/// only cross-layer via `Read{CacheOutput}` — is UNSUPPORTED in Phase 1 and
+/// returns `Err`. The committed corpus never triggers this (all caches at layer
+/// 0, consumed same-layer, 1:1). This is the single source of truth the search
+/// (`gkr_eval_isa::schedule_search::structure`) wraps and the validator checks
+/// against.
+pub fn relation_units_with_caches(layer: &DagLayer) -> Result<Vec<RelationUnit>, String> {
+    use std::collections::HashMap;
+
+    // Atom-root grouping (mirrors gkr_eval_isa::schedule_search::structure::relation_units).
+    let mut units: Vec<RelationUnit> = Vec::new();
+    let mut key_to_unit: HashMap<(RootGroup, usize), usize> = HashMap::new();
+    for (i, root) in layer.roots.iter().enumerate() {
+        if root.materialize.is_none() {
+            continue;
+        }
+        let Some(claim) = root.claim.as_ref() else { continue };
+        let key = (claim.origin.group.clone(), claim.origin.relation_index);
+        let idx = *key_to_unit.entry(key.clone()).or_insert_with(|| {
+            units.push(RelationUnit {
+                group: key.0.clone(),
+                relation_index: key.1,
+                atom_roots: Vec::new(),
+                cache_roots: Vec::new(),
+            });
+            units.len() - 1
+        });
+        units[idx].atom_roots.push(RootId(i as u32));
+    }
+
+    // Per-unit reachable expr set (transitive Add/Mul children + LookupValue.query
+    // from each atom root's expr). Plain closure — matches the validated probe;
+    // NOT resolution-fenced. Models AUTHORITATIVE relation ownership ("which
+    // relation's authoritative expr contains this cache expr" = the provenance the
+    // Phase-1 schema records), NOT fwd-VM forward-demand consumption (which would
+    // fence resolution cones like enumerate_site_domain, schedule.rs:166-173). A
+    // cache reachable only under a resolution-fenced cone is still owned by that
+    // relation for provenance (locked by a Step-6 unit test). See codex-P5.
+    let reach: Vec<HashSet<ExprId>> =
+        units.iter().map(|u| relation_reachable_exprs(layer, &u.atom_roots)).collect();
+
+    // Assign each Cache root to its unique same-layer consuming relation.
+    for (i, root) in layer.roots.iter().enumerate() {
+        let is_cache = matches!(
+            root.materialize.as_ref().map(|s| &s.kind),
+            Some(SinkKind::Cache { .. })
+        ) && root.claim.is_none();
+        if !is_cache {
+            continue;
+        }
+        let e = root.expr;
+        let owners: Vec<usize> = (0..units.len()).filter(|&u| reach[u].contains(&e)).collect();
+        match owners.as_slice() {
+            [u] => units[*u].cache_roots.push(RootId(i as u32)),
+            [] => {
+                return Err(format!(
+                    "unsupported: cache root {} (expr {}) has no same-layer consuming relation \
+                     (cache-only or cross-layer ownership is not representable in Phase 1)",
+                    i, e.0
+                ))
+            }
+            many => {
+                return Err(format!(
+                    "cache root {} (expr {}) is consumed by {} relations; expected exactly 1 \
+                     (shared-across-relations caches are not representable)",
+                    i,
+                    e.0,
+                    many.len()
+                ))
+            }
+        }
+    }
+    Ok(units)
+}
+
+/// Transitive dependency closure of a relation's atom-root exprs over `Expr::Add`/
+/// `Expr::Mul` child edges and `SourceKind::LookupValue.query` edges. Includes the
+/// atom-root exprs themselves. Deterministic; no scoring/schedule state.
+fn relation_reachable_exprs(layer: &DagLayer, atom_roots: &[RootId]) -> HashSet<ExprId> {
+    let mut seen: HashSet<ExprId> = HashSet::new();
+    let mut stack: Vec<ExprId> =
+        atom_roots.iter().map(|&r| layer.roots[r.0 as usize].expr).collect();
+    while let Some(e) = stack.pop() {
+        if !seen.insert(e) {
+            continue;
+        }
+        match &layer.exprs[e.0 as usize] {
+            Expr::Add(children) | Expr::Mul(children) => {
+                for &c in children {
+                    stack.push(c);
+                }
+            }
+            Expr::Source(src_id) => {
+                if let SourceKind::LookupValue { query, .. } = &layer.sources[src_id.0 as usize].kind
+                {
+                    stack.push(*query);
+                }
+            }
+        }
+    }
+    seen
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
 // Validator. Public signature unchanged from v1.
 // ─────────────────────────────────────────────────────────────────────────────────
 
 /// Pure structural validation of a persisted schedule against its circuit:
-/// (a) `order` is a permutation of the layer's atom-root set;
+/// (a) `units` matches `relation_units_with_caches(layer)` exactly — same relation
+///     identities (no dup, full coverage) and, per relation, byte-identical ordered
+///     `atom_roots` and `cache_roots` (a within-unit swap is rejected);
 /// (b) the stored site-key set equals `enumerate_site_domain(layer)` exactly (loud
 ///     staleness `Err` in both directions);
 /// (c) every stored priority is finite;
@@ -257,26 +400,46 @@ pub fn validate_circuit_schedule(circuit: &DagCircuit, sched: &CircuitSchedule) 
 }
 
 fn validate_layer_schedule(layer: &DagLayer, ls: &LayerSchedule) -> Result<(), String> {
-    // (a) order is a permutation of exactly the atom-root set.
-    let atoms: BTreeSet<RootId> = layer
-        .roots
-        .iter()
-        .enumerate()
-        .filter(|(_, r)| r.materialize.is_some() && r.claim.is_some())
-        .map(|(i, _)| RootId(i as u32))
-        .collect();
-    let mut seen: HashSet<RootId> = HashSet::new();
-    for &r in &ls.order {
-        if !seen.insert(r) {
-            return Err(format!("order has duplicate root {}", r.0));
+    // (a) units match the canonical relation-unit decomposition exactly.
+    let canonical = relation_units_with_caches(layer)?; // propagates a4 unsupported-cache Err
+    // (a4 also fires here if a stored schedule references an unsupported cache class.)
+    // NOTE: RootGroup is Hash+Eq but NOT Ord (model.rs:176-180) — use HashMap, not BTreeMap.
+    use std::collections::HashMap;
+    let canon_by_id: HashMap<(RootGroup, usize), &RelationUnit> =
+        canonical.iter().map(|u| ((u.group.clone(), u.relation_index), u)).collect();
+
+    // (a1) identity coverage: stored unit identities == canonical identities, no dup.
+    let mut seen_ids: HashMap<(RootGroup, usize), ()> = HashMap::new();
+    for u in &ls.units {
+        let id = (u.group.clone(), u.relation_index);
+        if seen_ids.insert(id.clone(), ()).is_some() {
+            return Err(format!("units has duplicate relation {:?}/{}", id.0, id.1));
+        }
+        // (a2/a3) exact-ordered atom_roots + cache_roots against canonical.
+        let Some(c) = canon_by_id.get(&id) else {
+            return Err(format!(
+                "stale schedule: unit {:?}/{} is not a relation of this layer",
+                id.0, id.1
+            ));
+        };
+        if u.atom_roots != c.atom_roots {
+            return Err(format!(
+                "unit {:?}/{}: atom_roots {:?} != canonical {:?} (order-exact)",
+                id.0, id.1, u.atom_roots, c.atom_roots
+            ));
+        }
+        if u.cache_roots != c.cache_roots {
+            return Err(format!(
+                "unit {:?}/{}: cache_roots {:?} != canonical {:?} (order-exact)",
+                id.0, id.1, u.cache_roots, c.cache_roots
+            ));
         }
     }
-    let order_set: BTreeSet<RootId> = ls.order.iter().copied().collect();
-    if order_set != atoms {
+    if seen_ids.len() != canonical.len() {
         return Err(format!(
-            "order ({} roots) is not a permutation of the atom-root set ({} roots)",
-            ls.order.len(),
-            atoms.len()
+            "units cover {} relations, layer has {}",
+            seen_ids.len(),
+            canonical.len()
         ));
     }
 
@@ -359,7 +522,12 @@ mod validator_tests {
             circuit: "demo".into(),
             budget: 16,
             layers: vec![LayerSchedule {
-                order: vec![RootId(0)],
+                units: vec![RelationUnit {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    atom_roots: vec![RootId(0)],
+                    cache_roots: vec![],
+                }],
                 sites: vec![],
                 predicted_traffic: 1,
                 floor: 1,
@@ -375,47 +543,63 @@ mod validator_tests {
     #[test]
     fn rejects_layer_count_mismatch() {
         let mut s = ok_schedule();
-        s.layers.push(LayerSchedule { order: vec![], sites: vec![], predicted_traffic: 0, floor: 0 });
+        s.layers.push(LayerSchedule { units: vec![], sites: vec![], predicted_traffic: 0, floor: 0 });
         assert!(validate_circuit_schedule(&demo_circuit(), &s).is_err());
     }
 
     #[test]
-    fn rejects_order_out_of_range_root() {
-        // RootId(1) does not exist (demo_circuit has 1 root) — covers the range case.
+    fn rejects_unit_with_unknown_identity() {
+        // A stored unit whose (group, relation_index) is not a relation of this layer
+        // (recast of the old out-of-range/non-atom cases): the canonical set has only
+        // (Gates, 0), so (Gates, 99) is stale.
         let mut s = ok_schedule();
-        s.layers[0].order = vec![RootId(1)];
+        s.layers[0].units = vec![RelationUnit {
+            group: RootGroup::Gates,
+            relation_index: 99,
+            atom_roots: vec![RootId(0)],
+            cache_roots: vec![],
+        }];
         let err = validate_circuit_schedule(&demo_circuit(), &s).unwrap_err();
-        assert!(err.contains("order"), "error must name the order check, got: {err}");
+        assert!(err.contains("unit"), "error must name the unit check, got: {err}");
     }
 
     #[test]
-    fn rejects_non_atom_root_in_order() {
-        // An IN-RANGE root that is not an atom (claim: None) must be rejected — isolates the
-        // atom-set check from the out-of-range case above.
+    fn rejects_within_unit_atom_swap() {
+        // Two atom roots in the SAME relation → one canonical unit with atom_roots
+        // [RootId(0), RootId(1)] in layer.roots order. A within-unit swap must be
+        // rejected (order-exact), not treated as an equivalent set.
         let mut c = demo_circuit();
         c.layers[0].roots.push(Root {
             expr: ExprId(2),
             materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 1 }, field: FieldKind::Base }),
-            claim: None,
+            claim: Some(ClaimInfo {
+                origin: RootOrigin { group: RootGroup::Gates, relation_index: 0, slot: RootSlot::Output(1) },
+            }),
         });
         let mut s = ok_schedule();
-        s.layers[0].order = vec![RootId(1)]; // in range now (2 roots), but not an atom root
+        s.layers[0].units = vec![RelationUnit {
+            group: RootGroup::Gates,
+            relation_index: 0,
+            atom_roots: vec![RootId(1), RootId(0)], // swapped vs canonical [0, 1]
+            cache_roots: vec![],
+        }];
         let err = validate_circuit_schedule(&c, &s).unwrap_err();
-        assert!(err.contains("order"), "error must name the order check, got: {err}");
+        assert!(err.contains("atom_roots"), "error must name the atom_roots order check, got: {err}");
     }
 
     #[test]
-    fn rejects_duplicate_root_in_order() {
-        let mut c = demo_circuit();
-        // A second atom root sharing relation_index/slot is irrelevant here — we only need
-        // `order` to contain a duplicate of an existing root id.
-        c.layers[0].roots[0].claim = Some(ClaimInfo {
-            origin: RootOrigin { group: RootGroup::Gates, relation_index: 0, slot: RootSlot::Output(0) },
-        });
+    fn rejects_duplicate_unit_identity() {
+        // The stored units vec repeats the same relation identity — rejected as a dup.
+        let unit = RelationUnit {
+            group: RootGroup::Gates,
+            relation_index: 0,
+            atom_roots: vec![RootId(0)],
+            cache_roots: vec![],
+        };
         let mut s = ok_schedule();
-        s.layers[0].order = vec![RootId(0), RootId(0)];
-        let err = validate_circuit_schedule(&c, &s).unwrap_err();
-        assert!(err.contains("order"), "error must name the order check, got: {err}");
+        s.layers[0].units = vec![unit.clone(), unit];
+        let err = validate_circuit_schedule(&demo_circuit(), &s).unwrap_err();
+        assert!(err.contains("duplicate"), "error must name the duplicate check, got: {err}");
     }
 
     #[test]
@@ -452,7 +636,17 @@ mod validator_tests {
         let s = CircuitSchedule {
             circuit: "demo".into(),
             budget: 16,
-            layers: vec![LayerSchedule { order: vec![RootId(0)], sites: vec![], predicted_traffic: 1, floor: 1 }],
+            layers: vec![LayerSchedule {
+                units: vec![RelationUnit {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    atom_roots: vec![RootId(0)],
+                    cache_roots: vec![],
+                }],
+                sites: vec![],
+                predicted_traffic: 1,
+                floor: 1,
+            }],
         };
         let err = validate_circuit_schedule(&c, &s).unwrap_err();
         assert!(err.contains("stale"), "error must name the staleness check, got: {err}");
@@ -486,7 +680,7 @@ mod validator_tests {
         // Supply the FULL domain (so check (b) passes) with one entry's priority set to NaN.
         s.layers[0].sites =
             domain.iter().enumerate().map(|(i, &k)| (k, if i == 0 { f64::NAN } else { 0.0 })).collect();
-        s.layers[0].order = vec![RootId(0)];
+        s.layers[0].units = relation_units_with_caches(&layer).unwrap();
         let err = validate_circuit_schedule(&c, &s).unwrap_err();
         assert!(err.contains("finite"), "error must name the finiteness check, got: {err}");
     }
@@ -517,7 +711,12 @@ mod validator_tests {
         let s = CircuitSchedule {
             circuit: "demo".into(),
             budget: 16,
-            layers: vec![LayerSchedule { order: vec![RootId(0)], sites, predicted_traffic: 1, floor: 1 }],
+            layers: vec![LayerSchedule {
+                units: relation_units_with_caches(&layer).unwrap(),
+                sites,
+                predicted_traffic: 1,
+                floor: 1,
+            }],
         };
         let err = validate_circuit_schedule(&c, &s).unwrap_err();
         assert!(err.contains("finite"), "error must name the finiteness check, got: {err}");
@@ -561,7 +760,7 @@ mod validator_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gkr_compiler::dag_ir::{ExprId, RootId};
+    use crate::gkr_compiler::dag_ir::{ExprId, RootGroup, RootId};
 
     #[test]
     fn circuit_schedule_serde_roundtrip() {
@@ -570,7 +769,20 @@ mod tests {
             budget: 16,
             layers: vec![
                 LayerSchedule {
-                    order: vec![RootId(0), RootId(2)],
+                    units: vec![
+                        RelationUnit {
+                            group: RootGroup::Gates,
+                            relation_index: 0,
+                            atom_roots: vec![RootId(0), RootId(2)],
+                            cache_roots: vec![RootId(3), RootId(4)],
+                        },
+                        RelationUnit {
+                            group: RootGroup::GatesExternal,
+                            relation_index: 1,
+                            atom_roots: vec![RootId(5)],
+                            cache_roots: vec![],
+                        },
+                    ],
                     sites: vec![
                         (
                             SiteKey {
@@ -588,7 +800,7 @@ mod tests {
                     predicted_traffic: 12,
                     floor: 9,
                 },
-                LayerSchedule { order: vec![], sites: vec![], predicted_traffic: 0, floor: 0 },
+                LayerSchedule { units: vec![], sites: vec![], predicted_traffic: 0, floor: 0 },
             ],
         };
         let json = serde_json::to_string(&sched).expect("serialize");
@@ -876,5 +1088,155 @@ mod tests {
         let a = enumerate_site_domain(&layer);
         let b = enumerate_site_domain(&layer);
         assert_eq!(a, b);
+    }
+
+    // ── relation_units_with_caches ─────────────────────────────────────────────
+
+    /// Atom root with an explicit relation_index (the `atom_root` helper hardcodes 0,
+    /// so a multi-relation layer needs this).
+    fn atom_root_rel(expr: ExprId, relation_index: usize, slot: usize) -> Root {
+        Root {
+            expr,
+            materialize: Some(SinkInfo { kind: SinkKind::Export { slot }, field: FieldKind::Base }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin { group: RootGroup::Gates, relation_index, slot: RootSlot::Output(slot) },
+            }),
+        }
+    }
+
+    #[test]
+    fn relation_units_atom_only_has_empty_cache_roots() {
+        // (i) A relation with no Cache root in its cone → empty cache_roots.
+        let layer = DagLayer {
+            sources: vec![witness(0), witness(1)],
+            exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1)), Expr::Add(vec![ExprId(0), ExprId(1)])],
+            roots: vec![atom_root(ExprId(2), 0)],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            resolutions: BTreeMap::new(),
+        };
+        let units = relation_units_with_caches(&layer).unwrap();
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].atom_roots, vec![RootId(0)]);
+        assert!(units[0].cache_roots.is_empty());
+    }
+
+    #[test]
+    fn relation_units_assigns_cache_in_cone() {
+        // (ii) s = Add(x, y) is consumed by the atom root q = Mul(s, z) AND is the expr
+        // of a Cache root → the cache is owned by that relation.
+        let layer = DagLayer {
+            sources: vec![witness(0), witness(1), witness(2)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Source(SourceId(2)),
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 3 = s
+                Expr::Mul(vec![ExprId(3), ExprId(2)]), // 4 = q = s * z (atom root)
+            ],
+            roots: vec![atom_root(ExprId(4), 0), cache_root(ExprId(3), 0, 0)],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            resolutions: BTreeMap::new(),
+        };
+        let units = relation_units_with_caches(&layer).unwrap();
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].atom_roots, vec![RootId(0)]);
+        assert_eq!(units[0].cache_roots, vec![RootId(1)]);
+    }
+
+    #[test]
+    fn relation_units_cache_shared_by_two_relations_errors() {
+        // (iii) s = Add(x, y) is in the cone of TWO distinct relations → ambiguous
+        // ownership → Err.
+        let layer = DagLayer {
+            sources: vec![witness(0), witness(1)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 2 = s
+                Expr::Mul(vec![ExprId(2), ExprId(0)]), // 3 = rootA = s * x
+                Expr::Mul(vec![ExprId(2), ExprId(1)]), // 4 = rootB = s * y
+            ],
+            roots: vec![
+                atom_root_rel(ExprId(3), 0, 0),
+                atom_root_rel(ExprId(4), 1, 0),
+                cache_root(ExprId(2), 0, 0),
+            ],
+            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            resolutions: BTreeMap::new(),
+        };
+        let err = relation_units_with_caches(&layer).unwrap_err();
+        assert!(err.contains("consumed by 2 relations"), "got: {err}");
+    }
+
+    #[test]
+    fn relation_units_cache_with_no_consumer_errors() {
+        // (iv) The Cache root's expr (Mul(x, x)) is not in any atom relation's cone
+        // (the only atom root is over Add(x, y)) → Err.
+        let layer = DagLayer {
+            sources: vec![witness(0), witness(1)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 2 = atom root
+                Expr::Mul(vec![ExprId(0), ExprId(0)]), // 3 = orphan cache expr
+            ],
+            roots: vec![atom_root(ExprId(2), 0), cache_root(ExprId(3), 0, 0)],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            resolutions: BTreeMap::new(),
+        };
+        let err = relation_units_with_caches(&layer).unwrap_err();
+        assert!(err.contains("no same-layer consuming relation"), "got: {err}");
+    }
+
+    #[test]
+    fn relation_units_cache_under_resolution_fence_is_still_owned() {
+        // (v) codex-P5: the atom root's expr is a resolution-pruned fold-leaf; the
+        // Cache expr is reachable ONLY by descending through that fenced cone. The
+        // UNFENCED provenance closure still owns it (authoritative-expr containment,
+        // NOT fwd-demand consumption — which would fence it like enumerate_site_domain).
+        let layer = DagLayer {
+            sources: vec![witness(0), witness(1)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 2 = cache target
+                Expr::Add(vec![ExprId(2), ExprId(2)]), // 3 = fold-leaf (RESOLUTION-PRUNED), atom root
+            ],
+            roots: vec![atom_root(ExprId(3), 0), cache_root(ExprId(2), 0, 0)],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            resolutions: [(ExprId(3), ResolutionStrategy::PeekSetup)].into_iter().collect(),
+        };
+        let units = relation_units_with_caches(&layer).unwrap();
+        assert_eq!(units.len(), 1);
+        assert_eq!(
+            units[0].cache_roots,
+            vec![RootId(1)],
+            "cache owned via unfenced authoritative closure despite resolution fence"
+        );
+    }
+
+    #[test]
+    fn atom_order_flattens_units_in_order() {
+        // atom_order concatenates each unit's atom_roots in unit order.
+        let ls = LayerSchedule {
+            units: vec![
+                RelationUnit {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    atom_roots: vec![RootId(2), RootId(0)],
+                    cache_roots: vec![RootId(9)],
+                },
+                RelationUnit {
+                    group: RootGroup::GatesExternal,
+                    relation_index: 1,
+                    atom_roots: vec![RootId(5)],
+                    cache_roots: vec![],
+                },
+            ],
+            sites: vec![],
+            predicted_traffic: 0,
+            floor: 0,
+        };
+        assert_eq!(ls.atom_order(), vec![RootId(2), RootId(0), RootId(5)]);
     }
 }
