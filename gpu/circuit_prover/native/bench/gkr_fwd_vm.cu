@@ -101,6 +101,8 @@ struct interp_desc3 {
   u32 *error_flag;
 };
 
+static_assert(sizeof(interp_desc3) == 264, "InterpDesc3/interp_desc3 ABI size drift");
+
 // Read lane `i` from the program (LDC = __constant__, LDG = global).
 template <bool LDC> DEVICE_FORCEINLINE u16 vm_lane(const interp_desc3 &d, const u32 i) {
   if constexpr (LDC)

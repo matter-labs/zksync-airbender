@@ -223,8 +223,21 @@ fn fwd_vm_ab_report() {
                 };
 
                 let blocks_per_sm = fwd_vm_blocks_per_sm(config, budget).unwrap().unwrap_or(0);
-                let smem_bytes =
-                    super::fwd_vm_dynamic_smem_bytes(budget, config.threads_per_block());
+                // The static-s16 kernel's cell file is a compile-time
+                // `__shared__ bf cells[16 * 128]` (see FWD_VM_STATIC_BUDGET),
+                // not the dynamic-smem allocation the launch requests (which
+                // is 0 for static configs). Report the actual compile-time
+                // footprint for static configs instead of reusing the dynamic
+                // formula — it is only numerically equal to it because
+                // budget == FWD_VM_STATIC_BUDGET here; a future s32
+                // instantiation must not silently mis-report via this path.
+                let smem_bytes = if config.is_static() {
+                    super::FWD_VM_STATIC_BUDGET as usize
+                        * config.threads_per_block() as usize
+                        * std::mem::size_of::<crate::primitives::field::BF>()
+                } else {
+                    super::fwd_vm_dynamic_smem_bytes(budget, config.threads_per_block())
+                };
                 let interp_over_flat = if flat_median > 0.0 {
                     interp_median / flat_median
                 } else {

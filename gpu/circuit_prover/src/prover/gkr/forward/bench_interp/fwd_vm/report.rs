@@ -98,7 +98,7 @@ impl FwdVmAbReport {
             let best = rows
                 .iter()
                 .filter(|r| r.circuit == circuit && r.layer == layer)
-                .min_by(|a, b| a.interp_median_ms.partial_cmp(&b.interp_median_ms).unwrap());
+                .min_by(|a, b| a.interp_median_ms.total_cmp(&b.interp_median_ms));
             if let Some(best) = best {
                 let best_cfg = best.config.clone();
                 verdicts.push(FwdVmVerdict {

@@ -34,7 +34,7 @@ use crate::primitives::field::{BF, E4};
 use crate::prover::ProverContext;
 
 use super::super::fixture::{materialize_virtual_setup_column, CircuitFixture};
-use super::super::InterpResidency;
+use super::super::{InterpResidency, BENCH_INTERP_PROGRAM_LDC_LANES};
 use super::compile::{encoded_lanes, read_place_to_gkr_address, FwdVmCircuit};
 use super::resolvers::{challenge_value, fixture_stage1, root_flat_addr};
 
@@ -93,6 +93,14 @@ pub(crate) struct InterpDesc3 {
     pub count: u32,
     pub error_flag: *mut u32,
 }
+
+/// ABI size guard: `InterpDesc3` (Rust) must stay layout-identical to
+/// `interp_desc3` (CUDA, `native/bench/gkr_fwd_vm.cu`) — a silent field-layout
+/// drift between the two sides corrupts device memory. Paired with the
+/// `static_assert(sizeof(interp_desc3) == 264, ...)` on the CUDA side; if the
+/// two sides ever disagree on N, that is a real ABI bug, not a number to
+/// reconcile by picking two different values.
+const _: () = assert!(core::mem::size_of::<InterpDesc3>() == 264);
 
 /// Every `DeviceAllocation` an `InterpDesc3`'s raw pointers borrow into, kept
 /// alive for the lifetime of `FwdVmDeviceSetup`.
@@ -645,11 +653,16 @@ fn collect_challenge_bank(
 
 // ── G-PTR (spec §7): structural re-derivation gate ──────────────────────────
 
-/// Re-derive every pointer/flag `build_fwd_vm_device_setup` produced,
-/// independently from `fixture`/`c` (NOT by trusting `setup.desc`'s own
-/// tables), and cross-check by reading the ACTUAL device array contents back
-/// (D2H) and comparing against the fresh derivation. This is the structural
-/// soundness gate for Task 3's output-isolation + pointer-wiring claims.
+/// Re-derive every pointer/flag `build_fwd_vm_device_setup` produced, NOT by
+/// trusting `setup.desc`'s own tables, and cross-check against the ACTUAL
+/// device array contents read back (D2H) plus a freshly-queried
+/// `fixture.storage_column`. This shares its address-derivation helpers
+/// (`collect_global_usage`, `backing_key_col_to_gkr_address`) with the
+/// builder, so it is a consistency gate against device contents +
+/// `fixture`/`c`, not a fully independent re-derivation — semantic misrouting
+/// of the SAME shared derivation would be caught by G-CPU/G-DEV, not here.
+/// This is the structural soundness gate for Task 3's output-isolation +
+/// pointer-wiring claims.
 pub(crate) fn assert_gptr(
     fixture: &CircuitFixture,
     c: &FwdVmCircuit,
@@ -991,10 +1004,16 @@ pub(crate) fn run_gdev_layer(
             let fits = super::super::upload_bench_program_to_constant(&setup.lanes)
                 .map_err(|e| format!("L{layer_idx} [Ldc] constant upload: {e:?}"))?;
             if !fits {
+                // Corpus-wide this never triggers (max observed 10911/14336
+                // lanes), so an unexpected non-fit would otherwise silently
+                // halve LDC residency coverage with no trace in the output.
+                eprintln!(
+                    "[fwd_vm G-DEV] WARNING: layer {layer_idx} program {} lanes exceeds LDC {BENCH_INTERP_PROGRAM_LDC_LANES} — skipping LDC residency",
+                    setup.lanes.len()
+                );
                 continue; // program exceeds the 28 KB constant array
             }
             setup.desc.program_ldg = ptr::null();
-            setup.residency = InterpResidency::Ldc;
         }
 
         super::launch_fwd_vm(&setup.desc, residency, context)
