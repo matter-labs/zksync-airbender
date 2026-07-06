@@ -1,32 +1,30 @@
-//! Compile-in-loop metaheuristic search (Task 6 promotion of
-//! `gkr_eval_isa/tests/s3_planner/metaheuristic.rs`'s population/beam/
-//! simulated-annealing optimizer, which lived entirely inside that test-only
-//! module). The algorithm's architecture is ported 1:1 — deterministic
-//! neighbor-batch greedy descent (unit swap / insert / segment-reverse order
-//! moves + per-gene cache-priority nudges), a budget-scaled beam over scored
-//! seed states, plateau-limited sideways cache moves, and a Metropolis
-//! simulated-annealing escape from stalled states — but the fitness function is
-//! the REAL compile ([`super::scorer::score`]) instead of the deleted `Replay`
-//! event simulation.
+//! Compile-in-loop generational memetic GA (Phase 2). Replaces the earlier
+//! beam local-descent + simulated-annealing driver: each generation carries the
+//! best `elitism` genomes unchanged, then breeds the rest by tournament
+//! selection + BLX-alpha crossover + per-gene Gaussian mutation, and hill-climbs
+//! every offspring with the existing deterministic neighbor moves (unit swap /
+//! insert / segment-reverse order moves + per-gene cache-priority nudges). The
+//! fitness function is the REAL compile ([`super::scorer::score`]) — every
+//! compile (initial population, each offspring, and every local-descent
+//! neighbor) counts against `cfg.evals`.
 //!
-//! Deleted with the simulation (no successor here): the trace-guided
-//! cache-neighbor family (`push_trace_guided_cache_neighbors`) consumed the
-//! `Replay` engine's `CacheTrace` events; the compile path exposes no such
-//! trace, so that move family dies with the simulator. The order/bias move
-//! families and the whole selection/beam/SA loop survive unchanged.
+//! The neighbor-move families (`neighbor_entries` + `push_*_neighbors`) survive
+//! as the memetic local-descent operator; the deleted `Replay` simulator's
+//! trace-guided cache-neighbor family is gone (no compile trace to consume).
 //!
-//! Determinism: neighbor enumeration is a fixed deterministic order, parallel
-//! scoring preserves entry indices, all tie-breaks are `(objective, index)`,
-//! and the SA draw is a stateless `splitmix64` hash of the eval counter —
-//! repeated runs with the same `SearchConfig` produce identical results.
+//! Determinism: the breeding RNG (`SeedRng`, seeded by `cfg.seed`) is advanced
+//! sequentially, neighbor enumeration is a fixed deterministic order, parallel
+//! scoring preserves entry indices, and all tie-breaks are `(objective, index)`
+//! — repeated runs with the same `SearchConfig` and `LayerCtx` produce identical
+//! results.
 
 use std::time::{Duration, Instant};
 
 use cs::gkr_compiler::dag_ir::LayerSchedule;
 
 use super::decode::decode_unit_order;
-use super::genome::{assert_normalized_genome, clamp_bias, Genome};
-use super::scorer::{objective_key, score, CandidateScore, LayerCtx};
+use super::genome::{assert_normalized_genome, clamp_bias, Genome, CACHE_PRIORITY_BOUND};
+use super::scorer::{genome_from_schedule, objective_key, score, CandidateScore, LayerCtx};
 
 // ── Tuning constants (values carried over from the prototype) ────────────────
 
@@ -34,25 +32,11 @@ use super::scorer::{objective_key, score, CandidateScore, LayerCtx};
 const LOCAL_BIAS_STEP: f64 = 0.25;
 /// Per-batch cap on reserved cache-priority slots (prototype `CACHE_FAMILY_QUOTA`).
 const CACHE_FAMILY_QUOTA: usize = 64;
-/// Sideways (equal-objective) cache moves allowed before a plateau stalls
-/// (prototype `CACHE_PLATEAU_STEPS`).
-const CACHE_PLATEAU_STEPS: usize = 4;
-/// Maximum beam width (cap); effective width scales with the eval budget — see
-/// `beam_width_for_budget` (prototype `OPTIMIZER_BEAM_WIDTH`).
-const OPTIMIZER_BEAM_WIDTH: usize = 8;
-/// Per-state convergence budget: open at most one beam state per this many
-/// evals (prototype `BEAM_STATE_MIN_BUDGET`; empirically a single greedy
-/// descent converges within ~1000 evals — under-funded beams dilute and
-/// regress).
-const BEAM_STATE_MIN_BUDGET: usize = 1_000;
 /// Fixed per-iteration neighbor-batch cap, INDEPENDENT of the eval budget
 /// (prototype H3): the unit-insert family is O(units^2); without a fixed cap
-/// one batch at production scale consumes the whole budget and the search
-/// degenerates to a single greedy step.
+/// one batch at production scale consumes the whole budget and the local
+/// descent degenerates to a single greedy step.
 const NEIGHBOR_BATCH_CAP: usize = 128;
-/// Simulated-annealing initial temperature in read-traffic units; cools
-/// linearly to 0 as the budget is spent (prototype `SA_INITIAL_TEMPERATURE`).
-const SA_INITIAL_TEMPERATURE: f64 = 4.0;
 
 // ── SearchConfig (env-overridable, same contract as the deleted v1 producer) ─
 
@@ -61,16 +45,32 @@ const SA_INITIAL_TEMPERATURE: f64 = 4.0;
 /// variable names (and validation) the deleted v1 producer used
 /// (`s3_gap_experiment.rs`'s `schedule_search_config_from_env`, removed with
 /// the v1 schema in Task 4).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SearchConfig {
     pub pop: usize,
     pub evals: usize,
     pub seed: u64,
+    pub tournament: usize,   // GKR_SCHEDULE_TOURNAMENT
+    pub elitism: usize,      // GKR_SCHEDULE_ELITISM
+    pub crossover_rate: f64, // GKR_SCHEDULE_XOVER
+    pub mutation_rate: f64,  // GKR_SCHEDULE_MUT_RATE (per-gene probability)
+    pub mutation_sigma: f64, // GKR_SCHEDULE_MUT_SIGMA
+    pub local_steps: usize,  // GKR_SCHEDULE_LOCAL_STEPS
 }
 
 impl Default for SearchConfig {
     fn default() -> Self {
-        Self { pop: 8, evals: 1000, seed: 0 }
+        Self {
+            pop: 64,
+            evals: 20_000,
+            seed: 0,
+            tournament: 3,
+            elitism: 2,
+            crossover_rate: 0.9,
+            mutation_rate: 0.1,
+            mutation_sigma: 0.15,
+            local_steps: 2,
+        }
     }
 }
 
@@ -94,19 +94,47 @@ fn parse_u64_env(name: &str, default: u64) -> u64 {
     }
 }
 
+fn parse_f64_env(name: &str, default: f64) -> f64 {
+    match std::env::var(name) {
+        Ok(raw) => raw.parse::<f64>().unwrap_or_else(|_| panic!("{name} must be an f64, got {raw:?}")),
+        Err(std::env::VarError::NotPresent) => default,
+        Err(err) => panic!("failed to read {name}: {err}"),
+    }
+}
+
 /// [`SearchConfig`] from the environment, with the v1 producer's validation:
 /// malformed values PANIC (a silently-ignored typo in a regen run would burn
-/// hours), `pop`/`evals` must be positive and `pop < evals`.
+/// hours), `pop`/`evals` must be positive and `pop < evals`. The GA knobs add:
+/// `mutation_rate`/`crossover_rate` in `[0, 1]`, `mutation_sigma > 0`,
+/// `tournament >= 1`, and `elitism < pop` (the generational loop relies on
+/// breeding at least one offspring to make progress).
 pub fn search_config_from_env() -> SearchConfig {
     let defaults = SearchConfig::default();
     let cfg = SearchConfig {
         pop: parse_usize_env("GKR_SCHEDULE_POP", defaults.pop),
         evals: parse_usize_env("GKR_SCHEDULE_EVALS", defaults.evals),
         seed: parse_u64_env("GKR_SCHEDULE_SEED", defaults.seed),
+        tournament: parse_usize_env("GKR_SCHEDULE_TOURNAMENT", defaults.tournament),
+        elitism: parse_usize_env("GKR_SCHEDULE_ELITISM", defaults.elitism),
+        crossover_rate: parse_f64_env("GKR_SCHEDULE_XOVER", defaults.crossover_rate),
+        mutation_rate: parse_f64_env("GKR_SCHEDULE_MUT_RATE", defaults.mutation_rate),
+        mutation_sigma: parse_f64_env("GKR_SCHEDULE_MUT_SIGMA", defaults.mutation_sigma),
+        local_steps: parse_usize_env("GKR_SCHEDULE_LOCAL_STEPS", defaults.local_steps),
     };
     assert!(cfg.pop > 0, "GKR_SCHEDULE_POP must be positive");
     assert!(cfg.evals > 0, "GKR_SCHEDULE_EVALS must be positive");
     assert!(cfg.pop < cfg.evals, "GKR_SCHEDULE_POP must be < GKR_SCHEDULE_EVALS");
+    assert!(cfg.tournament >= 1, "GKR_SCHEDULE_TOURNAMENT must be >= 1");
+    assert!(cfg.elitism < cfg.pop, "GKR_SCHEDULE_ELITISM must be < GKR_SCHEDULE_POP");
+    assert!(
+        (0.0..=1.0).contains(&cfg.crossover_rate),
+        "GKR_SCHEDULE_XOVER must be in [0, 1]"
+    );
+    assert!(
+        (0.0..=1.0).contains(&cfg.mutation_rate),
+        "GKR_SCHEDULE_MUT_RATE must be in [0, 1]"
+    );
+    assert!(cfg.mutation_sigma > 0.0, "GKR_SCHEDULE_MUT_SIGMA must be > 0");
     cfg
 }
 
@@ -170,6 +198,14 @@ impl SeedRng {
     fn next_signed(&mut self) -> f64 {
         self.next_unit() * 2.0 - 1.0
     }
+
+    /// Standard-normal sample via Box-Muller (two uniforms). Deterministic given
+    /// the RNG stream. `u1` floored off 0 to avoid `ln(0)`.
+    fn next_gaussian(&mut self) -> f64 {
+        let u1 = self.next_unit().max(1e-12);
+        let u2 = self.next_unit();
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
 }
 
 // ── Objective ordering ────────────────────────────────────────────────────────
@@ -201,10 +237,6 @@ enum MoveFamily {
     UnitInsert,
     UnitReverse,
     CachePriority,
-}
-
-fn is_cache_move_family(family: MoveFamily) -> bool {
-    matches!(family, MoveFamily::CachePriority)
 }
 
 // ── Neighbor moves (unit-keyed; prototype's grouped move families) ───────────
@@ -397,256 +429,194 @@ fn score_genomes_parallel(
     scored
 }
 
-// ── SA acceptance (prototype metropolis/sa_temperature/best_uphill) ──────────
+// ── GA operators (tournament + BLX-alpha crossover + Gaussian mutation) ──────
 
-/// Metropolis acceptance for a strictly-worse candidate. `delta > 0` is the
-/// traffic increase. At `temperature <= 0` never accepts (pure hill-climbing).
-fn metropolis_accepts(delta: f64, temperature: f64, draw: f64) -> bool {
-    debug_assert!(delta > 0.0, "metropolis_accepts is only for strictly-worse candidates");
-    if temperature <= 0.0 {
-        return false;
-    }
-    draw < (-delta / temperature).exp()
+/// BLX-alpha blend of two random keys, clamped to a gene's domain `[lo, hi]`.
+const BLX_ALPHA: f64 = 0.3;
+
+fn blx_alpha(a: f64, b: f64, lo: f64, hi: f64, rng: &mut SeedRng) -> f64 {
+    let (min, max) = (a.min(b), a.max(b));
+    let d = max - min;
+    let low = min - BLX_ALPHA * d;
+    let high = max + BLX_ALPHA * d;
+    (low + rng.next_unit() * (high - low)).clamp(lo, hi)
 }
 
-/// Linear cooling from `SA_INITIAL_TEMPERATURE` to 0 over the eval budget.
-fn sa_temperature(evals: usize, eval_budget: usize) -> f64 {
-    if eval_budget == 0 {
-        return 0.0;
-    }
-    let progress = (evals as f64 / eval_budget as f64).min(1.0);
-    SA_INITIAL_TEMPERATURE * (1.0 - progress)
-}
-
-/// The gentlest feasible neighbor strictly worse in primary energy (traffic)
-/// than `current` — the candidate an uphill SA step would move to. Ties break
-/// on instrs then index. `None` if no such neighbor exists.
-fn best_uphill_neighbor(scored: &[ScoredGenome], current: &CandidateScore) -> Option<usize> {
-    scored
+/// Per-gene BLX-alpha crossover over both gene vectors. Random keys stay in
+/// `[0,1]` (any value decodes to a valid unit permutation — atomicity preserved);
+/// priorities stay in `[-BOUND, BOUND]`.
+fn ga_crossover(p1: &Genome, p2: &Genome, rng: &mut SeedRng) -> Genome {
+    let root_order_key = p1
+        .root_order_key
         .iter()
-        .enumerate()
-        .filter(|(_, entry)| !entry.score.infeasible && entry.score.dram_traffic > current.dram_traffic)
-        .min_by(|a, b| {
-            (a.1.score.dram_traffic, a.1.score.instrs, a.0)
-                .cmp(&(b.1.score.dram_traffic, b.1.score.instrs, b.0))
-        })
-        .map(|(idx, _)| idx)
-}
-
-// ── Optimizer state machine (prototype beam + greedy + plateau + SA stop) ────
-
-#[derive(Clone, Debug)]
-struct OptimizerState {
-    genome: Genome,
-    score: CandidateScore,
-    /// Decoded unit order, cached for the beam's order+objective dedup.
-    unit_order: Vec<usize>,
-    plateau_remaining: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum OptimizerStep {
-    Improving(usize),
-    Sideways(usize),
-    Stop,
-}
-
-fn select_optimizer_neighbor(
-    scored: &[ScoredGenome],
-    current: &CandidateScore,
-    plateau_remaining: usize,
-) -> OptimizerStep {
-    let Some((idx, _)) = scored
+        .zip(&p2.root_order_key)
+        .map(|(&a, &b)| blx_alpha(a, b, 0.0, 1.0, rng))
+        .collect();
+    let cache_priority = p1
+        .cache_priority
         .iter()
-        .enumerate()
-        .filter(|(_, entry)| objective_less(&entry.score, current))
-        .min_by(|(_, a), (_, b)| {
-            objective_key(&a.score).cmp(&objective_key(&b.score)).then(a.index.cmp(&b.index))
-        })
-    else {
-        if plateau_remaining == 0 {
-            return OptimizerStep::Stop;
-        }
-        return scored
-            .iter()
-            .enumerate()
-            .find(|(_, entry)| {
-                entry.family.is_some_and(is_cache_move_family)
-                    && objective_key(&entry.score) == objective_key(current)
-            })
-            .map(|(idx, _)| OptimizerStep::Sideways(idx))
-            .unwrap_or(OptimizerStep::Stop);
-    };
-    OptimizerStep::Improving(idx)
+        .zip(&p2.cache_priority)
+        .map(|(&a, &b)| blx_alpha(a, b, -CACHE_PRIORITY_BOUND, CACHE_PRIORITY_BOUND, rng))
+        .collect();
+    Genome { root_order_key, cache_priority }
 }
 
-/// Budget-proportional beam width (prototype `beam_width_for_budget`).
-fn beam_width_for_budget(eval_budget: usize) -> usize {
-    (eval_budget / BEAM_STATE_MIN_BUDGET).clamp(1, OPTIMIZER_BEAM_WIDTH)
+/// Per-gene Gaussian mutation at probability `rate`, step `sigma`, clamped to
+/// each gene's domain. Continuous — removes the old fixed-step dyadic collisions.
+fn ga_mutate(g: &mut Genome, rate: f64, sigma: f64, rng: &mut SeedRng) {
+    for key in &mut g.root_order_key {
+        if rng.next_unit() < rate {
+            *key = (*key + rng.next_gaussian() * sigma).clamp(0.0, 1.0);
+        }
+    }
+    for gene in &mut g.cache_priority {
+        if rng.next_unit() < rate {
+            *gene = clamp_bias(*gene + rng.next_gaussian() * sigma);
+        }
+    }
 }
 
-fn optimizer_beam_from_seed_scores(mut scored: Vec<ScoredGenome>, beam_width: usize) -> Vec<OptimizerState> {
-    assert!(beam_width > 0, "beam width must be positive");
-    scored.sort_by(|a, b| {
-        objective_key(&a.score).cmp(&objective_key(&b.score)).then(a.index.cmp(&b.index))
-    });
-    let mut states: Vec<OptimizerState> = Vec::with_capacity(beam_width.min(scored.len()));
-    for entry in scored {
-        if states.len() >= beam_width {
-            break;
-        }
-        // Dedup by decoded order + objective, NOT byte-equal genome: random-key
-        // seeds that decode to the same order are redundant starts (identical
-        // greedy neighborhood).
-        let unit_order = decode_unit_order(&entry.genome.root_order_key);
-        if states.iter().any(|state| {
-            state.unit_order == unit_order && objective_key(&state.score) == objective_key(&entry.score)
-        }) {
-            continue;
-        }
-        states.push(OptimizerState {
-            genome: entry.genome,
-            score: entry.score,
-            unit_order,
-            plateau_remaining: CACHE_PLATEAU_STEPS,
+/// Tournament of size `k`: sample `k` population members, return the best by
+/// objective, ties broken by population index (matches the file's tie
+/// discipline, codex-P5). `pop` is `(Genome, CandidateScore)`.
+fn ga_tournament<'a>(pop: &'a [(Genome, CandidateScore)], k: usize, rng: &mut SeedRng) -> &'a Genome {
+    let mut best: Option<usize> = None;
+    for _ in 0..k.max(1) {
+        let i = (rng.next_u64() as usize) % pop.len();
+        best = Some(match best {
+            None => i,
+            Some(b) => {
+                // strictly better objective wins; on a tie, lower index wins.
+                if objective_key(&pop[i].1).cmp(&objective_key(&pop[b].1)).then(i.cmp(&b)).is_lt() {
+                    i
+                } else {
+                    b
+                }
+            }
         });
     }
-    states
+    &pop[best.expect("k>=1 so best is set")].0
 }
 
-/// Advance one beam state by one neighbor batch. Returns whether the state
-/// stays live (prototype `advance_optimizer_state`, minus the move-family
-/// report counters).
-#[allow(clippy::too_many_arguments)]
-fn advance_optimizer_state(
+/// Memetic hill-climb: up to `steps` rounds of the existing neighbor moves;
+/// adopt the best strictly-improving neighbor each round, stop at a local
+/// optimum. Every scored neighbor counts against `evals`/`budget`. `pub` so the
+/// integration suite can exercise the "never worsens" property on a real ctx.
+pub fn ga_local_descent(
     ctx: &LayerCtx,
-    state: &mut OptimizerState,
-    eval_budget: usize,
+    mut genome: Genome,
+    mut score: CandidateScore,
+    steps: usize,
     evals: &mut usize,
-    best_genome: &mut Genome,
-    best_score: &mut CandidateScore,
-) -> bool {
-    if *evals >= eval_budget {
-        return false;
-    }
-    let n_units = ctx.n_order_keys();
-    // H3: cap each batch to a FIXED branching factor, independent of the
-    // remaining budget (see NEIGHBOR_BATCH_CAP).
-    let remaining = (eval_budget - *evals).min(NEIGHBOR_BATCH_CAP);
-    let neighbors = neighbor_entries(n_units, &state.genome, remaining);
-    if neighbors.is_empty() {
-        return false;
-    }
-    *evals += neighbors.len();
-    let neighbor_scores = score_genomes_parallel(ctx, neighbors, default_worker_count());
-
-    let mut adopt = |state: &mut OptimizerState, selected: ScoredGenome| {
-        state.unit_order = decode_unit_order(&selected.genome.root_order_key);
-        state.genome = selected.genome;
-        state.score = selected.score;
-    };
-
-    match select_optimizer_neighbor(&neighbor_scores, &state.score, state.plateau_remaining) {
-        OptimizerStep::Improving(idx) => {
-            adopt(state, neighbor_scores[idx].clone());
-            state.plateau_remaining = CACHE_PLATEAU_STEPS;
-            if objective_less(&state.score, best_score) {
-                *best_genome = state.genome.clone();
-                *best_score = state.score;
+    budget: usize,
+) -> (Genome, CandidateScore) {
+    for _ in 0..steps {
+        if *evals >= budget {
+            break;
+        }
+        let remaining = (budget - *evals).min(NEIGHBOR_BATCH_CAP);
+        let neighbors = neighbor_entries(ctx.n_order_keys(), &genome, remaining);
+        if neighbors.is_empty() {
+            break;
+        }
+        *evals += neighbors.len();
+        let scored = score_genomes_parallel(ctx, neighbors, default_worker_count());
+        let best = scored
+            .iter()
+            .filter(|e| objective_less(&e.score, &score))
+            .min_by(|a, b| objective_key(&a.score).cmp(&objective_key(&b.score)).then(a.index.cmp(&b.index)));
+        match best {
+            Some(b) => {
+                genome = b.genome.clone();
+                score = b.score;
             }
-            true
-        }
-        OptimizerStep::Sideways(idx) => {
-            adopt(state, neighbor_scores[idx].clone());
-            state.plateau_remaining = state.plateau_remaining.saturating_sub(1);
-            true
-        }
-        OptimizerStep::Stop => {
-            // Simulated annealing: rather than abandon a stalled state, accept
-            // the gentlest feasible uphill move with Metropolis probability so
-            // the search can escape this local optimum. The global best is
-            // preserved (this move is strictly worse); the temperature cools to
-            // 0 as the budget is spent, annealing back to hill-climbing.
-            let temperature = sa_temperature(*evals, eval_budget);
-            let Some(idx) = best_uphill_neighbor(&neighbor_scores, &state.score) else {
-                return false;
-            };
-            let delta = (neighbor_scores[idx].score.dram_traffic - state.score.dram_traffic) as f64;
-            if !metropolis_accepts(delta, temperature, unit_draw(*evals as u64)) {
-                return false;
-            }
-            adopt(state, neighbor_scores[idx].clone());
-            state.plateau_remaining = CACHE_PLATEAU_STEPS;
-            true
+            None => break, // local optimum
         }
     }
+    (genome, score)
 }
 
-/// Beam-of-greedy-descents optimizer over compile-scored candidates (prototype
-/// `optimize_from_population_grouped`; the genome here is ALWAYS unit-keyed —
-/// there is no flat per-occurrence arm anymore, `relation_units` partitions
-/// every layer's atom roots).
-pub fn optimize_from_population(ctx: &LayerCtx, seeds: Vec<Genome>, eval_budget: usize) -> OptimizerResult {
-    assert!(eval_budget > 0, "eval_budget must be positive");
+// ── Generational memetic GA driver ──────────────────────────────────────────
 
+/// Generational memetic GA. Seeds an initial population, then each generation:
+/// carry `elitism` best unchanged, breed the rest by tournament selection +
+/// BLX-alpha crossover + Gaussian mutation, and hill-climb each offspring with
+/// the existing neighbor moves. All compiles (population + offspring + local
+/// descent) count against `cfg.evals`. Deterministic given `cfg.seed` (breeding
+/// RNG is sequential; scoring is parallel but RNG-free and index-stable).
+pub fn optimize_from_population(ctx: &LayerCtx, seeds: Vec<Genome>, cfg: &SearchConfig) -> OptimizerResult {
+    let budget = cfg.evals;
+    assert!(budget > 0, "eval budget must be positive");
     let seeds = if seeds.is_empty() {
         vec![Genome::neutral(ctx.n_order_keys(), ctx.n_sites())]
     } else {
         seeds
     };
-    for genome in &seeds {
-        assert_normalized_genome(genome);
-    }
-    let seed_entries: Vec<_> = seeds
-        .into_iter()
-        .take(eval_budget)
-        .enumerate()
-        .map(|(index, genome)| (index, genome, None))
-        .collect();
-    let mut evals = seed_entries.len();
-    let seed_scores = score_genomes_parallel(ctx, seed_entries, default_worker_count());
-
-    let mut beam = optimizer_beam_from_seed_scores(seed_scores, beam_width_for_budget(eval_budget));
-    let beam_states = beam.len();
-    let mut best_genome = beam[0].genome.clone();
-    let mut best_score = beam[0].score;
-    let mut iterations = 0usize;
-
-    // Round-robin: advance every live state once per round against the shared
-    // eval budget and the shared global best. A stalled state is dropped so its
-    // dead neighborhood is never re-scored.
-    while evals < eval_budget && !beam.is_empty() {
-        let mut next_beam = Vec::with_capacity(beam.len());
-        let mut advanced_any = false;
-        for mut state in beam.drain(..) {
-            if evals >= eval_budget {
-                next_beam.push(state);
-                continue;
-            }
-            let before = evals;
-            let moved = advance_optimizer_state(
-                ctx,
-                &mut state,
-                eval_budget,
-                &mut evals,
-                &mut best_genome,
-                &mut best_score,
-            );
-            if evals > before {
-                iterations += 1;
-            }
-            if moved {
-                advanced_any = true;
-                next_beam.push(state);
-            }
-        }
-        beam = next_beam;
-        if !advanced_any {
-            break;
-        }
+    for g in &seeds {
+        assert_normalized_genome(g);
     }
 
-    OptimizerResult { best_genome, best_score, evals, iterations, beam_states }
+    let mut rng = SeedRng::new(cfg.seed);
+    // Initial population score.
+    let init: Vec<_> = seeds.into_iter().take(budget).enumerate().map(|(i, g)| (i, g, None)).collect();
+    let mut evals = init.len();
+    let scored = score_genomes_parallel(ctx, init, default_worker_count());
+    let mut pop: Vec<(Genome, CandidateScore)> = scored.into_iter().map(|s| (s.genome, s.score)).collect();
+    assert!(!pop.is_empty(), "seed population must be non-empty");
+
+    let best_of = |pop: &[(Genome, CandidateScore)]| -> (Genome, CandidateScore) {
+        pop.iter()
+            .min_by(|a, b| objective_key(&a.1).cmp(&objective_key(&b.1)))
+            .expect("non-empty")
+            .clone()
+    };
+    let mut best = best_of(&pop);
+    let mut generations = 0usize;
+
+    while evals < budget {
+        // Sort for elitism (best first).
+        pop.sort_by(|a, b| objective_key(&a.1).cmp(&objective_key(&b.1)));
+        let mut next: Vec<(Genome, CandidateScore)> =
+            pop.iter().take(cfg.elitism.min(pop.len())).cloned().collect();
+
+        while next.len() < cfg.pop && evals < budget {
+            let p1 = ga_tournament(&pop, cfg.tournament, &mut rng).clone();
+            let p2 = ga_tournament(&pop, cfg.tournament, &mut rng).clone();
+            let mut child = if rng.next_unit() < cfg.crossover_rate {
+                ga_crossover(&p1, &p2, &mut rng)
+            } else {
+                p1.clone()
+            };
+            ga_mutate(&mut child, cfg.mutation_rate, cfg.mutation_sigma, &mut rng);
+            assert_normalized_genome(&child); // clamps guarantee this; loud if a bug slips a NaN through
+
+            // Score the child, then memetic hill-climb (both count against budget).
+            if evals >= budget {
+                break; // codex-P4: no filler; loop exits on budget
+            }
+            let cs = score_genomes_parallel(ctx, vec![(0, child.clone(), None)], default_worker_count());
+            evals += 1;
+            let (g, sc) = ga_local_descent(ctx, child, cs[0].score, cfg.local_steps, &mut evals, budget);
+            if objective_less(&sc, &best.1) {
+                best = (g.clone(), sc);
+            }
+            next.push((g, sc));
+        }
+        // Preserve population size when budget cut a generation short.
+        while next.len() < cfg.pop && next.len() < pop.len() {
+            next.push(pop[next.len()].clone());
+        }
+        pop = next;
+        generations += 1;
+    }
+
+    OptimizerResult {
+        best_genome: best.0,
+        best_score: best.1,
+        evals,
+        iterations: generations,
+        beam_states: cfg.pop,
+    }
 }
 
 // ── Seed population (prototype seeded_smoke_population, DagLayer-native) ─────
@@ -731,12 +701,22 @@ pub fn seeded_population(ctx: &LayerCtx, total: usize, run_offset: u64) -> Vec<G
 
 // ── search_layer: the per-layer driver the producer calls ────────────────────
 
-/// Search one layer: seed `cfg.pop` genomes, run the beam/greedy/SA optimizer
-/// for `cfg.evals` compile-evals, and return the winning schedule stamped with
-/// its own compile's traffic. Panics if even the best candidate is infeasible
-/// at `ctx.budget` (an infeasible layer is a real problem, not a schedule —
-/// the deleted v1 producer's F6 gate).
-pub fn search_layer(ctx: &LayerCtx, cfg: &SearchConfig) -> LayerSearchOutcome {
+/// Search one layer: seed `cfg.pop` genomes, run the memetic GA for `cfg.evals`
+/// compile-evals, and return the winning schedule stamped with its own compile's
+/// traffic. Panics if even the best candidate is infeasible at `ctx.budget` (an
+/// infeasible layer is a real problem, not a schedule — the deleted v1
+/// producer's F6 gate).
+///
+/// `incumbent`, when `Some(ls)` (codex-P1), is a previously-persisted schedule
+/// for this layer: its exact genome ([`genome_from_schedule`]) is prepended to
+/// the seed population, so it is scored in the initial generation and — via
+/// elitism — can never be lost. The GA result is therefore always at least as
+/// good as the incumbent's traffic (the Task-2 non-regression invariant).
+pub fn search_layer(
+    ctx: &LayerCtx,
+    cfg: &SearchConfig,
+    incumbent: Option<&LayerSchedule>,
+) -> LayerSearchOutcome {
     let start = Instant::now();
 
     if ctx.n_order_keys() == 0 {
@@ -751,8 +731,13 @@ pub fn search_layer(ctx: &LayerCtx, cfg: &SearchConfig) -> LayerSearchOutcome {
         };
     }
 
-    let seeds = seeded_population(ctx, cfg.pop.min(cfg.evals), cfg.seed);
-    let opt = optimize_from_population(ctx, seeds, cfg.evals);
+    let mut seeds = seeded_population(ctx, cfg.pop.min(cfg.evals), cfg.seed);
+    if let Some(ls) = incumbent {
+        // Prepend the incumbent's exact genome so it is scored in the initial
+        // population and preserved by elitism.
+        seeds.insert(0, genome_from_schedule(ls, ctx));
+    }
+    let opt = optimize_from_population(ctx, seeds, cfg);
     assert!(
         !opt.best_score.infeasible,
         "search_layer: best candidate infeasible at budget {} ({} units, {} sites)",
@@ -783,15 +768,7 @@ mod tests {
         CandidateScore { infeasible: false, dram_traffic: traffic, instrs }
     }
 
-    fn infeasible() -> CandidateScore {
-        CandidateScore { infeasible: true, dram_traffic: usize::MAX, instrs: usize::MAX }
-    }
-
-    fn sg(index: usize, score: CandidateScore, family: Option<MoveFamily>) -> ScoredGenome {
-        ScoredGenome { index, genome: Genome::neutral(2, 0), score, family }
-    }
-
-    // ── RNG / SA primitives ────────────────────────────────────────────────
+    // ── RNG primitives ─────────────────────────────────────────────────────
 
     #[test]
     fn unit_draw_is_in_unit_interval_and_deterministic() {
@@ -804,129 +781,78 @@ mod tests {
         assert_ne!(unit_draw(1), unit_draw(2));
     }
 
+    // ── GA operators ───────────────────────────────────────────────────────
+
     #[test]
-    fn sa_temperature_starts_hot_and_cools_to_zero() {
-        assert_eq!(sa_temperature(0, 100), SA_INITIAL_TEMPERATURE);
-        assert_eq!(sa_temperature(100, 100), 0.0);
-        assert_eq!(sa_temperature(200, 100), 0.0, "past-budget clamps to 0");
-        let mid = sa_temperature(50, 100);
-        assert!(mid > 0.0 && mid < SA_INITIAL_TEMPERATURE);
+    fn blx_alpha_stays_in_domain() {
+        let mut rng = SeedRng::new(123);
+        for _ in 0..1000 {
+            // Random parents inside each domain; the blend must stay clamped to it.
+            let (a, b) = (rng.next_unit(), rng.next_unit());
+            let key = blx_alpha(a, b, 0.0, 1.0, &mut rng);
+            assert!((0.0..=1.0).contains(&key), "key blend {key} left [0, 1]");
+            let (a, b) = (rng.next_signed(), rng.next_signed());
+            let prio = blx_alpha(a, b, -CACHE_PRIORITY_BOUND, CACHE_PRIORITY_BOUND, &mut rng);
+            assert!((-1.0..=1.0).contains(&prio), "priority blend {prio} left [-1, 1]");
+        }
     }
 
     #[test]
-    fn metropolis_rejects_worse_candidate_at_zero_temperature() {
-        assert!(!metropolis_accepts(1.0, 0.0, 0.0));
+    fn ga_crossover_preserves_lengths_and_normalization() {
+        let mut rng = SeedRng::new(7);
+        let mut p1 = Genome::neutral(5, 3);
+        let mut p2 = Genome::neutral(5, 3);
+        for k in &mut p1.root_order_key {
+            *k = rng.next_unit();
+        }
+        for g in &mut p1.cache_priority {
+            *g = rng.next_signed();
+        }
+        for k in &mut p2.root_order_key {
+            *k = rng.next_unit();
+        }
+        for g in &mut p2.cache_priority {
+            *g = rng.next_signed();
+        }
+        let child = ga_crossover(&p1, &p2, &mut rng);
+        assert_eq!(child.root_order_key.len(), 5);
+        assert_eq!(child.cache_priority.len(), 3);
+        assert_normalized_genome(&child);
     }
 
     #[test]
-    fn metropolis_accepts_worse_candidate_when_draw_below_boltzmann_probability() {
-        // delta=1, temp=1 -> p = e^-1 ~= 0.3679
-        assert!(metropolis_accepts(1.0, 1.0, 0.1));
-        assert!(!metropolis_accepts(1.0, 1.0, 0.9));
+    fn ga_mutate_keeps_normalized() {
+        let mut rng = SeedRng::new(99);
+        let mut g = Genome::neutral(6, 4);
+        // rate=1.0 forces every gene, sigma=10.0 pushes far past both bounds; the
+        // per-gene clamps must still land it inside the normalized domain.
+        ga_mutate(&mut g, 1.0, 10.0, &mut rng);
+        assert_normalized_genome(&g);
     }
 
     #[test]
-    fn metropolis_acceptance_probability_shrinks_as_temperature_cools() {
-        let draw = 0.2;
-        let hot = metropolis_accepts(1.0, 4.0, draw);
-        let cold = metropolis_accepts(1.0, 0.1, draw);
-        assert!(hot);
-        assert!(!cold);
-    }
+    fn ga_tournament_picks_best_of_sample() {
+        // Hand-built pop: a unique strict best; a large `k` makes the best being
+        // sampled effectively certain (miss probability 2^-64), and selection is
+        // deterministic given the seed regardless.
+        let worse = Genome { root_order_key: vec![0.1], cache_priority: vec![] };
+        let best = Genome { root_order_key: vec![0.9], cache_priority: vec![] };
+        let pop = vec![(worse.clone(), feasible(20, 0)), (best.clone(), feasible(5, 0))];
+        let mut rng = SeedRng::new(1);
+        assert_eq!(ga_tournament(&pop, 64, &mut rng), &best, "tournament returns the best of the sample");
 
-    // ── uphill / selection ────────────────────────────────────────────────
-
-    #[test]
-    fn best_uphill_neighbor_picks_gentlest_feasible_worse_traffic() {
-        let current = feasible(10, 10);
-        let scored = vec![
-            sg(0, feasible(15, 1), None),
-            sg(1, feasible(12, 9), None), // gentlest uphill
-            sg(2, feasible(12, 5), None), // same traffic, fewer instrs -> preferred
-            sg(3, infeasible(), None),
+        // Tie on objective -> lowest population index wins (matches the file's
+        // tie discipline). Indices 0 and 2 tie for best; index 0 must win.
+        let tie_a = Genome { root_order_key: vec![0.2], cache_priority: vec![] };
+        let mid = Genome { root_order_key: vec![0.5], cache_priority: vec![] };
+        let tie_b = Genome { root_order_key: vec![0.8], cache_priority: vec![] };
+        let pop = vec![
+            (tie_a.clone(), feasible(5, 0)),
+            (mid, feasible(20, 0)),
+            (tie_b, feasible(5, 0)),
         ];
-        assert_eq!(best_uphill_neighbor(&scored, &current), Some(2));
-    }
-
-    #[test]
-    fn best_uphill_neighbor_ignores_improving_equal_and_infeasible() {
-        let current = feasible(10, 10);
-        let scored = vec![
-            sg(0, feasible(9, 1), None),  // improving
-            sg(1, feasible(10, 99), None), // equal traffic
-            sg(2, infeasible(), None),
-        ];
-        assert_eq!(best_uphill_neighbor(&scored, &current), None);
-    }
-
-    #[test]
-    fn plateau_selection_accepts_equal_cache_neighbor_when_budget_remains() {
-        let current = feasible(10, 10);
-        let scored = vec![
-            sg(0, feasible(11, 10), Some(MoveFamily::UnitSwap)),
-            sg(1, feasible(10, 10), Some(MoveFamily::CachePriority)),
-        ];
-        assert_eq!(select_optimizer_neighbor(&scored, &current, 2), OptimizerStep::Sideways(1));
-        assert_eq!(select_optimizer_neighbor(&scored, &current, 0), OptimizerStep::Stop);
-    }
-
-    #[test]
-    fn plateau_selection_prefers_strict_improvement_over_sideways_cache_neighbor() {
-        let current = feasible(10, 10);
-        let scored = vec![
-            sg(0, feasible(10, 10), Some(MoveFamily::CachePriority)),
-            sg(1, feasible(9, 20), Some(MoveFamily::UnitInsert)),
-        ];
-        assert_eq!(select_optimizer_neighbor(&scored, &current, 2), OptimizerStep::Improving(1));
-    }
-
-    #[test]
-    fn sideways_moves_only_come_from_the_cache_family() {
-        let current = feasible(10, 10);
-        let scored = vec![sg(0, feasible(10, 10), Some(MoveFamily::UnitSwap))];
-        assert_eq!(select_optimizer_neighbor(&scored, &current, 4), OptimizerStep::Stop);
-    }
-
-    // ── beam ──────────────────────────────────────────────────────────────
-
-    #[test]
-    fn beam_width_scales_with_budget_to_avoid_dilution() {
-        assert_eq!(beam_width_for_budget(0), 1);
-        assert_eq!(beam_width_for_budget(999), 1);
-        assert_eq!(beam_width_for_budget(2_000), 2);
-        assert_eq!(beam_width_for_budget(1_000_000), OPTIMIZER_BEAM_WIDTH);
-    }
-
-    #[test]
-    fn optimizer_beam_keeps_multiple_scored_seed_states() {
-        // Distinct decoded orders -> distinct states, best objective first.
-        let mut a = Genome::neutral(2, 0);
-        a.root_order_key = vec![0.0, 0.5];
-        let mut b = Genome::neutral(2, 0);
-        b.root_order_key = vec![0.5, 0.0];
-        let scored = vec![
-            ScoredGenome { index: 0, genome: a, score: feasible(12, 0), family: None },
-            ScoredGenome { index: 1, genome: b, score: feasible(10, 0), family: None },
-        ];
-        let beam = optimizer_beam_from_seed_scores(scored, 4);
-        assert_eq!(beam.len(), 2);
-        assert_eq!(beam[0].score, feasible(10, 0), "best objective first");
-    }
-
-    #[test]
-    fn optimizer_beam_dedups_states_with_equal_order_and_objective() {
-        // Byte-DIFFERENT genomes decoding to the SAME order with the same
-        // objective collapse to one state.
-        let mut a = Genome::neutral(2, 0);
-        a.root_order_key = vec![0.1, 0.9];
-        let mut b = Genome::neutral(2, 0);
-        b.root_order_key = vec![0.2, 0.8]; // same decoded order (0, 1)
-        let scored = vec![
-            ScoredGenome { index: 0, genome: a, score: feasible(10, 0), family: None },
-            ScoredGenome { index: 1, genome: b, score: feasible(10, 0), family: None },
-        ];
-        let beam = optimizer_beam_from_seed_scores(scored, 4);
-        assert_eq!(beam.len(), 1);
+        let mut rng = SeedRng::new(2);
+        assert_eq!(ga_tournament(&pop, 64, &mut rng), &tie_a, "objective tie breaks to lowest index");
     }
 
     // ── neighbor families ─────────────────────────────────────────────────
@@ -1026,8 +952,11 @@ mod tests {
     }
 
     #[test]
-    fn search_config_defaults_match_deleted_v1_producer() {
-        let cfg = SearchConfig::default();
-        assert_eq!(cfg, SearchConfig { pop: 8, evals: 1000, seed: 0 });
+    fn search_config_from_env_with_no_overrides_is_default() {
+        // No GA env vars set in the unit-test process -> parse yields the pinned
+        // default. (`SearchConfig` dropped `Eq` for its f64 fields; `assert_eq!`
+        // needs only `PartialEq + Debug`.)
+        let cfg = search_config_from_env();
+        assert_eq!(cfg, SearchConfig::default());
     }
 }

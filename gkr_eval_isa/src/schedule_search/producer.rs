@@ -38,6 +38,7 @@ pub fn produce_circuit_schedule(
     artifact: &GKRCircuitArtifact<BabyBearField>,
     budget: usize,
     cfg: &SearchConfig,
+    incumbent: Option<&CircuitSchedule>,
 ) -> CircuitSchedule {
     let cross: HashMap<ReadPlace, FieldKind> = build_cross_layer_field_map(dag);
     let mut layers: Vec<LayerSchedule> = Vec::with_capacity(dag.layers.len());
@@ -63,7 +64,10 @@ pub fn produce_circuit_schedule(
         let n_sites = ctx.n_sites();
         let node_count = layer.exprs.len();
 
-        let outcome = search_layer(&ctx, cfg);
+        // Thread the per-layer incumbent (if any) through as a preserved seed so
+        // the GA result never regresses below the persisted schedule's traffic.
+        let layer_incumbent = incumbent.map(|s| &s.layers[li]);
+        let outcome = search_layer(&ctx, cfg, layer_incumbent);
         let secs = outcome.wall.as_secs_f64().max(1e-9);
         let compiles_per_sec = outcome.compiles as f64 / secs;
         println!(

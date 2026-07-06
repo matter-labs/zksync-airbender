@@ -124,10 +124,10 @@ fn score_deterministic() {
 #[test]
 fn small_search_roundtrip_add_sub() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
-    let cfg = SearchConfig { pop: 4, evals: 40, seed: 0 };
+    let cfg = SearchConfig { pop: 4, evals: 40, seed: 0, ..SearchConfig::default() };
     let stem = schedule_stem(ADD_SUB);
 
-    let mut sched = produce_circuit_schedule(&dag, &artifact, SEARCH_TEST_BUDGET, &cfg);
+    let mut sched = produce_circuit_schedule(&dag, &artifact, SEARCH_TEST_BUDGET, &cfg, None);
     // `produce_circuit_schedule` leaves `circuit` empty (see its doc: no fixture-name
     // metadata is derivable from `DagCircuit`/`GKRCircuitArtifact` alone) — the caller
     // stamps it, exactly as the real fixture-regen entry point below does.
@@ -207,7 +207,9 @@ fn produce_all_schedules() {
         let stem = fixture
             .trim_end_matches("_preprocessed_layout_gkr.json")
             .trim_end_matches("_layout_gkr.json");
-        let mut sched = produce_circuit_schedule(&dag, &artifact, REAL_BUDGET, &cfg);
+        // Task 1: no incumbent (`None`); Task 2 flips this to `Some(&old)` for the
+        // non-regression gate. The GA seeds from scratch here.
+        let mut sched = produce_circuit_schedule(&dag, &artifact, REAL_BUDGET, &cfg, None);
         sched.circuit = stem.to_string();
         let out = compiled_circuit_dir()
             .join(format!("{}_schedule_b{}_gkr.json", sched.circuit, REAL_BUDGET));

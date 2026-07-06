@@ -141,6 +141,33 @@ pub fn decode_schedule(genome: &Genome, ctx: &LayerCtx) -> cs::gkr_compiler::dag
     cs::gkr_compiler::dag_ir::LayerSchedule { units, sites, predicted_traffic: 0, floor: ctx.floor }
 }
 
+/// Inverse of [`decode_schedule`] (codex-P1 incumbent seeding): the genome whose
+/// decode reproduces `ls` exactly, so scoring it yields `ls`'s own traffic and
+/// elitism can never lose the incumbent. Requires `ls`'s sites to equal
+/// `ctx.sites` (guaranteed by `validate_circuit_schedule` check b).
+pub fn genome_from_schedule(ls: &cs::gkr_compiler::dag_ir::LayerSchedule, ctx: &LayerCtx) -> Genome {
+    use std::collections::HashMap;
+    // root_order_key: assign each canonical unit its execution rank (unit vec order in `ls`).
+    // Map canonical unit identity -> its index in ctx.units_with_caches.
+    let canon_idx: HashMap<(cs::gkr_compiler::dag_ir::RootGroup, usize), usize> = ctx
+        .units_with_caches
+        .iter()
+        .enumerate()
+        .map(|(i, u)| ((u.group.clone(), u.relation_index), i))
+        .collect();
+    let n = ctx.units_with_caches.len();
+    let denom = n.max(1) as f64;
+    let mut root_order_key = vec![0.0f64; n];
+    for (rank, u) in ls.units.iter().enumerate() {
+        let ci = canon_idx[&(u.group.clone(), u.relation_index)];
+        root_order_key[ci] = rank as f64 / denom;
+    }
+    // cache_priority: incumbent priority per ctx.sites[i] (sites order is the gene order).
+    let prio: HashMap<SiteKey, f64> = ls.sites.iter().copied().collect();
+    let cache_priority = ctx.sites.iter().map(|s| prio.get(s).copied().unwrap_or(0.0)).collect();
+    Genome { root_order_key, cache_priority }
+}
+
 /// The fitness function (Task 6 spec §1). Decodes `genome`, compiles it for
 /// real with the decoded `SiteDecisions`, and reads `CandidateScore` off
 /// the compiled program's stats. `Err(CompileError::BudgetBelowFloor)` is the

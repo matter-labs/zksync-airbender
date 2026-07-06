@@ -37,9 +37,9 @@ fn probe_layer0(fixture: &str, evals: usize, pop: usize) {
     let layer = &dag.layers[0];
 
     let ctx = LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, REAL_BUDGET);
-    let cfg = SearchConfig { pop, evals, seed: 0 };
+    let cfg = SearchConfig { pop, evals, seed: 0, ..SearchConfig::default() };
     let t0 = std::time::Instant::now();
-    let outcome = search_layer(&ctx, &cfg);
+    let outcome = search_layer(&ctx, &cfg, None);
     let wall = t0.elapsed();
     eprintln!(
         "[probe_8b] {fixture} L0: pop={pop} evals(cap)={evals} actual_evals={} \
@@ -78,9 +78,9 @@ fn probe_blake2_ext_l0_multiseed() {
     let layer = &dag.layers[0];
     let ctx = LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, REAL_BUDGET);
     for (pop, seed) in [(64usize, 1u64), (128, 7), (256, 42)] {
-        let cfg = SearchConfig { pop, evals: 150_000, seed };
+        let cfg = SearchConfig { pop, evals: 150_000, seed, ..SearchConfig::default() };
         let t0 = std::time::Instant::now();
-        let outcome = search_layer(&ctx, &cfg);
+        let outcome = search_layer(&ctx, &cfg, None);
         eprintln!(
             "[probe_8b multiseed] pop={pop} seed={seed} predicted_traffic={} floor={} \
              compiles={} wall={:.1}s",
@@ -102,9 +102,9 @@ fn probe_bigint_l0_multiseed() {
     let layer = &dag.layers[0];
     let ctx = LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, REAL_BUDGET);
     for (pop, seed) in [(32usize, 1u64), (64, 7), (128, 42)] {
-        let cfg = SearchConfig { pop, evals: 150_000, seed };
+        let cfg = SearchConfig { pop, evals: 150_000, seed, ..SearchConfig::default() };
         let t0 = std::time::Instant::now();
-        let outcome = search_layer(&ctx, &cfg);
+        let outcome = search_layer(&ctx, &cfg, None);
         eprintln!(
             "[probe_8b multiseed] pop={pop} seed={seed} predicted_traffic={} floor={} \
              compiles={} wall={:.1}s",
