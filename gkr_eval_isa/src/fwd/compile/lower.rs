@@ -269,6 +269,10 @@ struct VirtualLower<'a> {
     next_internal: u32,
     /// Compute roots by their shared `ExprId`: `(RootId, slot, col, sink field)`.
     expr_to_compute: HashMap<ExprId, Vec<(RootId, u8, u16, OperandField)>>,
+    /// Cache/materialize-only roots (`materialize.is_some() && claim.is_none()`) by expr.
+    /// Eager F3 materialization targets ONLY these (never claim-bearing output roots,
+    /// which are atoms materialized at their scheduled position by the root-driver).
+    expr_to_cache_root: HashMap<ExprId, Vec<(RootId, u8, u16, OperandField)>>,
     exposed: HashSet<RootId>,
     root_outputs: Vec<(RootId, VirtualRootOutput)>,
     /// Interned resolution-leaf descriptors (`ExprId → ctx.specials` index).
@@ -685,6 +689,11 @@ impl<'a> VirtualLower<'a> {
             if self.decisions.is_some() {
                 let field = child_operand_field(layer, expr_id, expected, &self.cross);
                 if let Some(gen_id) = self.try_admit(expr_id, field) {
+                    // HIGH-1: eager cache write from the SOURCE (F1-clean). Writing from acc
+                    // here would wedge a `DstFromAcc(cache)` between the leaf load and the
+                    // cell eviction (both read acc), which F1 cannot fuse; sourcing the
+                    // cache write directly keeps the `init;evict` pair F1-fusible.
+                    self.materialize_cache_root_from_src(expr_id, &op);
                     self.emit_init_field(op, field);
                     self.widths.insert(gen_id, field);
                     self.emit_evict_to_cell(gen_id, field);
@@ -692,6 +701,7 @@ impl<'a> VirtualLower<'a> {
                     return Ok(self.defer_read(gen_id));
                 }
             }
+            self.materialize_cache_root_from_src(expr_id, &op); // F3: eager cache write from source
             return Ok(op);
         }
         // 3. Compound: recompute the cone into the acc, then finalize residency (Task 3
@@ -719,6 +729,7 @@ impl<'a> VirtualLower<'a> {
             })?;
             let field = child_operand_field(layer, expr_id, expected, &self.cross);
             self.emit_init_field(VirtualOp::Special { desc }, field);
+            self.materialize_cache_root_from_acc(expr_id); // F3: eager cache write from acc
             return Ok(());
         }
         match &layer.exprs[expr_id.0 as usize] {
@@ -726,6 +737,7 @@ impl<'a> VirtualLower<'a> {
                 let field = child_operand_field(layer, expr_id, expected, &self.cross);
                 let op = self.source_to_vop(layer, expr_id)?;
                 self.emit_init_field(op, field);
+                self.materialize_cache_root_from_acc(expr_id); // F3: eager cache write from acc
                 Ok(())
             }
             Expr::Add(children) => {
@@ -1143,6 +1155,50 @@ impl<'a> VirtualLower<'a> {
             self.exposed.insert(rid);
         }
     }
+
+    /// Eager F3: materialize every UNexposed cache root sharing `expr_id` FROM THE ACC
+    /// (the value is currently live in acc). Mirrors `materialize_if_root`'s `exposed`
+    /// dedup + `root_outputs` push, but reads `expr_to_cache_root` (cache-only).
+    fn materialize_cache_root_from_acc(&mut self, expr_id: ExprId) {
+        let Some(roots) = self.expr_to_cache_root.get(&expr_id).cloned() else { return };
+        for (rid, slot, col, field) in roots {
+            if self.exposed.contains(&rid) {
+                continue;
+            }
+            self.emit(VInstr::Mov {
+                dir: MovDir::DstFromAcc,
+                field,
+                dst: Some(VDst::GlobalMaterialize { slot, col }),
+                src: None,
+                defines: None,
+                is_dram_read: false,
+            });
+            self.root_outputs.push((rid, VirtualRootOutput::Global { slot, col }));
+            self.exposed.insert(rid);
+        }
+    }
+
+    /// Eager F3: materialize every UNexposed cache root sharing `expr_id` FROM THE SOURCE
+    /// operand `op` (the value is NOT in acc — a non-admitted leaf; going through acc
+    /// would clobber it and add a MOV). Emits `DstFromSrc(GlobalMaterialize, op)`.
+    fn materialize_cache_root_from_src(&mut self, expr_id: ExprId, op: &VirtualOp) {
+        let Some(roots) = self.expr_to_cache_root.get(&expr_id).cloned() else { return };
+        for (rid, slot, col, field) in roots {
+            if self.exposed.contains(&rid) {
+                continue;
+            }
+            self.emit(VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                field,
+                dst: Some(VDst::GlobalMaterialize { slot, col }),
+                src: Some(op.clone()),
+                defines: None,
+                is_dram_read: false,
+            });
+            self.root_outputs.push((rid, VirtualRootOutput::Global { slot, col }));
+            self.exposed.insert(rid);
+        }
+    }
 }
 
 /// True if `op` is a real backing (DRAM) read. Over-counts VirtualSetup-backed reads as
@@ -1215,6 +1271,10 @@ pub(crate) fn lower_layer_virtual(
 
     // Compute roots by shared ExprId: intern each sink's backing once.
     let mut expr_to_compute: HashMap<ExprId, Vec<(RootId, u8, u16, OperandField)>> = HashMap::new();
+    // F3: cache/materialize-only roots (`claim.is_none()`) — the eager-materialize targets.
+    // NEVER claim-bearing output roots (they are atoms served at their scheduled position).
+    let mut expr_to_cache_root: HashMap<ExprId, Vec<(RootId, u8, u16, OperandField)>> =
+        HashMap::new();
     for (idx, root) in layer.roots.iter().enumerate() {
         let rid = RootId(idx as u32);
         let Some(sink) = root.materialize.as_ref() else { continue };
@@ -1223,6 +1283,9 @@ pub(crate) fn lower_layer_virtual(
             let slot = ctx.backings.intern(key)?;
             let field = super::operand_field_of(sink);
             expr_to_compute.entry(root.expr).or_default().push((rid, slot, col, field));
+            if root.claim.is_none() {
+                expr_to_cache_root.entry(root.expr).or_default().push((rid, slot, col, field));
+            }
         }
     }
 
@@ -1250,6 +1313,7 @@ pub(crate) fn lower_layer_virtual(
         widths: HashMap::new(),
         next_internal: INTERNAL_BASE,
         expr_to_compute,
+        expr_to_cache_root,
         exposed: HashSet::new(),
         root_outputs: Vec::new(),
         desc_by_expr,

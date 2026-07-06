@@ -73,3 +73,33 @@ fn no_spill_immediate_reload() {
         }
     }
 }
+
+/// F3-a (MED-5, the real gate): no cache-root output is written by re-reading a HELD
+/// smem cell — the deferred-hold signature `DstFromSrc(GlobalMaterialize CacheOutput) <-
+/// Smem`. After F3, a leaf cache root is written eagerly from acc (`DstFromAcc`) or
+/// directly from its source (`DstFromSrc <- Global/Special/Ldc`); compound cache roots
+/// go through the compound-path `materialize_if_root(from_acc=true)` = `DstFromAcc`. So a
+/// cache output sourced from an Smem cell is exactly the final-sweep hold this fix removes.
+#[test]
+fn no_cache_output_from_held_cell() {
+    for instr in add_sub_l0_instrs() {
+        if let Instr::Mov {
+            dir: MovDir::DstFromSrc,
+            dst: Some(DstLine::GlobalMaterialize { .. }),
+            src: Some(OperandLine::Smem { .. }),
+            ..
+        } = instr
+        {
+            panic!("F3 violated: cache/output materialized from a held smem cell (deferred hold): {instr:?}");
+        }
+    }
+}
+
+/// F3-b: instruction-count reduction (tightened to the regenerated value in Task 7).
+#[test]
+fn f3_reduces_instruction_count_vs_pre_pass_baseline() {
+    let n = add_sub_l0_instrs().len();
+    // Pre-pass add_sub L0 = 204 instrs (post site-gate, pre codegen pass). Tighten to the
+    // exact regenerated count in Task 7 step 4.
+    assert!(n < 204, "expected add_sub L0 instr count < 204 after codegen pass, got {n}");
+}
