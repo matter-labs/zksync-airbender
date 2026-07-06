@@ -216,6 +216,69 @@ fn drop_redundant_reloads(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -
     changed
 }
 
+/// True if `vi` reads `v` as a `VirtualOp::Value` operand.
+fn reads_value(vi: &VInstr, v: ValueId) -> bool {
+    let hit = |op: &VirtualOp| matches!(op, VirtualOp::Value(w) if *w == v);
+    match vi {
+        VInstr::Add { reads, .. } | VInstr::Mul { reads, .. } => reads.iter().any(hit),
+        VInstr::Fma { pairs, .. } => pairs.iter().any(|(l, r)| hit(l) || hit(r)),
+        VInstr::Mov { src, .. } => src.as_ref().is_some_and(hit),
+    }
+}
+
+/// Is `v` read (as a Value) at any index in `from..` before it is redefined?
+fn value_read_after(vinstrs: &[VInstr], from: usize, v: ValueId) -> bool {
+    for vj in &vinstrs[from..] {
+        if reads_value(vj, v) {
+            return true;
+        }
+        if vj.defines() == Some(v) {
+            return false; // redefined before any read → the earlier def is dead
+        }
+    }
+    false
+}
+
+/// F5: drop a cell-defining MOV whose value is never read before redefine/end.
+/// Precondition (codex-R6): the deleted instruction must not establish the current
+/// accumulator for a following op — safe for `DstFromAcc(Cell)` (acc unchanged) and
+/// `DstFromSrc(Cell, src)` (acc untouched); those are the only shapes that `defines` a
+/// cell without loading acc. An `AccFromSrc` never defines a cell, so it is never a
+/// candidate here. Run AFTER F1 fusion so the shape is settled.
+///
+/// ASSUMPTION (codex-R7): a value's only consumers are `VInstr` reads — incl. final-sweep
+/// `DstFromSrc(GlobalMaterialize) <- Value(v)`, which `value_read_after` counts (Mov `src`
+/// is scanned). Root outputs live in `vinstrs` as materialize MOVs, not in the separate
+/// `vouts`/`VirtualRootOutput::Cell` channel (that variant is reserved/unused,
+/// `lower.rs:243-252`). If a smem-resident `Cell(v)` root output ever becomes live, this
+/// pass would wrongly drop its sole define; guard by also scanning `vouts` then.
+fn drop_dead_admissions(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool {
+    let mut del: BTreeSet<usize> = BTreeSet::new();
+    for i in 0..vinstrs.len() {
+        let is_cell_def = matches!(
+            &vinstrs[i],
+            VInstr::Mov {
+                dir: MovDir::DstFromAcc | MovDir::DstFromSrc,
+                dst: Some(VDst::Cell(_)),
+                ..
+            }
+        );
+        if !is_cell_def {
+            continue;
+        }
+        let v = match vinstrs[i].defines() {
+            Some(v) => v,
+            None => continue,
+        };
+        if !value_read_after(vinstrs, i + 1, v) {
+            del.insert(i);
+        }
+    }
+    let changed = !del.is_empty();
+    delete_indices(vinstrs, step_of, &del);
+    changed
+}
+
 /// Optimize the lowered stream via a fixpoint of the rewrite rules.
 pub(crate) fn optimize_vinstrs(
     mut vinstrs: Vec<VInstr>,
@@ -230,6 +293,7 @@ pub(crate) fn optimize_vinstrs(
         let mut changed = false;
         changed |= fuse_leaf_loads(&mut vinstrs, &mut step_of);
         changed |= drop_redundant_reloads(&mut vinstrs, &mut step_of);
+        changed |= drop_dead_admissions(&mut vinstrs, &mut step_of);
         if !changed {
             break;
         }
@@ -416,5 +480,90 @@ mod tests {
         let changed = drop_redundant_reloads(&mut vinstrs, &mut step_of);
         assert!(!changed);
         assert_eq!(vinstrs.len(), 2);
+    }
+
+    #[test]
+    fn f5_drops_evict_never_read() {
+        let v = ExprId(7);
+        // DstFromSrc cellv <- GLOBAL (an admission), never read again -> dead, dropped.
+        let mut vinstrs = vec![
+            VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                field: OperandField::Base,
+                dst: Some(VDst::Cell(v)),
+                src: Some(VirtualOp::Global { slot: 2, col: 9 }),
+                defines: Some(v),
+                is_dram_read: false,
+            },
+            VInstr::Mul {
+                field: OperandField::Base,
+                reads: vec![VirtualOp::Ldc {
+                    sub: crate::fwd::isa::LdcSub::Const,
+                    idx: 0,
+                }],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let mut step_of = vec![0, 0];
+        let changed = drop_dead_admissions(&mut vinstrs, &mut step_of);
+        assert!(changed);
+        assert_eq!(vinstrs.len(), 1);
+        assert!(matches!(vinstrs[0], VInstr::Mul { .. }));
+    }
+
+    #[test]
+    fn f5_keeps_evict_that_is_read() {
+        let v = ExprId(7);
+        let mut vinstrs = vec![
+            VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                field: OperandField::Base,
+                dst: Some(VDst::Cell(v)),
+                src: Some(VirtualOp::Global { slot: 2, col: 9 }),
+                defines: Some(v),
+                is_dram_read: false,
+            },
+            VInstr::Mul {
+                field: OperandField::Base,
+                reads: vec![VirtualOp::Value(v)],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let mut step_of = vec![0, 0];
+        let changed = drop_dead_admissions(&mut vinstrs, &mut step_of);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn f5_keeps_evict_read_by_global_materialize() {
+        // codex-R7: a value consumed ONLY by a later final-sweep materialize
+        // (DstFromSrc GlobalMaterialize <- Value(v)) must NOT be dropped.
+        let v = ExprId(7);
+        let mut vinstrs = vec![
+            VInstr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Base,
+                dst: Some(VDst::Cell(v)),
+                src: None,
+                defines: Some(v),
+                is_dram_read: false,
+            },
+            VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                field: OperandField::Base,
+                dst: Some(VDst::GlobalMaterialize { slot: 0, col: 8 }),
+                src: Some(VirtualOp::Value(v)),
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let mut step_of = vec![0, 0];
+        let changed = drop_dead_admissions(&mut vinstrs, &mut step_of);
+        assert!(
+            !changed,
+            "value read by a final-sweep GlobalMaterialize must be kept"
+        );
     }
 }
