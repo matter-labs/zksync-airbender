@@ -160,6 +160,90 @@ pub struct OptimizerResult {
     pub beam_states: usize,
 }
 
+// ── Phase-B ablation + telemetry (behavior-inert instrumentation) ─────────────
+
+/// Phase-B ablation controls. `Default` = the full memetic GA, byte-identical to
+/// production ([`optimize_from_population`]).
+///
+/// `random_search` replaces the entire select→crossover→mutate breeding path
+/// with a fresh uniformly-random genome (bypassing selection, crossover and
+/// mutation — their flags are then ignored); `local_descent` is still applied to
+/// that genome iff its flag is set. So `random_search=true, local_descent=false`
+/// is pure random search and `random_search=true, local_descent=true` is
+/// local-descent-only from random restarts — the two non-GA baselines Phase B
+/// measures the GA against. With `random_search=false`, `crossover`/`mutation`
+/// individually disable that operator (the RNG draw for a disabled operator is
+/// short-circuited, so an ablation run is a *different* stream — only the default
+/// all-true config reproduces production's stream, which is the determinism gate).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GaAblation {
+    pub crossover: bool,
+    pub mutation: bool,
+    pub local_descent: bool,
+    pub random_search: bool,
+}
+
+impl Default for GaAblation {
+    fn default() -> Self {
+        Self { crossover: true, mutation: true, local_descent: true, random_search: false }
+    }
+}
+
+/// Per-generation + per-operator telemetry (behavior-inert). Every extra scoring
+/// call the instrumented driver makes to fill these fields is RNG-free and is
+/// NOT counted against `cfg.evals`, so the search trajectory — and therefore the
+/// returned [`OptimizerResult`] — is identical whether or not telemetry is
+/// collected (the determinism gate proves this on add_sub L0).
+#[derive(Default, Clone, Debug, serde::Serialize)]
+pub struct GaTelemetry {
+    /// Free-form experiment tag, filled by the harness (the optimizer leaves it empty).
+    pub label: String,
+    pub floor: usize,
+    /// Final best feasible `dram_traffic` (`usize::MAX` if no feasible candidate).
+    pub final_best: usize,
+    /// Which stage last produced the strict improvement that yielded the final
+    /// `best`: `"seed"` | `"crossover"` | `"mutation"` | `"local_descent"`.
+    pub winner_origin: String,
+    pub total_evals: usize,
+    pub generations: Vec<GenStat>,
+}
+
+/// One generation's aggregate statistics. `generation == 0` is the scored initial
+/// population (no breeding); subsequent entries are the breeding generations.
+#[derive(Default, Clone, Debug, serde::Serialize)]
+pub struct GenStat {
+    pub generation: usize,
+    pub evals_so_far: usize,
+    /// Best feasible `dram_traffic` in the population (`usize::MAX` if none feasible).
+    pub best: usize,
+    /// Mean feasible `dram_traffic` (`0.0` if none feasible).
+    pub mean: f64,
+    /// Mean per-gene stddev of `root_order_key` across the population.
+    pub diversity_order: f64,
+    /// Mean per-gene stddev of `cache_priority` across the population.
+    pub diversity_prio: f64,
+    /// Offspring bred this generation.
+    pub offspring: usize,
+    /// # crossover children whose post-crossover-pre-mutation fitness beat the
+    /// better parent.
+    pub crossover_improved: usize,
+    /// # children whose post-mutation fitness beat their post-crossover fitness.
+    pub mutation_improved: usize,
+    /// # children local descent strictly improved.
+    pub local_descent_improved: usize,
+    /// Mean `(pre_ld - post_ld)` traffic drop from local descent (feasible only).
+    pub mean_ld_gain: f64,
+    /// Whether the global best improved during this generation.
+    pub new_best: bool,
+}
+
+/// [`optimize_instrumented`] output: the production [`OptimizerResult`] plus
+/// optional telemetry (`Some` iff `collect`).
+pub struct GaRun {
+    pub result: OptimizerResult,
+    pub telemetry: Option<GaTelemetry>,
+}
+
 // ── Deterministic RNG helpers (prototype splitmix64 / unit_draw / SmokeRng) ──
 
 // Only reached from the retained RNG tests below (`--lib` non-test builds
@@ -484,10 +568,13 @@ fn ga_mutate(g: &mut Genome, rate: f64, sigma: f64, rng: &mut SeedRng) {
     }
 }
 
-/// Tournament of size `k`: sample `k` population members, return the best by
-/// objective, ties broken by population index (matches the file's tie
-/// discipline, codex-P5). `pop` is `(Genome, CandidateScore)`.
-fn ga_tournament<'a>(pop: &'a [(Genome, CandidateScore)], k: usize, rng: &mut SeedRng) -> &'a Genome {
+/// Tournament of size `k`: sample `k` population members, return the population
+/// INDEX of the best by objective, ties broken by (lower) population index
+/// (matches the file's tie discipline, codex-P5). `pop` is
+/// `(Genome, CandidateScore)`. Splitting the index out (vs [`ga_tournament`])
+/// lets the instrumented driver read the selected parents' fitness for operator
+/// attribution without perturbing the RNG draw order.
+fn ga_tournament_idx(pop: &[(Genome, CandidateScore)], k: usize, rng: &mut SeedRng) -> usize {
     let mut best: Option<usize> = None;
     for _ in 0..k.max(1) {
         let i = (rng.next_u64() as usize) % pop.len();
@@ -503,7 +590,15 @@ fn ga_tournament<'a>(pop: &'a [(Genome, CandidateScore)], k: usize, rng: &mut Se
             }
         });
     }
-    &pop[best.expect("k>=1 so best is set")].0
+    best.expect("k>=1 so best is set")
+}
+
+/// Tournament winner genome (thin wrapper over [`ga_tournament_idx`], same RNG
+/// draws). Only reached from the operator unit test; the driver uses the `_idx`
+/// form directly to capture parent indices.
+#[cfg(test)]
+fn ga_tournament<'a>(pop: &'a [(Genome, CandidateScore)], k: usize, rng: &mut SeedRng) -> &'a Genome {
+    &pop[ga_tournament_idx(pop, k, rng)].0
 }
 
 /// Memetic hill-climb: up to `steps` rounds of the existing neighbor moves;
@@ -553,23 +648,83 @@ pub fn ga_local_descent(
 /// descent) count against `cfg.evals`. Deterministic given `cfg.seed` (breeding
 /// RNG is sequential; scoring is parallel but RNG-free and index-stable).
 pub fn optimize_from_population(ctx: &LayerCtx, seeds: Vec<Genome>, cfg: &SearchConfig) -> OptimizerResult {
+    // Single shared code path: production is `optimize_instrumented` with the
+    // default (full-GA) ablation and telemetry off. The default ablation
+    // preserves the exact RNG draw order of the historical loop, so this is
+    // byte-identical to the pre-instrumentation driver (see the determinism gate
+    // `optimize_instrumented_default_matches_production` in `tests/ga_investigation.rs`).
+    optimize_instrumented(ctx, seeds, cfg, GaAblation::default(), false).result
+}
+
+/// Mean per-gene standard deviation of a population's gene vectors (all `rows`
+/// share one length by construction — every genome is sized against `ctx`). The
+/// population diversity metric: `0.0` for an empty population or zero-length
+/// genes (nothing to vary).
+fn mean_gene_stddev(rows: &[&[f64]]) -> f64 {
+    if rows.is_empty() {
+        return 0.0;
+    }
+    let n_genes = rows[0].len();
+    if n_genes == 0 {
+        return 0.0;
+    }
+    let pop_n = rows.len() as f64;
+    let mut total = 0.0;
+    for g in 0..n_genes {
+        let mean = rows.iter().map(|v| v[g]).sum::<f64>() / pop_n;
+        let var = rows.iter().map(|v| (v[g] - mean) * (v[g] - mean)).sum::<f64>() / pop_n;
+        total += var.sqrt();
+    }
+    total / n_genes as f64
+}
+
+/// `(best_feasible_traffic, mean_feasible_traffic, diversity_order, diversity_prio)`
+/// over `pop`. `best`/`mean` ignore infeasible members; `best = usize::MAX` and
+/// `mean = 0.0` when none are feasible.
+fn population_stats(pop: &[(Genome, CandidateScore)]) -> (usize, f64, f64, f64) {
+    let feasible: Vec<usize> =
+        pop.iter().filter(|p| !p.1.infeasible).map(|p| p.1.dram_traffic).collect();
+    let best = feasible.iter().copied().min().unwrap_or(usize::MAX);
+    let mean = if feasible.is_empty() {
+        0.0
+    } else {
+        feasible.iter().sum::<usize>() as f64 / feasible.len() as f64
+    };
+    let order_rows: Vec<&[f64]> = pop.iter().map(|p| p.0.root_order_key.as_slice()).collect();
+    let prio_rows: Vec<&[f64]> = pop.iter().map(|p| p.0.cache_priority.as_slice()).collect();
+    (best, mean, mean_gene_stddev(&order_rows), mean_gene_stddev(&prio_rows))
+}
+
+/// Instrumented memetic-GA driver — the single implementation behind
+/// [`optimize_from_population`]. `ablation` selects which operators run and
+/// `collect` toggles [`GaTelemetry`]. Both are behavior-inert at their defaults
+/// (`GaAblation::default()`, `collect = false`) — they add no RNG draws and no
+/// `evals` charges, so the [`OptimizerResult`] is identical to the historical
+/// loop. Telemetry's per-operator attribution uses EXTRA scoring calls that are
+/// RNG-free (the scorer is pure) and are deliberately NOT added to `evals`.
+pub fn optimize_instrumented(
+    ctx: &LayerCtx,
+    seeds: Vec<Genome>,
+    cfg: &SearchConfig,
+    ablation: GaAblation,
+    collect: bool,
+) -> GaRun {
     let budget = cfg.evals;
     assert!(budget > 0, "eval budget must be positive");
     assert!(cfg.elitism < cfg.pop, "elitism ({}) must be < pop ({})", cfg.elitism, cfg.pop);
-    let seeds = if seeds.is_empty() {
-        vec![Genome::neutral(ctx.n_order_keys(), ctx.n_sites())]
-    } else {
-        seeds
-    };
+    let n_units = ctx.n_order_keys();
+    let n_sites = ctx.n_sites();
+    let seeds = if seeds.is_empty() { vec![Genome::neutral(n_units, n_sites)] } else { seeds };
     for g in &seeds {
         assert_normalized_genome(g);
     }
 
+    let workers = default_worker_count();
     let mut rng = SeedRng::new(cfg.seed);
     // Initial population score.
     let init: Vec<_> = seeds.into_iter().take(budget).enumerate().map(|(i, g)| (i, g, None)).collect();
     let mut evals = init.len();
-    let scored = score_genomes_parallel(ctx, init, default_worker_count());
+    let scored = score_genomes_parallel(ctx, init, workers);
     let mut pop: Vec<(Genome, CandidateScore)> = scored.into_iter().map(|s| (s.genome, s.score)).collect();
     assert!(!pop.is_empty(), "seed population must be non-empty");
 
@@ -580,7 +735,28 @@ pub fn optimize_from_population(ctx: &LayerCtx, seeds: Vec<Genome>, cfg: &Search
             .clone()
     };
     let mut best = best_of(&pop);
+    let mut winner_origin = "seed";
     let mut generations = 0usize;
+
+    let mut telemetry = if collect {
+        let (b, m, dord, dpri) = population_stats(&pop);
+        Some(GaTelemetry {
+            floor: ctx.floor,
+            generations: vec![GenStat {
+                generation: 0,
+                evals_so_far: evals,
+                best: b,
+                mean: m,
+                diversity_order: dord,
+                diversity_prio: dpri,
+                new_best: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+    } else {
+        None
+    };
 
     while evals < budget {
         // Sort for elitism (best first).
@@ -588,28 +764,128 @@ pub fn optimize_from_population(ctx: &LayerCtx, seeds: Vec<Genome>, cfg: &Search
         let mut next: Vec<(Genome, CandidateScore)> =
             pop.iter().take(cfg.elitism.min(pop.len())).cloned().collect();
 
+        // Per-generation telemetry accumulators (unused when `!collect`).
+        let mut offspring = 0usize;
+        let mut xover_improved = 0usize;
+        let mut mut_improved = 0usize;
+        let mut ld_improved = 0usize;
+        let mut ld_gain_sum = 0.0f64;
+        let mut ld_gain_n = 0usize;
+        let gen_best_before = objective_key(&best.1);
+
         while next.len() < cfg.pop && evals < budget {
-            let p1 = ga_tournament(&pop, cfg.tournament, &mut rng).clone();
-            let p2 = ga_tournament(&pop, cfg.tournament, &mut rng).clone();
-            let mut child = if rng.next_unit() < cfg.crossover_rate {
-                ga_crossover(&p1, &p2, &mut rng)
+            // ── Breed one offspring (post-crossover, pre-mutation `child`) ──
+            let (mut child, s_parent, did_crossover) = if ablation.random_search {
+                // Fresh uniformly-random genome: keys in [0,1], priorities in
+                // [-BOUND, BOUND]. Bypasses selection/crossover/mutation.
+                let mut g = Genome::neutral(n_units, n_sites);
+                for k in &mut g.root_order_key {
+                    *k = rng.next_unit();
+                }
+                for b in &mut g.cache_priority {
+                    *b = clamp_bias(rng.next_signed() * CACHE_PRIORITY_BOUND);
+                }
+                (g, None, false)
             } else {
-                p1.clone()
+                let i1 = ga_tournament_idx(&pop, cfg.tournament, &mut rng);
+                let i2 = ga_tournament_idx(&pop, cfg.tournament, &mut rng);
+                let p1 = pop[i1].0.clone();
+                let p2 = pop[i2].0.clone();
+                // Default (`ablation.crossover == true`) still draws exactly one
+                // `next_unit()` here — matches the historical stream. A disabled
+                // crossover short-circuits the draw (ablation stream diverges).
+                let did_crossover = ablation.crossover && rng.next_unit() < cfg.crossover_rate;
+                let child = if did_crossover { ga_crossover(&p1, &p2, &mut rng) } else { p1.clone() };
+                // Better-parent fitness (crossover) / p1 fitness (clone) for attribution.
+                let s_parent = if did_crossover {
+                    if objective_less(&pop[i1].1, &pop[i2].1) { pop[i1].1 } else { pop[i2].1 }
+                } else {
+                    pop[i1].1
+                };
+                (child, Some(s_parent), did_crossover)
             };
-            ga_mutate(&mut child, cfg.mutation_rate, cfg.mutation_sigma, &mut rng);
+
+            // Extra, uncounted, RNG-free measurement: post-crossover-pre-mutation
+            // fitness (only when collecting and an operator split is meaningful).
+            let pre_mut_score = if collect && !ablation.random_search {
+                Some(score(&child, ctx))
+            } else {
+                None
+            };
+
+            let mutation_ran = ablation.mutation && !ablation.random_search;
+            if mutation_ran {
+                ga_mutate(&mut child, cfg.mutation_rate, cfg.mutation_sigma, &mut rng);
+            }
             assert_normalized_genome(&child); // clamps guarantee this; loud if a bug slips a NaN through
 
-            // Score the child, then memetic hill-climb (both count against budget).
+            // Score the child (counted), then memetic hill-climb (also counted).
             if evals >= budget {
                 break; // codex-P4: no filler; loop exits on budget
             }
-            let cs = score_genomes_parallel(ctx, vec![(0, child.clone(), None)], default_worker_count());
+            let cs = score_genomes_parallel(ctx, vec![(0, child.clone(), None)], workers);
             evals += 1;
-            let (g, sc) = ga_local_descent(ctx, child, cs[0].score, cfg.local_steps, &mut evals, budget);
+            let post_mut_score = cs[0].score;
+            let (g, sc) = if ablation.local_descent {
+                ga_local_descent(ctx, child, post_mut_score, cfg.local_steps, &mut evals, budget)
+            } else {
+                (child, post_mut_score)
+            };
+
+            // ── Operator attribution (telemetry only; no RNG, no evals) ──
+            if collect {
+                if did_crossover {
+                    if let (Some(pm), Some(sp)) = (pre_mut_score, s_parent) {
+                        if objective_less(&pm, &sp) {
+                            xover_improved += 1;
+                        }
+                    }
+                }
+                if mutation_ran {
+                    if let Some(pm) = pre_mut_score {
+                        if objective_less(&post_mut_score, &pm) {
+                            mut_improved += 1;
+                        }
+                    }
+                }
+                if ablation.local_descent {
+                    if objective_less(&sc, &post_mut_score) {
+                        ld_improved += 1;
+                    }
+                    if !sc.infeasible && !post_mut_score.infeasible {
+                        ld_gain_sum += post_mut_score.dram_traffic as f64 - sc.dram_traffic as f64;
+                        ld_gain_n += 1;
+                    }
+                }
+            }
+
             if objective_less(&sc, &best.1) {
                 best = (g.clone(), sc);
+                if collect {
+                    // Last stage that strictly improved en route to this genome.
+                    let mut origin = "seed";
+                    if did_crossover {
+                        if let (Some(pm), Some(sp)) = (pre_mut_score, s_parent) {
+                            if objective_less(&pm, &sp) {
+                                origin = "crossover";
+                            }
+                        }
+                    }
+                    if mutation_ran {
+                        if let Some(pm) = pre_mut_score {
+                            if objective_less(&post_mut_score, &pm) {
+                                origin = "mutation";
+                            }
+                        }
+                    }
+                    if ablation.local_descent && objective_less(&sc, &post_mut_score) {
+                        origin = "local_descent";
+                    }
+                    winner_origin = origin;
+                }
             }
             next.push((g, sc));
+            offspring += 1;
         }
         // Preserve population size when budget cut a generation short.
         while next.len() < cfg.pop && next.len() < pop.len() {
@@ -617,15 +893,39 @@ pub fn optimize_from_population(ctx: &LayerCtx, seeds: Vec<Genome>, cfg: &Search
         }
         pop = next;
         generations += 1;
+
+        if let Some(t) = telemetry.as_mut() {
+            let (b, m, dord, dpri) = population_stats(&pop);
+            t.generations.push(GenStat {
+                generation: generations,
+                evals_so_far: evals,
+                best: b,
+                mean: m,
+                diversity_order: dord,
+                diversity_prio: dpri,
+                offspring,
+                crossover_improved: xover_improved,
+                mutation_improved: mut_improved,
+                local_descent_improved: ld_improved,
+                mean_ld_gain: if ld_gain_n > 0 { ld_gain_sum / ld_gain_n as f64 } else { 0.0 },
+                new_best: objective_key(&best.1) < gen_best_before,
+            });
+        }
     }
 
-    OptimizerResult {
-        best_genome: best.0,
+    let result = OptimizerResult {
+        best_genome: best.0.clone(),
         best_score: best.1,
         evals,
         iterations: generations,
         beam_states: cfg.pop,
+    };
+    if let Some(t) = telemetry.as_mut() {
+        t.final_best = if best.1.infeasible { usize::MAX } else { best.1.dram_traffic };
+        t.winner_origin = winner_origin.to_string();
+        t.total_evals = evals;
     }
+    GaRun { result, telemetry }
 }
 
 // ── Seed population (prototype seeded_smoke_population, DagLayer-native) ─────
