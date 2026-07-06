@@ -75,21 +75,20 @@ pub(super) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,fin
 pub(super) const F3_SCRATCH_BOOLS: usize = 0;
 pub(super) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
 
+const fn const_max(a: usize, b: usize) -> usize {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
 /// Shared base-layer scratch-Boolean pool size = max across families (one pool,
 /// reused per row by whichever family fires)
-const UNIFIED_SCRATCH_BOOL_COUNT: usize = {
-    let mut m = F1_SCRATCH_BOOLS;
-    if F2_SCRATCH_BOOLS > m {
-        m = F2_SCRATCH_BOOLS;
-    }
-    if F3_SCRATCH_BOOLS > m {
-        m = F3_SCRATCH_BOOLS;
-    }
-    if F4_SCRATCH_BOOLS > m {
-        m = F4_SCRATCH_BOOLS;
-    }
-    m
-};
+const UNIFIED_SCRATCH_BOOL_COUNT: usize = const_max(
+    const_max(F1_SCRATCH_BOOLS, F2_SCRATCH_BOOLS),
+    const_max(F3_SCRATCH_BOOLS, F4_SCRATCH_BOOLS),
+);
 
 pub(super) const F1_SCRATCH_VARS: usize = 0;
 pub(super) const F2_SCRATCH_VARS: usize = 4; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source
@@ -97,19 +96,10 @@ pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) 
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
 
 /// Shared base-layer scratch-Variable pool size = max across families.
-const UNIFIED_SCRATCH_VAR_COUNT: usize = {
-    let mut m = F1_SCRATCH_VARS;
-    if F2_SCRATCH_VARS > m {
-        m = F2_SCRATCH_VARS;
-    }
-    if F3_SCRATCH_VARS > m {
-        m = F3_SCRATCH_VARS;
-    }
-    if F4_SCRATCH_VARS > m {
-        m = F4_SCRATCH_VARS;
-    }
-    m
-};
+const UNIFIED_SCRATCH_VAR_COUNT: usize = const_max(
+    const_max(F1_SCRATCH_VARS, F2_SCRATCH_VARS),
+    const_max(F3_SCRATCH_VARS, F4_SCRATCH_VARS),
+);
 
 pub(super) const UNIFIED_LOOKUP_WIDTH: usize = 8;
 

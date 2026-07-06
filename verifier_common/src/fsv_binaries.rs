@@ -1,4 +1,3 @@
-
 use crate::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
