@@ -22,7 +22,7 @@ fn fwd_vm_circuits_compile_and_size_probe() {
         assert_eq!(c.compiled.budget, 16, "{stem} committed budget");
         let mut any = false;
         for (li, layer) in c.dag.layers.iter().enumerate() {
-            if !gkr_eval_isa::fwd::compile::layer_needs_compile(c.sched.layers[li].order.is_empty(), layer) {
+            if !gkr_eval_isa::fwd::compile::layer_needs_compile(c.sched.layers[li].units.is_empty(), layer) {
                 continue;
             }
             let lanes = super::compile::encoded_lanes(&c.compiled.layers[li]);
@@ -61,7 +61,7 @@ fn run_all_gates(stem: &str) {
     let mut layers_gated = 0usize;
     let mut cpu_checks = 0usize;
     for (li, layer) in c.dag.layers.iter().enumerate() {
-        if !layer_needs_compile(c.sched.layers[li].order.is_empty(), layer) {
+        if !layer_needs_compile(c.sched.layers[li].units.is_empty(), layer) {
             continue;
         }
         let cl = &c.compiled.layers[li];
@@ -187,7 +187,7 @@ fn fwd_vm_ab_report() {
         let capped = count < trace_len;
 
         for (li, layer) in c.dag.layers.iter().enumerate() {
-            if !layer_needs_compile(c.sched.layers[li].order.is_empty(), layer) {
+            if !layer_needs_compile(c.sched.layers[li].units.is_empty(), layer) {
                 continue;
             }
             let cl = &c.compiled.layers[li];
