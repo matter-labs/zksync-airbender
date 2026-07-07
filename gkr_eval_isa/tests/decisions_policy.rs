@@ -108,15 +108,33 @@ fn site(root: RootId, consumer_expr: ExprId, input_index: u32, value: ExprId) ->
     SiteKey { root, consumer: SiteConsumer::Expr { expr: consumer_expr, input_index }, value }
 }
 
+/// A cross-layer Ext DRAM read leaf: `SourceKind::Read` (so it reaches DRAM and is
+/// admissible) whose field the cross map resolves to `Ext` (width 4). This is the only
+/// way to build an Ext value that is a genuine cache candidate — a bare `challenge()`
+/// leaf recomputes for free and is (correctly) refused by the reaches-DRAM admission gate.
+fn ext_dram_read(offset: usize) -> (SourceInfo, ReadPlace) {
+    let place = ReadPlace::CacheOutput { layer: 0, offset };
+    (SourceInfo { kind: SourceKind::Read { place: place.clone() } }, place)
+}
+
 fn compile(
     layer: &DagLayer,
     sched: &LayerSchedule,
     budget: usize,
     decisions: Option<&SiteDecisions>,
 ) -> gkr_eval_isa::fwd::context::CompiledLayer {
+    compile_with_cross(layer, sched, budget, decisions, &HashMap::new())
+}
+
+fn compile_with_cross(
+    layer: &DagLayer,
+    sched: &LayerSchedule,
+    budget: usize,
+    decisions: Option<&SiteDecisions>,
+    cross: &HashMap<ReadPlace, FieldKind>,
+) -> gkr_eval_isa::fwd::context::CompiledLayer {
     let art = compute_artifact_layer();
-    let cross: HashMap<ReadPlace, FieldKind> = HashMap::new();
-    compile_layer(layer, &art, &BTreeMap::new(), &cross, sched, budget, decisions)
+    compile_layer(layer, &art, &BTreeMap::new(), cross, sched, budget, decisions)
         .expect("compile_layer")
 }
 
@@ -218,12 +236,13 @@ fn eviction_respects_priority_and_width() {
     // bare leaf as `root.expr` would instead collapse into one `materialize_if_root`
     // event, an existing shared-ExprId root dedup unrelated to Task 3). Order:
     // [R0=B_produce, R1=E_produce (contends for B's slot), R2=B_probe, R3=E_probe].
-    fn build_layer() -> (DagLayer, ExprId, ExprId) {
+    fn build_layer() -> (DagLayer, ExprId, ExprId, HashMap<ReadPlace, FieldKind>) {
+        let (e_src, e_place) = ext_dram_read(0);
         let layer = DagLayer {
-            sources: vec![witness(0), challenge()],
+            sources: vec![witness(0), e_src],
             exprs: vec![
-                Expr::Source(SourceId(0)),    // 0 = B (Base)
-                Expr::Source(SourceId(1)),    // 1 = E (Ext)
+                Expr::Source(SourceId(0)),    // 0 = B (Base DRAM leaf)
+                Expr::Source(SourceId(1)),    // 1 = E (Ext DRAM leaf, via cross map)
                 Expr::Add(vec![ExprId(0)]),   // 2 = B-probe wrapper
                 Expr::Add(vec![ExprId(1)]),   // 3 = E-probe wrapper
             ],
@@ -236,22 +255,23 @@ fn eviction_respects_priority_and_width() {
             batching: BatchingOrder { roots: vec![RootId(0), RootId(1), RootId(2), RootId(3)] },
             resolutions: BTreeMap::new(),
         };
-        (layer, ExprId(0), ExprId(1))
+        let cross: HashMap<ReadPlace, FieldKind> = [(e_place, FieldKind::Ext)].into();
+        (layer, ExprId(0), ExprId(1), cross)
     }
 
     let run = |b_priority: f64, e_priority: f64| -> gkr_eval_isa::fwd::context::CompiledLayer {
-        let (layer, b, e) = build_layer();
+        let (layer, b, e, cross) = build_layer();
         let order = vec![RootId(0), RootId(1), RootId(2), RootId(3)];
         let sched = trivial_schedule(order);
         let decisions = SiteDecisions::new([
             (site(RootId(2), ExprId(2), 0, b), b_priority),
             (site(RootId(3), ExprId(3), 0, e), e_priority),
         ]);
-        compile(&layer, &sched, 4, Some(&decisions))
+        compile_with_cross(&layer, &sched, 4, Some(&decisions), &cross)
     };
 
     // (a) B's priority LOWER than E's admitting priority: B is evicted, E admitted.
-    let (_, b, e) = build_layer();
+    let (_, b, e, _) = build_layer();
     let lower = run(1.0, 100.0);
     let after_r1_lower = &lower.resident_realized[1].1;
     assert!(!after_r1_lower.contains(&b), "lower-priority B must be evicted to admit E");
@@ -337,20 +357,22 @@ fn interior_challenge_and_constant_are_never_admitted_even_with_high_priority_ge
     );
 }
 
-// ── Test 3: dead residents evict before any live one ───────────────────────────────
+// ── Test 3: a dead value's cell is REUSED (fill+placement), not force-evicted ───────
 
-/// Dead value (occurrences exhausted) is evicted before any live resident.
+/// Under fill-then-trim the whole cache set is admitted with eviction disabled, and
+/// `plan_placement` (lifetime-aware) reuses a value's cell the instant its live range
+/// ends. So a value A whose last use precedes a later value C's birth shares A's cell
+/// with C automatically — all of A/D/C cache in a 2-cell budget with NO eviction and NO
+/// re-read, where the old greedy would have had to force-evict dead A to fit C. This
+/// pins the improvement: dead-slot reuse replaces dead-value eviction.
 #[test]
-fn dead_values_evict_first() {
-    // A: produced (R0), then demanded again via a probe wrapper (R1) -> exhausted
-    //    (dead) but still resident (a HIT never triggers eviction on its own).
-    // D: produced (R2), with a LIVE remaining occurrence (its probe R4 is scheduled
-    //    AFTER the eviction battle, so `effective_priority(D)` is still `Some` then).
-    // C: produced (R3) with admitting priority 1.0 — lower than D's 5.0, so the ONLY
-    //    way C fits (budget=2, all width 1) is by evicting the DEAD A, never D.
+fn dead_value_slot_reused_without_eviction() {
+    // A: produced (R0), probed once (R1) — last use R1, then dead.
+    // D: produced (R2), probed (R4). C: produced (R3), probed (R5). D and C overlap
+    // (both live across [R3, R4]), but A is already dead by R2, so peak live = 2 = budget.
     // Probes wrap their leaf in a distinct `Add([leaf])` expr (see
-    // `eviction_respects_priority_and_width`'s doc for why: two roots sharing the SAME
-    // bare leaf as `root.expr` would collapse into one `materialize_if_root` event).
+    // `eviction_respects_priority_and_width`'s doc: two roots sharing the SAME bare leaf
+    // as `root.expr` would collapse into one `materialize_if_root` event).
     let layer = DagLayer {
         sources: vec![witness(0), witness(1), witness(2)],
         exprs: vec![
@@ -363,32 +385,41 @@ fn dead_values_evict_first() {
         ],
         roots: vec![
             atom_root(ExprId(0), 0), // R0: A produce
-            atom_root(ExprId(3), 1), // R1: A probe (drains A to dead)
+            atom_root(ExprId(3), 1), // R1: A probe (A's last use — dead after)
             atom_root(ExprId(1), 2), // R2: D produce
-            atom_root(ExprId(2), 3), // R3: C produce (triggers eviction)
-            atom_root(ExprId(4), 4), // R4: D probe (D must still be resident after R3)
-            atom_root(ExprId(5), 5), // R5: C probe (C must be resident after R3)
+            atom_root(ExprId(2), 3), // R3: C produce (C is born after A died)
+            atom_root(ExprId(4), 4), // R4: D probe
+            atom_root(ExprId(5), 5), // R5: C probe
         ],
         batching: BatchingOrder {
             roots: vec![RootId(0), RootId(1), RootId(2), RootId(3), RootId(4), RootId(5)],
         },
         resolutions: BTreeMap::new(),
     };
-    let (a, d, c) = (ExprId(0), ExprId(1), ExprId(2));
     let order = vec![RootId(0), RootId(1), RootId(2), RootId(3), RootId(4), RootId(5)];
     let sched = trivial_schedule(order);
+    let (a, d, c) = (ExprId(0), ExprId(1), ExprId(2));
 
+    // Cache all three (each is a witness DRAM leaf with fan-out 2 → admittable ∧ reaches
+    // DRAM). Under fill, priorities are irrelevant (nothing is evicted), so any genome
+    // works; give each probe occurrence a positive gene for clarity.
     let decisions = SiteDecisions::new([
-        (site(RootId(4), ExprId(4), 0, d), 5.0), // D's remaining-occurrence priority (read at R4)
-        (site(RootId(5), ExprId(5), 0, c), 1.0), // C's remaining-occurrence priority (read at R5)
+        (site(RootId(3), ExprId(3), 0, a), 1.0),
+        (site(RootId(4), ExprId(4), 0, d), 1.0),
+        (site(RootId(5), ExprId(5), 0, c), 1.0),
     ]);
-    let compiled = compile(&layer, &sched, 2, Some(&decisions));
+    let cached = compile(&layer, &sched, 2, Some(&decisions));
+    let uncached = compile(&layer, &sched, 2, None);
 
-    // After R3 (index 3): A is gone (evicted, dead), D and C both survive.
-    let after_r3 = &compiled.resident_realized[3].1;
-    assert!(!after_r3.contains(&a), "dead A must be evicted first, not live D");
-    assert!(after_r3.contains(&d), "live D must survive C's admission");
-    assert!(after_r3.contains(&c), "C must be admitted (only A needed evicting)");
+    // Uncached re-reads every occurrence: A(R0,R1) + D(R2,R4) + C(R3,R5) = 6 DRAM reads.
+    assert_eq!(uncached.stats.dram_reads, 6, "uncached re-reads each of A/D/C twice");
+    // Cached fits all three in a 2-cell budget with zero re-reads — dead A's cell is
+    // REUSED by placement for C, no eviction required. 3 = one read per distinct leaf.
+    assert_eq!(
+        cached.stats.dram_reads, 3,
+        "fill caches A/D/C in budget 2 via dead-slot reuse (no eviction, no re-read)"
+    );
+    assert!(cached.stats.max_live_cells <= 2, "peak live must fit the 2-cell budget");
 }
 
 // ── Test 4: leaf caching removes the second DRAM read ──────────────────────────────
