@@ -182,7 +182,6 @@ pub use ::prover::definitions::{GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS
 
 pub const SECURITY_BITS: usize = 80;
 pub const MERSENNE31QUARTIC_SIZE_LOG2: usize = 124;
-pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
 
 #[derive(Clone, Copy, Debug, Hash)]
 pub struct SizedProofSecurityConfig<const NUM_FOLDINGS: usize> {
