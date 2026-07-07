@@ -176,4 +176,48 @@ mod test {
         let opcode = 0x0220b1b3;
         test_mul_div_circuit(opcode, opcode_data);
     }
+
+    #[test]
+    fn test_on_external_witness() {
+        use std::path::Path;
+
+        fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+            let src = std::fs::File::open(filename).unwrap();
+            bincode::deserialize_from(src).unwrap()
+        }
+
+        fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
+            use std::io::Read;
+            let mut file = std::fs::File::open(path).expect("must open provided file");
+            let mut buffer = vec![];
+            file.read_to_end(&mut buffer).expect("must read the file");
+            assert_eq!(buffer.len() % core::mem::size_of::<u32>(), 0);
+            let mut binary = Vec::with_capacity(buffer.len() / core::mem::size_of::<u32>());
+            for el in buffer.as_chunks::<4>().0 {
+                binary.push(u32::from_le_bytes(*el));
+            }
+
+            (buffer, binary)
+        }
+
+        let witness: Vec<NonMemoryOpcodeTracingDataWithTimestamp> = bincode_deserialize_from_file(
+            "../circuit_defs/prover_examples/family_4_circuit_0_oracle_witness.bin",
+        );
+        println!("{} inputs in total", witness.len());
+        let (_, binary) = read_binary(&Path::new(
+            "../riscv_transpiler/examples/zksync_os/app.text",
+        ));
+        for (i, wit) in witness.into_iter().enumerate() {
+            if i % 100 == 0 {
+                println!("{}", i);
+            }
+            let pc = wit.opcode_data.initial_pc;
+            let opcode = binary[(pc / 4) as usize];
+            // remap witness
+            let mut opcode_data = wit.opcode_data;
+            opcode_data.initial_pc = 0;
+            opcode_data.new_pc = 4;
+            test_mul_div_circuit(opcode, opcode_data);
+        }
+    }
 }

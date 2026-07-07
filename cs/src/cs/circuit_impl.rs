@@ -467,10 +467,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         self.add_named_variable(&format!("{} read_timestamp[{}]", name, i))
                     });
 
-                    println!(
-                        "Created variables {:?} for mem access {} read timestamp",
-                        vars, name
-                    );
+                    // println!(
+                    //     "Created variables {:?} for mem access {} read timestamp",
+                    //     vars, name
+                    // );
 
                     // timestamps always assumed assigned
                     let value_fn = move |placer: &mut Self::WitnessPlacer| {
@@ -511,10 +511,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         &format!("{name} read_value"),
                     );
                     let read_value = read_value.0.map(|el| el.get_variable());
-                    println!(
-                        "Created variables {:?} for mem access {} read value",
-                        read_value, name
-                    );
+                    // println!(
+                    //     "Created variables {:?} for mem access {} read value",
+                    //     read_value, name
+                    // );
                     let read_value = WordRepresentation::U16Limbs(read_value);
 
                     let access = MemoryAccess::RegisterOnly(RegisterAccess {
@@ -532,10 +532,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let read_value: [Variable; 4] = std::array::from_fn(|i| {
                         self.add_named_variable(&format!("{} read_value_u8[{}]", name, i))
                     });
-                    println!(
-                        "Created variables {:?} for mem access {} read value",
-                        read_value, name
-                    );
+                    // println!(
+                    //     "Created variables {:?} for mem access {} read value",
+                    //     read_value, name
+                    // );
                     if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
                             for el in read_value.iter() {
@@ -694,7 +694,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let vars: [Variable; 4] = core::array::from_fn(|i| {
                         self.add_named_variable(&format!("{name} read_value_u8[{i}]"))
                     });
-                    println!("created variables {vars:?} for mem access {name} read value");
+                    // println!("created variables {vars:?} for mem access {name} read value");
                     let value_fn = move |placer: &mut Self::WitnessPlacer| {
                         if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                             for el in vars {
@@ -767,7 +767,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let vars: [Variable; 4] = core::array::from_fn(|i| {
                         self.add_named_variable(&format!("{name} read_value_u8[{i}]"))
                     });
-                    println!("created variables {vars:?} for mem access {name} read value");
+                    // println!("created variables {vars:?} for mem access {name} read value");
                     let value_fn = move |placer: &mut Self::WitnessPlacer| {
                         if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                             for el in vars {
@@ -795,7 +795,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let vars: [Variable; 4] = core::array::from_fn(|i| {
                         self.add_named_variable(&format!("{name} write_value_u8[{i}]"))
                     });
-                    println!("created variables {vars:?} for mem access {name} write value");
+                    // println!("created variables {vars:?} for mem access {name} write value");
                     let value_fn = move |placer: &mut Self::WitnessPlacer| {
                         if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                             for el in vars {

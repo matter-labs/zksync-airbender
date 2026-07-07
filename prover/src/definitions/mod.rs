@@ -43,7 +43,7 @@ impl SecurityLevel {
         }
     }
 
-    pub const fn bits(self) -> u32 {
+    pub const fn security_bits(self) -> usize {
         match self {
             SecurityLevel::Sec80 => 80,
             SecurityLevel::Sec100 => 100,

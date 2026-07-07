@@ -729,7 +729,7 @@ where
     // scales with the number of batched base-oracle columns l, so it is
     // computed per-circuit here (and identically baked by the verifier generator).
     let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits(
-        prover_config.security_level.bits() as usize,
+        prover_config.security_level.security_bits(),
         trace_len.trailing_zeros() as usize,
         prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
         pow_bits::total_base_oracle_columns(compiled_circuit),
