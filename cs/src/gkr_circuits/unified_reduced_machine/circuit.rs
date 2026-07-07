@@ -1,6 +1,9 @@
 use super::add_sub_lui_auipc_mop::apply_unified_add_sub_lui_auipc_mop_inner;
 use super::binary_shifts::apply_unified_binary_shifts_inner;
 use super::jump_branch_slt::apply_unified_jump_branch_slt_inner;
+use super::jump_branch_slt::{
+    jump_branch_slt_unified_table_addition_fn, jump_branch_slt_unified_table_driver_fn,
+};
 use super::mem_word_only::apply_unified_mem_word_only_inner;
 use super::*;
 use crate::constraint::{Constraint, Term};
@@ -10,9 +13,6 @@ use crate::gkr_circuits::add_sub_family::{
 };
 use crate::gkr_circuits::binary_shifts_family::{
     shift_binop_table_addition_fn, shift_binop_table_driver_fn,
-};
-use crate::gkr_circuits::jump_branch_slt_family::{
-    jump_branch_slt_table_addition_fn, jump_branch_slt_table_driver_fn,
 };
 use crate::gkr_circuits::mem_word_only::{
     mem_word_only_table_addition_fn, mem_word_only_table_driver_fn,
@@ -91,7 +91,7 @@ const UNIFIED_SCRATCH_BOOL_COUNT: usize = const_max(
 );
 
 pub(super) const F1_SCRATCH_VARS: usize = 0;
-pub(super) const F2_SCRATCH_VARS: usize = 4; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source
+pub(super) const F2_SCRATCH_VARS: usize = 5; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source, rs2_sign
 pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points (xor-rotate reuses the rs2 split: rs2 aliases rd at decode)
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
 
@@ -164,7 +164,7 @@ const UNIFIED_XOR_ROTATE_TABLES: [TableType; 4] = [
 
 pub fn unified_reduced_machine_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     add_sub_lui_auipc_mop_table_addition_fn(cs);
-    jump_branch_slt_table_addition_fn(cs);
+    jump_branch_slt_unified_table_addition_fn(cs);
     shift_binop_table_addition_fn(cs);
     mem_word_only_table_addition_fn(cs);
     for t in UNIFIED_XOR_ROTATE_TABLES {
@@ -174,7 +174,7 @@ pub fn unified_reduced_machine_table_addition_fn<F: PrimeField, CS: Circuit<F>>(
 
 pub fn unified_reduced_machine_table_driver_fn<F: PrimeField>(table_driver: &mut TableDriver<F>) {
     add_sub_lui_auipc_mop_table_driver_fn(table_driver);
-    jump_branch_slt_table_driver_fn(table_driver);
+    jump_branch_slt_unified_table_driver_fn(table_driver);
     shift_binop_table_driver_fn(table_driver);
     mem_word_only_table_driver_fn(table_driver);
     for t in UNIFIED_XOR_ROTATE_TABLES {
@@ -627,6 +627,62 @@ mod test {
     use super::*;
     use crate::definitions::OutputType;
     use crate::utils::serialize_to_file;
+
+    #[test]
+    fn unified_rs2_sign_lookup_reads_slt_sign_source_scratch() {
+        use crate::cs::circuit_impl::BasicAssembly;
+        use crate::tables::TableType;
+        use ::field::baby_bear::base::BabyBearField;
+
+        let mut cs = BasicAssembly::<BabyBearField>::new();
+        unified_register_all_tables(&mut cs);
+        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+        let (output, _) = cs.finalize();
+
+        let var_by_name = |name: &str| {
+            output
+                .variable_names
+                .iter()
+                .find(|(_, n)| n.as_str() == name)
+                .map(|(v, _)| *v)
+        };
+        let slt_sign_source =
+            var_by_name("shared scratch var[3]").expect("F2 sign-source scratch var must exist");
+        let u16getsign_id =
+            BabyBearField::from_u32(TableType::U16GetSign as u32).expect("table id fits");
+
+        // Walk the pooled lookup slots by their generated names; stop at the first gap.
+        let mut found = false;
+        for k in 0..UNIFIED_LOOKUP_WIDTH * 8 {
+            let Some(tid_var) = var_by_name(&format!("pooled lookup table_id (slot {k})")) else {
+                break;
+            };
+            let tid_c = &output.variables_from_constraints[&tid_var];
+            // F2's contribution to the slot's table id is `is_fam2_sum() * U16GetSign`,
+            // i.e. degree-1 terms with the table id as coefficient.
+            let has_u16getsign = tid_c.terms.iter().any(|t| {
+                matches!(t, Term::Expression { coeff, degree: 1, .. } if *coeff == u16getsign_id)
+            });
+            let Some(in0_var) = var_by_name(&format!("pooled lookup input (slot {k}, pos 0)"))
+            else {
+                continue;
+            };
+            let in0_c = &output.variables_from_constraints[&in0_var];
+            let reads_sign_source = in0_c
+                .terms
+                .iter()
+                .any(|t| t.as_slice().contains(&slt_sign_source));
+            if has_u16getsign && reads_sign_source {
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "some pooled lookup slot must extract the rs2 sign via U16GetSign fed by \
+             the F2 sign-source scratch var (slt_sign_source), not by raw rs2_high"
+        );
+    }
 
     /// Sanity-check the artifact shape: both output channels present + i/t
     /// teardown_sets populated. Doesn't write anything to disk.

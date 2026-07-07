@@ -68,6 +68,10 @@ pub enum TableType {
     XorRotate12,
     XorRotate8,
     XorRotate7,
+    // Unified-only 2^7 conditional-jump/branch/SLT resolution table (rs2-sign split): keys on
+    // rs2's pre-extracted sign bit instead of the full 16-bit sign source
+    // The standalone `jump_branch_slt_family` circuit keeps that 2^22 table.
+    ConditionalJmpBranchSltUnified,
     DynamicPlaceholder, // MUST be the last
 }
 
