@@ -52,6 +52,7 @@ unsafe fn layer_0_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -72,7 +73,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (0usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[0usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -95,7 +96,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (1usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[1usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -129,7 +130,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (0usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[0usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -176,7 +177,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (1usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[1usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -234,7 +235,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (2usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[2usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -257,7 +258,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (3usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[3usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -291,7 +292,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (2usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[2usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -338,7 +339,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (3usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[3usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -396,7 +397,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (4usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[4usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -419,7 +420,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (5usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[5usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -453,7 +454,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (4usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[4usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -500,7 +501,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (5usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[5usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -558,7 +559,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (6usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[6usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -581,7 +582,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (7usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[7usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -615,7 +616,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (6usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[6usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -662,7 +663,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (7usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[7usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -720,7 +721,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (8usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[8usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -743,7 +744,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (9usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[9usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -777,7 +778,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (8usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[8usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -824,7 +825,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (9usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[9usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -882,7 +883,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (10usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[10usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -905,7 +906,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (11usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[11usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -939,7 +940,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (10usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[10usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -986,7 +987,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (11usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[11usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -1044,7 +1045,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (12usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[12usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -1067,7 +1068,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (13usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[13usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -1101,7 +1102,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (12usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[12usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -1148,7 +1149,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (13usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[13usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -1206,7 +1207,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (14usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[14usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -1229,7 +1230,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (15usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[15usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -1263,7 +1264,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (14usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[14usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -1310,7 +1311,7 @@ unsafe fn layer_0_final_step_accumulator(
                 {
                     let mut t = linearization_challenges[1usize];
                     let mut addr_hi = evals.get_unchecked(65usize)[j];
-                    let set_bits = (15usize as u32) << address_high_bits_shift;
+                    let set_bits = inits_and_teardowns_top_bits[15usize] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = BabyBearField::from_u32_unchecked(set_bits);
                         field_ops::add_assign_base(&mut addr_hi, &set_field);
@@ -1381,6 +1382,7 @@ unsafe fn layer_1_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -1608,6 +1610,7 @@ unsafe fn layer_2_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -1827,6 +1830,7 @@ unsafe fn layer_3_final_step_accumulator(
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
@@ -3423,6 +3427,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 3usize)?;
             }
@@ -3469,6 +3474,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 2usize)?;
             }
@@ -3515,6 +3521,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 1usize)?;
             }
@@ -3561,6 +3568,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     &external_challenges.permutation_argument_linearization_challenges,
                     external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
+                    &initial_transcript.inits_and_teardowns_top_bits,
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
@@ -3611,6 +3619,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
         state.batching_challenge = draw_single_field_el(ts);
         let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
         let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_read_product: BabyBearExt4 = BabyBearExt4::ONE;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
             let mut read_product = BabyBearExt4::ONE;
             for i in 0..16usize {
@@ -3633,6 +3645,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
+            inits_and_teardowns_read_product,
+            inits_and_teardowns_write_product,
             whir_batching_challenge: state.batching_challenge,
         })
     }

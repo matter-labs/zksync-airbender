@@ -37,7 +37,7 @@ impl GKRGate for CopyNode {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         match self {
             Self::FromBaseLayerInBase(input) | Self::FromIntermediateInBase(input) => {
-                println!("Copying variable {:?} -> {:?} in base field", input, output);
+                // println!("Copying variable {:?} -> {:?} in base field", input, output);
                 let rel = NoFieldGKRRelation::CopyInBaseField {
                     input: *input,
                     output,
@@ -47,10 +47,10 @@ impl GKRGate for CopyNode {
                 (output, rel)
             }
             Self::FromBaseLayerInExtension(input) | Self::FromIntermediateInExtension(input) => {
-                println!(
-                    "Copying variable {:?} -> {:?} in extension field",
-                    input, output
-                );
+                // println!(
+                //     "Copying variable {:?} -> {:?} in extension field",
+                //     input, output
+                // );
                 let rel = NoFieldGKRRelation::CopyInExtensionField {
                     input: *input,
                     output,

@@ -190,10 +190,10 @@ impl<F: PrimeField> GKRCompiler<F> {
                 core::cmp::max(decoder_width, max_width_without_decoder)
             };
 
-            println!(
-                "Generic lookup total tables in setup: {}",
-                generic_lookup_width
-            );
+            // println!(
+            //     "Generic lookup total tables in setup: {}",
+            //     generic_lookup_width
+            // );
 
             assert!(generic_lookup_width >= decoder_table_width);
 
@@ -598,25 +598,25 @@ impl<F: PrimeField> GKRCompiler<F> {
             }
         }
         let len_after = constraints.len();
-        println!(
-            "{} constraints removed as they define variables, will be used separately",
-            len_before - len_after
-        );
+        // println!(
+        //     "{} constraints removed as they define variables, will be used separately",
+        //     len_before - len_after
+        // );
 
         // Above we only placed in the graph variables that have strict constraint on being at the base (input) layer of the proof.
         // Now we should try to move from the base layer and place the rest.
         // As we explicitly track variables that can be made "virtual" (by pushing them into intermediate GKR layers),
         // it should be relatively easy task.
 
-        println!(
-            "In total of {} variables are defined via constraints",
-            variables_from_constraints.len()
-        );
-        for (var, _c) in variables_from_constraints.iter() {
-            if let Some(name) = variable_names.get(var) {
-                println!("Variable {:?}: `{}` is defined via constraint", var, name);
-            }
-        }
+        // println!(
+        //     "In total of {} variables are defined via constraints",
+        //     variables_from_constraints.len()
+        // );
+        // for (var, _c) in variables_from_constraints.iter() {
+        //     if let Some(name) = variable_names.get(var) {
+        //         println!("Variable {:?}: `{}` is defined via constraint", var, name);
+        //     }
+        // }
 
         // first define if any of the constraints depends on the variables defined via other constraints
         let mut variables_via_constraints_are_disjoint = true;
@@ -630,10 +630,10 @@ impl<F: PrimeField> GKRCompiler<F> {
             c.dump_variables(&mut all_variables_in_constraints);
         }
 
-        println!(
-            "Variables defined via constraints are disjoint = {}",
-            variables_via_constraints_are_disjoint
-        );
+        // println!(
+        //     "Variables defined via constraints are disjoint = {}",
+        //     variables_via_constraints_are_disjoint
+        // );
 
         if variables_from_constraints.len() > 0 {
             assert!(all_variables_to_place.len() > 0);

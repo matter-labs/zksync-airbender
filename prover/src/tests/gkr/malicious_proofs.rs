@@ -35,7 +35,7 @@ fn generate_proof(
     let worker = Worker::new_with_num_threads(8);
 
     let config = ProgramConfig::keccak_f1600();
-    let vm = run_vm_and_capture::<CountersT>(&config, &worker);
+    let vm = run_vm_and_capture::<CountersT, FullUnsignedMachineDecoderConfig>(&config, &worker);
 
     let preprocessing_data = process_binary_into_separate_tables_ext::<
         BabyBearField,

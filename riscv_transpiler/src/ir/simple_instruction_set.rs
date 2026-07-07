@@ -278,7 +278,11 @@ pub fn preprocess_bytecode<
                         Instruction::pure_from_imm(InstructionName::And, formal_rs1, 0, rd, imm)
                     }
                     _ => {
-                        panic!("Unknown opcode 0x{:08x}", opcode);
+                        panic!(
+                            "Unknown REG-IMM opcode 0x{:08x} at PC = 0x{:08x}",
+                            opcode,
+                            i * 4
+                        );
                     }
                 };
 
@@ -477,7 +481,11 @@ pub fn preprocess_bytecode<
                             0,
                         ),
                         _ => {
-                            panic!("Unknown opcode 0x{:08x}", opcode);
+                            panic!(
+                                "Unknown REG-REG I-ext opcode 0x{:08x} at PC = 0x{:08x}",
+                                opcode,
+                                i * 4
+                            );
                         }
                     }
                 }
@@ -557,7 +565,11 @@ pub fn preprocess_bytecode<
                         instr
                     }
                     _ => {
-                        panic!("Unknown opcode 0x{:08x}", opcode);
+                        panic!(
+                            "Unknown LOAD opcode 0x{:08x} at PC = 0x{:08x}",
+                            opcode,
+                            i * 4
+                        );
                     }
                 }
             }
@@ -611,7 +623,12 @@ pub fn preprocess_bytecode<
                         }
                     }
                     _ => {
-                        panic!("Unknown opcode 0x{:08x}", opcode);
+                        panic!(
+                            "Unknown STORE opcode funct3 = {}, opcode 0x{:08x} at PC = 0x{:08x}",
+                            funct3,
+                            opcode,
+                            i * 4
+                        );
                     }
                 }
             }
@@ -721,10 +738,15 @@ pub fn preprocess_bytecode<
                                     mopi_number,
                                 )
                             } else if OPT::SUPPORT_SPECIAL_XOR_ROT_AND_TRI_ADD {
+                                // rs2 := rd — the second XOR operand is rd's old value, routed
+                                // through the rs2 read port (sub-slot +1) so the circuit reuses
+                                // the rs2 byte decomposition instead of splitting rd_old
+                                // separately. The MOP-I encoding has no rs2 field; imm carries
+                                // only the rotation.
                                 Instruction::pure_from_imm(
                                     InstructionName::ZimopIXorRot,
                                     formal_rs1,
-                                    0,
+                                    rd,
                                     rd,
                                     mopi_number,
                                 )
@@ -917,12 +939,21 @@ pub fn preprocess_bytecode<
 
                     if funct3 != 0b001 {
                         // not CSRRW
-                        panic!("Unknown opcode 0x{:08x}", opcode);
+                        panic!(
+                            "Unknown CSRRW family opcode 0x{:08x} at PC = 0x{:08x}",
+                            opcode,
+                            i * 4
+                        );
                     }
 
                     instr
                 } else {
-                    panic!("Unknown system funct3 enc 0x{:08x}", funct3);
+                    panic!(
+                        "Unknown SYSTEM funct3 enc 0x{:08x}, opcode 0x{:08x} at PC = 0x{:08x}",
+                        funct3,
+                        opcode,
+                        i * 4
+                    );
                 };
 
                 instr
