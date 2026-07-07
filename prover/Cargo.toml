@@ -59,6 +59,9 @@ no_caches = []
 # When set, WHIR intermediate-oracle leaves are committed in evaluation form
 # (the pre-coefficient-encoding behavior). Default (feature off) is coefficient form.
 eval_leaves = []
+# Exposes test-only helpers (e.g. the whir `commit_single_ext_poly_*_for_test`
+# functions) to downstream crates' tests; not compiled into the normal library.
+test-utils = []
 verifier_stats = ["non_determinism_source/verifier_stats"]
 # Will perform witness evaluation in synthesis functions
 cs_debug = ["cs/debug_evaluate_witness"]

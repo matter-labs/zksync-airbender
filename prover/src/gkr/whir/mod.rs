@@ -1658,6 +1658,7 @@ where
 /// eval-form variant is `#[cfg(feature = "eval_leaves")]`-gated, so this ungated
 /// helper provides the eval-form reference regardless of the active feature.
 /// Mirrors the eval-form `commit_single_ext_poly` body exactly.
+#[cfg(any(test, feature = "test-utils"))]
 pub fn commit_single_ext_poly_no_transform_for_test<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -1708,6 +1709,7 @@ where
     }
 }
 
+#[cfg(any(test, feature = "test-utils"))]
 pub fn commit_single_ext_poly_with_transform_for_test<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,

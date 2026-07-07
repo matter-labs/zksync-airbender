@@ -57,6 +57,7 @@ test_no_inline = ["field/no_inline"]
 gpu_native_build = { workspace = true }
 
 [dev-dependencies]
+prover = { workspace = true, features = ["test-utils"] }
 env_logger = "0.11"
 itertools = "0.14"
 rand = "0.9"
