@@ -1,9 +1,10 @@
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 #[cfg(test)]
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
-use era_cudart::stream::CudaStream;
+use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
 
 use crate::allocator::tracker::AllocationPlacement;
 #[cfg(test)]
@@ -17,8 +18,7 @@ use crate::ops::blake2s::{
     gather_leaf_rows, gather_merkle_paths_device, gather_merkle_paths_from_rows,
 };
 use crate::ops::ntt::{
-    bitreversed_monomials_to_natural_evals_multi_coset,
-    bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range,
+    bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range,
     hypercube_x1_msb_evals_to_x1_msb_monomials, log_size_supports_transposed_monomials,
     transform_whir_leaves_from_ntt_in_place_multi_coset,
 };
@@ -1315,7 +1315,6 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
     assert!(log_tree_cap_size <= total_leaf_count_log2);
     let layers_count = total_leaf_count_log2 + 1 - log_tree_cap_size;
     let (leaves, nodes) = trees_backing.split_at_mut(total_leaf_count);
-    let stream = context.get_exec_stream();
 
     let device_properties = context.get_device_properties();
     let ntt_ctx = context.ntt_device_context();
@@ -1332,80 +1331,127 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
     };
 
     let total_cosets = 1 << natural_log_lde_factor;
+    // Default: no L2 chunking
+    let mut cosets_in_tile_chunk = total_cosets;
+    let mut num_streams = 1;
+    // Deactivate chunking for log_trace_len < 14 because it doesn't play well
+    // with the small dit kernels.
+    // TODO: extend chunk-friendly kernels to smaller sizes
     let l2_bytes = device_properties.l2_cache_size_bytes;
     let single_bf_col_bytes = std::mem::size_of::<BF>() << log_trace_len;
     let single_coset_bytes = src_cols_per_coset * single_bf_col_bytes;
-    // Deactivate chunking for log_trace_len < 18 because it doesn't play well
-    // with the small dit kernels.
-    // TODO: investigate
-    let cosets_in_tile_chunk = if l2_bytes >= single_coset_bytes && log_trace_len >= 18 {
-        let nearest = l2_bytes / single_coset_bytes;
-        if nearest.is_power_of_two() {
-            nearest
+    if log_trace_len >= 14 {
+        let half_l2_bytes = l2_bytes >> 1;
+        if single_coset_bytes > half_l2_bytes {
+            cosets_in_tile_chunk = 1;
         } else {
-            nearest.next_power_of_two() >> 1
+            let nearest = half_l2_bytes / single_coset_bytes;
+            if nearest.is_power_of_two() {
+                cosets_in_tile_chunk = nearest;
+                num_streams = 2;
+            } else {
+                cosets_in_tile_chunk = nearest.next_power_of_two() >> 1;
+                num_streams = 2;
+            }
         }
-    } else {
-        // don't bother with chunking
-        total_cosets
-    };
+    }
+
     if total_cosets > cosets_in_tile_chunk {
         assert_eq!(total_cosets % cosets_in_tile_chunk, 0);
     }
 
     let mut ntt_output_matrix = DeviceMatrixMut::new(ntt_output, trace_len);
 
-    for coset_index_base in (0..total_cosets).step_by(cosets_in_tile_chunk) {
-        let cosets_in_tile = std::cmp::min(cosets_in_tile_chunk, total_cosets - coset_index_base);
-        // The NTT and hashing APIs don't internally apply an offset for coset_index_base,
-        // so for them we have to manually select the start in ntt_output.
-        let offset = src_cols_per_coset * trace_len * coset_index_base;
-        let scratch_opt = d_scratch.as_mut().map(|s| &mut s[..]);
-        bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
-            inputs_matrix,
-            &mut (ntt_output_matrix.slice_mut())[offset..],
-            log_trace_len as usize,
-            natural_log_lde_factor as usize,
-            cosets_in_tile,
-            coset_index_base,
-            src_cols_per_coset,
-            false,
-            ntt_ctx,
-            scratch_opt,
-            stream,
-            device_properties,
-        )?;
+    let (start_event, end_event) = if num_streams > 1 {
+        (
+            Some(CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?),
+            Some(CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?),
+        )
+    } else {
+        (None, None)
+    };
+
+    let mut occupancy_hint_numerator = 1;
+    let mut occupancy_hint_denominator = 1;
+    let exec_stream = context.get_exec_stream();
+    let side_stream = context.get_side_stream();
+    let streams = [exec_stream, side_stream];
+    if num_streams > 1 {
+        occupancy_hint_numerator = 5;
+        occupancy_hint_denominator = 8;
+        start_event.as_ref().unwrap().record(exec_stream)?;
+        side_stream.wait_event(start_event.as_ref().unwrap(), CudaStreamWaitEventFlags::DEFAULT)?;
+    }
+
+    for coset_index_base in (0..total_cosets).step_by(num_streams * cosets_in_tile_chunk) {
+        let mut helpers_per_stream = Vec::with_capacity(2);
+        for i in 0..num_streams {
+            let coset_index_base_this_stream = coset_index_base + i * cosets_in_tile_chunk;
+            if coset_index_base_this_stream < total_cosets {
+                let cosets_in_tile = std::cmp::min(cosets_in_tile_chunk, total_cosets - coset_index_base_this_stream);
+                let offset = src_cols_per_coset * trace_len * coset_index_base_this_stream;
+                helpers_per_stream.push((coset_index_base_this_stream, cosets_in_tile, offset));
+            }
+        }
+        // If we're using two streams, dispatch with breadth-first ping pong pattern
+        for (i, &(coset_index_base_this_stream, cosets_in_tile, offset)) in helpers_per_stream.iter().enumerate() {
+           let scratch_opt = d_scratch.as_mut().map(|s| &mut s[..]);
+           lde_with_coset_range(
+               inputs_matrix,
+               &mut (ntt_output_matrix.slice_mut())[offset..],
+               log_trace_len as usize,
+               natural_log_lde_factor as usize,
+               cosets_in_tile,
+               coset_index_base_this_stream,
+               src_cols_per_coset,
+               occupancy_hint_numerator,
+               occupancy_hint_denominator,
+               ntt_ctx,
+               scratch_opt,
+               streams[i],
+               device_properties,
+           )?;
+        }
         if transform_leaves_to_multilinear_coeffs {
-            transform_whir_leaves_from_ntt_in_place_multi_coset(
-                &mut ntt_output_matrix,
-                log_trace_len,
-                natural_log_lde_factor,
+            for (i, &(coset_index_base_this_stream, cosets_in_tile, _offset)) in helpers_per_stream.iter().enumerate() {
+                transform_whir_leaves_from_ntt_in_place_multi_coset(
+                    &mut ntt_output_matrix,
+                    log_trace_len,
+                    natural_log_lde_factor,
+                    log_values_per_leaf,
+                    coset_index_base_this_stream as u32,
+                    cosets_in_tile as u32,
+                    src_cols_per_coset as u32,
+                    streams[i],
+                )?;
+            }
+        }
+        for (i, &(coset_index_base_this_stream, cosets_in_tile, offset)) in helpers_per_stream.iter().enumerate() {
+            crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
+                &(ntt_output_matrix.slice())[offset..],
+                leaves,
                 log_values_per_leaf,
-                coset_index_base as u32,
-                cosets_in_tile as u32,
                 src_cols_per_coset as u32,
-                stream,
+                natural_log_lde_factor,
+                coset_index_base_this_stream as u32,
+                cosets_in_tile,
+                packed_leaf_count,
+                trace_len as u32,
+                streams[i],
             )?;
         }
-        crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
-            &(ntt_output_matrix.slice())[offset..],
-            leaves,
-            log_values_per_leaf,
-            src_cols_per_coset as u32,
-            natural_log_lde_factor,
-            coset_index_base as u32,
-            cosets_in_tile,
-            packed_leaf_count,
-            trace_len as u32,
-            stream,
-        )?;
+    }
+
+    if num_streams > 1 {
+        end_event.as_ref().unwrap().record(side_stream)?;
+        exec_stream.wait_event(end_event.as_ref().unwrap(), CudaStreamWaitEventFlags::DEFAULT)?;
     }
 
     // Single-tree node layers: build_merkle_tree_nodes operates on a flat
     // `[leaves | nodes]` slab. `layers_count - 1` because the leaf layer is
     // already written; the function builds the remaining `layers_count - 1`
     // node layers.
-    crate::ops::blake2s::build_merkle_tree_nodes(leaves, nodes, layers_count - 1, stream)
+    crate::ops::blake2s::build_merkle_tree_nodes(leaves, nodes, layers_count - 1, exec_stream)
 }
 
 /// Multi-coset variant of `commit_trace_with_partial_tree`: takes one big

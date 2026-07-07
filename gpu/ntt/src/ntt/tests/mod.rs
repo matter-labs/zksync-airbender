@@ -779,7 +779,7 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
     };
     use super::{
         bitreversed_monomials_to_natural_evals, bitreversed_monomials_to_natural_evals_multi_coset,
-        bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range,
+        lde_with_coset_range,
     };
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
@@ -834,7 +834,7 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
             )
             .unwrap();
         } else {
-            bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
+            lde_with_coset_range(
                 &inputs_matrix,
                 &mut candidate_device[..],
                 log_n,
@@ -842,7 +842,8 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                 num_cosets,
                 coset_index_base,
                 NUM_COLS,
-                false,
+                1,
+                1,
                 context.device_context(),
                 scratch_opt,
                 stream,
@@ -977,7 +978,42 @@ multi_coset_range_parity_test!(
     4
 );
 multi_coset_range_parity_test!(
-    multi_coset_monomials_to_evals_log_n_8_cosets_23_base_4,
+    multi_coset_monomials_to_evals_log_n_18_cosets_8_base_8,
+    18,
+    9,
+    8,
+    8
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_17_cosets_16_base_16,
+    17,
+    10,
+    16,
+    16
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_16_cosets_32_base_32,
+    16,
+    11,
+    32,
+    32
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_15_cosets_64_base_64,
+    15,
+    12,
+    64,
+    64
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_14_cosets_128_base_128,
+    14,
+    12,
+    128,
+    128
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_23_cosets_8_base_8,
     23,
     4,
     4,
