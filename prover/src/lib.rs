@@ -36,8 +36,6 @@ pub mod nd_source_std;
 #[cfg(feature = "prover")]
 pub mod query_utils;
 #[cfg(feature = "prover")]
-pub mod trace_holder;
-#[cfg(feature = "prover")]
 pub mod tracers;
 
 #[cfg(any(test, feature = "test"))]

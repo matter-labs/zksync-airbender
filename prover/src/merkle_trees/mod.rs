@@ -1,11 +1,8 @@
 use crate::definitions::{LeafInclusionVerifier, MerkleTreeCap, DIGEST_SIZE_U32_WORDS};
-use crate::trace_holder::ColumnMajorTrace;
-use crate::trace_holder::RowMajorTrace;
+use field::PrimeField;
+
 use fft::GoodAllocator;
 use field::FieldExtension;
-use field::Mersenne31Field;
-use field::Mersenne31Quartic;
-use field::PrimeField;
 use worker::Worker;
 
 pub mod blake2s_for_everything_tree;
@@ -46,8 +43,19 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
 
     fn dummy() -> Self;
 
+    // fn construct_for_column_major_coset<E: FieldExtension<F>, A: GoodAllocator>(
+    //     trace: &[&[E]],
+    //     combine_by: usize,
+    //     cap_size: usize,
+    //     bitreverse_input: bool,
+    //     bitreverse_output: bool,
+    //     worker: &Worker,
+    // ) -> Self
+    // where
+    //     [(); E::DEGREE]: Sized;
+
     fn construct_from_cosets<E: FieldExtension<F>, A: GoodAllocator>(
-        trace: &[&[&[E]]],
+        trace: &[&[&[E]]], // slice of cosets, each coset - is a slice of column evaluations
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,
@@ -59,6 +67,15 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         [(); E::DEGREE]: Sized;
 
     fn get_cap(&self) -> MerkleTreeCapVarLength;
+
+    // fn dump_caps(caps: &[Self]) -> Vec<MerkleTreeCapVarLength> {
+    //     let mut result = Vec::with_capacity(caps.len());
+    //     for el in caps.iter() {
+    //         result.push(el.get_cap());
+    //     }
+
+    //     result
+    // }
 
     fn get_proof<C: GoodAllocator>(
         &self,

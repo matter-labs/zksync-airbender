@@ -11,8 +11,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - fft/ - native and verifier fft implementations in multiple layout formats to mirror various gpu layouts
 - field/ - native optimised cpu prover and verifier Mersenne31 basic and extension field implementations
 - full_statement_verifier/ - full stark verifier logic, with support for chunking
-- gpu/circuit_prover/ - main Rust->CUDA gpu prover implementation
-
+- gpu/ - Rust->CUDA GPU prover crate stack (see the "gpu:" section under Prover Implementations)
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate
 - prover/ - main cpu prover implementation with its 5 stages
 - riscv_common/ - custom RiscV bytecode to be used by "kernel" OS programs
@@ -41,8 +40,12 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
         - tracers/ - helper code for supporting witness gen of memory argument
         - witness_evaluator/ - code to help evaluate our special witness generation closures
 - gpu: 
-    - gpu/circuit_prover/ - rather comprehensive mix of cuda and rust glue code, to mirror our cpu prover
-    - witness_eval_generator/ - (crate `gpu_witness_eval_generator`) Rust->CUDA witness-generation codegen for the GPU prover
+    - circuit_prover/ - comprehensive CUDA + Rust glue, mirrors the cpu prover
+    - execution_prover/, program_prover/ - execution- and program-level proving drivers + recursion ladder
+    - core/, ntt/, hash/, ops/, cub/ - CUDA kernel and primitive crates
+    - witness_eval_generator/ - (crate `gpu_witness_eval_generator`) Rust->CUDA witness-generation codegen
+    - gkr_model/ - GKR cost/scheduling model
+    - native_build/ - shared CUDA/native build glue
 
 ## AIR Circuits
 - cs/
