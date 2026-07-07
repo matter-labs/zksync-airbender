@@ -238,6 +238,19 @@ pub struct CompiledCircuit {
 /// `Some` runs the sub-project-2 residency machine at `budget`. The
 /// policy is threaded into Phase 1 (`lower_layer_virtual`); everything downstream
 /// (placement, materialize) is decisions-agnostic.
+/// Compile one layer under the "fill-then-trim" strategy: cache maximally (lower with
+/// eviction effectively disabled), then let `plan_placement` at the real `budget` be the
+/// feasibility oracle. If the maximal-cache stream overflows the budget, descend the
+/// lowering budget — the eviction dial; greedy eviction picks victims by per-occurrence
+/// genome priority — to the largest value whose placement still fits (the fewest
+/// evictions the budget allows).
+///
+/// Why this is never worse than the old greedy single-pass: `lower_budget == budget`
+/// reproduces it exactly, and that point is always in the searched interval (it is the
+/// binary search's `lo` seed / baseline). So the returned traffic is `<=` the old path's
+/// for every layer, and strictly better where maximal caching (or more of it) fits — the
+/// old in-loop `evict_to_fit` over-reserved against `live_width` (a 1-D width sum) while
+/// real feasibility is `plan_placement`'s 2-D (lifetime x quad, with defrag) packing.
 pub fn compile_layer(
     layer: &DagLayer,
     artifact_layer: &GKRLayerDescription,
@@ -247,13 +260,65 @@ pub fn compile_layer(
     budget: usize,
     decisions: Option<&SiteDecisions>,
 ) -> Result<CompiledLayer, CompileError> {
+    // FILL disables eviction (no real layer's live width approaches it), so lowering at
+    // FILL caches every admittable value for its whole live range — the maximal-cache
+    // "fill" stream. `plan_placement` at the true `budget` then decides if it fits.
+    const FILL: usize = 1 << 20;
+    let at = |lb: usize| {
+        compile_layer_at(
+            layer, artifact_layer, scratch_mapping, cross_layer_fields, schedule, budget, lb,
+            decisions,
+        )
+    };
+    match at(FILL) {
+        Ok(c) => return Ok(c),
+        // Only a placement OVERFLOW (BudgetBelowFloor) means "too much cached" — descend.
+        // Any other compile error is genuine; propagate it.
+        Err(CompileError::BudgetBelowFloor { .. }) => {}
+        Err(e) => return Err(e),
+    }
+
+    // Fill overflowed: binary-search the largest lowering budget in [budget, FILL) whose
+    // placement fits at `budget`. `lower_budget == budget` always fits (it is exactly the
+    // old lower-and-place-at-budget path), so it is the guaranteed lower bound / baseline.
+    let mut best = at(budget)?; // baseline — never worse than this
+    let (mut lo, mut hi) = (budget, FILL); // lo fits, hi overflows
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        match at(mid) {
+            Ok(c) => {
+                best = c;
+                lo = mid;
+            }
+            Err(CompileError::BudgetBelowFloor { .. }) => hi = mid,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(best)
+}
+
+/// Lower the layer at `lower_budget` (the eviction dial) and place it at `place_budget`
+/// (the real cell budget), materializing the ISA program. Factored out of `compile_layer`
+/// so the fill-then-trim search can retry lowering at different budgets against a fixed
+/// placement budget. `lower_budget == place_budget` is the pre-redesign behavior.
+#[allow(clippy::too_many_arguments)]
+fn compile_layer_at(
+    layer: &DagLayer,
+    artifact_layer: &GKRLayerDescription,
+    scratch_mapping: &BTreeMap<GKRAddress, usize>,
+    cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
+    schedule: &LayerSchedule,
+    place_budget: usize,
+    lower_budget: usize,
+    decisions: Option<&SiteDecisions>,
+) -> Result<CompiledLayer, CompileError> {
     let mut ctx = DagForwardContext::default();
     ctx.actions = build_forward_actions(layer, artifact_layer, scratch_mapping)?;
     ctx.cross_layer_fields = cross_layer_fields.clone();
 
     // Phase 1 — lower to a rich virtual-instruction stream.
     let (vinstrs, step_of, vouts, resident_realized) =
-        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, budget)?;
+        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, lower_budget)?;
 
     // Phase 1.5 — value-preserving peephole (F1/F4/F2/F5). `resident_realized` above stays
     // the lowering-time admission diagnostic (pre-optimization; consumed by decisions_policy).
@@ -284,7 +349,7 @@ pub fn compile_layer(
         steps: &free_steps,
         step_of_instr: &step_of,
         widths: &widths,
-        budget,
+        budget: place_budget,
     })?;
 
     // Phase 3 — materialize the rich stream to ISA instructions.
@@ -401,7 +466,7 @@ pub fn compile_layer(
         root_outputs,
         skipped,
         trace,
-        budget,
+        budget: place_budget,
         stats,
         resident_realized,
     })
