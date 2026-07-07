@@ -371,6 +371,104 @@ fn commute_keep_in_acc(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> b
     changed
 }
 
+/// Replace the first `Value(from)` operand of `vi` (in ANY position) with `to`. Mirrors
+/// `reads_value`'s position enumeration: `Mov.src`, `Add`/`Mul.reads`, `Fma.pairs` (both
+/// sides). For a `Mov` src, also refreshes `is_dram_read` for the new source (inert
+/// metadata, kept consistent). Returns true on a hit.
+fn retarget_value_to_op(vi: &mut VInstr, from: ValueId, to: &VirtualOp) -> bool {
+    let is_from = |op: &VirtualOp| matches!(op, VirtualOp::Value(x) if *x == from);
+    match vi {
+        VInstr::Mov { src, is_dram_read, .. } => {
+            if src.as_ref().is_some_and(is_from) {
+                *src = Some(to.clone());
+                *is_dram_read = matches!(to, VirtualOp::Global { .. });
+                true
+            } else {
+                false
+            }
+        }
+        VInstr::Add { reads, .. } | VInstr::Mul { reads, .. } => {
+            for op in reads.iter_mut() {
+                if is_from(op) {
+                    *op = to.clone();
+                    return true;
+                }
+            }
+            false
+        }
+        VInstr::Fma { pairs, .. } => {
+            for (l, r) in pairs.iter_mut() {
+                if is_from(l) {
+                    *l = to.clone();
+                    return true;
+                }
+                if is_from(r) {
+                    *r = to.clone();
+                    return true;
+                }
+            }
+            false
+        }
+    }
+}
+
+/// F6: a leaf-copy define `DstFromSrc(Cell(v) <- leaf-src)` (leaf-src in
+/// `Global`/`Special`/`Ldc`) whose value `v` is read EXACTLY ONCE anywhere in the program
+/// → propagate that sole read to the leaf source (any operand position), leaving the define
+/// dead for `drop_dead_admissions` (F5) to reclaim in the same fixpoint pass. Leaf sources
+/// are immutable within a layer (value-identical re-read); the single-read gate keeps
+/// source-reads flat (traffic-neutral). Cell-to-cell (`Value` src) and `DstFromAcc` spills
+/// have no immutable re-readable source and are excluded. F6 itself does not delete (no
+/// `step_of` change here); F5 performs the lockstep deletion.
+fn propagate_single_use_leaf_copies(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool {
+    // Collect leaf-copy defines: (def_idx, v, leaf op).
+    let mut leaf_copies: Vec<(usize, ValueId, VirtualOp)> = Vec::new();
+    for (i, vi) in vinstrs.iter().enumerate() {
+        if let VInstr::Mov {
+            dir: MovDir::DstFromSrc,
+            dst: Some(VDst::Cell(v)),
+            src: Some(op),
+            ..
+        } = vi
+        {
+            if matches!(
+                op,
+                VirtualOp::Global { .. } | VirtualOp::Special { .. } | VirtualOp::Ldc { .. }
+            ) {
+                leaf_copies.push((i, *v, op.clone()));
+            }
+        }
+    }
+    let mut changed = false;
+    for (def_idx, v, op) in leaf_copies {
+        // Count reads of Value(v) across the whole program; capture the sole reader index.
+        // (SSA: `v` has one define, so read-exactly-once == single-use.)
+        let mut reader: Option<usize> = None;
+        let mut count = 0usize;
+        for (k, vk) in vinstrs.iter().enumerate() {
+            if k == def_idx {
+                continue; // the define's src is `op`, not Value(v)
+            }
+            if reads_value(vk, v) {
+                count += 1;
+                reader = Some(k);
+                if count > 1 {
+                    break;
+                }
+            }
+        }
+        if count != 1 {
+            continue;
+        }
+        let j = reader.expect("count == 1 implies a reader");
+        if retarget_value_to_op(&mut vinstrs[j], v, &op) {
+            changed = true;
+        }
+    }
+    let _ = step_of; // F6 retargets only; F5 reclaims the dead defines (lockstep delete there)
+    changed
+}
+
 /// Optimize the lowered stream via a fixpoint of the rewrite rules.
 pub(crate) fn optimize_vinstrs(
     mut vinstrs: Vec<VInstr>,
@@ -386,6 +484,7 @@ pub(crate) fn optimize_vinstrs(
         changed |= fuse_leaf_loads(&mut vinstrs, &mut step_of);
         changed |= drop_redundant_reloads(&mut vinstrs, &mut step_of);
         changed |= commute_keep_in_acc(&mut vinstrs, &mut step_of);
+        changed |= propagate_single_use_leaf_copies(&mut vinstrs, &mut step_of);
         changed |= drop_dead_admissions(&mut vinstrs, &mut step_of);
         if !changed {
             break;
@@ -670,6 +769,157 @@ mod tests {
         let mut step_of = vec![0, 0, 0];
         let changed = commute_keep_in_acc(&mut vinstrs, &mut step_of);
         assert!(!changed, "minus-Add must not commute seed with operand");
+    }
+
+    fn leaf_copy(v: ValueId, op: VirtualOp) -> VInstr {
+        let dram = matches!(op, VirtualOp::Global { .. });
+        VInstr::Mov {
+            dir: MovDir::DstFromSrc,
+            field: OperandField::Base,
+            dst: Some(VDst::Cell(v)),
+            src: Some(op),
+            defines: Some(v),
+            is_dram_read: dram,
+        }
+    }
+    fn ldc0() -> VirtualOp {
+        VirtualOp::Ldc {
+            sub: crate::fwd::isa::LdcSub::Const,
+            idx: 0,
+        }
+    }
+
+    #[test]
+    fn f6_propagates_single_use_leaf_copy_acc_reload() {
+        let v = ExprId(9);
+        // DstFromSrc $cellv <- GLOBAL(2,4) ; AccFromSrc acc <- Value(v)  (v single-use)
+        let mut vinstrs = vec![
+            leaf_copy(v, VirtualOp::Global { slot: 2, col: 4 }),
+            mov_load(v), // AccFromSrc acc <- Value(v)
+        ];
+        let mut step_of = vec![0, 0];
+        let changed = propagate_single_use_leaf_copies(&mut vinstrs, &mut step_of);
+        assert!(changed);
+        // reader now loads the GLOBAL leaf directly (define is left for F5 to reclaim)
+        match &vinstrs[1] {
+            VInstr::Mov {
+                dir: MovDir::AccFromSrc,
+                src: Some(VirtualOp::Global { slot, col }),
+                ..
+            } => {
+                assert_eq!((*slot, *col), (2, 4));
+            }
+            other => panic!("expected AccFromSrc <- Global, got {other:?}"),
+        }
+        // Value(v) no longer read anywhere (define at [0] is now dead)
+        assert!(!reads_value(&vinstrs[1], v));
+    }
+
+    #[test]
+    fn f6_propagates_single_use_leaf_copy_into_arith_operand() {
+        let v = ExprId(9);
+        // DstFromSrc $cellv <- Ldc ; MUL acc *= Value(v)  (v single-use)
+        let mut vinstrs = vec![
+            leaf_copy(v, ldc0()),
+            VInstr::Mul {
+                field: OperandField::Base,
+                reads: vec![VirtualOp::Value(v)],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let mut step_of = vec![0, 0];
+        let changed = propagate_single_use_leaf_copies(&mut vinstrs, &mut step_of);
+        assert!(changed);
+        match &vinstrs[1] {
+            VInstr::Mul { reads, .. } => {
+                assert!(
+                    matches!(reads[0], VirtualOp::Ldc { .. }),
+                    "operand should be the Ldc leaf"
+                )
+            }
+            other => panic!("expected Mul reads=[Ldc], got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn f6_keeps_multi_read_leaf_copy() {
+        let v = ExprId(9);
+        // Value(v) read TWICE (acc reload + Mul operand) → not single-use → no fire
+        let mut vinstrs = vec![
+            leaf_copy(v, VirtualOp::Global { slot: 2, col: 4 }),
+            mov_load(v),
+            VInstr::Mul {
+                field: OperandField::Base,
+                reads: vec![VirtualOp::Value(v)],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let mut step_of = vec![0, 0, 0];
+        let changed = propagate_single_use_leaf_copies(&mut vinstrs, &mut step_of);
+        assert!(!changed, "multi-read leaf copy must keep its cell");
+    }
+
+    #[test]
+    fn f6_keeps_non_leaf_copy() {
+        let (v, w) = (ExprId(9), ExprId(3));
+        // DstFromSrc $cellv <- Value(w)  (cell-to-cell, not a leaf source) → no fire
+        let mut vinstrs = vec![
+            VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                field: OperandField::Base,
+                dst: Some(VDst::Cell(v)),
+                src: Some(VirtualOp::Value(w)),
+                defines: Some(v),
+                is_dram_read: false,
+            },
+            mov_load(v),
+        ];
+        let mut step_of = vec![0, 0];
+        let changed = propagate_single_use_leaf_copies(&mut vinstrs, &mut step_of);
+        assert!(!changed, "cell-to-cell copy source is not an immutable leaf");
+    }
+
+    #[test]
+    fn f6_keeps_dstfromacc_cell_define() {
+        let v = ExprId(9);
+        // DstFromAcc $cellv <- acc (value from acc, no re-readable source) + one read → no fire
+        let mut vinstrs = vec![mov_store(v), mov_load(v)];
+        let mut step_of = vec![0, 0];
+        let changed = propagate_single_use_leaf_copies(&mut vinstrs, &mut step_of);
+        assert!(
+            !changed,
+            "DstFromAcc define has no re-readable source to propagate"
+        );
+    }
+
+    #[test]
+    fn f6_end_to_end_with_f5_reclaims_cell() {
+        let v = ExprId(9);
+        // Full pass: leaf-copy + sole reload + an acc consumer → F6 propagates, F5 drops define.
+        let mut vinstrs = vec![
+            leaf_copy(v, VirtualOp::Global { slot: 2, col: 4 }),
+            mov_load(v),
+            VInstr::Mul {
+                field: OperandField::Base,
+                reads: vec![ldc0()],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let step_of = vec![0, 0, 0];
+        let (out, step) = optimize_vinstrs(vinstrs.clone(), step_of);
+        assert_eq!(out.len(), 2, "define reclaimed by F5"); // [AccFromSrc<-Global, Mul]
+        assert_eq!(step.len(), out.len());
+        assert!(matches!(
+            &out[0],
+            VInstr::Mov {
+                dir: MovDir::AccFromSrc,
+                src: Some(VirtualOp::Global { slot: 2, col: 4 }),
+                ..
+            }
+        ));
     }
 
     #[test]
