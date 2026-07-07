@@ -103,5 +103,92 @@ fn f3_reduces_instruction_count_vs_pre_pass_baseline() {
     // codegen-quality pass (F1/F2/F4/F5 optimizer + F3 eager materialize) brings it to 166
     // — the corpus regen (Task 7) confirmed this is traffic-neutral (schedules unchanged;
     // only the emitted program is leaner). Pinned as an upper bound so a regression trips it.
-    assert!(n <= 166, "expected add_sub L0 instr count <= 166 after codegen pass, got {n}");
+    assert!(
+        n <= 166,
+        "expected add_sub L0 instr count <= 166 after codegen pass, got {n}"
+    );
+}
+
+/// All Smem cells this ISA instr READS as source operands (not its dst). NOTE: the real
+/// `Instr::Add`/`Instr::Mul` carry a `operands: Vec<OperandLine>` field (not `reads`) —
+/// confirmed against `gkr_eval_isa/src/fwd/isa.rs` and the cost-model tally loop in
+/// `gkr_eval_isa/src/fwd/compile/mod.rs`.
+fn instr_reads_smem(instr: &Instr) -> Vec<u16> {
+    let mut out = Vec::new();
+    match instr {
+        Instr::Mov {
+            src: Some(OperandLine::Smem { cell }),
+            ..
+        } => out.push(*cell),
+        Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+            for o in operands {
+                if let OperandLine::Smem { cell } = o {
+                    out.push(*cell);
+                }
+            }
+        }
+        Instr::Fma { pairs, .. } => {
+            for (l, r) in pairs {
+                if let OperandLine::Smem { cell } = l {
+                    out.push(*cell);
+                }
+                if let OperandLine::Smem { cell } = r {
+                    out.push(*cell);
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// The Smem cell this ISA instr DEFINES (writes to), if any.
+fn instr_defs_smem(instr: &Instr) -> Option<u16> {
+    match instr {
+        Instr::Mov {
+            dst: Some(DstLine::Smem { cell }),
+            ..
+        } => Some(*cell),
+        _ => None,
+    }
+}
+
+/// F6: no single-use leaf-copy cell survives — a `DstFromSrc(Smem cell) <- {Global|Special|Ldc}`
+/// whose physical cell is read EXACTLY ONCE before it is redefined. Such a cell should have
+/// been copy-propagated to its (immutable) source and reclaimed by F5.
+#[test]
+fn no_single_use_leaf_copy_cell() {
+    let instrs = add_sub_l0_instrs();
+    for (i, instr) in instrs.iter().enumerate() {
+        let cell = match instr {
+            Instr::Mov {
+                dir: MovDir::DstFromSrc,
+                dst: Some(DstLine::Smem { cell }),
+                src: Some(s),
+                ..
+            } if matches!(
+                s,
+                OperandLine::Global { .. } | OperandLine::Special { .. } | OperandLine::Ldc { .. }
+            ) =>
+            {
+                *cell
+            }
+            _ => continue,
+        };
+        // Count reads of this physical cell until it is next redefined.
+        let mut reads = 0usize;
+        for later in &instrs[i + 1..] {
+            reads += instr_reads_smem(later)
+                .iter()
+                .filter(|c| **c == cell)
+                .count();
+            if instr_defs_smem(later) == Some(cell) {
+                break;
+            }
+        }
+        assert_ne!(
+            reads, 1,
+            "F6 violated: single-use leaf-copy cell {cell} at instr {i} read exactly once: {instr:?}"
+        );
+    }
 }
