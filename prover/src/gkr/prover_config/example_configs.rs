@@ -18,9 +18,8 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
-            lookup_challenges_pow_bits: 0,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
-            batched_proximity_check_challenge_pow_bits: 0,
+            security_level: SecurityLevel::Sec80,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -34,9 +33,8 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
-            lookup_challenges_pow_bits: 0,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
-            batched_proximity_check_challenge_pow_bits: 0,
+            security_level: SecurityLevel::Sec80,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -50,9 +48,8 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
-            lookup_challenges_pow_bits: 0,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
-            batched_proximity_check_challenge_pow_bits: 0,
+            security_level: SecurityLevel::Sec80,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -62,7 +59,7 @@ pub fn config_for_80_bits_under_pessimistic_conjecture(trace_len_log_2: usize) -
                 whir_pow_schedule: vec![28, 20, 17, 10, 23, 23],
             },
         },
-        a @ _ => {
+        a => {
             unimplemented!("not yet computed for 2^{} size", a);
         }
     }
@@ -74,9 +71,8 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
-            lookup_challenges_pow_bits: 0,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
-            batched_proximity_check_challenge_pow_bits: 0,
+            security_level: SecurityLevel::Sec100,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -90,9 +86,8 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
-            lookup_challenges_pow_bits: 0,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
-            batched_proximity_check_challenge_pow_bits: 0,
+            security_level: SecurityLevel::Sec100,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,
@@ -106,9 +101,8 @@ pub fn config_for_100_bits_under_pessimistic_conjecture(trace_len_log_2: usize) 
             lde_factor: DEFAULT_LDE_FACTOR,
             cap_size: DEFAULT_CAP_SIZE,
             base_oracles_values_per_leaf: 2,
-            lookup_challenges_pow_bits: 0,
             sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
-            batched_proximity_check_challenge_pow_bits: 0,
+            security_level: SecurityLevel::Sec100,
             whir_schedule: WhirSchedule {
                 base_lde_factor: DEFAULT_LDE_FACTOR,
                 cap_size: DEFAULT_CAP_SIZE,

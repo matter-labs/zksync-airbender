@@ -13,6 +13,7 @@ use prover::cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, OutputType,
 };
 use prover::gkr::prover::WhirSchedule;
+use prover::gkr::prover_config::pow_bits;
 
 pub mod dim_reducing_layer;
 pub mod standard_layer;
@@ -742,6 +743,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
     sumcheck_output_size_log_2: usize,
     whir_schedule: &WhirSchedule,
+    security_bits: u32,
 ) -> GKRGeneratedFiles {
     let num_standard_layers = compiled_circuit.layers.len();
     let trace_len = compiled_circuit.trace_len;
@@ -953,7 +955,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     main_body.extend(quote! {
         let mut init_challenges = LazyVec::<#quartic_struct, 2>::new();
         unsafe { init_challenges.set_len(2); }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
+        read_and_verify_pow::<I>(ts, LOOKUP_CHALLENGES_POW_BITS, nd_source);
+        draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let address_high_bits_shift: u32 = #address_high_bits_shift_val;
@@ -1546,7 +1549,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     }
 
     main_body.extend(quote! {
-        state.batching_challenge = draw_single_field_el(ts);
+        read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
+        state.batching_challenge = draw_single_field_el_after_pow(ts);
 
         let mut permutation_read_product: #quartic_struct = #quartic_one;
         let mut permutation_write_product: #quartic_struct = #quartic_one;
@@ -1580,6 +1584,18 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let whir_pow_bits = &whir_schedule.whir_pow_schedule;
     let whir_lde_factors = &whir_schedule.whir_steps_lde_factors;
     let whir_base_lde_factor = whir_schedule.base_lde_factor;
+    let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits(
+        security_bits as usize,
+        trace_len_log_2,
+        whir_base_lde_factor.trailing_zeros() as usize,
+        pow_bits::total_base_oracle_columns(compiled_circuit),
+    );
+    // Derived per-circuit from `security_bits` (same as the batched-proximity bits
+    // above), so prover grind and this baked const cannot diverge.
+    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+        security_bits as usize,
+        pow_bits::lookup_identity_degree(compiled_circuit),
+    );
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 
@@ -1712,11 +1728,21 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #max_evals * EXT_DEGREE;
             total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
-        pub const DRAW_BUF_CAPACITY: usize =
-            (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+        // Sized for the larger of the two draws that share this buffer: the
+        // sumcheck/batching draw of `num_challenges` elements, and the post-PoW
+        // lookup draw (`draw_field_els_into_after_pow`) of 2 elements plus the
+        // skipped PoW word. Taking the max keeps the buffer valid for both even
+        // if a future circuit has a small `num_challenges`.
+        pub const DRAW_BUF_CAPACITY: usize = {
+            let sumcheck = (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            let lookup_after_pow = (2 * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            if sumcheck > lookup_after_pow { sumcheck } else { lookup_after_pow }
+        };
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
+        pub const LOOKUP_CHALLENGES_POW_BITS: u32 = #lookup_challenges_pow_bits;
+        pub const BATCHED_PROXIMITY_POW_BITS: u32 = #batched_proximity_pow_bits;
         pub const MAX_POW_ENTRIES: usize = #max_pow_entries;
         pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
         pub const NUM_ORACLES: usize = #num_oracles;
@@ -1757,10 +1783,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
             make_eq_poly, dot_eq, draw_field_els_into, draw_single_field_el,
+            draw_field_els_into_after_pow, draw_single_field_el_after_pow,
             read_field_el, read_reduced_field_el,
             ext_from_nds, ext_from_raw_words,
             EXT_DEGREE,
         };
+        use ::verifier_common::whir::read_and_verify_pow;
         use ::verifier_common::field_ops;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;

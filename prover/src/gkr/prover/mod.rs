@@ -13,9 +13,11 @@ use crate::fft::Twiddles;
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::stage1;
-use crate::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+use crate::gkr::prover::transcript_utils::{
+    commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
+};
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
-use crate::gkr::prover_config::ProverConfig;
+use crate::gkr::prover_config::{pow_bits, ProverConfig};
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
@@ -85,6 +87,8 @@ pub struct GKRProof<
     pub whir_proof: WhirPolyCommitProof<F, E, T>,
     pub grand_product_accumulator_computed: E,
     pub inits_and_teardowns_top_bits: Vec<u32>,
+    pub lookup_challenges_pow_nonce: u64,
+    pub batched_proximity_check_pow_nonce: u64,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -368,11 +372,15 @@ where
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
-    // TODO
-    assert_eq!(prover_config.lookup_challenges_pow_bits, 0, "TODO");
-
-    // now we need to draw prove-local challenges, and in our case it's just a challenge for lookups, and challenge to batch all constraints
-    let challenges: Vec<E> = draw_random_field_els(&mut seed, 2);
+    // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
+    // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
+    // is satisfied by `commit_initial` above.
+    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+        prover_config.security_level.bits() as usize,
+        pow_bits::lookup_identity_degree(compiled_circuit),
+    );
+    let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+        draw_random_field_els_with_pow(&mut seed, 2, lookup_challenges_pow_bits, worker);
     let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
 
     let mut gkr_storage = GKRStorage::<F, E>::default();
@@ -618,53 +626,6 @@ where
         sumcheck_intermediate_values.insert(layer_idx, proof);
     }
 
-    // let base_layer_z = points_for_claims_at_layer
-    //     .get(&0)
-    //     .expect("must have base layer point");
-
-    // let eq_precomputed = make_eq_poly_in_full(base_layer_z, worker);
-    // let eq_at_z = eq_precomputed.last().unwrap();
-
-    // let layer_desc = &compiled_circuit.layers[0];
-    // let base_layer_claims = claims_for_layers.entry(0).or_insert_with(BTreeMap::new);
-
-    // for (cached_addr, relation) in layer_desc.cached_relations.iter() {
-    //     debug_assert!(
-    //         base_layer_claims.contains_key(cached_addr),
-    //         "Missing claim for cached address {:?}",
-    //         cached_addr
-    //     );
-
-    //     for dep in relation.dependencies() {
-    //         if base_layer_claims.contains_key(&dep) {
-    //             continue;
-    //         }
-    //         match dep {
-    //             GKRAddress::BaseLayerWitness(_)
-    //             | GKRAddress::BaseLayerMemory(_)
-    //             | GKRAddress::Setup(_) => {
-    //                 println!("Explicitly computing value for {:?}", dep);
-    //                 let values = gkr_storage.get_base_layer(dep);
-    //                 let evaluation = evaluate_with_precomputed_eq::<F, E>(values, &eq_at_z[..]);
-    //                 base_layer_claims.insert(dep, evaluation);
-    //             }
-    //             _ => {
-    //                 panic!(
-    //                     "Unexpected dependency address {:?} for cached relation {:?}",
-    //                     dep, cached_addr
-    //                 );
-    //             }
-    //         }
-    //     }
-    // }
-
-    // #[cfg(feature = "gkr_self_checks")]
-    // assert!(debug_utils::verify_cache_relations(
-    //     layer_desc,
-    //     &base_layer_claims,
-    //     external_challenges,
-    // ));
-
     drop(preprocessed_generic_lookup);
 
     let base_layer_z = points_for_claims_at_layer
@@ -763,13 +724,19 @@ where
 
     drop(gkr_storage);
 
-    if prover_config.batched_proximity_check_challenge_pow_bits > 0 {
-        // TODO: do PoW
-        todo!();
-    }
-
-    let whir_batching_challenge = draw_random_field_els::<F, E>(&mut seed, 1);
-    let whir_batching_challenge = whir_batching_challenge[0];
+    // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
+    // transcript above already committed everything that feeds this draw. The bit count
+    // scales with the number of batched base-oracle columns l, so it is
+    // computed per-circuit here (and identically baked by the verifier generator).
+    let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits(
+        prover_config.security_level.security_bits(),
+        trace_len.trailing_zeros() as usize,
+        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+        pow_bits::total_base_oracle_columns(compiled_circuit),
+    );
+    let (batched_proximity_check_pow_nonce, whir_batching_challenges): (u64, Vec<E>) =
+        draw_random_field_els_with_pow(&mut seed, 1, batched_proximity_pow_bits, worker);
+    let whir_batching_challenge = whir_batching_challenges[0];
 
     let whir_proof = whir_fold(
         mem_oracle,
@@ -829,5 +796,7 @@ where
         sumcheck_intermediate_values,
         grand_product_accumulator_computed,
         inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.to_vec(),
+        lookup_challenges_pow_nonce,
+        batched_proximity_check_pow_nonce,
     }
 }

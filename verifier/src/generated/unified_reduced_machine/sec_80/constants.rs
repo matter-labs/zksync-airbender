@@ -46,11 +46,20 @@ pub const GKR_EVALS_COMMIT_BUF: usize = {
     let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + 160usize * EXT_DEGREE;
     total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
 };
-pub const DRAW_BUF_CAPACITY: usize =
-    (5usize * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+pub const DRAW_BUF_CAPACITY: usize = {
+    let sumcheck = (5usize * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+    let lookup_after_pow = (2 * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+    if sumcheck > lookup_after_pow {
+        sumcheck
+    } else {
+        lookup_after_pow
+    }
+};
 pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 5usize, 5usize, 5usize, 4usize, 3usize];
 pub const WHIR_QUERIES: [usize; 6usize] = [63usize, 17usize, 8usize, 5usize, 3usize, 3usize];
 pub const WHIR_POW_BITS: [u32; 6usize] = [28u32, 20u32, 17u32, 10u32, 23u32, 23u32];
+pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 0u32;
+pub const BATCHED_PROXIMITY_POW_BITS: u32 = 0u32;
 pub const MAX_POW_ENTRIES: usize = 101usize;
 pub const FINAL_MONOMIALS_LEN: usize = 2usize;
 pub const NUM_ORACLES: usize = 3usize;
