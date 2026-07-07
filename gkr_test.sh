@@ -149,7 +149,7 @@ Options:
                         Adds gkr_check_satisfied feature; default OFF (slow).
   --circuits A,B,...    Subcommand-aware filter; must be a subset of the
                         subcommand's circuit set. Forwarded via GKR_CIRCUITS.
-  --from STEP           Run STEP and everything after it in canonical order.
+  --from STEP           Run STEP plus every step that (transitively) depends on it.
   --warnings            Show compiler warnings (suppressed by default).
   --dry-run             Print what would run without executing.
   -h, --help            Show this message.
