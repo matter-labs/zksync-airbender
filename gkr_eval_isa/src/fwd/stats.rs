@@ -24,8 +24,10 @@
 ///   SP1: not yet counted.
 /// - `recomputes`: times a child had to be re-lowered into the acc (currently 0).
 ///   SP1: not yet counted.
-/// - `special_gathers`: number of resolved-fold `Special` operands emitted (= `ctx.specials.len()`
-///   after compilation). REAL in SP1.
+/// - `special_gathers`: number of resolved-fold/gather (peek) `Special` descriptors in
+///   `ctx.specials` after compilation, EXCLUDING computed `VirtualSetup` strategies (which
+///   are resolver-computed, not a real gather — see `SpecialStrategy::VirtualSetup`). NOT
+///   the raw `ctx.specials.len()`. REAL in SP1.
 /// - `max_live_cells`: high-water mark of simultaneously live smem cells across
 ///   all roots. REAL in SP1 (from `trace.max_live_cells`).
 /// - `split_count`: number of over-cap reduction groups that were split.
@@ -113,6 +115,7 @@ mod tests {
 
     use crate::fwd::compile::compile_circuit;
     use crate::fwd::context::CompiledLayer;
+    use crate::fwd::source::SpecialStrategy;
 
     fn compiled_circuit_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits")
@@ -148,7 +151,8 @@ mod tests {
     /// - `program_lanes > 0`
     /// - `op_counts.iter().sum() > 0`
     /// - `max_live_cells <= budget`
-    /// - `special_gathers == ctx.specials.len()` (number of resolved folds in layer 0)
+    /// - `special_gathers == expected_peek` (number of non-`VirtualSetup` resolved gathers
+    ///   in layer 0, strictly less than `ctx.specials.len()`)
     /// - `report(&stats)` contains the per-layer header substring
     #[test]
     fn add_sub_layer0_stats() {
@@ -182,10 +186,20 @@ mod tests {
         assert!(stats.max_live_cells <= budget,
             "max_live_cells {} > budget {}", stats.max_live_cells, budget);
 
-        // special_gathers == number of resolved folds in ctx (SpecialTable length)
-        let expected_specials = compiled.ctx.specials.len();
-        assert_eq!(stats.special_gathers, expected_specials,
-            "special_gathers {} != ctx.specials.len() {}", stats.special_gathers, expected_specials);
+        // special_gathers == number of non-VirtualSetup (peek) descriptors in ctx.specials
+        let expected_peek = compiled
+            .ctx
+            .specials
+            .iter()
+            .filter(|d| !matches!(d.strategy, SpecialStrategy::VirtualSetup { .. }))
+            .count();
+        assert_eq!(stats.special_gathers, expected_peek,
+            "special_gathers {} != expected_peek {}", stats.special_gathers, expected_peek);
+        // Non-vacuity: add_sub L0 has VirtualSetup descriptors (RC16 + RCTimestamp), so the
+        // peek-only count must be strictly less than the full specials table — otherwise the
+        // filter above would be a no-op tautology.
+        assert!(expected_peek < compiled.ctx.specials.len(),
+            "add_sub L0 has VirtualSetup descriptors, so peek-only special_gathers must be strictly less than the full specials table");
 
         // report contains the per-layer header
         let r = report(stats);
@@ -214,7 +228,7 @@ mod tests {
             return;
         };
         let s = &compiled.stats;
-        // add_sub L0 reads real BaseLayerMemory/Witness/Setup/VirtualSetup columns + Prior caches.
+        // add_sub L0 reads real BaseLayerMemory/Witness/Setup columns + Prior caches.
         assert!(s.dram_reads > 0, "expected dram_reads > 0, got {}", s.dram_reads);
         // Sanity: every Global operand in the program is counted exactly once.
         let mut manual = 0usize;

@@ -383,7 +383,11 @@ pub fn compile_layer(
             tally_operand(op, OperandField::Base, &ctx.specials, &mut stats);
         }
     }
-    stats.special_gathers = ctx.specials.len();
+    stats.special_gathers = ctx
+        .specials
+        .iter()
+        .filter(|d| !matches!(d.strategy, super::source::SpecialStrategy::VirtualSetup { .. }))
+        .count();
     stats.max_live_cells = placement.max_live_cells;
 
     let mut trace = CompileTrace::default();

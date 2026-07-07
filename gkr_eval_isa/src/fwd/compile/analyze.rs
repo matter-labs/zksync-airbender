@@ -429,7 +429,8 @@ fn compute_miss(layer: &DagLayer, expr_id: ExprId) -> MissPenalty {
 ///
 /// For each key in `plan.keys`, this calls `lower_resolution(&layer.resolutions[&id], id)`
 /// and pushes the resulting descriptor via `SpecialTable::push` (which does NOT dedup —
-/// so calling this once per key guarantees `special_gathers == distinct descriptors`).
+/// so calling this once per key guarantees `special_gathers == distinct non-VirtualSetup
+/// (peek) descriptors`, since `special_gathers` now excludes computed `VirtualSetup` entries).
 ///
 /// The returned map is used by Stage-3 emit instead of calling `resolve_or_descend`
 /// per use-site (which pushed a fresh descriptor on every reference of the same leaf).
