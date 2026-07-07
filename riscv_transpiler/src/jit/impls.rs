@@ -369,7 +369,7 @@ pub(crate) fn packed_ts_off(name: InstructionName, rs1: u32, rs2: u32, rd: u32) 
         rd as usize
     };
     let idx = 33 * 33 * p_rs1 + 33 * p_rs2 + p_rd;
-    debug_assert!(idx < PACKED_TS_LEN);
+    assert!(idx < PACKED_TS_LEN);
     MachineState::PACKED_TS_OFFSET as i32 + (idx as i32) * 8
 }
 
@@ -2055,7 +2055,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 // slot `(rs1, rs2=rd, rd)` reconstructs exactly these touches.
                 Op::ZimopIXorRot => {
                     assert!(rd != 0);
-                    debug_assert_eq!(rs2, rd);
+                    assert_eq!(rs2, rd);
                     let out = destination_gpr(rd); // rd's GPR, or RAX for an XMM-resident rd
                     touch_register_and_increment_timestamp!(ops, rs1); // rs1 @ +0
                     touch_register_and_increment_timestamp!(ops, rs2); // rd_old via rs2 @ +1 (rs2 == rd)

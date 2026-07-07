@@ -376,7 +376,7 @@ where
     // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
     // is satisfied by `commit_initial` above.
     let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
-        prover_config.security_level.bits() as usize,
+        prover_config.security_level.security_bits(),
         pow_bits::lookup_identity_degree(compiled_circuit),
     );
     let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
