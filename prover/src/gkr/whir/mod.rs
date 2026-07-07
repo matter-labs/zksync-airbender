@@ -1477,7 +1477,7 @@ where
 /// Coefficient-form commit (default): rewrites each leaf from evaluation form to
 /// multilinear-coefficient form before building the Merkle tree.
 #[cfg(not(feature = "eval_leaves"))]
-pub fn commit_single_ext_poly<
+fn commit_single_ext_poly<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -1602,7 +1602,7 @@ where
 /// Evaluation-form commit (`eval_leaves` feature): commits each leaf as raw
 /// evaluations; the verifier folds them with `fold_coset`.
 #[cfg(feature = "eval_leaves")]
-pub fn commit_single_ext_poly<
+fn commit_single_ext_poly<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -1650,6 +1650,28 @@ where
         values_per_leaf,
         trace_len_log2,
     }
+}
+
+/// Test-only public shim over the private [`commit_single_ext_poly`], so
+/// downstream crates' tests can build a reference recursive-WHIR oracle with the
+/// exact production leaf encoding (coefficient form by default; the `eval_leaves`
+/// feature selects the eval-form variant). Gated behind `test-utils`; not part
+/// of the normal library API.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn commit_single_ext_poly_for_test<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    cosets: Vec<(Box<[E]>, F)>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    worker: &Worker,
+) -> ColumnMajorExtensionOracleForLDE<F, E, T>
+where
+    [(); E::DEGREE]: Sized,
+{
+    commit_single_ext_poly::<F, E, T>(cosets, values_per_leaf, tree_cap_size, worker)
 }
 
 /// Eval-form (no leaf transform) single-poly commit for tests that validate the

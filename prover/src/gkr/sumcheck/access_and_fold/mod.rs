@@ -164,6 +164,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         self.layers.truncate(layer + 1);
     }
 
+    #[track_caller]
     pub fn get_ext_poly(&self, address: GKRAddress) -> &[E] {
         match address {
             GKRAddress::InnerLayer { layer, .. } => {
