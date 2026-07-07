@@ -99,13 +99,14 @@ fn no_cache_output_from_held_cell() {
 #[test]
 fn f3_reduces_instruction_count_vs_pre_pass_baseline() {
     let n = add_sub_l0_instrs().len();
-    // Pre-pass add_sub L0 was 204 instrs (post site-gate, pre codegen pass). The full
-    // codegen-quality pass (F1/F2/F4/F5 optimizer + F3 eager materialize) brings it to 166
-    // — the corpus regen (Task 7) confirmed this is traffic-neutral (schedules unchanged;
-    // only the emitted program is leaner). Pinned as an upper bound so a regression trips it.
+    // Pre-pass add_sub L0 was 204 instrs (post site-gate, pre codegen pass). The codegen-
+    // quality pass (F1/F2/F4/F5 optimizer + F3 eager materialize) brought it to 166, then
+    // F6 (copy-propagate single-use leaf-copy cells) removed 8 more → 158. Each corpus regen
+    // confirmed this is traffic-neutral (schedules unchanged; only the emitted program is
+    // leaner). Pinned as an upper bound so a regression trips it.
     assert!(
-        n <= 166,
-        "expected add_sub L0 instr count <= 166 after codegen pass, got {n}"
+        n <= 158,
+        "expected add_sub L0 instr count <= 158 after codegen pass (incl. F6), got {n}"
     );
 }
 
