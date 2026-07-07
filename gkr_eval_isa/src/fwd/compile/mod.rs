@@ -378,11 +378,13 @@ pub fn compile_layer(
             }
         }
     }
-    for (_, out) in &root_outputs {
-        if let RootOutput::Alias(op) = out {
-            tally_operand(op, OperandField::Base, &ctx.specials, &mut stats);
-        }
-    }
+    // A `CopyAlias` output root copies its `src_addr`'s backing straight to `dst_addr`
+    // with ZERO program lanes (resolved outside the ISA stream); on device it is a
+    // pointer/view, not a re-read. So it costs no DRAM traffic and is NOT tallied here —
+    // matching the floor (`dag_traffic_floor_with_actions` counts `Compute` roots only)
+    // and the device. (Charging it inflated `dram_traffic` — the S3 objective — by the
+    // alias count, making the floor unreachable by construction; the alias set is DAG-
+    // structural so this is a pure relabel, not a schedule change.)
     stats.special_gathers = ctx
         .specials
         .iter()

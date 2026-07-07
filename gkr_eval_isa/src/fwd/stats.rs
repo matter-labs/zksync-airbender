@@ -230,18 +230,26 @@ mod tests {
         let s = &compiled.stats;
         // add_sub L0 reads real BaseLayerMemory/Witness/Setup columns + Prior caches.
         assert!(s.dram_reads > 0, "expected dram_reads > 0, got {}", s.dram_reads);
-        // Sanity: every Global operand in the program is counted exactly once.
+        // dram_reads counts each Global operand IN THE PROGRAM exactly once, and EXCLUDES
+        // zero-lane CopyAlias reads (free pointer views on device — not DRAM traffic).
         let mut manual = 0usize;
         for instr in &compiled.program.instrs {
             manual += count_global_reads(instr); // helper below, test-local
         }
-        // Alias operands (zero-lane CopyAlias) are DRAM reads too when Global.
-        for (_, out) in &compiled.root_outputs {
-            if let crate::fwd::context::RootOutput::Alias(crate::fwd::isa::OperandLine::Global { .. }) = out {
-                manual += 1;
-            }
-        }
-        assert_eq!(s.dram_reads, manual, "dram_reads {} != manual global-read count {} (instrs + alias globals)", s.dram_reads, manual);
+        assert_eq!(s.dram_reads, manual, "dram_reads {} != in-program Global-operand count {}", s.dram_reads, manual);
+        // Non-vacuity: add_sub L0 DOES have Global CopyAlias roots (excluded above), so the
+        // exclusion is a real, tested property — not a no-op.
+        let alias_globals = compiled
+            .root_outputs
+            .iter()
+            .filter(|(_, out)| {
+                matches!(
+                    out,
+                    crate::fwd::context::RootOutput::Alias(crate::fwd::isa::OperandLine::Global { .. })
+                )
+            })
+            .count();
+        assert!(alias_globals > 0, "expected >=1 Global CopyAlias root in add_sub L0 (else exclusion is vacuous), got {alias_globals}");
     }
 
 

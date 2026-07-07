@@ -1213,11 +1213,19 @@ pub fn search_layer(
     let mut schedule = super::scorer::decode_schedule(&best_genome, ctx);
     schedule.predicted_traffic = best_score.dram_traffic;
 
-    // Post-hoc non-regression floor: keep the incumbent if it beats both searches
-    // (never regress below the persisted schedule).
+    // Post-hoc non-regression floor: keep the incumbent structure if it is at least as
+    // good as both searches (never regress below the persisted schedule). Recompute the
+    // incumbent's traffic UNDER THE CURRENT OBJECTIVE rather than trusting its stored
+    // `predicted_traffic`: a value persisted under a different cost model (e.g. before a
+    // traffic-accounting change) would otherwise wrongly discard an equal-cost incumbent
+    // and let the GA drift to a different-but-equal structure, churning the corpus. Relabel
+    // the kept incumbent's `predicted_traffic` to the recomputed value.
     if let Some(inc) = incumbent {
-        if inc.predicted_traffic <= schedule.predicted_traffic {
-            schedule = inc.clone();
+        let inc_score = score(&genome_from_schedule(inc, ctx), ctx);
+        if !inc_score.infeasible && inc_score.dram_traffic <= schedule.predicted_traffic {
+            let mut kept = inc.clone();
+            kept.predicted_traffic = inc_score.dram_traffic;
+            schedule = kept;
         }
     }
     assert!(
