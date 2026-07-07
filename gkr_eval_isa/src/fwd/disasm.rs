@@ -98,14 +98,35 @@ fn fmt_dst(d: &DstLine, ctx: &DagForwardContext) -> String {
     }
 }
 
-/// Render one instruction as a single line (without the leading index).
+/// Width of the `  [nnnn] ` index prefix that [`disassemble_layer`] prepends to
+/// each program line (2 spaces + `[` + 4-wide index + `] `). Continuation lines
+/// emitted by [`fmt_instr`] pad by this much so multi-lane operands align under
+/// the first lane in the rendered program.
+const PROGRAM_PREFIX_COLS: usize = 9;
+
+/// Render a reduction (ADD/MUL/FMA) with each input lane on its own row: the
+/// first lane sits on the instruction line right after `head`, and every
+/// subsequent lane starts a fresh row led by `cont_op`, indented so the lane
+/// text lines up vertically under the first one. Single-lane reductions stay on
+/// one line. `head` is the mnemonic+accumulator prefix (e.g. `"ADD.b acc += "`).
+fn fmt_lanes(head: &str, lanes: &[String], cont_op: char) -> String {
+    let mut s = format!("{head}{}", lanes.first().map(String::as_str).unwrap_or(""));
+    if lanes.len() > 1 {
+        // Column where the first lane begins, so continuation lanes align under it;
+        // `cont_op` + one space sits in the two columns just left of that.
+        let lane_col = PROGRAM_PREFIX_COLS + head.len();
+        let pad = " ".repeat(lane_col.saturating_sub(2));
+        for lane in &lanes[1..] {
+            let _ = write!(s, "\n{pad}{cont_op} {lane}");
+        }
+    }
+    s
+}
+
+/// Render one instruction. Reductions with more than one input lane span
+/// multiple rows (see [`fmt_lanes`]); everything else is a single line. Never
+/// includes the leading `[nnnn]` index.
 pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext) -> String {
-    let join = |ops: &[OperandLine], sep: &str| {
-        ops.iter()
-            .map(|o| fmt_operand(o, ctx))
-            .collect::<Vec<_>>()
-            .join(sep)
-    };
     match instr {
         Instr::Add {
             field,
@@ -117,14 +138,12 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext) -> String {
             } else {
                 "+"
             };
-            format!(
-                "ADD.{} acc {s}= {}",
-                field_tag(field),
-                join(operands, " + ")
-            )
+            let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx)).collect();
+            fmt_lanes(&format!("ADD.{} acc {s}= ", field_tag(field)), &lanes, '+')
         }
         Instr::Mul { field, operands } => {
-            format!("MUL.{} acc *= {}", field_tag(field), join(operands, " * "))
+            let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx)).collect();
+            fmt_lanes(&format!("MUL.{} acc *= ", field_tag(field)), &lanes, '*')
         }
         Instr::Fma {
             field_lhs,
@@ -137,15 +156,14 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext) -> String {
             } else {
                 "+"
             };
-            let ps = pairs
+            let lanes: Vec<String> = pairs
                 .iter()
                 .map(|(l, r)| format!("{}*{}", fmt_operand(l, ctx), fmt_operand(r, ctx)))
-                .collect::<Vec<_>>()
-                .join(" + ");
-            format!(
-                "FMA.{}{} acc {s}= {ps}",
-                field_tag(field_lhs),
-                field_tag(field_rhs)
+                .collect();
+            fmt_lanes(
+                &format!("FMA.{}{} acc {s}= ", field_tag(field_lhs), field_tag(field_rhs)),
+                &lanes,
+                '+',
             )
         }
         Instr::Mov {
@@ -331,7 +349,8 @@ pub fn disassemble_layer(
     let st = &compiled.stats;
     let _ = writeln!(
         o,
-        "\nstats: lanes={} | add={} mul={} fma={} mov={} | peeks={} max_live_cells={} | actions: compute={compute} alias={alias} skip={skip}",
+        "\nstats: lanes={} | add={} mul={} fma={} mov={} | peeks={} max_live_cells={} \
+         | dram_traffic={} dram_reads={} | actions: compute={compute} alias={alias} skip={skip}",
         st.program_lanes,
         st.op_counts[OP_ADD],
         st.op_counts[OP_MUL],
@@ -339,6 +358,8 @@ pub fn disassemble_layer(
         st.op_counts[OP_MOV],
         st.special_gathers,
         st.max_live_cells,
+        st.dram_traffic,
+        st.dram_reads,
     );
     o
 }
