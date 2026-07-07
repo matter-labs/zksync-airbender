@@ -38,7 +38,7 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
 ) {
     let n = dst.len();
     let padded = (n * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-    debug_assert!(padded <= BUF_CAP, "draw buffer too small");
+    assert!(padded <= BUF_CAP, "draw buffer too small");
     let mut words = LazyVec::<u32, BUF_CAP>::new();
     unsafe {
         words.set_len(padded);
@@ -65,6 +65,50 @@ pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
         ts.draw_raw(words.as_mut_slice());
     }
     let raw = unsafe { words.as_array::<EXT_DEGREE>() };
+    ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
+}
+#[doc = r" Variant of [`draw_field_els_into`] used immediately after a `read_and_verify_pow`:"]
+#[doc = r" the first drawn word was consumed by the PoW, so we draw one extra word and skip it."]
+#[doc = r" The drawn word count matches the prover's `draw_random_field_els_with_pow` exactly."]
+#[inline(always)]
+pub fn draw_field_els_into_after_pow<const BUF_CAP: usize>(
+    ts: &mut TranscriptState,
+    dst: &mut [BabyBearExt4],
+) {
+    let n = dst.len();
+    let padded = (n * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+    assert!(padded <= BUF_CAP, "draw buffer too small");
+    let mut words = LazyVec::<u32, BUF_CAP>::new();
+    unsafe {
+        words.set_len(padded);
+        ts.draw_raw(words.as_mut_slice());
+    }
+    let mut i = 0;
+    while i < n {
+        let base = 1 + i * EXT_DEGREE;
+        let raw = unsafe {
+            (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked()
+        };
+        unsafe {
+            *dst.get_unchecked_mut(i) =
+                ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw);
+        }
+        i += 1;
+    }
+}
+#[doc = r" Variant of [`draw_single_field_el`] used immediately after a `read_and_verify_pow`:"]
+#[doc = r" the first drawn word was consumed by the PoW and is skipped. One digest worth of words"]
+#[doc = r" (8) covers the skipped word plus a single EXT_DEGREE=4 element."]
+#[inline(always)]
+pub fn draw_single_field_el_after_pow(ts: &mut TranscriptState) -> BabyBearExt4 {
+    let mut words = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
+    unsafe {
+        words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+        ts.draw_raw(words.as_mut_slice());
+    }
+    let raw = unsafe {
+        (words.as_slice().as_ptr().add(1) as *const [u32; EXT_DEGREE]).as_ref_unchecked()
+    };
     ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
 }
 #[inline(always)]

@@ -472,7 +472,13 @@ where
     let nat = |j: usize| bitreverse_index((group_index << group_log2) + j, cosets_log2);
 
     let columns: Vec<Box<[E]>> = if group_size == 1 {
-        vec![ext_coset_column::<F, E>(monomial_form, twiddles, ctx, nat(0), worker)]
+        vec![ext_coset_column::<F, E>(
+            monomial_form,
+            twiddles,
+            ctx,
+            nat(0),
+            worker,
+        )]
     } else {
         parallel_collect(worker, group_size, |j| {
             ext_coset_column_serial::<F, E>(monomial_form, twiddles, ctx, nat(j))
@@ -499,8 +505,15 @@ where
     let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
     let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
     let trace: &[&[&[E]]] = &coset_slices;
-    let subtree =
-        T::construct_from_cosets::<E, Global>(trace, values_per_leaf, 1, true, false, false, worker);
+    let subtree = T::construct_from_cosets::<E, Global>(
+        trace,
+        values_per_leaf,
+        1,
+        true,
+        false,
+        false,
+        worker,
+    );
     subtree.get_cap().cap[0]
 }
 
@@ -655,8 +668,11 @@ where
         let group_index = physical_slot >> group_log2;
         let slot_in_group = physical_slot & (group_size - 1);
 
-        let ctx =
-            ExtCommonCtx::<F>::new(1usize << self.trace_len_log2, num_cosets, self.values_per_leaf);
+        let ctx = ExtCommonCtx::<F>::new(
+            1usize << self.trace_len_log2,
+            num_cosets,
+            self.values_per_leaf,
+        );
         let columns: Vec<Box<[E]>> = if group_size == 1 {
             vec![ext_coset_column::<F, E>(
                 &self.monomial_form,
@@ -918,7 +934,11 @@ mod test {
                 grouped.group_log2 >= 1,
                 "grouping should activate with {nthreads} threads"
             );
-            assert_eq!(reference.get_cap(), grouped.get_cap(), "cap @ {nthreads} threads");
+            assert_eq!(
+                reference.get_cap(),
+                grouped.get_cap(),
+                "cap @ {nthreads} threads"
+            );
             for qi in 0..tree_size {
                 let (_rc, rv, rq) = reference.query(qi, &tw1, &w1);
                 let (_gc, gv, gq) = grouped.query(qi, &tw, &w);

@@ -268,6 +268,8 @@ pub struct GKRVerifierOutput<E: Field, const ROUNDS: usize, const ADDRS: usize> 
     pub evaluation_point_len: usize,
     pub permutation_read_product: E,
     pub permutation_write_product: E,
+    pub inits_and_teardowns_read_product: E,
+    pub inits_and_teardowns_write_product: E,
     pub whir_batching_challenge: E,
     pub base_layer_claims: LazyVec<E, ADDRS>,
 }

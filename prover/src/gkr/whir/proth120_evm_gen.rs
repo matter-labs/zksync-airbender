@@ -529,7 +529,13 @@ fn pessimistic_config(
     }
     assert_eq!(folded, final_log2);
 
-    config_from_folds(message_log2, first_lde_log2, folds, max_codeword_log2, out_suffix)
+    config_from_folds(
+        message_log2,
+        first_lde_log2,
+        folds,
+        max_codeword_log2,
+        out_suffix,
+    )
 }
 
 /// Compute a `GenConfig` in the pessimistic-conjecture mode (100-bit security, PoW

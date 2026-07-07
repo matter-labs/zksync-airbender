@@ -306,14 +306,14 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
         assert_eq!(layer, 0);
     }
 
-    println!(
-        "In total of {} lookups of type {}",
-        all_relations_stable_set.len(),
-        lookup_type
-    );
-    if decoder_lookup.is_some() {
-        println!("Decoder lookup is present");
-    }
+    // println!(
+    //     "In total of {} lookups of type {}",
+    //     all_relations_stable_set.len(),
+    //     lookup_type
+    // );
+    // if decoder_lookup.is_some() {
+    //     println!("Decoder lookup is present");
+    // }
 
     let mut multiplicity_pos = Some(multiplicity_pos);
     let mut relations_map = BTreeMap::new();
@@ -416,13 +416,13 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
         .or_insert(vec![])
         .len();
 
-    println!(
-        "At layer {} have {} inputs and {} intermediate values for lookup {:?}",
-        input_layer, num_inputs, num_intermediates, lookup
-    );
-    if decoder_lookup.is_some() {
-        println!("Decoder lookup is present at layer {}", input_layer);
-    }
+    // println!(
+    //     "At layer {} have {} inputs and {} intermediate values for lookup {:?}",
+    //     input_layer, num_inputs, num_intermediates, lookup
+    // );
+    // if decoder_lookup.is_some() {
+    //     println!("Decoder lookup is present at layer {}", input_layer);
+    // }
 
     // in general if we want to use some input - we make a cache relation if needed, and then use it,
     // otherwise:

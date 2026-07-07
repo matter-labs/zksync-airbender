@@ -24,7 +24,7 @@ DELEGATIONS=(
 PER_FAMILY_SET=("${PER_FAMILY_CIRCUITS[@]}" "${DELEGATIONS[@]}")
 UNIFIED_SET=(unified_reduced_machine "${DELEGATIONS[@]}")
 
-ALL_STEPS=(circuits witness_gen build_program generator prover native corruption binaries transpiler)
+ALL_STEPS=(circuits witness_gen build_program generator prover native corruption binaries transpiler fsv)
 OPT_IN_STEPS=(malicious)
 
 # ============================================================================
@@ -59,6 +59,8 @@ Subcommands:
   per_family    Per-family circuits + delegations (program: keccak_f1600 default,
                 hashed_fibonacci via GKR_PROGRAM env var)
   unified       Unified-reduced-machine + delegations (program: multi_family_smoke)
+  recursion     End-to-end recursion pipeline (base -> unrolled -> bridge -> final);
+                configurable for strategy sweeps. See: $0 recursion --help
 
 Options:
   --blake V             blake2_with_compression (default) | blake2_g_function | special_opcodes_extension
@@ -66,7 +68,7 @@ Options:
   --variant V           caches (default) | no_caches
   --encoding ENC        coeff (default) | eval (WHIR leaf encoding)
                         Forwarded as the eval_leaves feature to prover + generator.
-  --security-level L    80 (default) | 100 | both
+  --security-level L    80 (default) | 100   (mutually exclusive — run separately)
   --prove-empty         Prove every applicable circuit even if program made 0 calls.
                         Forwarded via GKR_PROVE_EMPTY.
   --no-self-checks      Disable in-prove sumcheck/cache/at-point-eval checks.
@@ -90,6 +92,9 @@ Steps (canonical order):
   corruption      Run corruption tests
   binaries        Build RISC-V binaries
   transpiler      Run transpiler tests (writes flamegraphs)
+  fsv             Full statement verifier — unified base-layer happy path +
+                  corruption (reads the fixture written by the prover step).
+                  Unified mode + blake2_with_compression only; no-op otherwise.
 
 Extra step (opt-in, runs last when invoked):
   malicious       Soundness-gap tests. Subcommand-aware: per_family runs the
@@ -101,7 +106,7 @@ Examples:
   $0 unified
   $0 per_family --from generator
   $0 unified --circuits blake2_with_extended_control --from binaries
-  $0 per_family --security-level both --from generator
+  $0 per_family --security-level 100 --from generator
   $0 unified --dry-run
 
 Exit codes:
@@ -118,18 +123,156 @@ EOF
 }
 
 # ============================================================================
+# Recursion pipeline (end-to-end: base -> unrolled -> bridge -> final)
+#
+# Structurally distinct from the per_family/unified artifact pipeline: the whole
+# thing is one test (prover_examples::recursion::test_recursive_proving_pipeline_
+# zksync_os) whose stages are driven by tag-keyed proof caches. `--from` picks how
+# far back to (re)generate/re-prove; everything upstream of it is reused from cache.
+# Configurable for sweeping recursion strategies (crossover threshold, per-stage blake).
+# ============================================================================
+RECURSION_STAGES=(circuits generator binaries base unrolled bridge final)
+
+recursion_usage() {
+  cat <<EOF
+Usage: $0 recursion [options]
+
+Runs the end-to-end recursion pipeline (base -> unrolled -> bridge -> final).
+
+Options:
+  --from STAGE          Start at STAGE, reusing cached upstream artifacts/proofs.
+                        Stages (in order): ${RECURSION_STAGES[*]}
+                          circuits/generator/binaries  regenerate artifacts (implies
+                                                        clearing all proof caches)
+                          base                          re-prove base (SLOW: 2-4h)
+                          unrolled|bridge|final         re-prove that stage + downstream
+                        Default: run everything (== --from circuits).
+  --switch-cycles N     Per-family->unified crossover (RECURSION_UNIFIED_SWITCH_CYCLES).
+                        Default 32000000.
+  --unrolled-blake V    Blake for the unrolled stage. Default blake2_with_compression.
+  --bridge-blake V      Blake for the bridge stage.   Default blake2_with_compression.
+  --final-blake V       Blake for the final stage.    Default special_opcodes.
+  --variant V           caches (default) | no_caches (artifact regen + binaries).
+  --dry-run             Print what would run without executing.
+  -h, --help            Show this message.
+
+Examples:
+  $0 recursion                                # full pipeline from scratch
+  $0 recursion --from final                   # re-prove only the final stage
+  $0 recursion --from bridge                  # re-prove bridge + final
+  $0 recursion --switch-cycles 16000000 --from unrolled   # sweep crossover threshold
+EOF
+}
+
+run_recursion() {
+  local from="" variant="caches" switch_cycles=32000000 dry=false
+  local unrolled_blake="blake2_with_compression" bridge_blake="blake2_with_compression"
+  local final_blake="special_opcodes"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --from) from="$2"; shift 2 ;;
+      --variant) variant="$2"; shift 2 ;;
+      --switch-cycles) switch_cycles="$2"; shift 2 ;;
+      --unrolled-blake) unrolled_blake="$2"; shift 2 ;;
+      --bridge-blake) bridge_blake="$2"; shift 2 ;;
+      --final-blake) final_blake="$2"; shift 2 ;;
+      --dry-run) dry=true; shift ;;
+      -h|--help) recursion_usage; exit 1 ;;
+      *) echo "ERROR: unknown recursion option: $1" >&2; recursion_usage; exit 1 ;;
+    esac
+  done
+  [[ -z "$from" ]] && from="circuits"                 # default: run everything
+  case "$variant" in caches|no_caches) ;; *) die "--variant must be caches|no_caches" ;; esac
+
+  local from_i="" i=0
+  for s in "${RECURSION_STAGES[@]}"; do
+    [[ "$s" = "$from" ]] && from_i=$i
+    i=$((i + 1))
+  done
+  [[ -n "$from_i" ]] || die "--from must be one of: ${RECURSION_STAGES[*]}. Got: $from"
+
+  stage_idx() { local n=0 s; for s in "${RECURSION_STAGES[@]}"; do [[ "$s" = "$1" ]] && { echo "$n"; return; }; n=$((n + 1)); done; }
+  active() { [[ "$(stage_idx "$1")" -ge "$from_i" ]]; }
+
+  local pe="circuit_defs/prover_examples"
+  local runner=eval; $dry && runner="echo [dry-run]"
+  local secfeat="security_80"; [[ "$variant" = "no_caches" ]] && secfeat="security_80,no_caches"
+
+  echo "==> recursion: from=$from variant=$variant switch=$switch_cycles"
+  echo "    blake unrolled=$unrolled_blake bridge=$bridge_blake final=$final_blake"
+
+  # --- 1) regenerate artifacts (each implies invalidating downstream proofs) ---
+  if active circuits; then
+    echo "==> [circuits] regenerate unified circuit layout + witness fn"
+    # NB: the unified witness fn is generated by the unified crate's own test,
+    # NOT witness_eval_generator (which covers per-family + delegations only).
+    $runner "(cd circuit_defs/unrolled_circuits/unified_reduced_machine && cargo test generate -- --exact test::generate)"
+  fi
+  if active generator; then
+    echo "==> [generator] regenerate inlined verifiers (features: $secfeat)"
+    $runner "cargo test -p verifier_generator --no-default-features --features $secfeat --test generate_verifiers"
+  fi
+  if active binaries; then
+    echo "==> [binaries] rebuild recursive verifier binaries (variant=$variant)"
+    $runner "(cd tools/gkr_verifier && ./dump_recursive_verifiers.sh --variant $variant)"
+  fi
+
+  # --- 2) clear proof caches from the effective stage onward (cascade) ---
+  # Regenerating any artifact invalidates ALL proofs -> clear from base.
+  local cstage="$from"
+  case "$from" in circuits|generator|binaries) cstage="base" ;; esac
+  # clears the named stage AND everything downstream (explicit cascade; no bash-4 `;&`)
+  clear_caches() {
+    local base="$pe/base_proofs.bin $pe/base_setups.bin"
+    local unrolled="$pe/recursion_layer_*.bin"
+    local bridge="$pe/bridge_proof*.bin $pe/bridge_setups*.bin"
+    local final="$pe/final_proof*.bin $pe/final_setups*.bin"
+    case "$1" in
+      base)     $runner "rm -f $base $unrolled $bridge $final" ;;
+      unrolled) $runner "rm -f $unrolled $bridge $final" ;;
+      bridge)   $runner "rm -f $bridge $final" ;;
+      final)    $runner "rm -f $final" ;;
+    esac
+  }
+  echo "==> clearing proof caches from '$cstage' onward"
+  clear_caches "$cstage"
+
+  # --- 3) run the pipeline with the chosen strategy ---
+  local log="/tmp/gkr_recursion.log"
+  echo "==> proving recursion pipeline (log: $log)"
+  $runner "(cd $pe && RUST_MIN_STACK=100000000 \
+      RECURSION_UNIFIED_SWITCH_CYCLES=$switch_cycles \
+      RECURSION_UNROLLED_BLAKE=$unrolled_blake \
+      RECURSION_BRIDGE_BLAKE=$bridge_blake \
+      RECURSION_FINAL_BLAKE=$final_blake \
+      cargo test --release --features verifiers -- --ignored --nocapture \
+        test_recursive_proving_pipeline_zksync_os 2>&1 | tee $log)"
+
+  echo ""
+  echo "==> Done!"
+}
+
+# ============================================================================
 # Subcommand parse — sets MODE and MODE_CIRCUITS
 # ============================================================================
 [[ $# -lt 1 ]] && usage
 case "$1" in
   per_family) MODE="per_family"; MODE_CIRCUITS=("${PER_FAMILY_SET[@]}"); shift ;;
   unified)    MODE="unified";    MODE_CIRCUITS=("${UNIFIED_SET[@]}");    shift ;;
+  recursion)  MODE="recursion";  shift ;;
   -h|--help)  usage ;;
-  *) die "first arg must be 'per_family' or 'unified'. Got: $1 (run with --help)" ;;
+  *) die "first arg must be 'per_family', 'unified', or 'recursion'. Got: $1 (run with --help)" ;;
 esac
 
 [[ -f Cargo.toml && -d tools/gkr_verifier/src/bin ]] \
   || die "must run from airbender repo root (Cargo.toml + tools/gkr_verifier/src/bin not found)"
+
+# Recursion is a self-contained path (its own options + cache-driven stages); it
+# does not use the per_family/unified circuit-set + step machinery below.
+if [[ "$MODE" = "recursion" ]]; then
+  run_recursion "$@"
+  exit 0
+fi
 
 # ============================================================================
 # Option parse
@@ -166,8 +309,8 @@ case "$VARIANT" in
 esac
 
 case "$SECURITY_LEVEL" in
-  80|100|both) ;;
-  *) die "--security-level must be 80, 100, or both. Got: $SECURITY_LEVEL" ;;
+  80|100) ;;
+  *) die "--security-level must be 80 or 100 (run the levels as separate invocations; they are mutually exclusive). Got: $SECURITY_LEVEL" ;;
 esac
 
 if [[ ${#SELECTED_CIRCUITS[@]} -gt 0 ]]; then
@@ -192,17 +335,15 @@ fi
 case "$SECURITY_LEVEL" in
   80)   LEVELS=(sec_80) ;;
   100)  LEVELS=(sec_100) ;;
-  both) LEVELS=(sec_80 sec_100) ;;
 esac
 
 LEVEL_FEATURES_ARR=()
 for lvl in "${LEVELS[@]}"; do LEVEL_FEATURES_ARR+=("security_${lvl#sec_}"); done
 LEVEL_FEATURES=$(IFS=,; echo "${LEVEL_FEATURES_ARR[*]}")
 
-# Single-level runs get a level test-filter; "both" leaves it empty so cargo
-# matches every level's tests via substring.
-LEVEL_TEST_FILTER=""
-[[ ${#LEVELS[@]} -eq 1 ]] && LEVEL_TEST_FILTER="_${LEVELS[0]}"
+# Exactly one level per run (security_80 and security_100 are mutually exclusive — a
+# `compile_error!` in verifier_common enforces it), so a level test-filter is always set.
+LEVEL_TEST_FILTER="_${LEVELS[0]}"
 
 # CIRCUITS = (base × level), filtered by which bin files actually exist.
 CIRCUITS=()
@@ -398,6 +539,12 @@ step_prover() {
 }
 
 step_native() {
+  # verifier_common PoW-bits self-check at BOTH levels (level-independent): exercises the
+  # security_100 cfg-dispatch of MEMORY_DELEGATION_POW_BITS that single-level pipeline runs skip.
+  run_step "verifier_common PoW-bits self-check (security_80)" \
+    cargo test -p verifier_common --no-default-features --features security_80 memory_delegation_pow
+  run_step "verifier_common PoW-bits self-check (security_100)" \
+    cargo test -p verifier_common --no-default-features --features security_100 memory_delegation_pow
   run_step "Native tests" \
     env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
       --no-default-features --features "$FEATURES" --test native \
@@ -431,6 +578,32 @@ step_transpiler() {
       -- "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}" --include-ignored
 }
 
+# Full statement verifier: unified base-layer happy path + corruption. Reads the
+# component bundle written by step_prover's gkr_run_unified_test (Option B; the FSV
+# crate can't depend on the prover). Unified mode only (no per-family FSV base-layer
+# test) and blake2_with_compression only (the only blake variant the FSV crate's
+# Cargo features expose). The fixture's bundled compiled circuits make it variant-
+# agnostic, so no caches/no_caches feature is needed here.
+step_fsv() {
+  if [[ "$MODE" != "unified" ]]; then
+    echo "  [fsv] skipped (unified mode only)"
+    return 0
+  fi
+  if [[ "$BLAKE" != "blake2_with_compression" ]]; then
+    echo "  [fsv] skipped (FSV base-layer test runs under blake2_with_compression only; BLAKE=$BLAKE)"
+    return 0
+  fi
+  # The FSV RISC-V binary (fsv_unified_base_layer_sec_80) is NOT in the per-circuit set the
+  # `binaries` step builds, so build it here for the transpiler test. dump_bin.sh auto-discovers
+  # it; the blake variant comes from verifier_common's unified features (the FSV pins no blake).
+  run_step "Build FSV unified base-layer RISC-V binary" \
+    in_dir tools/gkr_verifier ./dump_bin.sh \
+      --blake "$BLAKE" --variant "$VARIANT" fsv_unified_base_layer_sec_80
+  run_step "Full statement verifier (unified base layer: native + transpiler)" \
+    env RUSTFLAGS="$WARN_FLAGS" cargo test -p full_statement_verifier \
+      --features blake2_with_compression --test unified -- --include-ignored
+}
+
 # per_family: malicious_proof test (#[ignore]) writes corrupted proofs with
 # self_checks OFF; verifier-side malicious.rs then asserts rejection.
 # unified: now BOTH layers (symmetric uplift from plans/negative_test_pipeline_rework.md):
@@ -442,6 +615,10 @@ step_transpiler() {
 # The inits/teardowns-eval corruption lives in the `corruption` step
 # (rejects_corrupted_it_evals_unified_reduced_machine_sec_80).
 step_malicious() {
+  # `malicious` is opt-in, so a full pipeline (which runs `generator`) may not have
+  # run beforehand. Regenerate the verifier first so the soundness-gap tests always
+  # exercise the CURRENT generator source, not stale on-disk generated code.
+  step_generator
   case "$MODE" in
     per_family)
       run_step "Generate malicious proofs (corrupt witness, no self-checks)" \
@@ -450,10 +627,13 @@ step_malicious() {
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
           -- --ignored --nocapture malicious_proof
+      # Scope to the per-family malicious tests only. The `rejects_malicious_unified_*`
+      # tests belong to the `unified` subcommand (which regenerates their fixtures);
+      # running them here would test stale unified fixtures against the per-family run.
       run_step "Verify malicious proofs rejected (soundness gap tests)" \
         env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
           --no-default-features --features "$FEATURES" \
-          --test malicious -- --include-ignored
+          --test malicious -- --include-ignored --skip rejects_malicious_unified
       ;;
     unified)
       run_step "Unified negative tests (constraint + range-lookup layer)" \
@@ -496,6 +676,7 @@ for step in "${STEPS[@]}"; do
     corruption)     step_corruption ;;
     binaries)       step_binaries ;;
     transpiler)     step_transpiler ;;
+    fsv)            step_fsv ;;
     malicious)      step_malicious ;;
   esac
 done

@@ -21,8 +21,8 @@ pub mod definitions;
 pub mod delegation_params;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod imports;
-// #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
-// pub mod unified_circuit_statement;
+#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
+pub mod unified_circuit_statement;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod unrolled_circuit_params;
 #[cfg(feature = "verifiers")]
@@ -33,6 +33,10 @@ pub mod statement_common;
 
 #[cfg(feature = "proof_utils")]
 pub mod program_proof;
+
+#[cfg(feature = "host_utils")]
+pub mod host_utils;
+pub mod recursion_chain;
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 mod verifier_imports {
@@ -66,4 +70,6 @@ pub const MAX_CYCLES: u64 = const {
     max_cycles
 };
 
-pub const MEMORY_DELEGATION_POW_BITS: usize = 0; // TODO
+// Single source of truth lives in `verifier_common` so the prover and verifier provably
+// grind/check the same number of bits
+pub use verifier_common::MEMORY_DELEGATION_POW_BITS;

@@ -338,6 +338,15 @@ pub(crate) fn packed_ts_store(
 #[cfg(not(feature = "xmm_ts"))]
 pub(crate) fn packed_ts_off(name: InstructionName, rs1: u32, rs2: u32, rd: u32) -> i32 {
     use InstructionName as Op;
+    // ND-write must not credit rs1: the interpreter reads rs1's value WITHOUT bumping its
+    // timestamp (vm nd_write: "in circuits we will just read from x0"). The rs1 axis has no
+    // memory sentinel (the buffer is 32*33*33), so steer it to x0 — the x0@+0 credit is
+    // dominated by this same slot's rd-axis x0@+2.
+    let p_rs1 = if matches!(name, Op::ZicsrNonDeterminismWrite) {
+        0
+    } else {
+        rs1 as usize
+    };
     let p_rs2 = if matches!(name, Op::Lb | Op::Lbu | Op::Lh | Op::Lhu | Op::Lw) {
         32 // load: rs2 axis is the memory access, not a register
     } else {
@@ -349,19 +358,18 @@ pub(crate) fn packed_ts_off(name: InstructionName, rs1: u32, rs2: u32, rd: u32) 
     //     model touches x0 at +2, so use 0;
     //   * ND-write: rd==0 and the eager model writes x0 at +2 (`pre_bump(1,0)`), so keep
     //     the natural rd=0 (the rs2 axis also names x0 at +1, dominated by +2);
-    //   * JALR with rd==0: eager touches x0 only at +1 (via the rs2 axis), NOT at +2, so
-    //     steer the rd axis to the sentinel 32 to avoid a spurious x0@+2.
+    //   * JALR with rd==0 keeps the natural rd=0: the interpreter's `write_register`
+    //     stamps x0 at +2 even for a discarded write (jalr x0 / ret), so the rd axis
+    //     must credit x0@+2 (the rs2 axis's x0@+1 is dominated).
     let p_rd = if matches!(name, Op::Sb | Op::Sh | Op::Sw) {
         32
     } else if matches!(name, Op::Branch) {
         0
-    } else if rd == 0 && matches!(name, Op::Jalr) {
-        32
     } else {
         rd as usize
     };
-    let idx = 33 * 33 * (rs1 as usize) + 33 * p_rs2 + p_rd;
-    debug_assert!(idx < PACKED_TS_LEN);
+    let idx = 33 * 33 * p_rs1 + 33 * p_rs2 + p_rd;
+    assert!(idx < PACKED_TS_LEN);
     MachineState::PACKED_TS_OFFSET as i32 + (idx as i32) * 8
 }
 
@@ -1073,7 +1081,9 @@ fn emit_merged_word_run(ops: &mut x64::Assembler, program: &[Instruction], start
 //     Montgomery multiply (`product += ((product_lo * MONT_K) * p); result = product >> 32`,
 //     one conditional subtract), per `field::baby_bear::ops::basic`.
 // FMA computes `rd = rs1*rs2 + rd_old` in the field (reading rd's OLD value, no timestamp touch).
-// The field is chosen once per JIT build from `RISCV_MOP_FIELD` (default M31). The emitter only
+// The field is an explicit `preprocess_bytecode` parameter — the caller must pass the same
+// field its replayer/witness pipeline uses (`mop_field()` reads `RISCV_MOP_FIELD` for
+// env-driven callers such as the JIT differential tests). The emitter only
 // loads operands and leaves the reduced result in `out`; the caller owns the timestamp touches
 // (rs1@+0, rs2@+1, rd@+2), `store_result`, and the AddSubLui family counter.
 
@@ -1083,9 +1093,11 @@ pub enum MopField {
     BabyBear,
 }
 
-/// MOP field selection. Read freshly from `RISCV_MOP_FIELD` at each JIT build (default `M31`); an
-/// unrecognized value panics. Intentionally not cached, so a single process (e.g. a test) can
-/// build JITs for different fields by changing the variable between builds.
+/// Env-driven MOP field selection for callers without a fixed field (e.g. the JIT differential
+/// tests): reads `RISCV_MOP_FIELD` (default `M31`); an unrecognized value panics. Intentionally
+/// not cached, so a single process can build JITs for different fields by changing the variable
+/// between builds. Production pipelines should pass their field to `preprocess_bytecode`
+/// explicitly instead of relying on process env.
 pub fn mop_field() -> MopField {
     match std::env::var("RISCV_MOP_FIELD") {
         Ok(s) => match s.to_ascii_lowercase().as_str() {
@@ -1353,7 +1365,11 @@ fn emit_bb_montgomery_mul(ops: &mut x64::Assembler) {
 }
 
 impl<I: ContextImpl> JittedCode<I> {
-    pub fn preprocess_bytecode(program: &[Instruction], cycles_bound: Option<u32>) -> Self {
+    pub fn preprocess_bytecode(
+        program: &[Instruction],
+        cycles_bound: Option<u32>,
+        mop_field: MopField,
+    ) -> Self {
         let mut ops = x64::Assembler::new().unwrap();
         let start = ops.offset();
 
@@ -1476,9 +1492,6 @@ impl<I: ContextImpl> JittedCode<I> {
             let ts_bound = (cycles_bound as u64) * TIMESTAMP_STEP + INITIAL_TIMESTAMP;
             println!("Timestamp limit is 0x{:x}", ts_bound);
         }
-
-        // Prime field for the MOP (Zimop) opcodes, chosen once for the whole build (default M31).
-        let mop_field = mop_field();
 
         let mut i = 0;
         while i < program.len() {
@@ -2037,18 +2050,19 @@ impl<I: ContextImpl> JittedCode<I> {
 
                 // MOP-I xor-rotate (Zimop): rd = (rd_old ^ rs1).rotate_right(imm). Mirrors the
                 // reference `binary_shifts_family::mopi::mopi_xor_rot`: it reads rs1 (sub-slot
-                // +0), touches x0 (rs2 is always 0, sub-slot +1), reads rd's OLD value WITHOUT
-                // a timestamp touch, then writes rd (sub-slot +2); ShiftBinary family. The
-                // packed slot `(rs1, rs2=0, rd)` reconstructs exactly these touches.
+                // +0), reads rd's OLD value through the rs2 port (rs2 aliases rd at decode,
+                // sub-slot +1), then writes rd (sub-slot +2); ShiftBinary family. The packed
+                // slot `(rs1, rs2=rd, rd)` reconstructs exactly these touches.
                 Op::ZimopIXorRot => {
                     assert!(rd != 0);
-                    debug_assert_eq!(rs2, 0);
+                    assert_eq!(rs2, rd);
                     let out = destination_gpr(rd); // rd's GPR, or RAX for an XMM-resident rd
                     touch_register_and_increment_timestamp!(ops, rs1); // rs1 @ +0
-                    touch_register_and_increment_timestamp!(ops, rs2); // x0 @ +1 (rs2 == 0)
+                    touch_register_and_increment_timestamp!(ops, rs2); // rd_old via rs2 @ +1 (rs2 == rd)
                                                                        // Materialize rd's OLD value into `out`. A GPR-mapped rd already lives in
-                                                                       // `out`; an XMM-resident rd (out == RAX) must be extracted first. This read
-                                                                       // is value-only (no timestamp touch), matching the reference.
+                                                                       // `out`; an XMM-resident rd (out == RAX) must be extracted first. The
+                                                                       // timestamp touch above is the rs2 read; the value itself is unchanged
+                                                                       // until store_result.
                     if rv_to_gpr(rd).is_none() {
                         load_into(&mut ops, rd, out);
                     }
@@ -2169,8 +2183,12 @@ impl<I: ContextImpl> JittedCode<I> {
                         touch_register_and_bump_timestamp!(ops, rd, 2);
                         store_result(&mut ops, rd);
                     } else {
+                        // rd == 0: the interpreter stamps x0 at +1 (touch_x0) AND at +2
+                        // (write_register with reg_idx 0 — a discarded write still bumps
+                        // the timestamp), so the eager model must touch x0 twice.
                         pre_bump_timestamp_and_touch!(ops, 1, 0);
-                        bump_timestamp!(ops, 2);
+                        pre_bump_timestamp_and_touch!(ops, 1, 0);
+                        bump_timestamp!(ops, 1);
                     }
                     record_circuit_type(&mut ops, CounterType::BranchSlt, 1);
 
@@ -2390,15 +2408,17 @@ impl<I: ContextImpl> JittedCode<I> {
                     assert!(rd == 0);
 
                     if I::PROVIDES_FLATTENED_NON_DETERMINISM {
-                        // effectively NOP, just touch registers
-                        touch_register_and_increment_timestamp!(ops, rs1);
+                        // effectively NOP. rs1's value is read WITHOUT a timestamp touch
+                        // (the interpreter's nd_write only touches x0 — circuits read x0).
+                        bump_timestamp!(ops, 1);
                         pre_bump_timestamp_and_touch!(ops, 1, 0);
                         bump_timestamp!(ops, 2);
                         record_circuit_type(&mut ops, CounterType::AddSubLui, 1);
                         i += 1;
                     } else {
                         load_into(&mut ops, rs1, SCRATCH_REGISTER);
-                        touch_register_and_increment_timestamp!(ops, rs1);
+                        // rs1 read carries no timestamp touch (see flattened branch).
+                        bump_timestamp!(ops, 1);
                         dynasm!(ops
                             ; mov rdx, rsp
                             ;; before_call!(ops)
@@ -2749,7 +2769,7 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
 
         // Profiling baseline: when RISCV_PROFILE_SKIP_RUN is set we do all of the
         // setup (decode + JIT compile + the large allocations) but skip execution,
@@ -2821,7 +2841,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
 
         runner.run(
             &mut context,
@@ -2858,7 +2878,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         let mut memory: Box<MemoryHolder> = unsafe { Box::new_zeroed().assume_init() };
         let mut trace: Box<TraceChunk> = unsafe { Box::new_zeroed().assume_init() };
 
-        let runner = Self::preprocess_bytecode(instructions, cycles_bound);
+        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field());
         runner.run(
             &mut context,
             memory.as_mut(),
@@ -2914,7 +2934,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner = Self::preprocess_bytecode(&instructions, cycles_bound);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field());
 
         runner.run(
             &mut context,
