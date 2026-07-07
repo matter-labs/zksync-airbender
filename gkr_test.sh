@@ -43,10 +43,11 @@ STEP_GRAPH=(
   "corruption:generator prover"             # corrupt the honest proof
   "transpiler:generator prover binaries"
   "fsv:generator prover"
-  # malicious generates its OWN (mal-)proofs (witness corruption / prover-cache
-  # hooks); it does NOT consume the honest `prover` output — only the build inputs
-  # its own proving needs + the generated verifier it checks against.
-  "malicious:circuits witness_gen build_program generator"
+  # malicious generates its OWN (mal-)proofs (witness corruption / prover-cache hooks),
+  # so it does NOT consume the honest `prover` output. step_malicious also re-runs
+  # step_generator itself (so the verify hits CURRENT generated code), so `generator`
+  # is NOT a declared dep here — only the build inputs its own proving needs.
+  "malicious:circuits witness_gen build_program"
 )
 # Opt-in steps: in the graph and valid, but excluded from a default (no-args) run;
 # only execute when named explicitly or reached via --from. Orthogonal to deps.
@@ -139,7 +140,7 @@ Options:
   --variant V           caches (default) | no_caches
   --encoding ENC        coeff (default) | eval (WHIR leaf encoding)
                         Forwarded as the eval_leaves feature to prover + generator.
-  --security-level L    80 (default) | 100 | both
+  --security-level L    80 (default) | 100   (mutually exclusive — run separately)
   --prove-empty         Prove every applicable circuit even if program made 0 calls.
                         Forwarded via GKR_PROVE_EMPTY.
   --no-self-checks      Disable in-prove sumcheck/cache/at-point-eval checks.
@@ -180,7 +181,7 @@ Examples:
   $0 unified
   $0 per_family --from generator
   $0 unified --circuits blake2_with_extended_control --from binaries
-  $0 per_family --security-level both --from generator
+  $0 per_family --security-level 100 --from generator
   $0 unified --dry-run
 
 Exit codes:
@@ -383,8 +384,8 @@ case "$VARIANT" in
 esac
 
 case "$SECURITY_LEVEL" in
-  80|100|both) ;;
-  *) die "--security-level must be 80, 100, or both. Got: $SECURITY_LEVEL" ;;
+  80|100) ;;
+  *) die "--security-level must be 80 or 100 (run the levels as separate invocations; they are mutually exclusive). Got: $SECURITY_LEVEL" ;;
 esac
 
 if [[ ${#SELECTED_CIRCUITS[@]} -gt 0 ]]; then
@@ -409,17 +410,15 @@ fi
 case "$SECURITY_LEVEL" in
   80)   LEVELS=(sec_80) ;;
   100)  LEVELS=(sec_100) ;;
-  both) LEVELS=(sec_80 sec_100) ;;
 esac
 
 LEVEL_FEATURES_ARR=()
 for lvl in "${LEVELS[@]}"; do LEVEL_FEATURES_ARR+=("security_${lvl#sec_}"); done
 LEVEL_FEATURES=$(IFS=,; echo "${LEVEL_FEATURES_ARR[*]}")
 
-# Single-level runs get a level test-filter; "both" leaves it empty so cargo
-# matches every level's tests via substring.
-LEVEL_TEST_FILTER=""
-[[ ${#LEVELS[@]} -eq 1 ]] && LEVEL_TEST_FILTER="_${LEVELS[0]}"
+# Exactly one level per run (security_80 and security_100 are mutually exclusive — a
+# `compile_error!` in verifier_common enforces it), so a level test-filter is always set.
+LEVEL_TEST_FILTER="_${LEVELS[0]}"
 
 # CIRCUITS = (base × level), filtered by which bin files actually exist.
 CIRCUITS=()
@@ -632,6 +631,12 @@ step_prover() {
 }
 
 step_native() {
+  # verifier_common PoW-bits self-check at BOTH levels (level-independent): exercises the
+  # security_100 cfg-dispatch of MEMORY_DELEGATION_POW_BITS that single-level pipeline runs skip.
+  run_step "verifier_common PoW-bits self-check (security_80)" \
+    cargo test -p verifier_common --no-default-features --features security_80 memory_delegation_pow
+  run_step "verifier_common PoW-bits self-check (security_100)" \
+    cargo test -p verifier_common --no-default-features --features security_100 memory_delegation_pow
   run_step "Native tests" \
     "${VERIFIER_TEST[@]}" --test native \
       -- "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}"
@@ -699,6 +704,11 @@ step_fsv() {
 # The inits/teardowns-eval corruption lives in the `corruption` step
 # (rejects_corrupted_it_evals_unified_reduced_machine_sec_80).
 step_malicious() {
+  # `malicious` is opt-in, so a full pipeline (which runs `generator`) may not have run
+  # beforehand. Regenerate the verifier first so the soundness-gap tests always exercise
+  # the CURRENT generator source, not stale on-disk generated code. (This is why
+  # STEP_GRAPH does NOT list `generator` as a malicious dep — it's self-satisfied here.)
+  step_generator
   case "$MODE" in
     per_family)
       # Regenerate ALL per-family malicious fixtures (no self-checks, else the debug
