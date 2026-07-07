@@ -15,6 +15,15 @@ use crate::upstream::{
 use crate::witness::circuit_type::CircuitType;
 
 /// Security levels the GPU prover supports today.
+// TODO(sec100): support Sec100. Requires, at minimum:
+//   1. a `Sec100` arm in `prover_config` (WHIR schedule + domain-size mapping,
+//      analogous to `prover_config_sec80`);
+//   2. GPU PoW grinding for the lookup-challenge and batched-proximity-check
+//      challenges — at Sec100 both bit counts are non-zero (see
+//      `assert_gpu_supported_pow_config`), so the 0 nonces hardcoded in the
+//      `GKRProof` construction (`proof/orchestration/terminal.rs`) would be
+//      unsound. The grinding primitive already exists (`blake2s_pow`, used for
+//      the WHIR proximity rounds).
 pub const GPU_SUPPORTED_SECURITY_LEVELS: [SecurityLevel; 1] = [SecurityLevel::Sec80];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,6 +52,7 @@ pub fn prover_config(
 ) -> Result<ProverConfig, UnsupportedGpuSecurityLevel> {
     match security_level {
         SecurityLevel::Sec80 => Ok(prover_config_sec80(circuit_type)),
+        // TODO(sec100): add a `Sec100` arm (see `GPU_SUPPORTED_SECURITY_LEVELS`).
         other => Err(UnsupportedGpuSecurityLevel { requested: other }),
     }
 }
@@ -80,6 +90,8 @@ pub(crate) fn assert_gpu_supported_pow_config(
     prover_config: &ProverConfig,
     compiled_circuit: &GKRCircuitArtifact<BF>,
 ) {
+    // TODO(sec100): when a non-zero level is added, implement the two PoW grinds
+    // here (or upstream of the nonce construction) instead of asserting 0.
     let security_bits = prover_config.security_level.security_bits();
     let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
         security_bits,
