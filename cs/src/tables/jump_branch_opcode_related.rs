@@ -245,6 +245,51 @@ mod tests {
     }
 
     #[test]
+    fn unified_table_matches_independent_spec_exhaustively() {
+        // Independent RISC-V semantics oracle (NOT via `resolve_conditional`).
+        let expected =
+            |rs2_sign: bool, rs1_sign: bool, unsigned_lt: bool, eq: bool, funct3: u32| {
+                // signed a<b: when signs differ, the negative one is smaller ⇒ result = rs1_sign;
+                // when signs match, ordering matches the unsigned comparison.
+                let signed_lt = if rs1_sign != rs2_sign {
+                    rs1_sign
+                } else {
+                    unsigned_lt
+                };
+                let r = match funct3 {
+                    0b000 => eq,           // BEQ
+                    0b001 => !eq,          // BNE
+                    0b010 => signed_lt,    // SLT
+                    0b100 => signed_lt,    // BLT
+                    0b011 => unsigned_lt,  // SLTU
+                    0b110 => unsigned_lt,  // BLTU
+                    0b101 => !signed_lt,   // BGE  = !BLT
+                    0b111 => !unsigned_lt, // BGEU = !BLTU
+                    _ => unreachable!(),
+                };
+                r as u32
+            };
+
+        let unified = create_conditional_op_resolution_table_unified::<BabyBearField>(0);
+        for funct3 in 0..8u32 {
+            for bits in 0..16u32 {
+                let rs2_sign = bits & 1 != 0;
+                let rs1_sign = bits & 2 != 0;
+                let unsigned_lt = bits & 4 != 0;
+                let eq = bits & 8 != 0;
+                let key = packed_key_unified(rs2_sign, rs1_sign, unsigned_lt, eq, funct3);
+                let got = unified.lookup_value::<1>(&[BabyBearField::new(key)])[0].as_u32_reduced();
+                assert_eq!(
+                    got,
+                    expected(rs2_sign, rs1_sign, unsigned_lt, eq, funct3),
+                    "unified table diverges from independent spec at rs2_sign={rs2_sign} \
+                     rs1_sign={rs1_sign} unsigned_lt={unsigned_lt} eq={eq} funct3={funct3:#05b}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn conditional_jmp_branch_slt_cross_sign() {
         let table = create_conditional_op_resolution_table::<BabyBearField>(0);
         let resolve = |rs2_high, rs1_sign, unsigned_lt, eq, funct3| -> u32 {
