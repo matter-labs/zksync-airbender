@@ -980,8 +980,14 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
         RamWordRepresentation::Zero => {}
         RamWordRepresentation::U16Limbs(read_value) => {
             for (ch_idx, offset) in [
-                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, read_value[0]),
-                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, read_value[1]),
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                    read_value[0],
+                ),
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                    read_value[1],
+                ),
             ] {
                 let ch = challenge(ch_idx);
                 let cl = claim(offset);
@@ -1014,8 +1020,7 @@ fn emit_memory_tuple_check<MW: FieldWrapper>(
                 let ch = challenge(ch_idx);
                 let low_cl = claim(offset_low);
                 let high_cl = claim(offset_high);
-                let mul_shift =
-                    MW::mul_assign_by_base(quote! { combined }, quote! { #shift });
+                let mul_shift = MW::mul_assign_by_base(quote! { combined }, quote! { #shift });
                 let add_low = MW::add_assign(quote! { combined }, quote! { low });
                 let mul = MW::mul_assign(quote! { t_val }, quote! { combined });
                 let add = MW::add_assign(quote! { expected }, quote! { t_val });

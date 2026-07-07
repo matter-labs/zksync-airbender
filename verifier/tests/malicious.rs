@@ -50,10 +50,19 @@ fn assert_rejects(variant: &str, expected: impl FnOnce(&VerificationError) -> bo
 
 fn assert_accepts(variant: &str) {
     let proof = load_malicious_proof(variant);
-    let (nds, external_challenges) = common::proof_to_nds(CIRCUIT_NAME, SecurityLevel::Sec80, &proof);
-    match common::verify_nds(CIRCUIT_NAME, SecurityLevel::Sec80, &external_challenges, nds) {
+    let (nds, external_challenges) =
+        common::proof_to_nds(CIRCUIT_NAME, SecurityLevel::Sec80, &proof);
+    match common::verify_nds(
+        CIRCUIT_NAME,
+        SecurityLevel::Sec80,
+        &external_challenges,
+        nds,
+    ) {
         Ok(()) => {}
-        Err(r) => panic!("{}: honest control proof unexpectedly REJECTED: {:?}", variant, r),
+        Err(r) => panic!(
+            "{}: honest control proof unexpectedly REJECTED: {:?}",
+            variant, r
+        ),
     }
 }
 
@@ -75,7 +84,10 @@ fn memtuple_control_accepts() {
 #[ignore]
 fn rejects_malicious_memtuple_cacheforge() {
     assert_rejects("memtuple_cacheforge", |e| {
-        matches!(e, VerificationError::GkrPermutationCacheRelationFailed { .. })
+        matches!(
+            e,
+            VerificationError::GkrPermutationCacheRelationFailed { .. }
+        )
     });
 }
 

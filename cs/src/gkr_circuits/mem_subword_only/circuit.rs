@@ -280,8 +280,10 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         //
         // (a) canonical 16-bit low limb: commit a copy of cleanaddr_lo (degree-2 selection, so
         // it cannot be a range-check input directly) and range-check it to 16 bits.
-        let cleanaddr_lo_canon =
-            cs.add_intermediate_named_variable_from_expr(cleanaddr_lo.clone(), "cleanaddr_lo (canonical 16-bit)");
+        let cleanaddr_lo_canon = cs.add_intermediate_named_variable_from_expr(
+            cleanaddr_lo.clone(),
+            "cleanaddr_lo (canonical 16-bit)",
+        );
         cs.require_invariant_from_lookup_input(
             LookupInput::from(cleanaddr_lo_canon),
             Invariant::RangeChecked { width: 16 },
