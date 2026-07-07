@@ -104,6 +104,21 @@ pub struct OccurrenceStreams {
     /// `build`). This is the enforcement point for RR's "any evictable value has a
     /// genome backing" invariant; read via `is_admittable`.
     admittable: BTreeSet<ExprId>,
+    /// Values whose recompute cone actually READS DRAM (a `SourceKind::Read` leaf reachable
+    /// through `Add`/`Mul` edges, stopping at resolution fences). Caching only pays off by
+    /// avoiding a DRAM re-read; a value whose recompute is DRAM-free — a peek / special /
+    /// constant / challenge cone (`RangeCheck`, `PeekSingleColumn`, `PeekSetup`, …) — saves
+    /// zero traffic if cached and only squats a cell, so it must never be admitted regardless
+    /// of fan-out. Read via `reaches_dram`; consulted by `try_admit` to keep free-to-recompute
+    /// values out of cache (RR: "single use values should never make it into cache").
+    reaches_dram: BTreeSet<ExprId>,
+    /// Per-value count of OPERAND (`SiteConsumer::Expr`) demand occurrences — genuine
+    /// re-reads as a fold input, EXCLUDING `RootOutput` materializes (which serve straight
+    /// from the accumulator). Combined with `reaches_dram`: a value that saves no traffic
+    /// (`!reaches_dram`) AND is used as an operand fewer than twice is pure waste to cache —
+    /// its lone free recompute is cheaper than a spill + reload. A multi-use free value (a
+    /// peek folded into several terms) still caches, so its gather runs once, not N times.
+    operand_reads: BTreeMap<ExprId, usize>,
 }
 
 impl OccurrenceStreams {
@@ -252,11 +267,28 @@ impl OccurrenceStreams {
         let admittable: BTreeSet<ExprId> =
             enumerate_site_domain(layer).into_iter().map(|k| k.value).collect();
         let mut streams: BTreeMap<ExprId, VecDeque<(SiteKey, f64)>> = BTreeMap::new();
+        let mut operand_reads: BTreeMap<ExprId, usize> = BTreeMap::new();
         for key in flat {
+            if matches!(key.consumer, SiteConsumer::Expr { .. }) {
+                *operand_reads.entry(key.value).or_default() += 1;
+            }
             let priority = d.get(&key).unwrap_or(0.0);
             streams.entry(key.value).or_default().push_back((key, priority));
         }
-        Self { streams, admittable }
+        let reaches_dram = compute_reaches_dram(layer);
+        Self { streams, admittable, reaches_dram, operand_reads }
+    }
+
+    /// Whether `v`'s recompute cone reads DRAM (see the field doc). `false` for a peek /
+    /// special / const / challenge cone whose recompute is free — caching it saves no traffic.
+    pub fn reaches_dram(&self, v: ExprId) -> bool {
+        self.reaches_dram.contains(&v)
+    }
+
+    /// Operand (`SiteConsumer::Expr`) demand count of `v` — fold-input re-reads, excluding
+    /// `RootOutput` materializes (see the field doc).
+    pub fn operand_read_count(&self, v: ExprId) -> usize {
+        self.operand_reads.get(&v).copied().unwrap_or(0)
     }
 
     /// Effective priority of `v` = priority of its FRONT unserved occurrence;
@@ -280,6 +312,45 @@ impl OccurrenceStreams {
     pub fn is_admittable(&self, v: ExprId) -> bool {
         self.admittable.contains(&v)
     }
+}
+
+/// Per-expr set of values whose recompute cone reads DRAM: a `SourceKind::Read` leaf
+/// reachable through `Add`/`Mul` operand edges, stopping at resolution fences (a fenced
+/// leaf is a peek — resolved to a free special gather, no DRAM read below it). Mirrors
+/// `floor.rs`'s cone walk (same `SourceKind::Read` DRAM predicate + resolution fence).
+/// Memoized single pass; the DAG is acyclic so the in-progress `false` seed never masks a
+/// real edge.
+fn compute_reaches_dram(layer: &DagLayer) -> BTreeSet<ExprId> {
+    fn visit(layer: &DagLayer, e: u32, memo: &mut [Option<bool>]) -> bool {
+        if let Some(v) = memo[e as usize] {
+            return v;
+        }
+        memo[e as usize] = Some(false); // acyclic-DAG seed (never revisited via a cycle)
+        // A resolution-pruned leaf is a peek: the emitter fences it as a terminal special
+        // and never walks the cone underneath, so its recompute reads no DRAM.
+        let r = if layer.resolutions.contains_key(&ExprId(e)) {
+            false
+        } else {
+            match &layer.exprs[e as usize] {
+                Expr::Source(sid) => {
+                    matches!(layer.sources[sid.0 as usize].kind, SourceKind::Read { .. })
+                }
+                Expr::Add(children) | Expr::Mul(children) => {
+                    children.iter().fold(false, |acc, c| visit(layer, c.0, memo) || acc)
+                }
+            }
+        };
+        memo[e as usize] = Some(r);
+        r
+    }
+    let mut memo: Vec<Option<bool>> = vec![None; layer.exprs.len()];
+    let mut out = BTreeSet::new();
+    for e in 0..layer.exprs.len() as u32 {
+        if visit(layer, e, &mut memo) {
+            out.insert(ExprId(e));
+        }
+    }
+    out
 }
 
 // ── demand-order traversal (option (b): see module doc) ─────────────────────

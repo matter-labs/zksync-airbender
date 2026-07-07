@@ -430,6 +430,18 @@ impl<'a> VirtualLower<'a> {
         if !self.decisions.as_ref()?.streams.is_admittable(v) {
             return None;
         }
+        // Single-use free value → never cache (RR: "single use values should never make it
+        // into cache"). A value that saves no DRAM traffic (`!reaches_dram`) AND is read as a
+        // fold operand fewer than twice gains nothing from residency: its lone free recompute
+        // is cheaper than a spill + reload, and caching it only squats a cell (a single-use
+        // peek cache-root). A DRAM value (caching avoids a re-read) or a multi-use free value
+        // (caching runs its gather once, not N times) is still admitted.
+        {
+            let s = &self.decisions.as_ref()?.streams;
+            if !s.reaches_dram(v) && s.operand_read_count(v) < 2 {
+                return None;
+            }
+        }
         let admitting_priority = self.decisions.as_ref()?.streams.effective_priority(v)?;
         let need = resident_width(field);
         if !self.evict_to_fit(need, Some(admitting_priority)) {
