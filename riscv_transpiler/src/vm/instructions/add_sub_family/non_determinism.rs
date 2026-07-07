@@ -30,12 +30,13 @@ pub(crate) fn nd_write<C: Counters, S: Snapshotter<C>, R: RAM, ND: NonDeterminis
     debug_assert_eq!(instr.rs2, 0);
     debug_assert_eq!(instr.rd, 0);
 
-    // NOTE: In circuits we will just read from x0
+    // NOTE: In circuits we will just read from x0, so we do NOT bump timestamp counter on rs1
     let non_determinism_write_value =
         unsafe { state.registers.get_unchecked(instr.rs1 as usize).value };
     touch_x0::<C, 1>(state);
     nd.write_with_memory_access(&*ram, non_determinism_write_value);
-    write_register_for_pure_opcode::<C, 2>(state, 0, 0);
+    // we just touch instead of write
+    touch_x0::<C, 2>(state);
     default_increase_pc::<C>(state);
     increment_family_counter::<C, ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(state);
 }

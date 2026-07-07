@@ -28,11 +28,13 @@ use field::PrimeField;
 /// | Bit range  | Family                            | Count |
 /// |------------|-----------------------------------|-------|
 /// | [0..9)     | Family 1 (add_sub_lui_auipc_mop)  | 9     |
-/// | [9..14)    | Family 2 (jump_branch_slt)        | 5     |
-/// | [14..16)   | Family 3 (shift_binop)            | 2     |
-/// | [16..18)   | Family 4 (mem_word_only)          | 2     |
+/// | [9]        | Family 1 unified-only tri-add     | 1     |
+/// | [10..15)   | Family 2 (jump_branch_slt)        | 5     |
+/// | [15..17)   | Family 3 (shift_binop)            | 2     |
+/// | [17]       | Family 3 unified-only xor-rotate  | 1     |
+/// | [18..20)   | Family 4 (mem_word_only)          | 2     |
 ///
-/// Family 4 is encoded one-hot in the unified bitmask (bit 16 = LW, bit 17 = SW)
+/// Family 4 is encoded one-hot in the unified bitmask (bit 18 = LW, bit 19 = SW)
 /// to match the per-sub-opcode convention used by Families 1/2/3. This diverges
 /// from the Family-4 standalone encoding (1 bit = is_store) but lets the unified
 /// body read the LW/SW gates directly as Booleans without committing additional
@@ -42,10 +44,16 @@ use field::PrimeField;
 /// 1 reserved bit — `mem_subword_only`'s third sub-opcode bit (`SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS = 3`)
 ///  — that the unified reduced-machine layout doesn't allocate because mem_subword isn't part of the reduced-machine family set.)
 pub const FAMILY_1_FLAG_OFFSET: usize = 0;
-pub const FAMILY_2_FLAG_OFFSET: usize =
+pub const UNIFIED_F1_NUM_FLAGS: usize = ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS + 1;
+pub const FAMILY_1_TRI_ADD_BIT: usize =
     FAMILY_1_FLAG_OFFSET + ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS;
+
+pub const FAMILY_2_FLAG_OFFSET: usize = FAMILY_1_FLAG_OFFSET + UNIFIED_F1_NUM_FLAGS;
 pub const FAMILY_3_FLAG_OFFSET: usize = FAMILY_2_FLAG_OFFSET + JUMP_SLT_BRANCH_FAMILY_NUM_BITS;
-pub const FAMILY_4_FLAG_OFFSET: usize = FAMILY_3_FLAG_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
+pub const UNIFIED_F3_NUM_FLAGS: usize = SHIFT_BINARY_FAMILY_NUM_FLAGS + 1;
+pub const FAMILY_3_XOR_ROT_BIT: usize = FAMILY_3_FLAG_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
+
+pub const FAMILY_4_FLAG_OFFSET: usize = FAMILY_3_FLAG_OFFSET + UNIFIED_F3_NUM_FLAGS;
 
 /// Family 4 occupies 2 unified flags (one-hot LW/SW), independent of the standalone
 /// `WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS = 1` encoding.
@@ -53,55 +61,45 @@ pub const UNIFIED_FAMILY_4_NUM_FLAGS: usize = 2;
 pub const FAMILY_4_LW_BIT: usize = FAMILY_4_FLAG_OFFSET;
 pub const FAMILY_4_SW_BIT: usize = FAMILY_4_FLAG_OFFSET + 1;
 
-pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS
+pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = UNIFIED_F1_NUM_FLAGS
     + JUMP_SLT_BRANCH_FAMILY_NUM_BITS
-    + SHIFT_BINARY_FAMILY_NUM_FLAGS
+    + UNIFIED_F3_NUM_FLAGS
     + UNIFIED_FAMILY_4_NUM_FLAGS;
 
 /// Per-family count of *branch-local* scratch Booleans — committed Booleans used
 /// only inside that family's flag-gated constraints, hence unconstrained (free)
 /// on rows where the family is idle. Because at most one family fires per row,
 /// these slots can be ALIASED across families into one shared pool.
-pub(super) const F1_SCRATCH_BOOLS: usize = 2; // carry, intermediate_carry (alias F4's of_lo/of_hi slots)
+pub(super) const F1_SCRATCH_BOOLS: usize = 4; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans. Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0.
 pub(super) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,final}_of (4) + next_pc_bit_1
 pub(super) const F3_SCRATCH_BOOLS: usize = 0;
 pub(super) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
 
+const fn const_max(a: usize, b: usize) -> usize {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
 /// Shared base-layer scratch-Boolean pool size = max across families (one pool,
 /// reused per row by whichever family fires)
-const UNIFIED_SCRATCH_BOOL_COUNT: usize = {
-    let mut m = F1_SCRATCH_BOOLS;
-    if F2_SCRATCH_BOOLS > m {
-        m = F2_SCRATCH_BOOLS;
-    }
-    if F3_SCRATCH_BOOLS > m {
-        m = F3_SCRATCH_BOOLS;
-    }
-    if F4_SCRATCH_BOOLS > m {
-        m = F4_SCRATCH_BOOLS;
-    }
-    m
-};
+const UNIFIED_SCRATCH_BOOL_COUNT: usize = const_max(
+    const_max(F1_SCRATCH_BOOLS, F2_SCRATCH_BOOLS),
+    const_max(F3_SCRATCH_BOOLS, F4_SCRATCH_BOOLS),
+);
 
 pub(super) const F1_SCRATCH_VARS: usize = 0;
 pub(super) const F2_SCRATCH_VARS: usize = 4; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source
-pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points
+pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points (xor-rotate reuses the rs2 split: rs2 aliases rd at decode)
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
 
 /// Shared base-layer scratch-Variable pool size = max across families.
-const UNIFIED_SCRATCH_VAR_COUNT: usize = {
-    let mut m = F1_SCRATCH_VARS;
-    if F2_SCRATCH_VARS > m {
-        m = F2_SCRATCH_VARS;
-    }
-    if F3_SCRATCH_VARS > m {
-        m = F3_SCRATCH_VARS;
-    }
-    if F4_SCRATCH_VARS > m {
-        m = F4_SCRATCH_VARS;
-    }
-    m
-};
+const UNIFIED_SCRATCH_VAR_COUNT: usize = const_max(
+    const_max(F1_SCRATCH_VARS, F2_SCRATCH_VARS),
+    const_max(F3_SCRATCH_VARS, F4_SCRATCH_VARS),
+);
 
 pub(super) const UNIFIED_LOOKUP_WIDTH: usize = 8;
 
@@ -157,11 +155,21 @@ fn flush_unified_lookup_pool<F: PrimeField, CS: Circuit<F>>(
     }
 }
 
+const UNIFIED_XOR_ROTATE_TABLES: [TableType; 4] = [
+    TableType::XorRotate16,
+    TableType::XorRotate12,
+    TableType::XorRotate8,
+    TableType::XorRotate7,
+];
+
 pub fn unified_reduced_machine_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     add_sub_lui_auipc_mop_table_addition_fn(cs);
     jump_branch_slt_table_addition_fn(cs);
     shift_binop_table_addition_fn(cs);
     mem_word_only_table_addition_fn(cs);
+    for t in UNIFIED_XOR_ROTATE_TABLES {
+        cs.materialize_table::<UNIFIED_LOOKUP_WIDTH>(t);
+    }
 }
 
 pub fn unified_reduced_machine_table_driver_fn<F: PrimeField>(table_driver: &mut TableDriver<F>) {
@@ -169,6 +177,9 @@ pub fn unified_reduced_machine_table_driver_fn<F: PrimeField>(table_driver: &mut
     jump_branch_slt_table_driver_fn(table_driver);
     shift_binop_table_driver_fn(table_driver);
     mem_word_only_table_driver_fn(table_driver);
+    for t in UNIFIED_XOR_ROTATE_TABLES {
+        table_driver.materialize_table::<UNIFIED_LOOKUP_WIDTH>(t);
+    }
 }
 
 /// Top-level unified circuit body. Allocates a single shared set of memory accesses
@@ -309,6 +320,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         cs,
         inputs.clone(),
         unified_mask.add_sub_lui_auipc_mop(),
+        unified_mask.perform_tri_add(),
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
@@ -332,6 +344,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         cs,
         inputs.clone(),
         unified_mask.binary_shifts(),
+        unified_mask.perform_xor_rot(),
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,
@@ -497,10 +510,10 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
 
     // Witness: is_any_family_active = execute AND (any of the family-dispatch bits)
     {
-        let f1_vars: [Variable; ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS] =
+        let f1_vars: [Variable; UNIFIED_F1_NUM_FLAGS] =
             std::array::from_fn(|i| family_1_bits[i].expect_variable());
         let f2_vars: [Variable; 4] = std::array::from_fn(|i| family_2_bits[i].expect_variable());
-        let f3_vars: [Variable; SHIFT_BINARY_FAMILY_NUM_FLAGS] =
+        let f3_vars: [Variable; UNIFIED_F3_NUM_FLAGS] =
             std::array::from_fn(|i| family_3_bits[i].expect_variable());
         let is_lw_var = is_lw.expect_variable();
         let is_sw_var = is_sw.expect_variable();
@@ -583,9 +596,10 @@ fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(cs: &mut 
 }
 
 /// Build the unified circuit artifact via the inline-i/t compile path.
-/// Single source of truth used by both the cs-side serialization tests below
-/// and by the verifier_generator integration test
-fn build_unified_artifact<F: ::field::PrimeField>(
+/// Single source of truth used by the cs-side serialization tests below,
+/// the verifier_generator integration test, and the `unified_reduced_machine`
+/// setup crate that wires the circuit into the GKR prover.
+pub fn build_unified_artifact<F: ::field::PrimeField>(
     use_caches: bool,
 ) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
     use crate::cs::circuit_impl::BasicAssembly;

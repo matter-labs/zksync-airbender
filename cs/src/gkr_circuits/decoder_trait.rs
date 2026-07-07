@@ -167,26 +167,6 @@ pub trait OpcodeFamilyDecoder: 'static + std::fmt::Debug {
     }
 }
 
-// pub fn opcodes_for_full_machine() -> Vec<Box<dyn OpcodeFamilyDecoder>> {
-//     vec![
-//         Box::new(AddSubLuiAuipcMopDecoder),
-//         Box::new(JumpSltBranchDecoder),
-//         Box::new(ShiftBinaryCsrrwDecoder),
-//         Box::new(MemoryFamilyDecoder),
-//         Box::new(DivMulDecoder::<true>),
-//     ]
-// }
-
-// pub fn opcodes_for_full_machine_with_unsigned_mul_div_only() -> Vec<Box<dyn OpcodeFamilyDecoder>> {
-//     vec![
-//         Box::new(AddSubLuiAuipcMopDecoder),
-//         Box::new(JumpSltBranchDecoder::<true>),
-//         Box::new(ShiftBinaryDecoder),
-//         Box::new(MemoryFamilyDecoder),
-//         Box::new(DivMulDecoder::<false>),
-//     ]
-// }
-
 pub fn opcodes_for_full_machine_with_mem_word_access_specialization(
 ) -> Vec<Box<dyn OpcodeFamilyDecoder>> {
     vec![
@@ -219,23 +199,6 @@ pub fn opcodes_for_reduced_machine() -> Vec<Box<dyn OpcodeFamilyDecoder>> {
         Box::new(WordOnlyMemoryFamilyDecoder),
     ]
 }
-
-// pub fn process_binary_into_separate_tables<F: PrimeField, A: GoodAllocator>(
-//     binary: &[u32],
-//     families: &[Box<dyn OpcodeFamilyDecoder>],
-//     max_bytecode_size_words: usize,
-//     supported_csrs: &[u16],
-// ) -> HashMap<
-//     u8,
-//     Vec<Option<ExecutorFamilyDecoderData>, A>,
-// > {
-//     process_binary_into_separate_tables_ext::<F, false, A>(
-//         binary,
-//         families,
-//         max_bytecode_size_words,
-//         supported_csrs,
-//     )
-// }
 
 pub fn process_binary_into_separate_tables_ext<
     F: PrimeField,

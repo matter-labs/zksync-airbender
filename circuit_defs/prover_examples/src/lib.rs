@@ -8,8 +8,10 @@ pub use ::setups;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
-// pub mod unified;
+pub mod unified;
 pub mod unrolled;
+
+mod recursion;
 
 const DUMP_WITNESS_VAR: &str = "DUMP_WITNESS";
 
@@ -23,6 +25,12 @@ fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
 fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()
+}
+
+#[allow(dead_code)]
+fn try_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> Result<T, ()> {
+    let src = std::fs::File::open(filename).map_err(|_| ())?;
+    Ok(serde_json::from_reader(src).unwrap())
 }
 
 #[allow(dead_code)]

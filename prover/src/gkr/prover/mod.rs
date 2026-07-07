@@ -763,11 +763,10 @@ where
 
     drop(gkr_storage);
 
-    // TODO
-    assert_eq!(
-        prover_config.batched_proximity_check_challenge_pow_bits, 0,
-        "TODO"
-    );
+    if prover_config.batched_proximity_check_challenge_pow_bits > 0 {
+        // TODO: do PoW
+        todo!();
+    }
 
     let whir_batching_challenge = draw_random_field_els::<F, E>(&mut seed, 1);
     let whir_batching_challenge = whir_batching_challenge[0];

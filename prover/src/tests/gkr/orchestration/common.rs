@@ -185,9 +185,10 @@ impl<C: Counters + Copy + Default> VmRunOutput<C> {
 /// Run the program in `config` once, capturing the snapshotter (so individual
 /// prove steps can replay it with their own destination tracers) plus the
 /// touched-address set used for i/t consistency checks.
-pub fn run_vm_and_capture<C>(config: &ProgramConfig, worker: &Worker) -> VmRunOutput<C>
+pub fn run_vm_and_capture<C, D>(config: &ProgramConfig, worker: &Worker) -> VmRunOutput<C>
 where
     C: Counters + Copy + Default + std::fmt::Debug,
+    D: riscv_transpiler::ir::DecodingOptions,
 {
     println!("Using {} binary", config.binary_path);
 
@@ -208,8 +209,7 @@ where
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
+    let instructions: Vec<Instruction> = preprocess_bytecode::<D, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
 
     let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(

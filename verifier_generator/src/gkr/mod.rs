@@ -1426,7 +1426,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                         lookup_additive_challenge, lookup_alpha,
                         &external_challenges.permutation_argument_linearization_challenges,
                         external_challenges.permutation_argument_additive_part,
-                        address_high_bits_shift);
+                        address_high_bits_shift,
+                        &initial_transcript.inits_and_teardowns_top_bits);
                     verify_final_step_check::<E>(f[0],
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
@@ -1489,8 +1490,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
                     let mul_rp = mul(quote! { it_read }, quote! { eval });
                     let mul_wp = mul(quote! { it_write }, quote! { eval });
-                    let mul_perm_r = mul(quote! { permutation_read_product }, quote! { it_read });
-                    let mul_perm_w = mul(quote! { permutation_write_product }, quote! { it_write });
                     output_checks.extend(quote! {
                         {
                             let mut it_read = #quartic_one;
@@ -1503,8 +1502,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                                 let eval = *evals_slice.get_unchecked(#write_off + i);
                                 #mul_wp;
                             }
-                            #mul_perm_r;
-                            #mul_perm_w;
+                            inits_and_teardowns_read_product = it_read;
+                            inits_and_teardowns_write_product = it_write;
                         }
                     });
                 }
@@ -1551,6 +1550,10 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
         let mut permutation_read_product: #quartic_struct = #quartic_one;
         let mut permutation_write_product: #quartic_struct = #quartic_one;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_read_product: #quartic_struct = #quartic_one;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_write_product: #quartic_struct = #quartic_one;
 
         #output_checks
 
@@ -1563,6 +1566,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
+            inits_and_teardowns_read_product,
+            inits_and_teardowns_write_product,
             whir_batching_challenge: state.batching_challenge,
         })
     });
