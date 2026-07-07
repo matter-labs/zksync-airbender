@@ -50,6 +50,9 @@ EXTERN __device__ __constant__ base_field ab_inv_cmem_twiddles_finest_11[1 << 11
 EXTERN __device__ __constant__ const base_field *ab_fwd_gmem_twiddles_coarse;
 EXTERN __device__ __constant__ const base_field *ab_inv_gmem_twiddles_coarse;
 
+// Use fully precomputed twiddles for LDEs with log_n <= 18.
+EXTERN __device__ __constant__ const base_field *ab_fully_precomputed_bitrev_twiddles;
+
 namespace airbender::ntt {
 
 DEVICE_FORCEINLINE bf get_power_from_layers(const powers_data_2_layer &data, const unsigned idx) {

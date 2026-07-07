@@ -874,6 +874,12 @@ pub(crate) mod tests {
 
     #[test]
     #[serial]
+    fn recursive_oracle_lde_matches_cpu_intermediate() {
+        recursive_oracle_lde_matches_cpu_impl(&[17], &[32], false, false);
+    }
+
+    #[test]
+    #[serial]
     #[ignore]
     fn recursive_oracle_lde_matches_cpu_large() {
         recursive_oracle_lde_matches_cpu_impl(&[23], &[32], false, false);
@@ -883,6 +889,12 @@ pub(crate) mod tests {
     #[serial]
     fn recursive_oracle_lde_with_transform_matches_cpu_small_sweep() {
         recursive_oracle_lde_matches_cpu_impl(&[6, 7, 8, 9], &[2, 4, 8], true, true);
+    }
+
+    #[test]
+    #[serial]
+    fn recursive_oracle_lde_with_transform_matches_cpu_intermediate() {
+        recursive_oracle_lde_matches_cpu_impl(&[17], &[32], true, false);
     }
 
     #[test]

@@ -54,6 +54,7 @@ pub struct ProverContext {
     #[allow(dead_code)]
     scheduler_host_allocator: SchedulerHostAllocator,
     exec_stream: CudaStream,
+    side_stream: CudaStream,
     h2d_stream: CudaStream,
     d2h_stream: CudaStream,
     device_allocator_mem_size: usize,
@@ -82,6 +83,7 @@ impl ProverContext {
         let allocator_block_log_size = config.allocator_block_log_size;
         let device_context = DeviceContext::create(config.powers_of_w_coarse_log_count)?;
         let exec_stream = CudaStream::create()?;
+        let side_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
         let d2h_stream = CudaStream::create()?;
         let mut device_blocks_count =
@@ -151,6 +153,7 @@ impl ProverContext {
             host_allocator,
             scheduler_host_allocator,
             exec_stream,
+            side_stream,
             h2d_stream,
             d2h_stream,
             device_allocator_mem_size,
@@ -167,6 +170,10 @@ impl ProverContext {
 
     pub fn get_exec_stream(&self) -> &CudaStream {
         &self.exec_stream
+    }
+
+    pub fn get_side_stream(&self) -> &CudaStream {
+        &self.side_stream
     }
 
     /// The NTT twiddle/triangle `DeviceContext` owned for the prover's lifetime.
