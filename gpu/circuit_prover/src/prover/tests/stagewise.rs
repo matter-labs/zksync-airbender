@@ -1043,6 +1043,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         grand_product_accumulator_computed,
         inits_and_teardowns_top_bits: (0..add_sub_circuit.memory_layout.teardown_sets.len() as u32)
             .collect(),
+        lookup_challenges_pow_nonce: 0,
+        batched_proximity_check_pow_nonce: 0,
     };
     let _elapsed = now.elapsed();
 }

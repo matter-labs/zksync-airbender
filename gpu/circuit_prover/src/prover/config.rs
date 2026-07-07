@@ -7,8 +7,10 @@
 //! into `prove()`. The low `witness::circuit_type` enum stays a pure
 //! domain type with no `ProverConfig`/`SecurityLevel` coupling.
 
+use crate::primitives::field::BF;
 use crate::upstream::{
-    config_for_security_level_under_pessimistic_conjecture, ProverConfig, SecurityLevel,
+    config_for_security_level_under_pessimistic_conjecture, pow_bits, GKRCircuitArtifact,
+    ProverConfig, SecurityLevel,
 };
 use crate::witness::circuit_type::CircuitType;
 
@@ -61,16 +63,43 @@ fn prover_config_sec80(circuit_type: CircuitType) -> ProverConfig {
     config_for_security_level_under_pessimistic_conjecture(schedule_log_2, SecurityLevel::Sec80)
 }
 
-/// GPU prover doesn't yet implement PoW for lookup-challenge or
-/// batched-proximity-check challenges; both `*_pow_bits` knobs must be 0.
-pub(crate) fn assert_gpu_supported_pow_config(prover_config: &ProverConfig) {
-    assert_eq!(
-        prover_config.lookup_challenges_pow_bits, 0,
-        "GPU prover only supports lookup_challenges_pow_bits = 0",
+/// The GPU prover does not implement PoW grinding for the lookup-challenge or
+/// batched-proximity-check challenges (unlike the WHIR proximity rounds, which
+/// it *does* grind). Both bit counts are 0 at every security level the GPU
+/// supports (`GPU_SUPPORTED_SECURITY_LEVELS` = [Sec80]), so the emitted proof's
+/// `lookup_challenges_pow_nonce` / `batched_proximity_check_pow_nonce` are 0 —
+/// identical to the CPU prover at Sec80.
+///
+/// The pow-bit counts are no longer stored on `ProverConfig`; they are derived
+/// per-circuit from `security_level` (see `prover::gkr::prover_config::pow_bits`).
+/// We re-derive them here from the config's *actual* `security_level` and assert
+/// 0, so that adding a higher security level (where these grinds are non-zero)
+/// without implementing them trips loudly here rather than silently emitting an
+/// unsound proof carrying a 0 nonce.
+pub(crate) fn assert_gpu_supported_pow_config(
+    prover_config: &ProverConfig,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+) {
+    let security_bits = prover_config.security_level.security_bits();
+    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+        security_bits,
+        pow_bits::lookup_identity_degree(compiled_circuit),
     );
     assert_eq!(
-        prover_config.batched_proximity_check_challenge_pow_bits, 0,
-        "GPU prover only supports batched_proximity_check_challenge_pow_bits = 0",
+        lookup_challenges_pow_bits, 0,
+        "GPU prover only supports lookup_challenges_pow_bits = 0 \
+         (implement lookup-challenge PoW grinding to support this security level)",
+    );
+    let batched_proximity_check_pow_bits = pow_bits::batched_proximity_check_pow_bits(
+        security_bits,
+        compiled_circuit.trace_len.trailing_zeros() as usize,
+        prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
+        pow_bits::total_base_oracle_columns(compiled_circuit),
+    );
+    assert_eq!(
+        batched_proximity_check_pow_bits, 0,
+        "GPU prover only supports batched_proximity_check_challenge_pow_bits = 0 \
+         (implement batched-proximity PoW grinding to support this security level)",
     );
 }
 

@@ -68,7 +68,7 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
     inputs_keepalive: Option<super::memory_transfer::GpuGKRCommitMemoryTransferKeepalive<'a, A>>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a, A>> {
-    assert_gpu_supported_pow_config(prover_config);
+    assert_gpu_supported_pow_config(prover_config, compiled_circuit);
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
