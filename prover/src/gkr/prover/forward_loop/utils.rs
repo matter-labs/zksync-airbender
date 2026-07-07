@@ -194,7 +194,7 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
                         sources_ref,
                         external_challenges,
                     );
-                    
+
                     // Test-only (feature `gkr_test_forge`, off in production): a
                     // registered forge perturbs this MemoryTuple cache eval so a
                     // verifier test can assert the binding check rejects it. No-op /

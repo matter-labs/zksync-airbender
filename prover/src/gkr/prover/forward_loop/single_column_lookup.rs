@@ -52,7 +52,7 @@ pub(crate) fn evaluate_single_column_lookup_relation<
 
                     #[cfg_attr(not(feature = "gkr_test_forge"), allow(unused_mut))]
                     let mut mapped_value = F::from_u32_unchecked(mapping_index as u32);
-                    
+
                     // Test-only negative control (feature `gkr_test_forge`, off in
                     // production): forging this BOUND cache must be rejected.
                     #[cfg(feature = "gkr_test_forge")]
@@ -102,7 +102,7 @@ pub(crate) fn evaluate_single_column_lookup_relation<
 
                     #[cfg_attr(not(feature = "gkr_test_forge"), allow(unused_mut))]
                     let mut mapped_value = F::from_u32_unchecked(mapping_index);
-                    
+
                     // Test-only negative control (feature `gkr_test_forge`, off in
                     // production): forging this BOUND cache must be rejected.
                     #[cfg(feature = "gkr_test_forge")]

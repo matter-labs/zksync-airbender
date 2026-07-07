@@ -84,7 +84,8 @@ fn generate_proof(
         NUM_CYCLES_PER_CHUNK,
         false,
         &worker,
-    );
+    )
+    .full_trace;
 
     println!("Applying witness mutation");
     mutate(&mut full_trace);
@@ -279,7 +280,8 @@ fn generate_subword_proof(
         NUM_CYCLES_PER_CHUNK,
         false,
         &worker,
-    );
+    )
+    .full_trace;
 
     println!("Applying witness mutation");
     mutate(&mut full_trace);
