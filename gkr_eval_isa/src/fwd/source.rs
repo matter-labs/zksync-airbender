@@ -1,7 +1,10 @@
 //! Typed source model + const/challenge banks + special-source descriptors (spec §8, §9).
 
 use super::isa::LdcSub;
-use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengeRef, ExprId, FillSource, RangeWidth, ReadPlace, ResolutionStrategy};
+use cs::gkr_compiler::dag_ir::{
+    ChallengeKey, ChallengeRef, ExprId, FillSource, RangeWidth, ReadPlace, ResolutionStrategy,
+    VirtualSetupKind,
+};
 use std::collections::HashMap;
 
 /// BabyBear `−1` (= P−1). The forward VM is BabyBear-specific.
@@ -68,6 +71,31 @@ pub enum SpecialStrategy {
     PeekAggregate { set_index: usize },
     PeekSetup,
     PeekDecoder { predicate: ReadPlace, fill: FillSource },
+    /// A virtual-setup base column: the value at `row` is `virtual_setup(kind, row)` —
+    /// resolver-computed, reads nothing (no backing slot, no DRAM gather). Lowered from
+    /// `SourceKind::VirtualSetup` as a `Special` rather than a fake `Global` backing.
+    VirtualSetup { kind: VirtualSetupKind },
+}
+
+/// Kind ↔ device `desc_param` code mapping — the single source of truth mirrored by
+/// CUDA `SD_VIRTUAL` handling (Task 3). Order is load-bearing: index == device code.
+pub const KIND_ORDER: [VirtualSetupKind; 4] = {
+    use VirtualSetupKind::*;
+    [RangeCheck16Bits, RangeCheckTimestamp, InitsAndTeardownsLow, InitsAndTeardownsHigh]
+};
+
+/// The device `desc_param` code for a `VirtualSetupKind`. An explicit `match` (not
+/// `KIND_ORDER.iter().position(...)`) so a future upstream variant fails to COMPILE here
+/// rather than panicking at runtime. Must agree with `KIND_ORDER`
+/// (`KIND_ORDER[virtual_setup_kind_code(&k) as usize] == k`; unit-tested for all 4).
+pub fn virtual_setup_kind_code(kind: &VirtualSetupKind) -> u32 {
+    use VirtualSetupKind::*;
+    match kind {
+        RangeCheck16Bits => 0,
+        RangeCheckTimestamp => 1,
+        InitsAndTeardownsLow => 2,
+        InitsAndTeardownsHigh => 3,
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -112,6 +140,19 @@ mod tests {
         let p = ChallengeRef { key: ChallengeKey::PermutationAdditive, power: ChallengePower::Static(2) };
         assert_eq!(banks.intern(&p).0, LdcSub::ArgChallenge);
     }
+    #[test]
+    fn kind_order_and_code_roundtrip() {
+        use cs::gkr_compiler::dag_ir::VirtualSetupKind::*;
+        // Forward: every kind's code indexes back to itself in KIND_ORDER.
+        for k in [RangeCheck16Bits, RangeCheckTimestamp, InitsAndTeardownsLow, InitsAndTeardownsHigh] {
+            assert_eq!(KIND_ORDER[virtual_setup_kind_code(&k) as usize], k);
+        }
+        // Reverse: KIND_ORDER index equals the code (order == device code).
+        for (i, k) in KIND_ORDER.iter().enumerate() {
+            assert_eq!(virtual_setup_kind_code(k) as usize, i);
+        }
+    }
+
     #[test]
     fn all_four_resolution_variants_lower_with_origin() {
         let mut t = SpecialTable::default();

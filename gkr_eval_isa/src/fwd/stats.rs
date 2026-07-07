@@ -34,7 +34,8 @@
 ///   SP1: not yet counted.
 /// - `dram_reads`: DRAM-read operands. SP1: not yet counted.
 /// - `ldc_reads`: Ldc (load cache) operands. SP1: not yet counted.
-/// - `special_reads`: `OperandLine::Special{desc}` operand-use count.
+/// - `special_reads`: resolved-fold `OperandLine::Special{desc}` operand-use count
+///   (excludes `VirtualSetup` gathers, which are resolver-computed like a `SpecialLit`).
 ///   SP1: not yet counted.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CompileStats {
@@ -55,10 +56,11 @@ pub struct CompileStats {
     pub ldc_reads: usize,      // SP1: not yet counted
     pub special_reads: usize,  // SP1: not yet counted
     /// Width-weighted DRAM traffic in cells: each real-DRAM read operand
-    /// (Read/Prior backing) contributes its field width (Ext=4, Base=1);
-    /// VirtualSetup-backed Global reads contribute 0 (resolver-computed, not DRAM).
-    /// This is the Phase-1 / S3 primary objective. `dram_reads` above stays the
-    /// per-operand transaction count (test-locked diagnostic).
+    /// (`OperandLine::Global`, i.e. a Read/Prior backing) contributes its field width
+    /// (Ext=4, Base=1). VirtualSetup is a computed `Special` strategy (0 traffic), not a
+    /// Global backing — see `compile::tally_operand`. This is the Phase-1 / S3 primary
+    /// objective. `dram_reads` above stays the per-operand transaction count
+    /// (test-locked diagnostic).
     pub dram_traffic: usize,
 }
 

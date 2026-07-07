@@ -59,34 +59,33 @@ pub(crate) fn classify_operand(op: &OperandLine) -> OperandClass {
 /// Tally the traffic class of a single read operand into `stats`.
 ///
 /// `field` is the operand's field (Base/Ext), used to width-weight `dram_traffic`.
-/// `backings` is the current layer's backing table, used to identify VirtualSetup-backed
-/// Global reads (which are resolver-computed, not real DRAM, and contribute 0 traffic).
+/// `specials` is the layer's special-source table, used to split a `Special` gather by
+/// strategy: a `VirtualSetup` gather is resolver-computed (0 traffic, not a `special_read`,
+/// like a `SpecialLit`); the peek strategies are real resolved-fold gathers.
 fn tally_operand(
     op: &OperandLine,
     field: OperandField,
-    backings: &super::binding::BackingTable,
+    specials: &super::source::SpecialTable,
     stats: &mut CompileStats,
 ) {
     match classify_operand(op) {
         OperandClass::Dram => {
             stats.dram_reads += 1; // per-operand diagnostic, unchanged
-            // Width-weighted traffic: VirtualSetup-backed Global reads are
-            // resolver-computed, not DRAM → 0. Others cost the field width.
-            // Invariant: classify_operand returns Dram only for Global operands,
-            // so this `if let` always matches; it extracts the slot to check backing.
-            if let OperandLine::Global { slot, .. } = op {
-                let is_virtual = matches!(
-                    backings.backing(*slot),
-                    Some(super::binding::BackingKey::VirtualSetup { .. })
-                );
-                if !is_virtual {
-                    stats.dram_traffic += if field == OperandField::Ext { 4 } else { 1 };
-                }
-            }
+            // Every `Global` operand is now a real DRAM read: VirtualSetup no longer has a
+            // Global backing (it lowers to a computed `Special`), so no exemption is needed.
+            stats.dram_traffic += if field == OperandField::Ext { 4 } else { 1 };
         }
         OperandClass::Ldc => stats.ldc_reads += 1,
         OperandClass::SpecialLit => {} // inline literal — near-free, not counted
-        OperandClass::SpecialGather => stats.special_reads += 1,
+        OperandClass::SpecialGather => {
+            if let OperandLine::Special { desc } = op {
+                match specials.get(*desc).map(|d| &d.strategy) {
+                    // VirtualSetup is resolver-computed — 0 traffic, like a SpecialLit.
+                    Some(super::source::SpecialStrategy::VirtualSetup { .. }) => {}
+                    _ => stats.special_reads += 1,
+                }
+            }
+        }
         OperandClass::Smem => stats.cell_reads += 1,
     }
 }
@@ -350,7 +349,7 @@ pub fn compile_layer(
             Instr::Mov { dir, dst, src, field, .. } => {
                 stats.op_counts[OP_MOV] += 1;
                 if let Some(op) = src {
-                    tally_operand(op, *field, &ctx.backings, &mut stats);
+                    tally_operand(op, *field, &ctx.specials, &mut stats);
                 }
                 if matches!(dir, MovDir::DstFromAcc | MovDir::DstFromSrc)
                     && matches!(dst, Some(DstLine::Smem { .. }))
@@ -361,27 +360,27 @@ pub fn compile_layer(
             Instr::Add { field, operands, .. } => {
                 stats.op_counts[OP_ADD] += 1;
                 for op in operands {
-                    tally_operand(op, *field, &ctx.backings, &mut stats);
+                    tally_operand(op, *field, &ctx.specials, &mut stats);
                 }
             }
             Instr::Mul { field, operands, .. } => {
                 stats.op_counts[OP_MUL] += 1;
                 for op in operands {
-                    tally_operand(op, *field, &ctx.backings, &mut stats);
+                    tally_operand(op, *field, &ctx.specials, &mut stats);
                 }
             }
             Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
                 stats.op_counts[OP_FMA] += 1;
                 for (l, r) in pairs {
-                    tally_operand(l, *field_lhs, &ctx.backings, &mut stats);
-                    tally_operand(r, *field_rhs, &ctx.backings, &mut stats);
+                    tally_operand(l, *field_lhs, &ctx.specials, &mut stats);
+                    tally_operand(r, *field_rhs, &ctx.specials, &mut stats);
                 }
             }
         }
     }
     for (_, out) in &root_outputs {
         if let RootOutput::Alias(op) = out {
-            tally_operand(op, OperandField::Base, &ctx.backings, &mut stats);
+            tally_operand(op, OperandField::Base, &ctx.specials, &mut stats);
         }
     }
     stats.special_gathers = ctx.specials.len();

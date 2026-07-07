@@ -1,15 +1,14 @@
-//! Backing/source table: ReadPlace + VirtualSetup ⇄ (slot, col), keyed on storage field (§4,§8,§12).
+//! Backing/source table: ReadPlace ⇄ (slot, col), keyed on storage field (§4,§8,§12).
 //! SP1 slot order is CPU-local (deterministic, roundtrippable); NOT GPU-ABI-ready (see TODO(SP3)).
 
 use super::error::BindError;
 use super::isa::{MAX_COLS, MAX_SLOTS};
-use cs::gkr_compiler::dag_ir::{ReadPlace, VirtualSetupKind};
+use cs::gkr_compiler::dag_ir::ReadPlace;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BackingKey {
     BaseLayerMemory, BaseLayerWitness, Setup, Scratch,
     LayerOutput { layer: usize }, CacheOutput { layer: usize },
-    VirtualSetup { kind: VirtualSetupKind },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -28,9 +27,6 @@ impl BackingTable {
         let (key, col) = read_place_to_backing(place);
         if col as u32 >= MAX_COLS { return Err(BindError::ColOverflow(col)); }
         Ok((self.intern(key)?, col as u16))
-    }
-    pub fn virtual_setup_slot(&mut self, kind: &VirtualSetupKind) -> Result<(u8, u16), BindError> {
-        Ok((self.intern(BackingKey::VirtualSetup { kind: kind.clone() })?, 0))
     }
 }
 
@@ -55,13 +51,6 @@ mod tests {
         assert_eq!(c, 5);
         assert_eq!(t.backing(s), Some(&BackingKey::BaseLayerMemory));
         assert_eq!(t.read_slot_col(&ReadPlace::BaseLayerMemory { column: 9 }).unwrap().0, s);
-    }
-    #[test]
-    fn virtual_setup_gets_a_backing() {
-        let mut t = BackingTable::default();
-        let (s, c) = t.virtual_setup_slot(&VirtualSetupKind::RangeCheck16Bits).unwrap();
-        assert_eq!(c, 0);
-        assert!(matches!(t.backing(s), Some(BackingKey::VirtualSetup { .. })));
     }
     #[test]
     fn col_and_slot_overflow_rejected() {

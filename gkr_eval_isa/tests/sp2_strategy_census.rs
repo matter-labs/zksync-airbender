@@ -33,6 +33,12 @@ fn census_reaches_all_four_strategies_at_layer0() {
                     SpecialStrategy::PeekAggregate { .. } => c.aggregate += 1,
                     SpecialStrategy::PeekSetup => c.setup += 1,
                     SpecialStrategy::PeekDecoder { .. } => c.decoder += 1,
+                    // This census builds `ctx.specials` via `layer_ctx`
+                    // (`materialize_descriptors`, resolution leaves only), which never
+                    // interns a VirtualSetup — that happens in the lowering path
+                    // (`source_to_vop`). Unreachable here, but the arm keeps the census
+                    // a total function over `SpecialStrategy` (it is a PEEK-strategy gate).
+                    SpecialStrategy::VirtualSetup { .. } => {}
                 }
             }
             totals.add(&c);

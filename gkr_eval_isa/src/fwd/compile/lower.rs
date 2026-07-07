@@ -277,6 +277,10 @@ struct VirtualLower<'a> {
     root_outputs: Vec<(RootId, VirtualRootOutput)>,
     /// Interned resolution-leaf descriptors (`ExprId → ctx.specials` index).
     desc_by_expr: HashMap<ExprId, u16>,
+    /// VirtualSetup kind → interned `ctx.specials` index (dedup: ≤4 entries/layer).
+    /// All `VirtualSetup { kind }` sources of the same kind evaluate to the same
+    /// `virtual_setup(kind, row)`, so one descriptor per kind is value-correct.
+    virtual_setup_descs: HashMap<cs::gkr_compiler::dag_ir::VirtualSetupKind, u16>,
     /// Task 3 residency state driven by `SiteDecisions`/`OccurrenceStreams`. `Some` =
     /// the emitter-owned residency policy; `None` = the uncached per-step-recompute
     /// path (still the default for callers that pass no decisions). This is now the
@@ -609,6 +613,26 @@ impl<'a> VirtualLower<'a> {
         }
     }
 
+    /// Intern a `VirtualSetup { kind }` source as a computed `Special` descriptor,
+    /// deduped by kind. `origin_expr` is the VirtualSetup source expr (the fold oracle
+    /// re-resolves it via the same `virtual_setup` resolver, so the peek↔fold parity
+    /// gate stays live and catches a kind/origin mispairing).
+    fn intern_virtual_setup(
+        &mut self,
+        kind: cs::gkr_compiler::dag_ir::VirtualSetupKind,
+        origin_expr: ExprId,
+    ) -> u16 {
+        if let Some(&d) = self.virtual_setup_descs.get(&kind) {
+            return d;
+        }
+        let desc = self.ctx.specials.push(super::super::source::SpecialDescriptor {
+            strategy: super::super::source::SpecialStrategy::VirtualSetup { kind: kind.clone() },
+            origin_expr,
+        });
+        self.virtual_setup_descs.insert(kind, desc);
+        desc
+    }
+
     // ── source resolution (residency-free; mirrors arith::source_to_operand arms) ──
 
     fn source_to_vop(
@@ -637,8 +661,8 @@ impl<'a> VirtualLower<'a> {
                 Ok(VirtualOp::Global { slot, col })
             }
             SourceKind::VirtualSetup { kind } => {
-                let (slot, col) = self.ctx.backings.virtual_setup_slot(kind)?;
-                Ok(VirtualOp::Global { slot, col })
+                let desc = self.intern_virtual_setup(kind.clone(), expr_id);
+                Ok(VirtualOp::Special { desc })
             }
             SourceKind::Constant { value } => match *value {
                 1 => Ok(VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::One as u16 }),
@@ -1317,6 +1341,7 @@ pub(crate) fn lower_layer_virtual(
         exposed: HashSet::new(),
         root_outputs: Vec::new(),
         desc_by_expr,
+        virtual_setup_descs: HashMap::new(),
         decisions: decisions_state,
     };
 
@@ -1421,4 +1446,85 @@ fn sorted_real(defined: &HashSet<ExprId>) -> Vec<ExprId> {
     let mut v: Vec<ExprId> = defined.iter().copied().filter(|e| e.0 < INTERNAL_BASE).collect();
     v.sort_by_key(|e| e.0);
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::fwd::compile::compile_circuit;
+    use crate::fwd::isa::{Instr, OperandLine};
+    use crate::fwd::source::SpecialStrategy;
+    use cs::gkr_compiler::dag_ir::{lower_dag, validate, CircuitSchedule};
+    use cs::gkr_compiler::GKRCircuitArtifact;
+    use field::baby_bear::base::BabyBearField;
+    use std::path::PathBuf;
+
+    fn compiled_circuit_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits")
+    }
+    fn load_fixture(name: &str) -> Option<GKRCircuitArtifact<BabyBearField>> {
+        let bytes = std::fs::read(compiled_circuit_dir().join(format!("{name}.json"))).ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+    fn load_schedule(stem: &str) -> Option<CircuitSchedule> {
+        let bytes =
+            std::fs::read(compiled_circuit_dir().join(format!("{stem}_schedule_b16_gkr.json"))).ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
+    /// Step 2 (Task 1, TDD): a `SourceKind::VirtualSetup` read lowers to a computed
+    /// `Special` strategy, NOT a `Global` DRAM backing. add_sub L0 reads VirtualSetup
+    /// columns, so its compiled program must carry an `OperandLine::Special { desc }`
+    /// whose descriptor strategy is `SpecialStrategy::VirtualSetup`. Before the
+    /// representation swap the same source lowered to `OperandLine::Global` (no such
+    /// Special descriptor exists), so this test fails RED until the lowering lands.
+    #[test]
+    fn virtual_setup_lowers_to_special_strategy() {
+        let Some(artifact) = load_fixture("add_sub_lui_auipc_mop_layout_gkr") else {
+            eprintln!("add_sub fixture not found — skipping VirtualSetup-lowering gate");
+            return;
+        };
+        let dag = lower_dag(&artifact).expect("lower_dag");
+        validate(&dag).expect("validate");
+        let Some(sched) = load_schedule("add_sub_lui_auipc_mop") else {
+            eprintln!("add_sub schedule not found — skipping VirtualSetup-lowering gate");
+            return;
+        };
+        let compiled = compile_circuit(&dag, &sched, &artifact).expect("compile_circuit");
+        let l0 = &compiled.layers[0];
+
+        // Find a `Special` operand whose descriptor is a VirtualSetup strategy.
+        let mut found = false;
+        {
+            let mut check = |op: &OperandLine| {
+                if let OperandLine::Special { desc } = op {
+                    if matches!(
+                        l0.ctx.specials.get(*desc).map(|d| &d.strategy),
+                        Some(SpecialStrategy::VirtualSetup { .. })
+                    ) {
+                        found = true;
+                    }
+                }
+            };
+            for instr in &l0.program.instrs {
+                match instr {
+                    Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                        operands.iter().for_each(&mut check)
+                    }
+                    Instr::Fma { pairs, .. } => {
+                        pairs.iter().for_each(|(l, r)| {
+                            check(l);
+                            check(r);
+                        })
+                    }
+                    Instr::Mov { src: Some(op), .. } => check(op),
+                    Instr::Mov { src: None, .. } => {}
+                }
+            }
+        }
+        assert!(
+            found,
+            "add_sub L0 must emit a Special operand backed by a SpecialStrategy::VirtualSetup \
+             descriptor (VirtualSetup is a computed Special, not a Global DRAM backing)"
+        );
+    }
 }

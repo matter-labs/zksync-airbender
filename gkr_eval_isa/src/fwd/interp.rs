@@ -4,9 +4,7 @@ use super::binding::BackingKey;
 use super::context::{CompiledLayer, DagForwardContext, OutputCell, RootOutput, RowOutputs};
 use super::error::InterpError;
 use super::isa::*;
-use cs::gkr_compiler::dag_ir::{
-    eval_layer_expr, Bf, DagLayer, Ext, ReadPlace, Resolvers, VirtualSetupKind,
-};
+use cs::gkr_compiler::dag_ir::{eval_layer_expr, Bf, DagLayer, Ext, ReadPlace, Resolvers};
 use field::{Field, FieldExtension, PrimeField};
 use std::collections::HashMap;
 
@@ -143,12 +141,7 @@ fn resolve(
                 return Ok(*v);
             }
             let key = ctx.backings.backing(slot).ok_or(InterpError::UnknownSlot(slot))?;
-            Ok(match key {
-                BackingKey::VirtualSetup { kind } => {
-                    lift(r.virtual_setup.virtual_setup(kind, row))
-                }
-                _ => r.read.read(&backing_to_read_place(key, col), row),
-            })
+            Ok(r.read.read(&backing_to_read_place(key, col), row))
         }
         OperandLine::Smem { cell } => Ok(cells[cell as usize]),
         OperandLine::Ldc { sub, idx } => match sub {
@@ -195,7 +188,6 @@ fn backing_to_read_place(key: &BackingKey, col: u16) -> ReadPlace {
         BackingKey::Scratch => ReadPlace::Scratch { slot: c },
         BackingKey::LayerOutput { layer } => ReadPlace::LayerOutput { layer: *layer, offset: c },
         BackingKey::CacheOutput { layer } => ReadPlace::CacheOutput { layer: *layer, offset: c },
-        BackingKey::VirtualSetup { .. } => unreachable!("virtual setup handled before read"),
     }
 }
 
