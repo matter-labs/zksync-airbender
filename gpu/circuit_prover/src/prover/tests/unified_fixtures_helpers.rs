@@ -20,7 +20,7 @@ const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
 // Delegation cycle counts mirror the (test-gated, hence inlined here) constants
 // in `prover::tests::gkr::orchestration::common`. The `prover` test module is
-// not enabled by `circuit_prover`, so the values are reproduced verbatim.
+// not enabled by `gpu_circuit_prover`, so the values are reproduced verbatim.
 const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
@@ -67,7 +67,7 @@ pub(super) fn build_unified_decoder_table(
 
 /// Re-derives `prover::tests::gkr::orchestration::unified::build_unified_full_trace`
 /// against the **non-test** prover surface (the test module is gated behind
-/// `prover/test`, which circuit_prover does not enable), and also returns the
+/// `prover/test`, which gpu_circuit_prover does not enable), and also returns the
 /// sparse RAM init/teardown triples the GPU page builder consumes.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_unified_full_trace_for_test(

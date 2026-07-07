@@ -1,4 +1,4 @@
-//! Re-export manifest mirroring `circuit_prover`'s convention, so the moved
+//! Re-export manifest mirroring `gpu_circuit_prover`'s convention, so the moved
 //! files keep `use crate::upstream::…` unchanged. Paths are copied verbatim
 //! from `gpu/circuit_prover/src/upstream.rs`.
 

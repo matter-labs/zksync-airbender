@@ -1,7 +1,7 @@
 #![feature(allocator_api)]
 //! Program-level GPU proving driver: the top of the `gpu/` crate stack.
 //!
-//! Converts `execution_prover::ProveResult` into
+//! Converts `gpu_execution_prover::ProveResult` into
 //! `full_statement_verifier::ProgramProof`, builds the non-determinism word
 //! streams the `fsv_*` verifier binaries consume, and (behind the non-default
 //! `verifiers` feature) verifies proofs natively. Replaces the dead

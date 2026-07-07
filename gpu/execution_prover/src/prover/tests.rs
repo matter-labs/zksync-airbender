@@ -1,6 +1,6 @@
 use super::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, ProveResult};
 use crate::upstream::{read_binary, SecurityLevel};
-use circuit_prover::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
+use gpu_circuit_prover::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use gpu_core::primitives::machine_type::MachineType;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use serial_test::serial;
@@ -165,9 +165,9 @@ fn test_execution_prover_blake2_g_function_delegation() {
 }
 
 /// Unified (reduced-machine) execution over the `multi_family_smoke` workload
-/// circuit_prover's unified GPU tests use, with the same ND inputs
+/// gpu_circuit_prover's unified GPU tests use, with the same ND inputs
 /// (`n` = loop/cycle target, `seed`). Uses the blake2_with_compression
-/// variant rather than circuit_prover's blake2_g_function one because the
+/// variant rather than gpu_circuit_prover's blake2_g_function one because the
 /// transpiler JIT only implements the Blake2WithCompression delegation (see
 /// `test_execution_prover_blake2_g_function_delegation`). Covers the
 /// `ExecutionKind::Unified` dispatch path end to end: unified circuit family

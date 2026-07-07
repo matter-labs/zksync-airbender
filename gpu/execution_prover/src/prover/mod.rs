@@ -14,7 +14,7 @@ mod proof_artifacts;
 mod result;
 
 pub use artifacts::{CircuitArtifact, ProgramArtifacts};
-pub use circuit_prover::UnsupportedGpuSecurityLevel;
+pub use gpu_circuit_prover::UnsupportedGpuSecurityLevel;
 pub use config::{ExecutionKind, ExecutionProverConfiguration};
 pub use result::{CommitMemoryResult, ProveResult};
 
@@ -44,12 +44,12 @@ use crate::workers::cpu::{run_replayer, run_simulator};
 use crate::workers::gpu_manager::GpuManager;
 use crate::workers::simulation_runner::{LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
 use crate::A;
-use circuit_prover::prover::trace::tracing_data::TracingDataHost;
-use circuit_prover::witness::circuit_type::{
+use gpu_circuit_prover::prover::trace::tracing_data::TracingDataHost;
+use gpu_circuit_prover::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
+use gpu_circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crossbeam_utils::sync::WaitGroup;

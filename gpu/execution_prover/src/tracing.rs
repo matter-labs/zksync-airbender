@@ -1,13 +1,13 @@
 use crate::messages::{TracingData, WorkerResult};
 use crate::A;
-use circuit_prover::prover::trace::tracing_data::{
+use gpu_circuit_prover::prover::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
-use circuit_prover::witness::circuit_type::{
+use gpu_circuit_prover::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use circuit_prover::witness::trace::ChunkedTraceHolder;
+use gpu_circuit_prover::witness::trace::ChunkedTraceHolder;
 use crossbeam_channel::{Receiver, Sender};
 use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
@@ -417,8 +417,8 @@ trait TracingDataProducerType: Sized {
 // One impl per `DelegationTracingDataHostSource` type. This was a blanket
 // `impl<T: DelegationTracingDataHostSource> TracingDataProducerType for T` while
 // `execution` lived inside the prover crate, but once carved into
-// `execution_prover` the trait `DelegationTracingDataHostSource` became foreign
-// (it lives in `circuit_prover`), so a blanket impl over it is no longer
+// `gpu_execution_prover` the trait `DelegationTracingDataHostSource` became foreign
+// (it lives in `gpu_circuit_prover`), so a blanket impl over it is no longer
 // coherent — the compiler can no longer prove the unrolled types below don't
 // also implement it. Enumerating the four delegation witness types is
 // behavior-identical (the trait has exactly these four impls upstream).

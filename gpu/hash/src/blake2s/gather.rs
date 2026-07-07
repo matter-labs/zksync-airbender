@@ -532,7 +532,7 @@ cuda_kernel!(
 
 /// Maximum source addresses the `gather_e_addresses` kernel-arg descriptor can
 /// hold. See `gkr_address_audit_helpers::GKR_GATHER_MAX_ADDRESSES` in
-/// `circuit_prover` for the rationale; the audit panics if any future circuit
+/// `gpu_circuit_prover` for the rationale; the audit panics if any future circuit
 /// exceeds this.
 pub const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
 

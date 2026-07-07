@@ -6,13 +6,13 @@
 //! (`Setups`) that prefixes the ND streams. Both come from
 //! `ExecutionProver::program_artifacts`. Setup caps are recomputed on the CPU
 //! via `GKRSetup::commit` — byte-identical to the caps the GPU prover
-//! committed to (validated by the circuit_prover proof-parity suite), without
+//! committed to (validated by the gpu_circuit_prover proof-parity suite), without
 //! needing a GPU context here.
 
 use std::alloc::Global;
 use std::collections::{BTreeMap, HashMap};
 
-use execution_prover::{ProgramArtifacts, ProveResult};
+use gpu_execution_prover::{ProgramArtifacts, ProveResult};
 use gpu_core::primitives::field::BF;
 use worker::Worker;
 

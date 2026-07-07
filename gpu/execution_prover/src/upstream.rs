@@ -1,6 +1,6 @@
 //! Single-file audit point for items the execution orchestrator consumes from
 //! upstream crates (`cs`, `prover`, `setups`, `trace_and_split`). This is the
-//! execution-side analogue of `circuit_prover::upstream`: a thin contract
+//! execution-side analogue of `gpu_circuit_prover::upstream`: a thin contract
 //! surface so an upstream version bump surfaces here rather than at scattered
 //! call sites.
 //!

@@ -6,7 +6,7 @@
 
 use crate::upstream::build_unrolled_stream;
 use crate::proof_assembly::assemble_program_proof;
-use execution_prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType};
+use gpu_execution_prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use serial_test::serial;
 use setups::read_binary;
@@ -68,7 +68,7 @@ fn test_program_prover_base_layer_verify() {
 }
 
 /// Unified counterpart of the base-layer e2e: prove the `multi_family_smoke`
-/// workload (same binary + ND inputs as circuit_prover's unified GPU tests,
+/// workload (same binary + ND inputs as gpu_circuit_prover's unified GPU tests,
 /// blake2_with_compression variant — the JIT lacks the g-function delegation)
 /// with `ExecutionKind::Unified`, assemble the `ProgramProof` (including
 /// `num_it_circuits`), build the unified ND stream, and run the real

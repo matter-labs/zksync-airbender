@@ -79,7 +79,7 @@ default-members = [
     "fft",
     "field",
     # "full_statement_verifier",
-    # circuit_prover is not a default member because it needs CUDA installation to compile
+    # gpu_circuit_prover is not a default member because it needs CUDA installation to compile
     "non_determinism_source",
     "prover",
     "reduced_keccak",
@@ -164,9 +164,9 @@ gpu_cub = { path = "./gpu/cub" }
 gpu_hash = { path = "./gpu/hash" }
 gpu_ntt = { path = "./gpu/ntt" }
 gpu_ops = { path = "./gpu/ops" }
-circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
-execution_prover = { path = "./gpu/execution_prover", default-features = false }
-program_prover = { path = "./gpu/program_prover", default-features = false }
+gpu_circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
+gpu_execution_prover = { path = "./gpu/execution_prover", default-features = false }
+gpu_program_prover = { path = "./gpu/program_prover", default-features = false }
 prover_examples = { path = "./circuit_defs/prover_examples" }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
 

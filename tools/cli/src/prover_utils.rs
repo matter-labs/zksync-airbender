@@ -2,13 +2,13 @@
 //! proving stack:
 //!
 //! - CPU proving: `prover_examples::{unrolled,unified}::prove_*_execution_with_replayer`.
-//! - GPU proving (behind the `gpu` feature): `execution_prover::ExecutionProver`
-//!   + `program_prover::assemble_program_proof`.
+//! - GPU proving (behind the `gpu` feature): `gpu_execution_prover::ExecutionProver`
+//!   + `gpu_program_prover::assemble_program_proof`.
 //! - Protocol helpers (ND streams, end-params, recursion chain, fsv binaries,
 //!   native verification): `full_statement_verifier::host_utils`.
 //!
 //! The ladder mirrors `prover_examples::recursion`'s pipeline (and its GPU
-//! twin, `program_prover::tests::run_gpu_recursive_pipeline`):
+//! twin, `gpu_program_prover::tests::run_gpu_recursive_pipeline`):
 //!
 //!   base (unrolled, full-unsigned ISA)
 //!   → unrolled recursion rungs (reduced ISA, fsv verifier binaries) while the
@@ -356,22 +356,22 @@ impl ProveBackend for CpuBackend {
 
 #[cfg(feature = "gpu")]
 pub struct GpuBackend {
-    prover: execution_prover::ExecutionProver,
+    prover: gpu_execution_prover::ExecutionProver,
     security_level: prover::definitions::SecurityLevel,
     worker: worker::Worker,
     // Cache handles so ladder stages / batch items reuse per-binary GPU
     // precomputations instead of re-adding the same program.
-    handles: std::collections::BTreeMap<(u8, u8, [u8; 32]), execution_prover::BinaryHandle>,
+    handles: std::collections::BTreeMap<(u8, u8, [u8; 32]), gpu_execution_prover::BinaryHandle>,
 }
 
 #[cfg(feature = "gpu")]
 impl GpuBackend {
     pub fn new(gpu: &GpuConfig) -> Result<Self, String> {
-        let mut configuration = execution_prover::ExecutionProverConfiguration::default();
+        let mut configuration = gpu_execution_prover::ExecutionProverConfiguration::default();
         configuration.replay_worker_threads_count = gpu.replay_worker_threads_count;
         configuration.security_level = COMPILED_SECURITY_LEVEL.to_prover();
         let security_level = configuration.security_level;
-        let prover = execution_prover::ExecutionProver::with_configuration(configuration)
+        let prover = gpu_execution_prover::ExecutionProver::with_configuration(configuration)
             .map_err(|e| format!("failed to create GPU execution prover: {e:?}"))?;
         Ok(Self {
             prover,
@@ -394,7 +394,7 @@ impl ProveBackend for GpuBackend {
         _cycles_bound: usize,
         nd_words: Vec<u32>,
     ) -> Result<(ProgramProof, Setups), String> {
-        use execution_prover::{ExecutionKind, MachineType};
+        use gpu_execution_prover::{ExecutionKind, MachineType};
 
         let execution_kind = match kind {
             LadderKind::Unrolled => ExecutionKind::Unrolled,
@@ -432,7 +432,7 @@ impl ProveBackend for GpuBackend {
             QuasiUARTSource::new_with_reads(nd_words),
         );
         let artifacts = self.prover.program_artifacts(&handle);
-        Ok(program_prover::assemble_program_proof(
+        Ok(gpu_program_prover::assemble_program_proof(
             &artifacts,
             result,
             self.security_level,

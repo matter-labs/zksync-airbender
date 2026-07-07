@@ -1,5 +1,5 @@
 //! Public read-only access to the compiled circuits and CPU setups behind a
-//! registered binary. `program_prover` consumes these to assemble a
+//! registered binary. `gpu_program_prover` consumes these to assemble a
 //! `full_statement_verifier::ProgramProof` (which embeds the compiled circuit
 //! artifacts) and the per-family setup-cap map its ND streams are prefixed
 //! with — neither of which `ProveResult` carries.

@@ -1,7 +1,7 @@
 //! Single-file audit point for items this crate consumes from upstream crates
 //! (`full_statement_verifier`, `prover`, `setups`, `common_constants`,
-//! `verifier_common`). Same convention as `circuit_prover::upstream` /
-//! `execution_prover::upstream`: consumers import upstream items exclusively
+//! `verifier_common`). Same convention as `gpu_circuit_prover::upstream` /
+//! `gpu_execution_prover::upstream`: consumers import upstream items exclusively
 //! through `crate::upstream`.
 
 // `full_statement_verifier` — the program-level proof container and (behind

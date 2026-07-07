@@ -1,12 +1,12 @@
-use circuit_prover::prover::gkr::setup::GpuGKRSetupHost;
-use circuit_prover::prover::ProverContext;
-use circuit_prover::witness::circuit_type::CircuitType;
-use circuit_prover::witness::circuit_type::UnrolledCircuitType::InitsAndTeardowns;
-use circuit_prover::witness::circuit_type::{
+use gpu_circuit_prover::prover::gkr::setup::GpuGKRSetupHost;
+use gpu_circuit_prover::prover::ProverContext;
+use gpu_circuit_prover::witness::circuit_type::CircuitType;
+use gpu_circuit_prover::witness::circuit_type::UnrolledCircuitType::InitsAndTeardowns;
+use gpu_circuit_prover::witness::circuit_type::{
     DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use circuit_prover::witness::trace_unrolled::ExecutorFamilyDecoderData;
+use gpu_circuit_prover::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::machine_type::MachineType;
@@ -59,7 +59,7 @@ impl LazyGpuGKRSetupHost {
     }
 
     /// The CPU-side setup this lazy host wraps. Exposed for program-level
-    /// consumers (`program_prover`) that recompute setup merkle caps on the
+    /// consumers (`gpu_program_prover`) that recompute setup merkle caps on the
     /// CPU via `GKRSetup::commit` when assembling a `ProgramProof`.
     pub fn cpu_setup(&self) -> &Arc<CpuGKRSetup<BF>> {
         &self.cpu_setup
@@ -266,7 +266,7 @@ fn config_logs_for_circuit(
     circuit_type: CircuitType,
     security_level: SecurityLevel,
 ) -> (u32, u32, u32) {
-    let prover_config = circuit_prover::prover::config::prover_config(circuit_type, security_level)
+    let prover_config = gpu_circuit_prover::prover::config::prover_config(circuit_type, security_level)
         .expect("ExecutionProverConfiguration validated GPU security level before precomputation");
     (
         prover_config.lde_factor.trailing_zeros(),

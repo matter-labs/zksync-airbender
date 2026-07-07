@@ -38,7 +38,7 @@ use orchestration::{
 /// circuit, and the `UnrolledTracingDataDevice::Unified` transfer. All
 /// Unified-specific handling lives in the inner stages: stage1 dispatch
 /// (`gkr/stage1/mod.rs`), commit-memory (`prover/trace/memory.rs`), setup
-/// (`execution_prover::precomputations`), and the claim-layout/accumulator
+/// (`gpu_execution_prover::precomputations`), and the claim-layout/accumulator
 /// arms.
 #[allow(clippy::too_many_arguments)]
 pub fn prove<'a, A: GoodAllocator + 'a>(

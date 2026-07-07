@@ -419,9 +419,9 @@ fn build_layer_layout_from_writes(
 
 /// Append per-tower-layer `GpuGKRLayerLayout` entries to `layers`, mirroring
 /// the address derivation in
-/// `circuit_prover::prover::gkr::backward::derive_dimension_reducing_inputs`
+/// `gpu_circuit_prover::prover::gkr::backward::derive_dimension_reducing_inputs`
 /// and the output assignment in
-/// `circuit_prover::prover::gkr::forward::lower_dimension_reducing_forward_round`.
+/// `gpu_circuit_prover::prover::gkr::forward::lower_dimension_reducing_forward_round`.
 ///
 /// Tower layer N (relative to the artifact's last storage layer) holds polys
 /// of size `1 << (initial_trace_log_2 - 1 - N)` (one halving per round).
@@ -629,7 +629,7 @@ fn relation_outputs(rel: &NoFieldGKRRelation) -> Vec<(GKRAddress, FieldType)> {
 
 /// Builds a small hand-crafted layout: layer 0 holds 2 base polys (slot
 /// `ThisLayerInnerLayerWrite`) + 2 ext polys (slot `ThisLayerCachedWrite`),
-/// trace_len 4. Exposed (`#[doc(hidden)]`) only so `circuit_prover`'s GPU-storage
+/// trace_len 4. Exposed (`#[doc(hidden)]`) only so `gpu_circuit_prover`'s GPU-storage
 /// integration tests can build a deterministic layout without a real artifact.
 #[doc(hidden)]
 pub fn handcrafted_layout(

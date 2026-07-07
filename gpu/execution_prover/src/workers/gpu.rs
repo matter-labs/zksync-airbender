@@ -4,19 +4,19 @@ use crate::messages::{
 };
 use crate::precomputations::CircuitPrecomputations;
 use crate::A;
-use circuit_prover::prover::gkr::setup::GpuGKRSetupTransfer;
-use circuit_prover::prover::proof::{
+use gpu_circuit_prover::prover::gkr::setup::GpuGKRSetupTransfer;
+use gpu_circuit_prover::prover::proof::{
     canonical_inits_and_teardowns_top_bits, prove, GpuGKRProofJob,
 };
-use circuit_prover::prover::trace::decoder::DecoderTableTransfer;
-use circuit_prover::prover::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
-use circuit_prover::prover::trace::memory_transfer::{
+use gpu_circuit_prover::prover::trace::decoder::DecoderTableTransfer;
+use gpu_circuit_prover::prover::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
+use gpu_circuit_prover::prover::trace::memory_transfer::{
     GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost,
 };
-use circuit_prover::prover::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use circuit_prover::prover::{ProverContext, ProverContextConfig};
-use circuit_prover::witness::circuit_type::CircuitType;
-use circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
+use gpu_circuit_prover::prover::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use gpu_circuit_prover::prover::{ProverContext, ProverContextConfig};
+use gpu_circuit_prover::witness::circuit_type::CircuitType;
+use gpu_circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
@@ -69,7 +69,7 @@ struct RequestState {
     /// Original host witnesses returned to the orchestrator after the GPU work
     /// completes so allocator ownership stays symmetric with the old prover.
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost>,
-    tracing_data_result: Option<circuit_prover::prover::trace::tracing_data::TracingDataHost<A>>,
+    tracing_data_result: Option<gpu_circuit_prover::prover::trace::tracing_data::TracingDataHost<A>>,
     security_level: SecurityLevel,
 }
 
@@ -88,9 +88,9 @@ struct PhaseOne<'a> {
 /// Per-phase-1 bundle, scheduled on h2d_stream against a single shared
 /// `Transfer`. Variant matches the eventual phase-2 job type.
 enum PhaseOneInputs<'a> {
-    Proof(circuit_prover::prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
+    Proof(gpu_circuit_prover::prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
     MemoryCommitment(
-        circuit_prover::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
+        gpu_circuit_prover::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
     ),
 }
 
@@ -127,7 +127,7 @@ fn gpu_worker(
     // in gkr::backward::flat). Must run before the first backward flat-kernel
     // launch; the prover layer owns it, so we trigger it here rather than from
     // the primitives substrate.
-    circuit_prover::prover::configure_kernel_attributes();
+    gpu_circuit_prover::prover::configure_kernel_attributes();
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
@@ -245,7 +245,7 @@ fn schedule_phase_one<'a>(
     let is_trivial_unified_inits_and_teardowns = matches!(
         circuit_type,
         CircuitType::Unrolled(
-            circuit_prover::witness::circuit_type::UnrolledCircuitType::Unified
+            gpu_circuit_prover::witness::circuit_type::UnrolledCircuitType::Unified
         )
     ) && inits_and_teardowns_host.is_none();
 
@@ -277,7 +277,7 @@ fn schedule_phase_one<'a>(
         // `prover_config` the commit phase actually used, so use the
         // prover_config geometry directly here.
         let prover_config =
-            circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
+            gpu_circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
                 .expect(
                     "ExecutionProverConfiguration validated GPU security level before GPU work",
                 );
@@ -307,7 +307,7 @@ fn schedule_phase_one<'a>(
         } else {
             canonical_inits_and_teardowns_top_bits(compiled_circuit)
         };
-        let mut bundle = circuit_prover::prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
+        let mut bundle = gpu_circuit_prover::prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
             setup_transfer,
             decoder_transfer,
             inits_and_teardowns_transfer,
@@ -324,7 +324,7 @@ fn schedule_phase_one<'a>(
         PhaseOneInputs::Proof(bundle)
     } else {
         let mut bundle =
-            circuit_prover::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
+            gpu_circuit_prover::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
                 decoder_transfer,
                 inits_and_teardowns_transfer,
                 tracing_data_transfer,
@@ -350,7 +350,7 @@ fn enqueue_phase_two<'a>(
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
     let prover_config =
-        circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
+        gpu_circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
             .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
     let final_trace_size_log_2 = 4usize;
     let compiled_circuit_arc = state.precomputations.compiled_circuit.clone();

@@ -116,7 +116,7 @@ impl CudaArchive {
         // Forward every `DEP_<crate>_INCLUDE` (set by a dependency that emits
         // `cargo:include=`) as a CMake `-D<crate>_INCLUDE`. gpu_core →
         // `GPU_CORE_NATIVE_INCLUDE`; gpu_hash → `GPU_HASH_NATIVE_INCLUDE`; etc.
-        // Kernel crates see only `GPU_CORE`; `circuit_prover` sees both.
+        // Kernel crates see only `GPU_CORE`; `gpu_circuit_prover` sees both.
         for (key, value) in env::vars() {
             if let Some(cmake_var) = key.strip_prefix("DEP_") {
                 if cmake_var.ends_with("_INCLUDE") {

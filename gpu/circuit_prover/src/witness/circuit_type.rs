@@ -286,7 +286,7 @@ impl UnrolledNonMemoryCircuitType {
     /// `make_setup_for_non_mem_circuit` for every family — the GPU proof-parity
     /// fixtures thread THIS value into their CPU oracle, so a stale entry here
     /// is invisible to the parity suite (it diverged for JumpBranchSlt until
-    /// the program_prover base-layer verify e2e caught it) — hence the arms
+    /// the gpu_program_prover base-layer verify e2e caught it) — hence the arms
     /// reference the upstream constant directly instead of a literal.
     #[inline(always)]
     pub const fn get_default_pc_value_in_padding(&self) -> u32 {

@@ -13,7 +13,7 @@ links = "gpu_hash_native"
 
 [features]
 # Compiles `native/hash.cu`'s PoW kernel with `AB_DETERMINISTIC_POW`. Enabled
-# by `circuit_prover`'s `deterministic_pow` feature so the GPU PoW search matches
+# by `gpu_circuit_prover`'s `deterministic_pow` feature so the GPU PoW search matches
 # the host verifier (required for proof parity).
 deterministic_pow = []
 

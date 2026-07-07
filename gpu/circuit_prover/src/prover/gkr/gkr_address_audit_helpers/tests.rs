@@ -54,7 +54,7 @@ const CIRCUIT_BASENAMES: &[&str] = &[
 /// post-compaction descriptor sizes against the 32 KB inline kernel-arg
 /// ceiling.
 ///
-/// Run with `RUST_LOG=info cargo test -p circuit_prover --lib gkr_address_audit -- --nocapture`
+/// Run with `RUST_LOG=info cargo test -p gpu_circuit_prover --lib gkr_address_audit -- --nocapture`
 /// to see the full per-layer dump.
 #[test]
 fn gkr_address_audit() {
