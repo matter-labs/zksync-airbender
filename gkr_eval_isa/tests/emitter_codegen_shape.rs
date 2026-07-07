@@ -201,14 +201,24 @@ fn no_single_use_leaf_copy_cell() {
 /// `SpecialStrategy::VirtualSetup { kind }` descriptor). There is therefore nothing left to
 /// assert about the backing table for it — a VirtualSetup value taking a `Global` backing
 /// slot is now a compile error, not a runtime possibility. This gate instead checks the
-/// human-readable disasm rendering this task's Step 1 fixed: every VirtualSetup value is
-/// carried by a slotless `OperandLine::Special` operand and never prints a `[sN:cM]` slot.
+/// human-readable disasm rendering this task's Step 1 fixed: every VirtualSetup operand
+/// renders as the honest slotless `VirtualSetup {kind}`, NOT the misleading `PEEK[..]=..`
+/// wording that a peek-strategy Special (which really does gather a column) uses.
+///
+/// This gate is regression-sensitive to Step 1: the pre-fix rendering was
+/// `PEEK[8]=VirtualSetup { kind: RangeCheck16Bits }@e169`, so a VirtualSetup operand line
+/// contained "PEEK"; the `!line.contains("PEEK")` assertion below FIRES against that and
+/// PASSES only on the post-fix `VirtualSetup {kind}` label. (A bare `!line.contains("[s")`
+/// slot check would NOT catch a Step-1 revert — `OperandLine::Special` has no slot field
+/// structurally, so it never renders `[sN:cM]` regardless of the label; the `[s` check is
+/// kept as a belt-and-suspenders slotlessness assertion but the `PEEK` check is what guards
+/// the rename.)
 ///
 /// Non-vacuous on two axes: (1) add_sub L0 must actually contain a `VirtualSetup` strategy
 /// descriptor (it reads RangeCheck16Bits + RangeCheckTimestamp) — asserted directly against
 /// `ctx.specials`, structurally, before touching the disasm text at all; (2) the rendered
-/// disasm text must actually contain a `VirtualSetup` line — otherwise the slot-absence
-/// check below would vacuously pass over zero matching lines.
+/// disasm text must actually contain a `VirtualSetup` line — otherwise the label check
+/// below would vacuously pass over zero matching lines.
 #[test]
 fn virtual_setup_has_no_backing_slot() {
     let (dag, sched, artifact) = load_dag_sched(ADD_SUB);
@@ -230,15 +240,32 @@ fn virtual_setup_has_no_backing_slot() {
          below is vacuous"
     );
 
-    // (2) Render-level check: no line mentioning VirtualSetup ever carries a `[sN:cM]`
-    // backing slot, and at least one line does mention VirtualSetup (non-vacuous).
+    // (2) Render-level check: every operand line rendering a VirtualSetup value uses the
+    // honest slotless `VirtualSetup {kind}` label (Step 1) — NOT the misleading `PEEK[..]=..`
+    // wording (this is the assertion sensitive to the Step-1 rename) — and never carries a
+    // `[sN:cM]` backing slot. At least one line must mention VirtualSetup (non-vacuous).
+    //
+    // We scan the PROGRAM instruction lines only (the `[  NN] ...` operand lines), skipping
+    // the "peek descriptors" side-table dump — that table intentionally still enumerates
+    // every Special (incl. VirtualSetup) under a `PEEK[d]` heading and is out of Step-1
+    // scope. add_sub L0's VirtualSetup operands are single-operand MOVs, so one program line
+    // renders exactly one VirtualSetup operand and the substring checks are unambiguous.
     let text = disassemble_layer("add_sub L0", &layer0, None);
     let mut saw_virtual_setup_line = false;
     for line in text.lines() {
+        // Only the program body lines (`  [  NN] <instr>`); skip side-table rows.
+        if !line.trim_start().starts_with('[') {
+            continue;
+        }
         if !line.contains("VirtualSetup") {
             continue;
         }
         saw_virtual_setup_line = true;
+        assert!(
+            !line.contains("PEEK"),
+            "VirtualSetup operand still rendered with the misleading PEEK label \
+             (Step-1 rename reverted?): {line}"
+        );
         assert!(
             !line.contains("[s"),
             "VirtualSetup rendered with a backing slot (should be slotless): {line}"
@@ -246,6 +273,7 @@ fn virtual_setup_has_no_backing_slot() {
     }
     assert!(
         saw_virtual_setup_line,
-        "expected at least one disasm line mentioning VirtualSetup (non-vacuous slot check)"
+        "expected at least one program line rendering a VirtualSetup operand (non-vacuous \
+         label check)"
     );
 }
