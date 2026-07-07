@@ -24,7 +24,6 @@ members = [
     "circuit_defs/setups",
     "circuit_defs/prover_examples",
 
-    "execution_utils",
 
     "gpu/core",
     "gpu/native_build",
@@ -36,7 +35,6 @@ members = [
     "gpu/execution_prover",
     "gpu/program_prover",
     "gpu/gkr_model",
-    "execution_tests",
 
     "reduced_keccak",
 
@@ -78,7 +76,6 @@ default-members = [
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
     "cs",
-    "execution_utils",
     "fft",
     "field",
     # "full_statement_verifier",
