@@ -227,7 +227,7 @@ fn generate_subword_proof(
     let worker = Worker::new_with_num_threads(8);
 
     let config = ProgramConfig::keccak_f1600();
-    let vm = run_vm_and_capture::<CountersT>(&config, &worker);
+    let vm = run_vm_and_capture::<CountersT, FullUnsignedMachineDecoderConfig>(&config, &worker);
 
     let preprocessing_data = process_binary_into_separate_tables_ext::<
         BabyBearField,
@@ -299,7 +299,7 @@ fn generate_subword_proof(
     )
 }
 
-/// F1 subword-alias regression fixture.
+/// subword-alias regression fixture.
 ///
 /// Locates an ACTIVE byte-load row (execute=1, is_store=0, is_byte=1, byte offset >= 1)
 /// and trades the byte offset against the word-cell address:
@@ -361,7 +361,7 @@ fn generate_subword_regression_proof() {
         trace.column_major_witness_trace[B1_W][row] =
             BabyBearField::from_u32_with_reduction(new_b1);
         println!(
-            "[F1-FORGE] row {}: cleanaddr_lo {} -> {} (not word-aligned), (b0,b1) ({},{}) -> ({},{}); address equation preserved",
+            "forge row {}: cleanaddr_lo {} -> {} (not word-aligned), (b0,b1) ({},{}) -> ({},{}); address equation preserved",
             row, old_addr, old_addr + d, b0, b1, new_b0, new_b1
         );
     });

@@ -24,8 +24,78 @@ DELEGATIONS=(
 PER_FAMILY_SET=("${PER_FAMILY_CIRCUITS[@]}" "${DELEGATIONS[@]}")
 UNIFIED_SET=(unified_reduced_machine "${DELEGATIONS[@]}")
 
-ALL_STEPS=(circuits witness_gen build_program generator prover native corruption binaries transpiler fsv)
+# Step dependency graph — the SINGLE source of truth for what runs and in what
+# order. Each element is "step:space-separated-deps". Execution order is DERIVED by
+# topological sort (deps strictly before dependents; genuine ties — steps with no
+# dependency path between them — broken alphabetically, a deterministic, content-free
+# linearization). The listing order below carries NO meaning; add an edge and the
+# order re-derives. (Indexed array of strings, not a `declare -A` map: this script
+# targets bash 3.2 / macOS, which has no associative arrays — same reason the
+# recursion block avoids `;&`.)
+STEP_GRAPH=(
+  "circuits:"
+  "witness_gen:circuits"
+  "build_program:"
+  "generator:circuits"
+  "prover:circuits witness_gen build_program"
+  "binaries:generator"
+  "native:generator prover"                 # verify the honest proof
+  "corruption:generator prover"             # corrupt the honest proof
+  "transpiler:generator prover binaries"
+  "fsv:generator prover"
+  # malicious generates its OWN (mal-)proofs (witness corruption / prover-cache
+  # hooks); it does NOT consume the honest `prover` output — only the build inputs
+  # its own proving needs + the generated verifier it checks against.
+  "malicious:circuits witness_gen build_program generator"
+)
+# Opt-in steps: in the graph and valid, but excluded from a default (no-args) run;
+# only execute when named explicitly or reached via --from. Orthogonal to deps.
 OPT_IN_STEPS=(malicious)
+
+# --- graph queries (all bash-3.2-safe: string sets, no associative arrays) --------
+step_deps()     { local e; for e in "${STEP_GRAPH[@]}"; do [[ "$e" = "$1:"* ]] && { echo "${e#*:}"; return; }; done; }
+all_steps()     { local e; for e in "${STEP_GRAPH[@]}"; do echo "${e%%:*}"; done; }
+is_opt_in()     { case " ${OPT_IN_STEPS[*]} " in *" $1 "*) return 0;; esac; return 1; }
+is_known_step() { local n; for n in $(all_steps); do [[ "$n" = "$1" ]] && return 0; done; return 1; }
+
+# Topological order: deps before dependents, ties alphabetical, dies on a cycle.
+topo_order() {
+  local placed=" " remaining ready n d progress
+  remaining=" $(all_steps | sort | tr '\n' ' ')"
+  remaining="${remaining//  / }"
+  while [[ -n "${remaining// /}" ]]; do
+    progress=0
+    for n in $remaining; do
+      ready=1
+      for d in $(step_deps "$n"); do
+        [[ "$placed" = *" $d "* ]] || { ready=0; break; }
+      done
+      if [[ $ready -eq 1 ]]; then
+        placed="$placed$n "
+        remaining="${remaining/ $n / }"
+        progress=1
+        break                        # restart scan so the alphabetically-first ready step is next
+      fi
+    done
+    [[ $progress -eq 0 ]] && die "cycle in STEP_GRAPH among:${remaining}"
+  done
+  echo "$placed"
+}
+
+# $1 plus every step that (transitively) depends on it — the universe for `--from`.
+transitive_dependents() {
+  local set=" $1 " changed=1 s d
+  while [[ $changed -eq 1 ]]; do
+    changed=0
+    for s in $(all_steps); do
+      [[ "$set" = *" $s "* ]] && continue
+      for d in $(step_deps "$s"); do
+        [[ "$set" = *" $d "* ]] && { set="$set$s "; changed=1; break; }
+      done
+    done
+  done
+  echo "$set"
+}
 
 # ============================================================================
 # Defaults
@@ -53,7 +123,8 @@ usage() {
 Usage: $0 <subcommand> [options] [steps...]
 
 Runs the GKR pipeline. Subcommand picks the circuit set + RISC-V program; steps
-execute in canonical pipeline order regardless of cmdline order.
+execute in dependency order (topologically sorted from STEP_GRAPH), regardless of
+the order given on the cmdline.
 
 Subcommands:
   per_family    Per-family circuits + delegations (program: keccak_f1600 default,
@@ -82,7 +153,7 @@ Options:
   --dry-run             Print what would run without executing.
   -h, --help            Show this message.
 
-Steps (canonical order):
+Steps (run in dependency order, not the order listed here):
   circuits        Compile GKR circuits
   witness_gen     Generate witness evaluation functions
   build_program   Rebuild the RISC-V example program the prover reads
@@ -98,8 +169,11 @@ Steps (canonical order):
 
 Extra step (opt-in, runs last when invoked):
   malicious       Soundness-gap tests. Subcommand-aware: per_family runs the
-                  malicious_proof generator + verifier malicious.rs; unified
-                  re-runs the unified_negative tests.
+                  malicious_proof generators + verifier malicious.rs (standalone —
+                  the unified reject-tests are --skip'd here, so it no longer needs
+                  unified fixtures); unified runs unified_negative + generates and
+                  verifies the unified malicious proofs. The memory-heavy generators
+                  run under --test-threads=1 to avoid OOM.
 
 Examples:
   $0 per_family
@@ -356,33 +430,38 @@ for base in "${BASE_CIRCUITS[@]}"; do
 done
 
 # ============================================================================
-# Resolve steps
+# Resolve steps — order derived from STEP_GRAPH via topo_order (see helpers above)
 # ============================================================================
-VALID_STEPS=" ${ALL_STEPS[*]} ${OPT_IN_STEPS[*]} "
-
-is_step_valid() { [[ "$VALID_STEPS" =~ " $1 " ]]; }
+ORDER="$(topo_order)"   # topological order over the whole step universe
 
 if [[ $# -gt 0 ]]; then
+  # Explicit steps run exactly as asked (deps NOT auto-pulled — preserves the
+  # verifier-only quick-iteration workflow), emitted in topological order.
   RAW_STEPS=("$@")
   for s in "${RAW_STEPS[@]}"; do
-    is_step_valid "$s" || { echo "ERROR: unknown step: $s" >&2; usage; }
+    is_known_step "$s" || { echo "ERROR: unknown step: $s" >&2; usage; }
   done
   STEPS=()
-  for s in "${ALL_STEPS[@]}" "${OPT_IN_STEPS[@]}"; do
-    [[ " ${RAW_STEPS[*]} " =~ " $s " ]] && STEPS+=("$s")
+  for s in $ORDER; do
+    [[ " ${RAW_STEPS[*]} " = *" $s "* ]] && STEPS+=("$s")
   done
 elif [[ -n "$FROM" ]]; then
-  is_step_valid "$FROM" || { echo "ERROR: unknown step for --from: $FROM" >&2; usage; }
+  is_known_step "$FROM" || { echo "ERROR: unknown step for --from: $FROM" >&2; usage; }
+  # --from X = X + everything that transitively depends on X, in topo order.
+  # Opt-in steps are excluded unless X itself is that opt-in step.
+  DEPENDENTS="$(transitive_dependents "$FROM")"
   STEPS=()
-  found=false
-  for s in "${ALL_STEPS[@]}"; do
-    [[ "$s" = "$FROM" ]] && found=true
-    $found && STEPS+=("$s")
+  for s in $ORDER; do
+    [[ "$DEPENDENTS" = *" $s "* ]] || continue
+    if is_opt_in "$s" && [[ "$s" != "$FROM" ]]; then continue; fi
+    STEPS+=("$s")
   done
-  # --from on an opt-in step runs only that step.
-  [[ ${#STEPS[@]} -eq 0 ]] && STEPS=("$FROM")
 else
-  STEPS=("${ALL_STEPS[@]}")
+  # Default (no args): every non-opt-in step, in topo order.
+  STEPS=()
+  for s in $ORDER; do
+    is_opt_in "$s" || STEPS+=("$s")
+  done
 fi
 
 # ============================================================================
@@ -442,6 +521,18 @@ WARN_FLAGS=""
 $SHOW_WARNINGS || WARN_FLAGS="-Awarnings"
 DUMP_BIN_WARN_FLAGS=()
 $SHOW_WARNINGS && DUMP_BIN_WARN_FLAGS=(--warnings)
+
+# Memory-heavy invocations pin libtest to one thread so N full unified-trace builds
+# don't run concurrently and OOM. Applied only to the two prover-side test SETS that
+# fan out: unified_negative (~26 proptest harnesses) and the 3 per-family malicious
+# generators. (step_prover's gkr_run_unified_test is a single test — no cap needed.)
+HEAVY_TEST_THREADS=(--test-threads=1)
+
+# Common verifier-crate cargo-test prefix (folds the repeated env + features
+# boilerplate shared by native / corruption / transpiler / malicious-verify). Expands
+# at the call site so --dry-run still prints the full cargo command. Callers append
+# `--test <target> -- <filters/flags>`.
+VERIFIER_TEST=(env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier --no-default-features --features "$FEATURES")
 
 # ============================================================================
 # Helpers
@@ -542,15 +633,13 @@ step_prover() {
 
 step_native() {
   run_step "Native tests" \
-    env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
-      --no-default-features --features "$FEATURES" --test native \
+    "${VERIFIER_TEST[@]}" --test native \
       -- "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}"
 }
 
 step_corruption() {
   run_step "Corruption tests" \
-    env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
-      --no-default-features --features "$FEATURES" --test corruption \
+    "${VERIFIER_TEST[@]}" --test corruption \
       -- "${CORRUPTION_FILTERS[@]+"${CORRUPTION_FILTERS[@]}"}" --include-ignored
 }
 
@@ -569,8 +658,7 @@ step_binaries() {
 
 step_transpiler() {
   run_step "Transpiler tests" \
-    env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
-      --no-default-features --features "$FEATURES" --test transpiler \
+    "${VERIFIER_TEST[@]}" --test transpiler \
       -- "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}" --include-ignored
 }
 
@@ -625,12 +713,14 @@ step_malicious() {
           --no-default-features --features prover,bincode,gkr_test_forge \
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
-          -- --ignored --nocapture \
+          -- --ignored --nocapture "${HEAVY_TEST_THREADS[@]}" \
           generate_malicious_proofs generate_subword_regression_proof generate_memtuple_regression_proofs
+      # --skip rejects_malicious_unified: the unified reject-tests read malicious_unified_*
+      # fixtures that only `unified malicious` generates. Skipping them here decouples
+      # per_family malicious from unified — it can now run standalone.
       run_step "Verify malicious proofs rejected (soundness gap tests)" \
-        env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
-          --no-default-features --features "$FEATURES" \
-          --test malicious -- --include-ignored
+        "${VERIFIER_TEST[@]}" --test malicious \
+          -- --include-ignored --skip rejects_malicious_unified
       ;;
     unified)
       run_step "Unified negative tests (constraint + range-lookup layer)" \
@@ -638,7 +728,7 @@ step_malicious() {
           "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
-          -- --nocapture unified_negative
+          -- --nocapture "${HEAVY_TEST_THREADS[@]}" unified_negative
       # Proof layer: corrupt the witness and PROVE it. Default features (no
       # PROVER_CARGO_FEATURE_ARGS) ⇒ no gkr_self_checks (the bad witness reaches
       # the prover) but proptest stays available, unlike per_family's
@@ -652,12 +742,28 @@ step_malicious() {
           "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
           -- --ignored --nocapture generate_malicious_unified_proofs
       run_step "Verify malicious unified proofs rejected (soundness gap tests)" \
-        env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier \
-          --no-default-features --features "$FEATURES" \
-          --test malicious -- --include-ignored rejects_malicious_unified
+        "${VERIFIER_TEST[@]}" --test malicious \
+          -- --include-ignored rejects_malicious_unified
       ;;
   esac
 }
+
+# ============================================================================
+# Resolved plan + dependency sanity
+# ============================================================================
+echo "==> Plan (mode=$MODE, variant=$VARIANT, blake=$BLAKE, level=$SECURITY_LEVEL): ${STEPS[*]}"
+
+# Soft check: warn (don't fail) when a step in this run omits one of its declared
+# deps that isn't also in the run — the artifacts it relies on may be stale. Running
+# a subset deliberately (e.g. verifier-only iteration) is fine, so this is a heads-up.
+STEPS_SET=" ${STEPS[*]} "
+for s in "${STEPS[@]}"; do
+  # shellcheck disable=SC2046  # intentional word-split of the space-separated dep list
+  for dep in $(step_deps "$s"); do
+    [[ "$STEPS_SET" == *" $dep "* ]] || \
+      echo "  [deps] note: '$s' depends on '$dep' (not in this run) — ensure its artifacts are current" >&2
+  done
+done
 
 # ============================================================================
 # Main loop
