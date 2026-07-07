@@ -226,6 +226,22 @@ fn reads_value(vi: &VInstr, v: ValueId) -> bool {
     }
 }
 
+/// Number of times `vi` reads `Value(v)` as an operand (occurrence count, not a bool).
+/// Mirrors `reads_value`'s positions: `Mov.src`, `Add`/`Mul.reads`, `Fma.pairs` (both sides).
+fn count_value_reads(vi: &VInstr, v: ValueId) -> usize {
+    let is_v = |op: &VirtualOp| matches!(op, VirtualOp::Value(x) if *x == v);
+    match vi {
+        VInstr::Add { reads, .. } | VInstr::Mul { reads, .. } => {
+            reads.iter().filter(|o| is_v(o)).count()
+        }
+        VInstr::Fma { pairs, .. } => pairs
+            .iter()
+            .map(|(l, r)| is_v(l) as usize + is_v(r) as usize)
+            .sum(),
+        VInstr::Mov { src, .. } => src.as_ref().map_or(0, |o| is_v(o) as usize),
+    }
+}
+
 /// Is `v` read (as a Value) at any index in `from..` before it is redefined?
 fn value_read_after(vinstrs: &[VInstr], from: usize, v: ValueId) -> bool {
     for vj in &vinstrs[from..] {
@@ -441,16 +457,20 @@ fn propagate_single_use_leaf_copies(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec
     }
     let mut changed = false;
     for (def_idx, v, op) in leaf_copies {
-        // Count reads of Value(v) across the whole program; capture the sole reader index.
-        // (SSA: `v` has one define, so read-exactly-once == single-use.)
+        // Count OCCURRENCES of Value(v) across the whole program (not instructions that read
+        // it); capture the sole reader index. A single instruction can read `Value(v)` in
+        // two operand positions (e.g. `Fma` computing v*v), which must NOT count as
+        // single-use — propagating both would double a Global's DRAM read (traffic-neutrality,
+        // reviewer-caught).
         let mut reader: Option<usize> = None;
         let mut count = 0usize;
         for (k, vk) in vinstrs.iter().enumerate() {
             if k == def_idx {
                 continue; // the define's src is `op`, not Value(v)
             }
-            if reads_value(vk, v) {
-                count += 1;
+            let n = count_value_reads(vk, v);
+            if n > 0 {
+                count += n;
                 reader = Some(k);
                 if count > 1 {
                     break;
@@ -859,6 +879,28 @@ mod tests {
         let mut step_of = vec![0, 0, 0];
         let changed = propagate_single_use_leaf_copies(&mut vinstrs, &mut step_of);
         assert!(!changed, "multi-read leaf copy must keep its cell");
+    }
+
+    #[test]
+    fn f6_keeps_value_read_twice_in_one_instruction() {
+        let v = ExprId(9);
+        // DstFromSrc $cellv <- GLOBAL ; MUL acc *= Value(v) * Value(v)  (v read TWICE in one instr = v^2)
+        // Occurrence count is 2, so F6 must NOT fire (propagating both would double the Global DRAM read).
+        let mut vinstrs = vec![
+            leaf_copy(v, VirtualOp::Global { slot: 2, col: 4 }),
+            VInstr::Mul {
+                field: OperandField::Base,
+                reads: vec![VirtualOp::Value(v), VirtualOp::Value(v)],
+                defines: None,
+                is_dram_read: false,
+            },
+        ];
+        let mut step_of = vec![0, 0];
+        let changed = propagate_single_use_leaf_copies(&mut vinstrs, &mut step_of);
+        assert!(
+            !changed,
+            "a value read twice in one instruction is not single-use (would double a Global DRAM read)"
+        );
     }
 
     #[test]
