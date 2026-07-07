@@ -5,7 +5,9 @@ mod common;
 
 use common::load_dag_sched;
 use gkr_eval_isa::fwd::compile::compile_circuit;
+use gkr_eval_isa::fwd::disasm::disassemble_layer;
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine};
+use gkr_eval_isa::fwd::source::SpecialStrategy;
 
 const ADD_SUB: &str = "add_sub_lui_auipc_mop_layout_gkr.json";
 
@@ -192,4 +194,58 @@ fn no_single_use_leaf_copy_cell() {
             "F6 violated: single-use leaf-copy cell {cell} at instr {i} read exactly once: {instr:?}"
         );
     }
+}
+
+/// `BackingKey::VirtualSetup` no longer exists (deleted in Task 1: the old backing-table
+/// representation of a VirtualSetup read was replaced by an interned
+/// `SpecialStrategy::VirtualSetup { kind }` descriptor). There is therefore nothing left to
+/// assert about the backing table for it — a VirtualSetup value taking a `Global` backing
+/// slot is now a compile error, not a runtime possibility. This gate instead checks the
+/// human-readable disasm rendering this task's Step 1 fixed: every VirtualSetup value is
+/// carried by a slotless `OperandLine::Special` operand and never prints a `[sN:cM]` slot.
+///
+/// Non-vacuous on two axes: (1) add_sub L0 must actually contain a `VirtualSetup` strategy
+/// descriptor (it reads RangeCheck16Bits + RangeCheckTimestamp) — asserted directly against
+/// `ctx.specials`, structurally, before touching the disasm text at all; (2) the rendered
+/// disasm text must actually contain a `VirtualSetup` line — otherwise the slot-absence
+/// check below would vacuously pass over zero matching lines.
+#[test]
+fn virtual_setup_has_no_backing_slot() {
+    let (dag, sched, artifact) = load_dag_sched(ADD_SUB);
+    let compiled = compile_circuit(&dag, &sched, &artifact).expect("compile add_sub");
+    let layer0 = compiled.layers.into_iter().next().expect("layer 0");
+
+    // (1) Structural non-vacuity: add_sub L0's specials table must carry at least one
+    // VirtualSetup strategy descriptor. If this ever goes false, the render-level check
+    // below is checking nothing.
+    let has_virtual_setup_strategy = layer0
+        .ctx
+        .specials
+        .iter()
+        .any(|d| matches!(d.strategy, SpecialStrategy::VirtualSetup { .. }));
+    assert!(
+        has_virtual_setup_strategy,
+        "add_sub L0 must contain >=1 SpecialStrategy::VirtualSetup descriptor (it reads \
+         RangeCheck16Bits + RangeCheckTimestamp) — if this is false the slotlessness check \
+         below is vacuous"
+    );
+
+    // (2) Render-level check: no line mentioning VirtualSetup ever carries a `[sN:cM]`
+    // backing slot, and at least one line does mention VirtualSetup (non-vacuous).
+    let text = disassemble_layer("add_sub L0", &layer0, None);
+    let mut saw_virtual_setup_line = false;
+    for line in text.lines() {
+        if !line.contains("VirtualSetup") {
+            continue;
+        }
+        saw_virtual_setup_line = true;
+        assert!(
+            !line.contains("[s"),
+            "VirtualSetup rendered with a backing slot (should be slotless): {line}"
+        );
+    }
+    assert!(
+        saw_virtual_setup_line,
+        "expected at least one disasm line mentioning VirtualSetup (non-vacuous slot check)"
+    );
 }

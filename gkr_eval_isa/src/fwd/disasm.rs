@@ -12,6 +12,7 @@
 
 use super::context::{CompiledLayer, DagForwardContext, ForwardAction, OutputCell, RootOutput};
 use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Sign};
+use super::source::SpecialStrategy;
 use super::stats::{OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use cs::gkr_compiler::dag_ir::{DagLayer, Expr, Root, RootId, SourceKind};
 use std::fmt::Write;
@@ -74,7 +75,14 @@ fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext) -> String {
             LdcSub::Special => fmt_special_lit(*idx),
         },
         OperandLine::Special { desc } => match ctx.specials.get(*desc) {
-            Some(d) => format!("PEEK[{desc}]={:?}@e{}", d.strategy, d.origin_expr.0),
+            // `VirtualSetup` is a computed, slotless Special (no backing slot, no DRAM
+            // gather — see `SpecialStrategy::VirtualSetup`), unlike the peek strategies
+            // below, so it gets an honest label rather than the "PEEK" wording, matching
+            // the source-dump rendering of `SourceKind::VirtualSetup` (disasm.rs :206).
+            Some(d) => match &d.strategy {
+                SpecialStrategy::VirtualSetup { kind } => format!("VirtualSetup {kind:?}"),
+                strategy => format!("PEEK[{desc}]={strategy:?}@e{}", d.origin_expr.0),
+            },
             None => format!("PEEK?{desc}"),
         },
     }
