@@ -95,11 +95,13 @@ fn no_cache_output_from_held_cell() {
     }
 }
 
-/// F3-b: instruction-count reduction (tightened to the regenerated value in Task 7).
+/// F3-b: instruction-count reduction, pinned to the exact post-pass count.
 #[test]
 fn f3_reduces_instruction_count_vs_pre_pass_baseline() {
     let n = add_sub_l0_instrs().len();
-    // Pre-pass add_sub L0 = 204 instrs (post site-gate, pre codegen pass). Tighten to the
-    // exact regenerated count in Task 7 step 4.
-    assert!(n < 204, "expected add_sub L0 instr count < 204 after codegen pass, got {n}");
+    // Pre-pass add_sub L0 was 204 instrs (post site-gate, pre codegen pass). The full
+    // codegen-quality pass (F1/F2/F4/F5 optimizer + F3 eager materialize) brings it to 166
+    // — the corpus regen (Task 7) confirmed this is traffic-neutral (schedules unchanged;
+    // only the emitted program is leaner). Pinned as an upper bound so a regression trips it.
+    assert!(n <= 166, "expected add_sub L0 instr count <= 166 after codegen pass, got {n}");
 }
