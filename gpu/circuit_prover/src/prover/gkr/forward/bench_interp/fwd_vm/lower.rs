@@ -20,20 +20,20 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension, PrimeField};
 
-use cs::definitions::{GKRAddress, VirtualSetupPoly};
+use cs::definitions::GKRAddress;
 use cs::gkr_compiler::dag_ir::{ChallengeRef, DagLayer, RangeWidth, ReadPlace, RootId};
 
 use gkr_eval_isa::fwd::binding::BackingKey;
 use gkr_eval_isa::fwd::context::{CompiledLayer, ForwardAction, OutputCell, RootOutput};
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, OperandField, OperandLine};
-use gkr_eval_isa::fwd::source::SpecialStrategy;
+use gkr_eval_isa::fwd::source::{virtual_setup_kind_code, SpecialStrategy};
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
 use crate::prover::ProverContext;
 
-use super::super::fixture::{materialize_virtual_setup_column, CircuitFixture};
+use super::super::fixture::CircuitFixture;
 use super::super::{InterpResidency, BENCH_INTERP_PROGRAM_LDC_LANES};
 use super::compile::{encoded_lanes, read_place_to_gkr_address, FwdVmCircuit};
 use super::resolvers::{challenge_value, fixture_stage1, root_flat_addr};
@@ -102,6 +102,15 @@ pub(crate) struct InterpDesc3 {
 /// reconcile by picking two different values.
 const _: () = assert!(core::mem::size_of::<InterpDesc3>() == 264);
 
+/// Rust↔CUDA drift guard for the `SD_VIRTUAL` desc-kind path (Task 3). The device
+/// `gkr_fwd_vm.cu` hard-codes `SD_VIRTUAL = 4` (one past the four peek kinds 0..3)
+/// plus a `virtual_kind_from_code` switch with one arm per `KIND_ORDER` code and a
+/// `code >= 4` fail-closed bound. The `desc_param` slot carries that code, emitted
+/// below via `virtual_setup_kind_code`. `KIND_ORDER` (gkr_eval_isa) is the single
+/// source of truth: if a 5th virtual-setup kind is ever added upstream, this assert
+/// fails so the device switch + its fail-closed bound get updated in lockstep.
+const _: () = assert!(gkr_eval_isa::fwd::source::KIND_ORDER.len() == 4);
+
 /// Every `DeviceAllocation` an `InterpDesc3`'s raw pointers borrow into, kept
 /// alive for the lifetime of `FwdVmDeviceSetup`.
 struct FwdVmKeepalive {
@@ -128,10 +137,6 @@ struct FwdVmKeepalive {
     /// u32-backed so a single `Vec` covers both Bf (1 word/row) and E4 (4
     /// words/row) columns.
     _poison_bufs: Vec<DeviceAllocation<u32>>,
-    /// Materialized virtual-setup base columns (no resident production
-    /// buffer; synthesized here exactly like `materialize_virtual_setup_column`
-    /// callers elsewhere in this bench harness).
-    _virtual_setup_bufs: Vec<DeviceAllocation<BF>>,
     /// Interp-owned poison-filled overlay columns for smem-rooted outputs
     /// (codex finding F1, output isolation): the epilogue kernel (Task 4)
     /// writes here, never into flat/production storage. Raw u32-backed for
@@ -289,34 +294,18 @@ fn assert_read_before_write(cl: &CompiledLayer, materialized: &BTreeMap<(u8, u16
 
 /// Inverse of `gkr_eval_isa::fwd::binding::read_place_to_backing` + `super::
 /// compile::read_place_to_gkr_address`, composed for a `BackingTable` slot's
-/// key: the flat `GKRAddress` a non-materialized `(slot,col)` reads from.
-/// `None` for `VirtualSetup` (no resident backing; materialized separately).
-fn backing_key_col_to_gkr_address(key: &BackingKey, col: u16) -> Option<GKRAddress> {
+/// key: the flat `GKRAddress` a non-materialized `(slot,col)` reads from. Every
+/// `BackingKey` resolves — `VirtualSetup` is no longer a backing key (it lowers
+/// to `SpecialStrategy::VirtualSetup`, resolver-computed via `SD_VIRTUAL`).
+fn backing_key_col_to_gkr_address(key: &BackingKey, col: u16) -> GKRAddress {
     let c = col as usize;
-    Some(match key {
+    match key {
         BackingKey::BaseLayerMemory => GKRAddress::BaseLayerMemory(c),
         BackingKey::BaseLayerWitness => GKRAddress::BaseLayerWitness(c),
         BackingKey::Setup => GKRAddress::Setup(c),
         BackingKey::Scratch => GKRAddress::ScratchSpace(c),
         BackingKey::LayerOutput { layer } => GKRAddress::InnerLayer { layer: *layer, offset: c },
         BackingKey::CacheOutput { layer } => GKRAddress::Cached { layer: *layer, offset: c },
-        BackingKey::VirtualSetup { .. } => return None,
-    })
-}
-
-/// `VirtualSetupKind` (dag_ir) -> `VirtualSetupPoly` (the `GKRAddress`-space
-/// enum `materialize_virtual_setup_column` takes). Same four variants; kept as
-/// an explicit `match` (not a transmute) so a future added variant fails to
-/// compile here instead of silently misrouting.
-fn virtual_setup_kind_to_poly(
-    kind: &cs::gkr_compiler::dag_ir::VirtualSetupKind,
-) -> VirtualSetupPoly {
-    use cs::gkr_compiler::dag_ir::VirtualSetupKind as K;
-    match kind {
-        K::RangeCheck16Bits => VirtualSetupPoly::RangeCheck16Bits,
-        K::RangeCheckTimestamp => VirtualSetupPoly::RangeCheckTimestamp,
-        K::InitsAndTeardownsLow => VirtualSetupPoly::InitsAndTeardownsLow,
-        K::InitsAndTeardownsHigh => VirtualSetupPoly::InitsAndTeardownsHigh,
     }
 }
 
@@ -372,7 +361,6 @@ pub(crate) fn build_fwd_vm_device_setup(
     let mut col_write_host = vec![0u64; total_cols];
     let mut col_is_e4_host = vec![0u8; total_cols];
     let mut poison_bufs: Vec<DeviceAllocation<u32>> = Vec::new();
-    let mut virtual_setup_bufs: Vec<DeviceAllocation<BF>> = Vec::new();
 
     for s in 0..16u8 {
         let Some(key) = ctx.backings.backing(s) else { continue };
@@ -393,36 +381,26 @@ pub(crate) fn build_fwd_vm_device_setup(
                 poison_bufs.push(dev);
                 continue;
             }
-            match key {
-                BackingKey::VirtualSetup { kind } => {
-                    let poly = virtual_setup_kind_to_poly(kind);
-                    let host = materialize_virtual_setup_column(poly, t);
-                    let dev = alloc_upload(context, &host);
-                    col_read_host[idx] = dev.as_ptr() as u64;
-                    col_is_e4_host[idx] = 0; // virtual-setup polys are base-field
-                    virtual_setup_bufs.push(dev);
-                }
-                _ => {
-                    let addr = backing_key_col_to_gkr_address(key, col)
-                        .expect("non-VirtualSetup backing key must resolve to a GKRAddress");
-                    let (is_e4, p) = fixture.storage_column(addr).unwrap_or_else(|| {
-                        panic!(
-                            "L{layer_idx}: (slot {s}, col {col}) addr {addr:?} not resident in \
-                             post-capture storage"
-                        )
-                    });
-                    if let Some(&declared) = usage.read_field.get(&pair) {
-                        let expect_e4 = declared == OperandField::Ext;
-                        assert_eq!(
-                            expect_e4, is_e4,
-                            "L{layer_idx}: (slot {s}, col {col}) addr {addr:?} field mismatch — \
-                             program declares {declared:?}, storage_column reports is_e4={is_e4}"
-                        );
-                    }
-                    col_read_host[idx] = p as u64;
-                    col_is_e4_host[idx] = is_e4 as u8;
-                }
+            // Non-materialized read: point straight at resident production storage.
+            // (VirtualSetup is no longer a backing key — it reads nothing and is
+            // recomputed via the `SD_VIRTUAL` special path, not the column table.)
+            let addr = backing_key_col_to_gkr_address(key, col);
+            let (is_e4, p) = fixture.storage_column(addr).unwrap_or_else(|| {
+                panic!(
+                    "L{layer_idx}: (slot {s}, col {col}) addr {addr:?} not resident in \
+                     post-capture storage"
+                )
+            });
+            if let Some(&declared) = usage.read_field.get(&pair) {
+                let expect_e4 = declared == OperandField::Ext;
+                assert_eq!(
+                    expect_e4, is_e4,
+                    "L{layer_idx}: (slot {s}, col {col}) addr {addr:?} field mismatch — \
+                     program declares {declared:?}, storage_column reports is_e4={is_e4}"
+                );
             }
+            col_read_host[idx] = p as u64;
+            col_is_e4_host[idx] = is_e4 as u8;
         }
     }
 
@@ -504,6 +482,15 @@ pub(crate) fn build_fwd_vm_device_setup(
                 );
                 desc_mask[d] = pred_ptr as u64;
                 desc_fill[d] = fixture.bench_challenges().decoder_fill;
+            }
+            SpecialStrategy::VirtualSetup { kind } => {
+                // Resolver-computed base column: reads nothing (no mapping/table/
+                // mask/fill). The device recomputes `n(kind, gid)` inline via
+                // `SD_VIRTUAL` (gkr_fwd_vm.cu), sharing the flat kernel's
+                // `gkr_virtual_base_value`; the kind rides `desc_param` as its
+                // `KIND_ORDER` code (0..3). Every other desc vec keeps its 0/null default.
+                desc_kind[d] = 4; // SD_VIRTUAL
+                desc_param[d] = virtual_setup_kind_code(kind);
             }
         }
     }
@@ -625,7 +612,6 @@ pub(crate) fn build_fwd_vm_device_setup(
             _out_is_e4_dev: out_is_e4_dev,
             _err_dev: err_dev,
             _poison_bufs: poison_bufs,
-            _virtual_setup_bufs: virtual_setup_bufs,
             _smem_out_bufs: smem_out_bufs,
         },
     }
@@ -723,54 +709,36 @@ pub(crate) fn assert_gptr(
                     "L{layer_idx}: (slot {s}, col {col}) overlay is_e4 mismatch"
                 );
                 // Output isolation: never the production storage pointer.
-                if let Some(addr) = backing_key_col_to_gkr_address(key, col) {
-                    if let Some((_, storage_ptr)) = fixture.storage_column(addr) {
-                        assert_ne!(
-                            read_back_read[idx], storage_ptr as u64,
-                            "L{layer_idx}: (slot {s}, col {col}) overlay read ptr equals \
-                             PRODUCTION storage ptr — output isolation violated"
-                        );
-                    }
+                let addr = backing_key_col_to_gkr_address(key, col);
+                if let Some((_, storage_ptr)) = fixture.storage_column(addr) {
+                    assert_ne!(
+                        read_back_read[idx], storage_ptr as u64,
+                        "L{layer_idx}: (slot {s}, col {col}) overlay read ptr equals \
+                         PRODUCTION storage ptr — output isolation violated"
+                    );
                 }
             } else {
-                match key {
-                    BackingKey::VirtualSetup { .. } => {
-                        assert_eq!(
-                            read_back_write[idx], 0,
-                            "L{layer_idx}: virtual-setup (slot {s}, col {col}) must not be \
-                             writable"
-                        );
-                        assert_ne!(
-                            read_back_read[idx], 0,
-                            "L{layer_idx}: virtual-setup (slot {s}, col {col}) read ptr is null"
-                        );
-                        assert_eq!(
-                            read_back_e4[idx], 0,
-                            "L{layer_idx}: virtual-setup (slot {s}, col {col}) must be base-field"
-                        );
-                    }
-                    _ => {
-                        let addr = backing_key_col_to_gkr_address(key, col)
-                            .expect("non-VirtualSetup backing key must resolve to a GKRAddress");
-                        let (is_e4, p) = fixture.storage_column(addr).unwrap_or_else(|| {
-                            panic!("L{layer_idx}: (slot {s}, col {col}) addr {addr:?} not resident")
-                        });
-                        assert_eq!(
-                            read_back_read[idx], p as u64,
-                            "L{layer_idx}: (slot {s}, col {col}) read ptr != storage_column({addr:?})"
-                        );
-                        assert_eq!(
-                            (read_back_e4[idx] != 0),
-                            is_e4,
-                            "L{layer_idx}: (slot {s}, col {col}) is_e4 != storage_column({addr:?})"
-                        );
-                        assert_eq!(
-                            read_back_write[idx], 0,
-                            "L{layer_idx}: (slot {s}, col {col}) non-materialized but has a \
-                             write ptr"
-                        );
-                    }
-                }
+                // Non-materialized read points at resident production storage.
+                // (VirtualSetup is no longer a backing key — it takes the
+                // resolver-computed `SD_VIRTUAL` special path, not this column table.)
+                let addr = backing_key_col_to_gkr_address(key, col);
+                let (is_e4, p) = fixture.storage_column(addr).unwrap_or_else(|| {
+                    panic!("L{layer_idx}: (slot {s}, col {col}) addr {addr:?} not resident")
+                });
+                assert_eq!(
+                    read_back_read[idx], p as u64,
+                    "L{layer_idx}: (slot {s}, col {col}) read ptr != storage_column({addr:?})"
+                );
+                assert_eq!(
+                    (read_back_e4[idx] != 0),
+                    is_e4,
+                    "L{layer_idx}: (slot {s}, col {col}) is_e4 != storage_column({addr:?})"
+                );
+                assert_eq!(
+                    read_back_write[idx], 0,
+                    "L{layer_idx}: (slot {s}, col {col}) non-materialized but has a \
+                     write ptr"
+                );
             }
         }
     }
@@ -843,6 +811,19 @@ pub(crate) fn assert_gptr(
                         fixture.bench_challenges().decoder_fill,
                         "L{layer_idx}: desc {d} fill value"
                     );
+                }
+                SpecialStrategy::VirtualSetup { kind } => {
+                    assert_eq!(kind_back[d], 4, "L{layer_idx}: desc {d} kind (SD_VIRTUAL)");
+                    assert_eq!(
+                        param_back[d],
+                        virtual_setup_kind_code(kind),
+                        "L{layer_idx}: desc {d} virtual-setup kind code"
+                    );
+                    assert_eq!(mapping_back[d], 0, "L{layer_idx}: desc {d} mapping must be null");
+                    assert_eq!(table_back[d], 0, "L{layer_idx}: desc {d} table must be null");
+                    assert_eq!(table_len_back[d], 0, "L{layer_idx}: desc {d} table len must be zero");
+                    assert_eq!(mask_back[d], 0, "L{layer_idx}: desc {d} mask must be null");
+                    assert_eq!(fill_back[d], Field::ZERO, "L{layer_idx}: desc {d} fill must be zero");
                 }
             }
         }
@@ -1060,8 +1041,7 @@ pub(crate) fn run_gdev_layer(
                 .backings
                 .backing(slot)
                 .unwrap_or_else(|| panic!("L{layer_idx}: no backing for slot {slot}"));
-            let addr = backing_key_col_to_gkr_address(key, col)
-                .expect("materialized (slot,col) must map to a GKRAddress");
+            let addr = backing_key_col_to_gkr_address(key, col);
             let (flat_e4, flat_ptr) = fixture.storage_column(addr).ok_or_else(|| {
                 format!("L{layer_idx}: materialized {addr:?} not resident in flat storage")
             })?;

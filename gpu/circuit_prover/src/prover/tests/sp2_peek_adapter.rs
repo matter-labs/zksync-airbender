@@ -1029,6 +1029,11 @@ impl PeekResolver for ProverPeekResolver<'_> {
                         .ok_or(PeekError::IndexOutOfRange { index: idx, len: d.preprocessed_generic_lookup.len() })
                 }
             }
+            // VirtualSetup is resolver-computed (reads nothing): its value IS
+            // `virtual_setup(kind, row)`, the same source the query-fold evaluates.
+            SpecialStrategy::VirtualSetup { kind } => {
+                Ok(lift(r.virtual_setup.virtual_setup(kind, row)))
+            }
         }
     }
 }
@@ -1097,6 +1102,9 @@ impl StrategyKinds {
                 SpecialStrategy::PeekAggregate { .. }   => self.aggregate = true,
                 SpecialStrategy::PeekSetup              => self.setup = true,
                 SpecialStrategy::PeekDecoder { .. }     => self.decoder = true,
+                // VirtualSetup is not one of the four *peek* strategies this
+                // coverage tracker asserts on (it reads nothing) — ignore it.
+                SpecialStrategy::VirtualSetup { .. }    => {}
             }
         }
     }

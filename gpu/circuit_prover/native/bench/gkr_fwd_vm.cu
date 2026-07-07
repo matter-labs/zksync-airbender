@@ -36,7 +36,7 @@ constexpr u32 FWDVM_ERR_BAD_HEADER = 2;     // reserved bits set / bad Mov dir /
 constexpr u32 FWDVM_ERR_COL_OOB = 4;        // col >= col_base[slot+1]-col_base[slot]
 constexpr u32 FWDVM_ERR_NULL_COLUMN = 8;    // read/write column entry is null
 constexpr u32 FWDVM_ERR_LDC_OOB = 16;       // Ldc idx >= its bank length
-constexpr u32 FWDVM_ERR_BAD_SPECIAL = 32;   // inline special idx > 2 / desc kind > 3
+constexpr u32 FWDVM_ERR_BAD_SPECIAL = 32;   // inline special idx > 2 / desc kind > 4 / bad virtual-setup kind code
 constexpr u32 FWDVM_ERR_DESC_OOB = 64;      // Special desc >= n_descs
 constexpr u32 FWDVM_ERR_TABLE_OOB = 128;    // mapped lookup index >= table_len
 constexpr u32 FWDVM_ERR_CELL_OOB = 256;     // cell + width > budget
@@ -58,6 +58,7 @@ constexpr u8 SD_SINGLE_COLUMN = 0; // PeekSingleColumn: lift(mapping[row])
 constexpr u8 SD_AGGREGATE = 1;     // PeekAggregate: table[mapping[row]]
 constexpr u8 SD_SETUP = 2;         // PeekSetup: row < table_len ? table[row] : 0
 constexpr u8 SD_DECODER = 3;       // PeekDecoder: mask[row] != 0 ? table[mapping[row]] : fill
+constexpr u8 SD_VIRTUAL = 4;       // VirtualSetup: lift(n(kind, gid)); KIND_ORDER code in desc_param[desc]
 
 // ABI mirror — keep field-for-field with InterpDesc3 in
 // bench_interp/fwd_vm/lower.rs (Rust upload assembles this).
@@ -89,7 +90,7 @@ struct interp_desc3 {
   const u32 *desc_table_len;
   const bf *const *desc_mask;
   const e4 *desc_fill;
-  const u32 *desc_param; // width/set params; unused by the device semantics
+  const u32 *desc_param; // width/set params + SD_VIRTUAL kind code (KIND_ORDER index)
   // smem-rooted outputs written in the epilogue
   u32 n_outs;
   const u16 *out_cell;
@@ -187,8 +188,27 @@ DEVICE_FORCEINLINE e4 read_ldc(const interp_desc3 &d, const u32 sub, const u32 i
   }
 }
 
-// Special{desc}: the four peek legs, mirroring resolvers.rs::peek exactly
-// (the G-CPU-validated single reference). Values are e4.
+// KIND_ORDER (gkr_eval_isa::fwd::source) index -> gkr_base_source_kind, the SAME
+// enum the flat forward codegen feeds `gkr_virtual_base_value` (the shared `n()`).
+// KIND_ORDER is the single source of truth (mirrored on the Rust side by
+// `virtual_setup_kind_code`; drift-guarded in fwd_vm/lower.rs). This switch tracks
+// it explicitly, so a future 5th kind fails visibly rather than misrouting.
+// Callers MUST fail-closed on codes >= KIND_ORDER.len() (== 4) before dispatching.
+DEVICE_FORCEINLINE gkr_base_source_kind virtual_kind_from_code(const u32 code) {
+  switch (code) {
+  case 0: // RangeCheck16Bits
+    return GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS;
+  case 1: // RangeCheckTimestamp
+    return GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP;
+  case 2: // InitsAndTeardownsLow
+    return GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW;
+  default: // 3: InitsAndTeardownsHigh (caller guarantees code < 4)
+    return GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH;
+  }
+}
+
+// Special{desc}: the four peek legs + VirtualSetup, mirroring resolvers.rs::peek
+// exactly (the G-CPU-validated single reference). Values are e4.
 DEVICE_FORCEINLINE e4 read_special(const interp_desc3 &d, const u32 desc, const unsigned gid, u32 &err) {
   if (desc >= d.n_descs) {
     err |= FWDVM_ERR_DESC_OOB;
@@ -222,6 +242,17 @@ DEVICE_FORCEINLINE e4 read_special(const interp_desc3 &d, const u32 desc, const 
       return e4::ZERO();
     }
     return load<e4, ld_modifier::ca>(d.desc_table[desc], row);
+  }
+  case SD_VIRTUAL: {
+    // VirtualSetup: resolver-computed, reads NO memory. The kind rides desc_param
+    // as a KIND_ORDER code (0..3). Fail closed on a bad code — `gkr_virtual_base_value`
+    // returns 0 for an unknown kind, which would silently corrupt instead of erroring.
+    const u32 code = d.desc_param[desc];
+    if (code >= 4) { // KIND_ORDER.len()
+      err |= FWDVM_ERR_BAD_SPECIAL;
+      return e4::ZERO();
+    }
+    return e4::from_scalar(gkr_virtual_base_value(virtual_kind_from_code(code), gid));
   }
   default:
     err |= FWDVM_ERR_BAD_SPECIAL;

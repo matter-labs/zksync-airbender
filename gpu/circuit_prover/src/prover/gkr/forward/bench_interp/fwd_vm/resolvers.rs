@@ -288,6 +288,9 @@ impl HostSnapshot {
                         snap.decoder_pred_addr = Some(pred_addr);
                         snap.decoder_fill = fixture.bench_challenges().decoder_fill;
                     }
+                    // VirtualSetup is resolver-computed (`virtual_setup_value`) — it
+                    // reads nothing, so there is no peek array to D2H-capture.
+                    SpecialStrategy::VirtualSetup { .. } => {}
                 }
             }
         }
@@ -493,6 +496,9 @@ impl PeekResolver for HostStorageResolvers<'_> {
                     snap.decoder_fill
                 }
             }
+            // Resolver-computed base value, byte-identical to the device
+            // `SD_VIRTUAL` path (`gkr_virtual_base_value`); reads no snapshot array.
+            SpecialStrategy::VirtualSetup { kind } => lift(virtual_setup_value(kind, row)),
         })
     }
 }
