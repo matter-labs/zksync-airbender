@@ -12,7 +12,7 @@ use crate::definitions::Transcript;
 use crate::fft::Twiddles;
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::stages::stage1;
+use crate::gkr::prover::stages::commitment_utils;
 use crate::gkr::prover::transcript_utils::{
     commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
 };
@@ -36,6 +36,13 @@ pub mod stages;
 pub mod sumcheck_loop;
 pub mod transcript_utils;
 pub mod utils;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum CommitmentMode {
+    SeparateMemoryAndWitness,
+    MergedMemoryAndWitness,
+    MergedAndPackedMemoryAndWitness { pack_log2: usize }, // this mode assumes that external challenges are not "external" anymore
+}
 
 pub(crate) struct SendPtr<T: Sized>(*mut T);
 unsafe impl<T: Send + Sync> Send for SendPtr<T> {}
@@ -126,109 +133,6 @@ impl WhirSchedule {
     pub fn total_poly_size_reduction(&self) -> usize {
         self.whir_steps_schedule.iter().sum()
     }
-
-    pub fn default_for_tests_80_bits_20() -> Self {
-        let mut new = Self {
-            base_lde_factor: 2,
-            cap_size: 16,
-            whir_steps_schedule: vec![1, 4, 4, 4, 4],
-            whir_pow_schedule: vec![24, 24, 24, 24, 24],
-            whir_steps_lde_factors: vec![8, 64, 128, 128],
-            whir_queries_schedule: vec![],
-        };
-
-        assert_eq!(
-            new.whir_steps_lde_factors.len() + 1,
-            new.whir_steps_schedule.len()
-        );
-        assert_eq!(new.whir_pow_schedule.len(), new.whir_steps_schedule.len());
-
-        for (lde, pow) in Some(new.base_lde_factor)
-            .iter()
-            .chain(new.whir_steps_lde_factors.iter())
-            .zip(new.whir_pow_schedule.iter())
-        {
-            let sec_bits = 80 - *pow;
-            let bits_per_query = lde.trailing_zeros();
-            let num_queries = (sec_bits * 120).div_ceil(bits_per_query * 100); // roughly extra 20% on top of conjecture. Latest paper decrease conjectured value by 5-10% depending on rate
-            new.whir_queries_schedule.push(num_queries as usize);
-        }
-
-        new
-    }
-
-    pub fn default_for_tests_80_bits_22() -> Self {
-        let mut new = Self {
-            base_lde_factor: 2,
-            cap_size: 16,
-            whir_steps_schedule: vec![1, 4, 4, 4, 4, 2],
-            whir_pow_schedule: vec![24, 24, 24, 24, 24, 24],
-            whir_steps_lde_factors: vec![8, 64, 128, 128, 128],
-            whir_queries_schedule: vec![],
-        };
-
-        assert_eq!(
-            new.whir_steps_lde_factors.len() + 1,
-            new.whir_steps_schedule.len()
-        );
-        assert_eq!(new.whir_pow_schedule.len(), new.whir_steps_schedule.len());
-
-        for (lde, pow) in Some(new.base_lde_factor)
-            .iter()
-            .chain(new.whir_steps_lde_factors.iter())
-            .zip(new.whir_pow_schedule.iter())
-        {
-            let sec_bits = 80 - *pow;
-            let bits_per_query = lde.trailing_zeros();
-            let num_queries = (sec_bits * 120).div_ceil(bits_per_query * 100); // roughly extra 20% on top of conjecture. Latest paper decrease conjectured value by 5-10% depending on rate
-            new.whir_queries_schedule.push(num_queries as usize);
-        }
-
-        new
-    }
-
-    pub fn default_for_tests_80_bits_24() -> Self {
-        let mut new = Self {
-            base_lde_factor: 2,
-            cap_size: 16,
-            whir_steps_schedule: vec![1, 4, 4, 4, 4, 4],
-            whir_pow_schedule: vec![24, 24, 24, 24, 24, 24],
-            whir_steps_lde_factors: vec![8, 64, 128, 128, 128],
-            whir_queries_schedule: vec![],
-        };
-
-        assert_eq!(
-            new.whir_steps_lde_factors.len() + 1,
-            new.whir_steps_schedule.len()
-        );
-        assert_eq!(new.whir_pow_schedule.len(), new.whir_steps_schedule.len());
-
-        for (lde, pow) in Some(new.base_lde_factor)
-            .iter()
-            .chain(new.whir_steps_lde_factors.iter())
-            .zip(new.whir_pow_schedule.iter())
-        {
-            let sec_bits = 80 - *pow;
-            let bits_per_query = lde.trailing_zeros();
-            let num_queries = (sec_bits * 120).div_ceil(bits_per_query * 100); // roughly extra 20% on top of conjecture. Latest paper decrease conjectured value by 5-10% depending on rate
-            new.whir_queries_schedule.push(num_queries as usize);
-        }
-
-        new
-    }
-
-    // TODO(100-bit)
-    pub fn default_for_tests_100_bits_20() -> Self {
-        todo!()
-    }
-
-    pub fn default_for_tests_100_bits_22() -> Self {
-        todo!()
-    }
-
-    pub fn default_for_tests_100_bits_24() -> Self {
-        todo!()
-    }
 }
 
 pub(crate) fn split_destinations<T: Sized>(
@@ -303,6 +207,7 @@ pub fn prove_configured_with_gkr<
     setup_commitment: &ColumnMajorBaseOracleForLDE<F, T>,
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     worker: &Worker,
@@ -310,17 +215,22 @@ pub fn prove_configured_with_gkr<
 where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
-    // The production prover uses the concrete `Blake2sTranscript` (aliased as
-    // `Transcript`) as its `TR: transcript::Transcript<F, E>`; this bound defers
-    // the requirement to monomorphization (satisfied for `F = BabyBearField`,
-    // `E = BabyBearExt4`).
     Transcript: ::transcript::Transcript<F, E>,
 {
     assert_eq!(compiled_circuit.trace_len, trace_len);
-    assert_eq!(
-        witness_eval_data.column_major_memory_trace[0].len(),
-        trace_len
-    );
+    if witness_eval_data.column_major_memory_trace.len() > 0 {
+        assert_eq!(
+            witness_eval_data.column_major_memory_trace[0].len(),
+            trace_len
+        );
+    }
+    if witness_eval_data.column_major_witness_trace.len() > 0 {
+        assert_eq!(
+            witness_eval_data.column_major_witness_trace[0].len(),
+            trace_len
+        );
+    }
+
     assert_eq!(
         inits_and_teardowns_top_bits.len(),
         compiled_circuit.memory_layout.teardown_sets.len()
@@ -331,52 +241,117 @@ where
         prover_config.whir_schedule.whir_steps_schedule[0]
     );
 
-    // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
-    let (mem_oracle, wit_oracle) = stage1::stage1::<F, T>(
-        &witness_eval_data,
-        twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let mut external_challenges = *external_challenges;
 
-    let mut transcript_input = vec![];
-    // we should commit all "external" variables,
-    // that are still part of the circuit, even though they are not formally the public input
+    let (mut seed, mem_oracle, wit_oracle) = match commitment_mode {
+        CommitmentMode::SeparateMemoryAndWitness => {
+            // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
+            let (mem_oracle, wit_oracle) =
+                stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, T>(
+                    &witness_eval_data,
+                    twiddles,
+                    prover_config.lde_factor,
+                    prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                    prover_config.cap_size,
+                    trace_len.trailing_zeros() as usize,
+                    worker,
+                );
 
-    // circuit sequence and delegation type
-    transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
+            let mut transcript_input = vec![];
+            // we should commit all "external" variables,
+            // that are still part of the circuit, even though they are not formally the public input
 
-    external_challenges.flatten_into_buffer(&mut transcript_input);
+            // circuit sequence and delegation type
+            transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
 
-    // commit our setup
-    if setup.hypercube_evals.len() > 0 {
-        flatten_merkle_caps_iter_into(
-            Some(setup_commitment.tree.get_cap()).into_iter(),
-            &mut transcript_input,
-        );
-    }
+            external_challenges.flatten_into_buffer(&mut transcript_input);
 
-    // memory
-    if compiled_circuit.memory_layout.total_width > 0 {
-        flatten_merkle_caps_iter_into(
-            Some(mem_oracle.tree.get_cap()).into_iter(),
-            &mut transcript_input,
-        );
-    }
+            // commit our setup
+            if setup.hypercube_evals.len() > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(setup_commitment.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
 
-    // and witness
-    if compiled_circuit.witness_layout.total_width > 0 {
-        flatten_merkle_caps_iter_into(
-            Some(wit_oracle.tree.get_cap()).into_iter(),
-            &mut transcript_input,
-        );
-    }
+            // memory
+            if compiled_circuit.memory_layout.total_width > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(mem_oracle.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
 
-    let mut seed =
-        <Transcript as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
+            // and witness
+            if compiled_circuit.witness_layout.total_width > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(wit_oracle.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
+
+            (
+                <Transcript as ::transcript::Transcript<F, E>>::commit_initial_u32(
+                    &transcript_input,
+                ),
+                mem_oracle,
+                wit_oracle,
+            )
+        }
+        CommitmentMode::MergedMemoryAndWitness => {
+            // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
+            let merged_oracle =
+                stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, T>(
+                    &witness_eval_data,
+                    twiddles,
+                    prover_config.lde_factor,
+                    prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                    prover_config.cap_size,
+                    trace_len.trailing_zeros() as usize,
+                    worker,
+                );
+
+            let mut transcript_input = vec![];
+            // we should commit all "external" variables,
+            // that are still part of the circuit, even though they are not formally the public input
+
+            // circuit sequence and delegation type
+            transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
+
+            external_challenges.flatten_into_buffer(&mut transcript_input);
+
+            // commit our setup
+            if setup.hypercube_evals.len() > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(setup_commitment.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
+
+            flatten_merkle_caps_iter_into(
+                Some(merged_oracle.tree.get_cap()).into_iter(),
+                &mut transcript_input,
+            );
+
+            (
+                <Transcript as ::transcript::Transcript<F, E>>::commit_initial_u32(
+                    &transcript_input,
+                ),
+                merged_oracle,
+                ColumnMajorBaseOracleForLDE::empty(
+                    prover_config.base_oracles_values_per_leaf,
+                    trace_len.trailing_zeros() as usize,
+                    prover_config.lde_factor,
+                ),
+            )
+        }
+        CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2 } => {
+            // in this mode we will re-derive external challenges
+            todo!()
+        }
+    };
+
+    // then GKR is the same until the end of backward pass and derivation of claims
 
     // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
     // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
@@ -454,7 +429,7 @@ where
             layer,
             &mut gkr_storage,
             compiled_circuit,
-            external_challenges,
+            &external_challenges,
             &mut witness_eval_data,
             &inits_and_teardowns_top_bits,
             trace_len,
@@ -630,7 +605,7 @@ where
             lookup_additive_part,
             &inits_and_teardowns_top_bits[..],
             address_high_bits_shift,
-            external_challenges,
+            &external_challenges,
             &mut seed,
             worker,
         );
@@ -754,6 +729,24 @@ where
         );
     let whir_batching_challenge = whir_batching_challenges[0];
 
+    // and for WHIR we may need to reshuffle/merge claims depending on the mode
+
+    let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = match commitment_mode {
+        CommitmentMode::SeparateMemoryAndWitness => {
+            (mem_polys_claims, wit_polys_claims, setup_polys_claims)
+        }
+        CommitmentMode::MergedMemoryAndWitness => {
+            // just move all witness claims to the memory same order
+            let mut merged_claims = mem_polys_claims;
+            merged_claims.extend(wit_polys_claims);
+
+            (merged_claims, Vec::new(), setup_polys_claims)
+        }
+        CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2 } => {
+            todo!();
+        }
+    };
+
     let whir_proof = whir_fold::<F, E, T, Transcript>(
         mem_oracle,
         mem_polys_claims,
@@ -808,7 +801,7 @@ where
     }
 
     GKRProof {
-        external_challenges: *external_challenges,
+        external_challenges: external_challenges,
         whir_proof,
         final_explicit_evaluations,
         sumcheck_intermediate_values,

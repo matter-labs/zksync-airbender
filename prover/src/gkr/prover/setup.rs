@@ -353,7 +353,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         [(); F::DEGREE]: Sized,
     {
         let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
-        use crate::gkr::prover::stage1::commit_trace_part;
+        use crate::gkr::prover::commitment_utils::commit_trace_part;
 
         commit_trace_part(
             &inputs,

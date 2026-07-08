@@ -4,6 +4,7 @@ use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
 use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
+use crate::gkr::prover::CommitmentMode;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -139,6 +140,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         &setup_commitment,
         &twiddles,
         &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
         Vec::new(),
         num_delegation_cycles,
         worker,

@@ -61,7 +61,7 @@
 // - then we draw a challenge and evaluate p(alpha) = \sum_{X'} eq(r1, ...., alpha, X') f(alpha, X') =
 // = \sum_{X''} eq(r1, ...., alpha, 0, X'') f(alpha, 0, X'') + eq(r1, ...., alpha, 1, X'') f(alpha, 1, X'')
 
-use crate::gkr::prover::stages::stage1::{
+use crate::gkr::prover::stages::commitment_utils::{
     compute_column_major_lde_from_monomial_form,
     compute_column_major_monomial_form_from_main_domain_owned, ColumnMajorCosetBoundTracePart,
 };
@@ -155,6 +155,32 @@ pub struct ColumnMajorBaseOracleForLDE<
 impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
     ColumnMajorBaseOracleForLDE<F, T>
 {
+    pub fn empty(values_per_leaf: usize, trace_len_log2: usize, lde_factor: usize) -> Self {
+        let mut generators: Vec<F> = materialize_powers_serial_starting_with_one(
+            domain_generator_for_size::<F>((1 << trace_len_log2) * lde_factor as u64),
+            lde_factor,
+        );
+        bitreverse_enumeration_inplace(&mut generators);
+        let mut new = Self {
+            cosets: Vec::with_capacity(lde_factor),
+            tree: T::dummy(),
+            values_per_leaf,
+            trace_len_log2,
+        };
+
+        for i in 0..lde_factor {
+            let offset = generators[i];
+            let coset = ColumnMajorBaseOracleForCoset {
+                original_values_normal_order: Vec::new(),
+                offset,
+                trace_len_log2,
+            };
+            new.cosets.push(coset);
+        }
+
+        new
+    }
+
     pub fn num_columns(&self) -> usize {
         self.cosets[0].original_values_normal_order.len()
     }
@@ -172,8 +198,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
             self.cosets[coset_index].values_for_folded_index(internal_index, self.values_per_leaf);
 
         // Tree leaves are laid out sequentially by coset (with bit-reversed coset
-        // order).  For 2 cosets the bit-reversal is identity, so the tree index is
-        // simply coset_index * coset_tree_size + internal_index.
+        // order)
         let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
         let tree_index = coset_dest_index * coset_tree_size + internal_index;
 
@@ -2746,7 +2771,7 @@ mod test {
         challenges: Vec<E>,
         query_index_frac: f64,
     ) -> Result<(), proptest::prelude::TestCaseError> {
-        use crate::gkr::prover::stages::stage1::compute_column_major_lde_from_monomial_form;
+        use crate::gkr::prover::stages::commitment_utils::compute_column_major_lde_from_monomial_form;
         use fft::Twiddles;
 
         let worker = Worker::new_with_num_threads(4);

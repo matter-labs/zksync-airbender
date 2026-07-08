@@ -19,9 +19,9 @@ use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
 use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
-use prover::gkr::prover::prove_configured_with_gkr;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
+use prover::gkr::prover::{prove_configured_with_gkr, CommitmentMode};
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
@@ -710,6 +710,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     &setup_commitment,
                     twiddles_for_size,
                     &prover_config,
+                    CommitmentMode::SeparateMemoryAndWitness,
                     top_bits.clone(),
                     trace_len,
                     worker,

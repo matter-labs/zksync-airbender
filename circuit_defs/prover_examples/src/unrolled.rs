@@ -23,6 +23,7 @@ use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
 use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
+use prover::gkr::prover::CommitmentMode;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
 use prover::gkr::prover_config::ProverConfig;
@@ -1198,6 +1199,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     &setup_commitment,
                     &*twiddles_for_size,
                     &prover_config,
+                    CommitmentMode::SeparateMemoryAndWitness,
                     vec![],
                     trace_len,
                     &worker,
@@ -1363,6 +1365,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     &setup_commitment,
                     &*twiddles_for_size,
                     &prover_config,
+                    CommitmentMode::SeparateMemoryAndWitness,
                     vec![],
                     trace_len,
                     &worker,
@@ -1445,6 +1448,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             &setup_commitment,
             &*twiddles_for_size,
             &prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
             inits_and_teardowns_top_bits,
             trace_len,
             &worker,
@@ -1773,6 +1777,7 @@ pub(crate) fn prove_delegation_circuit<
             &setup_commitment,
             &*twiddles_for_size,
             prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
             vec![],
             trace_len,
             &worker,

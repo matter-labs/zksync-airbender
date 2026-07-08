@@ -3,8 +3,8 @@ use super::delegations::{deserialize_from_file, serialize_to_file};
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
-use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
+use crate::gkr::prover::{prove_configured_with_gkr, CommitmentMode};
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -166,6 +166,7 @@ pub fn prove_built_family_trace(
         &setup_commitment,
         &twiddles,
         &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
         Vec::new(),
         trace_len,
         worker,
@@ -466,6 +467,7 @@ pub fn prove_inits_and_teardowns(
         &setup_commitment,
         &twiddles,
         &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
         inits_and_teardowns_top_bits,
         trace_len,
         worker,

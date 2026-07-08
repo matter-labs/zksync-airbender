@@ -48,7 +48,7 @@ pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
 where
     [(); F::DEGREE]:,
 {
-    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 
     let trace_len = twiddles.domain_size;
@@ -115,7 +115,7 @@ pub fn commit_memory_tree_for_unrolled_mem_circuits<
 where
     [(); F::DEGREE]:,
 {
-    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::oracles::MemoryCircuitOracle;
 
     let trace_len = twiddles.domain_size;
@@ -189,7 +189,7 @@ where
         circuit.memory_layout.teardown_sets.len()
     );
 
-    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
 
     let now = std::time::Instant::now();
@@ -331,7 +331,7 @@ pub fn commit_memory_tree_for_unified_circuits<
 where
     [(); F::DEGREE]:,
 {
-    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
     use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 
     let trace_len = twiddles.domain_size;
@@ -406,7 +406,7 @@ pub fn commit_memory_tree_for_delegation_circuit<
 where
     [(); F::DEGREE]:,
 {
-    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
 
     let trace_len = twiddles.domain_size;
     assert!(trace_len.is_power_of_two());

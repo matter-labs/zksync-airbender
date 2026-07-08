@@ -23,7 +23,7 @@ use super::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs;
 use super::offsets_vec_for_leaf_construction;
 use super::queries::{BaseFieldQuery, ExtensionFieldQuery};
 use crate::definitions::DIGEST_SIZE_U32_WORDS;
-use crate::gkr::prover::stages::stage1::{
+use crate::gkr::prover::stages::commitment_utils::{
     compute_column_major_lde_single_coset, compute_column_major_lde_single_coset_with_offset,
     compute_column_major_lde_single_coset_with_offset_serial,
 };
@@ -729,7 +729,7 @@ where
 #[cfg(all(test, feature = "prover"))]
 mod test {
     use super::*;
-    use crate::gkr::prover::stages::stage1::commit_trace_part;
+    use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
     use crate::gkr::whir::ColumnMajorBaseOracleForLDE;
     use field::PrimeField;
     use rand::{Rng, SeedableRng};
@@ -854,7 +854,7 @@ mod test {
         let twiddles = Twiddles::<Proth120, Global>::new(trace_len, &worker);
 
         let mono: crate::gkr::whir::ColumnMajorBaseOracleForLDE<Proth120, Tree> =
-            crate::gkr::prover::stages::stage1::commit_trace_part(
+            crate::gkr::prover::stages::commitment_utils::commit_trace_part(
                 &col_refs,
                 &twiddles,
                 lde_factor,
@@ -954,7 +954,7 @@ mod test {
     /// coeff-form leaf values, tree index, Merkle path).
     #[test]
     fn ext_matches_monolithic() {
-        use crate::gkr::prover::stages::stage1::compute_column_major_lde_from_monomial_form;
+        use crate::gkr::prover::stages::commitment_utils::compute_column_major_lde_from_monomial_form;
         let worker = Worker::new_with_num_threads(4);
         // (trace_len_log2, lde_log2, vpl_log2, cap_size)
         for (tl, ld, vp, cap) in [(6usize, 3usize, 1usize, 2usize), (8, 4, 2, 8), (8, 5, 2, 8)] {
