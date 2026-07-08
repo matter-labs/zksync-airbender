@@ -550,7 +550,7 @@ mod test {
 
             write_and_fmt(
                 &format!(
-                    "../prover/compiled_circuits/{}_generated_gkr_proth_120.rs",
+                    "../prover/compiled_circuits/{}_generated_gkr_proth120.rs",
                     prefix
                 ),
                 &full_stream,

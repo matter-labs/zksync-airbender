@@ -5,13 +5,13 @@ use worker::Worker;
 use super::*;
 
 #[derive(Debug)]
-pub struct LookupExtensionPairWithoutCachesGKRRelation {
-    pub inputs: [NoFieldVectorLookupRelation; 2],
+pub struct LookupExtensionPairWithoutCachesGKRRelation<F: PrimeField> {
+    pub inputs: [NoFieldVectorLookupRelation<F>; 2],
     pub outputs: [GKRAddress; 2],
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for LookupExtensionPairWithoutCachesGKRRelation
+    for LookupExtensionPairWithoutCachesGKRRelation<F>
 {
     fn num_challenges(&self) -> usize {
         2

@@ -48,10 +48,10 @@ pub fn get_input_layer_ensure_same(
 }
 
 pub fn no_field_gkr_max_quadratic_from_constraint<F: PrimeField>(
-    graph: &dyn GraphHolder,
+    graph: &dyn GraphHolder<F>,
     mut constraint: Constraint<F>,
     output: GKRAddress,
-) -> NoFieldGKRRelation {
+) -> NoFieldGKRRelation<F> {
     constraint.normalize();
     let (quadratic_part, linear_part, constant) = constraint.clone().split_max_quadratic();
 
@@ -78,12 +78,12 @@ pub fn no_field_gkr_max_quadratic_from_constraint<F: PrimeField>(
         let existing = quadratic_sorted
             .entry(a)
             .or_insert(BTreeMap::new())
-            .insert(b, coeff.as_u32_reduced());
+            .insert(b, *coeff);
         assert!(existing.is_none());
     }
     for (coeff, a) in linear_part.into_iter() {
         let a = graph.get_address_for_variable(a);
-        let exising = linear_sorted.insert(a, coeff.as_u32_reduced());
+        let exising = linear_sorted.insert(a, coeff);
         assert!(exising.is_none());
     }
 
@@ -110,7 +110,7 @@ pub fn no_field_gkr_max_quadratic_from_constraint<F: PrimeField>(
     let input = NoFieldMaxQuadraticGKRRelation {
         quadratic_terms,
         linear_terms,
-        constant: constant.as_u32_reduced(),
+        constant,
     };
     NoFieldGKRRelation::MaxQuadratic { input, output }
 }
@@ -166,7 +166,7 @@ pub struct MachineStateWithDecoderData {
 }
 
 pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     all_variables_to_place: &mut BTreeSet<Variable>,
     state: &OpcodeFamilyCircuitState<F>,
     family_bitmask: Vec<Variable>,
@@ -329,8 +329,8 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
 
 pub use crate::definitions::gkr::CompiledDelegationCircuitState;
 
-pub(crate) fn layout_delegation_circuit_state(
-    graph: &mut GKRGraph,
+pub(crate) fn layout_delegation_circuit_state<F: PrimeField>(
+    graph: &mut GKRGraph<F>,
     all_variables_to_place: &mut BTreeSet<Variable>,
     state: &DelegationCircuitState,
     layers_mapping: &HashMap<Variable, usize>,
@@ -362,10 +362,10 @@ pub(crate) fn layout_delegation_circuit_state(
     }
 }
 
-pub trait DependentNode {
+pub trait DependentNode<F: PrimeField> {
     fn add_dependencies_into(
         &self,
-        graph: &mut dyn graph::GraphHolder,
+        graph: &mut dyn graph::GraphHolder<F>,
         dst: &mut Vec<graph::NodeIndex>,
     );
 }
@@ -435,9 +435,9 @@ pub(crate) fn reg_boolean_into_address_space(
     }
 }
 
-pub(crate) fn mem_permutation_expr_into_gkr_relation(
+pub(crate) fn mem_permutation_expr_into_gkr_relation<F: PrimeField>(
     mem: &MemoryPermutationExpression,
-    graph: &dyn GraphHolder,
+    graph: &dyn GraphHolder<F>,
 ) -> NoFieldSpecialMemoryContributionRelation {
     let address_space = match mem.address_space {
         AddressSpace::Constant(c) => CompiledAddressSpaceRelationStrict::Constant(c as u8 as u32),
@@ -516,10 +516,10 @@ pub(crate) fn mem_permutation_expr_into_gkr_relation(
     rel
 }
 
-pub(crate) fn mem_permutation_expr_into_cached_expr(
+pub(crate) fn mem_permutation_expr_into_cached_expr<F: PrimeField>(
     mem: &MemoryPermutationExpression,
-    graph: &dyn GraphHolder,
-) -> NoFieldGKRCacheRelation {
+    graph: &dyn GraphHolder<F>,
+) -> NoFieldGKRCacheRelation<F> {
     NoFieldGKRCacheRelation::MemoryTuple(mem_permutation_expr_into_gkr_relation(mem, graph))
 }
 
@@ -527,8 +527,8 @@ pub(crate) fn lookup_input_into_relation<F: PrimeField, const SINGLE_COLUMN: boo
     lookup: &LookupInputRelation<F>,
     lookup_set_index: usize,
     total_width: usize,
-    graph: &dyn GraphHolder,
-) -> NoFieldVectorLookupRelation {
+    graph: &dyn GraphHolder<F>,
+) -> NoFieldVectorLookupRelation<F> {
     if SINGLE_COLUMN {
         assert_eq!(lookup.inputs.len(), 1);
         assert!(lookup.table_id.is_none());
@@ -538,11 +538,11 @@ pub(crate) fn lookup_input_into_relation<F: PrimeField, const SINGLE_COLUMN: boo
         let mut t = vec![];
         for (c, v) in relation.linear_terms.iter() {
             let v = graph.get_address_for_variable(*v);
-            t.push((c.as_u32_reduced(), v));
+            t.push((*c, v));
         }
         let rel = NoFieldLinearRelation {
             linear_terms: t.into_boxed_slice(),
-            constant: relation.constant_term.as_u32_reduced(),
+            constant: relation.constant_term,
         };
         dst.push(rel);
     }
@@ -556,7 +556,7 @@ pub(crate) fn lookup_input_into_relation<F: PrimeField, const SINGLE_COLUMN: boo
     for _ in dst.len()..padded_len {
         let rel = NoFieldLinearRelation {
             linear_terms: vec![].into_boxed_slice(),
-            constant: 0,
+            constant: F::ZERO,
         };
         dst.push(rel);
     }
@@ -565,11 +565,11 @@ pub(crate) fn lookup_input_into_relation<F: PrimeField, const SINGLE_COLUMN: boo
         let mut t = vec![];
         for (c, v) in table_id.linear_terms.iter() {
             let v = graph.get_address_for_variable(*v);
-            t.push((c.as_u32_reduced(), v));
+            t.push((*c, v));
         }
         let rel = NoFieldLinearRelation {
             linear_terms: t.into_boxed_slice(),
-            constant: table_id.constant_term.as_u32_reduced(),
+            constant: table_id.constant_term,
         };
         dst.push(rel);
     }

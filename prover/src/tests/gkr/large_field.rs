@@ -15,15 +15,17 @@
 //!     while the setup commitment uses ordinary trace-sized twiddles.
 
 use super::orchestration::common::{
-    hardcoded_external_challenges, run_vm_and_capture, ProgramConfig, VmRunOutput,
+    run_vm_and_capture, ProgramConfig, VmRunOutput,
     NUM_CYCLES_PER_CHUNK,
 };
+use crate::tests::gkr::orchestration::common::dummy_external_challenges;
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::definitions::SecurityLevel;
 use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::CommitmentMode;
 use crate::gkr::prover_config::example_configs;
+use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_witness_for_executor_family, GKRFullWitnessTrace,
 };

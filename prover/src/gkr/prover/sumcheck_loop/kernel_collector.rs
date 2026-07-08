@@ -138,7 +138,7 @@ define_kernel_variants! {
         MaskIdentity(MaskIntoIdentityProductGKRRelation),
         PairwiseProductDimensionReducing(PairwiseProductDimensionReducingGKRRelation),
         MaxQuadratic(MaxQuadraticGKRRelation::<F, E>),
-        MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation),
+        MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation<F>),
         MaterializeVectorLookupInput(MaterializeVectorLookupInputGKRRelation<F, E>),
         MaterializeMemoryAccess(MaterializeMemoryTermGKRRelation),
         InitsAndTeardownsInitialProduct(InitsAndTeardownsInitialProductWithoutCachesGKRRelation),
@@ -149,27 +149,27 @@ define_kernel_variants! {
         LookupBasePair(LookupBasePairGKRRelation<F, E>),
         LookupBasePairWithoutCaches(LookupBasePairWithoutCachesGKRRelation<F, E>),
         LookupVectorPair(LookupExtensionPairGKRRelation<F, E>),
-        LookupVectorPairWithoutCaches(LookupExtensionPairWithoutCachesGKRRelation),
+        LookupVectorPairWithoutCaches(LookupExtensionPairWithoutCachesGKRRelation<F>),
         LookupBaseMinusMultiplicityByBase(LookupBaseMinusMultiplicityByBaseGKRRelation<F, E>),
         LookupExtensionMinusMultiplicityByExtension(LookupExtensionMinusMultiplicityByExtensionGKRRelation<F, E>),
-        LookupExtensionMinusMultiplicityByExtensionWithoutCaches(LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation),
+        LookupExtensionMinusMultiplicityByExtensionWithoutCaches(LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation<F>),
         LookupUnbalancedWithBase(LookupRationalPairWithUnbalancedBaseGKRRelation<F, E>),
         LookupUnbalancedWithExtension(LookupRationalPairWithUnbalancedExtensionGKRRelation<F, E>),
-        LookupUnbalancedWithExtensionWithoutCaches(LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation),
+        LookupUnbalancedWithExtensionWithoutCaches(LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation<F>),
         LookupMaskedVectorMinusSetup(LookupBaseExtMinusBaseExtGKRRelation<F, E>),
         LookupPairDimensionReducing(LookupPairDimensionReducingGKRRelation),
-        LookupBaseExtMinusBaseExtWithoutCaches(LookupBaseExtMinusBaseExtWithoutCachesGKRRelation),
+        LookupBaseExtMinusBaseExtWithoutCaches(LookupBaseExtMinusBaseExtWithoutCachesGKRRelation<F>),
     }
     // single challenge, no output
     no_output {
-        EnforceSingleMaxQuadraticConstraint(EnforceSingleMaxQuadraticConstraintGKRRelation),
+        EnforceSingleMaxQuadraticConstraint(EnforceSingleMaxQuadraticConstraintGKRRelation<F>),
         EnforceConstraintsMaxQuadratic(BatchConstraintEvalGKRRelation<F, E>),
     }
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
     pub fn from_enforced_relations(
-        relation: &NoFieldGKRRelation,
+        relation: &NoFieldGKRRelation<F>,
         layer_idx: usize,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
@@ -574,7 +574,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     }
 
     pub(super) fn from_layer(
-        layer: &GKRLayerDescription,
+        layer: &GKRLayerDescription<F>,
         layer_idx: usize,
         batch_challenge_base: E,
         lookup_challenges_multiplicative_part: E,

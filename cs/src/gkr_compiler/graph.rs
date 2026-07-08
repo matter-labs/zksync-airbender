@@ -14,7 +14,7 @@ pub enum CopyNode {
     FromIntermediateInExtension(GKRAddress),
 }
 
-impl GKRGate for CopyNode {
+impl<F: PrimeField> GKRGate<F> for CopyNode {
     type Output = GKRAddress;
 
     fn short_name(&self) -> String {
@@ -31,9 +31,9 @@ impl GKRGate for CopyNode {
     #[track_caller]
     fn add_at_layer(
         &self,
-        graph: &mut impl GraphHolder,
+        graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation) {
+    ) -> (Self::Output, NoFieldGKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         match self {
             Self::FromBaseLayerInBase(input) | Self::FromIntermediateInBase(input) => {
@@ -63,7 +63,7 @@ impl GKRGate for CopyNode {
     }
 }
 
-pub struct GKRGraph {
+pub struct GKRGraph<F: PrimeField> {
     pub(crate) caching_is_allowed: bool,
     pub(crate) mapping: BTreeMap<GKRAddress, usize>,
     pub(crate) rev_mapping: BTreeMap<usize, GKRAddress>,
@@ -72,8 +72,8 @@ pub struct GKRGraph {
     pub(crate) base_layer_witness: BTreeMap<Variable, GKRAddress>,
     pub(crate) base_layer_witness_rev: BTreeMap<GKRAddress, Variable>,
     pub(crate) setups: Vec<GKRAddress>,
-    pub(crate) cached_relations: BTreeMap<usize, Vec<NoFieldGKRCacheRelation>>,
-    pub(crate) enforced_relations: BTreeMap<usize, Vec<NoFieldGKRRelation>>,
+    pub(crate) cached_relations: BTreeMap<usize, Vec<NoFieldGKRCacheRelation<F>>>,
+    pub(crate) enforced_relations: BTreeMap<usize, Vec<NoFieldGKRRelation<F>>>,
     pub(crate) generic_lookup_setup_width: usize,
     pub(crate) copies: Vec<BTreeMap<GKRAddress, GKRAddress>>,
     pub(crate) intermediate_layers_offsets: BTreeMap<usize, usize>,
@@ -81,7 +81,7 @@ pub struct GKRGraph {
     pub(crate) intermediate_layers_rev: BTreeMap<GKRAddress, Variable>,
 }
 
-impl GKRGraph {
+impl<F: PrimeField> GKRGraph<F> {
     pub fn new(generic_lookup_setup_width: usize, caching_is_allowed: bool) -> Self {
         let mut new = Self {
             caching_is_allowed,
@@ -135,7 +135,7 @@ impl GKRGraph {
 
     fn search_cached_relation(
         &self,
-        relation: &NoFieldGKRCacheRelation,
+        relation: &NoFieldGKRCacheRelation<F>,
         output_layer: usize,
     ) -> Option<usize> {
         if let Some(cached) = self.cached_relations.get(&output_layer) {
@@ -208,7 +208,7 @@ impl GKRGraph {
     }
 
     #[track_caller]
-    pub(crate) fn place_intermediate_variable_from_constraint_at_layer<F: PrimeField>(
+    pub(crate) fn place_intermediate_variable_from_constraint_at_layer(
         &mut self,
         intermediate_layer: usize,
         variable: Variable,
@@ -263,7 +263,7 @@ impl GKRGraph {
     }
 }
 
-impl GraphHolder for GKRGraph {
+impl<F: PrimeField> GraphHolder<F> for GKRGraph<F> {
     fn can_use_caching(&self) -> bool {
         self.caching_is_allowed
     }
@@ -318,7 +318,7 @@ impl GraphHolder for GKRGraph {
         intermediate
     }
 
-    fn add_enforced_relation(&mut self, relation: NoFieldGKRRelation, output_layer: usize) {
+    fn add_enforced_relation(&mut self, relation: NoFieldGKRRelation<F>, output_layer: usize) {
         assert!(output_layer > 0);
         let input_layer = output_layer - 1;
         let entry = self.enforced_relations.entry(input_layer).or_insert(vec![]);
@@ -328,7 +328,7 @@ impl GraphHolder for GKRGraph {
     #[track_caller]
     fn add_cached_relation(
         &mut self,
-        relation: NoFieldGKRCacheRelation,
+        relation: NoFieldGKRCacheRelation<F>,
         output_layer: usize,
     ) -> GKRAddress {
         if self.caching_is_allowed == false {
@@ -394,7 +394,7 @@ impl GraphHolder for GKRGraph {
 )]
 pub struct NodeIndex(usize);
 
-pub trait GraphHolder {
+pub trait GraphHolder<F: PrimeField> {
     // Whether caching relations are allowed
     fn can_use_caching(&self) -> bool;
 
@@ -414,13 +414,13 @@ pub trait GraphHolder {
     // add cached relations
     fn add_cached_relation(
         &mut self,
-        relation: NoFieldGKRCacheRelation,
+        relation: NoFieldGKRCacheRelation<F>,
         output_layer: usize,
     ) -> GKRAddress;
 
     // add enforced relations
     fn add_intermediate_variable_at_layer(&mut self, output_layer: usize) -> GKRAddress;
-    fn add_enforced_relation(&mut self, relation: NoFieldGKRRelation, output_layer: usize);
+    fn add_enforced_relation(&mut self, relation: NoFieldGKRRelation<F>, output_layer: usize);
 }
 
 // pub trait GraphElement: 'static + core::any::Any + core::fmt::Debug {
@@ -435,7 +435,7 @@ pub trait GraphHolder {
 //     fn equals(&self, other: &dyn GraphElement) -> bool;
 //     fn dependencies(&self, graph: &mut dyn GraphHolder) -> Vec<NodeIndex>;
 //     fn short_name(&self) -> String;
-//     fn evaluation_description(&self, graph: &mut dyn GraphHolder) -> NoFieldGKRRelation;
+//     fn evaluation_description(&self, graph: &mut dyn GraphHolder) -> NoFieldGKRRelation<F>;
 // }
 
 // pub(crate) fn downcast_graph_element<T: Sized + 'static>(other: &dyn GraphElement) -> Option<&T> {
@@ -491,8 +491,8 @@ pub trait GraphHolder {
 //         }
 //     }
 //     #[track_caller]
-//     fn evaluation_description(&self, _graph: &mut dyn GraphHolder) -> NoFieldGKRRelation {
-//         NoFieldGKRRelation::FormalBaseLayerInput
+//     fn evaluation_description(&self, _graph: &mut dyn GraphHolder) -> NoFieldGKRRelation<F> {
+//         NoFieldGKRRelation<F>::FormalBaseLayerInput
 //     }
 // }
 

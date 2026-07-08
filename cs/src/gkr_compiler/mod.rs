@@ -71,7 +71,7 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
     pub total_tables_size: usize,
     pub offset_for_decoder_table: usize,
     pub has_decoder_lookup: bool,
-    pub layers: Vec<GKRLayerDescription>,
+    pub layers: Vec<GKRLayerDescription<F>>,
     pub global_output_map: BTreeMap<OutputType, Vec<GKRAddress>>,
 
     pub memory_layout: GKRMemoryLayout,
@@ -89,9 +89,9 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
     pub structured_statements: Vec<StructuredStatement<F>>,
 
     // for witness evaluation and multiplicity counting
-    pub generic_lookups: Vec<NoFieldVectorLookupRelation>,
-    pub range_check_16_lookup_expressions: Vec<NoFieldSingleColumnLookupRelation>,
-    pub timestamp_range_check_lookup_expressions: Vec<NoFieldSingleColumnLookupRelation>,
+    pub generic_lookups: Vec<NoFieldVectorLookupRelation<F>>,
+    pub range_check_16_lookup_expressions: Vec<NoFieldSingleColumnLookupRelation<F>>,
+    pub timestamp_range_check_lookup_expressions: Vec<NoFieldSingleColumnLookupRelation<F>>,
 
     pub variable_names: BTreeMap<Variable, String>,
     #[serde_as(as = "Vec<(_, _)>")]
@@ -103,19 +103,10 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NoFieldMaxQuadraticGKRRelation {
-    pub quadratic_terms: Box<[(GKRAddress, Box<[(u32, GKRAddress)]>)]>,
-    pub linear_terms: Box<[(u32, GKRAddress)]>,
-    pub constant: u32,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NoFieldSpecialConstraintCollapseGKRRelation {
-    pub predicate: GKRAddress,
-    pub remainder_from_quadratic: GKRAddress,
-    pub sparse_linear_remainders: Box<[Box<[(u64, GKRAddress)]>]>,
-    pub sparse_constant_remainders: Box<[u64]>,
-    pub num_terms: usize,
+pub struct NoFieldMaxQuadraticGKRRelation<F: PrimeField> {
+    pub quadratic_terms: Box<[(GKRAddress, Box<[(F, GKRAddress)]>)]>,
+    pub linear_terms: Box<[(F, GKRAddress)]>,
+    pub constant: F,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -261,10 +252,10 @@ pub struct NoFieldLookupPostTrivialNumeratorRelation {
 // linear terms: term -> (constant, power of random challenge)
 // constant temrs: (constant, power of random challenge)
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NoFieldMaxQuadraticConstraintsGKRRelation {
-    pub quadratic_terms: Box<[((GKRAddress, GKRAddress), Box<[(u32, usize)]>)]>,
-    pub linear_terms: Box<[(GKRAddress, Box<[(u32, usize)]>)]>,
-    pub constants: Box<[(u32, usize)]>,
+pub struct NoFieldMaxQuadraticConstraintsGKRRelation<F: PrimeField> {
+    pub quadratic_terms: Box<[((GKRAddress, GKRAddress), Box<[(F, usize)]>)]>,
+    pub linear_terms: Box<[(GKRAddress, Box<[(F, usize)]>)]>,
+    pub constants: Box<[(F, usize)]>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -279,24 +270,24 @@ pub enum InitsOrTeardownsTimestampAndValue {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum NoFieldGKRRelation {
+pub enum NoFieldGKRRelation<F: PrimeField> {
     LinearBaseFieldRelation {
-        input: NoFieldLinearRelation,
+        input: NoFieldLinearRelation<F>,
         output: GKRAddress,
     },
     MaxQuadratic {
-        input: NoFieldMaxQuadraticGKRRelation,
+        input: NoFieldMaxQuadraticGKRRelation<F>,
         output: GKRAddress,
     },
 
     EnforceSingleMaxQuadraticConstraint {
-        input: NoFieldMaxQuadraticGKRRelation,
+        input: NoFieldMaxQuadraticGKRRelation<F>,
     },
 
     // Enforces a randomized set of constraints in a form of c1 + alpha * c2 + ...
     // Sorted as: each quadratic term is recorded once (they are in base field), and powers of alpha are recorded
     EnforceConstraintsMaxQuadratic {
-        input: NoFieldMaxQuadraticConstraintsGKRRelation,
+        input: NoFieldMaxQuadraticConstraintsGKRRelation<F>,
     },
     // SpecialConstraintCollapse(NoFieldSpecialConstraintCollapseGKRRelation),
     // LookupTrivialDenominator(NoFieldLookupTrivialDenominatorRelation),
@@ -349,13 +340,13 @@ pub enum NoFieldGKRRelation {
     // Lookup argument related
     // Computes linear relation and places it into variable in base field
     MaterializeSingleLookupInput {
-        input: NoFieldSingleColumnLookupRelation,
+        input: NoFieldSingleColumnLookupRelation<F>,
         output: GKRAddress,
         range_check_width: u32,
     },
     // Computes linear relation for vector lookup and places it into variable in extension field
     MaterializedVectorLookupInput {
-        input: NoFieldVectorLookupRelation,
+        input: NoFieldVectorLookupRelation<F>,
         output: GKRAddress,
     },
 
@@ -367,7 +358,7 @@ pub enum NoFieldGKRRelation {
     },
     // Expects denominators to be cached, and computes a/b - c/d -> (num, den)
     LookupWithDensAndSetupExpressions {
-        input: (GKRAddress, NoFieldVectorLookupRelation),
+        input: (GKRAddress, NoFieldVectorLookupRelation<F>),
         setup: (GKRAddress, Box<[GKRAddress]>),
         output: [GKRAddress; 2],
     },
@@ -377,7 +368,7 @@ pub enum NoFieldGKRRelation {
 
     // 1/(a+gamma) + 1/(b + gamma) where a, b are in base field
     LookupPairFromBaseInputs {
-        input: [NoFieldSingleColumnLookupRelation; 2],
+        input: [NoFieldSingleColumnLookupRelation<F>; 2],
         output: [GKRAddress; 2],
         range_check_width: u32,
     },
@@ -391,13 +382,13 @@ pub enum NoFieldGKRRelation {
     // // a/b + 1/(c + gamma) where `c`` is in the base field and not cached
     // LookupUnbalancedPairWithBaseInputs {
     //     input: [GKRAddress; 2],
-    //     remainder: NoFieldSingleColumnLookupRelation,
+    //     remainder: NoFieldSingleColumnLookupRelation<F>,
     //     output: [GKRAddress; 2],
     // },
 
     // // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in base field and not cached
     // LookupFromBaseInputsWithSetup {
-    //     input: NoFieldSingleColumnLookupRelation,
+    //     input: NoFieldSingleColumnLookupRelation<F>,
     //     setup: [GKRAddress; 2],
     //     output: [GKRAddress; 2],
     // },
@@ -416,12 +407,12 @@ pub enum NoFieldGKRRelation {
         output: [GKRAddress; 2],
     },
 
-    // LookupNumeratorFromBaseInputs([NoFieldLinearRelation; 2]),
-    // LookupDenominatorFromBaseInputs([NoFieldLinearRelation; 2]),
+    // LookupNumeratorFromBaseInputs([NoFieldLinearRelation<F>; 2]),
+    // LookupDenominatorFromBaseInputs([NoFieldLinearRelation<F>; 2]),
 
     // 1/(a+gamma) + 1/(b + gamma) where a, b are in in extension already due to vector nature (no caching)
     LookupPairFromVectorInputs {
-        input: [NoFieldVectorLookupRelation; 2],
+        input: [NoFieldVectorLookupRelation<F>; 2],
         output: [GKRAddress; 2],
     },
 
@@ -433,7 +424,7 @@ pub enum NoFieldGKRRelation {
 
     // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in extension field
     LookupFromVectorInputWithSetup {
-        input: NoFieldVectorLookupRelation,
+        input: NoFieldVectorLookupRelation<F>,
         setup: (GKRAddress, Box<[GKRAddress]>),
         output: [GKRAddress; 2],
     },
@@ -454,7 +445,7 @@ pub enum NoFieldGKRRelation {
     // a/b + 1/(c + gamma) where `c`` is in the extension field
     LookupUnbalancedPairWithVectorInputs {
         input: [GKRAddress; 2],
-        remainder: NoFieldVectorLookupRelation,
+        remainder: NoFieldVectorLookupRelation<F>,
         output: [GKRAddress; 2],
     },
 
@@ -479,7 +470,7 @@ pub enum NoFieldGKRRelation {
     },
 }
 
-impl NoFieldGKRRelation {
+impl<F: PrimeField> NoFieldGKRRelation<F> {
     pub fn cached_addresses(&self) -> Vec<GKRAddress> {
         match self {
             // Self::FormalBaseLayerInput(..) => vec![],
@@ -991,17 +982,17 @@ impl NoFieldGKRRelation {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum NoFieldGKRCacheRelation {
+pub enum NoFieldGKRCacheRelation<F: PrimeField> {
     SingleColumnLookup {
-        relation: NoFieldSingleColumnLookupRelation,
+        relation: NoFieldSingleColumnLookupRelation<F>,
         range_check_width: usize,
     },
-    VectorizedLookup(NoFieldVectorLookupRelation),
+    VectorizedLookup(NoFieldVectorLookupRelation<F>),
     MemoryTuple(NoFieldSpecialMemoryContributionRelation),
     VectorizedLookupSetup(Box<[GKRAddress]>),
 }
 
-impl NoFieldGKRCacheRelation {
+impl<F: PrimeField> NoFieldGKRCacheRelation<F> {
     pub fn dependencies(&self) -> Vec<GKRAddress> {
         match self {
             Self::SingleColumnLookup { relation, .. } => {
@@ -1029,21 +1020,21 @@ impl NoFieldGKRCacheRelation {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct GateArtifacts {
+pub struct GateArtifacts<F: PrimeField> {
     pub output_layer: usize,
-    pub enforced_relation: NoFieldGKRRelation,
+    pub enforced_relation: NoFieldGKRRelation<F>,
 }
 
-pub trait GKRGate {
+pub trait GKRGate<F: PrimeField> {
     type Output: 'static + Sized;
 
     fn short_name(&self) -> String;
 
     fn add_at_layer(
         &self,
-        graph: &mut impl GraphHolder,
+        graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation);
+    ) -> (Self::Output, NoFieldGKRRelation<F>);
 }
 
 pub fn compile_unrolled_circuit_state_transition_into_gkr<F: PrimeField>(

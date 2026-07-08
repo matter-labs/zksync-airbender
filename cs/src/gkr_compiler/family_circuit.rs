@@ -535,8 +535,8 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // Build the inline inits/teardowns grand product
         let inline_it_output: Option<(
-            (GKRAddress, NoFieldGKRRelation),
-            (GKRAddress, NoFieldGKRRelation),
+            (GKRAddress, NoFieldGKRRelation<F>),
+            (GKRAddress, NoFieldGKRRelation<F>),
         )> = if !inline_it_teardown_sets.is_empty() {
             use crate::gkr_compiler::inits_and_teardowns_inline::build_inline_inits_and_teardowns_grand_product;
             Some(build_inline_inits_and_teardowns_grand_product(
@@ -1018,16 +1018,16 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         for rel in range_check_16_lookups_compiled
             .iter_mut()
-            .map(|el: &mut NoFieldSingleColumnLookupRelation| &mut el.input)
+            .map(|el: &mut NoFieldSingleColumnLookupRelation<F>| &mut el.input)
             .chain(
                 timestamp_range_check_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldSingleColumnLookupRelation| &mut el.input),
+                    .map(|el: &mut NoFieldSingleColumnLookupRelation<F>| &mut el.input),
             )
             .chain(
                 generic_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldVectorLookupRelation| el.columns.iter_mut())
+                    .map(|el: &mut NoFieldVectorLookupRelation<F>| el.columns.iter_mut())
                     .flatten(),
             )
         {

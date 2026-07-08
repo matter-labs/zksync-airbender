@@ -1,3 +1,4 @@
+use prover::field::PrimeField;
 use std::collections::BTreeSet;
 
 use prover::cs::definitions::gkr::RamWordRepresentation;
@@ -77,7 +78,7 @@ fn collect_mem_expr_addrs(
     }
 }
 
-pub fn collect_sorted_unique_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddress> {
+pub fn collect_sorted_unique_addrs<F: PrimeField>(layer: &GKRLayerDescription<F>) -> Vec<GKRAddress> {
     use std::collections::BTreeSet;
     let mut addrs = BTreeSet::new();
 
@@ -284,8 +285,8 @@ pub fn collect_sorted_unique_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddres
     addrs.into_iter().collect()
 }
 
-pub fn collect_extra_addrs_from_cached_relations(
-    layer: &GKRLayerDescription,
+pub fn collect_extra_addrs_from_cached_relations<F: PrimeField>(
+    layer: &GKRLayerDescription<F>,
     input_sorted_addrs: &[GKRAddress],
 ) -> Vec<GKRAddress> {
     use std::collections::BTreeSet;

@@ -13,6 +13,7 @@ use cs::{
 };
 // use cs::gkr_compiler::NoFieldStructuredExpression;
 use field::baby_bear::base::BabyBearField;
+use field::PrimeField;
 
 trait EachRefRev<T, const N: usize> {
     fn each_ref_rev(&self) -> [&T; N];
@@ -242,7 +243,7 @@ fn main() {
                     _ => todo!("unexpected address {address:?} for layer {expected_layer}")
                 }
             }
-            // fn linrel_to_calldata(inputs: &NoFieldLinearRelation, expected_layer: usize) -> String {
+            // fn linrel_to_calldata(inputs: &NoFieldLinearRelation<BabyBearField>, expected_layer: usize) -> String {
             //     let NoFieldLinearRelation { linear_terms, constant } = inputs;
             //     let linear = linear_terms.iter().map(|(c, addr)| {
             //         let input = gkraddress_to_calldata(addr, expected_layer);
@@ -491,12 +492,12 @@ fn main() {
                     }
                 }
             }
-            fn lookrelsingle_to_calldata(tuple: &NoFieldSingleColumnLookupRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn lookrelsingle_to_calldata(tuple: &NoFieldSingleColumnLookupRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
                 let NoFieldSingleColumnLookupRelation { input, lookup_set_index: _ } = tuple;
                 let compressed = linrel_to_calldata_inner(input, expected_layer, layer0_group_widths, running_max_group_offsets);
                 format!("(δ + {compressed})")
             }
-            fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+            fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldVectorLookupRelation { columns, lookup_set_index: _ } = tuple;
                 assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
                 let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
@@ -508,38 +509,38 @@ fn main() {
                 let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
                 Dual(format!("({logup_gamma} + {compressed})"), yul_format!("add({compressed:x}, {logup_gamma:x})"))
             }
-            fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+            fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldLinearRelation { linear_terms, constant } = inputs;
                 let linear = linear_terms.iter().map(|(c, addr)| {
                     let input = gkraddress_to_calldata(addr, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let c = const_to_evm(c);
+                    let c = const_to_evm(&c.as_u32_reduced());
                     Dual(format!("{c}{input}"), yul_format!("mulmod({c:x}, {input:x}, P)"))
                 }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual("0".to_string(), yul_format!("0")));
-                let constant = const_to_evm(constant);
+                let constant = const_to_evm(&constant.as_u32_reduced());
                 Dual(format!("{constant} + {linear}"), yul_format!("add({constant:x}, {linear:x})"))
             }
-            fn quadrel_to_calldata_inner(input: &NoFieldMaxQuadraticGKRRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn quadrel_to_calldata_inner(input: &NoFieldMaxQuadraticGKRRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
                 let NoFieldMaxQuadraticGKRRelation { quadratic_terms, linear_terms, constant } = input;
                 let quadratic = quadratic_terms.iter().map(|(address, linear_terms)| {
                     let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
                     let linear = linear_terms.iter().map(|(c, address)| {
                         let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                        let c = const_to_evm(c);
+                        let c = const_to_evm(&c.as_u32_reduced());
                         format!("{c}{read}")
                     }).collect::<Vec<_>>().join(" + ");
                     format!("{read}({linear})")
                 }).collect::<Vec<_>>().join(" + ");
                 let linear = linear_terms.iter().map(|(c, address)| {
                     let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let c = const_to_evm(c);
+                    let c = const_to_evm(&c.as_u32_reduced());
                     format!("{c}{read}")
                 }).collect::<Vec<_>>().join(" + ");
-                let constant = const_to_evm(constant);
+                let constant = const_to_evm(&constant.as_u32_reduced());
                 format!("{constant} + {linear} + {quadratic}")
             }
             // fn expression_to_calldata(expression: &NoFieldStructuredExpression, expected_layer: usize, layer0_group_widths: (usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize)) -> String {
             //    match expression {
-            //         NoFieldStructuredExpression::Constant(c) => const_to_evm(c),
+            //         NoFieldStructuredExpression::Constant(c) => const_to_evm(&c.as_u32_reduced()),
             //         NoFieldStructuredExpression::Place(address) => gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets),
             //         NoFieldStructuredExpression::Sum(terms) => {
             //             let term = terms.iter().map(|expression| {

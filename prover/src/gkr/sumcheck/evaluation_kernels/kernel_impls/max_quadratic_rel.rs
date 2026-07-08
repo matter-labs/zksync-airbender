@@ -4,7 +4,7 @@ use cs::{definitions::GKRAddress, gkr_compiler::NoFieldMaxQuadraticGKRRelation};
 #[derive(Debug)]
 pub struct MaxQuadraticGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
     pub kernel: MaxQuadraticGKRRelationKernel<F, E>,
-    pub relation: NoFieldMaxQuadraticGKRRelation,
+    pub relation: NoFieldMaxQuadraticGKRRelation<F>,
     pub inputs: Vec<GKRAddress>,
     pub output: GKRAddress,
 }
@@ -31,13 +31,13 @@ impl DenseInputRemapper {
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> MaxQuadraticGKRRelation<F, E> {
-    pub fn new(input: &NoFieldMaxQuadraticGKRRelation, output: GKRAddress) -> Self {
+    pub fn new(input: &NoFieldMaxQuadraticGKRRelation<F>, output: GKRAddress) -> Self {
         let mut remapper = DenseInputRemapper::default();
         let mut inputs = vec![];
         let mut kernel = MaxQuadraticGKRRelationKernel::<F, E> {
             quadratic_parts: vec![],
             linear_parts: vec![],
-            constant_offset: F::from_u32_with_reduction(input.constant as u32),
+            constant_offset: input.constant,
             _marker: core::marker::PhantomData,
         };
 
@@ -59,7 +59,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaxQuadraticGKRRelation<F, E> 
                 } else {
                     a_offset
                 };
-                compiled_set.push((b_offset, F::from_u32_with_reduction(*c as u32)));
+                compiled_set.push((b_offset, *c));
             }
             kernel.quadratic_parts.push((a_offset, compiled_set));
         }
@@ -71,7 +71,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaxQuadraticGKRRelation<F, E> 
             }
             kernel
                 .linear_parts
-                .push((a_offset, F::from_u32_with_reduction(*c as u32)));
+                .push((a_offset, *c));
         }
 
         Self {
@@ -107,14 +107,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 
         for (a, other_terms) in self.relation.quadratic_terms.iter() {
             for (c, b) in other_terms.iter() {
-                term.add_base_by_base(*a, *b, E::from_base(F::from_u32_unchecked(*c)));
+                term.add_base_by_base(*a, *b, E::from_base(*c));
             }
         }
 
         for (c, b) in self.relation.linear_terms.iter() {
-            term.add_linear_with_base(*b, E::from_base(F::from_u32_unchecked(*c)));
+            term.add_linear_with_base(*b, E::from_base(*c));
         }
-        term.add_constant(E::from_base(F::from_u32_unchecked(self.relation.constant)));
+        term.add_constant(E::from_base(self.relation.constant));
 
         term.set_base_output(self.output);
 

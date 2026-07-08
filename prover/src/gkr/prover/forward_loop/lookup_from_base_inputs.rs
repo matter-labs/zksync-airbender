@@ -53,7 +53,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
     F: PrimeField,
     E: FieldExtension<F> + Field,
 >(
-    inputs: &[NoFieldSingleColumnLookupRelation; 2],
+    inputs: &[NoFieldSingleColumnLookupRelation<F>; 2],
     outputs: [GKRAddress; 2],
     gkr_storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
@@ -146,7 +146,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
     F: PrimeField,
     E: FieldExtension<F> + Field,
 >(
-    inputs: &[NoFieldSingleColumnLookupRelation; 2],
+    inputs: &[NoFieldSingleColumnLookupRelation<F>; 2],
     outputs: [GKRAddress; 2],
     gkr_storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,

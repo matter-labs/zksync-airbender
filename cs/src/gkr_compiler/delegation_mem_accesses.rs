@@ -15,7 +15,7 @@ use crate::gkr_compiler::graph::GKRGraph;
 const LOCAL_TIMESTAMP_FOR_INDIRECTS: u32 = 2;
 
 pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     num_variables: &mut u64,
     all_variables_to_place: &mut BTreeSet<Variable>,
     layers_mapping: &mut HashMap<Variable, usize>,

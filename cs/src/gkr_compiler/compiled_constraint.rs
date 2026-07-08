@@ -26,7 +26,7 @@ pub struct OneStepConstraintsEvaluationNode<F: PrimeField> {
     pub constant_parts: Vec<F>,
 }
 
-impl<F: PrimeField> GKRGate for OneStepConstraintsEvaluationNode<F> {
+impl<F: PrimeField> GKRGate<F> for OneStepConstraintsEvaluationNode<F> {
     type Output = ();
 
     fn short_name(&self) -> String {
@@ -38,9 +38,9 @@ impl<F: PrimeField> GKRGate for OneStepConstraintsEvaluationNode<F> {
 
     fn add_at_layer(
         &self,
-        graph: &mut impl GraphHolder,
+        graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation) {
+    ) -> (Self::Output, NoFieldGKRRelation<F>) {
         assert_eq!(self.quadratic_parts.len(), self.linear_parts.len());
         assert_eq!(self.quadratic_parts.len(), self.constant_parts.len());
 
@@ -63,7 +63,7 @@ impl<F: PrimeField> GKRGate for OneStepConstraintsEvaluationNode<F> {
                 quadratic_sorted
                     .entry((a, b))
                     .or_insert(vec![])
-                    .push((coeff.as_u32_reduced(), i));
+                    .push((*coeff, i));
             }
             for (coeff, a) in l.iter() {
                 let a = graph.get_address_for_variable(*a);
@@ -71,10 +71,10 @@ impl<F: PrimeField> GKRGate for OneStepConstraintsEvaluationNode<F> {
                 linear_sorted
                     .entry(a)
                     .or_insert(vec![])
-                    .push((coeff.as_u32_reduced(), i));
+                    .push((*coeff, i));
             }
             if c.is_zero() == false {
-                constant_sorted.push((c.as_u32_reduced(), i));
+                constant_sorted.push((*c, i));
             }
         }
 
@@ -106,7 +106,7 @@ impl<F: PrimeField> GKRGate for OneStepConstraintsEvaluationNode<F> {
 }
 
 pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bool>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     constraints: Vec<(Constraint<F>, bool)>,
     layers_mapping: &HashMap<Variable, usize>,
 ) -> (Vec<Degree2Constraint<F>>, Vec<Degree1Constraint<F>>) {
@@ -213,7 +213,7 @@ pub struct SingleConstraintEvaluationNode<F: PrimeField> {
     pub constant_part: F,
 }
 
-impl<F: PrimeField> GKRGate for SingleConstraintEvaluationNode<F> {
+impl<F: PrimeField> GKRGate<F> for SingleConstraintEvaluationNode<F> {
     type Output = ();
 
     fn short_name(&self) -> String {
@@ -222,9 +222,9 @@ impl<F: PrimeField> GKRGate for SingleConstraintEvaluationNode<F> {
 
     fn add_at_layer(
         &self,
-        graph: &mut impl GraphHolder,
+        graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation) {
+    ) -> (Self::Output, NoFieldGKRRelation<F>) {
         let mut quadratic_sorted = BTreeMap::<GKRAddress, BTreeMap<_, _>>::new();
         let mut linear_sorted = BTreeMap::new();
 
@@ -237,20 +237,20 @@ impl<F: PrimeField> GKRGate for SingleConstraintEvaluationNode<F> {
                 assert!(quadratic_sorted
                     .entry(a)
                     .or_default()
-                    .insert(b, coeff.as_u32_reduced())
+                    .insert(b, *coeff)
                     .is_none());
             } else {
                 assert!(quadratic_sorted
                     .entry(b)
                     .or_default()
-                    .insert(a, coeff.as_u32_reduced())
+                    .insert(a, *coeff)
                     .is_none());
             }
         }
         for (coeff, a) in self.linear_part.iter() {
             let a = graph.get_address_for_variable(*a);
             a.assert_as_layer(output_layer - 1);
-            assert!(linear_sorted.insert(a, coeff.as_u32_reduced()).is_none());
+            assert!(linear_sorted.insert(a, *coeff).is_none());
         }
 
         let quadratic_terms = quadratic_sorted
@@ -276,7 +276,7 @@ impl<F: PrimeField> GKRGate for SingleConstraintEvaluationNode<F> {
         let input = NoFieldMaxQuadraticGKRRelation {
             quadratic_terms,
             linear_terms,
-            constant: self.constant_part.as_u32_reduced(),
+            constant: self.constant_part,
         };
 
         let node = NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input };

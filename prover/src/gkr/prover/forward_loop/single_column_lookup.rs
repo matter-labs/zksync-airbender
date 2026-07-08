@@ -7,7 +7,7 @@ pub(crate) fn evaluate_single_column_lookup_relation<
 >(
     layer_idx: usize,
     output: GKRAddress,
-    relation: &NoFieldSingleColumnLookupRelation,
+    relation: &NoFieldSingleColumnLookupRelation<F>,
     range_check_width: u32,
     gkr_storage: &mut GKRStorage<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,

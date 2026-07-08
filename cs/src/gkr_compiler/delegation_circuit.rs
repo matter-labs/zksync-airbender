@@ -555,16 +555,16 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         for rel in range_check_16_lookups_compiled
             .iter_mut()
-            .map(|el: &mut NoFieldSingleColumnLookupRelation| &mut el.input)
+            .map(|el: &mut NoFieldSingleColumnLookupRelation<F>| &mut el.input)
             .chain(
                 timestamp_range_check_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldSingleColumnLookupRelation| &mut el.input),
+                    .map(|el: &mut NoFieldSingleColumnLookupRelation<F>| &mut el.input),
             )
             .chain(
                 generic_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldVectorLookupRelation| el.columns.iter_mut())
+                    .map(|el: &mut NoFieldVectorLookupRelation<F>| el.columns.iter_mut())
                     .flatten(),
             )
         {

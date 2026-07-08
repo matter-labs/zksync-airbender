@@ -2,12 +2,12 @@ use super::*;
 use cs::{definitions::GKRAddress, gkr_compiler::NoFieldMaxQuadraticGKRRelation};
 
 #[derive(Debug)]
-pub struct EnforceSingleMaxQuadraticConstraintGKRRelation {
-    pub relation: NoFieldMaxQuadraticGKRRelation,
+pub struct EnforceSingleMaxQuadraticConstraintGKRRelation<F: PrimeField> {
+    pub relation: NoFieldMaxQuadraticGKRRelation<F>,
 }
 
 pub(crate) fn remap<F: PrimeField>(
-    relation: &NoFieldMaxQuadraticGKRRelation,
+    relation: &NoFieldMaxQuadraticGKRRelation<F>,
 ) -> (
     Vec<GKRAddress>,
     EnforceSingleMaxQuadraticConstraintGKRKernel<F>,
@@ -18,7 +18,7 @@ pub(crate) fn remap<F: PrimeField>(
         relation: relation.clone(),
         quadratic_parts: Vec::new(),
         linear_parts: Vec::new(),
-        constant_offset: F::from_u32_unchecked(relation.constant),
+        constant_offset: relation.constant,
     };
 
     for (a, other) in relation.quadratic_terms.iter() {
@@ -41,7 +41,7 @@ pub(crate) fn remap<F: PrimeField>(
 
             kernel
                 .quadratic_parts
-                .push(((a_offset, b_offset), F::from_u32_unchecked(*c)));
+                .push(((a_offset, b_offset), *c));
         }
     }
 
@@ -53,14 +53,14 @@ pub(crate) fn remap<F: PrimeField>(
 
         kernel
             .linear_parts
-            .push((a_offset, F::from_u32_unchecked(*c)));
+            .push((a_offset, *c));
     }
 
     (inputs, kernel)
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for EnforceSingleMaxQuadraticConstraintGKRRelation
+    for EnforceSingleMaxQuadraticConstraintGKRRelation<F>
 {
     fn num_challenges(&self) -> usize {
         1
@@ -85,14 +85,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 
         for (a, other_terms) in self.relation.quadratic_terms.iter() {
             for (c, b) in other_terms.iter() {
-                term.add_base_by_base(*a, *b, E::from_base(F::from_u32_unchecked(*c)));
+                term.add_base_by_base(*a, *b, E::from_base(*c));
             }
         }
 
         for (c, b) in self.relation.linear_terms.iter() {
-            term.add_linear_with_base(*b, E::from_base(F::from_u32_unchecked(*c)));
+            term.add_linear_with_base(*b, E::from_base(*c));
         }
-        term.add_constant(E::from_base(F::from_u32_unchecked(self.relation.constant)));
+        term.add_constant(E::from_base(self.relation.constant));
 
         // just no output
 
@@ -136,7 +136,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 #[derive(Debug)]
 // Assumes reordering of access implementors, to have lhs at 0 and rhs at 1
 pub struct EnforceSingleMaxQuadraticConstraintGKRKernel<F: PrimeField> {
-    pub relation: NoFieldMaxQuadraticGKRRelation,
+    pub relation: NoFieldMaxQuadraticGKRRelation<F>,
     pub quadratic_parts: Vec<((usize, usize), F)>,
     pub linear_parts: Vec<(usize, F)>,
     pub constant_offset: F,

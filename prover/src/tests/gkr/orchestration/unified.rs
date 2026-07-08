@@ -45,7 +45,7 @@ use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimesta
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 use std::alloc::Global;
 use transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
-use transcript::{Blake2sBufferingTranscript, Seed};
+use transcript::{Blake2sBufferingTranscript, Blake2sTranscript, Seed};
 use worker::Worker;
 
 /// Unified-mode prove output. `unified_proof` is `None` only when the
@@ -822,7 +822,7 @@ pub fn prove_built_unified_trace(
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
         unified_circuit,
         external_challenges,
         unified_full_trace,

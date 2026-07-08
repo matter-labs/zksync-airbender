@@ -198,7 +198,7 @@ pub fn evaluate_sumcheck_for_layer<
     TR: Transcript<F, E>,
 >(
     layer_idx: usize,
-    layer: &GKRLayerDescription,
+    layer: &GKRLayerDescription<F>,
     claim_points: &mut BTreeMap<usize, Vec<E>>,
     claims_storage: &mut BTreeMap<usize, BTreeMap<GKRAddress, E>>,
     gkr_storage: &mut GKRStorage<F, E>,

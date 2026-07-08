@@ -8,7 +8,7 @@ use crate::gkr_compiler::lookup_nodes::{LookupDenominator, LookupInputRelation, 
 use crate::tables::TableType;
 
 pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     expressions: Vec<LookupInput<F>>,
     num_variables: &mut u64,
     all_variables_to_place: &mut BTreeSet<Variable>,
@@ -19,8 +19,8 @@ pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
 ) -> (
     Variable,                               // multiplicity var
     [GKRAddress; 2],                        // final num/den pair
-    NoFieldGKRRelation,                     // relation that gives rise to final pair
-    Vec<NoFieldSingleColumnLookupRelation>, // all lookup relations for witness evaluation and multiplicity counting
+    NoFieldGKRRelation<F>,                     // relation that gives rise to final pair
+    Vec<NoFieldSingleColumnLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
 ) {
     let (a, b, c, rels) = layout_lookup_expressions::<F, true>(
         graph,
@@ -224,7 +224,7 @@ fn lookup_input_node_from_expr<F: PrimeField, const SINGLE_COLUMN: bool>(
 }
 
 pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     expressions: Vec<(Vec<LookupInput<F>>, LookupQueryTableType<F>)>,
     num_variables: &mut u64,
     all_variables_to_place: &mut BTreeSet<Variable>,
@@ -238,8 +238,8 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
 ) -> (
     Variable,                         // multiplicity var
     [GKRAddress; 2],                  // final num/den pair
-    NoFieldGKRRelation,               // relation that gives rise to final pair
-    Vec<NoFieldVectorLookupRelation>, // all lookup relations for witness evaluation and multiplicity counting
+    NoFieldGKRRelation<F>,               // relation that gives rise to final pair
+    Vec<NoFieldVectorLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
 ) {
     let mut all_relations_for_witness_eval = vec![];
     // sanity checks
@@ -378,7 +378,7 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
 }
 
 fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     input_layer: usize,
     lookup_type: &str,
     lookup: LookupType,
@@ -392,13 +392,13 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
             usize,
             (
                 (Vec<LookupInput<F>>, LookupQueryTableType<F>),
-                NoFieldVectorLookupRelation,
+                NoFieldVectorLookupRelation<F>,
             ),
         >,
     >,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation>,
-    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation>,
+    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
+    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation<F>>,
 ) {
     if decoder_lookup.is_some() || multiplicity.is_some() {
         assert_eq!(input_layer, 0);
@@ -806,7 +806,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
 }
 
 fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     input_layer: usize,
     lookup_type: &str,
     lookup: LookupType,
@@ -816,12 +816,12 @@ fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
         usize,
         (
             (Vec<LookupInput<F>>, LookupQueryTableType<F>),
-            NoFieldVectorLookupRelation,
+            NoFieldVectorLookupRelation<F>,
         ),
     >,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation>,
-    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation>,
+    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
+    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation<F>>,
 ) {
     let single_columns_lookup_width = match lookup {
         LookupType::RangeCheck16 => Some(16),
@@ -880,14 +880,14 @@ fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
 }
 
 fn merge_intermediate_lookup_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     input_layer: usize,
     lookup_type: &str,
     lookup: LookupType,
     total_width: usize,
     expect_table_id: bool,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation>,
+    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
 ) {
     let single_columns_lookup_width = match lookup {
         LookupType::RangeCheck16 => Some(16),

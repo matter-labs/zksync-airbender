@@ -32,6 +32,7 @@ use riscv_transpiler::witness::{
     BlakeGFunctionDelegationDestinationHolder, DelegationWitness,
     KeccakDelegationDestinationHolder,
 };
+use transcript::Blake2sTranscript;
 use std::alloc::Global;
 use worker::Worker;
 
@@ -132,7 +133,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
 
     println!("Trying to prove");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
         circuit,
         external_challenges,
         full_trace,

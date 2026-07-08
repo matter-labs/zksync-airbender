@@ -5,8 +5,8 @@ use crate::gkr_compiler::inits_and_teardowns::create_inits_and_teardowns_set;
 use crate::gkr_compiler::memory_like_grand_product::GrandProductAccumulationStep;
 use crate::gkr_compiler::utils::add_compiler_defined_base_layer_variable;
 
-pub(crate) fn allocate_inline_inits_and_teardowns_sets(
-    graph: &mut GKRGraph,
+pub(crate) fn allocate_inline_inits_and_teardowns_sets<F: PrimeField>(
+    graph: &mut GKRGraph<F>,
     num_inits_and_teardowns_pairs: usize,
     num_variables: &mut u64,
     all_variables_to_place: &mut BTreeSet<Variable>,
@@ -72,18 +72,18 @@ pub(crate) fn allocate_inline_inits_and_teardowns_sets(
 /// `OutputType::InitsAndTeardownsProduct` channel. Mirrors the structure of
 /// `compile_inits_and_teardowns_circuit` but operates on pre-allocated per-row teardown
 /// columns and is integrated into the family circuit's graph rather than a standalone one.
-pub(crate) fn build_inline_inits_and_teardowns_grand_product(
-    graph: &mut GKRGraph,
+pub(crate) fn build_inline_inits_and_teardowns_grand_product<F: PrimeField>(
+    graph: &mut GKRGraph<F>,
     teardown_sets: &[([GKRAddress; 2], [GKRAddress; 2])],
 ) -> (
-    (GKRAddress, NoFieldGKRRelation),
-    (GKRAddress, NoFieldGKRRelation),
+    (GKRAddress, NoFieldGKRRelation<F>),
+    (GKRAddress, NoFieldGKRRelation<F>),
 ) {
     assert!(teardown_sets.len() >= 2);
     assert_eq!(teardown_sets.len() % 2, 0);
 
-    let mut read_set: Vec<(GKRAddress, NoFieldGKRRelation)> = vec![];
-    let mut write_set: Vec<(GKRAddress, NoFieldGKRRelation)> = vec![];
+    let mut read_set: Vec<(GKRAddress, NoFieldGKRRelation<F>)> = vec![];
+    let mut write_set: Vec<(GKRAddress, NoFieldGKRRelation<F>)> = vec![];
 
     let mut set_idx = 0;
     for [lhs, rhs] in teardown_sets.as_chunks::<2>().0.iter() {
@@ -102,8 +102,8 @@ pub(crate) fn build_inline_inits_and_teardowns_grand_product(
         expected_output_layer += 1;
         assert_eq!(read_set.len(), write_set.len());
 
-        let mut next_read: Vec<(GKRAddress, NoFieldGKRRelation)> = vec![];
-        let mut next_write: Vec<(GKRAddress, NoFieldGKRRelation)> = vec![];
+        let mut next_read: Vec<(GKRAddress, NoFieldGKRRelation<F>)> = vec![];
+        let mut next_write: Vec<(GKRAddress, NoFieldGKRRelation<F>)> = vec![];
 
         for (src, dst, is_write) in [
             (&read_set, &mut next_read, false),

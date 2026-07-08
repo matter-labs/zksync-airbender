@@ -9,7 +9,6 @@ use worker::WorkerGeometry;
 
 use super::*;
 pub use crate::definitions::GKRExternalChallenges;
-use crate::definitions::Transcript;
 use crate::fft::Twiddles;
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;

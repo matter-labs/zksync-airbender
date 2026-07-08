@@ -1,3 +1,4 @@
+use prover::field::PrimeField;
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::collections::BTreeMap;
@@ -493,8 +494,8 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
     (helper, call)
 }
 
-fn generate_cache_relation_checks<MW: FieldWrapper>(
-    layer: &GKRLayerDescription,
+fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
+    layer: &GKRLayerDescription<F>,
     target_addrs: &[GKRAddress],
     layer_idx: usize,
 ) -> TokenStream {
@@ -535,11 +536,11 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
             } => {
                 let term_start = single_terms.len();
                 for &(coeff, ref addr) in rel.input.linear_terms.iter() {
-                    single_terms.push((MW::coeff_to_internal_repr(coeff), find_idx(addr)));
+                    single_terms.push((MW::coeff_to_internal_repr(coeff.as_u32_reduced()), find_idx(addr)));
                 }
                 single_descs.push((
                     cached_idx,
-                    MW::coeff_to_internal_repr(rel.input.constant),
+                    MW::coeff_to_internal_repr(rel.input.constant.as_u32_reduced()),
                     term_start,
                     rel.input.linear_terms.len(),
                 ));
@@ -549,10 +550,10 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
                 for column in rel.columns.iter() {
                     let t_start = vector_terms.len();
                     for &(coeff, ref addr) in column.linear_terms.iter() {
-                        vector_terms.push((MW::coeff_to_internal_repr(coeff), find_idx(addr)));
+                        vector_terms.push((MW::coeff_to_internal_repr(coeff.as_u32_reduced()), find_idx(addr)));
                     }
                     vector_cols.push((
-                        MW::coeff_to_internal_repr(column.constant),
+                        MW::coeff_to_internal_repr(column.constant.as_u32_reduced()),
                         t_start,
                         column.linear_terms.len(),
                     ));
@@ -910,12 +911,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let mut layer_functions = TokenStream::new();
 
     for layer_idx in 0..num_standard_layers {
-        layer_functions.extend(standard_layer::generate_layer_compute_claim::<MW>(
+        layer_functions.extend(standard_layer::generate_layer_compute_claim::<MW, _>(
             &compiled_circuit.layers[layer_idx],
             layer_idx,
             get_output_sorted_addrs(layer_idx),
         ));
-        layer_functions.extend(standard_layer::generate_layer_final_step_accumulator::<MW>(
+        layer_functions.extend(standard_layer::generate_layer_final_step_accumulator::<MW, _>(
             &compiled_circuit.layers[layer_idx],
             layer_idx,
             &standard_sorted_addrs[layer_idx],
@@ -1320,7 +1321,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 }
             };
 
-            let cache_check = generate_cache_relation_checks::<MW>(
+            let cache_check = generate_cache_relation_checks::<MW, _>(
                 &compiled_circuit.layers[0],
                 &layer_0_layout,
                 0,
@@ -1393,7 +1394,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 }
             };
 
-            let cache_check = generate_cache_relation_checks::<MW>(
+            let cache_check = generate_cache_relation_checks::<MW, _>(
                 &compiled_circuit.layers[config_idx],
                 &target_addrs,
                 config_idx,

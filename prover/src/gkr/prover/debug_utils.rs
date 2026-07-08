@@ -159,7 +159,7 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
 }
 
 pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field>(
-    layer_desc: &GKRLayerDescription,
+    layer_desc: &GKRLayerDescription<F>,
     claims: &BTreeMap<GKRAddress, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
     lookup_alpha: E,
@@ -236,20 +236,20 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
 }
 
 fn evaluate_linear_relation_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &cs::definitions::gkr::NoFieldLinearRelation,
+    rel: &cs::definitions::gkr::NoFieldLinearRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
 ) -> E {
-    let mut result = E::from_base(F::from_u32_unchecked(rel.constant));
+    let mut result = E::from_base(rel.constant);
     for &(coeff, addr) in rel.linear_terms.iter() {
         let mut t = claims[&addr];
-        t.mul_assign_by_base(&F::from_u32_unchecked(coeff));
+        t.mul_assign_by_base(&coeff);
         result.add_assign(&t);
     }
     result
 }
 
 fn evaluate_vectorized_lookup_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    rel: &cs::definitions::gkr::NoFieldVectorLookupRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
     lookup_alpha: E,
 ) -> E {
@@ -416,13 +416,13 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
 }
 
 fn evaluate_linear_relation<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldLinearRelation,
+    rel: &NoFieldLinearRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
 ) -> E {
-    let mut result = E::from_base(F::from_u32_unchecked(rel.constant));
+    let mut result = E::from_base(rel.constant);
     for (c, address) in rel.linear_terms.iter() {
         let mut t = claims[address];
-        t.mul_assign_by_base(&F::from_u32_unchecked(*c));
+        t.mul_assign_by_base(&*c);
         result.add_assign(&t);
     }
 
