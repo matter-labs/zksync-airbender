@@ -22,7 +22,7 @@ const CIRCUIT_BASENAMES: &[&str] = &[
     "bigint_with_extended_control",
     "blake2_g_function",
     "blake2_with_extended_control",
-    "inits_and_teardowns_preprocessed",
+    "inits_and_teardowns",
     "jump_branch_slt",
     "keccak_special5",
     "mem_subword_only",
