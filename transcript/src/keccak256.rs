@@ -239,6 +239,15 @@ impl Transcript<Proth120, Proth120> for Keccak256Transcript {
             *slot = draw_field(seed);
         }
     }
+
+    #[cfg(feature = "pow")]
+    fn draw_random_field_elements_with_pow(seed: &Self::Seed, pow_bits: u32, buffer: &mut [Proth120], worker: &worker::Worker) -> (Self::Seed, u64) {      
+        let (mut new_seed, pow_challenge) = Self::search_pow(seed, pow_bits, worker);
+        for slot in buffer.iter_mut() {
+            *slot = draw_field(&mut new_seed);
+        }
+        (new_seed, pow_challenge)
+    }
 }
 
 #[cfg(test)]

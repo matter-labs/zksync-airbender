@@ -57,29 +57,29 @@ fn test_quadratic_constraint_with_constant() {
                     GKRAddress::BaseLayerMemory(0),
                     GKRAddress::BaseLayerMemory(0),
                 ),
-                vec![(F::ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+                vec![(F::ONE, 0)].into_boxed_slice(),
             ),
             (
                 (
                     GKRAddress::BaseLayerMemory(0),
                     GKRAddress::BaseLayerMemory(1),
                 ),
-                vec![(F::ONE.to_reduced_u32(), 1)].into_boxed_slice(),
+                vec![(F::ONE, 1)].into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
         linear_terms: vec![
             (
                 GKRAddress::BaseLayerMemory(0),
-                vec![(F::ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+                vec![(F::ONE, 0)].into_boxed_slice(),
             ),
             (
                 GKRAddress::BaseLayerMemory(1),
-                vec![(F::MINUS_ONE.to_reduced_u32(), 1)].into_boxed_slice(),
+                vec![(F::MINUS_ONE, 1)].into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
-        constants: vec![(minus_6.to_reduced_u32(), 0), (minus_4.to_reduced_u32(), 1)]
+        constants: vec![(minus_6, 0), (minus_4, 1)]
             .into_boxed_slice(),
     };
 

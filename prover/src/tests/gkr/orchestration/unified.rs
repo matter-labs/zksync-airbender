@@ -574,7 +574,7 @@ where
     // MEMORY_DELEGATION_POW_BITS = 0 in the FSV ⇒ no proof-of-work, `pow_challenge` is unused
     // in the derivation. If the FSV's pow-bits ever becomes non-zero, this (and the fixture's
     // `pow_challenge`) must be updated in lockstep.
-    GKRExternalChallenges::draw_from_transcript_seed(seed, 0, 0)
+    GKRExternalChallenges::draw_from_blake_transcript_seed(seed, 0, 0)
 }
 
 /// Memory-transcript seed for the unified circuit. Must match

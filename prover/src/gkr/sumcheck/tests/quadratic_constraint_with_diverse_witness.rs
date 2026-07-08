@@ -71,36 +71,36 @@ fn test_quadratic_constraint_with_constant() {
                     GKRAddress::BaseLayerMemory(0),
                     GKRAddress::BaseLayerMemory(0),
                 ),
-                vec![(F::ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+                vec![(F::ONE, 0)].into_boxed_slice(),
             ),
             (
                 (
                     GKRAddress::BaseLayerMemory(0),
                     GKRAddress::BaseLayerMemory(1),
                 ),
-                vec![(minus_two.to_reduced_u32(), 0)].into_boxed_slice(),
+                vec![(minus_two, 0)].into_boxed_slice(),
             ),
             (
                 (
                     GKRAddress::BaseLayerMemory(1),
                     GKRAddress::BaseLayerMemory(1),
                 ),
-                vec![(F::ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+                vec![(F::ONE, 0)].into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
         linear_terms: vec![
             (
                 GKRAddress::BaseLayerMemory(0),
-                vec![(F::ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+                vec![(F::ONE, 0)].into_boxed_slice(),
             ),
             (
                 GKRAddress::BaseLayerMemory(1),
-                vec![(F::MINUS_ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+                vec![(F::MINUS_ONE, 0)].into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
-        constants: vec![(F::ZERO.to_reduced_u32(), 0)].into_boxed_slice(),
+        constants: vec![(F::ZERO, 0)].into_boxed_slice(),
     };
 
     let kernel = BatchConstraintEvalGKRRelation::new(&constraint, E::random_element(&mut rng));

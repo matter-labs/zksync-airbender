@@ -68,10 +68,7 @@ impl<F: PrimeField> GKRGate<F> for OneStepConstraintsEvaluationNode<F> {
             for (coeff, a) in l.iter() {
                 let a = graph.get_address_for_variable(*a);
                 a.assert_as_layer(output_layer - 1);
-                linear_sorted
-                    .entry(a)
-                    .or_insert(vec![])
-                    .push((*coeff, i));
+                linear_sorted.entry(a).or_insert(vec![]).push((*coeff, i));
             }
             if c.is_zero() == false {
                 constant_sorted.push((*c, i));

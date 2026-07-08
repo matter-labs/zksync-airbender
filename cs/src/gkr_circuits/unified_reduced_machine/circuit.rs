@@ -712,4 +712,20 @@ mod test {
             "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
         );
     }
+
+    #[test]
+    fn compile_unified_reduced_machine_gkr_witness_graph_large_field() {
+        skip_if_ci!();
+        use crate::gkr_compiler::dump_ssa_witness_eval_form;
+        use ::field::proth120::Proth120;
+
+        let ssa_forms =
+            dump_ssa_witness_eval_form::<Proth120>(&|cs| unified_register_all_tables(cs), &|cs| {
+                unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs)
+            });
+        serialize_to_file(
+            &ssa_forms,
+            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
+        );
+    }
 }

@@ -735,6 +735,30 @@ impl<const REDUCED_ROUNDS: bool> Transcript<BabyBearField, BabyBearExt4>
             seed, buffer,
         );
     }
+
+    #[cfg(feature = "pow")]
+    fn draw_random_field_elements_with_pow(seed: &Self::Seed, pow_bits: u32, buffer: &mut [BabyBearExt4], worker: &worker::Worker) -> (Self::Seed, u64) {
+        use field::Field;
+        
+        let (new_seed, pow_challenge) = Self::search_pow(seed, pow_bits, worker);
+
+        let mut state = TranscriptState::<REDUCED_ROUNDS>::new(new_seed);
+        {
+            let mut it = state.iterator();
+            let _ = it.next().expect("transcript word");
+            for slot in buffer.iter_mut() {
+                // a zero element gives us a correctly-sized `Coeffs` to overwrite,
+                // avoiding `[F; E::DEGREE]` (which would need `generic_const_exprs`).
+                let mut coeffs: [BabyBearField; 4] = <BabyBearExt4 as FieldExtension<BabyBearField>>::into_coeffs(BabyBearExt4::ZERO);
+                for c in coeffs.as_mut().iter_mut() {
+                    *c = BabyBearField::from_raw_repr_with_reduction(it.next().expect("transcript word"));
+                }
+                *slot = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_coeffs(coeffs);
+            }
+        }
+
+        (state.into_seed(), pow_challenge)
+    }
 }
 
 #[cfg(all(test, feature = "pow"))]

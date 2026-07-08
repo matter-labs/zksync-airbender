@@ -182,14 +182,14 @@ fn read_value<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
 /// into `F` here. Non-base-layer addresses contribute zero, matching the
 /// fallback in `evaluate_linear_constraint`.
 fn evaluate_no_field_linear<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
-    rel: &NoFieldLinearRelation,
+    rel: &NoFieldLinearRelation<F>,
     full_trace: &GKRFullWitnessTrace<F, A, B>,
     absolute_row_idx: usize,
 ) -> F {
-    let mut acc = F::from_u32_with_reduction(rel.constant);
+    let mut acc = rel.constant;
     for (coeff_raw, addr) in rel.linear_terms.iter() {
         let v = read_value(full_trace, absolute_row_idx, *addr);
-        let mut term = F::from_u32_with_reduction(*coeff_raw);
+        let mut term = *coeff_raw;
         term.mul_assign(&v);
         acc.add_assign(&term);
     }

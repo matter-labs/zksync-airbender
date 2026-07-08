@@ -544,7 +544,7 @@ mod test {
                 prefix
             ));
             let compiled_graph: Vec<Vec<RawExpression<Proth120>>> =
-                deserialize_from_file(&format!("../cs/compiled_circuits/{}_ssa_gkr.json", prefix));
+                deserialize_from_file(&format!("../cs/compiled_circuits/{}_ssa_gkr_proth120.json", prefix));
             let full_stream =
                 derive_from_gkr_ssa(&compiled_graph, &compiled_circuit, false, "Proth120");
 

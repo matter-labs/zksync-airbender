@@ -374,7 +374,9 @@ pub struct LookupExplicitPairWithSingleColumnMaterializedInputAggregationNode {
     pub range_check_width: u32,
 }
 
-impl<F: PrimeField> GKRGate<F> for LookupExplicitPairWithSingleColumnMaterializedInputAggregationNode {
+impl<F: PrimeField> GKRGate<F>
+    for LookupExplicitPairWithSingleColumnMaterializedInputAggregationNode
+{
     type Output = [GKRAddress; 2];
 
     fn short_name(&self) -> String {

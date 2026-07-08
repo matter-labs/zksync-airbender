@@ -841,34 +841,10 @@ where
             // now recursively merge
             let mut merged_claims = mem_polys_claims;
             merged_claims.extend(wit_polys_claims);
-            let padded_len = merged_claims.len().next_multiple_of(1 << pack_log2);
-            merged_claims.resize(padded_len, E::ZERO);
-
-            let mut merged_setup_claims = setup_polys_claims;
-            let padded_len = merged_setup_claims.len().next_multiple_of(1 << pack_log2);
-            merged_setup_claims.resize(padded_len, E::ZERO);
 
             let [merged_claims, setup_polys_claims] =
-                [merged_claims, merged_setup_claims].map(|input| {
-                    let mut result = vec![];
-                    for chunk in input.chunks(1 << pack_log2) {
-                        let mut input = chunk.to_vec();
-                        let mut buffer = vec![];
-                        for merge_point in extra_coordinates.iter().rev() {
-                            for [a, b] in input.as_chunks::<2>().0 {
-                                use crate::gkr::prover::sumcheck_loop::interpolate_linear;
-                                let t = interpolate_linear(*a, *b, merge_point);
-                                buffer.push(t);
-                            }
-
-                            core::mem::swap(&mut input, &mut buffer);
-                            buffer.clear();
-                        }
-                        assert_eq!(input.len(), 1);
-                        result.push(input[0]);
-                    }
-
-                    result
+                [merged_claims, setup_polys_claims].map(|input| {
+                    merge_claims(&input, &extra_coordinates)
                 });
 
             // and we need to update claim point
@@ -952,5 +928,155 @@ where
         inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.to_vec(),
         lookup_challenges_pow_nonce,
         batched_proximity_check_pow_nonce,
+    }
+}
+
+fn merge_claims<F: Field>(
+    input: &[F],
+    extra_coordinates: &[F],
+) -> Vec<F> {
+    let pack_log2 = extra_coordinates.len();
+    let mut result = vec![];
+    for chunk in input.chunks(1 << pack_log2) {
+        let mut input = if chunk.len() == 1 << pack_log2 {
+            chunk.to_vec()
+        } else {
+            let mut padded = chunk.to_vec();
+            padded.resize(1 << pack_log2, F::ZERO);
+
+            padded
+        };
+        let mut buffer = vec![];
+        // note `rev` on the coordiantes - we will later on concatenate
+        // coordiantes, so first coordiante is MSB
+        for merge_point in extra_coordinates.iter().rev() {
+            for [a, b] in input.as_chunks::<2>().0 {
+                // NOTE: swap of a => f1 and b -> f0, to be consistent with commitment scheme
+                use crate::gkr::prover::sumcheck_loop::interpolate_linear;
+                let t = interpolate_linear(*b, *a, merge_point);
+                buffer.push(t);
+            }
+
+            core::mem::swap(&mut input, &mut buffer);
+            buffer.clear();
+        }
+        assert_eq!(input.len(), 1);
+        result.push(input[0]);
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod packing_merge_tests {
+    use super::merge_claims;
+    use crate::gkr::prover::stages::commitment_utils::pack_polys_parallel_from_hypercubes_to_monomials;
+    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq, make_eq_poly_in_full};
+    use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+    use fft::bitreverse_enumeration_inplace;
+    use field::baby_bear::base::BabyBearField;
+    use field::baby_bear::ext4::BabyBearExt4;
+    use field::{Field, FieldExtension, PrimeField};
+    use rand::RngCore;
+    use worker::Worker;
+
+    type F = BabyBearField;
+    type E = BabyBearExt4;
+
+    fn rand_f(rng: &mut impl RngCore) -> F {
+        F::from_u32_with_reduction(rng.next_u32())
+    }
+
+    fn rand_e(rng: &mut impl RngCore) -> E {
+        let coeffs = [(); 4].map(|_| rand_f(rng));
+        <E as FieldExtension<F>>::from_coeffs(coeffs)
+    }
+
+    /// Inverse of the per-block transform that
+    /// `pack_polys_parallel_from_hypercubes_to_monomials` applies to each
+    /// `trace_len`-sized sub-poly (forward: `bitreverse` then
+    /// `multivariate_hypercube_evals_into_coeffs`). Turns one monomial block back
+    /// into its hypercube evaluations, so we can recover the enlarged multilinear.
+    fn monomial_block_to_hypercube_evals(block: &mut [F]) {
+        let size_log2 = block.len().trailing_zeros();
+        // invert the forward steps in reverse order (`bitreverse` is its own inverse)
+        multivariate_coeffs_into_hypercube_evals(block, size_log2);
+        bitreverse_enumeration_inplace(block);
+    }
+
+    /// Concatenate two `2^N`-sized multilinear polys `a`, `b` into a single
+    /// `(N + 1)`-variate multilinear poly `P` (with the block index as the most
+    /// significant coordinate, matching the commitment enumeration) and check that
+    /// `merge_claims` reproduces `P` evaluated at the extended point, agreeing with
+    /// a naive dot product against the full `(N + 1)`-variate equality polynomial.
+    #[test]
+    fn concatenate_two_polys_merge_claims_matches_extended_eq() {
+        let worker = Worker::new_with_num_threads(2);
+        const N: usize = 4;
+        let size = 1usize << N;
+
+        let mut rng = rand::rng();
+
+        // two independent multilinear polys in hypercube-evaluation form
+        let a: Vec<F> = (0..size).map(|_| rand_f(&mut rng)).collect();
+        let b: Vec<F> = (0..size).map(|_| rand_f(&mut rng)).collect();
+
+        // 1) a single random N-coordinate point, and the claims `a(r)`, `b(r)`
+        //    obtained as a dot product with the equality poly of `r`.
+        let r: Vec<E> = (0..N).map(|_| rand_e(&mut rng)).collect();
+        let eq_r_layers = make_eq_poly_in_full::<E>(&r, &worker);
+        let eq_r = eq_r_layers.last().unwrap();
+        assert_eq!(eq_r.len(), size);
+        let claim_a = evaluate_with_precomputed_eq::<F, E>(&a, eq_r);
+        let claim_b = evaluate_with_precomputed_eq::<F, E>(&b, eq_r);
+
+        // 2) concatenate the two polys "as monomials" via the commitment helper.
+        //    `pack_log2 = 1` merges the 2 sub-polys into one packed poly whose two
+        //    `2^N` halves are the per-block monomial forms of `a` and `b`.
+        let packed =
+            pack_polys_parallel_from_hypercubes_to_monomials::<F>(&[&a[..], &b[..]], 1, &worker);
+        assert_eq!(packed.len(), 1);
+        let mut p_evals = packed.into_iter().next().unwrap();
+        assert_eq!(p_evals.len(), 2 * size);
+
+        // 3) go back to hypercube evaluations of the (N + 1)-variate poly `P`.
+        //    Low half = block 0 (from `a`), high half = block 1 (from `b`); the block
+        //    index is the MSB coordinate of `P`.
+        {
+            let (blk0, blk1) = p_evals.split_at_mut(size);
+            monomial_block_to_hypercube_evals(blk0);
+            monomial_block_to_hypercube_evals(blk1);
+        }
+        // the round-trip must recover the original sub-poly evaluations exactly
+        assert_eq!(&p_evals[..size], &a[..], "block 0 must round-trip to `a`");
+        assert_eq!(&p_evals[size..], &b[..], "block 1 must round-trip to `b`");
+
+        // 4a) evaluation via `merge_claims`: merge the two claims at a random extra
+        //     coordinate `r'`.
+        let r_prime = rand_e(&mut rng);
+        let merged = merge_claims::<E>(&[claim_a, claim_b], &[r_prime]);
+        assert_eq!(merged.len(), 1);
+        let merged = merged[0];
+
+        // 4b) naive evaluation: dot product of `P`'s hypercube evaluations with the
+        //     full (N + 1)-variate equality poly at the extended point. `make_eq_poly`
+        //     treats `challenges[0]` as the MOST-significant index bit, so the block
+        //     coordinate (the MSB of `P`) is listed first, followed by `r`. To match
+        //     the `a => f1 / b => f0` swap inside `merge_claims` the block challenge
+        //     is `1 - r'`.
+        let mut block_challenge = E::ONE;
+        block_challenge.sub_assign(&r_prime);
+        let mut ext_point = Vec::with_capacity(N + 1);
+        ext_point.push(block_challenge);
+        ext_point.extend_from_slice(&r);
+        let eq_ext_layers = make_eq_poly_in_full::<E>(&ext_point, &worker);
+        let eq_ext = eq_ext_layers.last().unwrap();
+        assert_eq!(eq_ext.len(), 2 * size);
+        let naive = evaluate_with_precomputed_eq::<F, E>(&p_evals, eq_ext);
+
+        assert_eq!(
+            merged, naive,
+            "merge_claims must equal the naive extended-eq evaluation of the merged poly"
+        );
     }
 }

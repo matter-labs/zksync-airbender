@@ -17,8 +17,8 @@ pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
     lookup_type: &str,
     lookup: LookupType,
 ) -> (
-    Variable,                               // multiplicity var
-    [GKRAddress; 2],                        // final num/den pair
+    Variable,                                  // multiplicity var
+    [GKRAddress; 2],                           // final num/den pair
     NoFieldGKRRelation<F>,                     // relation that gives rise to final pair
     Vec<NoFieldSingleColumnLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
 ) {
@@ -236,8 +236,8 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
     total_width: usize,
     expect_table_id: bool,
 ) -> (
-    Variable,                         // multiplicity var
-    [GKRAddress; 2],                  // final num/den pair
+    Variable,                            // multiplicity var
+    [GKRAddress; 2],                     // final num/den pair
     NoFieldGKRRelation<F>,               // relation that gives rise to final pair
     Vec<NoFieldVectorLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
 ) {

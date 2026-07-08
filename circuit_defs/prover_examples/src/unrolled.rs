@@ -1,3 +1,4 @@
+use prover::transcript::Blake2sTranscript;
 use crate::bincode_serialize_to_file;
 use crate::DUMP_WITNESS_VAR;
 use ::prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
@@ -979,7 +980,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         let pow_challenge =
-            Transcript::search_pow(&all_challenges_seed, permutation_argument_pow_bits, worker).1;
+            Blake2sTranscript::<true>::search_pow(&all_challenges_seed, permutation_argument_pow_bits, worker).1;
         #[cfg(feature = "timing_logs")]
         println!(
             "PoW for {} took {:?}",
@@ -993,7 +994,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     program_proof.pow_challenge = pow_challenge;
 
     let external_challenges =
-        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_transcript_seed(
+        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_blake_transcript_seed(
             all_challenges_seed,
             permutation_argument_pow_bits as usize,
             pow_challenge,
@@ -1191,7 +1192,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
             let now = std::time::Instant::now();
             let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
                     &setup.compiled_circuit,
                     &external_challenges,
                     witness_trace,
@@ -1357,7 +1358,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
             let now = std::time::Instant::now();
             let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
                     &setup.compiled_circuit,
                     &external_challenges,
                     witness_trace,
@@ -1440,7 +1441,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
             &setup.compiled_circuit,
             &external_challenges,
             witness_trace,
@@ -1769,7 +1770,7 @@ pub(crate) fn prove_delegation_circuit<
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         assert!(delegation_type < 1 << 12);
-        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
             &setup.compiled_circuit,
             &external_challenges,
             witness_trace,

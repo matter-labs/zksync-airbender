@@ -1,3 +1,4 @@
+use prover::transcript::Blake2sTranscript;
 use crate::unrolled::make_tracer_buffers;
 use crate::unrolled::{
     prove_delegation_circuit, replay_delegation_circuit, run_unrolled_machine_in_full,
@@ -589,14 +590,14 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     );
 
     let pow_challenge = if permutation_argument_pow_bits > 0 {
-        Transcript::search_pow(&all_challenges_seed, permutation_argument_pow_bits, worker).1
+        Blake2sTranscript::<true>::search_pow(&all_challenges_seed, permutation_argument_pow_bits, worker).1
     } else {
         0
     };
     program_proof.pow_challenge = pow_challenge;
 
     let external_challenges =
-        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_transcript_seed(
+        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_blake_transcript_seed(
             all_challenges_seed,
             permutation_argument_pow_bits as usize,
             pow_challenge,
@@ -702,7 +703,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
 
             let now = std::time::Instant::now();
             let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
                     &unified_setup.compiled_circuit,
                     &external_challenges,
                     witness_trace,

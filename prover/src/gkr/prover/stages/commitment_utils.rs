@@ -574,10 +574,16 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
     let mut it = evals.iter();
     for _ in 0..num_packed {
         let mut packed = Vec::with_capacity(trace_len * (1 << pack_log2));
-        if let Some(to_pack) = it.next() {
-            packed.extend_from_slice(*to_pack);
-        } else {
-            packed.resize(trace_len * (1 << pack_log2), F::ZERO);
+        // concatenate up to `2^pack_log2` sub-polys into a single block, padding
+        // any missing tail sub-polys with zeros so every packed poly has the same
+        // `trace_len * 2^pack_log2` length (the enlarged (N + pack_log2)-variate domain)
+        for _ in 0..(1 << pack_log2) {
+            if let Some(to_pack) = it.next() {
+                assert_eq!(to_pack.len(), trace_len);
+                packed.extend_from_slice(*to_pack);
+            } else {
+                packed.resize(packed.len() + trace_len, F::ZERO);
+            }
         }
         result.push(packed);
     }

@@ -9,9 +9,7 @@ pub struct NoFieldLinearRelation<F: PrimeField> {
 
 impl<F: PrimeField> NoFieldLinearRelation<F> {
     pub fn is_trivial_single_input(&self) -> bool {
-        self.linear_terms.len() == 1
-            && self.linear_terms[0].0 == F::ONE
-            && self.constant == F::ZERO
+        self.linear_terms.len() == 1 && self.linear_terms[0].0 == F::ONE && self.constant == F::ZERO
     }
     pub fn from_single_input(input: GKRAddress) -> Self {
         let mut linear_terms = Vec::with_capacity(1);

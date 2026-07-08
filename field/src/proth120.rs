@@ -515,6 +515,7 @@ impl PrimeField for Proth120 {
         raw as u32
     }
     // < CHAR, but "natural" representation
+    #[track_caller]
     fn as_u32_reduced(self) -> u32 {
         let raw = self.as_u128_reduced();
         assert!(raw <= u32::MAX as u128);

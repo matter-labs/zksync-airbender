@@ -72,4 +72,7 @@ pub trait Transcript<F: Field, E: FieldExtension<F>>:
     fn commit_base_field_elements(seed: &mut Self::Seed, els: &[F]);
     fn commit_extension_field_elements(seed: &mut Self::Seed, els: &[E]);
     fn draw_random_field_elements(seed: &mut Self::Seed, buffer: &mut [E]);
+    
+    #[cfg(feature = "pow")]
+    fn draw_random_field_elements_with_pow(seed: &Self::Seed, pow_bits: u32, buffer: &mut [E], worker: &worker::Worker) -> (Self::Seed, u64);
 }

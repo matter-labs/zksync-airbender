@@ -104,12 +104,15 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
         &worker,
     );
 
+    println!("Preparing data for proving");
     // 4. Prover config for 80 bits + twiddles.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
         TRACE_LEN_LOG2,
         level,
     );
+
+    println!("Computing setup");
     // Setup commitment uses ordinary trace-sized twiddles.
     let setup_twiddles: Twiddles<Proth120, Global> =
         Twiddles::new(1 << SETUP_TRACE_LEN_LOG2, &worker);
@@ -126,6 +129,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
         1 << SETUP_TRACE_LEN_LOG2,
         &unified_circuit,
     );
+    println!("Computing setup commitment");
     let setup_commitment = setup.commit::<Keccak256MerkleTreeWithCap>(
         &setup_twiddles,
         prover_config.lde_factor,
@@ -185,7 +189,7 @@ where
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-
+    println!("Replaying {} cycles for witness data", num_calls);
     // Replay the captured trace into the unified destination holder.
     let mut state = vm.snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = vm
@@ -211,6 +215,7 @@ where
     assert_eq!(vm.expected_final_state(), state);
 
     // Preprocessing WITHOUT any delegation CSRs => no precompiles.
+    println!("Creating decoder table");
     let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> = vec![Box::new(UnifiedReducedMachineDecoder)];
     const SUPPORTED_CSRS: &[u16] = &[common_constants::NON_DETERMINISM_CSR as u16];
     let mut preprocessing_data = process_binary_into_separate_tables_ext::<
@@ -243,6 +248,7 @@ where
         let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
         inits_and_teardowns.push(([a, b], [c, d]));
     }
+    println!("Collecting inits and teardowns");
     vm.ram.collect_inits_and_teardowns_into_columns::<F, _>(
         worker,
         TRACE_LEN_LOG2,
@@ -250,6 +256,7 @@ where
         &mut inits_and_teardowns,
     );
 
+    println!("Calculating full witness trace");
     let full_trace = evaluate_gkr_witness_for_executor_family::<F, _, _, _>(
         unified_circuit,
         witness_eval_fn_ptr,

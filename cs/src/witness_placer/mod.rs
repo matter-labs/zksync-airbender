@@ -587,23 +587,43 @@ impl<F: PrimeField> WitnessComputationalField<F> for F {
 
     #[inline(always)]
     fn add_assign(&mut self, other: &Self) {
-        Field::add_assign(self, other);
+        if F::CHAR_BITS > 32 {
+            // TODO
+        } else {
+            Field::add_assign(self, other);
+        }
     }
     #[inline(always)]
     fn sub_assign(&mut self, other: &Self) {
-        Field::sub_assign(self, other);
+        if F::CHAR_BITS > 32 {
+            // TODO
+        } else {
+            Field::sub_assign(self, other);
+        }
     }
     #[inline(always)]
     fn mul_assign(&mut self, other: &Self) {
-        Field::mul_assign(self, other);
+        if F::CHAR_BITS > 32 {
+            // TODO
+        } else {
+            Field::mul_assign(self, other);
+        }
     }
     #[inline(always)]
     fn fused_mul_add_assign(&mut self, a: &Self, b: &Self) {
-        Field::fused_mul_add_assign(self, a, b);
+        if F::CHAR_BITS > 32 {
+            // TODO
+        } else {
+            Field::fused_mul_add_assign(self, a, b);
+        }
     }
     #[inline(always)]
     fn add_assign_product(&mut self, a: &Self, b: &Self) {
-        Field::add_assign_product(self, a, b);
+        if F::CHAR_BITS > 32 {
+            // TODO
+        } else {
+            Field::add_assign_product(self, a, b);
+        }
     }
     #[inline(always)]
     fn add_assign_masked(&mut self, mask: &Self::Mask, other: &Self) {
@@ -674,23 +694,43 @@ impl<F: PrimeField> WitnessComputationalField<F> for F {
     }
 
     #[inline(always)]
+    #[track_caller]
     fn as_integer(self) -> Self::IntegerRepresentation {
-        self.as_u32_reduced() as u32
+        if F::CHAR_BITS > 32 {
+            0u32 // TODO
+        } else {
+            self.as_u32_reduced()
+        }
     }
 
     #[inline(always)]
+    #[track_caller]
     fn from_integer(value: Self::IntegerRepresentation) -> Self {
-        Self::from_u32_with_reduction(value)
+        if F::CHAR_BITS > 32 {
+            F::ZERO // TODO
+        } else {
+            Self::from_u32_with_reduction(value)
+        }
     }
 
     #[inline(always)]
+    #[track_caller]
     fn from_raw_repr_with_reduction(value: Self::IntegerRepresentation) -> Self {
-        F::from_raw_repr_with_reduction(value)
+        if F::CHAR_BITS > 32 {
+            F::ZERO // TODO
+        } else {
+            F::from_raw_repr_with_reduction(value)
+        }
     }
 
     #[inline(always)]
+    #[track_caller]
     fn into_raw_repr_reduced(self) -> Self::IntegerRepresentation {
-        self.as_u32_raw_repr_reduced()
+        if F::CHAR_BITS > 32 {
+            0 // TODO
+        } else {
+            self.as_u32_raw_repr_reduced()
+        }
     }
 }
 

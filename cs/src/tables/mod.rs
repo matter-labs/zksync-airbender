@@ -528,16 +528,22 @@ impl<F: PrimeField> LookupTable<F> {
     #[inline(always)]
     pub fn lookup_row(&self, key: &[F]) -> usize {
         let key = if key.len() >= self.width() {
-            for el in key[self.width()..].iter() {
-                assert!(el.is_zero());
+            for (i, el) in key[self.width()..].iter().enumerate() {
+                assert!(el.is_zero(), "additional padding elements must be zero, got {} at padding element {} for table ID {}", el, i, self.id);
             }
             &key[..self.width()]
         } else {
             // key is shorter than the table, that may happen in special case of zero entry
             // table, and so we hardcode it blindly
             assert_eq!(self.table_size(), 1);
-            for el in key.iter() {
-                assert!(el.is_zero());
+            for (i, el) in key.iter().enumerate() {
+                assert!(
+                    el.is_zero(),
+                    "key element is not zero: {} at position {} for table ID {}",
+                    el,
+                    i,
+                    self.id
+                );
             }
 
             return 0;
