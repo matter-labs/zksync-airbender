@@ -39,13 +39,18 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
         - merkle_trees/ - code optimised to perform merkle trees with trimmed tree root nodes and leaf packing of polynomials with shared columns
         - tracers/ - helper code for supporting witness gen of memory argument
         - witness_evaluator/ - code to help evaluate our special witness generation closures
-- gpu: 
-    - circuit_prover/ - comprehensive CUDA + Rust glue, mirrors the cpu prover
-    - execution_prover/, program_prover/ - execution- and program-level proving drivers + recursion ladder
-    - core/, ntt/, hash/, ops/, cub/ - CUDA kernel and primitive crates
-    - witness_eval_generator/ - (crate `gpu_witness_eval_generator`) Rust->CUDA witness-generation codegen
-    - gkr_model/ - GKR cost/scheduling model
-    - native_build/ - shared CUDA/native build glue
+- gpu: the Rust->CUDA GPU prover crate stack. Every crate lives at `gpu/<dir>/` but is named `gpu_<dir>` (e.g. `gpu/core/` is crate `gpu_core`). Dependency edges only point down the stack: `core < { ntt, ops, hash, cub } < circuit_prover < execution_prover < program_prover`.
+    - core/ (`gpu_core`) - GPU substrate: static device/host allocators, device structures + accessors, field, callbacks, nvtx, machine type, utils; owns the base CUDA headers shared by the kernel crates
+    - ntt/ (`gpu_ntt`) - the NTT subsystem (launchers + twiddles + CUDA kernels)
+    - ops/ (`gpu_ops`) - generic math/transform kernels (simple, powers, squaring, transpose, bit-reverse, batch-inverse)
+    - hash/ (`gpu_hash`) - blake2s hashing + Merkle trees + gather + the Fiat-Shamir transcript (commit/squeeze/PoW)
+    - cub/ (`gpu_cub`) - CUB-library wrappers (reduce, radix sort, run-length encode); isolates the compile-heavy CUB template instantiations
+    - circuit_prover/ (`gpu_circuit_prover`) - the CUDA-backed single-circuit proving pipeline; mirrors the cpu prover and holds the GKR/WHIR protocol + witness CUDA. Consumes the kernel crates above via facade re-exports
+    - execution_prover/ (`gpu_execution_prover`) - the execution-level driver (`ExecutionProver`) that proves all of a program's circuits
+    - program_prover/ (`gpu_program_prover`) - the program-level driver + full recursion ladder; assembles proofs into `ProgramProof`, builds the non-determinism streams the `fsv_*` verifier binaries consume, and (behind a non-default `verifiers` feature) verifies proofs natively
+    - gkr_model/ (`gpu_gkr_model`) - pure-CPU model of the GKR layout (address audit, storage layout, circuit transform); no CUDA, consumed by circuit_prover
+    - witness_eval_generator/ (`gpu_witness_eval_generator`) - pure-CPU Rust->CUDA codegen that emits the committed `witness_generation_fn.cuh` witness bodies
+    - native_build/ (`gpu_native_build`) - shared CUDA/native build-script helper (a build-dependency only)
 
 ## AIR Circuits
 - cs/
