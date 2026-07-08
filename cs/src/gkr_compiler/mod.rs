@@ -103,38 +103,6 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PureQuadraticGKRRelation<F: PrimeField> {
-    pub terms: Box<[(GKRAddress, Box<(F, GKRAddress)>)]>,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MaxQuadraticGKRRelation<F: PrimeField> {
-    pub quadratic_terms: Box<[(GKRAddress, Box<(F, GKRAddress)>)]>,
-    pub linear_terms: Box<(F, GKRAddress)>,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SpecialConstraintCollapseGKRRelation<F: PrimeField> {
-    pub predicate: GKRAddress,
-    pub remainder_from_quadratic: GKRAddress,
-    pub sparse_linear_remainders: Box<[Option<GKRAddress>]>,
-    pub sparse_constant_remainders: Box<[F]>,
-    pub num_terms: usize,
-}
-
-#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
-pub enum GKRRelation<F: PrimeField> {
-    PureQuadratic(PureQuadraticGKRRelation<F>),
-    MaxQuadratic(MaxQuadraticGKRRelation<F>),
-    SpecialConstraintCollapse(SpecialConstraintCollapseGKRRelation<F>),
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NoFieldPureQuadraticGKRRelation {
-    pub terms: Box<[(GKRAddress, Box<[(u64, GKRAddress)]>)]>,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoFieldMaxQuadraticGKRRelation {
     pub quadratic_terms: Box<[(GKRAddress, Box<[(u32, GKRAddress)]>)]>,
     pub linear_terms: Box<[(u32, GKRAddress)]>,

@@ -561,6 +561,64 @@ where
     }
 }
 
+pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + TwoAdicField>(
+    evals: &[&[F]],
+    pack_log2: usize,
+    worker: &Worker,
+) -> Vec<Vec<F>> {
+    assert!(evals.len() > 0);
+    let trace_len = evals[0].len();
+    let num_packed = evals.len().div_ceil(1 << pack_log2);
+
+    let mut result = Vec::with_capacity(num_packed);
+    let mut it = evals.iter();
+    for _ in 0..num_packed {
+        let mut packed = Vec::with_capacity(trace_len * (1 << pack_log2));
+        if let Some(to_pack) = it.next() {
+            packed.extend_from_slice(*to_pack);
+        } else {
+            packed.resize(trace_len * (1 << pack_log2), F::ZERO);
+        }
+        result.push(packed);
+    }
+    assert_eq!(result.len(), num_packed);
+
+    let mut chunks = Vec::with_capacity(evals.len());
+    'outer: for el in result.iter_mut() {
+        for chunk in el.chunks_mut(trace_len) {
+            chunks.push(chunk);
+            if chunks.len() == evals.len() {
+                break 'outer;
+            }
+        }
+    }
+
+    let work_size = chunks.len();
+    // now get monomial forms, and it's consistent with extending via coordiantes that are MSB in enumeration
+    worker.scope(work_size, |scope, geometry| {
+        let mut work = &mut chunks[..];
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let (chunk, rest) = work.split_at_mut(chunk_size);
+            work = rest;
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                // let ptr = ptr;
+                for input in chunk {
+                    let input: &mut [F] = *input;
+                    let size_log2 = trace_len.trailing_zeros();
+                    bitreverse_enumeration_inplace(input);
+                    hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs(
+                        input, size_log2,
+                    );
+                }
+            });
+        }
+        assert!(work.is_empty());
+    });
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

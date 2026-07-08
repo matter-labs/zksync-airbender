@@ -2,7 +2,6 @@ use crate::definitions::MerkleTreeCap;
 use crate::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 use blake2s_u32::AlignedSlice64;
 use core::fmt::Debug;
-use field::PrimeField;
 use non_determinism_source::U32WordNonDeterminismSource;
 
 mod blake2s_for_everything;

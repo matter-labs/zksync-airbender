@@ -4,6 +4,7 @@ use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use cs::definitions::{INITIAL_TIMESTAMP, NUM_PERMUTATION_ARGUMENT_KEY_PARTS};
 use fft::materialize_powers_serial_starting_with_elem;
+use field::{Field, FieldExtension, PrimeField};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
@@ -302,6 +303,16 @@ pub fn ensure_memory_trace_consistency<F: field::PrimeField>(
                 column, row
             );
         }
+    }
+}
+
+pub fn dummy_external_challenges<F: PrimeField, E: FieldExtension<F> + Field>(
+) -> GKRExternalChallenges<F, E> {
+    GKRExternalChallenges::<F, E> {
+        permutation_argument_linearization_challenges: [E::ZERO;
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1],
+        permutation_argument_additive_part: E::ZERO,
+        _marker: core::marker::PhantomData,
     }
 }
 

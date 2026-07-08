@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use field::TwoAdicField;
 use field::{Field, FieldExtension, PrimeField};
+use transcript::Keccak256Transcript;
 use worker::WorkerGeometry;
 
 use super::*;
@@ -41,7 +42,10 @@ pub mod utils;
 pub enum CommitmentMode {
     SeparateMemoryAndWitness,
     MergedMemoryAndWitness,
-    MergedAndPackedMemoryAndWitness { pack_log2: usize }, // this mode assumes that external challenges are not "external" anymore
+    MergedAndPackedMemoryAndWitness {
+        pack_log2: usize,
+        external_challenges_pow_bits: u32,
+    }, // this mode assumes that external challenges are not "external" anymore
 }
 
 pub(crate) struct SendPtr<T: Sized>(*mut T);
@@ -199,6 +203,7 @@ pub fn prove_configured_with_gkr<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -215,7 +220,6 @@ pub fn prove_configured_with_gkr<
 where
     [(); F::DEGREE]: Sized,
     [(); E::DEGREE]: Sized,
-    Transcript: ::transcript::Transcript<F, E>,
 {
     assert_eq!(compiled_circuit.trace_len, trace_len);
     if witness_eval_data.column_major_memory_trace.len() > 0 {
@@ -243,7 +247,13 @@ where
 
     let mut external_challenges = *external_challenges;
 
-    let (mut seed, mem_oracle, wit_oracle) = match commitment_mode {
+    let (
+        mut seed,
+        mem_oracle,
+        wit_oracle,
+        lookup_challenges_pow_nonce,
+        [lookup_alpha, lookup_additive_part],
+    ) = match commitment_mode {
         CommitmentMode::SeparateMemoryAndWitness => {
             // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
             let (mem_oracle, wit_oracle) =
@@ -290,16 +300,34 @@ where
                 );
             }
 
+            let mut seed =
+                <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
+
+            // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
+            // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
+            // is satisfied by `commit_initial` above.
+            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+                prover_config.security_level.security_bits(),
+                pow_bits::lookup_identity_degree(compiled_circuit),
+            );
+            let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+                draw_random_field_els_with_pow::<F, E, TR>(
+                    &mut seed,
+                    2,
+                    lookup_challenges_pow_bits,
+                    worker,
+                );
+            let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
+
             (
-                <Transcript as ::transcript::Transcript<F, E>>::commit_initial_u32(
-                    &transcript_input,
-                ),
+                seed,
                 mem_oracle,
                 wit_oracle,
+                lookup_challenges_pow_nonce,
+                [lookup_alpha, lookup_additive_part],
             )
         }
         CommitmentMode::MergedMemoryAndWitness => {
-            // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
             let merged_oracle =
                 stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, T>(
                     &witness_eval_data,
@@ -333,41 +361,113 @@ where
                 &mut transcript_input,
             );
 
+            let mut seed =
+                <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
+
+            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+                prover_config.security_level.security_bits(),
+                pow_bits::lookup_identity_degree(compiled_circuit),
+            );
+            let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+                draw_random_field_els_with_pow::<F, E, TR>(
+                    &mut seed,
+                    2,
+                    lookup_challenges_pow_bits,
+                    worker,
+                );
+            let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
+
             (
-                <Transcript as ::transcript::Transcript<F, E>>::commit_initial_u32(
-                    &transcript_input,
-                ),
+                seed,
                 merged_oracle,
                 ColumnMajorBaseOracleForLDE::empty(
                     prover_config.base_oracles_values_per_leaf,
                     trace_len.trailing_zeros() as usize,
                     prover_config.lde_factor,
                 ),
+                lookup_challenges_pow_nonce,
+                [lookup_alpha, lookup_additive_part],
             )
         }
-        CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2 } => {
+        CommitmentMode::MergedAndPackedMemoryAndWitness {
+            pack_log2,
+            external_challenges_pow_bits,
+        } => {
             // in this mode we will re-derive external challenges
-            todo!()
+            let merged_oracle =
+                stages::initial_commit::commit_packed_merged_memory_and_witness_subtrees::<F, T>(
+                    &witness_eval_data,
+                    twiddles,
+                    prover_config.lde_factor,
+                    prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                    prover_config.cap_size,
+                    trace_len.trailing_zeros() as usize,
+                    pack_log2,
+                    worker,
+                );
+
+            let mut transcript_input = vec![];
+            // we should commit all "external" variables,
+            // that are still part of the circuit, even though they are not formally the public input
+
+            // circuit sequence and delegation type
+            transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
+
+            // commit our setup
+            if setup.hypercube_evals.len() > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(setup_commitment.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
+
+            flatten_merkle_caps_iter_into(
+                Some(merged_oracle.tree.get_cap()).into_iter(),
+                &mut transcript_input,
+            );
+
+            let mut seed =
+                <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
+
+            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+                prover_config.security_level.security_bits(),
+                pow_bits::lookup_identity_degree(compiled_circuit),
+            );
+
+            let pow_bits = core::cmp::max(lookup_challenges_pow_bits, external_challenges_pow_bits);
+
+            let num_challenges = GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES + 2;
+
+            let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+                draw_random_field_els_with_pow::<F, E, TR>(
+                    &mut seed,
+                    num_challenges,
+                    pow_bits,
+                    worker,
+                );
+            external_challenges = GKRExternalChallenges::from_slice(
+                &challenges[..GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES],
+            );
+            let [lookup_alpha, lookup_additive_part] = challenges
+                [GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES..]
+                .try_into()
+                .unwrap();
+
+            (
+                seed,
+                merged_oracle,
+                ColumnMajorBaseOracleForLDE::empty(
+                    prover_config.base_oracles_values_per_leaf,
+                    trace_len.trailing_zeros() as usize,
+                    prover_config.lde_factor,
+                ),
+                lookup_challenges_pow_nonce,
+                [lookup_alpha, lookup_additive_part],
+            )
         }
     };
 
     // then GKR is the same until the end of backward pass and derivation of claims
-
-    // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
-    // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
-    // is satisfied by `commit_initial` above.
-    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
-        prover_config.security_level.security_bits(),
-        pow_bits::lookup_identity_degree(compiled_circuit),
-    );
-    let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
-        draw_random_field_els_with_pow::<F, E, Transcript>(
-            &mut seed,
-            2,
-            lookup_challenges_pow_bits,
-            worker,
-        );
-    let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
 
     let mut gkr_storage = GKRStorage::<F, E>::default();
 
@@ -494,10 +594,10 @@ where
             }
         }
     }
-    commit_field_els::<F, E, Transcript>(&mut seed, &evals_flattened);
+    commit_field_els::<F, E, TR>(&mut seed, &evals_flattened);
 
     let num_challenges = final_trace_size_log_2 + 1;
-    let mut challenges = draw_random_field_els::<F, E, Transcript>(&mut seed, num_challenges);
+    let mut challenges = draw_random_field_els::<F, E, TR>(&mut seed, num_challenges);
     let batching_challenge = challenges.pop().unwrap();
 
     println!("Evaluating initial claims for sumcheck loop");
@@ -566,7 +666,7 @@ where
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
-        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer::<F, E, Transcript>(
+        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer::<F, E, TR>(
             layer_idx,
             &layer,
             &mut points_for_claims_at_layer,
@@ -592,7 +692,7 @@ where
 
     // Backward loop: standard layer-by-layer sumcheck
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
-        let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<F, E, Transcript>(
+        let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<F, E, TR>(
             layer_idx,
             layer,
             &mut points_for_claims_at_layer,
@@ -614,14 +714,15 @@ where
 
     drop(preprocessed_generic_lookup);
 
-    let base_layer_z = points_for_claims_at_layer
+    let mut base_layer_z = points_for_claims_at_layer
         .get(&0)
-        .expect("must have base layer point");
+        .expect("must have base layer point")
+        .clone();
 
     let mut _eq_at_z: Box<[E]> = vec![].into_boxed_slice();
     #[cfg(feature = "gkr_self_checks")]
     {
-        let mut eq_precomputed = make_eq_poly_in_full(base_layer_z, worker);
+        let mut eq_precomputed = make_eq_poly_in_full(&base_layer_z, worker);
         _eq_at_z = eq_precomputed.pop().unwrap();
     }
 
@@ -656,22 +757,16 @@ where
     let mut setup_polys_claims = Vec::with_capacity(setup.hypercube_evals.len());
     for i in 0..setup.hypercube_evals.len() {
         let key = GKRAddress::Setup(i);
-        if let Some(value) = claims_for_layers[&0].get(&key).copied() {
-            #[cfg(feature = "gkr_self_checks")]
-            {
-                let poly = gkr_storage.get_base_layer(key);
-                let evaluation = evaluate_with_precomputed_eq::<F, E>(poly, &_eq_at_z[..]);
-                assert_eq!(evaluation, value, "diverged for {:?}", key);
-            }
-            setup_polys_claims.push(value);
-        } else {
-            // we have rare case when setup poly is not used, but we keep setup logic simple,
-            // we have rare case when setup poly is not used, but we keep setup logic simple,
-            // and so we have to re-evaluate it
+        let Some(value) = claims_for_layers[&0].get(&key).copied() else {
+            panic!("Missing claim for {:?}", key);
+        };
+        #[cfg(feature = "gkr_self_checks")]
+        {
             let poly = gkr_storage.get_base_layer(key);
             let evaluation = evaluate_with_precomputed_eq::<F, E>(poly, &_eq_at_z[..]);
-            setup_polys_claims.push(evaluation);
+            assert_eq!(evaluation, value, "diverged for {:?}", key);
         }
+        setup_polys_claims.push(value);
     }
 
     #[cfg(feature = "gkr_self_checks")]
@@ -686,7 +781,7 @@ where
             assert_eq!(
                 value,
                 evaluate_virtual_range_check_setup_poly::<F, E, 16>(
-                    base_layer_z,
+                    &base_layer_z,
                     trace_len.trailing_zeros()
                 )
             );
@@ -701,13 +796,12 @@ where
             assert_eq!(
                 value,
                 evaluate_virtual_range_check_setup_poly::<F, E, TIMESTAMP_COLUMNS_NUM_BITS>(
-                    base_layer_z,
+                    &base_layer_z,
                     trace_len.trailing_zeros()
                 )
             );
         }
     }
-
     drop(gkr_storage);
 
     // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
@@ -720,17 +814,8 @@ where
         prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
         pow_bits::total_base_oracle_columns(compiled_circuit),
     );
-    let (batched_proximity_check_pow_nonce, whir_batching_challenges): (u64, Vec<E>) =
-        draw_random_field_els_with_pow::<F, E, Transcript>(
-            &mut seed,
-            1,
-            batched_proximity_pow_bits,
-            worker,
-        );
-    let whir_batching_challenge = whir_batching_challenges[0];
 
     // and for WHIR we may need to reshuffle/merge claims depending on the mode
-
     let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = match commitment_mode {
         CommitmentMode::SeparateMemoryAndWitness => {
             (mem_polys_claims, wit_polys_claims, setup_polys_claims)
@@ -742,12 +827,71 @@ where
 
             (merged_claims, Vec::new(), setup_polys_claims)
         }
-        CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2 } => {
-            todo!();
+        CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2, .. } => {
+            // in the same manner - we should be consistent with how we packed polynomials.
+
+            // NOTE: this only allows Keccak trascript, that doesn't buffer and instead hashes every time
+            assert!(
+                core::any::TypeId::of::<TR>() == core::any::TypeId::of::<Keccak256Transcript>()
+            );
+
+            // We already have all prover-controlled variables in the transcript, so we can just draw
+            // extra coordinates' values here
+            let extra_coordinates: Vec<E> = draw_random_field_els::<F, E, TR>(&mut seed, pack_log2);
+
+            // now recursively merge
+            let mut merged_claims = mem_polys_claims;
+            merged_claims.extend(wit_polys_claims);
+            let padded_len = merged_claims.len().next_multiple_of(1 << pack_log2);
+            merged_claims.resize(padded_len, E::ZERO);
+
+            let mut merged_setup_claims = setup_polys_claims;
+            let padded_len = merged_setup_claims.len().next_multiple_of(1 << pack_log2);
+            merged_setup_claims.resize(padded_len, E::ZERO);
+
+            let [merged_claims, setup_polys_claims] =
+                [merged_claims, merged_setup_claims].map(|input| {
+                    let mut result = vec![];
+                    for chunk in input.chunks(1 << pack_log2) {
+                        let mut input = chunk.to_vec();
+                        let mut buffer = vec![];
+                        for merge_point in extra_coordinates.iter().rev() {
+                            for [a, b] in input.as_chunks::<2>().0 {
+                                use crate::gkr::prover::sumcheck_loop::interpolate_linear;
+                                let t = interpolate_linear(*a, *b, merge_point);
+                                buffer.push(t);
+                            }
+
+                            core::mem::swap(&mut input, &mut buffer);
+                            buffer.clear();
+                        }
+                        assert_eq!(input.len(), 1);
+                        result.push(input[0]);
+                    }
+
+                    result
+                });
+
+            // and we need to update claim point
+            let mut new_claim_point = extra_coordinates;
+            new_claim_point.extend_from_slice(&base_layer_z);
+
+            base_layer_z = new_claim_point;
+
+            (merged_claims, Vec::new(), setup_polys_claims)
         }
     };
 
-    let whir_proof = whir_fold::<F, E, T, Transcript>(
+    let (batched_proximity_check_pow_nonce, whir_batching_challenges): (u64, Vec<E>) =
+        draw_random_field_els_with_pow::<F, E, TR>(
+            &mut seed,
+            1,
+            batched_proximity_pow_bits,
+            worker,
+        );
+    let whir_batching_challenge = whir_batching_challenges[0];
+
+    let whir_proof = whir_fold::<F, E, T, TR>(
         mem_oracle,
         mem_polys_claims,
         wit_oracle,

@@ -700,4 +700,16 @@ mod test {
             "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
         );
     }
+
+    #[test]
+    fn compile_unified_reduced_machine_into_gkr_large_field() {
+        skip_if_ci!();
+        use ::field::proth120::Proth120;
+
+        let artifact = build_unified_artifact::<Proth120>(true);
+        serialize_to_file(
+            &artifact,
+            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+        );
+    }
 }

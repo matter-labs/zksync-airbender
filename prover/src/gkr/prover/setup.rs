@@ -43,7 +43,11 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         if total_tables_size % table_encoding_capacity_per_tuple != 0 {
             num_table_subsets += 1;
         }
-        assert!(num_table_subsets <= 1);
+        assert!(
+            num_table_subsets <= 1,
+            "lookup tables must be packed into single multiple of trace len, instead got {}",
+            num_table_subsets
+        );
 
         // dump tables
         let all_generic_tables = if compiled_circuit.total_tables_size == 0 {

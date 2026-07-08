@@ -318,9 +318,6 @@ pub trait TwoAdicField: Field {
     #[must_use]
     fn two_adic_generator() -> Self;
 
-    #[must_use]
-    fn two_adic_group_order() -> usize;
-
     const TWO_ADICITY_GENERATORS: &[Self];
 
     const TWO_ADICITY_GENERATORS_INVERSED: &[Self];

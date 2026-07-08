@@ -493,13 +493,6 @@ impl TwoAdicField for Proth120 {
         Self::TWO_ADIC_GENERATOR
     }
 
-    fn two_adic_group_order() -> usize {
-        // The true 2-Sylow order is `2^120`, which does not fit into a `usize`.
-        // This accessor is unused for fields this large; panic rather than
-        // silently return a wrapped (incorrect) value.
-        unimplemented!("Proth120 two-adic group order (2^120) does not fit into usize")
-    }
-
     const TWO_ADICITY_GENERATORS: &[Self] = &Self::TWO_ADICITY_GENERATORS;
 
     const TWO_ADICITY_GENERATORS_INVERSED: &[Self] = &Self::TWO_ADICITY_GENERATORS_INVERSED;
@@ -517,11 +510,15 @@ impl PrimeField for Proth120 {
 
     // Potentially unnormalized, but "natural" representation
     fn as_u32(self) -> u32 {
-        unreachable!()
+        let raw = self.as_u128_reduced();
+        assert!(raw <= u32::MAX as u128);
+        raw as u32
     }
     // < CHAR, but "natural" representation
     fn as_u32_reduced(self) -> u32 {
-        unreachable!()
+        let raw = self.as_u128_reduced();
+        assert!(raw <= u32::MAX as u128);
+        raw as u32
     }
     // any representation, without reduction guarantees. To be used for roundtrips
     // over newly constructed elements
@@ -551,9 +548,9 @@ impl PrimeField for Proth120 {
         Some(Self::new(value as u128))
     }
     fn from_reduced_raw_repr(value: u32) -> Self {
-        unreachable!()
+        Self(value as u128)
     }
-    fn from_raw_repr_with_reduction(value: u32) -> Self {
+    fn from_raw_repr_with_reduction(_value: u32) -> Self {
         unreachable!()
     }
 

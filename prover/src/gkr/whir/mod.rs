@@ -156,11 +156,10 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
     ColumnMajorBaseOracleForLDE<F, T>
 {
     pub fn empty(values_per_leaf: usize, trace_len_log2: usize, lde_factor: usize) -> Self {
-        let mut generators: Vec<F> = materialize_powers_serial_starting_with_one(
+        let generators: Vec<F> = materialize_powers_serial_starting_with_one(
             domain_generator_for_size::<F>((1 << trace_len_log2) * lde_factor as u64),
             lde_factor,
         );
-        bitreverse_enumeration_inplace(&mut generators);
         let mut new = Self {
             cosets: Vec::with_capacity(lde_factor),
             tree: T::dummy(),

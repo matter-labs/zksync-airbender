@@ -443,10 +443,6 @@ impl TwoAdicField for Mersenne31Complex {
         }
     }
 
-    fn two_adic_group_order() -> usize {
-        1 << 31
-    }
-
     const TWO_ADICITY_GENERATORS: &[Self] = &Self::TWO_ADICITY_GENERATORS;
 
     const TWO_ADICITY_GENERATORS_INVERSED: &[Self] = &Self::TWO_ADICITY_GENERATORS_INVERSED;

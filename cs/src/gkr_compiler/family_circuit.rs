@@ -343,7 +343,6 @@ impl<F: PrimeField> GKRCompiler<F> {
                         unreachable!()
                     };
                     let [addr_lo_var, addr_hi_var] = address;
-                    dbg!();
                     // some optimisations re-use is_register
                     let GKRAddress::BaseLayerMemory(raw_column) =
                         graph.get_fixed_layout_pos(&raw_var).unwrap_or_else(|| {

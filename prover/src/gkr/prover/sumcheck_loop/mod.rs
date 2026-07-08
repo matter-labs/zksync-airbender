@@ -110,8 +110,8 @@ where
     let lsb_lines: BTreeMap<GKRAddress, [E; 2]> = last_evaluations
         .iter()
         .map(|(addr, evals)| {
-            let lsb0 = interpolate_linear::<F, E>(evals[0], evals[2], &r_before_last);
-            let lsb1 = interpolate_linear::<F, E>(evals[1], evals[3], &r_before_last);
+            let lsb0 = interpolate_linear::<E>(evals[0], evals[2], &r_before_last);
+            let lsb1 = interpolate_linear::<E>(evals[1], evals[3], &r_before_last);
             (*addr, [lsb0, lsb1])
         })
         .collect();
@@ -153,7 +153,7 @@ where
     // coordinate at `r_last`.
     let new_claims: BTreeMap<_, _> = lsb_lines
         .iter()
-        .map(|(addr, [lsb0, lsb1])| (*addr, interpolate_linear::<F, E>(*lsb0, *lsb1, &r_last)))
+        .map(|(addr, [lsb0, lsb1])| (*addr, interpolate_linear::<E>(*lsb0, *lsb1, &r_last)))
         .collect();
 
     #[cfg(feature = "gkr_self_checks")]
@@ -287,7 +287,7 @@ where
 
     let mut new_claims: BTreeMap<_, _> = last_evaluations
         .iter()
-        .map(|(addr, &[f0, f1])| (*addr, interpolate_linear::<F, E>(f0, f1, &last_r)))
+        .map(|(addr, &[f0, f1])| (*addr, interpolate_linear::<E>(f0, f1, &last_r)))
         .collect();
 
     #[cfg(feature = "gkr_self_checks")]
@@ -602,7 +602,7 @@ where
 }
 
 #[inline(always)]
-fn interpolate_linear<F: PrimeField, E: FieldExtension<F> + Field>(f0: E, f1: E, r: &E) -> E {
+pub(crate) fn interpolate_linear<E: Field>(f0: E, f1: E, r: &E) -> E {
     let mut result = f1;
     result.sub_assign(&f0);
     result.mul_assign(r);

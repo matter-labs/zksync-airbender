@@ -71,6 +71,27 @@ pub struct GKRExternalChallenges<F: PrimeField, E: FieldExtension<F> + Field> {
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
+    pub const TOTAL_CHALLENGES: usize = NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1;
+
+    #[cfg(feature = "prover")]
+    pub fn from_slice(challenges: &[E]) -> Self {
+        assert_eq!(
+            challenges.len(),
+            NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1
+        );
+        let (permutation_argument_linearization_challenges, permutation_argument_additive_part) =
+            challenges.as_chunks::<NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES>();
+        let permutation_argument_linearization_challenges =
+            permutation_argument_linearization_challenges[0];
+        let permutation_argument_additive_part = permutation_argument_additive_part[0];
+
+        Self {
+            permutation_argument_linearization_challenges,
+            permutation_argument_additive_part,
+            _marker: core::marker::PhantomData,
+        }
+    }
+
     #[cfg(feature = "prover")]
     pub fn flatten_into_buffer(&self, dst: &mut Vec<u32>)
     where

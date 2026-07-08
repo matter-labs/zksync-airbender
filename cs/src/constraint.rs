@@ -71,7 +71,7 @@ impl<F: PrimeField> Ord for Term<F> {
         }
 
         match (self, other) {
-            (Term::Constant(s), Term::Constant(o)) => s.as_u32_reduced().cmp(&o.as_u32_reduced()),
+            (Term::Constant(s), Term::Constant(o)) => s.as_u128_reduced().cmp(&o.as_u128_reduced()),
             (Term::Constant(..), Term::Expression { .. }) => std::cmp::Ordering::Less,
             (Term::Expression { .. }, Term::Constant(..)) => std::cmp::Ordering::Greater,
             (
@@ -94,7 +94,7 @@ impl<F: PrimeField> Ord for Term<F> {
                     return t;
                 }
 
-                s_coeff.as_u32_reduced().cmp(&o_coeff.as_u32_reduced())
+                s_coeff.as_u128_reduced().cmp(&o_coeff.as_u128_reduced())
             }
         }
     }
