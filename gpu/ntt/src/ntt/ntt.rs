@@ -1243,7 +1243,7 @@ fn get_lde_grid_dims_for_occupancy_hint(
     vals_per_block: usize,
     occupancy_hint_numerator: usize,
     occupancy_hint_denominator: usize,
-    device_properties: &DeviceProperties
+    device_properties: &DeviceProperties,
 ) -> CudaResult<Dim3> {
     assert!(n >= vals_per_block);
     assert_eq!(n % vals_per_block, 0);
@@ -1289,7 +1289,7 @@ fn get_lde_grid_dims_for_occupancy_hint(
     // But it would indicate a weird, non-performant geometry we don't expect in production.
     assert!(grid_dim_z <= cosets_in_tile);
     let grid = (grid_dim_x as u32, grid_dim_y as u32, grid_dim_z as u32).into();
-    return Ok(grid)
+    return Ok(grid);
 }
 
 fn get_lde_config_for_log_n(log_n: usize) -> (usize, usize) {
@@ -1348,10 +1348,8 @@ pub fn lde_intermediate_size_with_coset_range(
         vals_per_block,
         occupancy_target_numerator,
         occupancy_target_denominator,
-        device_properties
+        device_properties,
     )?;
-    println!("coset_factor_shift {} grid_dim.y {} grid_dim.z {} cosets_in_tile {} outputs.len() {}",
-             coset_factor_shift, grid_dim.y, grid_dim.z, cosets_in_tile, outputs.len());
     let config = CudaLaunchConfig::basic(grid_dim, block_dim_x as u32, stream);
     let args = LdeIntermediateArguments::new(
         inputs_matrix,
@@ -1385,8 +1383,7 @@ pub fn lde_intermediate_size_with_coset_range(
         * cosets_in_tile as u32
         * cols_in_chunk as u32)
         .into();
-    let config_pass2 =
-        CudaLaunchConfig::basic(grid_dim_pass2, threads_pass2 as u32, stream);
+    let config_pass2 = CudaLaunchConfig::basic(grid_dim_pass2, threads_pass2 as u32, stream);
     let args_pass2 = StridedTilesStagesArguments::new(
         outputs_matrix_const,
         outputs_matrix_mut,
@@ -1479,7 +1476,6 @@ pub fn lde_with_coset_range(
     );
     // TODO: extend to smaller sizes when chunking-friendly kernels are done
     if (log_n <= 18) && (log_n >= 14) {
-        println!("Calling lde_intermediate");
         let result = lde_intermediate_size_with_coset_range(
             inputs_matrix,
             outputs,
@@ -1489,7 +1485,7 @@ pub fn lde_with_coset_range(
             coset_index_base,
             num_cols_per_coset_stride,
             occupancy_hint_numerator,
-            occupancy_hint_denominator, 
+            occupancy_hint_denominator,
             device_properties,
             stream,
         );
@@ -1503,7 +1499,7 @@ pub fn lde_with_coset_range(
         num_cosets,
         coset_index_base,
         num_cols_per_coset_stride,
-        /*transposed_monomials=*/false,
+        /*transposed_monomials=*/ false,
         ntt_ctx,
         d_table_scratch,
         stream,

@@ -23,13 +23,9 @@ DEVICE_FORCEINLINE void shfl_for_exchange(bf *vals, const unsigned lane_mask) {
 // First-K-stages LDE for intermediate sizes.
 // Reuses twiddles, monomials, and coset adjustments across cosets.
 template <unsigned THREADS_PER_BLOCK, unsigned STAGES>
-DEVICE_FORCEINLINE void lde_first_k_stages_impl(bf_matrix_getter<ld_modifier::cg> gmem_in,
-                                                 bf_matrix_setter<st_modifier::cg> gmem_out_base,
-                                                 const unsigned log_n,
-                                                 const unsigned coset_index_base,
-                                                 const unsigned coset_factor_shift,
-                                                 const unsigned num_cols_per_coset,
-                                                 const unsigned num_cosets_in_tile) {
+DEVICE_FORCEINLINE void lde_first_k_stages_impl(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out_base,
+                                                const unsigned log_n, const unsigned coset_index_base, const unsigned coset_factor_shift,
+                                                const unsigned num_cols_per_coset, const unsigned num_cosets_in_tile) {
   constexpr unsigned VALS_PER_THREAD = 2;
   constexpr unsigned VALS_PER_WARP = 64;
   constexpr unsigned VALS_PER_BLOCK = THREADS_PER_BLOCK * VALS_PER_THREAD;
@@ -47,7 +43,7 @@ DEVICE_FORCEINLINE void lde_first_k_stages_impl(bf_matrix_getter<ld_modifier::cg
   // Stages are ordered in reverse in the shared memory chunk, ie
   // [...[twiddles for stage 8] [twiddles for stage 9] [ twiddles for stage 10]]
   {
-    const unsigned lz = __clz(threadIdx.x); // ranges from 32 to 32 - (STAGES - 1) inclusive
+    const unsigned lz = __clz(threadIdx.x);    // ranges from 32 to 32 - (STAGES - 1) inclusive
     const unsigned stage = STAGES - (32 - lz); // ranges from STAGES to 1 inclusive
     const unsigned exchg_region_offset = blockIdx.x * (VALS_PER_BLOCK >> (stage + 1));
     const unsigned global_bitrev_exchg_region = (threadIdx.x ^ (1 << (31 - lz))) + exchg_region_offset;
@@ -78,8 +74,7 @@ DEVICE_FORCEINLINE void lde_first_k_stages_impl(bf_matrix_getter<ld_modifier::cg
 
   // This loop lets the caller balance occupancy and twiddle/adjustment amortization by playing with gridDim.y.
 #pragma unroll 1
-  for (unsigned monomial_col = blockIdx.y;
-       monomial_col < num_cols_per_coset;
+  for (unsigned monomial_col = blockIdx.y; monomial_col < num_cols_per_coset;
        monomial_col += gridDim.y, gmem_in.add_col(gridDim.y), gmem_out_base.add_col(gridDim.y)) {
     auto gmem_out = gmem_out_base.copy();
 
@@ -158,60 +153,40 @@ DEVICE_FORCEINLINE void lde_first_k_stages_impl(bf_matrix_getter<ld_modifier::cg
   }
 }
 
-EXTERN __launch_bounds__(512, 3)
-__global__ void ab_lde_first_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in,
-                                       bf_matrix_setter<st_modifier::cg> gmem_out,
-                                       const unsigned log_n,
-                                       const unsigned coset_index_base,
-                                       const unsigned coset_factor_shift,
-                                       const unsigned num_cols_per_coset,
+EXTERN __launch_bounds__(512, 3) __global__
+    void ab_lde_first_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
+                                       const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
                                        const unsigned num_cosets_in_tile) {
   lde_first_k_stages_impl<512, 10>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
 }
 
-EXTERN __launch_bounds__(256, 6)
-__global__ void ab_lde_first_9_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in,
-                                       bf_matrix_setter<st_modifier::cg> gmem_out,
-                                       const unsigned log_n,
-                                       const unsigned coset_index_base,
-                                       const unsigned coset_factor_shift,
-                                       const unsigned num_cols_per_coset,
-                                       const unsigned num_cosets_in_tile) {
+EXTERN __launch_bounds__(256, 6) __global__
+    void ab_lde_first_9_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
+                                      const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
+                                      const unsigned num_cosets_in_tile) {
   lde_first_k_stages_impl<256, 9>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
 }
 
-EXTERN __launch_bounds__(128, 12)
-__global__ void ab_lde_first_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in,
-                                       bf_matrix_setter<st_modifier::cg> gmem_out,
-                                       const unsigned log_n,
-                                       const unsigned coset_index_base,
-                                       const unsigned coset_factor_shift,
-                                       const unsigned num_cols_per_coset,
-                                       const unsigned num_cosets_in_tile) {
+EXTERN __launch_bounds__(128, 12) __global__
+    void ab_lde_first_8_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
+                                      const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
+                                      const unsigned num_cosets_in_tile) {
   lde_first_k_stages_impl<128, 8>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
 }
 
-EXTERN __launch_bounds__(64, 24)
-__global__ void ab_lde_first_7_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in,
-                                       bf_matrix_setter<st_modifier::cg> gmem_out,
-                                       const unsigned log_n,
-                                       const unsigned coset_index_base,
-                                       const unsigned coset_factor_shift,
-                                       const unsigned num_cols_per_coset,
-                                       const unsigned num_cosets_in_tile) {
+EXTERN __launch_bounds__(64, 24) __global__
+    void ab_lde_first_7_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
+                                      const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
+                                      const unsigned num_cosets_in_tile) {
   lde_first_k_stages_impl<64, 7>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
 }
 
 // First-K-stages LDE for intermediate sizes.
 // Reuses twiddles, monomials, and coset adjustments across cosets.
-EXTERN __launch_bounds__(128, 12)
-__global__ void ab_lde_first_6_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in,
-                                             bf_matrix_setter<st_modifier::cg> gmem_out_base,
-                                             const unsigned log_n,
-                                             const unsigned coset_index_base,
-                                             const unsigned coset_factor_shift,
-                                             const unsigned num_cols_per_coset,
-                                             const unsigned num_cosets_in_tile) {
+EXTERN __launch_bounds__(128, 12) __global__
+    void ab_lde_first_6_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out_base, const unsigned log_n,
+                                      const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
+                                      const unsigned num_cosets_in_tile) {
   constexpr unsigned WARPS_PER_BLOCK = 4;
   constexpr unsigned THREADS_PER_BLOCK = WARPS_PER_BLOCK * 32;
   constexpr unsigned STAGES = 6;
@@ -235,7 +210,7 @@ __global__ void ab_lde_first_6_stages_kernel(bf_matrix_getter<ld_modifier::cg> g
   // Stages are ordered in reverse in the shared memory chunk, ie
   // [...[twiddles for stage 8] [twiddles for stage 9] [ twiddles for stage 10]]
   {
-    const unsigned lz = __clz(lane_id); // ranges from 32 to 32 - (STAGES - 1) inclusive
+    const unsigned lz = __clz(lane_id);        // ranges from 32 to 32 - (STAGES - 1) inclusive
     const unsigned stage = STAGES - (32 - lz); // ranges from STAGES to 1 inclusive
     const unsigned exchg_region_offset = warp_gid * (VALS_PER_WARP >> (stage + 1));
     const unsigned global_bitrev_exchg_region = (lane_id ^ (1 << (31 - lz))) + exchg_region_offset;
@@ -243,7 +218,7 @@ __global__ void ab_lde_first_6_stages_kernel(bf_matrix_getter<ld_modifier::cg> g
       twiddles[lane_id] = ab_fully_precomputed_bitrev_twiddles[global_bitrev_exchg_region];
   }
 
-  __syncthreads();
+  __syncwarp();
 
   const unsigned base_coset_this_block = coset_index_base + blockIdx.z;
   bf coset_deltas[2];
@@ -262,8 +237,7 @@ __global__ void ab_lde_first_6_stages_kernel(bf_matrix_getter<ld_modifier::cg> g
 
   // This loop lets the caller balance occupancy and twiddle/adjustment amortization by playing with gridDim.y.
 #pragma unroll 1
-  for (unsigned monomial_col = blockIdx.y;
-       monomial_col < num_cols_per_coset;
+  for (unsigned monomial_col = blockIdx.y; monomial_col < num_cols_per_coset;
        monomial_col += gridDim.y, gmem_in.add_col(gridDim.y), gmem_out_base.add_col(gridDim.y)) {
     auto gmem_out = gmem_out_base.copy();
 

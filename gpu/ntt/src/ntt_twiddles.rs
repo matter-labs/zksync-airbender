@@ -127,7 +127,10 @@ unsafe fn copy_to_symbols(
     memcpy_to_symbol(&ab_inv_sizes, &inv_sizes_host)?;
     memcpy_to_symbol(&ab_fwd_gmem_twiddles_coarse, &fwd_gmem_twiddles_coarse)?;
     memcpy_to_symbol(&ab_inv_gmem_twiddles_coarse, &inv_gmem_twiddles_coarse)?;
-    memcpy_to_symbol(&ab_fully_precomputed_bitrev_twiddles, &fully_precomputed_bitrev_twiddles)?;
+    memcpy_to_symbol(
+        &ab_fully_precomputed_bitrev_twiddles,
+        &fully_precomputed_bitrev_twiddles,
+    )?;
     memcpy_to_symbol(&ab_fwd_cmem_twiddles_coarse, &fwd_cmem_twiddles_coarse)?;
     memcpy_to_symbol(&ab_inv_cmem_twiddles_coarse, &inv_cmem_twiddles_coarse)?;
     memcpy_to_symbol(&ab_fwd_cmem_twiddles_fine, &fwd_cmem_twiddles_fine)?;
