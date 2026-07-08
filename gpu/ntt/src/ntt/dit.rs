@@ -8,7 +8,7 @@
 //! triangle-buffer set built once at `DeviceContext::create`.
 //!
 //! These kernels do a one-time device fill of the per-config butterfly-triangle
-//! and coset d-table buffers, reading red's Rust-initialized `ab_ntt_forward_powers`
+//! and coset d-table buffers, reading the Rust-initialized `ab_ntt_forward_powers`
 //! on-device (`get_forward_twiddle_power`) and writing the exact layouts produced
 //! by the parity-proven Rust builders (`build_clean_triangle` /
 //! `build_coupled_triangle` / `build_coset_delta_table`, see `tests/dit_engine.rs`).
@@ -369,7 +369,7 @@ impl DitTriangles {
 // Runs the vendored DIT engine hot kernels (`ntt_single` / `ntt_two_pass`,
 // see `gpu/ntt/native/dit_kernels.cuh`, launched via the `ab_dit_single_*` /
 // `ab_dit_two_pass_*` wrappers in `dit_kernels_extern.cu`) for the streaming range
-// (log_n in [2, 13]). It uses red's coset-major param model: same coset-major
+// (log_n in [2, 13]). It uses the coset-major param model: same coset-major
 // param model + column loop + strided output, borrowing the precomputed
 // `DitTriangles` from the `DeviceContext` and filling the two-pass d-table at
 // runtime into a caller-provided pooled scratch buffer.
@@ -431,7 +431,7 @@ pub(crate) fn ntt_two_pass_smem_bytes(log_n: u32, log_vpt: u32) -> usize {
 /// Production launcher for the DIT NTT engine over the streaming range
 /// (`log_n` in `[2, 13]`).
 ///
-/// Maps red's coset-major params to the engine's `(cfp_0, coset_step,
+/// Maps the coset-major params to the engine's `(cfp_0, coset_step,
 /// num_cosets)` model: `coset_step = 1 << coset_factor_shift` (= `2^(OMEGA_LOG_ORDER -
 /// log_n - log_lde_factor)`), `cfp_0 = coset_index_base << coset_factor_shift`.
 /// Borrows the precomputed CLEAN / COUPLED triangles from `ctx` and fills the
