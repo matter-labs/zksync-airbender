@@ -80,7 +80,6 @@ default-members = [
     "fft",
     "field",
     # "full_statement_verifier",
-    # gpu_circuit_prover is not a default member because it needs CUDA installation to compile
     "non_determinism_source",
     "prover",
     "reduced_keccak",
@@ -92,9 +91,13 @@ default-members = [
     "verifier_generator",
     "worker",
     "witness_eval_generator",
-    "gpu/witness_eval_generator",
-    # The one GPU-cluster crate with no CUDA dep (pure CPU model); safe as a default member.
+    # GPU cluster: only the two pure-CPU crates below are default members — they
+    # build without a CUDA toolchain. The CUDA crates (gpu_core, gpu_ntt, gpu_ops,
+    # gpu_hash, gpu_cub, gpu_circuit_prover, gpu_execution_prover,
+    # gpu_program_prover) and the build-only gpu_native_build are omitted so the
+    # default `cargo build` works without CUDA installed.
     "gpu/gkr_model",
+    "gpu/witness_eval_generator",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
     "circuit_defs/unrolled_circuits/jump_branch_slt",
     "circuit_defs/unrolled_circuits/mul_div_unsigned",
