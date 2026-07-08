@@ -50,9 +50,29 @@ fn fmt_special_lit(idx: u16) -> String {
     }
 }
 
+/// Resolve a peek's `origin_expr` to the DAG leaf it actually reads, so the peek site
+/// names its value source instead of only an ExprId. A `PeekSingleColumn` origin is (by
+/// `validate::check_resolutions`) a `LookupValue` leaf, so this typically renders e.g.
+/// `LookupValue TimestampIndex set=35 query=e779` — the lookup table + query the forward
+/// VM peeks the precomputed resolution of. Returns `None` if the DAG isn't supplied or
+/// the origin isn't a plain source leaf.
+fn describe_peek_origin(layer: Option<&DagLayer>, origin: cs::gkr_compiler::dag_ir::ExprId) -> Option<String> {
+    let layer = layer?;
+    let Expr::Source(sid) = layer.exprs.get(origin.0 as usize)? else {
+        return None;
+    };
+    match &layer.sources.get(sid.0 as usize)?.kind {
+        SourceKind::LookupValue { kind, set_index, query } => {
+            Some(format!("LookupValue {kind:?} set={set_index} query=e{}", query.0))
+        }
+        other => Some(format!("{other:?}")),
+    }
+}
+
 /// Format one operand line, resolving indices to readable names via the context's
-/// banks/tables.
-fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext) -> String {
+/// banks/tables. `layer` (when supplied) lets a `PEEK` operand name the DAG leaf its
+/// `origin_expr` reads.
+fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext, layer: Option<&DagLayer>) -> String {
     match op {
         OperandLine::Global { slot, col } => match ctx.backings.backing(*slot) {
             Some(k) => format!("{k:?}[s{slot}:c{col}]"),
@@ -81,7 +101,12 @@ fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext) -> String {
             // the source-dump rendering of `SourceKind::VirtualSetup` (disasm.rs :206).
             Some(d) => match &d.strategy {
                 SpecialStrategy::VirtualSetup { kind } => format!("VirtualSetup {kind:?}"),
-                strategy => format!("PEEK[{desc}]={strategy:?}@e{}", d.origin_expr.0),
+                strategy => {
+                    let via = describe_peek_origin(layer, d.origin_expr)
+                        .map(|s| format!(" via {s}"))
+                        .unwrap_or_default();
+                    format!("PEEK[{desc}]={strategy:?}@e{}{via}", d.origin_expr.0)
+                }
             },
             None => format!("PEEK?{desc}"),
         },
@@ -126,7 +151,7 @@ fn fmt_lanes(head: &str, lanes: &[String], cont_op: char) -> String {
 /// Render one instruction. Reductions with more than one input lane span
 /// multiple rows (see [`fmt_lanes`]); everything else is a single line. Never
 /// includes the leading `[nnnn]` index.
-pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext) -> String {
+pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer>) -> String {
     match instr {
         Instr::Add {
             field,
@@ -138,11 +163,11 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext) -> String {
             } else {
                 "+"
             };
-            let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx)).collect();
+            let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx, layer)).collect();
             fmt_lanes(&format!("ADD.{} acc {s}= ", field_tag(field)), &lanes, '+')
         }
         Instr::Mul { field, operands } => {
-            let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx)).collect();
+            let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx, layer)).collect();
             fmt_lanes(&format!("MUL.{} acc *= ", field_tag(field)), &lanes, '*')
         }
         Instr::Fma {
@@ -158,7 +183,7 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext) -> String {
             };
             let lanes: Vec<String> = pairs
                 .iter()
-                .map(|(l, r)| format!("{}*{}", fmt_operand(l, ctx), fmt_operand(r, ctx)))
+                .map(|(l, r)| format!("{}*{}", fmt_operand(l, ctx, layer), fmt_operand(r, ctx, layer)))
                 .collect();
             fmt_lanes(
                 &format!("FMA.{}{} acc {s}= ", field_tag(field_lhs), field_tag(field_rhs)),
@@ -178,7 +203,7 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext) -> String {
                 .unwrap_or_else(|| "-".into());
             let sc = src
                 .as_ref()
-                .map(|s| fmt_operand(s, ctx))
+                .map(|s| fmt_operand(s, ctx, layer))
                 .unwrap_or_else(|| "-".into());
             match dir {
                 MovDir::AccFromSrc => format!("MOV.{} acc <- {sc}", field_tag(field)),
@@ -278,7 +303,7 @@ pub fn disassemble_layer(
         "\n--- PROGRAM (single-accumulator VM; `acc` is implicit) ---"
     );
     for (i, instr) in compiled.program.instrs.iter().enumerate() {
-        let _ = writeln!(o, "  [{i:4}] {}", fmt_instr(instr, ctx));
+        let _ = writeln!(o, "  [{i:4}] {}", fmt_instr(instr, ctx, layer));
     }
 
     // ---- side tables ----
