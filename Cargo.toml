@@ -91,11 +91,7 @@ default-members = [
     "verifier_generator",
     "worker",
     "witness_eval_generator",
-    # GPU cluster: only the two pure-CPU crates below are default members — they
-    # build without a CUDA toolchain. The CUDA crates (gpu_core, gpu_ntt, gpu_ops,
-    # gpu_hash, gpu_cub, gpu_circuit_prover, gpu_execution_prover,
-    # gpu_program_prover) and the build-only gpu_native_build are omitted so the
-    # default `cargo build` works without CUDA installed.
+    # The only pure-CPU gpu crates; the CUDA ones are omitted so the default build needs no CUDA.
     "gpu/gkr_model",
     "gpu/witness_eval_generator",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
