@@ -10,8 +10,8 @@
 pub mod proof_assembly;
 pub mod upstream;
 
-pub use upstream::Setups;
 pub use proof_assembly::assemble_program_proof;
+pub use upstream::Setups;
 
 #[cfg(test)]
 mod tests;

@@ -153,8 +153,9 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
     // SAFETY: `ProofLayout` computes a live, non-overlapping single-`u64` region
     // for the batching pow nonce inside the slab; the kernel write here and the
     // terminal readback are both exec-stream-ordered.
-    let (batching_nonce_ptr, _batching_nonce_len) =
-        unsafe { proof_layout.batched_proximity_pow_nonce_device_mut(proof_slab.as_ptr() as *mut u8) };
+    let (batching_nonce_ptr, _batching_nonce_len) = unsafe {
+        proof_layout.batched_proximity_pow_nonce_device_mut(proof_slab.as_ptr() as *mut u8)
+    };
     let batching_nonce_dst: &mut era_cudart::slice::DeviceVariable<u64> =
         unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(batching_nonce_ptr) };
     let (final_device_seed_mut, _claim_point_for_squeeze) =

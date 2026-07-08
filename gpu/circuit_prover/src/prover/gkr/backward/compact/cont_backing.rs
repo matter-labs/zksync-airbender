@@ -148,7 +148,10 @@ pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
     sources: &[GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_SOURCES],
     plan: &FlatContinuationBuildPlan<E>,
     storage: &GpuGKRStorage<BF, E>,
-) -> (Box<GpuFlatContinuationUnifiedDesc>, Option<FlatTermTablesHost>) {
+) -> (
+    Box<GpuFlatContinuationUnifiedDesc>,
+    Option<FlatTermTablesHost>,
+) {
     use std::collections::HashSet;
 
     let mut compact = Box::new(GpuFlatContinuationUnifiedDesc::default());

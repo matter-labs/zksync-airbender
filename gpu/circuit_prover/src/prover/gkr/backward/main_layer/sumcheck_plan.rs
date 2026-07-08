@@ -1017,8 +1017,7 @@ where
             // back to the unfused round-0 path (`launch_round0_kernels`), which
             // supports the device-buffer coeff loader. Fast-path circuits keep
             // the warp-partial path (their round-0 fits `__constant__`).
-            let use_warp_partial =
-                acc_size >= 32 && !(step == 0 && !self.flat_use_constant);
+            let use_warp_partial = acc_size >= 32 && !(step == 0 && !self.flat_use_constant);
 
             // Round-kernel launch.
             if use_warp_partial {
@@ -1113,9 +1112,8 @@ where
             let prev_coord_slice = unsafe { device_claim_point_in.slice(last_step, 1) };
             // SAFETY: `coeffs_total_len = folding_steps * 4`, so the
             // `last_step`-th 4-element window is in-bounds.
-            let coeffs_round_slice = unsafe {
-                DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(last_step * 4), 4)
-            };
+            let coeffs_round_slice =
+                unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(last_step * 4), 4) };
             // SAFETY: `device_claim_point_out` is length `folding_steps + 1`;
             // slot `last_step = folding_steps - 1` (= `last_r`) is in bounds and
             // uniquely written here.
@@ -1198,10 +1196,7 @@ where
         if num_addresses > 0 {
             // SAFETY: TEMP `[E;2]` buffer, E = E4, alive through the launch.
             let last_evals_e4 = unsafe {
-                DeviceSlice::from_raw_parts(
-                    device_last_evals.as_ptr() as *const E4,
-                    last_evals_len,
-                )
+                DeviceSlice::from_raw_parts(device_last_evals.as_ptr() as *const E4, last_evals_len)
             };
             // SAFETY: `claim_point_out[last_step]` is `last_r` (in-loop draw).
             let last_r_view = unsafe {

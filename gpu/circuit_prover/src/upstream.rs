@@ -106,6 +106,7 @@ pub(crate) use field::{Field, FieldExtension, PrimeField};
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with
 // -----------------------------------------------------------------------
 
+pub(crate) use prover::definitions::produce_initial_permutation_product_contribution;
 pub(crate) use prover::definitions::{GKRExternalChallenges, SecurityLevel, Transcript};
 pub(crate) use prover::gkr::high_bits_offset_for_inits_and_teardowns;
 pub(crate) use prover::gkr::prover::dimension_reduction::{
@@ -158,13 +159,13 @@ pub(crate) use prover::gkr::whir::{
 pub(crate) use prover::gkr::witness_gen::delegation_circuits::{
     evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,
 };
+pub(crate) use prover::gkr::witness_gen::family_circuits::build_unified_table_driver;
 pub(crate) use prover::gkr::witness_gen::family_circuits::{
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
     evaluate_init_and_teardown_memory_witness, GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
 };
-pub(crate) use prover::gkr::witness_gen::oracles::{MemoryCircuitOracle, NonMemoryCircuitOracle};
-pub(crate) use prover::gkr::witness_gen::family_circuits::build_unified_table_driver;
 pub(crate) use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
+pub(crate) use prover::gkr::witness_gen::oracles::{MemoryCircuitOracle, NonMemoryCircuitOracle};
 pub(crate) use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
 pub(crate) use prover::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
@@ -175,7 +176,6 @@ pub(crate) use prover::tracers::oracles::transpiler_oracles::delegation::{
 };
 pub(crate) use prover::transcript::Seed;
 pub(crate) use prover::utils::extension_field_from_base_coeffs;
-pub(crate) use prover::definitions::produce_initial_permutation_product_contribution;
 
 // -----------------------------------------------------------------------
 // `common_constants` — machine-level constants

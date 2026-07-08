@@ -163,7 +163,9 @@ cuda_kernel!(GenerateWitnessUnrolledUnifiedKernel,
     count: u32,
 );
 
-generate_witness_unrolled_unified_kernel!(ab_generate_witness_values_unified_reduced_machine_kernel);
+generate_witness_unrolled_unified_kernel!(
+    ab_generate_witness_values_unified_reduced_machine_kernel
+);
 
 pub(crate) fn generate_witness_values_unrolled_unified(
     trace: &UnrolledUnifiedTraceDevice,
@@ -202,6 +204,8 @@ pub(crate) fn generate_witness_values_unrolled_unified(
         stride,
         count,
     );
-    GenerateWitnessUnrolledUnifiedKernelFunction(ab_generate_witness_values_unified_reduced_machine_kernel)
-        .launch(&config, &args)
+    GenerateWitnessUnrolledUnifiedKernelFunction(
+        ab_generate_witness_values_unified_reduced_machine_kernel,
+    )
+    .launch(&config, &args)
 }

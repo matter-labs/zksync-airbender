@@ -46,7 +46,10 @@ pub(super) fn run_profile(fixture: BasicUnrolledFixture) {
     fixture.context.get_h2d_stream().synchronize().unwrap();
     fixture.context.reset_used_mem_peak();
     let (prof_proof, prof_ms) = {
-        let _range = scoped_range(Some("gpu_circuit_prover.tests"), "test.gpu.prove.profiled_call");
+        let _range = scoped_range(
+            Some("gpu_circuit_prover.tests"),
+            "test.gpu.prove.profiled_call",
+        );
         fixture.prove(prof).unwrap().finish().unwrap()
     };
     eprintln!("profiled proof time: {prof_ms} ms");

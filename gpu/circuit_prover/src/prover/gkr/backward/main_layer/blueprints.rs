@@ -1029,7 +1029,10 @@ mod unified_cap_tests {
         let challenge_count: usize = blueprints.iter().map(|b| b.batch_challenge_count).sum();
 
         assert_eq!(record_count, 7, "unified layer must produce 7 records");
-        assert_eq!(challenge_count, 10, "unified layer must consume 10 challenges");
+        assert_eq!(
+            challenge_count, 10,
+            "unified layer must consume 10 challenges"
+        );
         assert!(record_count <= GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER);
         assert!(challenge_count <= GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN);
         // Regression intent: these counts exceed the pre-#305 limits (5 / 8).

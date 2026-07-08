@@ -9,13 +9,13 @@
 //! lines in orchestrator code are forbidden.
 
 // `cs` — GKR circuit artifacts + decoder/opcode helpers.
+pub use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
 pub use cs::gkr_circuits::{
     create_mem_word_only_special_tables,
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
     opcodes_for_reduced_machine, process_binary_into_separate_tables_ext,
     ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData, OpcodeFamilyDecoder,
 };
-pub use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
 pub use cs::gkr_compiler::{GKRCircuitArtifact, GKRCompiler, OutputType};
 
 // `cs` — unified-circuit build-direct compile path. Mirrors

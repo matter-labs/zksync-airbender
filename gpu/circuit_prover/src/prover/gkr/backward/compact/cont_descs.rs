@@ -397,7 +397,8 @@ impl Default for GpuFlatContinuationUnifiedDescDevptr {
 
 const _: () = {
     assert!(
-        std::mem::size_of::<GpuFlatContinuationUnifiedDescDevptr>() <= KERNEL_ARG_HARD_CEILING_BYTES,
+        std::mem::size_of::<GpuFlatContinuationUnifiedDescDevptr>()
+            <= KERNEL_ARG_HARD_CEILING_BYTES,
         "GpuFlatContinuationUnifiedDescDevptr exceeds 32 KB inline ceiling",
     );
 };

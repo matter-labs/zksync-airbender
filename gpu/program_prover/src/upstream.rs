@@ -42,7 +42,7 @@ pub use full_statement_verifier::host_utils::{
     final_blake_mode, load_fsv_program, unified_switch_cycles, unrolled_blake_mode,
     FsvRecursionChain, DEFAULT_UNIFIED_SWITCH_CYCLES,
 };
-pub use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
 #[cfg(feature = "verifiers")]
-pub use full_statement_verifier::host_utils::{native_verify_unrolled, native_verify_unified};
+pub use full_statement_verifier::host_utils::{native_verify_unified, native_verify_unrolled};
 pub use setups::Setups;
+pub use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};

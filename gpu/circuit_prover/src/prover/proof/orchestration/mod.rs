@@ -148,9 +148,7 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
     // closure holds as a single check. Exact mirror of the CPU prover at
     // prover/src/gkr/prover/mod.rs:813-823 — it_evals[0] = init_set,
     // it_evals[1] = teardown_set, contribution = teardown * init.inverse().
-    if let Some(it_evals) =
-        final_explicit_evaluations.get(&OutputType::InitsAndTeardownsProduct)
-    {
+    if let Some(it_evals) = final_explicit_evaluations.get(&OutputType::InitsAndTeardownsProduct) {
         let [init_set_computed, teardown_set_computed] = it_evals.clone().map(|els| {
             let mut result = E4::ONE;
             for el in els.iter() {

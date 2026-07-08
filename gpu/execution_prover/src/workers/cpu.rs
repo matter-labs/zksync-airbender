@@ -5,11 +5,11 @@ use crate::workers::simulation_runner::{
     LockedBoxedMemoryHolder, LockedBoxedTraceChunk, SimulationRunner, Snapshot,
 };
 use crate::A;
+use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+use crossbeam_channel::{Receiver, Sender};
 use gpu_circuit_prover::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 use gpu_circuit_prover::witness::trace::ChunkedTraceHolder;
 use gpu_circuit_prover::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
-use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
-use crossbeam_channel::{Receiver, Sender};
 use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};

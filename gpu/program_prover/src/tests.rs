@@ -4,9 +4,11 @@
 
 #![allow(unused_imports)]
 
-use crate::upstream::build_unrolled_stream;
 use crate::proof_assembly::assemble_program_proof;
-use gpu_execution_prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType};
+use crate::upstream::build_unrolled_stream;
+use gpu_execution_prover::{
+    ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType,
+};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use serial_test::serial;
 use setups::read_binary;
@@ -537,11 +539,8 @@ fn test_program_prover_recursion_layer_verify() {
         None,
     );
     let stream = build_unrolled_stream(&base_setups, &base_proof);
-    let result = prover.commit_memory_and_prove(
-        0,
-        &fsv_handle,
-        QuasiUARTSource::new_with_reads(stream),
-    );
+    let result =
+        prover.commit_memory_and_prove(0, &fsv_handle, QuasiUARTSource::new_with_reads(stream));
     let artifacts = prover.program_artifacts(&fsv_handle);
     let (mut recursion_proof, recursion_setups) =
         assemble_program_proof(&artifacts, result, security_level, &worker);
@@ -620,10 +619,12 @@ fn test_program_prover_recursive_pipeline_zksync_os() {
         .chunks(8)
         .map(|c| u32::from_str_radix(std::str::from_utf8(c).unwrap(), 16).expect("invalid hex"))
         .collect();
-    let (_, binary_image) =
-        read_binary(&test_artifact("riscv_transpiler/examples/zksync_os/app.bin"));
-    let (_, text_section) =
-        read_binary(&test_artifact("riscv_transpiler/examples/zksync_os/app.text"));
+    let (_, binary_image) = read_binary(&test_artifact(
+        "riscv_transpiler/examples/zksync_os/app.bin",
+    ));
+    let (_, text_section) = read_binary(&test_artifact(
+        "riscv_transpiler/examples/zksync_os/app.text",
+    ));
     run_gpu_recursive_pipeline(binary_image, text_section, witness, false);
 }
 
@@ -654,8 +655,8 @@ fn run_gpu_recursive_pipeline(
         use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
         use riscv_transpiler::ir::ReducedMachineDecoderConfig;
         use riscv_transpiler::vm::{
-            DelegationsAndUnifiedCounters, RamWithRomRegion, SimpleSnapshotter, SimpleTape,
-            State, VM,
+            DelegationsAndUnifiedCounters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State,
+            VM,
         };
         const ROM_BITS: usize = common_constants::ROM_SECOND_WORD_BITS;
 
@@ -670,19 +671,15 @@ fn run_gpu_recursive_pipeline(
                 state,
             );
         let mut non_determinism = QuasiUARTSource::new_with_reads(stream);
-        let finished = VM::<DelegationsAndUnifiedCounters>::run_basic_unrolled::<
-            _,
-            _,
-            _,
-            BabyBearField,
-        >(
-            &mut state,
-            &mut ram,
-            &mut snapshotter,
-            &tape,
-            UNROLLED_RECURSION_CYCLES_BOUND,
-            &mut non_determinism,
-        );
+        let finished =
+            VM::<DelegationsAndUnifiedCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
+                &mut state,
+                &mut ram,
+                &mut snapshotter,
+                &tape,
+                UNROLLED_RECURSION_CYCLES_BOUND,
+                &mut non_determinism,
+            );
         assert!(finished, "verifier program must reach its end state");
         (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP
     }
@@ -711,7 +708,10 @@ fn run_gpu_recursive_pipeline(
     let (base_proof, base_setups) =
         assemble_program_proof(&artifacts, result, security_level, &worker);
     native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
-    log::info!("stage 1: base layer proved + verified ({} cycles)", base_proof.executed_cycles());
+    log::info!(
+        "stage 1: base layer proved + verified ({} cycles)",
+        base_proof.executed_cycles()
+    );
 
     let base_end_params = compute_end_params(&base_setups, base_proof.final_pc);
     let mut chain = FsvRecursionChain::begin(&base_end_params);
@@ -747,8 +747,7 @@ fn run_gpu_recursive_pipeline(
         } else {
             (&unrolled_rec_bin, &unrolled_rec_text)
         };
-        let measured =
-            measure_verifier_cycles(bin, text, build_unrolled_stream(&setups, &proof));
+        let measured = measure_verifier_cycles(bin, text, build_unrolled_stream(&setups, &proof));
         log::info!("layer-{layer} verifier measures {measured} cycles");
         // Forced first rung (small workloads only): run one unrolled
         // recursion layer even when the base already measures below the

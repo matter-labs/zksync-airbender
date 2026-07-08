@@ -989,7 +989,16 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         let plan = build_flat_continuation_plan(&gates);
         let total = plan.total_coefficients();
         if total == 0 {
-            return Ok((Some(plan), vec![], None, None, 0, Callbacks::new(), None, true));
+            return Ok((
+                Some(plan),
+                vec![],
+                None,
+                None,
+                0,
+                Callbacks::new(),
+                None,
+                true,
+            ));
         }
 
         // Compile one descriptor for the continuation eval-recipes launch.

@@ -153,9 +153,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
         total_unique_teardowns, 0,
         "expected hashed-fibonacci RAM touches for standalone init/teardown fixture"
     );
-    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(
-        "cs/compiled_circuits/inits_and_teardowns_layout_gkr.json",
-    );
+    let compiled_circuit: GKRCircuitArtifact<BF> =
+        deserialize_json_for_test("cs/compiled_circuits/inits_and_teardowns_layout_gkr.json");
     let num_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
         &sparse_inits_and_teardowns,
@@ -371,9 +370,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         total_unique_teardowns, 0,
         "expected hashed-fibonacci RAM touches for standalone init/teardown parity"
     );
-    let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(
-        "cs/compiled_circuits/inits_and_teardowns_layout_gkr.json",
-    );
+    let compiled_circuit: GKRCircuitArtifact<BF> =
+        deserialize_json_for_test("cs/compiled_circuits/inits_and_teardowns_layout_gkr.json");
     let num_init_and_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
         &sparse_inits_and_teardowns,

@@ -14,8 +14,8 @@ mod proof_artifacts;
 mod result;
 
 pub use artifacts::{CircuitArtifact, ProgramArtifacts};
-pub use gpu_circuit_prover::UnsupportedGpuSecurityLevel;
 pub use config::{ExecutionKind, ExecutionProverConfiguration};
+pub use gpu_circuit_prover::UnsupportedGpuSecurityLevel;
 pub use result::{CommitMemoryResult, ProveResult};
 
 /// Opaque handle to a binary registered with the `ExecutionProver`. Returned by
@@ -44,17 +44,17 @@ use crate::workers::cpu::{run_replayer, run_simulator};
 use crate::workers::gpu_manager::GpuManager;
 use crate::workers::simulation_runner::{LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
 use crate::A;
+use common_constants::TimestampScalar;
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_utils::sync::WaitGroup;
+use era_cudart::device::get_device_count;
+use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use gpu_circuit_prover::prover::trace::tracing_data::TracingDataHost;
 use gpu_circuit_prover::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
 use gpu_circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
-use common_constants::TimestampScalar;
-use crossbeam_channel::{unbounded, Receiver, Sender};
-use crossbeam_utils::sync::WaitGroup;
-use era_cudart::device::get_device_count;
-use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;

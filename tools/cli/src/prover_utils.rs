@@ -614,8 +614,11 @@ fn advance_to_target(
     );
 
     // === Final: fsv_unified_recursion_layer in unified mode. ===
-    let (final_bin, final_text) =
-        load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_blake_mode());
+    let (final_bin, final_text) = load_fsv_program(
+        &fsv_dir,
+        FsvProgram::UnifiedRecursionLayer,
+        final_blake_mode(),
+    );
 
     let start = Instant::now();
     let (mut final_proof, final_setups) = backend.prove(
@@ -920,10 +923,15 @@ fn recompute_program_setups(
     let use_caches = true;
     let security_level = COMPILED_SECURITY_LEVEL.to_prover();
     match machine {
-        SetupMachine::UnrolledFullUnsigned => compute_unrolled_program_setups::<
-            FullUnsignedConfig,
-            Global,
-        >(&padded_bin, &padded_text, use_caches, security_level, worker),
+        SetupMachine::UnrolledFullUnsigned => {
+            compute_unrolled_program_setups::<FullUnsignedConfig, Global>(
+                &padded_bin,
+                &padded_text,
+                use_caches,
+                security_level,
+                worker,
+            )
+        }
         SetupMachine::UnrolledReduced => compute_unrolled_program_setups::<ReducedConfig, Global>(
             &padded_bin,
             &padded_text,
@@ -1112,9 +1120,7 @@ fn ensure_recursion_chain_binds_program(
 fn validate_artifact_chain(artifact: &ProofArtifact) -> Result<(), String> {
     let chain = rebuild_chain(&artifact.chain_end_params)?;
     if chain.hash() != artifact.chain_hash || chain.preimage() != artifact.chain_preimage {
-        return Err(
-            "artifact chain_hash/chain_preimage do not match chain_end_params".to_string(),
-        );
+        return Err("artifact chain_hash/chain_preimage do not match chain_end_params".to_string());
     }
     Ok(())
 }

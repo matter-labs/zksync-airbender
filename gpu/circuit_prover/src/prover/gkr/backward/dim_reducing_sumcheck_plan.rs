@@ -464,9 +464,8 @@ where
             let prev_coord_slice = unsafe { device_claim_point_in.slice(last_step, 1) };
             // SAFETY: `coeffs_total_len = folding_steps * 4`, so the
             // `last_step`-th 4-element window is in-bounds.
-            let coeffs_round_slice = unsafe {
-                DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(last_step * 4), 4)
-            };
+            let coeffs_round_slice =
+                unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(last_step * 4), 4) };
             // SAFETY: `device_claim_point_out` is length `folding_steps + 2`;
             // slot `last_step = folding_steps - 1` (= `r_before_last`) is in
             // bounds and uniquely written here.
@@ -550,10 +549,7 @@ where
         if num_addresses > 0 {
             // SAFETY: TEMP `[E;4]` buffer, E = E4 layout, alive through launch.
             let last_evals_e4 = unsafe {
-                DeviceSlice::from_raw_parts(
-                    device_last_evals.as_ptr() as *const E4,
-                    last_evals_len,
-                )
+                DeviceSlice::from_raw_parts(device_last_evals.as_ptr() as *const E4, last_evals_len)
             };
             // SAFETY: `claim_point_out[last_step]` is `r_before_last`, drawn by
             // the in-loop final round; reading one E4 challenge.

@@ -682,8 +682,16 @@ fn backward_dim_reducing_lsb_lines_parity_randomized() {
             let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
             let lsb0 = host_new_claim_linear(v[0], v[2], r_before_last);
             let lsb1 = host_new_claim_linear(v[1], v[3], r_before_last);
-            assert_eq!(device[i * 2], lsb0, "N={num_addresses} addr {i} lsb0 mismatch");
-            assert_eq!(device[i * 2 + 1], lsb1, "N={num_addresses} addr {i} lsb1 mismatch");
+            assert_eq!(
+                device[i * 2],
+                lsb0,
+                "N={num_addresses} addr {i} lsb0 mismatch"
+            );
+            assert_eq!(
+                device[i * 2 + 1],
+                lsb1,
+                "N={num_addresses} addr {i} lsb1 mismatch"
+            );
         }
     }
 }

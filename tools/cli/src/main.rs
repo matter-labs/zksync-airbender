@@ -10,7 +10,6 @@ use cli_lib::prover_utils::{
     ProofTarget, ProverBackend,
 };
 use reqwest::blocking::Client;
-use setups::read_binary;
 use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
 use riscv_transpiler::ir::{
     DecodingOptions, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
@@ -18,6 +17,7 @@ use riscv_transpiler::ir::{
 use riscv_transpiler::vm::{DelegationsCounters, RamWithRomRegion, SimpleTape, State, VM};
 use serde::Serialize;
 use serde_json::Value;
+use setups::read_binary;
 use std::path::Path;
 use std::{fs, iter};
 

@@ -1,5 +1,6 @@
 use crate::messages::{TracingData, WorkerResult};
 use crate::A;
+use crossbeam_channel::{Receiver, Sender};
 use gpu_circuit_prover::prover::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
@@ -8,7 +9,6 @@ use gpu_circuit_prover::witness::circuit_type::{
     UnrolledNonMemoryCircuitType,
 };
 use gpu_circuit_prover::witness::trace::ChunkedTraceHolder;
-use crossbeam_channel::{Receiver, Sender};
 use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
 use riscv_transpiler::jit::{CounterType, MachineCounters, MAX_NUM_COUNTERS};
@@ -722,14 +722,12 @@ impl TracingDataProducers for SplitTracingDataProducers {
                     final_count,
                     &mut trace_ranges.slt_branch_family,
                 ),
-                CounterType::ShiftBinary => {
-                    self.binary_shift_csr_family_producer.process_snapshot(
-                        snapshot_index,
-                        initial_count,
-                        final_count,
-                        &mut trace_ranges.binary_shift_csr_family,
-                    )
-                }
+                CounterType::ShiftBinary => self.binary_shift_csr_family_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.binary_shift_csr_family,
+                ),
                 CounterType::MulDiv => self.mul_div_family_producer.process_snapshot(
                     snapshot_index,
                     initial_count,

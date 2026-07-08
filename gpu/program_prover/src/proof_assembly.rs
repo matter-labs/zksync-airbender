@@ -12,8 +12,8 @@
 use std::alloc::Global;
 use std::collections::{BTreeMap, HashMap};
 
-use gpu_execution_prover::{ProgramArtifacts, ProveResult};
 use gpu_core::primitives::field::BF;
+use gpu_execution_prover::{ProgramArtifacts, ProveResult};
 use worker::Worker;
 
 use crate::upstream::{compute_end_params, Setups};

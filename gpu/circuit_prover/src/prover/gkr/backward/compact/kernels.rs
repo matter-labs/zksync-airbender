@@ -14,11 +14,11 @@ use era_cudart_sys::cudaGetSymbolAddress;
 use super::super::kernels::gkr_dim_reducing_launch_config;
 use super::super::kernels::GkrEqSizes;
 use super::cont_descs::GpuFlatContinuationUnifiedDesc;
-use super::cont_descs::{GpuFlatRound1UnifiedDesc, GpuFlatRound2UnifiedDesc};
 use super::cont_descs::{
     GpuFlatContinuationUnifiedDescDevptr, GpuFlatRound1UnifiedDescDevptr,
     GpuFlatRound2UnifiedDescDevptr, GpuFlatTermTables,
 };
+use super::cont_descs::{GpuFlatRound1UnifiedDesc, GpuFlatRound2UnifiedDesc};
 use super::kernel_limits::MAX_MAIN_LAYER_CLAIM_POINT_LEN;
 use super::round0_desc::GpuFlatRound0StaticDesc;
 use crate::primitives::field::E4;

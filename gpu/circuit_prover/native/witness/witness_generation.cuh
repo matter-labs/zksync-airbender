@@ -82,7 +82,9 @@ template <typename T, typename W> struct wrapped_integer {
   // Mirrors host `field.into_raw_repr_reduced()`: extract the RAW Montgomery limb (NO
   // from_mont / canonicalization), unlike `from(wrapped_f)` which returns the canonical
   // value. Used by the add/sub mulmod/fmamod R^-1 fix (PR #309).
-  static DEVICE_FORCEINLINE wrapped_integer raw_repr_reduced_from_field(const wrapped_f &value) { return wrapped_integer{static_cast<T>(bf::into_raw_u32(value.inner))}; }
+  static DEVICE_FORCEINLINE wrapped_integer raw_repr_reduced_from_field(const wrapped_f &value) {
+    return wrapped_integer{static_cast<T>(bf::into_raw_u32(value.inner))};
+  }
 
   static DEVICE_FORCEINLINE wrapped_integer add(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner + rhs.inner); }
 
@@ -342,8 +344,7 @@ template <class R> struct WitnessProxy {
 // the write as a branchless select, so rows whose guard is false get a definite
 // zero without a separate prologue pass. Only valid when the column has no
 // unconditional write (else the `: 0` could clobber it).
-#define SET_WITNESS_PLACE_OR_ZERO(IDX, COND, V)                                                                                                                \
-  p.set_witness_place(IDX, wrapped_b::select(VAR(COND), wrapped_f::from(VAR(V)), wrapped_f::new_const(0)));
+#define SET_WITNESS_PLACE_OR_ZERO(IDX, COND, V) p.set_witness_place(IDX, wrapped_b::select(VAR(COND), wrapped_f::from(VAR(V)), wrapped_f::new_const(0)));
 #define SET_SCRATCH_PLACE(IDX, V) p.set_scratch_place(IDX, VAR(V));
 
 #define FN_BEGIN(N) template <class R> DEVICE_FORCEINLINE void fn_##N(const WitnessProxy<R> p) {
