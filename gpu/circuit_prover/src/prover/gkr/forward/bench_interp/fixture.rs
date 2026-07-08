@@ -54,9 +54,25 @@ use crate::upstream::{
 use cs::gkr_compiler::codegen_ir::{CodegenLayer, ExprNode, ProducerId};
 use field::{Field, FieldExtension, PrimeField};
 use gkr_design_space::graph::{AnalysisGraph, Origin};
-use gkr_eval_isa::compiler::fwd::{CompiledForward, PayloadRecord};
 
-use super::lower::BenchChallenges;
+/// All challenge values a forward payload table consumes, assembled from the
+/// fixture's captured Fiat-Shamir challenges (see `bench_challenges`). Mirrored
+/// host-side for the fwd-VM interpreter's resolver/lowering.
+pub(crate) struct BenchChallenges {
+    /// Lookup gamma; the routines read [g, g^2, 2g] from the production
+    /// `__constant__ ab_gkr_lookup_gamma_consts` (uploaded by the test).
+    pub gamma: E4,
+    /// Vector-lookup folding challenge; payloads carry alpha^k * coeff
+    /// products, so no alpha constant table is needed device-side.
+    pub alpha: E4,
+    /// Memory-argument linearization challenges by role (ADDR_LOW..VAL_HIGH).
+    pub perm_challenges: [E4; 6],
+    /// `permutation_argument_additive_part` (seeds every memory tuple).
+    pub perm_additive: E4,
+    /// Decoder-lookup fill value (production: alpha^(width-1) * table_id,
+    /// staged into a device slot; here an opaque input).
+    pub decoder_fill: E4,
+}
 
 /// Regeneration hint surfaced on any 5.1 precheck mismatch.
 pub(crate) const CODEGEN_IR_REGEN_CMD: &str = "cargo test -p cs --release -- --ignored codegen_ir";
@@ -452,29 +468,6 @@ impl CircuitFixture {
                 .try_get_ext_poly(addr)
                 .map(|p| (true, p.as_ptr() as *const u8))
         }
-    }
-
-    /// The flat reference column for payload `p`'s j-th dst: the resident
-    /// storage column at the gate's `dst[j].addr` / cache `out.1` (MaxQuadratic
-    /// gate dsts resolve to the hydrated witness-stage scratch value).
-    pub(crate) fn payload_dst_reference(
-        &self,
-        cf: &CompiledForward,
-        p: usize,
-        j: usize,
-    ) -> (bool, *const u8) {
-        let addr = match &cf.payloads[p] {
-            PayloadRecord::Gate(g) => g.dst[j].addr,
-            PayloadRecord::Cache(c) => {
-                assert_eq!(j, 0, "cache payload {p} has a single dst");
-                c.out.1
-            }
-        };
-        self.storage_column(addr).unwrap_or_else(|| {
-            panic!(
-                "payload_dst_reference: payload {p} dst {j} addr {addr:?} not resident in storage"
-            )
-        })
     }
 
     /// The owning `ProverContext` for this fixture's replay/A-B launches.
@@ -1011,262 +1004,3 @@ fn capture_forward_pass(
     )
 }
 
-// ===========================================================================
-// Task 6.B — real-fixture resolvers (the three-key-space leaf → device pointer
-// mapping the interpreter lowering consumes).
-//
-// `lower.rs` resolves a source/output/dst LEAF to a device column base; against
-// the real fixture every leaf maps through ONE of three companion key-spaces:
-//   - `addr_resolve`  (resident input/output/cache-out GKRAddress → ptr),
-//   - `cf.cached_alias` (same-layer Cached *Place* → producing cache → cache-out
-//     GKRAddress, which is an `addr_resolve` key once the cache has fired),
-//   - `scratch_ref`   (ScratchSpace/InnerLayer MaxQuadratic operands).
-// `VectorizedLookupSetup` cache outs are NOT bound at a GKRAddress; they live in
-// the forward setup's `generic_lookup()` buffer (resolved separately).
-// ===========================================================================
-
-/// Is `addr` a witness-stage scratch address (resolved via `scratch_ref`, not
-/// `addr_resolve`)? MaxQuadratic operands carry these.
-pub(crate) fn is_scratch_addr(addr: GKRAddress) -> bool {
-    matches!(
-        addr,
-        GKRAddress::ScratchSpace(_) | GKRAddress::InnerLayer { .. }
-    )
-}
-
-/// Look up a `GKRAddress`: `scratch_ref` first (the layer's hydrated scratch
-/// values), then the layer's `addr_resolve`, then the POST-CAPTURE `storage` as
-/// a fallback. The storage fallback covers a GateOutput source that references a
-/// MaxQuadratic output at the NEXT layer (`InnerLayer { layer: L+1 }`), hydrated
-/// only when that later layer was captured — resident in `storage` but absent
-/// from layer L's per-layer maps. Returns `None` if none carries it.
-pub(crate) fn resolve_addr(
-    layer: &LayerFixture,
-    storage: &GpuGKRStorage<BF, E4>,
-    addr: GKRAddress,
-) -> Option<*const u8> {
-    if is_scratch_addr(addr) {
-        if let Some(&(_, p)) = layer.scratch_ref.iter().find(|&&(a, _)| a == addr) {
-            return Some(p);
-        }
-    }
-    if let Some(&p) = layer.addr_resolve.get(&addr) {
-        return Some(p);
-    }
-    if let Some(p) = storage.try_get_base_poly(addr) {
-        return Some(p.as_ptr() as *const u8);
-    }
-    storage
-        .try_get_ext_poly(addr)
-        .map(|p| p.as_ptr() as *const u8)
-}
-
-/// Resolve the device base for the cache out of payload `ci` (a `Cached`
-/// GKRAddress that is an `addr_resolve` key once the cache has fired).
-pub(crate) fn resolve_cache_out(
-    layer: &LayerFixture,
-    storage: &GpuGKRStorage<BF, E4>,
-    cf: &CompiledForward,
-    ci: usize,
-) -> Option<*const u8> {
-    let addr = match &cf.payloads[ci] {
-        PayloadRecord::Cache(c) => c.out.1,
-        PayloadRecord::Gate(_) => return None,
-    };
-    resolve_addr(layer, storage, addr)
-}
-
-/// The materialized GKRAddress of producer `producer`'s output `out` — the gate
-/// `dst[out].addr` (or cache `out.1`). A `GateOutput` source/leaf references a
-/// gate whose output production is NOT in the forward program (not
-/// `fwd_eligible`, or scratch-prefilled — materialized separately into storage);
-/// its value is the resident column at that dst address.
-fn producer_output_addr(
-    layer_ir: &CodegenLayer,
-    producer: ProducerId,
-    out: u32,
-) -> Option<GKRAddress> {
-    match producer {
-        ProducerId::Gate(g) => layer_ir
-            .gates
-            .get(g as usize)
-            .and_then(|gate| gate.dst.get(out as usize))
-            .map(|slot| slot.addr),
-        ProducerId::GateExternal(g) => layer_ir
-            .gates_external
-            .get(g as usize)
-            .and_then(|gate| gate.dst.get(out as usize))
-            .map(|slot| slot.addr),
-        ProducerId::Cache(c) => layer_ir.caches.get(c as usize).map(|cache| cache.out.1),
-    }
-}
-
-/// Resolve ONE arena leaf node (source/output/dst) to its device column base.
-/// Branches on the arena variant + address class per the three-key-space logic.
-pub(crate) fn resolve_leaf_node(
-    layer: &LayerFixture,
-    storage: &GpuGKRStorage<BF, E4>,
-    cf: &CompiledForward,
-    layer_ir: &CodegenLayer,
-    node: usize,
-) -> *const u8 {
-    match &layer_ir.arena.nodes[node] {
-        ExprNode::Place { addr, .. } => {
-            // A same-layer Cached Place is an alias to its producing cache's out
-            // cell (resolved through cached_alias → cache-out address); a Cached
-            // Place with no producer this layer is resident from a prior layer
-            // (addr_resolve). Scratch Places resolve via scratch_ref.
-            if let Some(&ci) = cf.cached_alias.get(&node) {
-                resolve_cache_out(layer, storage, cf, ci as usize).unwrap_or_else(|| {
-                    panic!("resolve_leaf: cached alias node {node} (cache {ci}) unresolved")
-                })
-            } else {
-                resolve_addr(layer, storage, *addr).unwrap_or_else(|| {
-                    panic!("resolve_leaf: Place node {node} addr {addr:?} unresolved")
-                })
-            }
-        }
-        // A GateOutput leaf carries no address on the node. If it aliases a
-        // same-layer cache out, resolve through cached_alias; otherwise it is the
-        // output of a non-fwd-eligible producer materialized separately into
-        // storage — resolve through that producer's dst address (a MaxQuadratic
-        // producer's dst at `InnerLayer { layer: L+1 }` resolves to the hydrated
-        // scratch value via the storage fallback in `resolve_addr`).
-        ExprNode::GateOutput { producer, out, .. } => {
-            if let Some(&ci) = cf.cached_alias.get(&node) {
-                return resolve_cache_out(layer, storage, cf, ci as usize).unwrap_or_else(|| {
-                    panic!("resolve_leaf: GateOutput alias node {node} (cache {ci}) unresolved")
-                });
-            }
-            let addr = producer_output_addr(layer_ir, *producer, *out).unwrap_or_else(|| {
-                panic!("resolve_leaf: GateOutput node {node} ({producer:?} out {out}) has no producer dst")
-            });
-            resolve_addr(layer, storage, addr).unwrap_or_else(|| {
-                panic!(
-                    "resolve_leaf: GateOutput node {node} ({producer:?}) dst {addr:?} unresolved"
-                )
-            })
-        }
-        other => panic!("resolve_leaf: node {node} is not a leaf: {other:?}"),
-    }
-}
-
-/// Resolve a source-bank index `i` (into `cf.source_map.bf` / `.e4`) to its
-/// device column base, mapping the bank index → arena node → leaf resolution.
-pub(crate) fn resolve_source(
-    layer: &LayerFixture,
-    storage: &GpuGKRStorage<BF, E4>,
-    cf: &CompiledForward,
-    layer_ir: &CodegenLayer,
-    i: usize,
-    e4: bool,
-) -> *const u8 {
-    let node = if e4 {
-        cf.source_map.e4[i]
-    } else {
-        cf.source_map.bf[i]
-    };
-    resolve_leaf_node(layer, storage, cf, layer_ir, node)
-}
-
-/// If bf source-bank index `i` is a `VirtualSetup` Place leaf, return its poly
-/// kind. Virtual-setup columns have NO resident device buffer (production
-/// synthesizes them from the row index inside the kernel via
-/// `gkr_virtual_base_value`); the interpreter, which reads a flat pointer per
-/// source, needs them MATERIALIZED into a real buffer (see
-/// `materialize_virtual_setup_column`). e4 sources are never virtual-setup
-/// (virtual setup polys are base-field), so only the bf bank is scanned.
-pub(crate) fn source_virtual_setup(
-    cf: &CompiledForward,
-    arena: &[ExprNode],
-    i: usize,
-) -> Option<VirtualSetupPoly> {
-    let node = cf.source_map.bf[i];
-    match arena[node] {
-        ExprNode::Place {
-            addr: GKRAddress::VirtualSetup(poly),
-            ..
-        } => Some(poly),
-        _ => None,
-    }
-}
-
-/// Materialize the per-row values of a virtual-setup base column for `t` rows,
-/// byte-for-byte equal to the device `gkr_virtual_base_value` switch
-/// (`native/prover/gkr/support/kernel_helpers.cuh`). Returned canonical-form
-/// `BF` (Montgomery, the device column representation).
-pub(crate) fn materialize_virtual_setup_column(poly: VirtualSetupPoly, t: usize) -> Vec<BF> {
-    // Mirror of GKR_TIMESTAMP_COLUMNS_NUM_BITS (descriptors.cuh) — sourced from
-    // the upstream constant so it cannot drift from the native value.
-    let timestamp_bits: u32 = crate::upstream::TIMESTAMP_COLUMNS_NUM_BITS;
-    (0..t as u32)
-        .map(|row| {
-            let v = match poly {
-                VirtualSetupPoly::RangeCheck16Bits => {
-                    if row < (1u32 << 16) {
-                        row
-                    } else {
-                        0
-                    }
-                }
-                VirtualSetupPoly::RangeCheckTimestamp => {
-                    if row < (1u32 << timestamp_bits) {
-                        row
-                    } else {
-                        0
-                    }
-                }
-                VirtualSetupPoly::InitsAndTeardownsLow => (row << 2) & 0xffff,
-                VirtualSetupPoly::InitsAndTeardownsHigh => row >> 14,
-            };
-            // Host reduces (`from_u32_with_reduction`) while the device uses
-            // `from_u32_unchecked`; equal here because every arm value above is
-            // < BabyBear modulus. A future `VirtualSetupPoly` arm whose value may
-            // exceed the modulus MUST keep reducing here host-side.
-            BF::from_u32_with_reduction(v)
-        })
-        .collect()
-}
-
-/// Resolve a `cf.outputs` slot `j` (its arena node id is the second tuple field)
-/// to a `*mut u8` column base + whether the output column holds e4 elements.
-pub(crate) fn resolve_output(
-    layer: &LayerFixture,
-    storage: &GpuGKRStorage<BF, E4>,
-    cf: &CompiledForward,
-    layer_ir: &CodegenLayer,
-    j: u16,
-) -> (*mut u8, bool) {
-    let &(_, node) = cf
-        .outputs
-        .iter()
-        .find(|&&(jj, _)| jj == j)
-        .unwrap_or_else(|| panic!("resolve_output: unknown output slot {j}"));
-    let e4 = matches!(
-        layer_ir.arena.nodes[node],
-        ExprNode::Place {
-            domain: cs::gkr_compiler::codegen_ir::Domain::Ext,
-            ..
-        } | ExprNode::GateOutput {
-            domain: cs::gkr_compiler::codegen_ir::Domain::Ext,
-            ..
-        }
-    );
-    (
-        resolve_leaf_node(layer, storage, cf, layer_ir, node) as *mut u8,
-        e4,
-    )
-}
-
-/// Resolve the decoder execute-predicate column (a bf column at
-/// `BaseLayerMemory(machine_state.execute)`), for decoder vector lookups.
-pub(crate) fn resolve_decoder_pred(
-    layer: &LayerFixture,
-    storage: &GpuGKRStorage<BF, E4>,
-    decoder_predicate_address: Option<GKRAddress>,
-) -> *const u8 {
-    let addr = decoder_predicate_address
-        .expect("resolve_decoder_pred: decoder lookup without a machine-state predicate address");
-    resolve_addr(layer, storage, addr)
-        .unwrap_or_else(|| panic!("resolve_decoder_pred: predicate addr {addr:?} unresolved"))
-}

@@ -501,8 +501,7 @@ fn forward_kernel_outputs_fit_four_pointer_backing_model_all_main_layers() {
 ///   - dual-write co-occurrence == 0 (no single dst address is produced by two
 ///     distinct producers — gate output or cache out — within one layer).
 ///
-/// The backing key mirrors `gkr_eval_isa::compiler_v2::matrix_table::BackingKey`
-/// (Task 2.1): `{ canonical_layer = address_storage_layer(addr), AddressClass =
+/// The backing key is `{ canonical_layer = address_storage_layer(addr), AddressClass =
 /// classify(&addr, canonical_layer), field (FieldType), stride_class = 0 }`.
 /// Critically, every field comes from the launcher's `GpuGKRStorageLayout`
 /// (`layout.lookup`), NOT the ISA crate — the census is computed against the

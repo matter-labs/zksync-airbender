@@ -26,7 +26,10 @@
 // gkr_fwd_interp.cu, uploaded by Rust `upload_bench_program_to_constant`).
 // The 64 KB __constant__ budget has no room for another 28 KB array, and the
 // bench variants never run concurrently, so they share one upload slot.
-extern __constant__ u16 ab_gkr_bench_program[14336];
+// The LDC program-residency `__constant__` array (28KB of the 64KB budget).
+// Defined here now that the old `gkr_fwd_interp.cu` (its former home) is gone;
+// the Rust host binds it via `upload_bench_program_to_constant`.
+__constant__ u16 ab_gkr_bench_program[14336];
 
 namespace airbender::prover::gkr::bench {
 
