@@ -23,12 +23,13 @@ pub(crate) struct PowAndQueryIndexesState {
 /// Fused device-side PoW search + transcript `verify_pow` + query index
 /// assembly that advances a caller-owned rolling `device_seed` in place.
 ///
-/// 1. (if `pow_bits > 0`) run `ab_blake2s_pow_kernel` against `device_seed` to
-///    search a nonce; write the nonce directly into the caller-supplied
-///    `nonce_slab_dst` slot inside the proof slab.
-/// 2. (if `pow_bits > 0`) `transcript_commit(device_seed, [nonce_lo, nonce_hi])`
-///    advances the seed to match the post-`verify_pow` state. The nonce words
-///    are read from the same slab slot.
+/// 1. run `ab_blake2s_pow_kernel` against `device_seed` to search a nonce and
+///    write it into the caller-supplied `nonce_slab_dst` slot inside the proof
+///    slab (at `pow_bits == 0` the nonce is 0, matching the host `search_pow`).
+/// 2. `transcript_commit(device_seed, [nonce_lo, nonce_hi])` advances the seed
+///    to match the post-`verify_pow` state. Runs for EVERY bit count: the host
+///    `verify_pow` hashes `seed || nonce` and updates the seed even at
+///    `pow_bits == 0` (nonce 0), so this must not be skipped.
 /// 3. `transcript_squeeze(device_seed, d_raw_bits)` produces the padded random
 ///    u32 buffer.
 /// 4. `assemble_query_indexes(d_raw_bits, d_indexes)` builds the query
@@ -53,31 +54,34 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     let mut d_indexes: DeviceAllocation<u32> =
         context.alloc(num_queries, AllocationPlacement::BestFit)?;
 
-    // PoW search (GPU) → nonce, written directly into the slab slot. For
-    // pow_bits == 0 we emulate `nonce = 0` and skip the transcript commit
-    // (the host `verify_pow` is a no-op in that case too).
+    // PoW search (GPU) → nonce, written directly into the slab slot. At
+    // pow_bits == 0 the nonce is 0 (the host `search_pow` also returns 0), but
+    // the seed is STILL advanced by the commit below.
     if pow_bits > 0 {
         blake2s_pow(device_seed, pow_bits, u64::MAX, nonce_slab_dst, stream)?;
     } else {
         // SAFETY: `memory_set_async` is byte-granular; zeroing the 8-byte
         // `u64` slab slot through a `u8` view writes the canonical all-zero
-        // `nonce = 0` bit pattern expected by the `pow_bits == 0` fast path.
+        // `nonce = 0` bit pattern.
         unsafe {
             era_cudart::memory::memory_set_async(nonce_slab_dst.transmute_mut::<u8>(), 0, stream)?;
         }
     }
 
     // verify_pow on device: hash device_seed || [nonce_lo, nonce_hi] → new seed.
-    if pow_bits > 0 {
-        // SAFETY: the slab slot is a single `u64` (8 bytes, align 8) viewable
-        // as 2 little-endian `u32` words — the layout `transcript_commit`
-        // consumes (and the host `verify_pow` convention it replaces). The
-        // read is stream-ordered on the same `exec_stream` as the preceding
-        // `blake2s_pow` write into this same slot.
-        let nonce_as_u32: &DeviceSlice<u32> = unsafe { nonce_slab_dst.transmute::<u32>() };
-        let nonce_words = &nonce_as_u32[..2];
-        transcript_commit(device_seed, nonce_words, stream)?;
-    }
+    // ALWAYS runs, including at pow_bits == 0: the host `verify_pow` (which
+    // `search_pow` funnels through for every bit count) advances the seed even
+    // for a 0-bit / nonce-0 draw, so skipping this would diverge from the CPU
+    // transcript on the next challenge. Every `whir_pow_schedule` entry is
+    // currently non-zero, so the 0-bit case is not exercised today, but the two
+    // paths must agree (and it mirrors `schedule_draw_e4_challenges_with_pow`).
+    // SAFETY: the slab slot is a single `u64` (8 bytes, align 8) viewable as 2
+    // little-endian `u32` words — the layout `transcript_commit` consumes (the
+    // host `verify_pow` nonce encoding). The read is stream-ordered on the same
+    // `exec_stream` as the `blake2s_pow` / `memory_set_async` write above.
+    let nonce_as_u32: &DeviceSlice<u32> = unsafe { nonce_slab_dst.transmute::<u32>() };
+    let nonce_words = &nonce_as_u32[..2];
+    transcript_commit(device_seed, nonce_words, stream)?;
 
     // Squeeze enough random u32 words to cover `num_queries * query_domain_log2`
     // bits of query material plus the first PoW header word that the index
