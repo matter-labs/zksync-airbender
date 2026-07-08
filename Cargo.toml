@@ -56,6 +56,7 @@ members = [
     "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 
+    "riscv_common",
     "riscv_transpiler",
 ]
 
@@ -155,7 +156,6 @@ full_statement_verifier  = { path = "./full_statement_verifier", default-feature
 
 non_determinism_source = { path = "./non_determinism_source", default-features = false }
 riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
-execution_utils = { path = "./execution_utils", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
 gpu_witness_eval_generator = { path = "./gpu/witness_eval_generator", default-features = false }
 gpu_core = { path = "./gpu/core" }
