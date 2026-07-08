@@ -1,4 +1,4 @@
-// Ported from ntt-experiments include/ntt/dit_core.cuh (rr/v8-logn13-two-pass-ntt).
+// Ported from ntt-experiments include/ntt/dit_core.cuh.
 // Unified within-warp radix-2 DIT engine. Ported from dit_phase
 // (warp_ntt_2pass_dit.cuh), math-identical, with two simplifications:
 //   * SINGLE_ROUND restore only (DitRestore enum + STAGED branch + RESTORE
@@ -12,7 +12,6 @@
 // Operates IN-PLACE on w[VPT]; leaves natural per-thread layout (slot (lane,r)
 // holds logical position lane*VPT + r). Handles sub-warp groups for LANES<32
 // (single-pass NTTS-per-warp packing) and the full warp for LANES==32.
-// Closed forms + restore verified in scripts/dit_pass1_couple.py (all configs).
 #pragma once
 #include "dit_twiddles.cuh" // pt_stage_offset, load_local_stage_tw
 #include <primitives/field.cuh>

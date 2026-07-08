@@ -1152,9 +1152,7 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_2, 8, 2);
 // non-DIT 1-pass kernel the strategy selects). ORACLE = the compact kernels
 // called DIRECTLY (independent baseline: they read `__constant__` twiddle
 // tables, NOT DitTriangles): log_n <= 12 -> 1-pass compact; log_n == 13 ->
-// 2-pass-compact-initial. The previous candidate used
-// `monomials_to_evals_streaming_with_log_vpt` (removed in Task 6) and the
-// previous oracle routed through the single-coset entry (now DIT — circular).
+// 2-pass-compact-initial.
 // `log_vpt` is retained for the test matrix shape; routing now chooses the VPT
 // variant internally. `num_cols` columns are written back-to-back per coset.
 #[cfg(not(no_cuda))]
@@ -1359,8 +1357,6 @@ streaming_v4_parity_test!(streaming_v4_log_n_5_cosets_64_cols_4, 5, 64, 4);
 // v8 sanity case — single-pass should already cover log_n=8
 streaming_v8_parity_test!(streaming_v8_parity_log_n_8_cosets_8, 8, 8, 4);
 
-// Two-pass-transpose target sizes — fail until Tasks 3-8 land (kernel doesn't
-// exist for these sizes yet; the launcher assertion in ntt.rs panics at runtime).
 streaming_v8_parity_test!(streaming_v8_parity_log_n_9_cosets_4, 9, 4, 4);
 streaming_v8_parity_test!(streaming_v8_parity_log_n_10_cosets_2, 10, 2, 4);
 streaming_v8_parity_test!(streaming_v8_parity_log_n_11_cosets_1, 11, 1, 4);

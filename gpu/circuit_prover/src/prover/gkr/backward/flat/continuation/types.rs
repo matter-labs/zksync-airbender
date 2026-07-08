@@ -5,15 +5,14 @@ use crate::upstream::Field;
 // Continuation (round 3+) unique-source table size. Sizes the inline `sources`
 // array in the compact `GpuFlatContinuationUnifiedDesc` (+ its devptr companion)
 // and the per-step host source `Box`es. Raised 512 -> 3072 for
-// blake2_with_compression (Stage 4); stays well under the compact desc's 32 KB
+// blake2_with_compression; stays well under the compact desc's 32 KB
 // inline ceiling (~4587 max). Lockstep with native `continuation.cuh`.
 pub(crate) const FLAT_CONT_MAX_SOURCES: usize = 3072;
 // Term-category capacities for the host-side `FlatContinuationTermDesc` builder
-// intermediate (and the now-dead native `flat_continuation_static_desc` mirror).
-// These size heap `Box`es only — the kernel-facing terms are compiled into the
-// compact unified desc's `terms` array (device-ified via Stage 3b when over
-// `FLAT_CONT_UNIFIED_MAX_TERMS`). Raised for blake2_with_compression (547 fused
-// kernels/layer, Stage 4) which overflows the previous 256/640/4608/128 caps.
+// intermediate. These size heap `Box`es only — the kernel-facing terms are
+// compiled into the compact unified desc's `terms` array (device-ified via
+// Stage 3b when over `FLAT_CONT_UNIFIED_MAX_TERMS`). Raised for
+// blake2_with_compression (547 fused kernels/layer).
 pub(crate) const FLAT_CONT_MAX_C0_ONLY_LINEAR: usize = 2048;
 pub(crate) const FLAT_CONT_MAX_UNIFIED_QUADRATIC: usize = 12288;
 pub(crate) const FLAT_CONT_MAX_UNIFIED_LINEAR: usize = 512;

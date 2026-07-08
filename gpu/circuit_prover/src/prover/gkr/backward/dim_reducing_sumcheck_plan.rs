@@ -274,9 +274,9 @@ where
         let mut device_claim: DeviceAllocation<E> = context.alloc(1, AllocationPlacement::Top)?;
         let mut device_eq_prefactor: DeviceAllocation<E> =
             context.alloc(1, AllocationPlacement::Top)?;
-        // #320: every round — including the last (acc_size == 1) — now emits a
+        // Every round — including the last (acc_size == 1) — emits a
         // univariate monomial, so `internal_round_coefficients` has
-        // `folding_steps` entries (was `folding_steps - 1`). Must match the
+        // `folding_steps` entries. Must match the
         // `ProofLayout` allocation (`sumcheck_num_rounds * 4`).
         let coeffs_total_len = self.folding_steps * 4;
         // B1: per-round kernels write coeffs straight into the slab range for
@@ -376,11 +376,9 @@ where
 
         // Hoisted: `device_claim_point_out` holds the next layer's
         // `[claim_point || batching_challenge]` buffer. Slots `[0..folding_steps - 1]`
-        // are written in-place by the per-round update kernels (replacing
-        // the old `round_challenge_storage` + post-loop D2D pack), and
+        // are written in-place by the per-round update kernels, and
         // slots `[folding_steps - 1..folding_steps + 2]` are written by the
-        // post-loop transcript squeeze (replacing the old `d_layer_challenges`
-        // allocation + post-loop D2D pack).
+        // post-loop transcript squeeze.
         let next_claim_point_and_batching_len = self.folding_steps + 2;
         assert!(
             next_claim_point_and_batching_len <= MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN,
@@ -400,8 +398,7 @@ where
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
-            // Variant-agnostic round-kernel head (V_combined will replace
-            // this with a cooperative-launch single kernel in Task 9).
+            // Variant-agnostic round-kernel head.
             if step == 0 {
                 self.launch_round0_kernels(acc_size, context)?;
             } else {
@@ -487,7 +484,7 @@ where
         // (or in `fallback_device_coeffs` for test paths). No post-loop
         // slab D2D needed.
 
-        // Device-side inter-layer transcript (#320). The `[E;4]` last-round
+        // Device-side inter-layer transcript. The `[E;4]` last-round
         // bilinear line is gathered from the round storage into a TEMP device
         // buffer, then reduced over the last-output coordinate at
         // `r_before_last` (drawn in-loop at `claim_point_out[last_step]`) into

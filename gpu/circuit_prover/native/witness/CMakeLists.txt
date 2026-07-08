@@ -1,5 +1,4 @@
 target_sources(circuit_prover_native PRIVATE
-#        arg_utils.cuh
         common.cuh
         memory.cuh
         memory_delegation.cu

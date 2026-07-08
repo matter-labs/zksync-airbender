@@ -125,7 +125,6 @@ const _: () = DelegationAbi {
     base_register: 10,
 });
 
-// pub mod arg_utils;
 pub(crate) mod layout;
 pub(crate) mod memory_delegation;
 pub(crate) mod memory_unrolled;

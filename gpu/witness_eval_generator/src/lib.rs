@@ -279,7 +279,6 @@ impl Generator {
                             todo!()
                         } else {
                             // do nothing and rely on the generic procedure. Hope that compiler optimizes out unused expressions
-                            // quote! {}
                         }
                     }
                     ColumnAddress::SetupSubtree(_idx) => {

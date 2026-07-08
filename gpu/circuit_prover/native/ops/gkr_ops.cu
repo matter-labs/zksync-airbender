@@ -199,7 +199,7 @@ EXTERN __global__ void ab_backward_new_claims_linear_kernel(const e4 *last_evals
   new_claims_out[idx] = e4_lerp(v0, v1, r);
 }
 
-// Dim-reducing final-round LSB-line reduction (#320). The last sumcheck round now
+// Dim-reducing final-round LSB-line reduction. The last sumcheck round now
 // emits a univariate monomial and draws `r_before_last` in-loop; the [e4;4] bilinear
 // `last_evals` (over (last-output-coord) x (LSB-coord), packed
 // [v0=(0,0), v1=(0,1), v2=(1,0), v3=(1,1)]) is reduced over the last-output coord at

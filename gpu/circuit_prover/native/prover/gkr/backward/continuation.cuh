@@ -456,8 +456,7 @@ struct flat_term_tables {
 };
 
 // Inline term/tile accessor: reads the three arrays straight out of the inline
-// __grid_constant__ descriptor. Used by the fast path — the templated helpers
-// compile to identical code as before Stage 3b.
+// __grid_constant__ descriptor. Used by the fast path.
 template <typename Desc> struct term_tables_inline {
   const Desc &desc;
   DEVICE_FORCEINLINE flat_unified_term term(unsigned i) const { return desc.terms[i]; }

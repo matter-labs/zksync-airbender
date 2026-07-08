@@ -10,19 +10,6 @@ using namespace ::airbender::witness::trace;
 
 namespace airbender::witness::memory {
 
-// struct ShuffleRamInitAndTeardownLayout {
-//   u32 lazy_init_addresses_columns[REGISTER_SIZE];
-//   u32 lazy_teardown_values_columns[REGISTER_SIZE];
-//   u32 lazy_teardown_timestamps_columns[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
-// };
-//
-// #define MAX_INITS_AND_TEARDOWNS_SETS_COUNT 16
-//
-// struct ShuffleRamInitAndTeardownLayouts {
-//   const u32 count;
-//   const ShuffleRamInitAndTeardownLayout layouts[MAX_INITS_AND_TEARDOWNS_SETS_COUNT];
-// };
-
 DEVICE_FORCEINLINE void write_bool_value(const Address column, const bool value, const matrix_setter<bf, st_modifier::cg> dst) {
   dst.set_at_col(column.offset, bf::from_u32_unchecked(value));
 }

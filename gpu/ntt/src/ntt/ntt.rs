@@ -282,8 +282,6 @@ pub fn evals_to_monomials_2_pass(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Column batching: both passes use `grid_dim.y` for column (.x = blocks).
-    // first_9/first_10 already supported grid_dim.y; last_14 picked it up in
-    // Phase A.
     let n = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
@@ -1289,10 +1287,6 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset_with_coset_range(
         num_cosets.is_power_of_two(),
         "num_cosets must be a power of 2 (got {num_cosets})"
     );
-    // assert!(
-    //     (coset_index_base == 0) || coset_index_base.is_power_of_two(),
-    //     "coset_index_base must be a power of 2 (got {coset_index_base})"
-    // );
     bitreversed_monomials_to_natural_evals_multi_coset_impl(
         inputs_matrix,
         outputs,
@@ -1370,7 +1364,7 @@ fn bitreversed_monomials_to_natural_evals_multi_coset_impl(
     let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
     // Compact 1-pass (log_n in [4, 12]) and 2-pass-compact-initial (log_n in
     // [13, 20]) kernel families now consume cosets_per_launch directly. Other
-    // ranges fall back to a per-coset loop until B4/B5 flip their kernels.
+    // ranges fall back to a per-coset loop.
     let mut d_table_scratch = d_table_scratch;
     if strategy.passes.len() == 1 {
         let mut outputs_matrix = DeviceMatrixMut::new(outputs, trace_len);

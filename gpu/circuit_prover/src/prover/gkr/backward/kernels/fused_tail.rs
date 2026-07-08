@@ -233,8 +233,8 @@ cuda_kernel_declaration!(pub(crate)
     )
 );
 
-// Device-pointer TERMS variants of the warp-partial continuation kernels
-// (Stage 3b): terms/tiles moved to device memory alongside the coefficients,
+// Device-pointer TERMS variants of the warp-partial continuation kernels:
+// terms/tiles moved to device memory alongside the coefficients,
 // selected when the inline desc would overflow the 32 KB cap.
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) GpuGKRMainRound1FlatDevptrTermsCompactUnifiedCompact<T>,

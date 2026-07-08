@@ -19,12 +19,13 @@ EXTERN __device__ __constant__ e4 ab_gkr_lookup_gamma_consts[3];
 // Output pointers live inline on each category entry: every gate produces its
 // output(s) exactly once, so there is no need for an output indirection table.
 //
-// Only the "direct-source" gate variants are supported. Mapping-based gates
-// (LOOKUP_*_FROM_VECTOR_INPUTS, LOOKUP_PAIR_FROM_BASE_INPUTS,
-// LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS, etc.) only appear in uncached GKR
-// layouts (`*_no_caches_gkr.json`); circuit_prover exclusively consumes cached
-// layouts, where mapping-based relations are pre-materialized upstream into
-// the direct-source categories below.
+// Both the "direct-source" gate variants and the direct no-cache mapped lookup
+// categories (LOOKUP_*_FROM_VECTOR_INPUTS, LOOKUP_PAIR_FROM_BASE_INPUTS,
+// LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS, etc.) are supported. Cached layouts
+// pre-materialize mapping-based relations upstream into the direct-source
+// categories; uncached layouts (`*_no_caches_gkr.json`) feed them through the
+// `flat_fwd_mapped_*` categories below, which consume Stage-1 mapping arrays
+// directly.
 
 namespace airbender::prover::gkr {
 

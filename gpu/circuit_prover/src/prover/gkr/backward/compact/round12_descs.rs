@@ -430,9 +430,7 @@ fn resolve_round2_cache_pointer<E: Field>(
 }
 
 /// Build a compact round-2 unified descriptor directly from the static round-2
-/// desc, the continuation plan, and storage. Fuses
-/// `build_round2_tiled_desc + convert_flat_round2_unified_legacy_to_compact`
-/// into a single pass.
+/// desc, the continuation plan, and storage.
 ///
 /// Mirrors the round-1 fused builder with three differences:
 /// 1. Base entries carry an extra `base_quarter_size` (= base_poly_size / 4)

@@ -208,7 +208,6 @@ impl Generator {
                 let lhs = self.integer_expr_into_var(value);
                 let literal = *num_bits;
                 let new_ident = self.create_var();
-                // assert!(lhs != new_ident);
                 self.push(&format!(
                     "LOWEST_BITS({type_ident}, {new_ident}, {lhs}, {literal})\n"
                 ));

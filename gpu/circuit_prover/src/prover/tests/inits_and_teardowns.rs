@@ -594,8 +594,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             "transcript-derived lookup challenges diverged"
         );
 
-        // `evaluate_layer` no longer takes the constraints-batch challenge; ignore the third
-        // element so the destructuring still mirrors the on-device 3-tuple layout.
+        // Ignore the third element (the constraints-batch challenge, unused by
+        // `evaluate_layer`) so the destructuring mirrors the on-device 3-tuple layout.
         let [lookup_alpha, lookup_additive_part, _constraints_batch_challenge] =
             cpu_lookup_challenges;
         let mut gkr_storage = GKRStorage::<BF, E4>::default();

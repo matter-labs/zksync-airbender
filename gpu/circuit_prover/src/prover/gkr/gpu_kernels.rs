@@ -2,9 +2,9 @@
 //!
 //! `GpuKernels` is the umbrella over the per-phase kernel sub-traits, each of
 //! which is defined and implemented inside its own leaf module
-//! (`forward::kernels`, `backward::kernels`, `setup::kernels`). The spine no
-//! longer imports concrete leaf kernel symbols — adding a new extension field
-//! (e.g. `E6`) means writing one `impl` per sub-trait in the leaves.
+//! (`forward::kernels`, `backward::kernels`, `setup::kernels`). Adding a new
+//! extension field (e.g. `E6`) means writing one `impl` per sub-trait in the
+//! leaves.
 
 use crate::prover::gkr::backward::kernels::BackwardKernels;
 use crate::prover::gkr::forward::kernels::ForwardKernels;

@@ -64,10 +64,6 @@ pub(super) fn build_cpu_recursive_whir_oracle_for_test(
     // #279: route through the canonical recursive-oracle commit so the test
     // reference matches the production WHIR leaf encoding exactly (coefficient
     // form by default; the `eval_leaves` feature selects the eval-form variant).
-    // Previously this rebuilt the Merkle tree from raw coset evaluations
-    // (eval-form), which diverged from the coeff-form production oracles and
-    // surfaced as a "PoW nonce diverged" mismatch once #320 unblocked the WHIR
-    // stage of the stagewise parity test.
     prover::gkr::whir::commit_single_ext_poly_for_test::<BF, E4, DefaultTreeConstructor>(
         cosets,
         values_per_leaf,

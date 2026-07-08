@@ -34,9 +34,7 @@ pub use common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 pub use verifier_common::errors::DebugErrorCreator;
 pub use verifier_common::transcript::Blake2sBufferingTranscript;
 
-// PR-332 follow-up (3a5f4102): the recursion protocol helpers we asked
-// upstream to export as library code. These replace the deleted
-// `interim_upstream` byte-mirrors.
+// The recursion protocol helpers we asked upstream to export as library code.
 pub use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
     final_blake_mode, load_fsv_program, unified_switch_cycles, unrolled_blake_mode,

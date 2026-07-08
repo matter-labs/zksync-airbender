@@ -560,7 +560,7 @@ fn prove_unified_delegation_factors(
 /// Wrap a host-resident delegation witness `buffer` into the `TracingDataHost`
 /// the GPU `create_transfers` consumes. Generic over the delegation witness type
 /// via `DelegationTracingDataHostSource::get`, so it serves bigint / blake2 /
-/// keccak alike (Task 7 generalizes the callers). The buffer rides as a single
+/// keccak alike. The buffer rides as a single
 /// chunk, mirroring the unified/per-family `*_tracing_host_for_test` helpers.
 pub(super) fn make_delegation_tracing_host_for_test<W>(buffer: Vec<W>) -> TracingDataHost<Global>
 where
@@ -1008,8 +1008,8 @@ fn prepare_unified_fixture(
             &worker,
         );
 
-        // Prove the active delegations so Task 22 can close the no-filter
-        // grand-product accumulator to ONE.
+        // Prove the active delegations so the no-filter grand-product
+        // accumulator can close to ONE.
         let factors = prove_unified_delegation_factors(
             &snapshotter,
             &tape,

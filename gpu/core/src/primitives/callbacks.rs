@@ -8,8 +8,8 @@
 //! the per-stream keepalive bundle and dropped together once the proof or
 //! workflow that produced it finishes.
 //!
-//! See `docs/gpu_scheduling_contract.md` §Lifetime rules for the broader
-//! "scheduled vs. completed" distinction.
+//! See `gpu/circuit_prover/docs/gpu_scheduling_contract.md` §Lifetime rules for
+//! the broader "scheduled vs. completed" distinction.
 
 use era_cudart::execution::{launch_host_fn, HostFn};
 use era_cudart::result::CudaResult;

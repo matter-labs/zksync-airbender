@@ -749,7 +749,7 @@ fn fold_eq_values_in_place_matches_cpu() {
 
 // ---------------------------------------------------------------------------
 // CPU ground-truth helpers for the GPU factored-eq layout used by the
-// backward GKR sumcheck (Task 1 of the eq-factor plan).
+// backward GKR sumcheck.
 // ---------------------------------------------------------------------------
 
 fn random_e4<R: rand::Rng>(rng: &mut R) -> E4 {

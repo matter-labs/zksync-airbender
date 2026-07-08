@@ -16,9 +16,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let worker = Worker::new_with_num_threads(8);
     // load binary
 
-    // let binary = std::fs::read(test_artifact_path("examples/basic_fibonacci/app.bin")).unwrap();
     let binary = std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.bin")).unwrap();
-    // let binary = std::fs::read(test_artifact_path("riscv_transpiler/examples/keccak_f1600/app.bin")).unwrap();
     assert_eq!(binary.len() % 4, 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -27,13 +25,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    // let text_section =
-    //     std::fs::read(test_artifact_path("examples/basic_fibonacci/app.text")).unwrap();
     let text_section =
         std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.text")).unwrap();
-    // let text_section =
-    //     std::fs::read(test_artifact_path("riscv_transpiler/examples/keccak_f1600/app.text"))
-    //         .unwrap();
     assert_eq!(text_section.len() % 4, 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -76,11 +69,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
         total_shuffle_entries, 0,
         "expected RAM touches for stagewise parity test"
     );
-
-    // let flattened_inits_and_teardowns: Vec<_> = shuffle_ram_touched_addresses
-    //     .into_iter()
-    //     .flatten()
-    //     .collect();
 
     let mut expected_final_state = state;
     expected_final_state.counters = Default::default();

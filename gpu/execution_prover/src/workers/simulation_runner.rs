@@ -203,7 +203,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
                 entry.clone()
             } else {
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiling bytecode");
-                // #317: JittedCode::preprocess_bytecode takes pre-decoded
+                // JittedCode::preprocess_bytecode takes pre-decoded
                 // `&[Instruction]`. The JIT's delegation lowering recovers a
                 // delegated call's length by scanning the run of identical
                 // delegation instructions (jit/impls.rs, `Op::ZicsrDelegation`),

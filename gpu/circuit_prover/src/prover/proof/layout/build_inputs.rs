@@ -118,9 +118,8 @@ where
             layer_idx,
             sumcheck_num_rounds,
             final_step_eval_addresses: addresses.into_iter().collect(),
-            // #320: dim-reducing final step sends the `[E;2]` LSB line (was the
-            // full `[E;4]` bilinear); the last output coord is fixed in-loop at
-            // `r_before_last`.
+            // Dim-reducing final step sends the `[E;2]` LSB line; the last
+            // output coord is fixed in-loop at `r_before_last`.
             final_step_eval_degree: 2,
             // Dim-reducing layers don't host the kind of orphan-output
             // pattern that main-layer `MaxQuadratic` produces; the
@@ -134,8 +133,8 @@ where
             layer_idx,
             sumcheck_num_rounds: initial_trace_size_log_2,
             final_step_eval_addresses: main_layer_input_addresses_per_layer[layer_idx].clone(),
-            // #320: main-layer final step sends the single at-point evaluation
-            // (was the `[E;2]` line); the last coord is fixed in-loop at `last_r`.
+            // Main-layer final step sends the single at-point evaluation; the
+            // last coord is fixed in-loop at `last_r`.
             final_step_eval_degree: 1,
             extra_evaluations_addresses: main_layer_orphan_output_addresses_per_layer[layer_idx]
                 .clone(),
@@ -202,8 +201,8 @@ where
         });
     }
 
-    // Phase 1 of the WHIR-on-device migration: route `final_monomials`
-    // through the proof slab. The device-side WHIR final round writes
+    // Route `final_monomials` through the proof slab. The device-side WHIR
+    // final round writes
     // `1 << (initial_trace_size_log_2 - sum(whir_steps_schedule))` E4 values
     // into this range; the terminal slab D2H + `parse_whir_proof` then
     // populates `WhirPolyCommitProof::final_monomials` from it.

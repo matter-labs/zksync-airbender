@@ -222,7 +222,7 @@ const _: () = {
 };
 
 // ---------------------------------------------------------------------------
-// Device-pointer companions + term-tables bundle (Stage 3b)
+// Device-pointer companions + term-tables bundle
 // ---------------------------------------------------------------------------
 //
 // When a delegation's term/tile count overflows the inline __grid_constant__
@@ -404,7 +404,7 @@ const _: () = {
 };
 
 // ---------------------------------------------------------------------------
-// Host-side term/tile tables (Stage 3b device-terms path)
+// Host-side term/tile tables (device-terms path)
 // ---------------------------------------------------------------------------
 
 /// The three large per-descriptor arrays (`terms`, `tile_term_offsets`,

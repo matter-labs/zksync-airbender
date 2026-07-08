@@ -506,7 +506,7 @@ pub(crate) struct BasicUnrolledFixture {
     /// unified fixture, which proves the inits-and-teardowns layer.
     pub(crate) inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost>,
     /// Closure-assembly metadata captured from the same VM run, consumed by the
-    /// unified e2e test (Task 22) to drive the no-filter grand-product
+    /// unified e2e test to drive the no-filter grand-product
     /// accumulator to ONE. Empty/`None`/default for per-family fixtures.
     pub(crate) unified_register_final_state: [(u32, (u32, u32)); 32],
     pub(crate) unified_final_pc: u32,

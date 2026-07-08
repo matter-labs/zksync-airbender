@@ -51,7 +51,7 @@ impl DeviceProperties {
 ///
 /// Only the holder's lifetime is enforced — at call sites the pointee must
 /// still outlive every dereference. See
-/// [`docs/gpu_scheduling_contract.md`](../../docs/gpu_scheduling_contract.md)
+/// [`gpu/circuit_prover/docs/gpu_scheduling_contract.md`](../../../circuit_prover/docs/gpu_scheduling_contract.md)
 /// for the lifetime and access rules.
 #[repr(transparent)]
 pub struct UnsafeAccessor<T: ?Sized>(*const T);
@@ -92,7 +92,7 @@ unsafe impl<T: ?Sized> Sync for UnsafeAccessor<T> {}
 /// Raw `*mut T` wrapper with the same intent as [`UnsafeAccessor`] but for
 /// mutable borrows.
 ///
-/// See [`docs/gpu_scheduling_contract.md`](../../docs/gpu_scheduling_contract.md)
+/// See [`gpu/circuit_prover/docs/gpu_scheduling_contract.md`](../../../circuit_prover/docs/gpu_scheduling_contract.md)
 /// for the write-exclusivity and lifetime rules.
 #[repr(transparent)]
 pub struct UnsafeMutAccessor<T: ?Sized>(*mut T);

@@ -49,7 +49,6 @@ impl Generator {
                 self.push(&format!("FROM(b, {new_ident}, {var_ident})\n"));
             }
             BoolNodeExpression::FromGenericIntegerEquality { lhs, rhs } => {
-                // let type_ident = Self::ident_for_integer_binop(lhs, rhs);
                 let lhs = self.integer_expr_into_var(lhs);
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();
@@ -58,7 +57,6 @@ impl Generator {
                 ));
             }
             BoolNodeExpression::FromGenericIntegerCarry { lhs, rhs } => {
-                // let type_ident = Self::ident_for_integer_binop(lhs, rhs);
                 let lhs = self.integer_expr_into_var(lhs);
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();
@@ -67,7 +65,6 @@ impl Generator {
                 ));
             }
             BoolNodeExpression::FromGenericIntegerBorrow { lhs, rhs } => {
-                // let type_ident = Self::ident_for_integer_binop(lhs, rhs);
                 let lhs = self.integer_expr_into_var(lhs);
                 let rhs = self.integer_expr_into_var(rhs);
                 let new_ident = self.create_var();

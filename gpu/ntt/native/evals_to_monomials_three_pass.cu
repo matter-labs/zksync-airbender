@@ -38,7 +38,6 @@ EXTERN __launch_bounds__(512, 2) __global__
   gmem_in.add_row(gmem_block_offset);
   gmem_out.add_row(gmem_block_offset);
 
-  // __shared__ bf smem_block[49152];
   __shared__ bf smem_block[8192];
 
   bf vals[VALS_PER_THREAD];
@@ -181,11 +180,6 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
 
   // Register transpose from https://forums.developer.nvidia.com/t/transpose-2d-matrix-with-warp-shuffle-and-in-place-array/164045.
   // The problem is, it spills registers due to threadIdx.x being dynamic. I don't see an easy fix.
-  // #pragma unroll
-  //   for (int i = 1; i < 32; i++){
-  //     int idx = i; // threadIdx.x ^ i;
-  //     vals[idx].limb = __shfl_sync(0xffffffff, vals[idx].limb, idx);
-  //   }
 
   if (warp_id & 4) {
 #pragma unroll
@@ -233,12 +227,6 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
     for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
       gmem_out.set_at_row(row, vals[i]);
   } else {
-    // Simple option: uncoalesced, but vectorized and should fire off quickly.
-    //     uint4 *gmem_monomials_out_ptr = reinterpret_cast<uint4 *>(gmem_out.ptr + VALS_PER_THREAD * lane_id);
-    // #pragma unroll
-    //     for (int i{0}; i < VALS_PER_THREAD; i += 4, gmem_monomials_out_ptr++)
-    //       *gmem_monomials_out_ptr = {vals[i].limb, vals[i + 1].limb, vals[i + 2].limb, vals[i + 3].limb};
-
     // Unfortunately, 5090 seems to hate the uncoalesced stores. So instead we un-swizzle and store with coalescing.
     __syncthreads(); // Alternatively, we could try shuffle transpose to avoid the sync, or have some warps shuffle and some do smem swizzle.
 

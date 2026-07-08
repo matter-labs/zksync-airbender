@@ -8,7 +8,7 @@
 //! Every config is validated against the `bitreversed_monomials_to_natural_evals`
 //! oracle across ALL cosets emitted by a single grid=1 launch.
 //!
-//! Architecture notes (decided upstream — see the task spec):
+//! Architecture notes:
 //!  - The per-stage butterfly triangle (`tw_clean`) is computed in Rust and
 //!    uploaded; there is NO host-side CUDA twiddle code in the bring-up path.
 //!  - The engine reads the coset root ω on-device from the Rust-initialized
@@ -199,7 +199,7 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
         let mono_ptr = monomials_dev[..].as_ptr();
         let tw_ptr = tw_clean_dev[..].as_ptr();
         let out_ptr = (&mut out_dev[..]).as_mut_ptr();
-        // coset_out_stride = N keeps the Phase-1 contiguous-output expectation.
+        // coset_out_stride = N keeps the contiguous-output expectation.
         let coset_out_stride: u32 = 1u32 << log_n;
         let args = DitSingleArguments::new(
             mono_ptr,
@@ -519,9 +519,8 @@ fn build_coupled_triangle(log_n: u32, log_vpt: u32, log_n1: u32) -> Vec<BF> {
 }
 
 // ---------------------------------------------------------------------------
-// Rust port of `build_coset_delta_table<LOG_N, LOG_VPT>(bf* dst, step_per_iter)`
-// (from `/home/rr/code/ntt-experiments/include/twiddles_2pass.cuh`). Fills
-// VPT*THREADS = N entries in natural index order:
+// Rust port of `build_coset_delta_table<LOG_N, LOG_VPT>(bf* dst, step_per_iter)`.
+// Fills VPT*THREADS = N entries in natural index order:
 //   d[i] = ω^(bitrev(i, LOG_N) * step_per_iter),  i ∈ [0, N).
 // NO OMEGA_SHIFT — matches the kernel's `pow_omega` (br * step) convention.
 // ---------------------------------------------------------------------------
@@ -625,7 +624,7 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
         let tw_p2_ptr = tw_p2_dev[..].as_ptr();
         let d_ptr = d_table_dev[..].as_ptr();
         let out_ptr = (&mut out_dev[..]).as_mut_ptr();
-        // coset_out_stride = N keeps the Phase-1 contiguous-output expectation.
+        // coset_out_stride = N keeps the contiguous-output expectation.
         let coset_out_stride: u32 = 1u32 << log_n;
         let args = DitTwoPassArguments::new(
             mono_ptr,
@@ -813,7 +812,7 @@ dit_two_pass_parity_test!(dit_two_pass_11_2_parity, 11, 2);
 dit_two_pass_parity_test!(dit_two_pass_12_2_parity, 12, 2);
 
 // ===========================================================================
-// PHASE-2 device twiddle FILL kernels — parity vs the Rust builders.
+// Device twiddle FILL kernels — parity vs the Rust builders.
 //
 // The fill kernels (`gpu/ntt/native/dit_twiddle_fill.cu`, bound in
 // `super::super::dit`) construct the per-config butterfly-triangle and coset
@@ -998,7 +997,7 @@ dit_fill_d_table_parity_test!(dit_fill_d_table_12_parity, 12);
 dit_fill_d_table_parity_test!(dit_fill_d_table_13_parity, 13);
 
 // ===========================================================================
-// PHASE-2 Task 2 — context-init triangle precompute parity.
+// Context-init triangle precompute parity.
 //
 // `DeviceContext::create` builds the FULL fixed triangle set on-device (the
 // CLEAN + COUPLED config arrays in `super::super::dit`) right after the ω table
@@ -1066,14 +1065,14 @@ fn dit_context_triangle_precompute_parity() {
 }
 
 // ===========================================================================
-// PHASE-2 Task 3 — production launcher (`monomials_to_evals_dit`) parity.
+// Production launcher (`monomials_to_evals_dit`) parity.
 //
 // Exercises the launcher end-to-end vs the `bitreversed_monomials_to_natural_evals`
 // oracle across BOTH paths (single-pass, two-pass) AND the strided/multi-column
 // output layout enabled by the `coset_out_stride` ABI change. The launcher
 // borrows the precomputed triangles from the `DeviceContext` and fills the
 // two-pass d-table at runtime, so this covers the full production code path
-// (minus strategy/dispatch wiring, which is Task 4).
+// (minus strategy/dispatch wiring).
 //
 // Output layout (column-major): coset `k`, column `col` occupies the matrix
 // column `k*num_cols_per_coset + col`, i.e. BF offset
@@ -1393,7 +1392,7 @@ mod bench_variants {
             let tw_p2_ptr = tw_p2_dev[..].as_ptr();
             let d_ptr = d_table_dev[..].as_ptr();
             let out_ptr = (&mut out_dev[..]).as_mut_ptr();
-            // coset_out_stride = N keeps the Phase-1 contiguous-output expectation.
+            // coset_out_stride = N keeps the contiguous-output expectation.
             let coset_out_stride: u32 = 1u32 << log_n;
             // 8-arg ABI: NO cosets_per_block (K is a compile-time template arg).
             let args = DitTwoPassFixedArguments::new(
@@ -1579,7 +1578,7 @@ mod bench_variants {
             let mono_ptr = monomials_dev[..].as_ptr();
             let tw_ptr = tw_clean_dev[..].as_ptr();
             let out_ptr = (&mut out_dev[..]).as_mut_ptr();
-            // coset_out_stride = N keeps the Phase-1 contiguous-output expectation.
+            // coset_out_stride = N keeps the contiguous-output expectation.
             let coset_out_stride: u32 = 1u32 << log_n;
             // 7-arg ABI: runtime num_cosets (guard bound), NO d-table.
             let args = DitSingleStreamArguments::new(

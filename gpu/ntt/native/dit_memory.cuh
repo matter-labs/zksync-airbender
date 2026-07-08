@@ -1,4 +1,4 @@
-// Ported from ntt-experiments include/memory.cuh (rr/v8-logn13-two-pass-ntt).
+// Ported from ntt-experiments include/memory.cuh.
 // Slim matrix accessors with cache-modifier loads/stores.
 // Pattern matches gpu_core/native_headers/primitives/memory.cuh for the cg modifier,
 // stripped to the bf row/col API used by NTT kernels.
@@ -123,7 +123,7 @@ DEVICE_FORCEINLINE void st_v8_aligned(bf *p, bf a0, bf a1, bf a2, bf a3, bf a4, 
 // matches production's `st.global.cs` modifier so writes drain past L2 quickly
 // and don't pollute the cache with output the kernel will not read back.
 // PTX 8.8 `st.global.cs.v8.b32` → SASS `STG.E.EF.ENL2.256` on sm_100+ (fused
-// 256-bit). Targets sm_100+ only (this Makefile builds sm_100, so fine).
+// 256-bit). Targets sm_100+ only.
 DEVICE_FORCEINLINE void st_v8_aligned_cs(bf *p, bf a0, bf a1, bf a2, bf a3, bf a4, bf a5, bf a6, bf a7) {
   asm volatile("st.global.cs.v8.b32 [%0], {%1, %2, %3, %4, %5, %6, %7, %8};" ::"l"(p), "r"(bf::into_raw_u32(a0)), "r"(bf::into_raw_u32(a1)),
                "r"(bf::into_raw_u32(a2)), "r"(bf::into_raw_u32(a3)), "r"(bf::into_raw_u32(a4)), "r"(bf::into_raw_u32(a5)), "r"(bf::into_raw_u32(a6)),

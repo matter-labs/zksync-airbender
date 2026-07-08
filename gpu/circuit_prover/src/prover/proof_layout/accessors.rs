@@ -304,11 +304,11 @@ impl ProofLayout {
             .collect()
     }
 
-    /// Phase 3 (WHIR-on-device): parse every slab-resident WHIR proof field
-    /// into a fresh `WhirPolyCommitProof`. Base-layer `queries` are
-    /// populated directly from the slab — the Phase 3 gather kernels write
-    /// `query_indices` / `query_leaves` / `query_paths` for each base oracle
-    /// in row-major-per-query layout matching what the verifier consumes.
+    /// Parse every slab-resident WHIR proof field into a fresh
+    /// `WhirPolyCommitProof`. Base-layer `queries` are populated directly
+    /// from the slab — the gather kernels write `query_indices` /
+    /// `query_leaves` / `query_paths` for each base oracle in
+    /// row-major-per-query layout matching what the verifier consumes.
     pub(crate) fn parse_whir_proof(
         &self,
         slab: &[u8],
@@ -443,7 +443,7 @@ impl ProofLayout {
         }
     }
 
-    /// Phase 4: parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
+    /// Parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
     /// from the D2H'd slab.
     ///
     /// `extra_evaluations_by_layer` is the caller-provided sparse map for
@@ -462,7 +462,7 @@ impl ProofLayout {
         let mut result = BTreeMap::new();
         for (layer_slot, bw) in self.backward.iter().enumerate() {
             let coeffs_flat = self.backward_internal_coeffs_host(slab, layer_slot);
-            // #320: `sumcheck_num_rounds` monomials (was `- 1`).
+            // `sumcheck_num_rounds` monomials.
             debug_assert_eq!(coeffs_flat.len(), bw.sumcheck_num_rounds * 4);
             let internal_round_coefficients: Vec<[E4; 4]> = coeffs_flat
                 .chunks_exact(4)

@@ -50,7 +50,7 @@ impl GpuGKRDimensionReducingKernelKind {
 }
 
 // Dim-reducing layers are keyed by OutputType: 2 pairwise records for
-// PermutationProduct, up to 3 lookup records, plus (unified circuit, PR #305)
+// PermutationProduct, up to 3 lookup records, plus (unified circuit)
 // 2 pairwise records for InitsAndTeardownsProduct = 7 records / 10 challenges.
 // MUST stay in lockstep with the native mirror in
 // native/prover/gkr/support/descriptors.cuh (GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER /
@@ -227,15 +227,12 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     /// Device-resident Fiat-Shamir seed passed in by the caller, consumed by
     /// this layer's per-round + end-of-layer transcript work, and returned
     /// via `.take()` for the next backward layer scheduler to reuse. `None`
-    /// after the orchestrator has pulled it out. Replaces the per-layer entry
-    /// H2D that used to mirror `workflow_state.seed` into a fresh device slot.
+    /// after the orchestrator has pulled it out.
     pub(crate) device_seed: Option<DeviceAllocation<u32>>,
     /// Device-resident `[claim_point || batching_challenge]` buffer for the
     /// NEXT backward layer. Populated on-device from this layer's folding
     /// challenges + end-of-layer squeezed challenges. Taken by the orchestrator
-    /// via `.take()`. Replaces the per-layer entry H2D that used to copy
-    /// `workflow_state.current_claim_point` + `current_batching_challenge`
-    /// from host.
+    /// via `.take()`.
     pub(crate) device_claim_point_for_next_layer: Option<DeviceClaimPointAndBatching<E>>,
     /// Device-resident `current_claims` buffer for the NEXT backward layer.
     /// This layer's `device_new_claims` becomes the next layer's input to

@@ -607,7 +607,7 @@ pub(crate) fn launch_main_round2_unified_devptr<E: crate::prover::gkr::BackwardK
 }
 
 // ---------------------------------------------------------------------------
-// Device-pointer TERMS variants (Stage 3b): terms/tiles moved to device memory
+// Device-pointer TERMS variants: terms/tiles moved to device memory
 // alongside the coefficients, selected when the inline __grid_constant__ desc
 // would overflow the 32 KB cap (large delegations). Bit-identical to the
 // coeff-devptr variants above; the ONLY difference is that `terms`,

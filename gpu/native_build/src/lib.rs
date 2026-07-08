@@ -7,9 +7,6 @@
 //! env-var prefix, and two optional behaviors (exporting the native include
 //! dir; the deterministic-PoW feature gate). This crate centralizes it so each
 //! `build.rs` is a single [`CudaArchive`] call.
-//!
-//! The behavior is intentionally identical to the per-crate scripts it
-//! replaced — only the duplication is removed.
 
 use era_cudart_sys::{
     get_cuda_include_path, get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_message,
@@ -51,8 +48,7 @@ impl CudaArchive {
 
     /// Export the crate's `native/` directory as `cargo:include` so downstream
     /// crates can resolve `#include`s of its headers via `DEP_<LINKS>_INCLUDE`.
-    /// Emitted unconditionally (even in `no_cuda` mode), matching the prior
-    /// `gpu_hash` build script.
+    /// Emitted unconditionally (even in `no_cuda` mode).
     pub fn export_include(mut self, yes: bool) -> Self {
         self.export_include = yes;
         self

@@ -867,9 +867,9 @@ where
         let mut device_claim: DeviceAllocation<E> = context.alloc(1, AllocationPlacement::Top)?;
         let mut device_eq_prefactor: DeviceAllocation<E> =
             context.alloc(1, AllocationPlacement::Top)?;
-        // #320: every round — including the last (acc_size == 1) — now emits a
+        // Every round — including the last (acc_size == 1) — emits a
         // univariate monomial, so `internal_round_coefficients` has
-        // `folding_steps` entries (was `folding_steps - 1`). Matches the
+        // `folding_steps` entries. Matches the
         // `ProofLayout` allocation (`sumcheck_num_rounds * 4`).
         let coeffs_total_len = self.folding_steps * 4;
         // B1: per-round kernels write coeffs straight into the slab's

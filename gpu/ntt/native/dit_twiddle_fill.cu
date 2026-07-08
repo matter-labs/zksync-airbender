@@ -1,10 +1,9 @@
-// gpu/ntt/native/dit_twiddle_fill.cu
 // One-time device fill of the DIT engine's per-config twiddle buffers, sourced
 // from the Rust-initialized ab_ntt_forward_powers (get_forward_twiddle_power).
 // Mirrors the parity-proven Rust build_clean_triangle / build_coupled_triangle /
-// build_coset_delta_table layouts (see gpu/ntt/src/ntt/tests/dit_engine.rs and
-// git show d68a60a5^:gpu/ntt/native/dit_twiddles.cuh) index-for-index; there is
-// NO host-side twiddle compute. The triangles are <= ~8K entries (one-time fill,
+// build_coset_delta_table layouts (see gpu/ntt/src/ntt/tests/dit_engine.rs)
+// index-for-index; there is NO host-side twiddle compute. The triangles are
+// <= ~8K entries (one-time fill,
 // not perf-critical).
 //
 // LAUNCH CONTRACT: every kernel here is correct ONLY for grid = 1 (single

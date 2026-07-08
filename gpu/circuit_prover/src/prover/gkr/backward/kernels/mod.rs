@@ -101,7 +101,7 @@ pub(crate) trait BackwardKernels: Copy + Sized {
         GpuGKRMainRound3FlatDevptrUnifiedCompactSignature<Self>;
     const MAIN_ROUND3_FLAT_DEVPTR_EXPLICIT_UNIFIED_COMPACT:
         GpuGKRMainRound3FlatDevptrUnifiedCompactSignature<Self>;
-    // Device-pointer TERMS variants (Stage 3b): terms/tiles in device memory.
+    // Device-pointer TERMS variants: terms/tiles in device memory.
     const MAIN_ROUND1_FLAT_DEVPTR_TERMS_COMPACT_UNIFIED_COMPACT:
         GpuGKRMainRound1FlatDevptrTermsCompactUnifiedCompactSignature<Self>;
     const MAIN_ROUND2_FLAT_DEVPTR_TERMS_COMPACT_UNIFIED_COMPACT:

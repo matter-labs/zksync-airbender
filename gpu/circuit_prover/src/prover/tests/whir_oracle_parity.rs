@@ -854,8 +854,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     .unwrap();
     // Test-side slab D2H + parse. This mirrors the production terminal
     // assembly path (`schedule_terminal_proof_assembly`) without going through
-    // the orchestration helper, and replaces the prior cfg(test)-gated
-    // host-mirror writebacks that populated `proof.*` directly via callbacks.
+    // the orchestration helper.
     let mut slab_mirror =
         unsafe { context.alloc_host_uninit_slice::<u8>(whir_proof_layout.total_bytes) };
     {

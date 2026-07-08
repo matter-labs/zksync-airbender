@@ -73,7 +73,7 @@ pub(crate) struct GpuGKRTraceGeometry {
 pub(crate) struct BackwardLayerDims {
     pub(crate) layer_idx: usize,
     /// Total sumcheck rounds for this layer; `internal_round_coefficients` has
-    /// length `sumcheck_num_rounds`, each element `[E4; 4]` (#320: every round
+    /// length `sumcheck_num_rounds`, each element `[E4; 4]` (every round
     /// — including the last — emits a univariate monomial).
     pub(crate) sumcheck_num_rounds: usize,
     /// Addresses for `final_step_evaluations`, in a stable order. Each entry
@@ -135,7 +135,7 @@ pub(crate) struct WhirDims {
     /// `pow_nonces.len()` — equal to `whir_pow_schedule.len()`.
     pub(crate) pow_rounds: usize,
     /// `final_monomials.len()`. Must be derivable from the WHIR schedule at
-    /// `prove()` start — see the iterative-knitting-bumblebee plan.
+    /// `prove()` start.
     pub(crate) final_monomials_len: usize,
 }
 
@@ -168,7 +168,7 @@ pub(crate) struct OutputEvaluationsLayout {
 pub(crate) struct BackwardLayerLayout {
     pub(crate) layer_idx: usize,
     /// `internal_round_coefficients` — flat array of `[E4; 4]`,
-    /// length `sumcheck_num_rounds` (#320).
+    /// length `sumcheck_num_rounds`.
     pub(crate) internal_round_coefficients: Range<usize>,
     /// `final_step_evaluations` flat array — `addresses.len() *
     /// final_step_eval_degree` `E4` values, address order matches
@@ -314,9 +314,9 @@ impl ProofLayout {
         // Backward layers, in the order given.
         let mut backward = Vec::with_capacity(inputs.backward_layers.len());
         for layer in inputs.backward_layers.iter() {
-            // #320: every sumcheck round (incl. the last) emits a univariate
+            // Every sumcheck round (incl. the last) emits a univariate
             // monomial, so `internal_round_coefficients` has `sumcheck_num_rounds`
-            // entries (was `sumcheck_num_rounds - 1`).
+            // entries.
             let internal_count = layer.sumcheck_num_rounds;
             let internal_round_coefficients = alloc(&mut cur, internal_count * 4, size_of::<E4>());
             let final_evals_count =

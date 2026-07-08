@@ -40,7 +40,7 @@ pub(in crate::prover::gkr::backward) fn build_dimension_reducing_kernel_blueprin
     let mut next_batch_challenge_offset = 0usize;
     let mut blueprints = Vec::new();
     for (output_type, reduced_io) in layer.iter() {
-        // FS-safe merge (PR #305): both passes iterate `BTreeMap<OutputType>`
+        // FS-safe merge: both passes iterate `BTreeMap<OutputType>`
         // with the derived `Ord`; `InitsAndTeardownsProduct` is the last
         // discriminant (cs/src/definitions/gkr_layers.rs:5-10), so its 2
         // pairwise records / 2 challenges are always squeezed AFTER the

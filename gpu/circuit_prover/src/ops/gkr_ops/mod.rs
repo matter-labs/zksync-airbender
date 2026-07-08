@@ -204,7 +204,7 @@ pub(crate) fn backward_new_claims_linear(
     BackwardNewClaimsLinearFunction::default().launch(&config, &args)
 }
 
-/// Device-side dim-reducing final-round LSB-line reduction (#320).
+/// Device-side dim-reducing final-round LSB-line reduction.
 ///
 /// The last sumcheck round now emits a monomial and draws `r_before_last`
 /// in-loop; this reduces the `[E4; 4]` bilinear `last_evals` (packed 4 per

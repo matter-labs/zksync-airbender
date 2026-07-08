@@ -8,8 +8,7 @@
 //! - slots 0..2 are layer-0 read sources (BaseLayerWitness, BaseLayerMemory,
 //!   Setup + VirtualSetup) and are externally backed by trace holders.
 //! - slots 5..6 are this-layer write targets (Cached and InnerLayer) and are
-//!   the freshly-allocated consolidated backings the storage refactor will
-//!   target.
+//!   the freshly-allocated consolidated backings.
 //! - slot 7 is layer-0 ScratchSpace, externally backed by `stage1`.
 //! - slots 3..4 are kernel-side aliases for prev-layer slots 5/6 — never
 //!   populated in the storage layout.
@@ -67,7 +66,7 @@ pub struct GpuGKRLayerLayout {
     /// `GKRAddress -> (storage slot, field type, poly_idx within slot)`.
     pub index: BTreeMap<GKRAddress, (AddressClass, FieldType, u32)>,
     /// Poly count per `(slot, FieldType)`. Determines the size of the
-    /// consolidated backing the storage refactor will allocate.
+    /// consolidated backing.
     pub slot_poly_counts: BTreeMap<StorageSlot, u32>,
     /// Per-poly stride at this layer; one poly occupies `1 << log2_stride`
     /// elements within its `(slot, FieldType)` consolidated backing.

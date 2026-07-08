@@ -239,9 +239,9 @@ fn run_unified_stagewise_parity_test() {
     );
 
     // -------------------------------------------------------------------------
-    // GATE 2: GKR forward + backward parity (GPU == CPU stage-by-stage).
-    // Mirrors stagewise.rs:382-775 with add_sub_circuit -> compiled_circuit and
-    // unified-specific divergences described below.
+    // GKR forward + backward parity (GPU == CPU stage-by-stage).
+    // Mirrors the stagewise parity test with add_sub_circuit -> compiled_circuit
+    // and unified-specific divergences described below.
     // -------------------------------------------------------------------------
 
     // external_challenges (same hard-coded values as the fixtures helpers).
@@ -418,7 +418,7 @@ fn run_unified_stagewise_parity_test() {
             initial_layer_for_sumcheck
         );
         // Forward i/t-layer parity check: dimension_reducing_inputs includes the
-        // OutputType::InitsAndTeardownsProduct entry (Task 9 forward arm).
+        // OutputType::InitsAndTeardownsProduct entry.
         assert_eq!(
             gpu_forward_output.dimension_reducing_inputs,
             dimension_reducing_inputs
@@ -505,9 +505,8 @@ fn run_unified_stagewise_parity_test() {
     );
     // Unified-specific: insert the 2 i/t claims after the 8 from the helper
     // (10 total, not 8). The InitsAndTeardownsProduct entry is only present in
-    // the unified circuit (Task 9 forward arm); a missing claim here would panic
-    // in the backward claim_idx lookup (Task 11's fix is what makes the layout
-    // carry them).
+    // the unified circuit; a missing claim here would panic in the backward
+    // claim_idx lookup.
     {
         let it_io = &output_map[&OutputType::InitsAndTeardownsProduct];
         let eq_precomputed = make_eq_poly_in_full::<E4>(&evaluation_point, &worker);

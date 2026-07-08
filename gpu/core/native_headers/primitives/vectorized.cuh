@@ -91,7 +91,6 @@ struct vectorized_matrix_setter : vectorized_matrix_accessor<memory::matrix_sett
   }
 };
 
-// screw it, no fancier layers of deduplication
 template <memory::ld_modifier LD_MODIFIER, memory::st_modifier ST_MODIFIER, unsigned WIDTH>
 struct vectorized_matrix_getter_setter : vectorized_matrix_accessor<memory::matrix_getter_setter<field::base_field, LD_MODIFIER, ST_MODIFIER>, WIDTH> {
   using VALUE_TYPE = width_to_value_type<WIDTH>::VALUE_TYPE;

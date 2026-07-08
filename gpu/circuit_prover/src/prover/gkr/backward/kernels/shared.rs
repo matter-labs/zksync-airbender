@@ -11,7 +11,6 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
 
-/// Previous ceilings were 128 (unified layer 0 has 145 kernels) then 256.
 /// Raised to 1024 for the blake2_with_compression delegation, whose largest
 /// main layer fuses 547 kernels (Stage 4). 1024 gives ~2x headroom and stays
 /// under the dim-reducing descriptor-size projection ceiling (~1712 before the

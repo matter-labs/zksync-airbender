@@ -186,7 +186,7 @@ fn backward_range_sizes_match_inputs() {
     for (dims, laid) in inputs.backward_layers.iter().zip(layout.backward.iter()) {
         assert_eq!(laid.layer_idx, dims.layer_idx);
         assert_eq!(laid.sumcheck_num_rounds, dims.sumcheck_num_rounds);
-        // #320: `sumcheck_num_rounds` monomials (was `- 1`).
+        // `sumcheck_num_rounds` monomials.
         let internal_len = dims.sumcheck_num_rounds * 4;
         assert_eq!(
             laid.internal_round_coefficients.end - laid.internal_round_coefficients.start,

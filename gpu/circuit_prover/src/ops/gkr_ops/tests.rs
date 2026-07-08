@@ -630,7 +630,7 @@ fn backward_new_claims_linear_parity_randomized() {
     }
 }
 
-// `backward_dim_reducing_lsb_lines` must match the host dim-reducing #320
+// `backward_dim_reducing_lsb_lines` must match the host dim-reducing
 // final-round reduction: out[0] = interpolate_linear(evals[0], evals[2], rbl),
 // out[1] = interpolate_linear(evals[1], evals[3], rbl). The two LSB lines are
 // what the new structure commits to the transcript and sends in the proof.

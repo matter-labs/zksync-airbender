@@ -130,7 +130,7 @@ fn test_blake2_delegation_zero_call_commit_memory_matches_cpu() {
     assert_blake2_delegation_commit_memory_matches_cpu(compiled_circuit, true);
 }
 
-/// Follow-up #1 from the #305 merge review. The GATE-3 fixture injects the CPU
+/// The GATE-3 fixture injects the CPU
 /// proof's memory-commitment cap into the proof slab, so the memory-cap equality
 /// inside `assert_gkr_proof_eq_for_test` is vacuous for the unified circuit — the
 /// GPU memory-tree build over the unified column width is never compared to CPU.

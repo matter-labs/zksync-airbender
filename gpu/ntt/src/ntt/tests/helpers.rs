@@ -229,7 +229,6 @@ pub(super) fn run_evals_to_monomials(
             }
         });
     }
-    // ctx.destroy().unwrap();
 }
 
 #[cfg(not(no_cuda))]
@@ -401,7 +400,6 @@ pub(super) fn run_monomials_to_evals(
             }
         });
     }
-    // ctx.destroy().unwrap();
 }
 
 #[cfg(not(no_cuda))]

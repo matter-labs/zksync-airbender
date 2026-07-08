@@ -91,7 +91,7 @@ cuda_kernel!(pub(crate) AbDitFillDTable13, ab_dit_fill_d_table_13(dst: *mut BF, 
 
 // ---------------------------------------------------------------------------
 // Fixed config sets. Defined once here so the context-init triangle fill
-// (Task 2) and the production launcher (Task 3) share a single source of truth.
+// and the production launcher share a single source of truth.
 //
 // CLEAN `(log_m, log_vpt)` — the deduped 12-pair set: single-pass v4
 // (`log_m` 2..7) + v8 (`log_m` 3..8) UNION the two-pass pass-2 `(log_n2, log_vpt)`
@@ -130,8 +130,7 @@ pub(crate) const COUPLED_CONFIGS: &[(u8, u8)] = &[
 
 // ---------------------------------------------------------------------------
 // Geometry / sizing helpers (production ports of the parity-proven Rust ports
-// in `tests/dit_engine.rs`). Needed by Task 2 (buffer sizes) and Task 3 (d-table
-// size + dynamic smem).
+// in `tests/dit_engine.rs`).
 // ---------------------------------------------------------------------------
 
 /// `log_n2 = min(log_n / 2, log_vpt + 3)` (matches `TwoPassGeom::new`).
@@ -164,8 +163,7 @@ pub(crate) fn coupled_triangle_count(log_n: u32, log_vpt: u32) -> usize {
 // ---------------------------------------------------------------------------
 // Launch-contract-encapsulating dispatch helpers. Each fill config is a distinct
 // generated `cuda_kernel!` type; these match (config) -> launch and bake in the
-// grid=1 / block=256 contract so callers can't get it wrong. Used by Task 2
-// (context init) and Task 3 (runtime d-table fill).
+// grid=1 / block=256 contract so callers can't get it wrong.
 // ---------------------------------------------------------------------------
 
 /// Fixed block size for all fill launches; grid = 1 (single block) per the
@@ -251,9 +249,8 @@ pub(crate) fn fill_coupled_triangle(
     }
 }
 
-/// Launch the coset d-table fill kernel for `log_n` into `dst`. Not consumed
-/// until Task 3 (runtime per-LDE d-table fill); kept here so all three fill
-/// dispatchers share one launch-contract home.
+/// Launch the coset d-table fill kernel for `log_n` into `dst`. Kept here so all
+/// three fill dispatchers share one launch-contract home.
 pub(crate) fn fill_d_table(
     log_n: u32,
     dst: &mut DeviceSlice<BF>,
@@ -364,7 +361,7 @@ impl DitTriangles {
 }
 
 // ===========================================================================
-// PHASE-2 Task 3 — production launcher `monomials_to_evals_dit`.
+// Production launcher `monomials_to_evals_dit`.
 //
 // Runs the vendored DIT engine hot kernels (`ntt_single` / `ntt_two_pass`,
 // see `gpu/ntt/native/dit_kernels.cuh`, launched via the `ab_dit_single_*` /
@@ -374,7 +371,7 @@ impl DitTriangles {
 // `DitTriangles` from the `DeviceContext` and filling the two-pass d-table at
 // runtime into a caller-provided pooled scratch buffer.
 //
-// Wired into strategy/dispatch (Task 4) and the production callers (Task 5):
+// Wired into strategy/dispatch and the production callers:
 // `select_forward_strategy` routes log_n in [2, 13] here via
 // `NttKernelKind::MonomialsToEvalsDit`.
 // ===========================================================================

@@ -58,7 +58,7 @@ pub use setups::unrolled_circuits::{
 pub use setups::{inits_and_teardowns, read_binary};
 
 // `trace_and_split` — Fiat-Shamir transforms for the permutation argument.
-// pr-332 split the transform per execution kind: the unrolled one absorbs
+// The transform is split per execution kind: the unrolled one absorbs
 // per-family cap lists plus a dedicated inits-and-teardowns slot, the unified
 // one absorbs one (inits-and-teardowns top bits, memory cap) pair per unified
 // circuit (i&t are inline in the unified circuit). `derive_proof_artifacts`

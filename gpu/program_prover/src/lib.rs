@@ -4,8 +4,7 @@
 //! Converts `gpu_execution_prover::ProveResult` into
 //! `full_statement_verifier::ProgramProof`, builds the non-determinism word
 //! streams the `fsv_*` verifier binaries consume, and (behind the non-default
-//! `verifiers` feature) verifies proofs natively. Replaces the dead
-//! `execution_utils` GPU recursion driver.
+//! `verifiers` feature) verifies proofs natively.
 
 pub mod proof_assembly;
 pub mod upstream;

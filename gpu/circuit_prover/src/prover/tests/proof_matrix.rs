@@ -413,16 +413,9 @@ fn run_load_store_subword_only_profile_test() {
 // CPU unified orchestration test). All four build their fixture + CPU reference +
 // tracing host, then prove on the GPU.
 //
-// GPU `prove()` results — all byte-identical to the CPU reference (validated
-// 2026-07-02 via the full proof_parity matrix + multi_schedule):
-//   * blake2_g_function          — ✅ byte-exact (blake_g_function_calls = 80).
-//   * keccak_special5            — ✅ byte-exact.
-//   * bigint (BigIntWithControl) — ✅ byte-exact.
-//   * blake2_with_compression    — ✅ byte-exact (blake_calls = 10).
-//
 // keccak / bigint / blake2_with_compression originally overflowed the fused flat
 // backward path's inline `__constant__`/`__grid_constant__` capacity caps. They
-// are unblocked on this branch by the dual-path device-memory fallback + capacity
+// are unblocked by the dual-path device-memory fallback + capacity
 // raises (coeff / terms / recipe device buffers, per-layer cap raises), plus the
 // GKR materialize-gate sumcheck-emit fix and the WHIR query-index transcript fix.
 // All four tests are kept `#[ignore]`d (heavy GPU) — run with `--ignored`.
@@ -694,7 +687,7 @@ use riscv_transpiler::witness::BlakeGFunctionDelegationDestinationHolder;
 /// `blake_calls > 0` BEFORE the caller reaches the expensive GPU build.
 fn replay_blake2_with_compression_delegation_buffer(
 ) -> (Vec<Blake2sRoundFunctionDelegationWitness>, TableDriver<BF>) {
-    // multi_family_smoke is a reduced-machine program; since pr-332 it uses the
+    // multi_family_smoke is a reduced-machine program; it uses the
     // special-opcode extension only the reduced decoder knows.
     let buffer = replay_delegation_trace_buffer_for_workload::<_, ReducedMachineDecoderConfig>(
         BLAKE2_WITH_COMPRESSION_BINARY_PATH,
@@ -896,7 +889,7 @@ fn prepare_blake2_g_function_profiling_fixture() -> BasicUnrolledFixture {
     fixture
 }
 
-/// blake2_g_function delegation proof_parity. VERIFIED ✅ PASS: the GPU proof is
+/// blake2_g_function delegation proof_parity. The GPU proof is
 /// byte-identical to the CPU reference (blake_g_function_calls = 80). This is the
 /// one delegation that proves end-to-end via the GPU `prove()` path, confirming the
 /// generic delegation fixture builder is sound. `#[ignore]`d only because it is a
@@ -926,7 +919,7 @@ fn run_blake2_g_function_profile_test() {
 // unified multi_schedule (with closure-to-ONE grand-product assertions)
 // ---------------------------------------------------------------------------
 
-/// VALIDATION GATE 3 (Task 22): full e2e unified proof parity + closure-to-ONE.
+/// Full e2e unified proof parity + closure-to-ONE.
 ///
 /// Proves the unified_reduced_machine circuit on the GPU and asserts the proof is
 /// field-wise bit-exact vs the CPU `prove_configured_with_gkr` reference
@@ -1063,7 +1056,6 @@ fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixtur
 //      witness oracle, where the CPU's dummy tree yields an empty cap. Fixed in
 //      `proof_layout/accessors.rs::parse_whir_proof` by gating the base cap on
 //      `num_columns == 0`.
-// See .agents/audits/2026-07-01-gpu-inits-and-teardowns-backward-divergence.md.
 #[test]
 #[serial]
 #[ignore]

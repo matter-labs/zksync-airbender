@@ -1,4 +1,4 @@
-//! Backend-generic recursion-ladder driver for the CLI, built on the PR-332
+//! Backend-generic recursion-ladder driver for the CLI, built on the
 //! proving stack:
 //!
 //! - CPU proving: `prover_examples::{unrolled,unified}::prove_*_execution_with_replayer`.
@@ -185,7 +185,7 @@ impl ProofCounts {
     }
 }
 
-/// Proof artifact, schema v2 (PR-332 stack). `proof` + `setups` are enough to
+/// Proof artifact, schema v2. `proof` + `setups` are enough to
 /// verify natively; `chain_end_params` is the ordered list of layer
 /// `end_params` from base onward, from which the recursion chain state after
 /// this artifact's layer (`chain_hash` / `chain_preimage`) is reconstructed
@@ -866,8 +866,7 @@ pub fn verify_artifact(
 }
 
 // ==============================================================================
-// Program binding (port of PR #321, commit a2d7ad19, from the old
-// execution_utils-based cli)
+// Program binding
 // ==============================================================================
 //
 // The artifact JSON (program_*_keccak, chain_end_params, chain_hash, setups,
@@ -1094,7 +1093,7 @@ fn expected_chain_end_params(
     Ok(expected)
 }
 
-/// Bind a verified proof to the program supplied by the caller (PR #321).
+/// Bind a verified proof to the program supplied by the caller.
 ///
 /// The cryptographic verifier returns the recursion chain it actually proved
 /// in `output[8..16]`: for a base-layer proof `begin(end_params)`, for a
@@ -1277,8 +1276,8 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-/// Port of PR #321's `recursion_binding_tests`, adapted to
-/// `FsvRecursionChain` (no proving required).
+/// Recursion-binding tests, adapted to `FsvRecursionChain` (no proving
+/// required).
 #[cfg(test)]
 mod recursion_binding_tests {
     use super::*;

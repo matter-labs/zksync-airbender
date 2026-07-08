@@ -156,7 +156,6 @@ impl GpuWhirExtensionOracle {
             "recursive WHIR oracles require LDE factor > 1"
         );
 
-        // let trace_len = monomial_coeffs.len();
         let trace_len_log2 = trace_len.trailing_zeros() as usize;
         let log_lde_factor = lde_factor.trailing_zeros() as u32;
         let log_values_per_leaf = values_per_leaf.trailing_zeros() as u32;
@@ -167,14 +166,6 @@ impl GpuWhirExtensionOracle {
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
         let trees_cache_mode =
             Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size);
-
-        // let mut serialized_coeffs_device =
-        //     context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-        // serialize_whir_e4_columns(monomial_coeffs, &mut serialized_coeffs_device, stream)?;
-        // {
-        //     let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized_coeffs_device, trace_len);
-        //     bit_reverse_in_place(&mut coeffs_matrix, stream)?;
-        // }
 
         let mut trace_holder = TraceHolder::new(
             total_leaf_count_log2,
@@ -845,16 +836,6 @@ pub(crate) mod tests {
                 .unwrap();
 
                 for coset_index in 0..LDE_FACTOR {
-                    // helpful for debugging
-                    // let gpu_results = gpu.copy_coset_values(coset_index, &context);
-                    // let cpu_results = cpu.cosets[coset_index].values_normal_order.column.to_vec();
-                    // for (i, (gpu_val, cpu_val)) in gpu_results.iter().zip(cpu_results.iter()).enumerate() {
-                    //     if gpu_val == cpu_val {
-                    //         println!("EQUAL {:<3} {:<60} {:<60}", i, gpu_val, cpu_val);
-                    //     } else {
-                    //         println!("NOT   {:<3} {:<60} {:<60}", i, gpu_val, cpu_val);
-                    //     }
-                    // }
                     assert_eq!(
                         gpu.copy_coset_values(coset_index, &context),
                         cpu.cosets[coset_index].values_normal_order.column.to_vec(),

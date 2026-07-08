@@ -259,7 +259,6 @@ impl DeviceContext {
             true,
         )?;
 
-        // trust me
         fn generate_fwd_inv_arrays<const COUNT: usize>(
             fwd_generator: BF,
         ) -> ([BF; COUNT], [BF; COUNT]) {

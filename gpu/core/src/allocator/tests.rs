@@ -75,9 +75,7 @@ fn big_alloc_bypasses_small() {
 #[test]
 fn free_routes_correctly_mixed() {
     let mut alloc = make_allocator(4, 1);
-    // Small allocation
     let small = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
-    // Big allocation
     let big = alloc
         .alloc::<u64>(33, AllocationPlacement::BestFit)
         .unwrap();

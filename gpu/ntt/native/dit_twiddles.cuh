@@ -1,9 +1,8 @@
-// Ported from ntt-experiments include/ntt/twiddles.cuh (rr/v8-logn13-two-pass-ntt).
+// Ported from ntt-experiments include/ntt/twiddles.cuh.
 // Unified twiddle layout: the N-1 per-thread triangle. ONE read path for both
 // kernel families; only the baked VALUES and the caller's (tw_row, tw_base)
 // differ (clean: keyed on lane, no redundancy; coupled pass-1: keyed on tid,
-// n2-block folded in). Verified in scripts/dit_pass1_couple.py (build_cmp /
-// build_clean_triangle). Local stages tid/lane-direct (V4/V2/V1 by count U_s);
+// n2-block folded in). Local stages tid/lane-direct (V4/V2/V1 by count U_s);
 // cross stages one-per-group (V1 broadcast). Total per phase = 2^M - 1.
 #pragma once
 #include "dit_memory.cuh" // ld_shared_v2/v4, ld_cg_v4, st_shared_v4
@@ -20,7 +19,7 @@ namespace ntt {
 //   COUPLED pass-1 triangle:               LOG_TBL = LOG_N  -> THREADS = full
 //     block, cross block = 2^(LOG_N-1-s) (all n2 blocks' global groups).
 // LOG_M is unused here (it parametrizes only the in-phase gf shift in the
-// engine); the original pt_stage_offset likewise ignored its LOG_M arg.
+// engine).
 template <unsigned LOG_M, unsigned LOG_VPT, unsigned LOG_TBL> DEVICE_FORCEINLINE constexpr unsigned pt_stage_offset(unsigned s) {
   const unsigned THREADS = 1u << (LOG_TBL - LOG_VPT);
   unsigned off = 0;

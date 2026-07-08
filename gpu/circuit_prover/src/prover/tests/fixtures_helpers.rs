@@ -145,12 +145,11 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
 ///
 /// The oracle borrow is managed internally: the `buffer` is used to construct a
 /// `NonMemoryCircuitOracle` for the optional CPU proof, then consumed by
-/// `make_non_memory_tracing_host_for_test` afterwards — matching the ordering
-/// in the original monolithic function.
+/// `make_non_memory_tracing_host_for_test` afterwards.
 ///
 /// Both `CpuGKRSetup::construct` and `evaluate_gkr_witness_for_executor_family`
 /// use the caller-supplied `table_driver` (the family's real driver, NOT a blank
-/// `TableDriver::new()`), which is the correctness fix over the original code.
+/// `TableDriver::new()`).
 pub(super) fn finish_proof_fixture(
     circuit_type: CircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,

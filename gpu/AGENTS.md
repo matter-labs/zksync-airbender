@@ -57,9 +57,8 @@ helper, a build-dependency only).
   `links = "gpu_hash_native"` → `circuit_prover` reads `DEP_GPU_HASH_NATIVE_INCLUDE`
   so the blake2s-dependent kernels that stayed there (`gkr_ops.cu`, `leaves.cu`)
   resolve `#include "hash.cuh"`. Deps: `gpu_core` + `gpu_ops`. The GKR/WHIR
-  **protocol** kernels lifted OUT of `ops/blake2s/` to **`ops::gkr_ops`** (stays
-  in `circuit_prover`); the 6 fns re-pointed in 12 consumers from
-  `ops::blake2s::` to `ops::gkr_ops::`. PoW determinism is feature-propagated:
+  **protocol** kernels live in **`ops::gkr_ops`** (in `circuit_prover`), not
+  `ops/blake2s/`. PoW determinism is feature-propagated:
   `gpu_hash` has a `deterministic_pow` feature → `AB_DETERMINISTIC_POW` in its
   CMake, enabled by `circuit_prover/deterministic_pow` (without it the moved
   `ab_blake2s_pow_kernel` runs a non-deterministic search → silent proof-parity
