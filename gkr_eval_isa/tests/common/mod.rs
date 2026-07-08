@@ -115,9 +115,17 @@ pub fn schedule_path(stem: &str) -> PathBuf {
 }
 
 /// Map a layout fixture file name → its committed-schedule stem.
+///
+/// The `_preprocessed` variants (only `inits_and_teardowns_preprocessed_layout_gkr.json`)
+/// commit their schedule under the bare `inits_and_teardowns` stem, so those suffixes
+/// must be tried FIRST — they also end with `_layout_gkr.json`, and a broad trim would
+/// otherwise leave a dangling `_preprocessed` that no schedule file matches (see the
+/// same reverse-trim note in `schedule_search_gates.rs`).
 pub fn schedule_stem(name: &str) -> &str {
-    name.trim_end_matches("_layout_gkr.json")
+    name.trim_end_matches("_preprocessed_layout_no_caches_gkr.json")
+        .trim_end_matches("_preprocessed_layout_gkr.json")
         .trim_end_matches("_layout_no_caches_gkr.json")
+        .trim_end_matches("_layout_gkr.json")
 }
 
 /// Lower the DAG from the named fixture, load + validate the committed b16 schedule,
