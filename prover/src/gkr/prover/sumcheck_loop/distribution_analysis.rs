@@ -118,9 +118,7 @@ mod test {
     #[test]
     fn analyze_terms_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
