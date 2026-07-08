@@ -102,7 +102,7 @@ fn run_add_sub_profile_test() {
 fn prepare_jump_branch_slt_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
-        0,
+        4, // jump_branch_slt default_pc_value_in_padding (== GPU PC_STEP)
         UnrolledNonMemoryCircuitType::JumpBranchSlt,
         JUMP_BRANCH_SLT_LAYOUT_PATH,
         jump_branch_slt_mod::witness_eval_fn,
@@ -118,7 +118,7 @@ fn prepare_jump_branch_slt_proof_fixture() -> BasicUnrolledProofFixture {
 fn prepare_jump_branch_slt_profiling_fixture() -> BasicUnrolledFixture {
     prepare_unrolled_non_memory_proof_fixture::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
-        0,
+        4, // jump_branch_slt default_pc_value_in_padding (== GPU PC_STEP)
         UnrolledNonMemoryCircuitType::JumpBranchSlt,
         JUMP_BRANCH_SLT_LAYOUT_PATH,
         jump_branch_slt_mod::witness_eval_fn,
