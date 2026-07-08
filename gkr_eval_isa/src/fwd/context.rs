@@ -66,6 +66,10 @@ pub struct CompileTrace {
     pub pruned_resolution_exprs: Vec<ExprId>, // exprs pruned because they carry a ResolutionStrategy
     pub max_live_cells: usize,
     pub nested_subexprs: usize,               // compound children lowered to a cell (§11 general fallback)
+    /// Compaction relocations the cell allocator emitted (one per relocated Base), each
+    /// annotated with the triggering Ext + both live ranges. Empty when no quad had to
+    /// be cleared. Instrumentation only — not serialized, not part of value/traffic parity.
+    pub placement_moves: Vec<super::compile::MoveCtx>,
 }
 
 #[derive(Clone, Debug)]

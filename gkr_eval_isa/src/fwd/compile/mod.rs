@@ -10,6 +10,7 @@ pub mod schedule;
 
 pub use self::arith::build_cross_layer_field_map;
 pub use self::decisions::SiteDecisions;
+pub use self::place::MoveCtx;
 use self::lower::lower_layer_virtual;
 use self::place::{plan_placement, PlacementInput, RelocStep, ResidencyStep, ValueId, VInstrKind, VirtualOp};
 use super::binding::BackingKey;
@@ -459,6 +460,7 @@ fn compile_layer_at(
 
     let mut trace = CompileTrace::default();
     trace.max_live_cells = placement.max_live_cells;
+    trace.placement_moves = placement.move_ctx.clone();
 
     Ok(CompiledLayer {
         program,

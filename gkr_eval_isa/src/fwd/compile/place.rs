@@ -8,20 +8,29 @@
 //! this module residency-FREE steps; see `mod.rs::compile_layer`'s
 //! `free_steps`) and produces a concrete cell assignment (`Placement`).
 //!
-//! `CellAllocator` (`schedule.rs`) is strictly first-fit and hands back whatever cell
-//! it picks — it cannot place a value at a *chosen* cell. Two things this module needs
-//! chosen-cell placement for:
-//!   - lifetime-aware Base placement must land a Base in a *specific* quad (one no
-//!     overlapping-lifetime Ext will need), not just the lowest free cell;
-//!   - compaction (`clear_quad_for_ext`) needs a *specific* free target per relocated
-//!     Base, then the incoming Ext placed at the quad it just cleared.
-//! So this module owns its own cell-occupancy model (`CellOccupancy`) rather than
-//! driving a `CellAllocator`. `schedule.rs` is untouched.
+//! Placement is a two-phase interval packing, **Ext-first** (widths: Base = 1 cell;
+//! Ext = 4 cells, 4-aligned). The instruction stream is frozen and every value's
+//! `[def, last_use]` live range is known up front, so this is a pure offline packing
+//! problem — no forward eviction, no relocation, no cyclical recompute dependency.
 //!
-//! Cell widths: Base = 1 cell; Ext = 4 cells, 4-aligned. Compaction only ever relocates
-//! 1-cell Base values to currently-FREE 1-cells outside the quad being cleared — an Ext
-//! is never moved and a relocation target is always free, so there are no
-//! occupied-target cycles, no scratch cell, and no accumulator.
+//!   1. **Ext phase.** Exts are the constrained resource (they need a contiguous
+//!      4-aligned quad). Assign each Ext, in `(def, id)` order, the lowest quad holding
+//!      no time-overlapping Ext — optimal interval partitioning at quad granularity.
+//!      Each Ext's quad is then fixed for its whole lifetime.
+//!   2. **Base phase.** The Ext quads are now immovable reservations. A Base is width-1
+//!      with no alignment constraint, so it drops into the lowest cell that is free
+//!      across its interval — i.e. not inside an overlapping Ext's quad and not sharing
+//!      a cell with a time-overlapping Base. Any residual cell-time hole works.
+//!
+//! Because a Base is never assigned a cell an Ext will occupy, **an Ext never has to
+//! evict a Base**: the placement is relocation-free by construction (`Placement::moves`
+//! is always empty). This supersedes the earlier forward-scan allocator whose greedy,
+//! lifetime-blind Base placement could strand a long-lived Base in a quad a later Ext
+//! then reclaimed, forcing a compaction relocation (one extra cell→cell `MOV` per row).
+//!
+//! Feasibility: if some value finds no legal cell, the layer does not fit at this
+//! `budget` and we return `BudgetBelowFloor` — the caller's fill-then-trim wrapper
+//! then admits fewer cached values and retries, exactly as before.
 
 use std::collections::HashMap;
 
@@ -61,6 +70,25 @@ pub struct RelocStep {
     pub to: u16,
 }
 
+/// Instrumentation record for one compaction relocation: the surviving Base that was
+/// moved to clear a quad for an incoming Ext, annotated with both values' live ranges.
+/// Emitted once per `RelocStep`; entries sharing an `at_instr`/`cleared_quad`/`ext_value`
+/// belong to the same compaction event. Lets a diagnostic distinguish "the doomed quad
+/// held a long-surviving Base" (a placement-ordering wart — a lifetime-aware base
+/// placement could have kept the quad clean) from genuinely unavoidable fragmentation.
+#[derive(Clone, Copy, Debug)]
+pub struct MoveCtx {
+    pub at_instr: usize,     // the Ext def instr whose placement forced this compaction
+    pub cleared_quad: u16,   // quad start the Ext will occupy
+    pub ext_value: ValueId,  // the incoming Ext
+    pub ext_last_use: usize, // ext's last_use (how long the reclaimed quad stays busy)
+    pub moved_value: ValueId,
+    pub moved_def: usize,      // where the relocated Base was defined
+    pub moved_last_use: usize, // how long it survives past `at_instr` (why it had to move)
+    pub from: u16,
+    pub to: u16,
+}
+
 #[derive(Clone, Debug)]
 pub enum VirtualOp {
     Value(ValueId),
@@ -92,85 +120,9 @@ pub struct Placement {
     pub cell_of: HashMap<(usize, ValueId), u16>,
     pub moves: Vec<(usize, RelocStep)>,
     pub max_live_cells: usize,
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────
-// Cell occupancy (this module's private replacement for `CellAllocator` — see the
-// module doc for why the strictly-first-fit allocator is insufficient here).
-// ─────────────────────────────────────────────────────────────────────────────────
-
-/// Direct per-cell occupancy: `owner[c] == Some(v)` iff cell `c` currently belongs to
-/// live value `v`. An Ext value owns all 4 cells of its quad; a Base owns exactly 1.
-/// Because an Ext always claims its whole quad atomically (never partially), a quad
-/// with ANY free cell can only be a Base-hosting quad or a fully clean one — there is
-/// no such thing as a "partially free Ext quad" to special-case.
-struct CellOccupancy {
-    budget: usize,
-    owner: Vec<Option<ValueId>>,
-    live: usize,
-    max_live: usize,
-}
-
-impl CellOccupancy {
-    fn new(budget: usize) -> Self {
-        CellOccupancy { budget, owner: vec![None; budget], live: 0, max_live: 0 }
-    }
-
-    fn is_free(&self, cell: usize) -> bool {
-        self.owner[cell].is_none()
-    }
-
-    fn occupy(&mut self, start: usize, width: usize, value: ValueId) {
-        for c in start..start + width {
-            self.owner[c] = Some(value);
-        }
-        self.live += width;
-        self.max_live = self.max_live.max(self.live);
-    }
-
-    fn vacate(&mut self, start: usize, width: usize) {
-        for c in start..start + width {
-            self.owner[c] = None;
-        }
-        self.live -= width;
-    }
-
-    /// The lowest 4-aligned, fully-free quad start, if any.
-    fn free_quad(&self) -> Option<usize> {
-        let mut q = 0;
-        while q + 4 <= self.budget {
-            if (q..q + 4).all(|c| self.is_free(c)) {
-                return Some(q);
-            }
-            q += 4;
-        }
-        None
-    }
-}
-
-/// Lifetime-aware Base placement (spec Step 3 item 2, the primary lever): prefer a
-/// free cell whose quad already has an occupant over opening a fresh clean quad. A
-/// quad's only possible occupant kinds are (a) Bases packed 1-per-cell, or (b) a
-/// single live Ext reserving the whole 4-cell span — case (b) leaves ZERO free cells
-/// in that quad, so any free cell found in an "already occupied" quad is necessarily
-/// in a Base-hosting quad. Preferring those keeps clean quads available for Exts
-/// whose lifetime overlaps this Base's, deferring/avoiding the compaction fallback.
-fn place_base(occ: &CellOccupancy) -> u16 {
-    let quad_has_occupant = |cell: usize| -> bool {
-        let start = (cell / 4) * 4;
-        let end = (start + 4).min(occ.budget);
-        (start..end).any(|c| !occ.is_free(c))
-    };
-    (0..occ.budget)
-        .find(|&c| occ.is_free(c) && quad_has_occupant(c))
-        .or_else(|| (0..occ.budget).find(|&c| occ.is_free(c)))
-        .expect("caller guarantees a free cell exists for a Base placement") as u16
-}
-
-/// Ext placement: a clean 4-aligned quad, or `None` if none is free — fragmented
-/// (caller falls back to `clear_quad_for_ext`) or genuinely oversized.
-fn place_ext(occ: &CellOccupancy) -> Option<usize> {
-    occ.free_quad()
+    /// Per-relocation instrumentation (parallel to the relocations in `moves`);
+    /// empty when no compaction fired. See [`MoveCtx`].
+    pub move_ctx: Vec<MoveCtx>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -299,215 +251,236 @@ fn width_of(widths: &HashMap<ValueId, OperandField>, v: ValueId) -> usize {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────
-// Base-relocation compaction (Step 3 item 4, spec OP-4).
-// ─────────────────────────────────────────────────────────────────────────────────
-
-/// Open ONE clean 4-aligned quad for an incoming Ext by relocating the fewest-Base
-/// quad's Bases to free 1-cells outside it. Returns `(cleared_quad_start, base moves)`.
-///
-/// Picks the quad with the fewest live Base occupants (`k`, `0 < k <= 3`; a quad
-/// hosting a live Ext is not a candidate — see `CellOccupancy`'s doc for why such a
-/// quad has zero free cells and thus can never be the *target*, and is skipped here
-/// as a *source* too since it holds no movable Bases). Each relocated Base prefers a
-/// free cell in a quad that already hosts a Base (packing — doesn't fragment a clean
-/// quad); falls back to any other free cell outside the cleared quad.
-///
-/// Only Bases move, and every target is a cell that is free at the moment it is
-/// chosen — no cycles, no scratch cell, no accumulator. `None` only if no quad has an
-/// all-Base (movable), non-empty occupancy, which cannot happen when the caller has
-/// already checked `current_live_width + 4 <= budget` (see `plan_placement`): with no
-/// clean quad free (a precondition for calling this at all) and >= 4 free cells
-/// overall, some quad must hold 1..=3 Bases (an Ext quad always contributes 0 free
-/// cells, and 4 free cells can't all come from quads with 0 free cells each).
-pub(crate) fn clear_quad_for_ext(
-    live: &[(ValueId, u16, OperandField)],
-    widths: &HashMap<ValueId, OperandField>,
-    budget: usize,
-) -> Option<(u16, Vec<RelocStep>)> {
-    let n_quads = budget / 4;
-    if n_quads == 0 {
-        return None;
-    }
-
-    let mut free = vec![true; budget];
-    let mut quad_base_count = vec![0usize; n_quads];
-    let mut quad_has_ext = vec![false; n_quads];
-    for &(value, cell, field) in live {
-        debug_assert_eq!(
-            widths.get(&value),
-            Some(&field),
-            "live entry's field must match `widths` for {value:?}"
-        );
-        let width = if field == OperandField::Ext { 4 } else { 1 };
-        for c in cell as usize..(cell as usize + width).min(budget) {
-            free[c] = false;
-        }
-        let q = cell as usize / 4;
-        if q < n_quads {
-            if field == OperandField::Ext {
-                quad_has_ext[q] = true;
-            } else {
-                quad_base_count[q] += 1;
-            }
-        }
-    }
-
-    // The fewest-Base, no-Ext, non-empty quad (0 < k <= 3); lowest address on ties.
-    let target = (0..n_quads)
-        .filter(|&q| !quad_has_ext[q] && quad_base_count[q] > 0 && quad_base_count[q] <= 3)
-        .min_by_key(|&q| quad_base_count[q])?;
-    let quad_start = target * 4;
-
-    // Sort movers by their `from` cell so the emitted `moves` sequence — and thus the
-    // target assignment below (targets are scanned free-cell-ascending) — is a pure
-    // function of the occupancy, NOT of the caller's `live`-slice order. The caller
-    // (`plan_placement`) builds `live` from a `HashMap`, whose iteration order is
-    // nondeterministic; without this sort the from→to pairing would vary run-to-run and
-    // break byte-exact program parity once Task 3 consumes `moves`.
-    let mut movers: Vec<(ValueId, u16)> = live
-        .iter()
-        .filter(|&&(_, cell, field)| field == OperandField::Base && (cell as usize) / 4 == target)
-        .map(|&(value, cell, _)| (value, cell))
-        .collect();
-    movers.sort_by_key(|&(_, cell)| cell);
-
-    let mut relocs = Vec::with_capacity(movers.len());
-    for (value, from) in movers {
-        free[from as usize] = true; // vacate first: never its own cell as a target
-        quad_base_count[target] -= 1;
-
-        // Prefer a free cell in a quad that already hosts a Base; else any free cell
-        // outside the cleared quad (necessarily a clean quad by this point).
-        let to = (0..n_quads)
-            .filter(|&q| q != target && !quad_has_ext[q] && quad_base_count[q] > 0)
-            .find_map(|q| (q * 4..(q * 4 + 4).min(budget)).find(|&c| free[c]))
-            .or_else(|| (0..budget).filter(|&c| c / 4 != target).find(|&c| free[c]))
-            .expect(
-                "a free cell must exist outside the cleared quad: caller guarantees \
-                 current_live_width + 4 <= budget",
-            ) as u16;
-
-        free[to as usize] = false;
-        quad_base_count[to as usize / 4] += 1;
-        relocs.push(RelocStep { value, from, to });
-    }
-
-    Some((quad_start as u16, relocs))
+/// Inclusive-interval overlap on `[def, last_use]`. Two values conflict for a cell iff
+/// their live ranges overlap.
+fn overlaps(a: &LiveRange, b: &LiveRange) -> bool {
+    a.def <= b.last_use && b.def <= a.last_use
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// Placement scan (Step 3 items 2-3).
+// Two-phase interval packing (Ext-first). See the module doc.
 // ─────────────────────────────────────────────────────────────────────────────────
+
+/// Backtracking-search node cap. The greedy fast path handles every layer in the
+/// committed corpus, so the search runs only when greedy strands a Base at a budget the
+/// instance actually fits (peak demand ≤ budget — checked up front). The cap bounds
+/// worst-case blowup on a pathological feasible layer, falling back to `BudgetBelowFloor`
+/// (never worse than greedy alone). Small enough to stay sub-second, large enough that
+/// no realistic layer — and no fuzzed small instance — reaches it.
+const EXT_SEARCH_NODE_CAP: u64 = 200_000;
+
+/// Greedy Ext coloring: assign each Ext (in the given order) the lowest quad holding no
+/// time-overlapping Ext. This is optimal interval partitioning — it uses exactly the
+/// peak concurrent-Ext count of quads — so it succeeds iff the Ext demand fits at all.
+/// Returns the per-Ext base cell plus the per-quad assigned ranges, or `None` when the
+/// Ext demand alone exceeds the budget (genuinely infeasible; no coloring can help).
+fn greedy_color_exts(
+    exts: &[ValueId],
+    ranges: &HashMap<ValueId, LiveRange>,
+    n_quads: usize,
+) -> Option<(HashMap<ValueId, u16>, Vec<Vec<LiveRange>>)> {
+    let mut cells: HashMap<ValueId, u16> = HashMap::new();
+    let mut quads: Vec<Vec<LiveRange>> = vec![Vec::new(); n_quads];
+    for &e in exts {
+        let r = ranges[&e];
+        let q = (0..n_quads).find(|&q| quads[q].iter().all(|o| !overlaps(&r, o)))?;
+        quads[q].push(r);
+        cells.insert(e, (q * 4) as u16);
+    }
+    Some((cells, quads))
+}
+
+/// Pack Bases into the residual cell-time left by a fixed Ext coloring: each Base (in
+/// the given order) takes the lowest cell that is (a) not inside a quad whose assigned
+/// Ext overlaps its interval, and (b) not shared with a time-overlapping Base. Cells
+/// past the last full quad (`budget % 4`) are Ext-free. Returns the per-Base cell map,
+/// or `None` if any Base finds no legal cell under this coloring. Never mutates shared
+/// state, so a caller can try it against several colorings.
+fn pack_bases(
+    bases: &[ValueId],
+    ranges: &HashMap<ValueId, LiveRange>,
+    quads: &[Vec<LiveRange>],
+    n_quads: usize,
+    budget: usize,
+) -> Option<HashMap<ValueId, u16>> {
+    let mut base_cells: HashMap<ValueId, u16> = HashMap::new();
+    let mut cell_bases: Vec<Vec<LiveRange>> = vec![Vec::new(); budget];
+    for &b in bases {
+        let r = ranges[&b];
+        let c = (0..budget).find(|&c| {
+            let q = c / 4;
+            let ext_ok = q >= n_quads || quads[q].iter().all(|o| !overlaps(&r, o));
+            ext_ok && cell_bases[c].iter().all(|o| !overlaps(&r, o))
+        })?;
+        cell_bases[c].push(r);
+        base_cells.insert(b, c as u16);
+    }
+    Some(base_cells)
+}
+
+/// Backtracking Ext coloring: assign `exts[i..]` to quads (best-fit exploration order —
+/// concentrate Exts onto already-busy quads so others stay Ext-free for longer), and at
+/// the leaf pack the Bases. Returns the first coloring under which every Base seats.
+/// Because greedy Ext coloring is base-blind, a base-feasible coloring can differ from
+/// the lowest-fit one; the search explores alternatives that greedy would never try.
+/// Fills `cells` with the winning Ext+Base assignment. `nodes` bounds the search.
+#[allow(clippy::too_many_arguments)]
+fn search_ext_coloring(
+    i: usize,
+    exts: &[ValueId],
+    bases: &[ValueId],
+    ranges: &HashMap<ValueId, LiveRange>,
+    n_quads: usize,
+    budget: usize,
+    quads: &mut Vec<Vec<LiveRange>>,
+    cells: &mut HashMap<ValueId, u16>,
+    nodes: &mut u64,
+) -> bool {
+    if *nodes == 0 {
+        return false;
+    }
+    *nodes -= 1;
+    if i == exts.len() {
+        return match pack_bases(bases, ranges, quads, n_quads, budget) {
+            Some(base_cells) => {
+                cells.extend(base_cells);
+                true
+            }
+            None => false,
+        };
+    }
+    let e = exts[i];
+    let r = ranges[&e];
+    // Eligible quads (no time-overlapping Ext), explored best-fit: quads already busy
+    // latest first (concentrate Exts, free other quads for Bases), lowest index to break
+    // ties and for a deterministic order. Exploration order is a performance heuristic —
+    // completeness comes from trying every eligible quad on backtrack.
+    let mut cand: Vec<usize> =
+        (0..n_quads).filter(|&q| quads[q].iter().all(|o| !overlaps(&r, o))).collect();
+    cand.sort_by_key(|&q| (std::cmp::Reverse(quads[q].iter().map(|o| o.last_use).max()), q));
+    for q in cand {
+        quads[q].push(r);
+        cells.insert(e, (q * 4) as u16);
+        if search_ext_coloring(i + 1, exts, bases, ranges, n_quads, budget, quads, cells, nodes) {
+            return true;
+        }
+        quads[q].pop();
+        cells.remove(&e);
+    }
+    false
+}
+
+/// Assign a fixed cell to every value: a 4-aligned quad per Ext, a single cell per Base,
+/// such that no two time-overlapping values share a cell and no Base ever lands in a
+/// live Ext's quad (⇒ relocation-free). Fast path is greedy lowest-fit (identical to the
+/// pre-search placement, so committed schedules recompile byte-for-byte); if greedy
+/// strands a Base — a base-blind Ext coloring can — fall back to a backtracking search
+/// over Ext colorings. `BudgetBelowFloor` only when the Ext demand alone overflows, or
+/// no coloring seats the Bases within the node cap.
+fn assign_cells(
+    ranges: &HashMap<ValueId, LiveRange>,
+    widths: &HashMap<ValueId, OperandField>,
+    budget: usize,
+) -> Result<HashMap<ValueId, u16>, CompileError> {
+    let n_quads = budget / 4;
+
+    // Necessary feasibility condition, checked FIRST: at no instant may the width-weighted
+    // live demand (Ext=4, Base=1) exceed the budget. Failing this means no placement can
+    // fit, so return immediately — critically, this keeps a genuinely oversubscribed input
+    // (e.g. the fill-then-trim wrapper's eviction-off FILL probe, or a GA candidate that
+    // doesn't fit) from ever reaching the backtracking search and grinding to the node cap.
+    if let Some(max_last) = ranges.values().map(|r| r.last_use).max() {
+        let mut delta = vec![0i64; max_last + 2];
+        for (&v, r) in ranges {
+            let w = width_of(widths, v) as i64;
+            delta[r.def] += w;
+            delta[r.last_use + 1] -= w;
+        }
+        let (mut cur, mut peak) = (0i64, 0i64);
+        for d in delta {
+            cur += d;
+            peak = peak.max(cur);
+        }
+        if peak > budget as i64 {
+            return Err(CompileError::BudgetBelowFloor { floor: peak as usize, budget });
+        }
+    }
+
+    // Partition by width; pack each class in deterministic `(def, id)` order so the
+    // assignment is a pure function of the input (byte-exact program parity).
+    let mut exts: Vec<ValueId> = Vec::new();
+    let mut bases: Vec<ValueId> = Vec::new();
+    for &v in ranges.keys() {
+        match widths.get(&v) {
+            Some(OperandField::Ext) => exts.push(v),
+            Some(OperandField::Base) => bases.push(v),
+            None => panic!("no width recorded for value {v:?}"),
+        }
+    }
+    let sort_key = |v: &ValueId| (ranges[v].def, v.0);
+    exts.sort_by_key(sort_key);
+    bases.sort_by_key(sort_key);
+
+    // Greedy Ext coloring. Failure here means the peak concurrent-Ext count exceeds the
+    // quad budget — genuinely infeasible, no coloring recovers it.
+    let (mut cells, quads) = greedy_color_exts(&exts, ranges, n_quads)
+        .ok_or(CompileError::BudgetBelowFloor { floor: (n_quads + 1) * 4, budget })?;
+
+    // Fast path: greedy lowest-fit Base packing on the greedy coloring.
+    if let Some(base_cells) = pack_bases(&bases, ranges, &quads, n_quads, budget) {
+        cells.extend(base_cells);
+        return Ok(cells);
+    }
+
+    // A Base stranded under the greedy coloring. Because the Ext coloring is base-blind,
+    // a different (still ≤ n_quads) coloring may seat every Base — search for one.
+    let mut search_cells: HashMap<ValueId, u16> = HashMap::new();
+    let mut search_quads: Vec<Vec<LiveRange>> = vec![Vec::new(); n_quads];
+    let mut nodes = EXT_SEARCH_NODE_CAP;
+    if search_ext_coloring(
+        0,
+        &exts,
+        &bases,
+        ranges,
+        n_quads,
+        budget,
+        &mut search_quads,
+        &mut search_cells,
+        &mut nodes,
+    ) {
+        return Ok(search_cells);
+    }
+    Err(CompileError::BudgetBelowFloor { floor: budget + 1, budget })
+}
 
 pub fn plan_placement(input: &PlacementInput) -> Result<Placement, CompileError> {
     let n = input.instrs.len();
     let ranges = compute_live_ranges(input);
+    let cell_of_value = assign_cells(&ranges, input.widths, input.budget)?;
 
-    // Group values by their def-instr so the scan looks up "what becomes live here" in
-    // O(1) per instr rather than re-scanning the whole range map every time.
-    let mut live_at_def: Vec<Vec<ValueId>> = vec![Vec::new(); n];
-    for (&v, r) in &ranges {
-        if r.def < n {
-            live_at_def[r.def].push(v);
-        }
-    }
-    for bucket in &mut live_at_def {
-        bucket.sort_by_key(|v| v.0); // deterministic placement order
-    }
-
-    let mut occ = CellOccupancy::new(input.budget);
-    let mut cell_of_value: HashMap<ValueId, u16> = HashMap::new();
+    // ── Materialize: each value holds its fixed cell(s) for every instr in [def, last_use]
+    //    (no relocation, so the cell is constant over the range). `max_live_cells` is the
+    //    peak width-weighted occupancy over the instruction stream.
     let mut cell_of: HashMap<(usize, ValueId), u16> = HashMap::new();
-    let mut moves: Vec<(usize, RelocStep)> = Vec::new();
-
-    for i in 0..n {
-        // 1. Free the cells of values whose last use was strictly before this instr.
-        let dead: Vec<ValueId> =
-            cell_of_value.keys().copied().filter(|v| ranges[v].last_use < i).collect();
-        for v in dead {
-            let cell = cell_of_value.remove(&v).expect("dead value must be currently placed");
-            occ.vacate(cell as usize, width_of(input.widths, v));
-        }
-
-        // 2. Place values that become live at this instr.
-        for &v in &live_at_def[i] {
-            let field = *input.widths.get(&v).expect("every placed value needs a recorded width");
-            match field {
-                OperandField::Base => {
-                    // Mirror the Ext branch's graceful bound check below: a fully-occupied
-                    // `occ` (no free cell at all — `live == budget`) has no candidate cell
-                    // for `place_base` to pick, and previously reached its
-                    // `.expect("caller guarantees a free cell exists...")` unconditionally.
-                    // That `expect` documented an invariant the CALLER (this loop) was
-                    // supposed to uphold but didn't check — a genuinely over-budget
-                    // candidate (as the Task 6 compile-in-loop scorer routinely produces
-                    // while searching) hit it and panicked instead of returning
-                    // `Err(BudgetBelowFloor)` like every other placement-pressure path does.
-                    if occ.live >= input.budget {
-                        return Err(CompileError::BudgetBelowFloor {
-                            floor: occ.live + 1,
-                            budget: input.budget,
-                        });
-                    }
-                    let cell = place_base(&occ);
-                    occ.occupy(cell as usize, 1, v);
-                    cell_of_value.insert(v, cell);
-                }
-                OperandField::Ext => {
-                    let quad = match place_ext(&occ) {
-                        Some(q) => q,
-                        None => {
-                            // No clean quad free. Genuinely oversized, or just fragmented?
-                            let current_live_width = occ.live;
-                            if current_live_width + 4 > input.budget {
-                                return Err(CompileError::BudgetBelowFloor {
-                                    floor: current_live_width + 4,
-                                    budget: input.budget,
-                                });
-                            }
-                            // `cell_of_value` is a HashMap: sort the snapshot by cell so
-                            // `clear_quad_for_ext` receives stable input regardless of
-                            // iteration order (belt-and-suspenders — the helper also sorts
-                            // its movers, but a stable input keeps the whole path
-                            // order-independent end to end).
-                            let mut live: Vec<(ValueId, u16, OperandField)> = cell_of_value
-                                .iter()
-                                .map(|(&val, &cell)| (val, cell, input.widths[&val]))
-                                .collect();
-                            live.sort_by_key(|&(_, cell, _)| cell);
-                            let (cleared_quad, relocs) =
-                                clear_quad_for_ext(&live, input.widths, input.budget).expect(
-                                    "clear_quad_for_ext must succeed: current_live_width + 4 <= budget",
-                                );
-                            for r in relocs {
-                                occ.vacate(r.from as usize, 1);
-                                occ.occupy(r.to as usize, 1, r.value);
-                                cell_of_value.insert(r.value, r.to);
-                                moves.push((i, r));
-                            }
-                            cleared_quad as usize
-                        }
-                    };
-                    occ.occupy(quad, 4, v);
-                    cell_of_value.insert(v, quad as u16);
-                }
+    let mut width_at: Vec<usize> = vec![0; n.max(1)];
+    for (&v, &c) in &cell_of_value {
+        let r = ranges[&v];
+        let w = width_of(input.widths, v);
+        for i in r.def..=r.last_use {
+            if i < n {
+                cell_of.insert((i, v), c);
+                width_at[i] += w;
             }
         }
-
-        // 3. Record every currently-live value's cell at this instr, post any
-        // compaction that happened above.
-        for (&v, &c) in &cell_of_value {
-            cell_of.insert((i, v), c);
-        }
     }
+    let max_live_cells = width_at.iter().copied().max().unwrap_or(0);
 
-    Ok(Placement { cell_of, moves, max_live_cells: occ.max_live })
+    Ok(Placement { cell_of, moves: Vec::new(), max_live_cells, move_ctx: Vec::new() })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*; // brings VInstrKind, VirtualOp, VirtualInstr, RelocStep, PlacementInput, plan_placement, clear_quad_for_ext
+    use super::*; // VInstrKind, VirtualOp, VirtualInstr, PlacementInput, Placement, plan_placement
     use crate::fwd::isa::{OperandField as F, Sign};
     use cs::gkr_compiler::dag_ir::ExprId;
     use std::collections::HashMap;
@@ -524,14 +497,42 @@ mod tests {
         }
     }
 
-    // A: two Ext residents that never overlap in time get non-overlapping 4-aligned cells,
-    //    and total live never exceeds budget.
+    fn load(n: u32, field: F, col: u16) -> VirtualInstr {
+        VirtualInstr {
+            op: VInstrKind::Mov, field, defines: Some(v(n)),
+            reads: vec![VirtualOp::Global { slot: 0, col }], sign: Sign::Plus, is_dram_read: true,
+        }
+    }
+
+    // THE core invariant of two-phase placement: at every instr, no Base occupies a cell
+    // inside a live Ext's quad. This is exactly what makes the placement relocation-free —
+    // an Ext never has to evict a Base — so it must hold for every accepted placement.
+    fn assert_ext_base_disjoint(p: &Placement, widths: &HashMap<ExprId, F>) {
+        let mut by_instr: HashMap<usize, Vec<(ExprId, u16)>> = HashMap::new();
+        for (&(i, val), &c) in &p.cell_of {
+            by_instr.entry(i).or_default().push((val, c));
+        }
+        for (&i, vals) in &by_instr {
+            let ext_quads: Vec<u16> =
+                vals.iter().filter(|(val, _)| widths[val] == F::Ext).map(|&(_, c)| c / 4).collect();
+            for &(val, c) in vals {
+                if widths[&val] == F::Base {
+                    assert!(
+                        !ext_quads.contains(&(c / 4)),
+                        "Base {val:?}@cell{c} sits in a live Ext's quad at instr {i}"
+                    );
+                }
+            }
+        }
+        assert!(p.moves.is_empty(), "two-phase placement is relocation-free by construction");
+    }
+
+    // Two time-overlapping Exts get non-overlapping 4-aligned quads; live width <= budget.
     #[test]
     fn ext_values_get_4_aligned_nonoverlapping_cells() {
         let widths: HashMap<ExprId, F> = [(v(1), F::Ext), (v(2), F::Ext)].into();
         let instrs = vec![
-            VirtualInstr { op: VInstrKind::Mov, field: F::Ext, defines: Some(v(1)),
-                reads: vec![VirtualOp::Global { slot: 0, col: 0 }], sign: Sign::Plus, is_dram_read: true },
+            load(1, F::Ext, 0),
             VirtualInstr { op: VInstrKind::Mov, field: F::Ext, defines: Some(v(2)),
                 reads: vec![VirtualOp::Value(v(1))], sign: Sign::Plus, is_dram_read: false },
         ];
@@ -545,150 +546,113 @@ mod tests {
         assert_eq!(c2 % 4, 0, "Ext must be 4-aligned");
         assert!((c1 as i32 - c2 as i32).abs() >= 4, "overlapping Ext lifetimes must not share a 4-cell span");
         assert!(p.max_live_cells <= 16);
+        assert_ext_base_disjoint(&p, &widths);
     }
 
-    // ── Move simulator: applies a RelocStep sequence to a cell→value occupancy map and
-    //    PROVES clobber-safety — every step's target must be free (or the value's own cells)
-    //    before it writes; at the end every value sits at its expected target with no overlap.
-    //    A step that would overwrite a still-live value panics. This is what makes Test B/E bind.
-    //    Compaction only ever moves 1-cell Bases to FREE cells (never Exts), so there are no cycles
-    //    and no accumulator — a `RelocStep` is a single Base relocation whose target must be free.
-    fn simulate(steps: &[RelocStep], init: &[(ExprId, u16, F)]) -> HashMap<ExprId, u16> {
-        let span = |cell: u16, f: F| -> std::ops::Range<u16> { cell..cell + if f == F::Ext { 4 } else { 1 } };
-        let mut occ: HashMap<u16, ExprId> = HashMap::new();       // cell -> occupying value
-        let mut at: HashMap<ExprId, u16> = HashMap::new();        // value -> base cell
-        let mut fld: HashMap<ExprId, F> = HashMap::new();
-        for &(val, cell, f) in init { fld.insert(val, f); at.insert(val, cell); for c in span(cell, f) { assert!(occ.insert(c, val).is_none(), "init overlap @ {c}"); } }
-        for s in steps {
-            assert_eq!(fld[&s.value], F::Base, "compaction relocates only Base values");
-            assert_eq!(at.get(&s.value), Some(&s.from));
-            occ.remove(&s.from);
-            assert!(occ.get(&s.to).is_none(), "Base move clobbers a live cell @ {} (target not free)", s.to);
-            occ.insert(s.to, s.value);
-            at.insert(s.value, s.to);
-        }
-        at
-    }
-
-    // B: DIRECT test of the Base-relocation compaction helper (spec OP-4). A fragmented occupancy where
-    //    every 4-aligned quad holds >=1 live Base (so no clean quad for an incoming Ext) but total width
-    //    + the Ext fits in budget MUST be resolvable by relocating the fewest-Base quad's Bases to free
-    //    1-cells outside it. Asserts a clean quad results, only Bases move, targets are free (simulate).
+    // Ext-first: two Exts DISJOINT in time reuse the SAME quad (interval partitioning uses
+    // the peak concurrent Ext count, not the total Ext count).
     #[test]
-    fn compaction_clears_a_quad_by_relocating_fewest_bases() {
-        // budget 12 = quads {0..3, 4..7, 8..11}. Live: Base@0 (quad0), Base@4 (quad1), Base@8, Base@9 (quad2).
-        // No clean quad; free cells = {1,2,3,5,6,7,10,11}. Incoming Ext (4) => total 4+4 = 8 <= 12 (feasible).
-        let widths: HashMap<ExprId, F> = [(v(1), F::Base), (v(2), F::Base), (v(3), F::Base), (v(4), F::Base)].into();
-        let live = [(v(1), 0u16, F::Base), (v(2), 4u16, F::Base), (v(3), 8u16, F::Base), (v(4), 9u16, F::Base)];
-        // clear_quad_for_ext returns (cleared_quad_start, base moves) to open a clean quad for one Ext.
-        let (quad, moves) = clear_quad_for_ext(&live, &widths, 12).expect("a clean quad must be openable");
-        assert!(!moves.is_empty(), "a fragmented layout must relocate at least one Base");
-        assert!(moves.iter().all(|m| widths[&m.value] == F::Base), "compaction moves ONLY Base values");
-        assert_eq!(quad % 4, 0, "cleared quad is 4-aligned");
-        // Simulate: every move is to a free cell (clobber-safe), and the cleared quad ends empty.
-        let final_at = simulate(&moves, &live);
-        for c in quad..quad + 4 {
-            assert!(!final_at.values().any(|&base| base == c), "quad cell {c} must be free after compaction");
-        }
+    fn disjoint_exts_reuse_a_quad() {
+        let widths: HashMap<ExprId, F> = [(v(1), F::Ext), (v(2), F::Ext)].into();
+        // e1 defined+last-used at instr0 (never read again); e2 defined at instr1. Disjoint.
+        let instrs = vec![load(1, F::Ext, 0), load(2, F::Ext, 1)];
+        let steps = vec![step(&[], &[]), step(&[], &[])];
+        let step_of = vec![0, 1];
+        let input = PlacementInput { instrs: &instrs, steps: &steps, step_of_instr: &step_of, widths: &widths, budget: 8 };
+        let p = plan_placement(&input).unwrap();
+        assert_eq!(p.cell_of[&(0, v(1))], 0, "e1 takes quad 0");
+        assert_eq!(p.cell_of[&(1, v(2))], 0, "disjoint e2 reuses quad 0");
+        assert_ext_base_disjoint(&p, &widths);
     }
 
-    // B2 (primary lever): lifetime-aware placement AVOIDS compaction when possible. Two Bases whose
-    //    lifetimes overlap an Ext must be packed into ONE quad, leaving the other clean for the Ext —
-    //    so plan_placement emits NO moves.
+    // Base phase: an Ext gets its clean quad and time-overlapping Bases pack into the
+    // residual — never inside the Ext's quad, and with NO relocation.
     #[test]
-    fn lifetime_aware_placement_avoids_compaction() {
-        // budget 8 = quads {0..3, 4..7}. b1,b2 (Base) live across e3 (Ext); a-priori packs b1,b2 into one
-        // quad so the other stays clean for e3 -> no compaction.
+    fn overlapping_bases_pack_around_the_ext() {
+        // budget 8 = quads {0..3, 4..7}. b1,b2 (Base) live across e3 (Ext).
         let widths: HashMap<ExprId, F> = [(v(1), F::Base), (v(2), F::Base), (v(3), F::Ext)].into();
         let instrs = vec![
-            VirtualInstr { op: VInstrKind::Mov, field: F::Base, defines: Some(v(1)), reads: vec![VirtualOp::Global{slot:0,col:0}], sign: Sign::Plus, is_dram_read: true },
-            VirtualInstr { op: VInstrKind::Mov, field: F::Base, defines: Some(v(2)), reads: vec![VirtualOp::Global{slot:0,col:1}], sign: Sign::Plus, is_dram_read: true },
-            // e3 defined while b1,b2 still live (both in resident_after) -> needs a clean quad concurrently.
+            load(1, F::Base, 0),
+            load(2, F::Base, 1),
+            // e3 defined while b1,b2 still live (all in resident_after).
             VirtualInstr { op: VInstrKind::Mov, field: F::Ext, defines: Some(v(3)), reads: vec![VirtualOp::Value(v(1))], sign: Sign::Plus, is_dram_read: false },
         ];
         let steps = vec![step(&[], &[1, 2, 3])];
         let step_of = vec![0, 0, 0];
         let input = PlacementInput { instrs: &instrs, steps: &steps, step_of_instr: &step_of, widths: &widths, budget: 8 };
         let p = plan_placement(&input).unwrap();
-        assert!(p.moves.is_empty(), "lifetime-aware placement should keep a quad clean for e3, no compaction");
-        // e3 got a 4-aligned quad; b1,b2 share the other.
         let e = p.cell_of[&(2, v(3))];
         assert_eq!(e % 4, 0, "Ext is 4-aligned");
+        // b1,b2 live at instr 2 (they're read/resident there); neither shares the Ext quad.
+        let eq = e / 4;
+        assert_ne!(p.cell_of[&(2, v(1))] / 4, eq, "b1 not in the Ext quad");
+        assert_ne!(p.cell_of[&(2, v(2))] / 4, eq, "b2 not in the Ext quad");
+        assert_ext_base_disjoint(&p, &widths);
     }
 
-    // C: a resident set whose total width exceeds budget is rejected (feasibility guard).
+    // Base phase: two Bases DISJOINT in time share ONE cell (each cell is packed with
+    // non-overlapping intervals — "pack a single cell as tightly as possible").
     #[test]
-    fn oversized_resident_set_is_rejected() {
+    fn disjoint_bases_share_a_cell() {
+        let widths: HashMap<ExprId, F> = [(v(1), F::Base), (v(2), F::Base)].into();
+        // b1 def+last-used at instr0; b2 at instr1. Disjoint -> same cell.
+        let instrs = vec![load(1, F::Base, 0), load(2, F::Base, 1)];
+        let steps = vec![step(&[], &[]), step(&[], &[])];
+        let step_of = vec![0, 1];
+        let input = PlacementInput { instrs: &instrs, steps: &steps, step_of_instr: &step_of, widths: &widths, budget: 8 };
+        let p = plan_placement(&input).unwrap();
+        assert_eq!(p.cell_of[&(0, v(1))], 0, "b1 -> cell 0");
+        assert_eq!(p.cell_of[&(1, v(2))], 0, "disjoint b2 reuses cell 0");
+        assert_eq!(p.max_live_cells, 1, "never more than one Base live at once");
+    }
+
+    // A resident set whose Ext demand exceeds the quad budget is rejected (feasibility).
+    #[test]
+    fn oversized_ext_set_is_rejected() {
         let widths: HashMap<ExprId, F> = [(v(1), F::Ext), (v(2), F::Ext), (v(3), F::Ext)].into();
-        let instrs = vec![
-            VirtualInstr { op: VInstrKind::Mov, field: F::Ext, defines: Some(v(1)), reads: vec![VirtualOp::Global{slot:0,col:0}], sign: Sign::Plus, is_dram_read: true },
-            VirtualInstr { op: VInstrKind::Mov, field: F::Ext, defines: Some(v(2)), reads: vec![VirtualOp::Global{slot:0,col:1}], sign: Sign::Plus, is_dram_read: true },
-            VirtualInstr { op: VInstrKind::Mov, field: F::Ext, defines: Some(v(3)), reads: vec![VirtualOp::Global{slot:0,col:2}], sign: Sign::Plus, is_dram_read: true },
-        ];
-        let steps = vec![step(&[], &[1, 2, 3])]; // 3 Ext = 12 cells > budget 8
+        let instrs = vec![load(1, F::Ext, 0), load(2, F::Ext, 1), load(3, F::Ext, 2)];
+        let steps = vec![step(&[], &[1, 2, 3])]; // 3 concurrent Ext = 12 cells > budget 8 (2 quads)
         let step_of = vec![0, 0, 0];
         let input = PlacementInput { instrs: &instrs, steps: &steps, step_of_instr: &step_of, widths: &widths, budget: 8 };
-        assert!(plan_placement(&input).is_err(), "resident width 12 > budget 8 must be rejected");
+        assert!(plan_placement(&input).is_err(), "3 concurrent Ext do not fit in 2 quads");
     }
 
-    // D: no-extra-residency — the set of values holding a cell at a step boundary equals
-    //    exactly resident_after (reconstructed from the placement, not from the input sets),
-    //    and an implicit cross-step drop frees its cell with no move/traffic.
+    // No-extra-residency: exactly resident_after holds a cell at a step boundary, and an
+    // implicit cross-step drop frees its cell with no move.
     #[test]
     fn realized_live_set_matches_resident_after() {
         let widths: HashMap<ExprId, F> = [(v(1), F::Base), (v(2), F::Base)].into();
-        let instrs = vec![
-            VirtualInstr { op: VInstrKind::Mov, field: F::Base, defines: Some(v(1)), reads: vec![VirtualOp::Global{slot:0,col:0}], sign: Sign::Plus, is_dram_read: true },
-            VirtualInstr { op: VInstrKind::Mov, field: F::Base, defines: Some(v(2)), reads: vec![VirtualOp::Global{slot:0,col:1}], sign: Sign::Plus, is_dram_read: true },
-        ];
-        // step0 ends with only {2} resident: v1 was produced but is an implicit drop (not in resident_after).
+        let instrs = vec![load(1, F::Base, 0), load(2, F::Base, 1)];
+        // step0 ends with only {2} resident: v1 was produced but is an implicit drop.
         let steps = vec![step(&[], &[2])];
         let step_of = vec![0, 0];
         let input = PlacementInput { instrs: &instrs, steps: &steps, step_of_instr: &step_of, widths: &widths, budget: 16 };
         let p = plan_placement(&input).unwrap();
-        // At the last instr of step 0, exactly v2 holds a cell; v1's cell was freed (implicit drop, no move).
         let last = instrs.len() - 1;
         assert!(p.cell_of.contains_key(&(last, v(2))), "resident_after value 2 must hold a cell");
         assert!(!p.cell_of.contains_key(&(last, v(1))), "dropped value 1 must NOT hold a cell at step end");
-        assert!(p.moves.is_empty(), "an implicit drop frees a cell with no defrag move");
+        assert!(p.moves.is_empty(), "an implicit drop frees a cell with no move");
     }
 
-    // E: FORCED compaction through plan_placement is DETERMINISTIC (the review finding).
-    //    Twelve Bases fill all three quads of a budget-12 space (pack-first), then six of
-    //    them free, leaving exactly TWO live Bases per quad — cells {0,1},{4,5},{8,9} —
-    //    a fully fragmented layout with NO clean quad. An Ext demand then arrives while
-    //    those six Bases are live (current_live_width 6 + 4 = 10 <= 12), forcing
-    //    `clear_quad_for_ext` on quad0's TWO Bases. With two movers there is a real
-    //    from->to PAIRING choice, and `plan_placement` builds the compaction's input from
-    //    a `HashMap` (nondeterministic iteration order) — so WITHOUT the sort-by-`from`
-    //    fix the pairing (and thus the emitted `moves`) would vary run-to-run and break
-    //    byte-exact program parity once Task 3 consumes `moves`. Asserts the EXACT moves
-    //    (pins the target-selection policy) + clobber-safety via `simulate` + the Ext
-    //    landing in the cleared quad, then proves order-independence directly by calling
-    //    `clear_quad_for_ext` on the SAME occupancy in two different slice orders.
+    // Regression: the exact layout that the OLD forward-scan allocator resolved with a
+    // compaction relocation. Twelve Bases fill budget-12; six drop at instr 11; an Ext
+    // then arrives at instr 12 while six Bases survive. The old allocator, having parked
+    // survivors across all three quads, had no clean quad and relocated one. Two-phase
+    // reserves the Ext's quad in phase 1 and packs every Base around it in phase 2 — so
+    // the layer is feasible with ZERO relocations.
     #[test]
-    fn forced_compaction_moves_are_deterministic() {
+    fn former_compaction_case_needs_zero_relocations() {
         let budget = 12;
-        // v(1)..v(12) Base, v(13) Ext.
         let mut widths: HashMap<ExprId, F> = HashMap::new();
         for i in 1..=12u32 {
             widths.insert(v(i), F::Base);
         }
         widths.insert(v(13), F::Ext);
 
-        // instrs 0..=10 define v1..v11 (each a plain Global read — no Value reads, so
-        // placement is pure pack-first). instr 11 defines v12 AND reads the six Bases
-        // that must drop (last_use = 11): v3,v4,v7,v8,v11 as Value operands (v12 itself
-        // is never read -> L6 last_use = def = 11). instr 12 defines the Ext v13 and
-        // reads the six survivors v1,v2,v5,v6,v9,v10 (last_use = 12, still live).
-        let mut instrs: Vec<VirtualInstr> = Vec::new();
-        for n in 1..=11u32 {
-            instrs.push(VirtualInstr {
-                op: VInstrKind::Mov, field: F::Base, defines: Some(v(n)),
-                reads: vec![VirtualOp::Global { slot: 0, col: (n - 1) as u16 }],
-                sign: Sign::Plus, is_dram_read: true,
-            });
-        }
+        // instrs 0..=10 define v1..v11 (plain Global reads). instr 11 defines v12 and reads
+        // v3,v4,v7,v8,v11 (their last use). instr 12 defines Ext v13 and reads the six
+        // survivors v1,v2,v5,v6,v9,v10.
+        let mut instrs: Vec<VirtualInstr> = (1..=11u32).map(|n| load(n, F::Base, (n - 1) as u16)).collect();
         instrs.push(VirtualInstr {
             op: VInstrKind::Mov, field: F::Base, defines: Some(v(12)),
             reads: [3u32, 4, 7, 8, 11].iter().map(|&x| VirtualOp::Value(v(x))).collect(),
@@ -700,49 +664,192 @@ mod tests {
             sign: Sign::Plus, is_dram_read: false,
         });
 
-        let steps = vec![step(&[], &[])]; // no cross-step residency; last_use is read-driven
+        let steps = vec![step(&[], &[])];
         let step_of = vec![0usize; instrs.len()];
         let input = PlacementInput { instrs: &instrs, steps: &steps, step_of_instr: &step_of, widths: &widths, budget };
         let p = plan_placement(&input).unwrap();
 
-        // (b) EXACT expected moves: quad0's two Bases (v1@0, v2@1) relocate to the first
-        // two free cells of an already-occupied quad (6, 7 in quad1), sorted by `from`.
-        let as_tuple = |m: &RelocStep| (m.value, m.from, m.to);
-        assert_eq!(p.moves.len(), 2, "quad0 has two Bases -> two relocations, got {:?}", p.moves);
-        assert!(p.moves.iter().all(|&(idx, _)| idx == 12), "compaction happens at the Ext-demand instr");
-        assert!(p.moves.iter().all(|&(_, m)| widths[&m.value] == F::Base), "compaction moves ONLY Base values");
-        assert_eq!(as_tuple(&p.moves[0].1), (v(1), 0u16, 6u16), "v1 (cell 0) -> first free occupied-quad cell (6)");
-        assert_eq!(as_tuple(&p.moves[1].1), (v(2), 1u16, 7u16), "v2 (cell 1) -> next free occupied-quad cell (7)");
-
-        // Ext landed in the cleared quad (cell 0, 4-aligned).
+        assert!(p.moves.is_empty(), "two-phase resolves this with zero relocations");
+        assert!(p.move_ctx.is_empty(), "no compaction context recorded");
         let e = p.cell_of[&(12, v(13))];
-        assert_eq!(e, 0, "Ext takes the cleared quad");
         assert_eq!(e % 4, 0, "Ext is 4-aligned");
+        assert!(p.max_live_cells <= budget, "fits the budget");
+        assert_ext_base_disjoint(&p, &widths);
+    }
 
-        // (a) clobber-safety: replay the emitted moves against the pre-compaction live set
-        // and confirm the cleared quad ends empty (simulate panics on any clobber).
-        let pre = [
-            (v(1), 0u16, F::Base), (v(2), 1u16, F::Base),
-            (v(5), 4u16, F::Base), (v(6), 5u16, F::Base),
-            (v(9), 8u16, F::Base), (v(10), 9u16, F::Base),
-        ];
-        let relocs: Vec<RelocStep> = p.moves.iter().map(|&(_, m)| m).collect();
-        let final_at = simulate(&relocs, &pre);
-        for c in 0u16..4 {
-            assert!(!final_at.values().any(|&base| base == c), "quad0 cell {c} must be free after compaction");
+    // ── Direct assign_cells packing tests (interval level, no instr stream) ──────────
+
+    fn ranges_of(specs: &[(u32, usize, usize, F)]) -> (HashMap<ExprId, LiveRange>, HashMap<ExprId, F>) {
+        let mut ranges = HashMap::new();
+        let mut widths = HashMap::new();
+        for &(id, def, last, f) in specs {
+            ranges.insert(v(id), LiveRange { def, last_use: last });
+            widths.insert(v(id), f);
         }
+        (ranges, widths)
+    }
 
-        // Order-independence, directly at the helper: the SAME occupancy in ascending vs
-        // reversed slice order must yield IDENTICAL (quad, moves). This is what the
-        // sort-by-`from` fix guarantees; without it the reversed input pairs v2->6, v1->7.
-        let ascending = pre.to_vec();
-        let mut reversed = pre.to_vec();
-        reversed.reverse();
-        let (qa, ma) = clear_quad_for_ext(&ascending, &widths, budget).expect("compaction feasible");
-        let (qb, mb) = clear_quad_for_ext(&reversed, &widths, budget).expect("compaction feasible");
-        assert_eq!(qa, qb, "cleared quad must not depend on input-slice order");
-        let tuples = |ms: &[RelocStep]| ms.iter().map(|m| (m.value, m.from, m.to)).collect::<Vec<_>>();
-        assert_eq!(tuples(&ma), tuples(&mb), "emitted moves must be independent of input-slice order");
-        assert_eq!(tuples(&ma), vec![(v(1), 0, 6), (v(2), 1, 7)], "moves pin the from->to pairing");
+    /// Validate a `cell_of_value`: Exts 4-aligned and in-bounds; no two time-overlapping
+    /// values share any cell.
+    fn assert_valid_assignment(
+        cells: &HashMap<ExprId, u16>,
+        ranges: &HashMap<ExprId, LiveRange>,
+        widths: &HashMap<ExprId, F>,
+        budget: usize,
+    ) {
+        let span = |id: &ExprId| -> std::ops::Range<usize> {
+            let c = cells[id] as usize;
+            c..c + if widths[id] == F::Ext { 4 } else { 1 }
+        };
+        let ids: Vec<ExprId> = cells.keys().copied().collect();
+        for id in &ids {
+            let s = span(id);
+            assert!(s.end <= budget, "{id:?} span {s:?} exceeds budget {budget}");
+            if widths[id] == F::Ext {
+                assert_eq!(s.start % 4, 0, "{id:?} Ext not 4-aligned");
+            }
+        }
+        for (i, a) in ids.iter().enumerate() {
+            for b in &ids[i + 1..] {
+                if overlaps(&ranges[a], &ranges[b]) {
+                    let (sa, sb) = (span(a), span(b));
+                    assert!(
+                        sa.end <= sb.start || sb.end <= sa.start,
+                        "time-overlapping {a:?}{sa:?} and {b:?}{sb:?} share a cell"
+                    );
+                }
+            }
+        }
+    }
+
+    // Exhaustive feasibility oracle for the two-phase model (Ext->quad, Base->cell, no
+    // relocation): backtracks over BOTH Ext colorings and Base cell choices. Ground truth
+    // that `assign_cells` must match — it must never report infeasible when this says
+    // feasible. Small instances only.
+    fn oracle_feasible(
+        ranges: &HashMap<ExprId, LiveRange>,
+        widths: &HashMap<ExprId, F>,
+        budget: usize,
+    ) -> bool {
+        let n_quads = budget / 4;
+        let mut exts: Vec<ExprId> = ranges.keys().copied().filter(|v| widths[v] == F::Ext).collect();
+        let mut bases: Vec<ExprId> = ranges.keys().copied().filter(|v| widths[v] == F::Base).collect();
+        exts.sort_by_key(|x| (ranges[x].def, x.0));
+        bases.sort_by_key(|x| (ranges[x].def, x.0));
+
+        fn bases_fit(
+            i: usize,
+            bases: &[ExprId],
+            ranges: &HashMap<ExprId, LiveRange>,
+            n_quads: usize,
+            budget: usize,
+            quads: &[Vec<LiveRange>],
+            cell_bases: &mut Vec<Vec<LiveRange>>,
+        ) -> bool {
+            if i == bases.len() {
+                return true;
+            }
+            let r = ranges[&bases[i]];
+            for c in 0..budget {
+                let q = c / 4;
+                let ext_ok = q >= n_quads || quads[q].iter().all(|o| !overlaps(&r, o));
+                if ext_ok && cell_bases[c].iter().all(|o| !overlaps(&r, o)) {
+                    cell_bases[c].push(r);
+                    if bases_fit(i + 1, bases, ranges, n_quads, budget, quads, cell_bases) {
+                        return true;
+                    }
+                    cell_bases[c].pop();
+                }
+            }
+            false
+        }
+        fn exts_fit(
+            i: usize,
+            exts: &[ExprId],
+            bases: &[ExprId],
+            ranges: &HashMap<ExprId, LiveRange>,
+            n_quads: usize,
+            budget: usize,
+            quads: &mut Vec<Vec<LiveRange>>,
+        ) -> bool {
+            if i == exts.len() {
+                return bases_fit(0, bases, ranges, n_quads, budget, quads, &mut vec![Vec::new(); budget]);
+            }
+            let r = ranges[&exts[i]];
+            for q in 0..n_quads {
+                if quads[q].iter().all(|o| !overlaps(&r, o)) {
+                    quads[q].push(r);
+                    if exts_fit(i + 1, exts, bases, ranges, n_quads, budget, quads) {
+                        return true;
+                    }
+                    quads[q].pop();
+                }
+            }
+            false
+        }
+        let mut quads = vec![Vec::new(); n_quads];
+        exts_fit(0, &exts, &bases, ranges, n_quads, budget, &mut quads)
+    }
+
+    // The reviewer's confirmed counterexample: greedy lowest-fit Ext coloring strands the
+    // Base, but an alternate coloring seats it. The backtracking fallback must find it.
+    #[test]
+    fn base_blind_greedy_stranding_is_recovered_by_search() {
+        // budget 8 (2 quads). v1 Ext[0,2], v2 Ext[2,4], v3 Base[4,6], v4 Ext[5,5].
+        // Greedy: v1->q0, v2->q1, v4[5,5] disjoint from v1 -> reuses q0; then v3[4,6]
+        // overlaps v4(q0) and v2(q1) -> no cell. Valid coloring: v4->q1 (with v2), v3->q0.
+        let (ranges, widths) =
+            ranges_of(&[(1, 0, 2, F::Ext), (2, 2, 4, F::Ext), (4, 5, 5, F::Ext), (3, 4, 6, F::Base)]);
+        assert!(oracle_feasible(&ranges, &widths, 8), "the instance IS feasible");
+        let cells = assign_cells(&ranges, &widths, 8)
+            .expect("backtracking must recover the feasible coloring greedy missed");
+        assert_valid_assignment(&cells, &ranges, &widths, 8);
+    }
+
+    // Fuzz: across many random small instances at production budgets, `assign_cells`
+    // must agree with the exhaustive oracle on feasibility, and every placement it emits
+    // must be valid. This is the completeness guard for the two-phase packer.
+    #[test]
+    fn assign_cells_matches_exhaustive_oracle() {
+        // Deterministic LCG (Date/rand are unavailable and would break reproducibility).
+        let mut state: u64 = 0x9e3779b97f4a7c15;
+        let mut next = |bound: u64| -> u64 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 33) % bound
+        };
+        let mut checked = 0usize;
+        for _ in 0..4000 {
+            let budget = if next(2) == 0 { 8 } else { 12 };
+            let n_ext = next(4) as u32; // 0..=3
+            let n_base = next(6) as u32; // 0..=5
+            let horizon = 8usize;
+            let mut specs: Vec<(u32, usize, usize, F)> = Vec::new();
+            let mut id = 1u32;
+            for _ in 0..n_ext {
+                let def = next(horizon as u64) as usize;
+                let last = def + next((horizon - def) as u64) as usize;
+                specs.push((id, def, last, F::Ext));
+                id += 1;
+            }
+            for _ in 0..n_base {
+                let def = next(horizon as u64) as usize;
+                let last = def + next((horizon - def) as u64) as usize;
+                specs.push((id, def, last, F::Base));
+                id += 1;
+            }
+            let (ranges, widths) = ranges_of(&specs);
+            let got = assign_cells(&ranges, &widths, budget);
+            let oracle = oracle_feasible(&ranges, &widths, budget);
+            assert_eq!(
+                got.is_ok(),
+                oracle,
+                "feasibility mismatch vs oracle: budget={budget} specs={specs:?}"
+            );
+            if let Ok(cells) = got {
+                assert_valid_assignment(&cells, &ranges, &widths, budget);
+            }
+            checked += 1;
+        }
+        assert_eq!(checked, 4000);
     }
 }
