@@ -328,7 +328,7 @@ DEVICE_FORCEINLINE void write_dst(const interp_desc3 &d, bf *cell_base, const un
 
 // Core program execution over a pre-zeroed per-thread cell file. Decode mirrors
 // `gkr_eval_isa::fwd::encode::decode`; math mirrors `interp.rs:59-107`.
-template <bool LDC> DEVICE_FORCEINLINE void vm_core(const interp_desc3 d, bf *cell_base, const unsigned gid) {
+template <bool LDC> DEVICE_FORCEINLINE void vm_core(const interp_desc3 &d, bf *cell_base, const unsigned gid) {
 #define LANE(i) vm_lane<LDC>(d, (i))
   u32 i = 0; // lane cursor (warp-uniform)
   u32 err = 0;
@@ -441,7 +441,7 @@ template <bool LDC> DEVICE_FORCEINLINE void vm_core(const interp_desc3 d, bf *ce
 // Dynamic shared memory: the smem byte count is a launch parameter, so its
 // footprint is OPAQUE to ptxas — the compiler cannot fold it into occupancy or
 // __launch_bounds__, and real occupancy is silently capped at launch time.
-template <bool LDC> DEVICE_FORCEINLINE void vm_body(const interp_desc3 d) {
+template <bool LDC> DEVICE_FORCEINLINE void vm_body(const interp_desc3 &d) {
   extern __shared__ u32 fwd_vm_smem[];
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= d.count)
@@ -459,7 +459,7 @@ template <bool LDC> DEVICE_FORCEINLINE void vm_body(const interp_desc3 d) {
 // `INTERP2_STATIC_LDG_KERNEL`. The `d.budget` bounds checks inside `vm_core`
 // remain valid: the host asserts `desc.budget == N_CELLS` before launching this
 // variant, so the cell file the checks bound against matches the static array.
-template <bool LDC, u32 N_CELLS> DEVICE_FORCEINLINE void vm_body_static(const interp_desc3 d) {
+template <bool LDC, u32 N_CELLS> DEVICE_FORCEINLINE void vm_body_static(const interp_desc3 &d) {
   __shared__ bf fwd_vm_cells_s[N_CELLS * 128];
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= d.count)
@@ -470,8 +470,8 @@ template <bool LDC, u32 N_CELLS> DEVICE_FORCEINLINE void vm_body_static(const in
   vm_core<LDC>(d, cell_base, gid);
 }
 
-EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_vm_ldg_kernel(const interp_desc3 desc) { vm_body<false>(desc); }
-EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_vm_ldc_kernel(const interp_desc3 desc) { vm_body<true>(desc); }
+EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_vm_ldg_kernel(const __grid_constant__ interp_desc3 desc) { vm_body<false>(desc); }
+EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_vm_ldc_kernel(const __grid_constant__ interp_desc3 desc) { vm_body<true>(desc); }
 
 // --- Static-smem LDC variant (128 threads, BUDGET=16 only) -----------------
 // minBlocks is the occupancy the static smem permits: SM shared capacity
