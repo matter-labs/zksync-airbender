@@ -486,7 +486,7 @@ EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_bench_fwd_vm_ldc_kernel(
 // LDC variant is the right static form. Mirrors INTERP2_STATIC_LDG_KERNEL.
 #define FWDVM_SMEM_BLOCKS(N) ((102400u / ((N) * 512u + 1024u)) > 12u ? 12u : ((102400u / ((N) * 512u + 1024u)) < 1u ? 1u : (102400u / ((N) * 512u + 1024u))))
 #define FWDVM_STATIC_LDC_KERNEL(N)                                                                                                                             \
-  EXTERN __launch_bounds__(128, FWDVM_SMEM_BLOCKS(N)) __global__ void ab_gkr_bench_fwd_vm_ldc_s##N##_kernel(const interp_desc3 desc) {                         \
+  EXTERN __launch_bounds__(128, FWDVM_SMEM_BLOCKS(N)) __global__ void ab_gkr_bench_fwd_vm_ldc_s##N##_kernel(const __grid_constant__ interp_desc3 desc) {       \
     vm_body_static<true, N>(desc);                                                                                                                             \
   }
 FWDVM_STATIC_LDC_KERNEL(16)
