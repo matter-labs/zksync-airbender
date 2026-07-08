@@ -194,6 +194,64 @@ fn fuse_leaf_loads(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool 
     changed
 }
 
+/// F7: reused resolution-peek cache root. The lowering emits a peek cache root as a
+/// direct source materialize (`DstFromSrc GlobalMaterialize <- Special{peek}`), then —
+/// because the peek value also feeds a consumer — seeds acc from the SAME peek
+/// (`AccFromSrc <- Special{peek}`), reading the device-memory resolution array TWICE.
+/// A *computed* cache value never does this: it is produced into acc and materialized
+/// from acc (`compile_expr_virtual`). Make the peek match that shape — hoist the acc load
+/// ahead of the materialize and source the cache write from acc:
+///   `DstFromSrc G<-PEEK ; AccFromSrc acc<-PEEK`  →  `AccFromSrc acc<-PEEK ; DstFromAcc G<-acc`
+/// One peek instead of two; the value lands in acc for the consumer, exactly as a
+/// computed value would. Instruction count is unchanged (a reorder + a dir flip), so this
+/// only trims `special_gathers`, never `dram_traffic`. Restricted to `Special` sources —
+/// the only re-readable operand that materializes a cache root this way in the corpus.
+fn hoist_reused_peek_materialize(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool {
+    let mut changed = false;
+    let mut i = 0usize;
+    while i + 1 < vinstrs.len() {
+        // [i] must be a direct-from-peek materialize to a committed backing.
+        let mat = match &vinstrs[i] {
+            VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                field,
+                dst: Some(VDst::GlobalMaterialize { slot, col }),
+                src: Some(VirtualOp::Special { desc }),
+                ..
+            } => Some((*field, *slot, *col, *desc)),
+            _ => None,
+        };
+        let Some((field, slot, col, mat_desc)) = mat else {
+            i += 1;
+            continue;
+        };
+        // [i+1] must seed acc from the SAME peek (the reuse).
+        let reuse = matches!(
+            &vinstrs[i + 1],
+            VInstr::Mov { dir: MovDir::AccFromSrc, src: Some(VirtualOp::Special { desc }), .. }
+                if *desc == mat_desc
+        );
+        if !reuse {
+            i += 1;
+            continue;
+        }
+        // Reorder: the acc load moves up (now at i), the materialize sources from acc (at i+1).
+        vinstrs[i] = vinstrs[i + 1].clone();
+        vinstrs[i + 1] = VInstr::Mov {
+            dir: MovDir::DstFromAcc,
+            field,
+            dst: Some(VDst::GlobalMaterialize { slot, col }),
+            src: None,
+            defines: None,
+            is_dram_read: false,
+        };
+        step_of.swap(i, i + 1);
+        changed = true;
+        i += 2;
+    }
+    changed
+}
+
 /// F4 (+ spill-immediate-reload): delete a `Mov AccFromSrc Value(v)` whose acc-before is
 /// already `Value(v)` — the reload is a no-op. General redundant-reload elimination.
 fn drop_redundant_reloads(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool {
@@ -501,6 +559,7 @@ pub(crate) fn optimize_vinstrs(
     );
     loop {
         let mut changed = false;
+        changed |= hoist_reused_peek_materialize(&mut vinstrs, &mut step_of);
         changed |= fuse_leaf_loads(&mut vinstrs, &mut step_of);
         changed |= drop_redundant_reloads(&mut vinstrs, &mut step_of);
         changed |= commute_keep_in_acc(&mut vinstrs, &mut step_of);
@@ -549,6 +608,56 @@ mod tests {
             defines: None,
             is_dram_read: true,
         }
+    }
+
+    #[test]
+    fn f7_hoists_reused_peek_cache_materialize() {
+        use crate::fwd::isa::LdcSub;
+        let peek = || VirtualOp::Special { desc: 7 };
+        // DstFromSrc cache<-PEEK ; AccFromSrc acc<-PEEK ; Add (reads acc => peek reused)
+        let vinstrs = vec![
+            VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                field: OperandField::Base,
+                dst: Some(VDst::GlobalMaterialize { slot: 0, col: 5 }),
+                src: Some(peek()),
+                defines: None,
+                is_dram_read: false,
+            },
+            VInstr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Base,
+                dst: None,
+                src: Some(peek()),
+                defines: None,
+                is_dram_read: false,
+            },
+            VInstr::Add {
+                field: OperandField::Ext,
+                sign: Sign::Plus,
+                reads: vec![VirtualOp::Ldc { sub: LdcSub::ConstChallenge, idx: 0 }],
+                defines: Some(ExprId(100)),
+                is_dram_read: false,
+            },
+        ];
+        let (out, step_of) = optimize_vinstrs(vinstrs, vec![0, 0, 0]);
+        assert_eq!(out.len(), 3, "F7 reorders, does not delete");
+        assert_eq!(step_of.len(), 3);
+        // acc is seeded from the peek first, then the cache is materialized FROM ACC.
+        assert!(
+            matches!(&out[0], VInstr::Mov { dir: MovDir::AccFromSrc, src: Some(VirtualOp::Special { desc: 7 }), .. }),
+            "acc load hoisted ahead: {:?}", out[0]
+        );
+        assert!(
+            matches!(&out[1], VInstr::Mov { dir: MovDir::DstFromAcc, dst: Some(VDst::GlobalMaterialize { slot: 0, col: 5 }), src: None, .. }),
+            "materialize now sources acc: {:?}", out[1]
+        );
+        // The resolution is gathered exactly ONCE (was twice).
+        let peek_reads = out
+            .iter()
+            .filter(|vi| matches!(vi, VInstr::Mov { src: Some(VirtualOp::Special { .. }), .. }))
+            .count();
+        assert_eq!(peek_reads, 1, "resolution array read once, not twice");
     }
 
     #[test]

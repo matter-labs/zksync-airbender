@@ -23,29 +23,42 @@ fn add_sub_l0_instrs() -> Vec<Instr> {
         .instrs
 }
 
-/// F1: no `AccFromSrc(leaf); DstFromAcc` adjacent pair — every leaf that lands in a cell
-/// is a single direct `DstFromSrc`. Covers ALL leaf source forms the rule handles
-/// (codex-R4): Global (DRAM), Special (PEEK), Ldc (const/challenge) — not just Global,
-/// since the original dump deferred PEEK leaves too.
+/// Whether acc is READ (an arithmetic op, or a `DstFromAcc` store) before it is
+/// fresh-overwritten (`AccFromSrc`) after index `from`. Mirrors the acc-liveness check
+/// F1 itself uses to decide fusability.
+fn acc_reused_after(instrs: &[Instr], from: usize) -> bool {
+    for vi in &instrs[from + 1..] {
+        match vi {
+            Instr::Mov { dir: MovDir::AccFromSrc, .. } => return false, // fresh acc write => dead
+            Instr::Mov { dir: MovDir::DstFromAcc, .. } => return true,  // reads acc (stores it)
+            Instr::Add { .. } | Instr::Mul { .. } | Instr::Fma { .. } => return true, // reads acc
+            Instr::Mov { dir: MovDir::DstFromSrc, .. } => {}            // does not touch acc
+        }
+    }
+    false // acc never read again => dead
+}
+
+/// F1/F7: no `AccFromSrc(leaf); DstFromAcc` pair where the loaded value is DEAD after the
+/// store — those are the F1-fusable leaf-load-through-acc that must collapse to a single
+/// direct `DstFromSrc`. Covers all leaf forms (codex-R4): Global (DRAM), Special (PEEK),
+/// Ldc (const/challenge). The REUSED case is explicitly allowed: F7 loads a reused peek
+/// cache root once into acc, materializes it from acc, and the consumer reads it from acc
+/// (one gather instead of two). F1 correctly does not fuse that (acc is live after), so it
+/// is the intended shape, not a violation.
 #[test]
 fn no_leaf_load_through_acc() {
     let instrs = add_sub_l0_instrs();
-    for w in instrs.windows(2) {
-        let load_leaf = matches!(&w[0], Instr::Mov { dir: MovDir::AccFromSrc, src: Some(s), .. }
+    for i in 0..instrs.len().saturating_sub(1) {
+        let load_leaf = matches!(&instrs[i], Instr::Mov { dir: MovDir::AccFromSrc, src: Some(s), .. }
             if matches!(s, OperandLine::Global { .. } | OperandLine::Special { .. } | OperandLine::Ldc { .. }));
-        let store = matches!(
-            &w[1],
-            Instr::Mov {
-                dir: MovDir::DstFromAcc,
-                ..
-            }
-        );
-        assert!(
-            !(load_leaf && store),
-            "F1 violated: AccFromSrc(leaf) immediately followed by DstFromAcc:\n  {:?}\n  {:?}",
-            w[0],
-            w[1]
-        );
+        let store = matches!(&instrs[i + 1], Instr::Mov { dir: MovDir::DstFromAcc, .. });
+        if load_leaf && store && !acc_reused_after(&instrs, i + 1) {
+            panic!(
+                "F1 violated: AccFromSrc(leaf) then DstFromAcc with acc dead after:\n  {:?}\n  {:?}",
+                instrs[i],
+                instrs[i + 1]
+            );
+        }
     }
 }
 
