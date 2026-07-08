@@ -477,4 +477,24 @@ EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_
   }
 }
 
+// Reduce a flat run of raw squeeze u32 words into `count` E4 challenges, matching
+// the host `draw_random_field_els*` reduction (`bf::from_raw_repr_with_reduction`
+// per limb, packed `e4(e2(w0,w1), e2(w2,w3))`). `raw` points at the first word to
+// consume — PoW-gated draws pass `&raw[1]` to honor the skip-first-word convention
+// of `draw_random_field_els_with_pow` — and must hold at least `count * 4` words.
+// Unlike `ab_transcript_squeeze_e4_kernel` this does NOT touch the seed: the caller
+// squeezes the padded raw words (advancing the seed) with `ab_transcript_squeeze_kernel`
+// first, then reduces here.
+EXTERN __global__ void ab_reduce_raw_words_to_e4_kernel(const u32 *raw, e4 *output_e4, const unsigned count) {
+  const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
+  if (gid >= count)
+    return;
+  const u32 *src = &raw[gid * 4];
+  const bf c0 = bf::from_raw_repr_with_reduction(src[0]);
+  const bf c1 = bf::from_raw_repr_with_reduction(src[1]);
+  const bf c2 = bf::from_raw_repr_with_reduction(src[2]);
+  const bf c3 = bf::from_raw_repr_with_reduction(src[3]);
+  output_e4[gid] = e4(e2(c0, c1), e2(c2, c3));
+}
+
 } // namespace airbender::hash

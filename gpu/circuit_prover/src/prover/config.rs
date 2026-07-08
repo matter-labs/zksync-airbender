@@ -14,17 +14,9 @@ use crate::upstream::{
 };
 use crate::witness::circuit_type::CircuitType;
 
-/// Security levels the GPU prover supports today.
-// TODO(sec100): support Sec100. Requires, at minimum:
-//   1. a `Sec100` arm in `prover_config` (WHIR schedule + domain-size mapping,
-//      analogous to `prover_config_sec80`);
-//   2. GPU PoW grinding for the lookup-challenge and batched-proximity-check
-//      challenges — at Sec100 both bit counts are non-zero (see
-//      `assert_gpu_supported_pow_config`), so the 0 nonces hardcoded in the
-//      `GKRProof` construction (`proof/orchestration/terminal.rs`) would be
-//      unsound. The grinding primitive already exists (`blake2s_pow`, used for
-//      the WHIR proximity rounds).
-pub const GPU_SUPPORTED_SECURITY_LEVELS: [SecurityLevel; 1] = [SecurityLevel::Sec80];
+/// Security levels the GPU prover supports.
+pub const GPU_SUPPORTED_SECURITY_LEVELS: [SecurityLevel; 2] =
+    [SecurityLevel::Sec80, SecurityLevel::Sec100];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct UnsupportedGpuSecurityLevel {
@@ -45,19 +37,23 @@ impl std::error::Error for UnsupportedGpuSecurityLevel {}
 
 /// Canonical `ProverConfig` for `circuit_type` at `security_level`. Delegates to
 /// the CPU's `config_for_security_level_under_pessimistic_conjecture` so GPU and
-/// CPU agree on the production WHIR schedule. Only `Sec80` is supported on GPU.
+/// CPU agree on the production WHIR schedule. Both `Sec80` and `Sec100` are
+/// supported (the per-circuit lookup-challenge and WHIR-batching PoWs are ground
+/// on device — see [`lookup_challenges_pow_bits`] / [`batched_proximity_check_pow_bits`]).
+///
+/// The `Result` is retained for API stability (`SecurityLevel` currently has no
+/// unsupported variant, so both arms are `Ok`).
 pub fn prover_config(
     circuit_type: CircuitType,
     security_level: SecurityLevel,
 ) -> Result<ProverConfig, UnsupportedGpuSecurityLevel> {
-    match security_level {
-        SecurityLevel::Sec80 => Ok(prover_config_sec80(circuit_type)),
-        // TODO(sec100): add a `Sec100` arm (see `GPU_SUPPORTED_SECURITY_LEVELS`).
-        other => Err(UnsupportedGpuSecurityLevel { requested: other }),
-    }
+    Ok(config_for_supported_level(circuit_type, security_level))
 }
 
-fn prover_config_sec80(circuit_type: CircuitType) -> ProverConfig {
+fn config_for_supported_level(
+    circuit_type: CircuitType,
+    security_level: SecurityLevel,
+) -> ProverConfig {
     let domain_size_log_2 = circuit_type.get_domain_size().trailing_zeros() as usize;
     // CPU's `example_configs` only defines schedules for {20, 22, 24}; collapse
     // 23 onto 24 to match the previous GPU mapping.
@@ -66,53 +62,43 @@ fn prover_config_sec80(circuit_type: CircuitType) -> ProverConfig {
         23 => 24,
         other => {
             panic!(
-                "no Sec80 ProverConfig for circuit {circuit_type:?} (domain_size_log_2 = {other})"
+                "no ProverConfig for circuit {circuit_type:?} at {security_level:?} \
+                 (domain_size_log_2 = {other})"
             )
         }
     };
-    config_for_security_level_under_pessimistic_conjecture(schedule_log_2, SecurityLevel::Sec80)
+    config_for_security_level_under_pessimistic_conjecture(schedule_log_2, security_level)
 }
 
-/// The GPU prover does not implement PoW grinding for the lookup-challenge or
-/// batched-proximity-check challenges (unlike the WHIR proximity rounds, which
-/// it *does* grind). Both bit counts are 0 at every security level the GPU
-/// supports (`GPU_SUPPORTED_SECURITY_LEVELS` = [Sec80]), so the emitted proof's
-/// `lookup_challenges_pow_nonce` / `batched_proximity_check_pow_nonce` are 0 —
-/// identical to the CPU prover at Sec80.
-///
-/// The pow-bit counts are no longer stored on `ProverConfig`; they are derived
-/// per-circuit from `security_level` (see `prover::gkr::prover_config::pow_bits`).
-/// We re-derive them here from the config's *actual* `security_level` and assert
-/// 0, so that adding a higher security level (where these grinds are non-zero)
-/// without implementing them trips loudly here rather than silently emitting an
-/// unsound proof carrying a 0 nonce.
-pub(crate) fn assert_gpu_supported_pow_config(
+/// PoW bit count for the lookup challenges (`lookup_alpha`, `lookup_additive`),
+/// derived per-circuit from the config's `security_level` — matching the CPU
+/// `draw_random_field_els_with_pow` site in `prover::gkr::prover`. 0 at Sec80,
+/// non-zero at Sec100. Fed to the pow-aware lookup-challenge draw in
+/// `proof/orchestration/stage1_forward.rs`.
+pub(crate) fn lookup_challenges_pow_bits(
     prover_config: &ProverConfig,
     compiled_circuit: &GKRCircuitArtifact<BF>,
-) {
-    // TODO(sec100): when a non-zero level is added, implement the two PoW grinds
-    // here (or upstream of the nonce construction) instead of asserting 0.
-    let security_bits = prover_config.security_level.security_bits();
-    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
-        security_bits,
+) -> u32 {
+    pow_bits::lookup_challenges_pow_bits(
+        prover_config.security_level.security_bits(),
         pow_bits::lookup_identity_degree(compiled_circuit),
-    );
-    assert_eq!(
-        lookup_challenges_pow_bits, 0,
-        "GPU prover only supports lookup_challenges_pow_bits = 0 \
-         (implement lookup-challenge PoW grinding to support this security level)",
-    );
-    let batched_proximity_check_pow_bits = pow_bits::batched_proximity_check_pow_bits(
-        security_bits,
+    )
+}
+
+/// PoW bit count for the WHIR base batching challenge, derived per-circuit from
+/// the config's `security_level` — matching the CPU
+/// `draw_random_field_els_with_pow` site. 0 at Sec80, non-zero at Sec100. Fed to
+/// the pow-aware batching draw in `proof/orchestration/whir.rs`.
+pub(crate) fn batched_proximity_check_pow_bits(
+    prover_config: &ProverConfig,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+) -> u32 {
+    pow_bits::batched_proximity_check_pow_bits(
+        prover_config.security_level.security_bits(),
         compiled_circuit.trace_len.trailing_zeros() as usize,
         prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
         pow_bits::total_base_oracle_columns(compiled_circuit),
-    );
-    assert_eq!(
-        batched_proximity_check_pow_bits, 0,
-        "GPU prover only supports batched_proximity_check_challenge_pow_bits = 0 \
-         (implement batched-proximity PoW grinding to support this security level)",
-    );
+    )
 }
 
 #[cfg(test)]
@@ -121,9 +107,11 @@ mod tests {
     use crate::witness::circuit_type::UnrolledCircuitType;
 
     #[test]
-    fn rejects_unsupported_security_level_in_prover_config() {
+    fn builds_prover_config_for_all_supported_security_levels() {
         let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
-        let err = prover_config(circuit_type, SecurityLevel::Sec100).unwrap_err();
-        assert_eq!(err.requested, SecurityLevel::Sec100);
+        for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
+            let cfg = prover_config(circuit_type, level).unwrap();
+            assert_eq!(cfg.security_level, level);
+        }
     }
 }

@@ -1,7 +1,6 @@
 use era_cudart::result::CudaResult;
 
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::blake2s::transcript_squeeze_e4;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use crate::primitives::device_tracing::Range;
@@ -97,6 +96,7 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
     backward_shared_state: ScheduledBackwardWorkflowStateHandle<E4>,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
+    batching_pow_bits: u32,
     context: &ProverContext,
 ) -> CudaResult<WhirPhaseResult> {
     let mut transition_ranges = Vec::new();
@@ -144,17 +144,27 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
     post_backward_handoff_range.end(stream)?;
     transition_ranges.push(post_backward_handoff_range);
 
-    // Draw the WHIR base batching challenge on device from the rolling
-    // backward seed (mirrors the host `draw_random_field_els::<BF, E4>(seed, 1)`
-    // line in the legacy `batching_challenge_source` closure).
+    // Draw the WHIR base batching challenge on device from the rolling backward
+    // seed. Pow-aware (`draw_random_field_els_with_pow(seed, 1, bits)`): grinds
+    // the batched-proximity PoW (0 bits at Sec80), advances the seed, honors the
+    // skip-first-word convention. The nonce lands in its slab slot.
     let mut batching_challenge_device: DeviceAllocation<E4> =
         context.alloc(1, AllocationPlacement::BestFit)?;
+    // SAFETY: `ProofLayout` computes a live, non-overlapping single-`u64` region
+    // for the batching pow nonce inside the slab; the kernel write here and the
+    // terminal readback are both exec-stream-ordered.
+    let (batching_nonce_ptr, _batching_nonce_len) =
+        unsafe { proof_layout.batched_proximity_pow_nonce_device_mut(proof_slab.as_ptr() as *mut u8) };
+    let batching_nonce_dst: &mut era_cudart::slice::DeviceVariable<u64> =
+        unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(batching_nonce_ptr) };
     let (final_device_seed_mut, _claim_point_for_squeeze) =
         backward_scheduled.final_device_seed_and_claim_point_mut();
-    transcript_squeeze_e4(
+    crate::prover::pow::schedule_draw_e4_challenges_with_pow(
         &mut **final_device_seed_mut,
         &mut batching_challenge_device,
-        stream,
+        batching_pow_bits,
+        batching_nonce_dst,
+        context,
     )?;
     let _ = _claim_point_for_squeeze;
     let whir_scheduled = {

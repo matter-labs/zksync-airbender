@@ -13,7 +13,6 @@ use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::UnsafeMutAccessor;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::prover::config::assert_gpu_supported_pow_config;
 use crate::prover::gkr::backward::make_deferred_backward_workflow_state;
 use crate::prover::gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use crate::prover::proof::inputs::GpuGKRProofTransfer;
@@ -49,7 +48,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
-    assert_gpu_supported_pow_config(prover_config, &compiled_circuit);
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -195,6 +193,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         &proof_layout,
         context,
     )?;
+    let batching_pow_bits =
+        crate::prover::config::batched_proximity_check_pow_bits(prover_config, &compiled_circuit);
     let WhirPhaseResult {
         transition_ranges,
         post_backward_callbacks,
@@ -212,6 +212,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         backward_shared_state,
         &proof_slab,
         &proof_layout,
+        batching_pow_bits,
         context,
     )?;
     ranges.extend(transition_ranges);

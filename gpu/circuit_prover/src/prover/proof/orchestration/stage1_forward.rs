@@ -284,7 +284,25 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
 
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(2, AllocationPlacement::BestFit)?;
-    crate::ops::blake2s::transcript_squeeze_e4(&mut d_seed, &mut d_lookup_challenges, stream)?;
+    // Pow-aware lookup-challenge draw (`draw_random_field_els_with_pow(seed, 2,
+    // bits)`): grinds the lookup PoW (0 bits at Sec80), advances the seed, and
+    // honors the skip-first-word convention. The nonce lands in the slab.
+    let lookup_pow_bits =
+        crate::prover::config::lookup_challenges_pow_bits(prover_config, compiled_circuit);
+    // SAFETY: `ProofLayout` computes a live, non-overlapping single-`u64` region
+    // for the lookup pow nonce inside the slab; the kernel write here and the
+    // terminal readback are both exec-stream-ordered.
+    let (lookup_nonce_ptr, _lookup_nonce_len) =
+        unsafe { proof_layout.lookup_pow_nonce_device_mut(slab_base) };
+    let lookup_nonce_dst: &mut era_cudart::slice::DeviceVariable<u64> =
+        unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(lookup_nonce_ptr) };
+    crate::prover::pow::schedule_draw_e4_challenges_with_pow(
+        &mut d_seed,
+        &mut d_lookup_challenges,
+        lookup_pow_bits,
+        lookup_nonce_dst,
+        context,
+    )?;
 
     let forward_setup = if let Some(setup_transfer) = bundle.setup {
         setup_transfer.schedule_forward_setup(compiled_circuit, d_lookup_challenges, context)?

@@ -93,12 +93,12 @@ pub(in crate::prover::proof) fn schedule_terminal_proof_assembly(
                     whir_proof,
                     grand_product_accumulator_computed,
                     inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.clone(),
-                    // GPU only supports Sec80, where both are 0 (see
-                    // `assert_gpu_supported_pow_config`); matches CPU at Sec80.
-                    // TODO(sec100): grind these on GPU — at Sec100 both are
-                    // non-zero, so hardcoded 0 nonces would be unsound.
-                    lookup_challenges_pow_nonce: 0,
-                    batched_proximity_check_pow_nonce: 0,
+                    // Ground on device by the pow-aware challenge draws (0 at
+                    // Sec80, non-zero at Sec100) and read back from the slab.
+                    lookup_challenges_pow_nonce: proof_layout_for_parse
+                        .lookup_pow_nonce_host(slab_bytes),
+                    batched_proximity_check_pow_nonce: proof_layout_for_parse
+                        .batched_proximity_pow_nonce_host(slab_bytes),
                 });
             }
         },

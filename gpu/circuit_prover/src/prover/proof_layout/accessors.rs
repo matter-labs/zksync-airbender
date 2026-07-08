@@ -181,6 +181,20 @@ impl ProofLayout {
         Self::device_typed::<E4>(slab_base, &self.whir.final_monomials)
     }
 
+    pub(crate) unsafe fn lookup_pow_nonce_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut u64, usize) {
+        Self::device_typed::<u64>(slab_base, &self.lookup_pow_nonce)
+    }
+
+    pub(crate) unsafe fn batched_proximity_pow_nonce_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut u64, usize) {
+        Self::device_typed::<u64>(slab_base, &self.batched_proximity_pow_nonce)
+    }
+
     fn whir_base(&self, which: WhirBaseLayerKind) -> &WhirBaseLayerByteLayout {
         match which {
             WhirBaseLayerKind::Setup => &self.whir.setup,
@@ -586,5 +600,13 @@ impl ProofLayout {
 
     pub(crate) fn whir_final_monomials_host<'a>(&self, slab: &'a [u8]) -> &'a [E4] {
         Self::host_typed::<E4>(slab, &self.whir.final_monomials)
+    }
+
+    pub(crate) fn lookup_pow_nonce_host(&self, slab: &[u8]) -> u64 {
+        Self::host_typed::<u64>(slab, &self.lookup_pow_nonce)[0]
+    }
+
+    pub(crate) fn batched_proximity_pow_nonce_host(&self, slab: &[u8]) -> u64 {
+        Self::host_typed::<u64>(slab, &self.batched_proximity_pow_nonce)[0]
     }
 }

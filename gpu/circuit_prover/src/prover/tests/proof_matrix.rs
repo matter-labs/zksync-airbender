@@ -72,6 +72,15 @@ fn run_add_sub_proof_parity_test() {
     run_proof_parity(prepare_basic_unrolled_proof_fixture());
 }
 
+/// Full-proof parity at Sec100, where the lookup-challenge and WHIR-batching
+/// PoWs are non-zero — exercises the on-device grinding + nonce path.
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_proof_parity_test_sec100() {
+    run_proof_parity(prepare_basic_unrolled_proof_fixture_sec100());
+}
+
 #[test]
 #[serial]
 #[ignore]

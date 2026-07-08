@@ -247,6 +247,12 @@ pub(crate) struct ProofLayout {
     pub(crate) output_evaluations: BTreeMap<OutputType, OutputEvaluationsLayout>,
     pub(crate) backward: Vec<BackwardLayerLayout>,
     pub(crate) whir: WhirLayout,
+    /// `GKRProof::lookup_challenges_pow_nonce` — a single `u64` ground by the
+    /// pow-aware lookup-challenge draw (0 at Sec80).
+    pub(crate) lookup_pow_nonce: Range<usize>,
+    /// `GKRProof::batched_proximity_check_pow_nonce` — a single `u64` ground by
+    /// the pow-aware WHIR batching-challenge draw (0 at Sec80).
+    pub(crate) batched_proximity_pow_nonce: Range<usize>,
     pub(crate) total_bytes: usize,
 }
 
@@ -340,11 +346,19 @@ impl ProofLayout {
         // WHIR base layers + intermediates + flat arrays.
         let whir = Self::lay_whir(&mut cur, &inputs.whir);
 
+        // The two prove-local pow nonces (lookup challenges, WHIR batching). Each
+        // is a single `u64` written by the pow-aware draw and read back into
+        // `GKRProof` with the rest of the slab.
+        let lookup_pow_nonce = alloc(&mut cur, 1, size_of::<u64>());
+        let batched_proximity_pow_nonce = alloc(&mut cur, 1, size_of::<u64>());
+
         let total_bytes = align_up(cur, FIELD_ALIGN);
         ProofLayout {
             output_evaluations,
             backward,
             whir,
+            lookup_pow_nonce,
+            batched_proximity_pow_nonce,
             total_bytes,
         }
     }

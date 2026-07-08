@@ -1,7 +1,10 @@
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::blake2s::{blake2s_pow, transcript_commit, transcript_squeeze, STATE_SIZE};
+use crate::ops::blake2s::{
+    blake2s_pow, reduce_raw_words_to_e4, transcript_commit, transcript_squeeze, STATE_SIZE,
+};
 use crate::ops::gkr_ops::assemble_query_indexes;
 use crate::primitives::context::DeviceAllocation;
+use crate::primitives::field::E4;
 use crate::prover::ProverContext;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
@@ -108,4 +111,68 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
         d_raw_bits: Some(d_raw_bits),
         d_indexes,
     })
+}
+
+/// Device-side `draw_random_field_els_with_pow::<BF, E4>(seed, count, pow_bits)` —
+/// the PoW-gated E4 challenge draw used for the lookup challenges and the WHIR
+/// batching challenge. Mirrors the query-index sibling above and the host
+/// `draw_random_field_els_with_pow` (`prover::gkr::prover::transcript_utils`) exactly:
+///
+/// 1. (`pow_bits > 0`) `blake2s_pow` searches a nonce against `device_seed`, written
+///    into `nonce_slab_dst`; otherwise the slot is set to the canonical `nonce = 0`.
+/// 2. (`pow_bits > 0`) `transcript_commit(device_seed, [nonce_lo, nonce_hi])` advances
+///    the seed to the post-`verify_pow` state. At `pow_bits == 0` the host `verify_pow`
+///    is a no-op, so the seed is NOT advanced — matching `search_pow` at 0 bits.
+/// 3. `transcript_squeeze` draws `(count*4 + 1)` raw words padded to `STATE_SIZE`
+///    (the `+1` is the PoW header word), advancing the seed; `reduce_raw_words_to_e4`
+///    then skips that header word (`&raw[1..]`) and reduces the rest into the `count`
+///    E4 challenges. This matches the host draw's `(count*DEGREE + 1)
+///    .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)` sizing and skip-first-word.
+///
+/// The nonce is written into the caller-supplied proof-slab slot (0 at Sec80),
+/// read back with the rest of the slab and assembled into `GKRProof` by `finish`.
+pub(crate) fn schedule_draw_e4_challenges_with_pow(
+    device_seed: &mut DeviceSlice<u32>,
+    output: &mut DeviceSlice<E4>,
+    pow_bits: u32,
+    nonce_slab_dst: &mut DeviceVariable<u64>,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let stream = context.get_exec_stream();
+    assert_eq!(device_seed.len(), STATE_SIZE);
+    let count = output.len();
+    assert!(count > 0);
+
+    // PoW search (GPU) → nonce into the slab slot. For pow_bits == 0 we emulate
+    // nonce = 0 (the host `search_pow` also returns nonce 0 there).
+    if pow_bits > 0 {
+        blake2s_pow(device_seed, pow_bits, u64::MAX, nonce_slab_dst, stream)?;
+    } else {
+        // SAFETY: `memory_set_async` is byte-granular; zeroing the 8-byte `u64`
+        // slab slot through a `u8` view writes the canonical all-zero nonce = 0.
+        unsafe {
+            era_cudart::memory::memory_set_async(nonce_slab_dst.transmute_mut::<u8>(), 0, stream)?;
+        }
+    }
+
+    // Advance the seed by committing the nonce words — ALWAYS, including at
+    // pow_bits == 0. The host `verify_pow` (which `search_pow` funnels through
+    // for every bit count) hashes `seed || nonce` and updates the seed even for
+    // a 0-bit / nonce-0 draw, so skipping this at 0 bits would diverge from the
+    // CPU transcript on the very next challenge.
+    // SAFETY: the slab slot is a single `u64` (8 bytes, align 8) viewable as 2
+    // little-endian `u32` words — the layout `transcript_commit` consumes (the
+    // host `verify_pow` nonce encoding). The read is stream-ordered on the same
+    // `exec_stream` as the `blake2s_pow` / `memory_set_async` write above.
+    let nonce_as_u32: &DeviceSlice<u32> = unsafe { nonce_slab_dst.transmute::<u32>() };
+    transcript_commit(device_seed, &nonce_as_u32[..2], stream)?;
+
+    let e4_words = count * 4;
+    let padded_words = (e4_words + 1).next_multiple_of(STATE_SIZE);
+    let mut d_raw: DeviceAllocation<u32> =
+        context.alloc(padded_words, AllocationPlacement::BestFit)?;
+    transcript_squeeze(device_seed, &mut d_raw, stream)?;
+    reduce_raw_words_to_e4(&d_raw[1..1 + e4_words], output, stream)?;
+
+    Ok(())
 }

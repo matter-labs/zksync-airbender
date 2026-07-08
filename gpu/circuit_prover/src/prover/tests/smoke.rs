@@ -497,6 +497,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec80,
         });
     assert!(expected_cpu_proof.is_none());
 
@@ -634,6 +635,7 @@ fn run_basic_unrolled_no_caches_test() {
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec80,
         });
     let fixture = BasicUnrolledProofFixture {
         base,

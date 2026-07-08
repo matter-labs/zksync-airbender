@@ -663,6 +663,7 @@ struct BasicUnrolledFixtureBuildConfig<'a> {
     non_determinism_reads: &'a [u32],
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
+    security_level: crate::upstream::SecurityLevel,
 }
 
 fn assert_generic_family_mapping_contract(

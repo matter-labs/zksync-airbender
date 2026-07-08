@@ -168,6 +168,7 @@ pub(super) fn finish_proof_fixture(
     witness_gen_data: Vec<CSExecutorFamilyDecoderData>,
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
+    security_level: SecurityLevel,
 ) -> (
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
@@ -202,7 +203,7 @@ pub(super) fn finish_proof_fixture(
 
     let fixture_circuit_type = circuit_type;
     let prover_config =
-        crate::prover::config::prover_config(fixture_circuit_type, SecurityLevel::Sec80).unwrap();
+        crate::prover::config::prover_config(fixture_circuit_type, security_level).unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &table_driver,
@@ -427,6 +428,7 @@ pub(super) fn prepare_unrolled_non_memory_proof_fixture<const FAMILY_IDX: u8>(
         ex.witness_gen_data,
         compute_cpu_reference,
         default_fixture_device_allocator_block_log_size(),
+        crate::upstream::SecurityLevel::Sec80,
     )
 }
 
@@ -580,6 +582,7 @@ pub(super) fn finish_proof_fixture_memory(
     witness_gen_data: Vec<CSExecutorFamilyDecoderData>,
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
+    security_level: SecurityLevel,
 ) -> (
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
@@ -611,7 +614,7 @@ pub(super) fn finish_proof_fixture_memory(
 
     let fixture_circuit_type = circuit_type;
     let prover_config =
-        crate::prover::config::prover_config(fixture_circuit_type, SecurityLevel::Sec80).unwrap();
+        crate::prover::config::prover_config(fixture_circuit_type, security_level).unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &table_driver,
@@ -831,6 +834,7 @@ pub(super) fn prepare_unrolled_memory_proof_fixture<const FAMILY_IDX: u8>(
         ex.witness_gen_data,
         compute_cpu_reference,
         default_fixture_device_allocator_block_log_size(),
+        crate::upstream::SecurityLevel::Sec80,
     )
 }
 
@@ -861,6 +865,7 @@ pub(super) fn prepare_basic_unrolled_fixture(
         ex.witness_gen_data,
         build_config.compute_cpu_reference,
         build_config.device_allocator_block_log_size,
+        build_config.security_level,
     )
 }
 
@@ -876,6 +881,32 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixtur
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec80,
+        });
+    BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected_cpu_proof
+            .expect("proof fixture must include the CPU reference proof"),
+    }
+}
+
+/// Sec100 variant of [`prepare_basic_unrolled_proof_fixture`]. At Sec100 the
+/// per-circuit lookup-challenge and WHIR-batching PoWs are non-zero, so this
+/// exercises the on-device grinding + nonce path end-to-end against the CPU
+/// reference (which grinds the same PoW).
+pub(crate) fn prepare_basic_unrolled_proof_fixture_sec100() -> BasicUnrolledProofFixture {
+    let (base, expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
+            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
+            non_determinism_reads: &[15, 1],
+            compute_cpu_reference: true,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec100,
         });
     BasicUnrolledProofFixture {
         base,
@@ -896,6 +927,7 @@ pub(super) fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture
             non_determinism_reads: &[],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec80,
         });
     assert!(
         expected_cpu_proof.is_none(),
@@ -1167,6 +1199,7 @@ pub(crate) fn prepare_basic_unrolled_async_backward_fixture(
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec80,
         });
     assert!(
         expected_cpu_proof.is_none(),
