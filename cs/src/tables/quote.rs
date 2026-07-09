@@ -75,6 +75,9 @@ impl quote::ToTokens for TableType {
             TableType::XorRotate12 => quote!(TableType::XorRotate12),
             TableType::XorRotate8 => quote!(TableType::XorRotate8),
             TableType::XorRotate7 => quote!(TableType::XorRotate7),
+            TableType::WideXor => quote!(TableType::WideXor),
+            TableType::WideOr => quote!(TableType::WideOr),
+            TableType::WideAnd => quote!(TableType::WideAnd),
             TableType::Decoder => quote!(TableType::Decoder),
             TableType::DynamicPlaceholder => {
                 unimplemented!("should not appear in final circuits")

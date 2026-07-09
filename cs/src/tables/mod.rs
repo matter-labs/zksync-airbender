@@ -951,6 +951,9 @@ impl TableType {
             TableType::XorRotate7 => {
                 LookupWrapper::Initialized(create_xor_rotate_table::<F, 7>(id))
             }
+            TableType::WideXor => LookupWrapper::Initialized(create_wide_xor_table::<F>(id)),
+            TableType::WideOr => LookupWrapper::Initialized(create_wide_or_table::<F>(id)),
+            TableType::WideAnd => LookupWrapper::Initialized(create_wide_and_table::<F>(id)),
             a @ _ => {
                 todo!("Support {:?}", a);
             }

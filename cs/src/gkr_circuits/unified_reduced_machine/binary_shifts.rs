@@ -97,7 +97,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let is_shift = decoder.perform_shift();
     let is_xor_rot = xor_rot;
 
-
     let shift_amount_constraint =
         Constraint::from(truncated_shift_amount) + Term::from(inputs.decoder_data.imm[0]);
 
