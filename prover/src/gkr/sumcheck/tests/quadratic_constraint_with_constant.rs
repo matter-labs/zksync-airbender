@@ -79,8 +79,7 @@ fn test_quadratic_constraint_with_constant() {
             ),
         ]
         .into_boxed_slice(),
-        constants: vec![(minus_6, 0), (minus_4, 1)]
-            .into_boxed_slice(),
+        constants: vec![(minus_6, 0), (minus_4, 1)].into_boxed_slice(),
     };
 
     let kernel = BatchConstraintEvalGKRRelation::new(

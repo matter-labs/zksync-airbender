@@ -73,7 +73,12 @@ impl Transcript<F, E> for TestTranscript {
     fn draw_random_field_elements(seed: &mut Seed, buffer: &mut [E]) {
         draw_random_field_elements_impl::<true, F, E>(seed, buffer);
     }
-    fn draw_random_field_elements_with_pow(seed: &Self::Seed, pow_bits: u32, buffer: &mut [E], worker: &worker::Worker) -> (Self::Seed, u64) {
+    fn draw_random_field_elements_with_pow(
+        seed: &Self::Seed,
+        pow_bits: u32,
+        buffer: &mut [E],
+        worker: &worker::Worker,
+    ) -> (Self::Seed, u64) {
         todo!();
     }
 }

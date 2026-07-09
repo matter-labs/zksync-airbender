@@ -561,6 +561,138 @@ where
     }
 }
 
+/// Packed analogue of [`commit_trace_part`]: instead of committing each input
+/// polynomial on its own domain, it groups `2^pack_log2` consecutive polynomials
+/// into a single `packed_trace_len_log2`-variate multilinear (see
+/// [`pack_polys_parallel_from_hypercubes_to_monomials`]) and commits those packed
+/// polynomials via the same coset-LDE + Merkle-tree path.
+///
+/// `packed_trace_len_log2` is the number of variables of a packed polynomial,
+/// i.e. `input_column_vars + pack_log2`; `twiddles` must be sized for that enlarged
+/// domain. All input columns must have `2^(packed_trace_len_log2 - pack_log2)`
+/// elements.
+pub fn commit_trace_part_packed<
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    input_on_hypercube: &[&[F]],
+    twiddles: &Twiddles<F, Global>,
+    lde_factor: usize,
+    whir_first_fold_step_log2: usize,
+    tree_cap_size: usize,
+    packed_trace_len_log2: usize,
+    pack_log2: usize,
+    worker: &Worker,
+) -> ColumnMajorBaseOracleForLDE<F, T>
+where
+    [(); F::DEGREE]: Sized,
+{
+    use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
+
+    let values_per_leaf = 1 << whir_first_fold_step_log2;
+    let next_root =
+        domain_generator_for_size::<F>(((1 << packed_trace_len_log2) * lde_factor) as u64);
+    let root_powers =
+        materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
+    assert_eq!(root_powers[0], F::ONE);
+
+    // Empty input (e.g. an empty setup): mirror `commit_trace_part` and return
+    // empty cosets with a dummy tree.
+    if input_on_hypercube.is_empty() {
+        let mut cosets = Vec::with_capacity(lde_factor);
+        for i in 0..lde_factor {
+            cosets.push(ColumnMajorBaseOracleForCoset {
+                original_values_normal_order: Vec::new(),
+                offset: root_powers[i],
+                trace_len_log2: packed_trace_len_log2,
+            });
+        }
+        return ColumnMajorBaseOracleForLDE {
+            cosets,
+            tree: T::dummy(),
+            values_per_leaf,
+            trace_len_log2: packed_trace_len_log2,
+        };
+    }
+
+    // Pack `2^pack_log2` polys into each packed multilinear (monomial form).
+    let mut monomials =
+        pack_polys_parallel_from_hypercubes_to_monomials(input_on_hypercube, pack_log2, worker);
+    for m in monomials.iter() {
+        assert_eq!(
+            m.len(),
+            1 << packed_trace_len_log2,
+            "packed poly must have 2^(packed_trace_len_log2) elements"
+        );
+    }
+
+    // Same coset-by-coset LDE as `commit_packed_merged_memory_and_witness_subtrees`.
+    let mut cosets = Vec::with_capacity(lde_factor);
+    for i in 0..lde_factor {
+        let mut sources = if i == lde_factor - 1 {
+            core::mem::replace(&mut monomials, vec![])
+        } else {
+            monomials.clone()
+        };
+        let offset = root_powers[i];
+        for src in sources.iter_mut() {
+            if i != 0 {
+                distribute_powers_parallel(src, F::ONE, offset, worker);
+            }
+            bitreverse_enumeration_inplace(src);
+            fft::naive::parallel_ct_ntt_bitreversed_to_natural(
+                src,
+                packed_trace_len_log2 as u32,
+                &twiddles.forward_twiddles,
+                worker,
+            );
+        }
+
+        let original_values_normal_order: Vec<_> = sources
+            .into_iter()
+            .map(|el| ColumnMajorCosetBoundTracePart {
+                column: Arc::new(el.into_boxed_slice()),
+                offset,
+            })
+            .collect();
+
+        cosets.push(ColumnMajorBaseOracleForCoset {
+            original_values_normal_order,
+            offset,
+            trace_len_log2: packed_trace_len_log2,
+        });
+    }
+    assert_eq!(cosets.len(), lde_factor);
+
+    let source: Vec<_> = cosets
+        .iter()
+        .map(|el| {
+            el.original_values_normal_order
+                .iter()
+                .map(|el| &el.column[..])
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
+
+    let tree = T::construct_from_cosets::<F, Global>(
+        &source_ref[..],
+        values_per_leaf,
+        tree_cap_size,
+        true,
+        true,
+        false,
+        worker,
+    );
+
+    ColumnMajorBaseOracleForLDE {
+        cosets,
+        tree,
+        values_per_leaf,
+        trace_len_log2: packed_trace_len_log2,
+    }
+}
+
 pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + TwoAdicField>(
     evals: &[&[F]],
     pack_log2: usize,
@@ -589,38 +721,29 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
     }
     assert_eq!(result.len(), num_packed);
 
-    let mut chunks = Vec::with_capacity(evals.len());
-    'outer: for el in result.iter_mut() {
-        for chunk in el.chunks_mut(trace_len) {
-            chunks.push(chunk);
-            if chunks.len() == evals.len() {
-                break 'outer;
-            }
-        }
+    // Now turn every packed poly into monomial form as a SINGLE
+    // `(N + pack_log2)`-variate multilinear: the transform runs over all of its
+    // variables at once (not per sub-poly block), so the `pack_log2` extra
+    // coordinates genuinely mix with the base ones. This is what makes the packed
+    // poly a faithful multilinear whose evaluations agree with `merge_claims`
+    // (the block index is the most-significant coordinate of the enumeration).
+    //
+    // Each packed poly is large, so we transform them one at a time and let the
+    // multilinear transform use all cores internally (nesting a per-poly
+    // `worker.scope` here would deadlock the thread pool). The output is the
+    // NATURAL monomial coefficients `M = evals_into_coeffs(H)` of the packed
+    // multilinear; the coset LDE step in `initial_commit` applies the usual
+    // bit-reversal that the Cooley-Tukey NTT expects, so no extra reordering is
+    // done here (adding one would commit a bit-permuted polynomial that no longer
+    // matches the GKR / `merge_claims` evaluations).
+    for packed in result.iter_mut() {
+        let size_log2 = packed.len().trailing_zeros();
+        hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs(
+            &mut packed[..],
+            size_log2,
+            worker,
+        );
     }
-
-    let work_size = chunks.len();
-    // now get monomial forms, and it's consistent with extending via coordiantes that are MSB in enumeration
-    worker.scope(work_size, |scope, geometry| {
-        let mut work = &mut chunks[..];
-        for thread_idx in 0..geometry.len() {
-            let chunk_size = geometry.get_chunk_size(thread_idx);
-            let (chunk, rest) = work.split_at_mut(chunk_size);
-            work = rest;
-            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                // let ptr = ptr;
-                for input in chunk {
-                    let input: &mut [F] = *input;
-                    let size_log2 = trace_len.trailing_zeros();
-                    bitreverse_enumeration_inplace(input);
-                    hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs(
-                        input, size_log2,
-                    );
-                }
-            });
-        }
-        assert!(work.is_empty());
-    });
 
     result
 }

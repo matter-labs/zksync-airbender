@@ -582,9 +582,7 @@ pub(crate) fn single_column_lookup_as_flattened_relation<
     }
 
     for (coeff, a) in rel.input.linear_terms.iter() {
-        assert!(result
-            .insert(*a, E::from_base(*coeff))
-            .is_none());
+        assert!(result.insert(*a, E::from_base(*coeff)).is_none());
     }
     constant_term.add_assign_base(&rel.input.constant);
 

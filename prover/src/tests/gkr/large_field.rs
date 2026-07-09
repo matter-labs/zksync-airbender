@@ -15,10 +15,8 @@
 //!     while the setup commitment uses ordinary trace-sized twiddles.
 
 use super::orchestration::common::{
-    run_vm_and_capture, ProgramConfig, VmRunOutput,
-    NUM_CYCLES_PER_CHUNK,
+    run_vm_and_capture, ProgramConfig, VmRunOutput, NUM_CYCLES_PER_CHUNK,
 };
-use crate::tests::gkr::orchestration::common::dummy_external_challenges;
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::definitions::SecurityLevel;
 use crate::gkr::prover::prove_configured_with_gkr;
@@ -32,6 +30,7 @@ use crate::gkr::witness_gen::family_circuits::{
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use crate::merkle_trees::DefaultTreeConstructor;
+use crate::tests::gkr::orchestration::common::dummy_external_challenges;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::baby_bear::ext4::BabyBearExt4;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -65,7 +64,6 @@ fn basic_fibonacci_config() -> ProgramConfig {
 }
 
 const TRACE_LEN_LOG2: usize = 24;
-const SETUP_TRACE_LEN_LOG2: usize = 24; // temporary
 
 #[test]
 fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
@@ -113,9 +111,6 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
     );
 
     println!("Computing setup");
-    // Setup commitment uses ordinary trace-sized twiddles.
-    let setup_twiddles: Twiddles<Proth120, Global> =
-        Twiddles::new(1 << SETUP_TRACE_LEN_LOG2, &worker);
     // The proof function's twiddles are of unified circuit size * (1 << pack_log2):
     // the packed commitment interpolates the merged/packed polynomials over the
     // enlarged domain.
@@ -123,19 +118,15 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
         Twiddles::new(trace_len << pack_log2, &worker);
 
     // 5. Construct & commit the setup.
-    let setup = GKRSetup::construct(
-        &table_driver,
-        &decoder_table,
-        1 << SETUP_TRACE_LEN_LOG2,
-        &unified_circuit,
-    );
+    let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
     println!("Computing setup commitment");
-    let setup_commitment = setup.commit::<Keccak256MerkleTreeWithCap>(
-        &setup_twiddles,
+    let setup_commitment = setup.commit_packed::<Keccak256MerkleTreeWithCap>(
+        &packed_twiddles,
         prover_config.lde_factor,
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.cap_size,
-        SETUP_TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2,
+        pack_log2,
         &worker,
     );
 

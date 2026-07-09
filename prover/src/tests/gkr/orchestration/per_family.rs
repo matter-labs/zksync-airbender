@@ -25,8 +25,8 @@ use riscv_transpiler::witness::data_structs::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
 };
 use riscv_transpiler::witness::{MemDestinationHolder, NonMemDestinationHolder};
-use transcript::Blake2sTranscript;
 use std::alloc::Global;
+use transcript::Blake2sTranscript;
 use worker::Worker;
 
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
@@ -159,7 +159,12 @@ pub fn prove_built_family_trace(
 
     println!("Trying to prove");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
+    let proof = prove_configured_with_gkr::<
+        BabyBearField,
+        BabyBearExt4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+    >(
         circuit,
         external_challenges,
         full_trace,
@@ -460,7 +465,12 @@ pub fn prove_inits_and_teardowns(
         .collect();
 
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
+    let proof = prove_configured_with_gkr::<
+        BabyBearField,
+        BabyBearExt4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+    >(
         &circuit,
         external_challenges,
         full_trace,

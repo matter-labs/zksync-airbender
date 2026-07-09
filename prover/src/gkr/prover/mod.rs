@@ -814,6 +814,8 @@ where
         pow_bits::total_base_oracle_columns(compiled_circuit),
     );
 
+    let mut trace_len_log2_for_whir = trace_len.trailing_zeros() as usize;
+
     // and for WHIR we may need to reshuffle/merge claims depending on the mode
     let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = match commitment_mode {
         CommitmentMode::SeparateMemoryAndWitness => {
@@ -842,16 +844,60 @@ where
             let mut merged_claims = mem_polys_claims;
             merged_claims.extend(wit_polys_claims);
 
-            let [merged_claims, setup_polys_claims] =
-                [merged_claims, setup_polys_claims].map(|input| {
-                    merge_claims(&input, &extra_coordinates)
-                });
+            let [merged_claims, setup_polys_claims] = [merged_claims, setup_polys_claims]
+                .map(|input| merge_claims(&input, &extra_coordinates));
 
             // and we need to update claim point
             let mut new_claim_point = extra_coordinates;
             new_claim_point.extend_from_slice(&base_layer_z);
 
             base_layer_z = new_claim_point;
+            trace_len_log2_for_whir += pack_log2;
+
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                use crate::gkr::prover::stages::commitment_utils::compute_column_major_monomial_form_from_main_domain;
+                use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+
+                // Reconstruct every packed polynomial from the committed base oracle
+                // and check that its multilinear evaluation at the (now extended)
+                // claim point matches the merged claim we just derived. We take the
+                // FIRST coset (offset == 1, i.e. the base evaluation domain), invert
+                // its NTT to recover the packed poly's monomial coefficients, turn
+                // those into hypercube evaluations, and evaluate at `base_layer_z`.
+                let coset0 = &mem_oracle.cosets[0];
+                debug_assert_eq!(coset0.offset, F::ONE, "coset 0 must be the base domain");
+                assert_eq!(
+                    coset0.original_values_normal_order.len(),
+                    merged_claims.len(),
+                    "one committed packed column per merged claim"
+                );
+                let eq_at_point = make_eq_poly_in_full::<E>(&base_layer_z, worker);
+                let eq_at_point = eq_at_point.last().expect("eq poly has a full layer");
+                for (column, expected_claim) in coset0
+                    .original_values_normal_order
+                    .iter()
+                    .zip(merged_claims.iter())
+                {
+                    // coset 0 evaluations -> IFFT -> natural monomial coefficients
+                    let mut hypercube_evals = compute_column_major_monomial_form_from_main_domain::<
+                        F,
+                        F,
+                        Global,
+                    >(&column.column[..], twiddles);
+                    // monomials -> hypercube evaluations of the packed multilinear
+                    let size_log2 = hypercube_evals.len().trailing_zeros();
+                    multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, size_log2);
+                    // re-evaluate at the extended claim point and compare
+                    assert_eq!(hypercube_evals.len(), eq_at_point.len());
+                    let reevaluated =
+                        evaluate_with_precomputed_eq::<F, E>(&hypercube_evals, eq_at_point);
+                    assert_eq!(
+                        reevaluated, *expected_claim,
+                        "packed-commitment self-check: reconstructed evaluation must match merged claim"
+                    );
+                }
+            }
 
             (merged_claims, Vec::new(), setup_polys_claims)
         }
@@ -879,7 +925,7 @@ where
         twiddles,
         seed,
         prover_config.whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
+        trace_len_log2_for_whir,
         None, // base oracles hold all cosets; no coset-by-coset hook
         crate::gkr::whir::WhirIntermediateOracleMode::Monolithic,
         worker,
@@ -931,10 +977,7 @@ where
     }
 }
 
-fn merge_claims<F: Field>(
-    input: &[F],
-    extra_coordinates: &[F],
-) -> Vec<F> {
+fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
     let pack_log2 = extra_coordinates.len();
     let mut result = vec![];
     for chunk in input.chunks(1 << pack_log2) {
@@ -951,9 +994,10 @@ fn merge_claims<F: Field>(
         // coordiantes, so first coordiante is MSB
         for merge_point in extra_coordinates.iter().rev() {
             for [a, b] in input.as_chunks::<2>().0 {
-                // NOTE: swap of a => f1 and b -> f0, to be consistent with commitment scheme
+                // canonical interpolation a + (b - a) * r', consistent with the packing
+                // that concatenates sub-polys in order (block 0 => a at coordinate 0)
                 use crate::gkr::prover::sumcheck_loop::interpolate_linear;
-                let t = interpolate_linear(*b, *a, merge_point);
+                let t = interpolate_linear(*a, *b, merge_point);
                 buffer.push(t);
             }
 
@@ -973,7 +1017,6 @@ mod packing_merge_tests {
     use crate::gkr::prover::stages::commitment_utils::pack_polys_parallel_from_hypercubes_to_monomials;
     use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq, make_eq_poly_in_full};
     use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-    use fft::bitreverse_enumeration_inplace;
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
     use field::{Field, FieldExtension, PrimeField};
@@ -992,23 +1035,22 @@ mod packing_merge_tests {
         <E as FieldExtension<F>>::from_coeffs(coeffs)
     }
 
-    /// Inverse of the per-block transform that
-    /// `pack_polys_parallel_from_hypercubes_to_monomials` applies to each
-    /// `trace_len`-sized sub-poly (forward: `bitreverse` then
-    /// `multivariate_hypercube_evals_into_coeffs`). Turns one monomial block back
-    /// into its hypercube evaluations, so we can recover the enlarged multilinear.
-    fn monomial_block_to_hypercube_evals(block: &mut [F]) {
-        let size_log2 = block.len().trailing_zeros();
-        // invert the forward steps in reverse order (`bitreverse` is its own inverse)
-        multivariate_coeffs_into_hypercube_evals(block, size_log2);
-        bitreverse_enumeration_inplace(block);
+    /// Inverse of `pack_polys_parallel_from_hypercubes_to_monomials` for a single
+    /// packed poly: turn the whole `(N + pack_log2)`-variate monomial vector back
+    /// into hypercube evaluations. The forward transform is
+    /// `multivariate_hypercube_evals_into_coeffs` over ALL variables, so the inverse
+    /// is `multivariate_coeffs_into_hypercube_evals` over all of them. The vector is
+    /// treated as one multilinear — it can NOT be split into per-sub-poly halves.
+    fn packed_monomials_to_hypercube_evals(packed: &mut [F]) {
+        let size_log2 = packed.len().trailing_zeros();
+        multivariate_coeffs_into_hypercube_evals(packed, size_log2);
     }
 
     /// Concatenate two `2^N`-sized multilinear polys `a`, `b` into a single
-    /// `(N + 1)`-variate multilinear poly `P` (with the block index as the most
-    /// significant coordinate, matching the commitment enumeration) and check that
-    /// `merge_claims` reproduces `P` evaluated at the extended point, agreeing with
-    /// a naive dot product against the full `(N + 1)`-variate equality polynomial.
+    /// `(N + 1)`-variate multilinear poly `P` (block index = most significant
+    /// coordinate, `P(x, 0) = a(x)`, `P(x, 1) = b(x)`) and check that `merge_claims`
+    /// reproduces `P` at the extended point, agreeing with a naive dot product
+    /// against the full `(N + 1)`-variate equality polynomial.
     #[test]
     fn concatenate_two_polys_merge_claims_matches_extended_eq() {
         let worker = Worker::new_with_num_threads(2);
@@ -1031,28 +1073,25 @@ mod packing_merge_tests {
         let claim_b = evaluate_with_precomputed_eq::<F, E>(&b, eq_r);
 
         // 2) concatenate the two polys "as monomials" via the commitment helper.
-        //    `pack_log2 = 1` merges the 2 sub-polys into one packed poly whose two
-        //    `2^N` halves are the per-block monomial forms of `a` and `b`.
+        //    `pack_log2 = 1` merges the 2 sub-polys into one packed poly that is the
+        //    monomial form of the single (N + 1)-variate multilinear `P`.
         let packed =
             pack_polys_parallel_from_hypercubes_to_monomials::<F>(&[&a[..], &b[..]], 1, &worker);
         assert_eq!(packed.len(), 1);
         let mut p_evals = packed.into_iter().next().unwrap();
         assert_eq!(p_evals.len(), 2 * size);
 
-        // 3) go back to hypercube evaluations of the (N + 1)-variate poly `P`.
-        //    Low half = block 0 (from `a`), high half = block 1 (from `b`); the block
-        //    index is the MSB coordinate of `P`.
-        {
-            let (blk0, blk1) = p_evals.split_at_mut(size);
-            monomial_block_to_hypercube_evals(blk0);
-            monomial_block_to_hypercube_evals(blk1);
-        }
-        // the round-trip must recover the original sub-poly evaluations exactly
+        // 3) go back to hypercube evaluations of the (N + 1)-variate poly `P` by
+        //    inverting the transform over the WHOLE vector (the packed monomials mix
+        //    all variables and can not be split into per-sub-poly halves).
+        packed_monomials_to_hypercube_evals(&mut p_evals);
+        // the round-trip must recover the concatenated sub-poly evaluations exactly:
+        // block 0 (low half) is `a`, block 1 (high half) is `b`.
         assert_eq!(&p_evals[..size], &a[..], "block 0 must round-trip to `a`");
         assert_eq!(&p_evals[size..], &b[..], "block 1 must round-trip to `b`");
 
         // 4a) evaluation via `merge_claims`: merge the two claims at a random extra
-        //     coordinate `r'`.
+        //     coordinate `r'` (canonical interpolation a(r) + (b(r) - a(r)) * r').
         let r_prime = rand_e(&mut rng);
         let merged = merge_claims::<E>(&[claim_a, claim_b], &[r_prime]);
         assert_eq!(merged.len(), 1);
@@ -1061,13 +1100,10 @@ mod packing_merge_tests {
         // 4b) naive evaluation: dot product of `P`'s hypercube evaluations with the
         //     full (N + 1)-variate equality poly at the extended point. `make_eq_poly`
         //     treats `challenges[0]` as the MOST-significant index bit, so the block
-        //     coordinate (the MSB of `P`) is listed first, followed by `r`. To match
-        //     the `a => f1 / b => f0` swap inside `merge_claims` the block challenge
-        //     is `1 - r'`.
-        let mut block_challenge = E::ONE;
-        block_challenge.sub_assign(&r_prime);
+        //     coordinate (the MSB of `P`) is listed first, followed by `r`. With the
+        //     canonical interpolation the block challenge is exactly `r'`.
         let mut ext_point = Vec::with_capacity(N + 1);
-        ext_point.push(block_challenge);
+        ext_point.push(r_prime);
         ext_point.extend_from_slice(&r);
         let eq_ext_layers = make_eq_poly_in_full::<E>(&ext_point, &worker);
         let eq_ext = eq_ext_layers.last().unwrap();

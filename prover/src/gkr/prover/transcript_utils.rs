@@ -52,7 +52,11 @@ where
 /// word — consumed by the PoW — is always skipped. The drawn word count must
 /// match the verifier's PoW-aware draw exactly, or the transcripts diverge.
 #[track_caller]
-pub fn draw_random_field_els_with_pow<F: PrimeField, E: FieldExtension<F> + Field, TR: Transcript<F, E>>(
+pub fn draw_random_field_els_with_pow<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    TR: Transcript<F, E>,
+>(
     seed: &mut TR::Seed,
     num_challenges: usize,
     pow_bits: u32,
@@ -62,7 +66,8 @@ where
     [(); E::DEGREE]: Sized,
 {
     let mut all_challenges = vec![E::ZERO; num_challenges];
-    let (new_seed, pow_challenge) = TR::draw_random_field_elements_with_pow(&*seed, pow_bits, &mut all_challenges, worker);
+    let (new_seed, pow_challenge) =
+        TR::draw_random_field_elements_with_pow(&*seed, pow_bits, &mut all_challenges, worker);
     *seed = new_seed;
     (pow_challenge, all_challenges)
 

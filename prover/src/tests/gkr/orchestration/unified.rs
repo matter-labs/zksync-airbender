@@ -822,7 +822,12 @@ pub fn prove_built_unified_trace(
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
+    let proof = prove_configured_with_gkr::<
+        BabyBearField,
+        BabyBearExt4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+    >(
         unified_circuit,
         external_challenges,
         unified_full_trace,

@@ -69,9 +69,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaxQuadraticGKRRelation<F, E> 
             if is_new {
                 inputs.push(*a);
             }
-            kernel
-                .linear_parts
-                .push((a_offset, *c));
+            kernel.linear_parts.push((a_offset, *c));
         }
 
         Self {

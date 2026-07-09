@@ -39,9 +39,7 @@ pub(crate) fn remap<F: PrimeField>(
                 a_offset
             };
 
-            kernel
-                .quadratic_parts
-                .push(((a_offset, b_offset), *c));
+            kernel.quadratic_parts.push(((a_offset, b_offset), *c));
         }
     }
 
@@ -51,9 +49,7 @@ pub(crate) fn remap<F: PrimeField>(
             inputs.push(*a);
         }
 
-        kernel
-            .linear_parts
-            .push((a_offset, *c));
+        kernel.linear_parts.push((a_offset, *c));
     }
 
     (inputs, kernel)
