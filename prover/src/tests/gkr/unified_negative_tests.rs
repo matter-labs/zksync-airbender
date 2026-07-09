@@ -380,6 +380,33 @@ fn wide_binop_output_corruption_rejected() {
     );
 }
 
+/// Plain-binop HIGH limb through the merged path (bytes 2,3 of the identity-placement
+/// reconstruction) — the low-limb test alone leaves out_high unpinned coverage-wise.
+#[test]
+fn wide_binop_output_high_corruption_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let out_hi_addr = find_base_layer_address(circuit, "rd/mem write write_value[1]");
+        let binop_row = find_family_row(
+            circuit,
+            trace,
+            FAMILY_3_BINARY_OP_BIT,
+            Some(&WIDE_BINOP_TABLE_IDS),
+        )
+        .expect("multi_family_smoke must execute at least one plain XOR/OR/AND");
+        let cur = read_cell(trace, out_hi_addr, binop_row);
+        let wrong = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, out_hi_addr, binop_row, wrong);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected wide-binop out_high corruption to fail check_satisfied (merged binop reconstruction, high limb)"
+    );
+}
+
 /// SW-into-ROM trap: the constraint `is_rom * is_sw = 0` forbids stores to ROM
 /// addresses. Mutating `is_rom = 1` on an SW row should make the product 1 ≠ 0;
 /// `check_satisfied` must reject. `is_rom` is aliased into the shared scratch-Boolean

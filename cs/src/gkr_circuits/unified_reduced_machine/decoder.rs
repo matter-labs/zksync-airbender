@@ -139,6 +139,12 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
         // `ZimopIXorRot` (rd = (rs1 ^ rd_old) >>> rot) is a UNIFIED-ONLY shift/binop-family opcode;
         // the standalone `ShiftBinaryDecoder` returns `Err`. `preprocess_bytecode` sets rs2 := rd,
         // so rd's old value flows through the rs2 read port (sub-slot +1) and the circuit reuses
+        // the rs2 byte decomposition. The opcode rides the ORDINARY binary-op dispatch bit — its
+        // only difference from a plain binop is the table id: the rotation amount (only the 4
+        // Blake2 values {16,12,8,7}) maps to the per-rotation XorRotate{r} table id carried in
+        // `funct3` (table_id = funct3, like the Wide{Xor,Or,And} remap below). `imm` is zeroed
+        // (the rotation lives in funct3), so the binop path's `rs2_byte + imm` inputs and its
+        // imm sign-extension lookup both see zeros on these rows.
         if preprocessed_opcode.name == InstructionName::ZimopIXorRot {
             assert_ne!(preprocessed_opcode.rd, 0);
             assert_eq!(preprocessed_opcode.rs2, preprocessed_opcode.rd);
@@ -431,7 +437,11 @@ mod tests {
         let f3_mask: u32 = ((1u32 << UNIFIED_F3_NUM_FLAGS) - 1) << F3_OFFSET;
         let f4_mask: u32 = (1u32 << F4_LW_BIT) | (1u32 << F4_SW_BIT);
 
+        // One representative per accepted opcode (operand shapes follow each family
+        // decoder's asserts); rd=0 Jal/Jalr rows exercise the F2 auxiliary RD_IS_ZERO
+        // bit alongside the dispatch bit. Extend when opcodes are added.
         let cases = vec![
+            Instruction::new(InstructionName::Nop, 0, 0, 0, 0),
             Instruction::new(InstructionName::Add, 1, 2, 3, 0),
             Instruction::new(InstructionName::Sub, 1, 2, 3, 0),
             Instruction::new(InstructionName::Auipc, 0, 0, 3, 0x1000),
@@ -440,8 +450,13 @@ mod tests {
             Instruction::new(InstructionName::ZimopMul, 1, 2, 3, 0),
             Instruction::new(InstructionName::ZimopFMA, 1, 2, 3, 0),
             Instruction::new(InstructionName::ZimopTriAdd, 1, 2, 3, 0),
+            Instruction::new(InstructionName::ZicsrDelegation, 0, 0, 0, 0x7C0),
+            Instruction::new(InstructionName::ZicsrNonDeterminismWrite, 1, 0, 0, 0),
+            Instruction::new(InstructionName::ZicsrNonDeterminismRead, 0, 0, 3, 0),
             Instruction::new(InstructionName::Jal, 0, 0, 1, 8),
+            Instruction::new(InstructionName::Jal, 0, 0, 0, 8),
             Instruction::new(InstructionName::Jalr, 1, 0, 1, 0),
+            Instruction::new(InstructionName::Jalr, 1, 0, 0, 0),
             Instruction::new(InstructionName::Branch, 1, 2, 0, 8),
             Instruction::new(InstructionName::Slt, 1, 2, 3, 0),
             Instruction::new(InstructionName::Sltu, 1, 2, 3, 0),

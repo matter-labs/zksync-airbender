@@ -487,9 +487,10 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         // select-then-sum below as a 5th masked branch; idle when is_tri_add = 0.
         // NOTE: unlike the former standalone is_tri_add-gated constraints, the folded
         // form is sound only if the F1 flags are mutually exclusive (a two-flag row could
-        // satisfy the sum with eq_add = -eq_tri). Exclusivity is decoder-ROM-guaranteed
-        // (packed bitmask bound atomically per instruction + Booleanity) — the same invariant
-        // the F3 exclusivity deletion relies on.
+        // satisfy the sum with eq_add = -eq_tri). Exclusivity is enforced by the global
+        // family dispatch one-hot in circuit.rs (execute · Σ all family bits ∈ {0,1}, plus
+        // padding zeroing) and by the decoder ROM binding the packed bitmask atomically per
+        // instruction — the same invariants the F3 exclusivity deletion relies on.
         let rd_old_low_e = Expr::var(rd_read_limbs[0]);
         let rd_old_high_e = Expr::var(rd_read_limbs[1]);
         let tri_clo = Expr::<F>::from(intermediate_carry) + Expr::<F>::from(tri_clo_b);
