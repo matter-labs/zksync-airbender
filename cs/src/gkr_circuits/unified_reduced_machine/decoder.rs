@@ -363,4 +363,54 @@ mod tests {
             "SW should set exactly bit F4_SW_BIT"
         );
     }
+
+    /// Every instruction the unified decoder accepts must set AT MOST ONE DISPATCH bit per
+    /// family region (a global one-hot does NOT hold: F2 adds the auxiliary RD_IS_ZERO bit on
+    /// Branch / rd=0-JALR rows).
+    #[test]
+    fn decoder_family_dispatch_bits_exclusive() {
+        use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
+
+        let f1_mask: u32 = ((1u32 << UNIFIED_F1_NUM_FLAGS) - 1) << F1_OFFSET;
+        let f3_mask: u32 = ((1u32 << UNIFIED_F3_NUM_FLAGS) - 1) << F3_OFFSET;
+        let f4_mask: u32 = (1u32 << F4_LW_BIT) | (1u32 << F4_SW_BIT);
+
+        let cases = vec![
+            Instruction::new(InstructionName::Add, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Sub, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Auipc, 0, 0, 3, 0x1000),
+            Instruction::new(InstructionName::ZimopAdd, 1, 2, 3, 0),
+            Instruction::new(InstructionName::ZimopSub, 1, 2, 3, 0),
+            Instruction::new(InstructionName::ZimopMul, 1, 2, 3, 0),
+            Instruction::new(InstructionName::ZimopFMA, 1, 2, 3, 0),
+            Instruction::new(InstructionName::ZimopTriAdd, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Jal, 0, 0, 1, 8),
+            Instruction::new(InstructionName::Jalr, 1, 0, 1, 0),
+            Instruction::new(InstructionName::Branch, 1, 2, 0, 8),
+            Instruction::new(InstructionName::Slt, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Sltu, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Xor, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Or, 1, 2, 3, 0),
+            Instruction::new(InstructionName::And, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Sll, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Srl, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Sra, 1, 2, 3, 0),
+            Instruction::new(InstructionName::Lw, 1, 0, 2, 0),
+            Instruction::new(InstructionName::Sw, 1, 2, 0, 0),
+            Instruction::new(InstructionName::ZimopIXorRot, 1, 3, 3, 16),
+        ];
+        for instr in cases {
+            let decoded = UnifiedReducedMachineDecoder
+                .define_decoder_subspace(instr)
+                .unwrap_or_else(|_| panic!("decoder must accept {instr:?}"));
+            let bits = decoded.opcode_family_bits;
+            assert_ne!(bits, 0, "no family bits for {instr:?}");
+            for (region, mask) in [("F1", f1_mask), ("F3", f3_mask), ("F4", f4_mask)] {
+                assert!(
+                    (bits & mask).count_ones() <= 1,
+                    "{region} dispatch bits not exclusive for {instr:?}: {bits:#b}"
+                );
+            }
+        }
+    }
 }

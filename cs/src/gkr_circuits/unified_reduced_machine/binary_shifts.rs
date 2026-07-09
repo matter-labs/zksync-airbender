@@ -97,12 +97,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let is_shift = decoder.perform_shift();
     let is_xor_rot = xor_rot;
 
-    {
-        // At most one Family-3 sub-opcode fires per row (binary-op / shift / xor-rotate).
-        let f3_sum: Constraint<F> =
-            Term::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot);
-        cs.add_constraint(f3_sum.clone() * (f3_sum - Term::from(1u32)));
-    }
 
     let shift_amount_constraint =
         Constraint::from(truncated_shift_amount) + Term::from(inputs.decoder_data.imm[0]);
