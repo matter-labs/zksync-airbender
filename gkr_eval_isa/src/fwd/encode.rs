@@ -266,4 +266,26 @@ mod header_tests {
         assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);
     }
     #[test] fn rejects_truncated() { let h = pack_arith_header(Opcode::Add, 2, OperandField::Base, OperandField::Base, false, Sign::Plus).unwrap(); assert_eq!(decode(&[h, 0]), Err(DecodeError::Truncated)); }
+    #[test]
+    fn pins_negate_acc_bit12() {
+        // Raw-bit pin: sign/negate_acc must live at bit 12, not swapped with promote (bit 11).
+        let lane = pack_operand(OperandLine::Smem { cell: 0 }).unwrap();
+        let h = (Opcode::Mul as u16) | (1 << 2) | (1 << 12);
+        let decoded = decode(&[h, lane]).unwrap();
+        assert!(matches!(decoded.instrs[0], Instr::Mul { negate_acc: true, .. }));
+        let h_without = (Opcode::Mul as u16) | (1 << 2);
+        let decoded_without = decode(&[h_without, lane]).unwrap();
+        assert!(matches!(decoded_without.instrs[0], Instr::Mul { negate_acc: false, .. }));
+    }
+    #[test]
+    fn pins_promote_bit11() {
+        // Raw-bit pin: promote must live at bit 11, not swapped with sign/negate_acc (bit 12).
+        let lane = pack_operand(OperandLine::Smem { cell: 0 }).unwrap();
+        let h = (Opcode::Add as u16) | (1 << 2) | (1 << 11);
+        let decoded = decode(&[h, lane]).unwrap();
+        assert!(matches!(decoded.instrs[0], Instr::Add { promote: true, .. }));
+        let h_without = (Opcode::Add as u16) | (1 << 2);
+        let decoded_without = decode(&[h_without, lane]).unwrap();
+        assert!(matches!(decoded_without.instrs[0], Instr::Add { promote: false, .. }));
+    }
 }
