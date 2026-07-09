@@ -45,6 +45,9 @@ cuda_kernel_declaration!(pub(crate)
 /// compile-time `__shared__ bf cells[16 * 128]`). The corpus compiled budget is
 /// 16 (asserted per fixture), and every corpus program fits the `__constant__`
 /// array, so an s16 LDC variant is the right static form.
+// Dead since Task 11 (the A/B report drives the production v2 kernels);
+// removed together with the v1 bench kernel in Task 12.
+#[allow(dead_code)]
 pub(crate) const FWD_VM_STATIC_BUDGET: u32 = 16;
 
 /// One cell of the Task-7 A/B config matrix: `{dynamic, static-s16} × {LDC,
@@ -52,6 +55,9 @@ pub(crate) const FWD_VM_STATIC_BUDGET: u32 = 16;
 /// program fits the `__constant__` array), so `StaticS16Ldg` has NO kernel —
 /// `kernel()` returns `None`, `time_fwd_vm`/`fwd_vm_blocks_per_sm` return
 /// `None`, and the report records it as a skip.
+// Dead since Task 11 (the A/B report drives the production v2 kernels);
+// removed together with the v1 bench kernel in Task 12.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FwdVmConfig {
     DynamicLdg,
@@ -60,6 +66,9 @@ pub(crate) enum FwdVmConfig {
     StaticS16Ldg,
 }
 
+// Dead since Task 11 (the A/B report drives the production v2 kernels);
+// removed together with the v1 bench kernel in Task 12.
+#[allow(dead_code)]
 impl FwdVmConfig {
     /// The full 4-cell matrix, enumerated in report order.
     pub(crate) const ALL: [FwdVmConfig; 4] = [
@@ -170,6 +179,9 @@ pub(crate) fn launch_fwd_vm(
 /// for `StaticS16Ldg` (no kernel). LDC configs assume the caller already
 /// uploaded `setup.lanes` via `upload_bench_program_to_constant`. Enqueues on
 /// `exec_stream`.
+// Dead since Task 11 (the A/B report drives the production v2 kernels);
+// removed together with the v1 bench kernel in Task 12.
+#[allow(dead_code)]
 pub(crate) fn launch_fwd_vm_config(
     desc: &InterpDesc3,
     config: FwdVmConfig,
@@ -209,6 +221,9 @@ pub(crate) fn launch_fwd_vm_config(
 /// for the static variant the dynamic footprint is 0 (its compile-time
 /// `__shared__` array is already accounted for by ptxas, so the occupancy API
 /// reflects it automatically). Returns `None` for `StaticS16Ldg` (no kernel).
+// Dead since Task 11 (the A/B report drives the production v2 kernels);
+// removed together with the v1 bench kernel in Task 12.
+#[allow(dead_code)]
 pub(crate) fn fwd_vm_blocks_per_sm(config: FwdVmConfig, budget: u32) -> CudaResult<Option<i32>> {
     let Some(kernel) = config.kernel() else {
         return Ok(None);
@@ -228,6 +243,9 @@ pub(crate) fn fwd_vm_blocks_per_sm(config: FwdVmConfig, budget: u32) -> CudaResu
 }
 
 /// Write 0 into the device `error_flag` word (bench/test harness; synchronous).
+// Dead since Task 11 (the A/B report drives the production v2 kernels);
+// removed together with the v1 bench kernel in Task 12.
+#[allow(dead_code)]
 fn reset_error_flag(ptr: *mut u32, context: &ProverContext) {
     let zero = [0u32];
     let stream = context.get_exec_stream();
@@ -238,6 +256,9 @@ fn reset_error_flag(ptr: *mut u32, context: &ProverContext) {
 }
 
 /// Read back the device `error_flag` word (bench/test harness; synchronous).
+// Dead since Task 11 (the A/B report drives the production v2 kernels);
+// removed together with the v1 bench kernel in Task 12.
+#[allow(dead_code)]
 fn read_error_flag(ptr: *const u32, context: &ProverContext) -> u32 {
     let mut host = [0u32];
     let stream = context.get_exec_stream();
@@ -257,6 +278,9 @@ fn read_error_flag(ptr: *const u32, context: &ProverContext) -> u32 {
 /// (caller records a skip). PANICS if the kernel raised any `FWDVM_ERR_*` bit
 /// (a broken kernel must not silently yield a timing number — the four gates
 /// certify the dynamic variants, this guards the un-gated static variant).
+// Dead since Task 11 (the A/B report drives the production v2 kernels);
+// removed together with the v1 bench kernel in Task 12.
+#[allow(dead_code)]
 pub(crate) fn time_fwd_vm(
     fixture: &CircuitFixture,
     setup: &FwdVmDeviceSetup,

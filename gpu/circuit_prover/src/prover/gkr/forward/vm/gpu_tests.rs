@@ -96,7 +96,10 @@ fn h2d_words(ptr: *mut u32, words: &[u32], ctx: &ProverContext) {
 /// "true" stride: the lowering re-derives `matrix_col = (ptr - base) / stride`
 /// and the kernel reads `base + matrix_col * stride` — exact by construction —
 /// with off-stride / collision / geometry mismatches all hard lowering errors.
-fn resolve_storage_column(fixture: &CircuitFixture, addr: GKRAddress) -> Option<ResolvedColumn> {
+pub(crate) fn resolve_storage_column(
+    fixture: &CircuitFixture,
+    addr: GKRAddress,
+) -> Option<ResolvedColumn> {
     if let Some(p) = fixture.storage.try_get_base_poly(addr) {
         return Some(ResolvedColumn {
             is_e4: false,
@@ -120,7 +123,7 @@ fn resolve_storage_column(fixture: &CircuitFixture, addr: GKRAddress) -> Option<
 /// arenas (column-major, column stride = trace_len), the decoder mapping
 /// column (`num_generic_sets`), the shared α-folded generic-lookup table, and
 /// the production 1-element `device_decoder_lookup_fill_value` slot.
-fn build_header(fixture: &CircuitFixture) -> FwdVmHeaderInputs {
+pub(crate) fn build_header(fixture: &CircuitFixture) -> FwdVmHeaderInputs {
     let stage1 = fixture_stage1(fixture);
     let m = &stage1.lookup_mappings;
     assert_eq!(
@@ -278,7 +281,7 @@ fn assert_columns_match(
 
 /// Values of the layer's `ConstChallenge` bank, via the SAME `ChallengeRef`
 /// mapping the flat fixture/G-CPU harness uses (`challenge_value`).
-fn const_challenge_values(fixture: &CircuitFixture, cl: &CompiledLayer) -> Vec<E4> {
+pub(crate) fn const_challenge_values(fixture: &CircuitFixture, cl: &CompiledLayer) -> Vec<E4> {
     let mut out = Vec::new();
     let mut i = 0usize;
     while let Some(r) = cl.ctx.challenges.get(LdcSub::ConstChallenge, i as u16) {
@@ -292,7 +295,7 @@ fn const_challenge_values(fixture: &CircuitFixture, cl: &CompiledLayer) -> Vec<E
 /// Run the full v2 parity gate for one circuit: every compiled layer, both
 /// kernels (VALIDATE first — its `error_flag` separates malformed-program/desc
 /// bugs from value bugs — then the release s4 instantiation).
-fn run_vm_parity(stem: &str) {
+pub(crate) fn run_vm_parity(stem: &str) {
     let fixture = CircuitFixture::build(stem);
     let c: FwdVmCircuit = load_fwd_vm_circuit(stem);
     let context = fixture.context();

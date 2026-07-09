@@ -17,8 +17,10 @@ mod tests;
 // GPU parity gate (Task 10). Bench-gated ONLY because its harness (the
 // bench_interp CircuitFixture + compile chain) is; the kernels it launches
 // are production symbols.
+// `pub(crate)`: the fwd-VM A/B bench (`bench_interp::fwd_vm::tests::
+// fwd_vm_ab_report`) reuses its parity gate + resolver/header plumbing.
 #[cfg(all(test, feature = "bench"))]
-mod gpu_tests;
+pub(crate) mod gpu_tests;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -125,6 +127,18 @@ pub(crate) fn launch_fwd_vm_s4(
         .build();
     let args = GkrFwdVmReleaseArguments::new(setup.desc);
     GkrFwdVmReleaseFunction(ab_gkr_fwd_vm_s4_kernel).launch(&config, &args)
+}
+
+/// Static blocks-per-SM of the release s4 kernel at its committed launch shape
+/// (128 threads, zero dynamic smem — the compile-time `__shared__` cell file is
+/// already accounted for by ptxas). Bench/report metadata.
+#[allow(dead_code)]
+pub(crate) fn fwd_vm_s4_blocks_per_sm() -> CudaResult<i32> {
+    era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+        &GkrFwdVmReleaseFunction(ab_gkr_fwd_vm_s4_kernel),
+        FWD_VM_THREADS_PER_BLOCK as i32,
+        0,
+    )
 }
 
 /// Launch the VALIDATE fwd-VM instantiation (test/parity harness only):

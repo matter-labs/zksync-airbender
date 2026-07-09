@@ -152,36 +152,62 @@ fn query_fwd_vm_device_attrs() -> super::report::FwdVmDeviceAttrs {
     }
 }
 
-/// Task 7 DELIVERABLE (`#[ignore]`, GPU, long: `TIMING_ITERS` × configs × layers
-/// × 3 circuits). For each circuit: run the four correctness gates FIRST (via
-/// `run_all_gates`, spec §7 — timing only happens after gates pass), then time
-/// every (compiled layer × config) point. Flat is timed ONCE per layer (the
-/// replayed production launch sum); the interpreter is timed per config
-/// (`{dynamic, static-s16} × {LDC, LDG}`, `static-s16/LDG` skipped — LDC-only
-/// static kernel). Both sides use the SAME capped element count
-/// (`min(trace_len, TIMING_COUNT_CAP)`). Writes JSON + markdown to
+/// Task 11 DELIVERABLE (`#[ignore]`, GPU, long: `TIMING_ITERS` × layers × 3
+/// circuits): the fwd-VM A/B over the PRODUCTION v2 path. For each circuit:
+/// run the Task-10 v2 parity gate FIRST (`run_vm_parity` — VALIDATE + release
+/// kernels bit-exact vs the flat oracle; timing only happens after the gate
+/// passes), then per compiled layer time the flat replay (unchanged baseline
+/// arm) against ONE launch of the RELEASE `ab_gkr_fwd_vm_s4_kernel`, lowered
+/// via the production `lower_layer_desc` over the real consolidated-storage
+/// resolver. Both sides use the SAME capped element count
+/// (`min(trace_len, TIMING_COUNT_CAP)`). Report name + shape are kept from the
+/// Task-7 v1 bench (one row per (circuit, layer, config); the config column
+/// now carries the single `v2-s4/inline` production point) so cross-history
+/// comparisons stay valid. Writes JSON + markdown to
 /// `.agents/audits/2026-07-05-fwd-vm-ab-report.{json,md}` (GITIGNORED).
 #[test]
 #[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh (see .agents/gpu_work.md)
 #[cfg(not(no_cuda))]
 #[serial_test::serial]
 fn fwd_vm_ab_report() {
-    use super::super::harness::{time_flat, TIMING_COUNT_CAP, TIMING_ITERS};
-    use super::super::fixture::CircuitFixture;
-    use super::report::{FwdVmAbReport, FwdVmAbRow};
-    use super::{fwd_vm_blocks_per_sm, time_fwd_vm, FwdVmConfig};
+    use era_cudart::memory::memory_copy_async;
     use gkr_eval_isa::fwd::compile::layer_needs_compile;
+
+    use super::super::fixture::CircuitFixture;
+    use super::super::harness::{time_flat, time_iters, TIMING_COUNT_CAP, TIMING_ITERS};
+    use super::report::{FwdVmAbReport, FwdVmAbRow};
+    use crate::allocator::tracker::AllocationPlacement;
+    use crate::primitives::context::DeviceAllocation;
+    use crate::prover::gkr::forward::vm::gpu_tests::{
+        build_header, const_challenge_values, resolve_storage_column, run_vm_parity,
+    };
+    use crate::prover::gkr::forward::vm::lower::lower_layer_desc;
+    use crate::prover::gkr::forward::vm::{
+        fwd_vm_s4_blocks_per_sm, launch_fwd_vm_s4, launch_fwd_vm_validate,
+        upload_const_challenges, FWD_VM_S4_BUDGET_LANES, FWD_VM_THREADS_PER_BLOCK,
+    };
 
     let device = query_fwd_vm_device_attrs();
     let mut rows: Vec<FwdVmAbRow> = Vec::new();
-    let mut skips: Vec<String> = Vec::new();
+    let skips: Vec<String> = Vec::new();
+
+    // Release-kernel context, config-independent: static smem (zero dynamic
+    // bytes at launch; the compile-time `__shared__` cell file is already
+    // accounted for by ptxas, so the occupancy API reflects it automatically).
+    let blocks_per_sm = fwd_vm_s4_blocks_per_sm().unwrap();
+    let smem_bytes = FWD_VM_S4_BUDGET_LANES as usize
+        * FWD_VM_THREADS_PER_BLOCK as usize
+        * std::mem::size_of::<crate::primitives::field::BF>();
 
     for stem in FWD_VM_CIRCUITS {
-        // ── Gates FIRST (spec §7): only time layers whose four gates pass. ──
-        run_all_gates(stem);
+        // ── Gate FIRST: the Task-10 v2 parity gate (validate + release
+        // kernels bit-exact vs the flat oracle, every compiled layer). ──
+        run_vm_parity(stem);
 
         let fixture = CircuitFixture::build(stem);
         let c = super::compile::load_fwd_vm_circuit(stem);
+        let context = fixture.context();
+        let header = build_header(&fixture);
         let trace_len = fixture.trace_len;
         let count = trace_len.min(TIMING_COUNT_CAP);
         let capped = count < trace_len;
@@ -191,83 +217,88 @@ fn fwd_vm_ab_report() {
                 continue;
             }
             let cl = &c.compiled.layers[li];
-            let lanes = super::compile::encoded_lanes(cl);
             let n_instr = cl.program.instrs.len() as u32;
             let budget = cl.budget as u32;
 
-            // Flat baseline: timed ONCE per layer (the interpreter's config knobs
-            // do not change the flat launch sum).
+            // Flat baseline: unchanged from the Task-7 report (the replayed
+            // production forward launch sum at the capped count).
             let (flat_median, flat_min, flat_launches) =
                 time_flat(&fixture, li, count, TIMING_ITERS);
 
-            for config in FwdVmConfig::ALL {
-                if config.kernel_absent() {
-                    skips.push(format!(
-                        "{stem} L{li} {}: no static LDG kernel (corpus fits LDC; \
-                         s16 LDC is the committed static form)",
-                        config.label()
-                    ));
-                    continue;
-                }
-                let mut setup = super::lower::build_fwd_vm_device_setup(&fixture, &c, li);
-                setup.desc.count = count as u32;
+            // Production v2 lowering against the real consolidated storage
+            // (the exact Task-10 gate plumbing).
+            let resolve = |addr| resolve_storage_column(&fixture, addr);
+            let challenge = |r: &_| super::resolvers::challenge_value(&fixture, r);
+            let mut setup = lower_layer_desc(cl, &header, &resolve, &challenge, None)
+                .unwrap_or_else(|e| panic!("{stem} L{li}: lower_layer_desc: {e:?}"));
+            assert!(
+                setup.desc.program_ldg.is_null(),
+                "{stem} L{li}: corpus program unexpectedly overflowed the inline cap"
+            );
+            upload_const_challenges(&const_challenge_values(&fixture, cl), context)
+                .unwrap_or_else(|e| panic!("{stem} L{li}: const-challenge upload: {e:?}"));
 
-                let Some((interp_median, interp_min)) =
-                    time_fwd_vm(&fixture, &setup, config, TIMING_ITERS)
-                else {
-                    skips.push(format!(
-                        "{stem} L{li} {}: program exceeds the __constant__ array (LDC did not fit)",
-                        config.label()
-                    ));
-                    continue;
-                };
+            // Fail-closed pre-check at FULL trace_len (desc.count is also the
+            // mapping-arena column stride, so the structural checks must run
+            // uncapped): one VALIDATE launch, error_flag must stay 0 — a
+            // broken kernel must not silently yield a timing number.
+            let mut err_dev: DeviceAllocation<u32> =
+                context.alloc(1, AllocationPlacement::Top).unwrap();
+            memory_copy_async(&mut err_dev[0..1], &[0u32], context.get_exec_stream()).unwrap();
+            launch_fwd_vm_validate(&setup, budget, err_dev.as_mut_ptr(), context)
+                .unwrap_or_else(|e| panic!("{stem} L{li}: validate launch: {e:?}"));
+            let mut err = [0u32];
+            memory_copy_async(&mut err, &err_dev[0..1], context.get_exec_stream()).unwrap();
+            context.get_exec_stream().synchronize().unwrap();
+            assert_eq!(
+                err[0], 0,
+                "{stem} L{li}: VALIDATE kernel error_flag = {:#x} — timing would be meaningless",
+                err[0]
+            );
 
-                let blocks_per_sm = fwd_vm_blocks_per_sm(config, budget).unwrap().unwrap_or(0);
-                // The static-s16 kernel's cell file is a compile-time
-                // `__shared__ bf cells[16 * 128]` (see FWD_VM_STATIC_BUDGET),
-                // not the dynamic-smem allocation the launch requests (which
-                // is 0 for static configs). Report the actual compile-time
-                // footprint for static configs instead of reusing the dynamic
-                // formula — it is only numerically equal to it because
-                // budget == FWD_VM_STATIC_BUDGET here; a future s32
-                // instantiation must not silently mis-report via this path.
-                let smem_bytes = if config.is_static() {
-                    super::FWD_VM_STATIC_BUDGET as usize
-                        * config.threads_per_block() as usize
-                        * std::mem::size_of::<crate::primitives::field::BF>()
-                } else {
-                    super::fwd_vm_dynamic_smem_bytes(budget, config.threads_per_block())
-                };
-                let interp_over_flat = if flat_median > 0.0 {
-                    interp_median / flat_median
-                } else {
-                    f32::INFINITY
-                };
-
-                rows.push(FwdVmAbRow {
-                    circuit: stem.to_string(),
-                    layer: li,
-                    config: config.label(),
-                    variant: config.variant_name().to_string(),
-                    residency: config.residency_name().to_string(),
-                    tpb: config.threads_per_block(),
-                    flat_median_ms: flat_median,
-                    flat_min_ms: flat_min,
-                    flat_launches,
-                    interp_median_ms: interp_median,
-                    interp_min_ms: interp_min,
-                    interp_over_flat,
-                    encoded_lanes: lanes.len(),
-                    n_instr,
-                    budget,
-                    smem_bytes,
-                    blocks_per_sm,
-                    timed_count: count,
-                    trace_len,
-                    capped,
-                    is_best: false, // filled by assemble()
+            // Timed loop: the RELEASE s4 kernel at the capped count. For a
+            // capped circuit the mapping-arena column stride (= desc.count)
+            // then under-reads the arenas' true stride (= trace_len): peek
+            // VALUES land on other rows of the same arena, but the load
+            // count/coalescing shape is identical, so the TIMING is
+            // representative — correctness is proven separately by the
+            // uncapped gate + pre-check above. The flat arm has the same
+            // property (replay at a capped count over full-stride columns).
+            setup.desc.count = count as u32;
+            let (interp_median, interp_min) =
+                time_iters(context.get_exec_stream(), TIMING_ITERS, || {
+                    launch_fwd_vm_s4(&setup, budget, context).unwrap();
                 });
-            }
+
+            let interp_over_flat = if flat_median > 0.0 {
+                interp_median / flat_median
+            } else {
+                f32::INFINITY
+            };
+
+            rows.push(FwdVmAbRow {
+                circuit: stem.to_string(),
+                layer: li,
+                config: "v2-s4/inline".to_string(),
+                variant: "v2-s4".to_string(),
+                residency: "inline".to_string(),
+                tpb: FWD_VM_THREADS_PER_BLOCK,
+                flat_median_ms: flat_median,
+                flat_min_ms: flat_min,
+                flat_launches,
+                interp_median_ms: interp_median,
+                interp_min_ms: interp_min,
+                interp_over_flat,
+                encoded_lanes: setup.desc.program_lanes as usize,
+                n_instr,
+                budget,
+                smem_bytes,
+                blocks_per_sm,
+                timed_count: count,
+                trace_len,
+                capped,
+                is_best: false, // filled by assemble()
+            });
         }
     }
 
@@ -284,24 +315,21 @@ fn fwd_vm_ab_report() {
     );
 }
 
-/// ncu/nsys profiling TARGET for the fwd-VM INTERPRETER (`#[ignore]`, GPU).
-/// Issues EXACTLY ONE interpreter launch — one circuit (env `FWDVM_NCU_CIRCUIT`,
-/// default add_sub), layer 0, one config (env `FWDVM_NCU_CONFIG`: `dyn-ldg`,
-/// `dyn-ldc`, or `static-ldc` [default]) — so an `ncu` wrapper captures a single
-/// clean kernel instance (no report, no grid, no asserts on the numbers). The
-/// interpreter kernel symbols are `ab_gkr_bench_fwd_vm_{ldg,ldc}_kernel` /
-/// `ab_gkr_bench_fwd_vm_ldc_s16_kernel`. Mirrors
-/// `bench_interp::tests::stage3_fwd_interp_ncu_target`.
+/// ncu/nsys profiling TARGET for the PRODUCTION v2 fwd-VM interpreter
+/// (`#[ignore]`, GPU). Issues EXACTLY ONE release-kernel launch — one circuit
+/// (env `FWDVM_NCU_CIRCUIT`, default add_sub), one layer (env `FWDVM_NCU_LAYER`,
+/// default 0) — so an `ncu` wrapper captures a single clean instance of
+/// `ab_gkr_fwd_vm_s4_kernel` (no report, no grid, no asserts on the numbers).
 ///
 /// ```bash
 /// TEST_BINARY="$(
 ///   cargo test -p circuit_prover --features bench fwd_vm_interp_ncu_target \
 ///     --release --no-run --message-format=json \
 ///     | python3 .agents/bin/cargo_test_executables.py)"
-/// FWDVM_NCU_CIRCUIT=add_sub_lui_auipc_mop FWDVM_NCU_CONFIG=static-ldc \
+/// FWDVM_NCU_CIRCUIT=add_sub_lui_auipc_mop \
 /// .agents/bin/with_gpu_lock.sh ncu \
 ///   --set basic --kernel-name-base demangled \
-///   --kernel-name 'regex:ab_gkr_bench_fwd_vm_ldc_s16_kernel' \
+///   --kernel-name 'regex:ab_gkr_fwd_vm_s4_kernel' \
 ///   --launch-count 1 \
 ///   -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_fwd_vm_interp" \
 ///   "$TEST_BINARY" \
@@ -315,7 +343,11 @@ fn fwd_vm_ab_report() {
 fn fwd_vm_interp_ncu_target() {
     use super::super::fixture::CircuitFixture;
     use super::super::harness::TIMING_COUNT_CAP;
-    use super::{time_fwd_vm, FwdVmConfig};
+    use crate::prover::gkr::forward::vm::gpu_tests::{
+        build_header, const_challenge_values, resolve_storage_column,
+    };
+    use crate::prover::gkr::forward::vm::lower::lower_layer_desc;
+    use crate::prover::gkr::forward::vm::{launch_fwd_vm_s4, upload_const_challenges};
 
     let circuit =
         std::env::var("FWDVM_NCU_CIRCUIT").unwrap_or_else(|_| FWD_VM_CIRCUITS[0].to_string());
@@ -323,22 +355,24 @@ fn fwd_vm_interp_ncu_target() {
         FWD_VM_CIRCUITS.contains(&circuit.as_str()),
         "FWDVM_NCU_CIRCUIT={circuit} is not a fwd-VM circuit ({FWD_VM_CIRCUITS:?})"
     );
-    let config = match std::env::var("FWDVM_NCU_CONFIG").as_deref() {
-        Ok("dyn-ldg") => FwdVmConfig::DynamicLdg,
-        Ok("dyn-ldc") => FwdVmConfig::DynamicLdc,
-        Ok("static-ldc") | Err(_) => FwdVmConfig::StaticS16Ldc,
-        Ok(other) => panic!("FWDVM_NCU_CONFIG={other} not in {{dyn-ldg,dyn-ldc,static-ldc}}"),
-    };
-    println!("ncu target: circuit {circuit} config {} (L0, one launch)", config.label());
+    let layer_idx: usize = std::env::var("FWDVM_NCU_LAYER")
+        .map(|s| s.parse().expect("FWDVM_NCU_LAYER must be a layer index"))
+        .unwrap_or(0);
+    println!("ncu target: circuit {circuit} L{layer_idx} v2-s4 (one launch)");
 
     let fixture = CircuitFixture::build(&circuit);
     let c = super::compile::load_fwd_vm_circuit(&circuit);
-    let count = fixture.trace_len.min(TIMING_COUNT_CAP);
-    let mut setup = super::lower::build_fwd_vm_device_setup(&fixture, &c, 0);
-    setup.desc.count = count as u32;
-    // ONE launch (via a 1-iter time call — same launch path, one clean instance).
-    let timed = time_fwd_vm(&fixture, &setup, config, 1);
-    println!("ncu target: fwd-VM interpreter launch complete ({timed:?})");
+    let context = fixture.context();
+    let header = build_header(&fixture);
+    let cl = &c.compiled.layers[layer_idx];
+    let resolve = |addr| resolve_storage_column(&fixture, addr);
+    let challenge = |r: &_| super::resolvers::challenge_value(&fixture, r);
+    let mut setup = lower_layer_desc(cl, &header, &resolve, &challenge, None).unwrap();
+    upload_const_challenges(&const_challenge_values(&fixture, cl), context).unwrap();
+    setup.desc.count = fixture.trace_len.min(TIMING_COUNT_CAP) as u32;
+    launch_fwd_vm_s4(&setup, cl.budget as u32, context).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    println!("ncu target: v2 fwd-VM release launch complete");
 }
 
 /// ncu/nsys profiling TARGET for the FLAT side (`#[ignore]`, GPU). Replays ONE
