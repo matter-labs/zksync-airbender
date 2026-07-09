@@ -11,7 +11,7 @@
 //! live in `fwd_vm/`; this parent holds only the shared fixture, the timing
 //! primitive (`harness`), and the LDC program-upload plumbing.
 
-mod fixture;
+pub(crate) mod fixture;
 pub(crate) mod fwd_vm;
 pub(crate) mod harness;
 

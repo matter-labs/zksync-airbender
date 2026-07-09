@@ -14,6 +14,11 @@ pub(crate) mod desc;
 pub(crate) mod lower;
 #[cfg(test)]
 mod tests;
+// GPU parity gate (Task 10). Bench-gated ONLY because its harness (the
+// bench_interp CircuitFixture + compile chain) is; the kernels it launches
+// are production symbols.
+#[cfg(all(test, feature = "bench"))]
+mod gpu_tests;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
