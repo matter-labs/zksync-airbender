@@ -1,18 +1,33 @@
 //! fwd-VM v2 production descriptor lowering (Task 9): `CompiledLayer` →
 //! by-value [`FwdVmDesc`] + owning [`FwdVmLayerSetup`].
 //!
-//! The one non-obvious transformation here is the **Global column renumber**
-//! (spec §2 "the lowering renumbers Global cols from layer-offsets to dense
-//! matrix-column indices per slot"): the compiled program's `Global { slot,
-//! col }` operands carry the `BackingTable`'s per-slot DENSE column indices
-//! (assignment order — meaningless outside the table), while the kernel
-//! addresses column `c` of slot `s` as `base[s] + c * stride_bytes[s]`
+//! The one non-obvious transformation here is the **Global slot/column
+//! renumber** (spec §2 "the lowering renumbers Global cols from layer-offsets
+//! to dense matrix-column indices per slot"): the compiled program's `Global
+//! { slot, col }` operands carry the `BackingTable`'s per-slot DENSE column
+//! indices (assignment order — meaningless outside the table), while the
+//! kernel addresses column `c` of slot `s` as `base[s] + c * stride_bytes[s]`
 //! (`fwd_vm.cuh`). The lowering therefore resolves every dense column through
 //! the first-class reverse map (`slot_col_to_read_place`) to its storage
-//! column, derives the slot's consolidated-matrix `(base, stride)`, rewrites
-//! each Global col to the column's MATRIX index `(ptr - base) / stride`, and
-//! only then encodes the program. Every column of one field-qualified slot
-//! must live in the same homogeneous matrix — anything else is a hard error.
+//! column and rewrites each Global to `(wire slot, matrix col)` before
+//! encoding.
+//!
+//! **Wire-slot splitting**: the ABI contract "a slot IS one homogeneous
+//! matrix `(base, stride)`" is a WIRE-level contract, and production flat
+//! storage does not honor it at compile-slot granularity — CopyAlias
+//! cache/output columns are VIEWS into OTHER consolidated matrices
+//! (`storage/views.rs`), so one compile-time slot's columns can span several
+//! matrices (every inner layer does; Task 10 Finding 2). The lowering
+//! therefore groups each compile slot's resolved columns by distinct
+//! `(matrix_base, stride_bytes)` and allocates one WIRE slot per group
+//! (first-appearance order); `base[16]`/`stride_bytes[16]` are indexed by
+//! WIRE slot, and the program rewrite renumbers the slot field alongside the
+//! col field. Total wire slots must fit `SLOT_COUNT` (SLOT_BITS=4 on the
+//! wire) — a hard error, guarded corpus-wide by the
+//! `wire_slot_census_fits_slot_count_on_all_fixtures` test (max observed: 6).
+//! Field homogeneity per wire slot holds by construction: a wire slot serves
+//! exactly one compile slot, and every column is checked against that compile
+//! slot's field (`SlotFieldMismatch`).
 //!
 //! Overflow policy (spec §2): program overflow falls back to `program_ldg`
 //! (a device allocation staged per the `SchedulerHostAllocator` rules —
@@ -120,8 +135,10 @@ pub(crate) enum FwdVmLowerError {
         expect_e4: bool,
         got_e4: bool,
     },
-    /// Two columns of one slot resolved into different matrices.
-    SlotGeometryMismatch {
+    /// Splitting compile slots into per-matrix wire slots needs more than
+    /// `SLOT_COUNT` wire slots (SLOT_BITS=4 on the wire; `slot`/`col` locate
+    /// the column whose fresh `(base, stride)` group did not fit).
+    WireSlotOverflow {
         slot: u8,
         col: u16,
     },
@@ -157,11 +174,13 @@ pub(crate) enum FwdVmLowerError {
     /// Two decoder descs resolved to different execute-predicate columns
     /// (the desc header holds ONE mask pointer).
     DecoderMaskConflict,
-    /// Two dense columns of one slot resolved to the SAME matrix column — a
-    /// resolver bug would otherwise silently alias two distinct dense columns
-    /// onto one wire `col`, producing a well-formed-but-wrong program. Hard
-    /// error: this is the last line of defense before an expensive GPU
-    /// parity debug cycle.
+    /// Two dense columns resolved to the SAME matrix column of one WIRE slot —
+    /// a resolver bug would otherwise silently alias two distinct dense
+    /// columns onto one wire `(slot, col)`, producing a well-formed-but-wrong
+    /// program. Hard error: this is the last line of defense before an
+    /// expensive GPU parity debug cycle. `slot` is the COMPILE slot of the
+    /// colliding column (the wire slot is derived, the compile slot is what a
+    /// human can map back to the backing table).
     ColRemapCollision {
         slot: u8,
         matrix_col: usize,
@@ -212,14 +231,53 @@ pub(crate) fn read_place_to_gkr_address(place: &ReadPlace) -> GKRAddress {
     }
 }
 
-/// Per-slot geometry derived from the storage resolver: the consolidated
-/// matrix `(base, stride)` plus the dense-col → matrix-col renumbering.
+/// Wire-slot geometry derived from the storage resolver (module doc,
+/// "wire-slot splitting"): `base`/`stride_bytes` are indexed by WIRE slot —
+/// one wire slot per distinct `(matrix_base, stride_bytes)` group WITHIN each
+/// compile slot, allocated in first-appearance order — plus the
+/// `(compile slot, dense col)` → `(wire slot, matrix col)` renumbering.
 struct SlotGeometry {
     base: [*mut u8; SLOT_COUNT],
     stride_bytes: [u32; SLOT_COUNT],
-    /// `remap[slot][dense_col]` = matrix column index (wire `col` after the
-    /// rewrite). Empty vec for slots without columns.
-    remap: Vec<Vec<u16>>,
+    /// Wire slots allocated so far (`base`/`stride_bytes` valid for
+    /// `0..n_wire_slots`, null/zero beyond).
+    n_wire_slots: usize,
+    /// `remap[compile_slot][dense_col]` = `(wire slot, matrix col)` — the
+    /// rewritten `Global` encoding. Empty vec for slots without columns.
+    remap: Vec<Vec<(u8, u16)>>,
+    /// Matrix columns already claimed per wire slot (`ColRemapCollision`).
+    claimed: Vec<Vec<u16>>,
+}
+
+impl SlotGeometry {
+    /// Wire slot for `(base, stride)` within this compile slot's group list,
+    /// allocating a fresh one on first appearance. Wire slots are NOT shared
+    /// across compile slots (a wire slot inherits its compile slot's field;
+    /// alias views may legitimately map two compile slots onto one matrix,
+    /// and merging them would false-positive the collision guard).
+    fn wire_slot_for(
+        &mut self,
+        slot_groups: &mut Vec<(*mut u8, u32, u8)>,
+        resolved: &ResolvedColumn,
+        slot: u8,
+        col: u16,
+    ) -> Result<u8, FwdVmLowerError> {
+        if let Some(&(_, _, wire)) = slot_groups
+            .iter()
+            .find(|(b, s, _)| *b == resolved.matrix_base && *s == resolved.stride_bytes)
+        {
+            return Ok(wire);
+        }
+        if self.n_wire_slots >= SLOT_COUNT {
+            return Err(FwdVmLowerError::WireSlotOverflow { slot, col });
+        }
+        let wire = self.n_wire_slots as u8;
+        self.base[self.n_wire_slots] = resolved.matrix_base;
+        self.stride_bytes[self.n_wire_slots] = resolved.stride_bytes;
+        self.n_wire_slots += 1;
+        slot_groups.push((resolved.matrix_base, resolved.stride_bytes, wire));
+        Ok(wire)
+    }
 }
 
 fn derive_slot_geometry(
@@ -230,13 +288,19 @@ fn derive_slot_geometry(
     let mut geom = SlotGeometry {
         base: [ptr::null_mut(); SLOT_COUNT],
         stride_bytes: [0; SLOT_COUNT],
+        n_wire_slots: 0,
         remap: vec![Vec::new(); SLOT_COUNT],
+        claimed: vec![Vec::new(); SLOT_COUNT],
     };
     for slot in 0..SLOT_COUNT as u8 {
         let Some(field) = backings.slot_field(slot) else {
             continue;
         };
         let expect_e4 = field == OperandField::Ext;
+        // This compile slot's `(base, stride) -> wire slot` groups. Field
+        // homogeneity per wire slot follows from the per-column field check
+        // below: every group member matches THIS compile slot's field.
+        let mut slot_groups: Vec<(*mut u8, u32, u8)> = Vec::new();
         let n_cols = backings.slot_columns(slot).len();
         for col in 0..n_cols as u16 {
             // Total for assigned columns by construction of the reverse map.
@@ -260,15 +324,7 @@ fn derive_slot_geometry(
             if resolved.stride_bytes == 0 {
                 return Err(FwdVmLowerError::ColumnOffStride { slot, col });
             }
-            let s = slot as usize;
-            if col == 0 {
-                geom.base[s] = resolved.matrix_base;
-                geom.stride_bytes[s] = resolved.stride_bytes;
-            } else if geom.base[s] != resolved.matrix_base
-                || geom.stride_bytes[s] != resolved.stride_bytes
-            {
-                return Err(FwdVmLowerError::SlotGeometryMismatch { slot, col });
-            }
+            let wire = geom.wire_slot_for(&mut slot_groups, &resolved, slot, col)?;
             let off = (resolved.ptr as usize)
                 .checked_sub(resolved.matrix_base as usize)
                 .ok_or(FwdVmLowerError::ColumnOffStride { slot, col })?;
@@ -283,16 +339,17 @@ fn derive_slot_geometry(
                     matrix_col,
                 });
             }
-            if geom.remap[s].contains(&(matrix_col as u16)) {
+            if geom.claimed[wire as usize].contains(&(matrix_col as u16)) {
                 return Err(FwdVmLowerError::ColRemapCollision { slot, matrix_col });
             }
-            geom.remap[s].push(matrix_col as u16);
+            geom.claimed[wire as usize].push(matrix_col as u16);
+            geom.remap[slot as usize].push((wire, matrix_col as u16));
         }
     }
     Ok(geom)
 }
 
-fn remap_global(geom: &SlotGeometry, slot: u8, col: u16) -> Result<u16, FwdVmLowerError> {
+fn remap_global(geom: &SlotGeometry, slot: u8, col: u16) -> Result<(u8, u16), FwdVmLowerError> {
     geom.remap
         .get(slot as usize)
         .and_then(|cols| cols.get(col as usize))
@@ -302,27 +359,30 @@ fn remap_global(geom: &SlotGeometry, slot: u8, col: u16) -> Result<u16, FwdVmLow
 
 fn remap_operand(geom: &SlotGeometry, o: OperandLine) -> Result<OperandLine, FwdVmLowerError> {
     Ok(match o {
-        OperandLine::Global { slot, col } => OperandLine::Global {
-            slot,
-            col: remap_global(geom, slot, col)?,
-        },
+        OperandLine::Global { slot, col } => {
+            let (slot, col) = remap_global(geom, slot, col)?;
+            OperandLine::Global { slot, col }
+        }
         other => other,
     })
 }
 
 fn remap_dst(geom: &SlotGeometry, d: DstLine) -> Result<DstLine, FwdVmLowerError> {
     Ok(match d {
-        DstLine::GlobalMaterialize { slot, col } => DstLine::GlobalMaterialize {
-            slot,
-            col: remap_global(geom, slot, col)?,
-        },
+        DstLine::GlobalMaterialize { slot, col } => {
+            let (slot, col) = remap_global(geom, slot, col)?;
+            DstLine::GlobalMaterialize { slot, col }
+        }
         other => other,
     })
 }
 
-/// Rewrite every `Global` operand/dst col from the backing table's dense index
-/// to the storage matrix column index (module doc). Structure-preserving:
-/// only `Global`/`GlobalMaterialize` cols change.
+/// Rewrite every `Global` operand/dst from the backing table's dense
+/// `(compile slot, col)` to the storage `(wire slot, matrix col)` (module
+/// doc). Structure-preserving: only `Global`/`GlobalMaterialize` slot/col
+/// fields change, and the rewritten program goes back through the
+/// cap-guarded `encode` (`SlotOutOfRange` at `MAX_SLOTS`, `ColOutOfRange`
+/// at `MAX_COLS`), so a malformed remap cannot reach the wire.
 fn rewrite_program(cl: &CompiledLayer, geom: &SlotGeometry) -> Result<Program, FwdVmLowerError> {
     let mut instrs = Vec::with_capacity(cl.program.instrs.len());
     for instr in &cl.program.instrs {

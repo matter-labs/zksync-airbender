@@ -202,10 +202,13 @@ fn fixture_lowering_struct_invariants() {
             .unwrap_or_else(|e| panic!("L{layer_idx}: inline program does not decode: {e:?}"));
         assert_eq!(lowered.instrs.len(), cl.program.instrs.len());
 
-        // -- Global col rewrite: for every Global operand/dst, the kernel's
-        //    base[slot] + col*stride addresses the SAME mock storage column
-        //    the original dense (slot, col) resolves to via the reverse map. --
-        let check_global = |slot: u8, orig_col: u16, lowered_col: u16| {
+        // -- Global slot/col rewrite: for every Global operand/dst, the
+        //    kernel's base[wire slot] + col*stride addresses the SAME mock
+        //    storage column the original dense (slot, col) resolves to via
+        //    the reverse map, and the rewrite is a BIJECTION
+        //    (compile slot, dense col) <-> (wire slot, matrix col). --
+        let mut dense_to_wire: BTreeMap<(u8, u16), (u8, u16)> = BTreeMap::new();
+        let mut check_global = |slot: u8, orig_col: u16, wire_slot: u8, wire_col: u16| {
             let place = cl
                 .ctx
                 .backings
@@ -213,13 +216,21 @@ fn fixture_lowering_struct_invariants() {
                 .unwrap();
             let addr = read_place_to_gkr_address(&place);
             let want = mock.columns[&addr].ptr as usize;
-            let got = d.base[slot as usize] as usize
-                + lowered_col as usize * d.stride_bytes[slot as usize] as usize;
+            let got = d.base[wire_slot as usize] as usize
+                + wire_col as usize * d.stride_bytes[wire_slot as usize] as usize;
             assert_eq!(
                 got, want,
-                "L{layer_idx}: (slot {slot}, dense col {orig_col}) rewritten to matrix col \
-                 {lowered_col} addresses {got:#x}, storage column is at {want:#x} ({addr:?})"
+                "L{layer_idx}: (slot {slot}, dense col {orig_col}) rewritten to wire \
+                 (slot {wire_slot}, col {wire_col}) addresses {got:#x}, storage column \
+                 is at {want:#x} ({addr:?})"
             );
+            if let Some(prev) = dense_to_wire.insert((slot, orig_col), (wire_slot, wire_col)) {
+                assert_eq!(
+                    prev,
+                    (wire_slot, wire_col),
+                    "L{layer_idx}: (slot {slot}, dense col {orig_col}) remapped inconsistently"
+                );
+            }
         };
         for (orig, low) in cl.program.instrs.iter().zip(lowered.instrs.iter()) {
             for (o, l) in zip_operands(orig, low) {
@@ -227,10 +238,7 @@ fn fixture_lowering_struct_invariants() {
                     (
                         OperandLine::Global { slot, col },
                         OperandLine::Global { slot: ls, col: lc },
-                    ) => {
-                        assert_eq!(slot, ls);
-                        check_global(slot, col, lc);
-                    }
+                    ) => check_global(slot, col, ls, lc),
                     (a, b) => assert_eq!(a, b, "L{layer_idx}: non-Global operand changed"),
                 }
             }
@@ -239,39 +247,50 @@ fn fixture_lowering_struct_invariants() {
                     (
                         DstLine::GlobalMaterialize { slot, col },
                         DstLine::GlobalMaterialize { slot: ls, col: lc },
-                    ) => {
-                        assert_eq!(slot, ls);
-                        check_global(slot, col, lc);
-                    }
+                    ) => check_global(slot, col, ls, lc),
                     (a, b) => assert_eq!(a, b, "L{layer_idx}: non-Global dst changed"),
                 }
             }
         }
-
-        // -- slot geometry: base/stride match the mock consolidated matrix of
-        //    every slot in slot_columns; unused slots stay null. --
-        for slot in 0..SLOT_COUNT as u8 {
-            let s = slot as usize;
-            let n_cols = cl.ctx.backings.slot_columns(slot).len();
-            if n_cols == 0 {
-                assert!(
-                    d.base[s].is_null(),
-                    "L{layer_idx}: empty slot {slot} has a base"
-                );
-                assert_eq!(d.stride_bytes[s], 0);
-                continue;
+        // Injectivity: no two dense columns share one wire (slot, col).
+        let mut wire_to_dense: BTreeMap<(u8, u16), (u8, u16)> = BTreeMap::new();
+        for (&dense, &wire) in &dense_to_wire {
+            if let Some(prev) = wire_to_dense.insert(wire, dense) {
+                panic!("L{layer_idx}: dense {prev:?} and {dense:?} both map to wire {wire:?}");
             }
-            for col in 0..n_cols as u16 {
+        }
+
+        // -- wire-slot geometry: recompute the expected per-compile-slot
+        //    (base, stride) groups in dense-col first-appearance order (the
+        //    documented wire-slot allocation order) and compare against the
+        //    desc arrays; wire slots past the last group stay null. --
+        let mut expected_wire: Vec<(*mut u8, u32)> = Vec::new();
+        for slot in 0..SLOT_COUNT as u8 {
+            // Group scope is per COMPILE slot (no cross-slot sharing).
+            let mut slot_groups: Vec<(*mut u8, u32)> = Vec::new();
+            for col in 0..cl.ctx.backings.slot_columns(slot).len() as u16 {
                 let place = cl.ctx.backings.slot_col_to_read_place(slot, col).unwrap();
                 let rc = mock.columns[&read_place_to_gkr_address(&place)];
-                assert_eq!(d.base[s], rc.matrix_base, "L{layer_idx}: slot {slot} base");
-                assert_eq!(
-                    d.stride_bytes[s], rc.stride_bytes,
-                    "L{layer_idx}: slot {slot} stride"
-                );
+                let group = (rc.matrix_base, rc.stride_bytes);
+                if !slot_groups.contains(&group) {
+                    slot_groups.push(group);
+                    expected_wire.push(group);
+                }
                 let off = rc.ptr as usize - rc.matrix_base as usize;
                 assert_eq!(off % rc.stride_bytes as usize, 0);
             }
+        }
+        assert!(expected_wire.len() <= SLOT_COUNT);
+        for (w, &(b, s)) in expected_wire.iter().enumerate() {
+            assert_eq!(d.base[w], b, "L{layer_idx}: wire slot {w} base");
+            assert_eq!(d.stride_bytes[w], s, "L{layer_idx}: wire slot {w} stride");
+        }
+        for w in expected_wire.len()..SLOT_COUNT {
+            assert!(
+                d.base[w].is_null(),
+                "L{layer_idx}: unused wire slot {w} has a base"
+            );
+            assert_eq!(d.stride_bytes[w], 0);
         }
 
         // -- banks: consts + the arg/const challenge split. --
@@ -485,23 +504,93 @@ fn unresolved_column_is_an_error() {
 }
 
 #[test]
-fn split_matrix_slot_is_a_geometry_error() {
+fn split_matrix_slot_produces_per_matrix_wire_slots() {
     use cs::gkr_compiler::dag_ir::ReadPlace;
     let mut ctx = DagForwardContext::default();
-    ctx.backings
-        .read_slot_col(&ReadPlace::Setup { column: 0 }, OperandField::Base)
-        .unwrap();
-    ctx.backings
-        .read_slot_col(&ReadPlace::Setup { column: 1 }, OperandField::Base)
-        .unwrap();
-    let cl = synthetic_layer(Program::default(), ctx);
-    // Two columns of ONE slot resolving into DIFFERENT matrices.
-    let resolve = |addr: GKRAddress| -> Option<ResolvedColumn> {
-        let base = match addr {
-            GKRAddress::Setup(0) => 0x1000_0000usize,
-            GKRAddress::Setup(1) => 0x2000_0000usize,
+    // THREE dense columns of ONE compile slot: cols 0 and 2 live in matrix A
+    // (at matrix cols 1 and 0 — also exercises the col renumber within a
+    // split slot), col 1 is a CopyAlias-style view into matrix B.
+    for column in 0..3 {
+        ctx.backings
+            .read_slot_col(&ReadPlace::Setup { column }, OperandField::Base)
+            .unwrap();
+    }
+    let program = Program {
+        instrs: vec![Instr::Add {
+            field: OperandField::Base,
+            sign: gkr_eval_isa::fwd::isa::Sign::Plus,
+            promote: false,
+            operands: vec![
+                OperandLine::Global { slot: 0, col: 0 },
+                OperandLine::Global { slot: 0, col: 1 },
+                OperandLine::Global { slot: 0, col: 2 },
+            ],
+        }],
+    };
+    let cl = synthetic_layer(program, ctx);
+    const BASE_A: usize = 0x1000_0000;
+    const BASE_B: usize = 0x2000_0000;
+    let stride = COUNT * 4;
+    let resolve = move |addr: GKRAddress| -> Option<ResolvedColumn> {
+        let (base, ptr) = match addr {
+            GKRAddress::Setup(0) => (BASE_A, BASE_A + stride as usize), // matrix col 1
+            GKRAddress::Setup(1) => (BASE_B, BASE_B),                   // matrix col 0
+            GKRAddress::Setup(2) => (BASE_A, BASE_A),                   // matrix col 0
             _ => return None,
         };
+        Some(ResolvedColumn {
+            is_e4: false,
+            ptr: ptr as *const u8,
+            matrix_base: base as *mut u8,
+            stride_bytes: stride,
+        })
+    };
+    let setup = lower_layer_desc(&cl, &mock_header(), &resolve, &mock_challenge, None)
+        .expect("split-matrix slot must lower via wire-slot splitting");
+    let d = &setup.desc;
+
+    // Wire slot 0 = matrix A (first appearance, dense col 0), wire slot 1 =
+    // matrix B; nothing else allocated.
+    assert_eq!(d.base[0] as usize, BASE_A);
+    assert_eq!(d.base[1] as usize, BASE_B);
+    assert_eq!((d.stride_bytes[0], d.stride_bytes[1]), (stride, stride));
+    assert!(d.base[2].is_null());
+    assert_eq!(d.stride_bytes[2], 0);
+
+    // The program's slot AND col fields are rewritten to the wire encoding.
+    let lowered = decode(&d.program[..d.program_lanes as usize]).unwrap();
+    assert_eq!(
+        lowered.instrs,
+        vec![Instr::Add {
+            field: OperandField::Base,
+            sign: gkr_eval_isa::fwd::isa::Sign::Plus,
+            promote: false,
+            operands: vec![
+                OperandLine::Global { slot: 0, col: 1 }, // A, matrix col 1
+                OperandLine::Global { slot: 1, col: 0 }, // B, matrix col 0
+                OperandLine::Global { slot: 0, col: 0 }, // A, matrix col 0
+            ],
+        }]
+    );
+}
+
+#[test]
+fn wire_slot_overflow_is_a_hard_error() {
+    use cs::gkr_compiler::dag_ir::ReadPlace;
+    let mut ctx = DagForwardContext::default();
+    // SLOT_COUNT + 1 columns of ONE compile slot, each a view into its OWN
+    // matrix: the 17th (base, stride) group cannot get a wire slot.
+    for column in 0..(SLOT_COUNT + 1) {
+        ctx.backings
+            .read_slot_col(&ReadPlace::Setup { column }, OperandField::Base)
+            .unwrap();
+    }
+    let cl = synthetic_layer(Program::default(), ctx);
+    let resolve = |addr: GKRAddress| -> Option<ResolvedColumn> {
+        let GKRAddress::Setup(column) = addr else {
+            return None;
+        };
+        let base = 0x1000_0000usize + column as usize * 0x0100_0000;
         Some(ResolvedColumn {
             is_e4: false,
             ptr: base as *const u8,
@@ -510,10 +599,10 @@ fn split_matrix_slot_is_a_geometry_error() {
         })
     };
     let err = lower_layer_desc(&cl, &mock_header(), &resolve, &mock_challenge, None)
-        .expect_err("split-matrix slot must be rejected");
+        .expect_err("17th per-matrix group must overflow the wire slots");
     assert!(matches!(
         err,
-        FwdVmLowerError::SlotGeometryMismatch { slot: 0, col: 1 }
+        FwdVmLowerError::WireSlotOverflow { slot: 0, col: 16 }
     ));
 }
 
@@ -572,6 +661,105 @@ fn arg_challenge_overflow_is_a_hard_error_and_terminates() {
         err,
         FwdVmLowerError::ArgChallengeOverflow { n } if n == ARG_CHALLENGE_CAP + 1
     ));
+}
+
+// ── wire-slot census (Finding-2 gate) ────────────────────────────────────────
+// Production flat storage backs CopyAlias cache/output columns as VIEWS into
+// OTHER consolidated matrices, so a compile-time slot's columns can span
+// several `(matrix_base, stride)` groups. The lowering splits each compile
+// slot into one WIRE slot per group; the wire format has SLOT_COUNT (16)
+// slots, so the census below — the CPU model of the exact grouping the
+// lowering performs, keyed by the storage matrix identity
+// `(canonical_layer, AddressClass, FieldType)` (one consolidated backing per
+// key, `storage/views.rs`) — must stay ≤ SLOT_COUNT for EVERY layer of EVERY
+// committed fixture. A failure here means SLOT_BITS no longer suffices
+// (spec-level decision), not a lowering bug.
+
+const ALL_LAYOUT_FIXTURES: [&str; 11] = [
+    "add_sub_lui_auipc_mop_layout_gkr.json",
+    "bigint_with_extended_control_layout_gkr.json",
+    "blake2_g_function_layout_gkr.json",
+    "blake2_with_extended_control_layout_gkr.json",
+    "inits_and_teardowns_preprocessed_layout_gkr.json",
+    "jump_branch_slt_layout_gkr.json",
+    "keccak_special5_layout_gkr.json",
+    "mem_subword_only_layout_gkr.json",
+    "mem_word_only_layout_gkr.json",
+    "shift_binop_layout_gkr.json",
+    "unsigned_mul_div_layout_gkr.json",
+];
+
+/// `_preprocessed` layout variants commit their schedule under the bare stem
+/// (same reverse-trim note as `gkr_eval_isa/tests/common/mod.rs`).
+fn schedule_stem(name: &str) -> &str {
+    name.trim_end_matches("_preprocessed_layout_gkr.json")
+        .trim_end_matches("_layout_gkr.json")
+}
+
+fn load_compiled_with_artifact(
+    name: &str,
+) -> (CompiledCircuit, cs::gkr_compiler::GKRCircuitArtifact<BF>) {
+    let artifact: cs::gkr_compiler::GKRCircuitArtifact<BF> =
+        crate::prover::tests::deserialize_json_for_test(&format!("cs/compiled_circuits/{name}"));
+    let dag = lower_dag(&artifact).unwrap();
+    validate(&dag).unwrap();
+    let schedule_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cs/compiled_circuits")
+        .join(format!("{}_schedule_b16_gkr.json", schedule_stem(name)));
+    let sched = load_committed_schedule(&schedule_path).unwrap();
+    validate_circuit_schedule(&dag, &sched).unwrap();
+    (compile_circuit(&dag, &sched, &artifact).unwrap(), artifact)
+}
+
+#[test]
+fn wire_slot_census_fits_slot_count_on_all_fixtures() {
+    use gpu_gkr_model::storage_layout::{address_storage_layer, GpuGKRStorageLayout};
+
+    let mut max_wire = 0usize;
+    let mut max_at = String::new();
+    for name in ALL_LAYOUT_FIXTURES {
+        let (compiled, artifact) = load_compiled_with_artifact(name);
+        let layout = GpuGKRStorageLayout::from_artifact(&artifact);
+        for (li, cl) in compiled.layers.iter().enumerate() {
+            let backings = &cl.ctx.backings;
+            let mut compile_slots = 0usize;
+            let mut wire_slots = 0usize;
+            for slot in 0..SLOT_COUNT as u8 {
+                if backings.slot_field(slot).is_none() {
+                    continue;
+                }
+                compile_slots += 1;
+                let mut groups = BTreeSet::new();
+                for col in 0..backings.slot_columns(slot).len() as u16 {
+                    let place = backings.slot_col_to_read_place(slot, col).unwrap();
+                    let addr = read_place_to_gkr_address(&place);
+                    let (canonical_layer, class, field, _poly_idx) = layout
+                        .lookup(address_storage_layer(addr), &addr)
+                        .unwrap_or_else(|| {
+                            panic!("{name} L{li}: {addr:?} missing from storage layout")
+                        });
+                    groups.insert((canonical_layer, class, field));
+                }
+                wire_slots += groups.len();
+            }
+            if wire_slots > 0 {
+                eprintln!(
+                    "[wire-slot census] {name} L{li}: {compile_slots} compile slots -> \
+                     {wire_slots} wire slots"
+                );
+            }
+            if wire_slots > max_wire {
+                max_wire = wire_slots;
+                max_at = format!("{name} L{li}");
+            }
+            assert!(
+                wire_slots <= SLOT_COUNT,
+                "{name} L{li}: {wire_slots} wire slots exceed SLOT_COUNT={SLOT_COUNT} — \
+                 SLOT_BITS is no longer sufficient (spec-level decision required)"
+            );
+        }
+    }
+    eprintln!("[wire-slot census] max = {max_wire} wire slots at {max_at}");
 }
 
 #[test]
