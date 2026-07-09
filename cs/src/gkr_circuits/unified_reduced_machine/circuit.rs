@@ -11,9 +11,6 @@ use crate::cs::circuit_trait::*;
 use crate::gkr_circuits::add_sub_family::{
     add_sub_lui_auipc_mop_table_addition_fn, add_sub_lui_auipc_mop_table_driver_fn,
 };
-use crate::gkr_circuits::binary_shifts_family::{
-    shift_binop_table_addition_fn, shift_binop_table_driver_fn,
-};
 use crate::gkr_circuits::mem_word_only::{
     mem_word_only_table_addition_fn, mem_word_only_table_driver_fn,
 };
@@ -50,8 +47,8 @@ pub const FAMILY_1_TRI_ADD_BIT: usize =
 
 pub const FAMILY_2_FLAG_OFFSET: usize = FAMILY_1_FLAG_OFFSET + UNIFIED_F1_NUM_FLAGS;
 pub const FAMILY_3_FLAG_OFFSET: usize = FAMILY_2_FLAG_OFFSET + JUMP_SLT_BRANCH_FAMILY_NUM_BITS;
-pub const UNIFIED_F3_NUM_FLAGS: usize = SHIFT_BINARY_FAMILY_NUM_FLAGS + 1;
-pub const FAMILY_3_XOR_ROT_BIT: usize = FAMILY_3_FLAG_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS;
+pub const UNIFIED_F3_NUM_FLAGS: usize = SHIFT_BINARY_FAMILY_NUM_FLAGS;
+pub const FAMILY_3_BINARY_OP_BIT: usize = FAMILY_3_FLAG_OFFSET + 1;
 
 pub const FAMILY_4_FLAG_OFFSET: usize = FAMILY_3_FLAG_OFFSET + UNIFIED_F3_NUM_FLAGS;
 
@@ -162,12 +159,25 @@ const UNIFIED_XOR_ROTATE_TABLES: [TableType; 4] = [
     TableType::XorRotate7,
 ];
 
+const UNIFIED_F3_BASE_TABLES: [TableType; 4] = [
+    TableType::ZeroEntry, // needed for conditional lookup enforcements
+    TableType::TruncateShiftAmountAndRangeCheck8,
+    TableType::GetSignExtensionByte,
+    TableType::ShiftImplementationOverBytes,
+];
+
+const UNIFIED_WIDE_BINOP_TABLES: [TableType; 3] =
+    [TableType::WideXor, TableType::WideOr, TableType::WideAnd];
+
 pub fn unified_reduced_machine_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     add_sub_lui_auipc_mop_table_addition_fn(cs);
     jump_branch_slt_unified_table_addition_fn(cs);
-    shift_binop_table_addition_fn(cs);
     mem_word_only_table_addition_fn(cs);
-    for t in UNIFIED_XOR_ROTATE_TABLES {
+    for t in UNIFIED_F3_BASE_TABLES
+        .into_iter()
+        .chain(UNIFIED_WIDE_BINOP_TABLES)
+        .chain(UNIFIED_XOR_ROTATE_TABLES)
+    {
         cs.materialize_table::<UNIFIED_LOOKUP_WIDTH>(t);
     }
 }
@@ -175,9 +185,12 @@ pub fn unified_reduced_machine_table_addition_fn<F: PrimeField, CS: Circuit<F>>(
 pub fn unified_reduced_machine_table_driver_fn<F: PrimeField>(table_driver: &mut TableDriver<F>) {
     add_sub_lui_auipc_mop_table_driver_fn(table_driver);
     jump_branch_slt_unified_table_driver_fn(table_driver);
-    shift_binop_table_driver_fn(table_driver);
     mem_word_only_table_driver_fn(table_driver);
-    for t in UNIFIED_XOR_ROTATE_TABLES {
+    for t in UNIFIED_F3_BASE_TABLES
+        .into_iter()
+        .chain(UNIFIED_WIDE_BINOP_TABLES)
+        .chain(UNIFIED_XOR_ROTATE_TABLES)
+    {
         table_driver.materialize_table::<UNIFIED_LOOKUP_WIDTH>(t);
     }
 }
@@ -344,7 +357,6 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         cs,
         inputs.clone(),
         unified_mask.binary_shifts(),
-        unified_mask.perform_xor_rot(),
         rs1_limbs,
         rs2_limbs,
         rd_write_limbs,

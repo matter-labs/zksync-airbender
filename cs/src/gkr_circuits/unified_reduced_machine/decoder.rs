@@ -11,7 +11,7 @@ use crate::types::Boolean;
 
 use super::circuit::{
     FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
-    FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_3_XOR_ROT_BIT, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
+    FAMILY_3_BINARY_OP_BIT, FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
     FAMILY_4_LW_BIT as F4_LW_BIT, FAMILY_4_SW_BIT as F4_SW_BIT, UNIFIED_F1_NUM_FLAGS,
     UNIFIED_F3_NUM_FLAGS, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
@@ -34,8 +34,8 @@ pub struct UnifiedReducedMachineFamilyCircuitMask {
     // add_sub family flags, bit [9] is the unified-only 3-input-add (tri-add) flag.
     add_sub_lui_auipc_mop_bits: [Boolean; UNIFIED_F1_NUM_FLAGS],
     jump_branch_slt_bits: [Boolean; JUMP_SLT_BRANCH_FAMILY_NUM_BITS],
-    // UNIFIED_F3_NUM_FLAGS = standalone NUM_FLAGS + 1: bits [0..2) are the standalone
-    // shift/binop flags, bit [2] is the unified-only xor-rotate flag.
+    // UNIFIED_F3_NUM_FLAGS = standalone NUM_FLAGS (2): shift + binary-op. ZimopIXorRot rides
+    // the binary-op bit (it differs from a plain binop only by funct3 = XorRotate{r} table id).
     binary_shifts_bits: [Boolean; UNIFIED_F3_NUM_FLAGS],
     is_lw: Boolean,
     is_sw: Boolean,
@@ -70,16 +70,7 @@ impl UnifiedReducedMachineFamilyCircuitMask {
     }
 
     pub fn binary_shifts(&self) -> ShiftBinaryFamilyCircuitMask {
-        // The shared mask carries only the 2 standalone flags; the xor-rotate bit [2] is
-        // threaded separately via `perform_xor_rot()`.
-        let standalone: [Boolean; SHIFT_BINARY_FAMILY_NUM_FLAGS] =
-            std::array::from_fn(|i| self.binary_shifts_bits[i]);
-        ShiftBinaryFamilyCircuitMask::from_mask(standalone)
-    }
-
-    /// Unified-only xor-rotate (`ZimopIXorRot`) flag (F3 region bit [2]).
-    pub fn perform_xor_rot(&self) -> Boolean {
-        self.binary_shifts_bits[SHIFT_BINARY_FAMILY_NUM_FLAGS]
+        ShiftBinaryFamilyCircuitMask::from_mask(self.binary_shifts_bits)
     }
 
     pub fn is_lw(&self) -> Boolean {
@@ -148,9 +139,6 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
         // `ZimopIXorRot` (rd = (rs1 ^ rd_old) >>> rot) is a UNIFIED-ONLY shift/binop-family opcode;
         // the standalone `ShiftBinaryDecoder` returns `Err`. `preprocess_bytecode` sets rs2 := rd,
         // so rd's old value flows through the rs2 read port (sub-slot +1) and the circuit reuses
-        // the rs2 byte decomposition; the rotation amount (only the 4 Blake2 values {16,12,8,7})
-        // is mapped to the per-rotation xor-rotate table id and carried in `funct3`
-        // (table_id = funct3). `imm` is zeroed (the rotation now lives in funct3).
         if preprocessed_opcode.name == InstructionName::ZimopIXorRot {
             assert_ne!(preprocessed_opcode.rd, 0);
             assert_eq!(preprocessed_opcode.rs2, preprocessed_opcode.rd);
@@ -176,7 +164,7 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
                 rd_index: preprocessed_opcode.rd,
                 funct3: Some(rotation_table_id as u8),
                 funct7: None,
-                opcode_family_bits: 1u32 << FAMILY_3_XOR_ROT_BIT,
+                opcode_family_bits: 1u32 << FAMILY_3_BINARY_OP_BIT,
             });
         }
 
@@ -196,6 +184,19 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
         else if let Ok(d) = ShiftBinaryDecoder.define_decoder_subspace(preprocessed_opcode) {
             decoded = d;
             decoded.opcode_family_bits <<= F3_OFFSET;
+            if decoded.opcode_family_bits == 1u32 << FAMILY_3_BINARY_OP_BIT {
+                let wide_id = match decoded.funct3 {
+                    Some(f) if f as u32 == XOR_TABLE_ID => TableType::WideXor,
+                    Some(f) if f as u32 == OR_TABLE_ID => TableType::WideOr,
+                    Some(f) if f as u32 == AND_TABLE_ID => TableType::WideAnd,
+                    other => panic!("binary-op row with unexpected funct3 {other:?}"),
+                } as u32;
+                assert!(
+                    wide_id <= u8::MAX as u32,
+                    "wide binop table id {wide_id} does not fit in the funct3 u8 column"
+                );
+                decoded.funct3 = Some(wide_id as u8);
+            }
         }
         // Try Family 4 — needs the 1-bit → 2-bit one-hot conversion.
         else if let Ok(d) =
@@ -256,11 +257,9 @@ mod tests {
         // The tri-add bit is the last bit of the F1 region (just past the 9 standalone flags).
         assert_eq!(FAMILY_1_TRI_ADD_BIT, ADD_SUB_LUI_AUIPC_MOP_FAMILY_NUM_FLAGS);
         assert!(FAMILY_1_TRI_ADD_BIT < F2_OFFSET);
-        assert_eq!(
-            FAMILY_3_XOR_ROT_BIT,
-            F3_OFFSET + SHIFT_BINARY_FAMILY_NUM_FLAGS
-        );
-        assert!(FAMILY_3_XOR_ROT_BIT < F4_OFFSET);
+        // The F3 region is exactly the standalone shift/binop flags (no unified extra bit).
+        assert_eq!(UNIFIED_F3_NUM_FLAGS, SHIFT_BINARY_FAMILY_NUM_FLAGS);
+        assert!(FAMILY_3_BINARY_OP_BIT < F4_OFFSET);
         // 2-bit one-hot Family-4 region fits within the bitmask.
         assert!(F4_SW_BIT < UNIFIED_REDUCED_MACHINE_NUM_FLAGS);
     }
@@ -284,14 +283,15 @@ mod tests {
             // Standalone shift/binop decoder rejects it (unified-only opcode).
             assert!(ShiftBinaryDecoder.define_decoder_subspace(xr).is_err());
 
-            // Unified decoder accepts it and sets exactly the xor-rotate bit.
+            // Unified decoder accepts it; post-merge it rides the ordinary binary-op dispatch
+            // bit (the only difference from a plain binop is funct3 = XorRotate{r} table id).
             let decoded = UnifiedReducedMachineDecoder
                 .define_decoder_subspace(xr)
                 .unwrap();
             assert_eq!(
                 decoded.opcode_family_bits,
-                1u32 << FAMILY_3_XOR_ROT_BIT,
-                "ZimopIXorRot should set exactly bit FAMILY_3_XOR_ROT_BIT"
+                1u32 << FAMILY_3_BINARY_OP_BIT,
+                "ZimopIXorRot should set exactly bit FAMILY_3_BINARY_OP_BIT"
             );
             assert_eq!(decoded.rs1_index, 1);
             assert_eq!(
@@ -304,6 +304,62 @@ mod tests {
                 decoded.funct3,
                 Some(expected_table as u8),
                 "rotation {rot} must map to the {expected_table:?} table id"
+            );
+        }
+    }
+
+    #[test]
+    fn binop_funct3_remapped_to_wide_tables() {
+        use riscv_transpiler::ir::simple_instruction_set::{Instruction, InstructionName};
+
+        let cases = [
+            (InstructionName::Xor, TableType::WideXor),
+            (InstructionName::Or, TableType::WideOr),
+            (InstructionName::And, TableType::WideAnd),
+        ];
+        for (name, wide) in cases {
+            let instr = Instruction::new(name, 1, 2, 3, 0);
+            let standalone = ShiftBinaryDecoder.define_decoder_subspace(instr).unwrap();
+            let decoded = UnifiedReducedMachineDecoder
+                .define_decoder_subspace(instr)
+                .unwrap();
+            // Lockstep: the unified F3 region is exactly the standalone bits shifted.
+            assert_eq!(
+                decoded.opcode_family_bits,
+                standalone.opcode_family_bits << F3_OFFSET,
+                "unified F3 bits must be the standalone bits shifted by F3_OFFSET"
+            );
+            assert_eq!(
+                decoded.opcode_family_bits,
+                1u32 << FAMILY_3_BINARY_OP_BIT,
+                "{name:?} must land on the binary-op dispatch bit"
+            );
+            assert_eq!(
+                decoded.funct3,
+                Some(wide as u8),
+                "{name:?} funct3 must be remapped to the wide table id"
+            );
+            // The remap must not alter addressing or the immediate.
+            assert_eq!(decoded.imm, standalone.imm);
+            assert_eq!(decoded.rs1_index, standalone.rs1_index);
+            assert_eq!(decoded.rs2_index, standalone.rs2_index);
+            assert_eq!(decoded.rd_index, standalone.rd_index);
+        }
+
+        // Shift rows keep the standalone funct3.
+        for name in [
+            InstructionName::Sll,
+            InstructionName::Srl,
+            InstructionName::Sra,
+        ] {
+            let instr = Instruction::new(name, 1, 2, 3, 0);
+            let standalone = ShiftBinaryDecoder.define_decoder_subspace(instr).unwrap();
+            let decoded = UnifiedReducedMachineDecoder
+                .define_decoder_subspace(instr)
+                .unwrap();
+            assert_eq!(
+                decoded.funct3, standalone.funct3,
+                "{name:?} funct3 must pass through unchanged"
             );
         }
     }
