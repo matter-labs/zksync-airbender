@@ -1652,6 +1652,209 @@ where
     }
 }
 
+/// Test-only public shim over the private [`commit_single_ext_poly`], so
+/// downstream crates' tests can build a reference recursive-WHIR oracle with the
+/// exact production leaf encoding (coefficient form by default; the `eval_leaves`
+/// feature selects the eval-form variant). Gated behind `test-utils`; not part
+/// of the normal library API.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn commit_single_ext_poly_for_test<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    cosets: Vec<(Box<[E]>, F)>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    worker: &Worker,
+) -> ColumnMajorExtensionOracleForLDE<F, E, T>
+where
+    [(); E::DEGREE]: Sized,
+{
+    commit_single_ext_poly::<F, E, T>(cosets, values_per_leaf, tree_cap_size, worker)
+}
+
+/// Eval-form (no leaf transform) single-poly commit for tests that validate the
+/// `transform_leaves_to_multilinear_coeffs == false` path against a GPU oracle.
+/// `commit_single_ext_poly` is coefficient-form by default (#279) and the
+/// eval-form variant is `#[cfg(feature = "eval_leaves")]`-gated, so this ungated
+/// helper provides the eval-form reference regardless of the active feature.
+/// Mirrors the eval-form `commit_single_ext_poly` body exactly.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn commit_single_ext_poly_no_transform_for_test<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    cosets: Vec<(Box<[E]>, F)>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    worker: &Worker,
+) -> ColumnMajorExtensionOracleForLDE<F, E, T>
+where
+    [(); E::DEGREE]: Sized,
+{
+    let mut t = Vec::with_capacity(cosets.len());
+    let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
+    for (column, offset) in cosets.into_iter() {
+        assert!(!column.is_empty());
+        let el = ColumnMajorExtensionOracleForCoset {
+            values_normal_order: ColumnMajorCosetBoundTracePart {
+                column: Arc::new(column),
+                offset,
+            },
+        };
+        t.push(el);
+    }
+
+    let source: Vec<_> = t
+        .iter()
+        .map(|el| vec![&el.values_normal_order.column[..]])
+        .collect();
+    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
+
+    let tree = T::construct_from_cosets::<E, Global>(
+        &source_ref[..],
+        values_per_leaf,
+        tree_cap_size,
+        true,
+        true,
+        false,
+        worker,
+    );
+
+    ColumnMajorExtensionOracleForLDE {
+        cosets: t,
+        tree,
+        values_per_leaf,
+        trace_len_log2,
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub fn commit_single_ext_poly_with_transform_for_test<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+>(
+    cosets: Vec<(Box<[E]>, F)>,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    worker: &Worker,
+) -> ColumnMajorExtensionOracleForLDE<F, E, T>
+where
+    [(); E::DEGREE]: Sized,
+{
+    let num_folding_rounds = values_per_leaf.trailing_zeros() as usize;
+    let mut t = Vec::with_capacity(cosets.len());
+    let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
+    let trace_len = 1usize << trace_len_log2;
+    let num_cosets = cosets.len();
+
+    let two_inv = F::from_u32_unchecked(2).inverse().unwrap();
+    let set_generator = domain_generator_for_size::<F>(values_per_leaf as u64);
+    let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<F, Global>(
+        set_generator.inverse().unwrap(),
+        values_per_leaf / 2,
+    );
+    bitreverse_enumeration_inplace(&mut high_powers_offsets);
+
+    let offsets = offsets_vec_for_leaf_construction(trace_len, values_per_leaf);
+    let num_leaves = trace_len / values_per_leaf;
+
+    let extended_generator = domain_generator_for_size::<F>((trace_len * num_cosets) as u64);
+    let coset_generator = extended_generator.pow(num_cosets as u32);
+    let coset_generator_inv = coset_generator.inverse().unwrap();
+
+    for (mut column, offset) in cosets.into_iter() {
+        assert!(column.len() > 0);
+
+        if num_folding_rounds > 0 {
+            let offset_inv = offset.inverse().unwrap();
+            let base_root_invs = {
+                let mut v = materialize_powers_serial_starting_with_one::<F, Global>(
+                    coset_generator_inv,
+                    num_leaves,
+                );
+                for r in v.iter_mut() {
+                    r.mul_assign(&offset_inv);
+                }
+                v
+            };
+
+            // SAFETY: each thread writes to disjoint leaf indices; offsets stride
+            // across the column so no two threads touch the same element.
+            let base_ptr = column.as_mut_ptr() as usize;
+            worker.scope(num_leaves, |scope, geometry| {
+                for chunk_idx in 0..geometry.len() {
+                    let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
+                    let chunk_size = geometry.get_chunk_size(chunk_idx);
+                    let base_ptr = base_ptr;
+                    let offsets = &offsets;
+                    let base_root_invs = &base_root_invs;
+                    let high_powers_offsets = &high_powers_offsets;
+                    let is_last = chunk_idx == geometry.len() - 1;
+
+                    Worker::smart_spawn(scope, is_last, move |_| {
+                        let ptr = base_ptr as *mut E;
+                        let mut leaf_buf = vec![E::ZERO; values_per_leaf];
+                        let mut scratch_a = vec![E::ZERO; values_per_leaf];
+                        let mut scratch_b = vec![E::ZERO; values_per_leaf];
+                        for leaf_idx in chunk_start..(chunk_start + chunk_size) {
+                            for (k, &off) in offsets.iter().enumerate() {
+                                leaf_buf[k] = unsafe { *ptr.add(off + leaf_idx) };
+                            }
+                            evals_to_multilinear_coeffs(
+                                &mut leaf_buf,
+                                &base_root_invs[leaf_idx],
+                                high_powers_offsets,
+                                &two_inv,
+                                num_folding_rounds,
+                                &mut scratch_a,
+                                &mut scratch_b,
+                            );
+                            for (k, &off) in offsets.iter().enumerate() {
+                                unsafe { *ptr.add(off + leaf_idx) = leaf_buf[k] };
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        let el = ColumnMajorExtensionOracleForCoset {
+            values_normal_order: ColumnMajorCosetBoundTracePart {
+                column: Arc::new(column),
+                offset,
+            },
+        };
+        t.push(el);
+    }
+
+    let source: Vec<_> = t
+        .iter()
+        .map(|el| vec![&el.values_normal_order.column[..]])
+        .collect();
+    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
+
+    let tree = T::construct_from_cosets::<E, Global>(
+        &source_ref[..],
+        values_per_leaf,
+        tree_cap_size,
+        true,
+        true,
+        false,
+        worker,
+    );
+
+    ColumnMajorExtensionOracleForLDE {
+        cosets: t,
+        tree,
+        values_per_leaf,
+        trace_len_log2,
+    }
+}
+
 fn fold_monomial_form<E: Field>(
     input: &mut Vec<E>,
     buffer: &mut Vec<E>,

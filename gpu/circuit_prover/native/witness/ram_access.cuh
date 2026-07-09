@@ -1,0 +1,216 @@
+#pragma once
+
+#include "common.cuh"
+#include "option.cuh"
+
+using namespace ::airbender::witness;
+using namespace ::airbender::witness::option;
+
+namespace airbender::witness::ram_access {
+
+struct RegisterOnlyAccessAddress {
+  u32 register_index;
+};
+
+struct ConstantRegisterAccessAddress {
+  u32 register_index;
+};
+
+enum RegisterOrRamAddressSpaceTag : u32 {
+  RegisterAddressSpace,
+  RamAddressSpace,
+};
+
+struct RegisterOrRamAddressSpace {
+  RegisterOrRamAddressSpaceTag tag;
+  u32 value;
+};
+
+struct RegisterOrRamAccessAddress {
+  RegisterOrRamAddressSpace address_space;
+  u32 address[REGISTER_SIZE];
+};
+
+struct IndirectRamVariableOffset {
+  u32 offset;
+  u32 variable;
+};
+
+struct IndirectRamAccessAddress {
+  u32 base_register_value[REGISTER_SIZE];
+  u32 base_register_index;
+  u32 constant_offset;
+  u32 indirect_access_idx_for_register;
+  OptionU32::Option<IndirectRamVariableOffset> variable_offset;
+};
+
+enum RamAddressTag : u32 {
+  ConstantRegister,
+  RegisterOnly,
+  RegisterOrRam,
+  IndirectRam,
+};
+
+union RamAddressPayload {
+  ConstantRegisterAccessAddress constant_register_access_address;
+  RegisterOnlyAccessAddress register_only_access_address;
+  RegisterOrRamAccessAddress register_or_ram_access_address;
+  IndirectRamAccessAddress indirect_ram_access_address;
+};
+
+struct RamAddress {
+  RamAddressTag tag;
+  RamAddressPayload payload;
+};
+
+struct RamWordU16Limbs {
+  u32 limbs[REGISTER_SIZE];
+};
+
+struct RamWordU8Limbs {
+  u32 limbs[REGISTER_SIZE * 2];
+};
+
+enum RamWordRepresentationTag : u32 {
+  Zero,
+  U16Limbs,
+  U8Limbs,
+};
+
+union RamWordRepresentationPayload {
+  RamWordU16Limbs ram_word_u16_limbs;
+  RamWordU8Limbs ram_word_u8_limbs;
+};
+
+struct RamWordRepresentation {
+  RamWordRepresentationTag tag;
+  RamWordRepresentationPayload payload;
+};
+
+struct RamReadQuery {
+  u32 in_cycle_write_index;
+  RamAddress address;
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  RamWordRepresentation read_value;
+};
+
+struct RamWriteQuery {
+  u32 in_cycle_write_index;
+  RamAddress address;
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  RamWordRepresentation read_value;
+  RamWordRepresentation write_value;
+};
+
+enum RamQueryTag : u32 {
+  Readonly,
+  Write,
+};
+
+union RamQueryPayload {
+  RamReadQuery ram_read_query;
+  RamWriteQuery ram_write_query;
+};
+
+struct RamQuery {
+  RamQueryTag tag;
+  RamQueryPayload payload;
+};
+
+struct RamAuxComparisonSet {
+  Address intermediate_borrow;
+};
+
+struct RegisterAccessColumnsReadAccess {
+  u32 register_index;
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
+};
+
+struct RegisterAccessColumnsWriteAccess {
+  u32 register_index;
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
+  u32 write_value[REGISTER_SIZE];
+};
+
+enum RegisterAccessColumnsTag : u32 {
+  RegisterReadAccess,
+  RegisterWriteAccess,
+};
+
+union RegisterAccessColumnsPayload {
+  RegisterAccessColumnsReadAccess register_access_columns_read_access;
+  RegisterAccessColumnsWriteAccess register_access_columns_write_access;
+};
+
+struct RegisterAccessColumns {
+  RegisterAccessColumnsTag tag;
+  RegisterAccessColumnsPayload payload;
+};
+
+struct IndirectAccessVariableDependency {
+  u32 offset;
+  u32 variable;
+  u32 index;
+};
+
+struct IndirectAccessReadAccess {
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
+  u32 address_derivation_carry_bit;
+  OptionU32::Option<IndirectAccessVariableDependency> variable_dependent;
+  u32 offset_constant;
+};
+
+struct IndirectAccessWriteAccess {
+  u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 read_value[REGISTER_SIZE];
+  u32 write_value[REGISTER_SIZE];
+  u32 address_derivation_carry_bit;
+  OptionU32::Option<IndirectAccessVariableDependency> variable_dependent;
+  u32 offset_constant;
+};
+
+enum IndirectAccessTag : u32 {
+  IndirectReadAccess,
+  IndirectWriteAccess,
+};
+
+union IndirectAccessPayload {
+  IndirectAccessReadAccess indirect_access_read_access;
+  IndirectAccessWriteAccess indirect_access_write_access;
+};
+
+struct IndirectAccess {
+  IndirectAccessTag tag;
+  IndirectAccessPayload payload;
+};
+
+#define MAX_INDIRECT_ACCESSES_COUNT 32
+
+struct RegisterAndIndirectAccessDescription {
+  RegisterAccessColumns register_access;
+  u32 indirect_accesses_count;
+  IndirectAccess indirect_accesses[MAX_INDIRECT_ACCESSES_COUNT];
+};
+
+#define MAX_AUX_BORROW_SET_INDIRECTS_COUNT 24
+
+struct AuxBorrowSet {
+  Address borrow;
+  u32 indirects_count;
+  Address indirects[MAX_AUX_BORROW_SET_INDIRECTS_COUNT];
+};
+
+#define MAX_AUX_BORROW_SETS_COUNT 4
+
+struct RegisterAndIndirectAccessTimestampComparisonAuxVars {
+  Address predicate;
+  Address write_timestamp_columns[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  Address write_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  u32 aux_borrow_sets_count;
+  AuxBorrowSet aux_borrow_sets[MAX_AUX_BORROW_SETS_COUNT];
+};
+
+} // namespace airbender::witness::ram_access

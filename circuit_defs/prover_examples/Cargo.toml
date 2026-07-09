@@ -23,11 +23,6 @@ itertools = { workspace = true }
 verifier_common = { workspace = true, default-features = false }
 full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "replace_csr", "host_utils"]}
 
-# dependencies for gpu
-gpu_prover = { workspace = true, optional = true }
-nvtx = { version = "1", optional = true }
-cs = { workspace = true, optional = true }
-
 [dev-dependencies]
 test_utils = { workspace = true }
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git"}
@@ -49,5 +44,3 @@ timing_logs = []
 # verifiers = ["full_statement_verifier/verifiers"]
 
 default = ["timing_logs", "security_80", "verifier_common/proof_utils", "gkr_self_checks"]
-
-gpu = ["gpu_prover", "nvtx", "cs"]

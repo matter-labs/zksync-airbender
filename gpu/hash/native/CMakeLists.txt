@@ -1,0 +1,30 @@
+cmake_minimum_required(VERSION 3.28)
+project(gpu_hash LANGUAGES CUDA)
+if ((NOT DEFINED CMAKE_CUDA_ARCHITECTURES) OR (CMAKE_CUDA_ARCHITECTURES STREQUAL ""))
+    set(CMAKE_CUDA_ARCHITECTURES native)
+endif ()
+option(GPU_HASH_ENABLE_LINEINFO "Enable lineinfo for CUDA profiling builds" OFF)
+option(AB_DETERMINISTIC_POW "Enable deterministic PoW search" OFF)
+add_library(gpu_hash_native STATIC
+        gather.cu
+        hash.cu
+        hash.cuh
+)
+target_include_directories(gpu_hash_native PRIVATE ${GPU_CORE_NATIVE_INCLUDE})
+if (AB_DETERMINISTIC_POW)
+    target_compile_definitions(gpu_hash_native PRIVATE AB_DETERMINISTIC_POW=1)
+endif ()
+set_target_properties(gpu_hash_native PROPERTIES CUDA_STANDARD 20)
+set_target_properties(gpu_hash_native PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+set_target_properties(gpu_hash_native PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+# CCCL headers in CUDA 12+ require MSVC's standard conforming preprocessor.
+if (MSVC)
+    target_compile_options(gpu_hash_native PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>)
+endif ()
+target_compile_options(gpu_hash_native PRIVATE --expt-relaxed-constexpr)
+target_compile_options(gpu_hash_native PRIVATE --ptxas-options=-v)
+if (GPU_HASH_ENABLE_LINEINFO)
+    target_compile_options(gpu_hash_native PRIVATE -lineinfo)
+endif ()
+target_compile_options(gpu_hash_native PRIVATE --keep)
+install(TARGETS gpu_hash_native DESTINATION .)

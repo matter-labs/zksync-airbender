@@ -1,0 +1,1642 @@
+{
+  "trace_len": 16777216,
+  "table_offsets": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "total_tables_size": 0,
+  "offset_for_decoder_table": 0,
+  "has_decoder_lookup": false,
+  "layers": [
+    {
+      "layer": 0,
+      "gates_with_external_connections": [],
+      "cached_relations": [],
+      "gates": [
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 0
+                }
+              },
+              "set_idxes": [
+                0,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    2,
+                    3
+                  ],
+                  "lhs_value": [
+                    0,
+                    1
+                  ],
+                  "rhs_timestamp": [
+                    6,
+                    7
+                  ],
+                  "rhs_value": [
+                    4,
+                    5
+                  ]
+                }
+              },
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 1
+                }
+              },
+              "set_idxes": [
+                0,
+                1
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 2
+                }
+              },
+              "set_idxes": [
+                2,
+                3
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    10,
+                    11
+                  ],
+                  "lhs_value": [
+                    8,
+                    9
+                  ],
+                  "rhs_timestamp": [
+                    14,
+                    15
+                  ],
+                  "rhs_value": [
+                    12,
+                    13
+                  ]
+                }
+              },
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 3
+                }
+              },
+              "set_idxes": [
+                2,
+                3
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 4
+                }
+              },
+              "set_idxes": [
+                4,
+                5
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    18,
+                    19
+                  ],
+                  "lhs_value": [
+                    16,
+                    17
+                  ],
+                  "rhs_timestamp": [
+                    22,
+                    23
+                  ],
+                  "rhs_value": [
+                    20,
+                    21
+                  ]
+                }
+              },
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 5
+                }
+              },
+              "set_idxes": [
+                4,
+                5
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 6
+                }
+              },
+              "set_idxes": [
+                6,
+                7
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    26,
+                    27
+                  ],
+                  "lhs_value": [
+                    24,
+                    25
+                  ],
+                  "rhs_timestamp": [
+                    30,
+                    31
+                  ],
+                  "rhs_value": [
+                    28,
+                    29
+                  ]
+                }
+              },
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 7
+                }
+              },
+              "set_idxes": [
+                6,
+                7
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 8
+                }
+              },
+              "set_idxes": [
+                8,
+                9
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    34,
+                    35
+                  ],
+                  "lhs_value": [
+                    32,
+                    33
+                  ],
+                  "rhs_timestamp": [
+                    38,
+                    39
+                  ],
+                  "rhs_value": [
+                    36,
+                    37
+                  ]
+                }
+              },
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 9
+                }
+              },
+              "set_idxes": [
+                8,
+                9
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 10
+                }
+              },
+              "set_idxes": [
+                10,
+                11
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    42,
+                    43
+                  ],
+                  "lhs_value": [
+                    40,
+                    41
+                  ],
+                  "rhs_timestamp": [
+                    46,
+                    47
+                  ],
+                  "rhs_value": [
+                    44,
+                    45
+                  ]
+                }
+              },
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 11
+                }
+              },
+              "set_idxes": [
+                10,
+                11
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 12
+                }
+              },
+              "set_idxes": [
+                12,
+                13
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    50,
+                    51
+                  ],
+                  "lhs_value": [
+                    48,
+                    49
+                  ],
+                  "rhs_timestamp": [
+                    54,
+                    55
+                  ],
+                  "rhs_value": [
+                    52,
+                    53
+                  ]
+                }
+              },
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 13
+                }
+              },
+              "set_idxes": [
+                12,
+                13
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": "Init",
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 14
+                }
+              },
+              "set_idxes": [
+                14,
+                15
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitsOrTeardownsInitialPair": {
+              "timestamp_and_value": {
+                "Teardown": {
+                  "lhs_timestamp": [
+                    58,
+                    59
+                  ],
+                  "lhs_value": [
+                    56,
+                    57
+                  ],
+                  "rhs_timestamp": [
+                    62,
+                    63
+                  ],
+                  "rhs_value": [
+                    60,
+                    61
+                  ]
+                }
+              },
+              "setup": [
+                {
+                  "VirtualSetup": "InitsAndTeardownsLow"
+                },
+                {
+                  "VirtualSetup": "InitsAndTeardownsHigh"
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 15
+                }
+              },
+              "set_idxes": [
+                14,
+                15
+              ]
+            }
+          }
+        }
+      ],
+      "intermediate_layer_width": null
+    },
+    {
+      "layer": 1,
+      "gates_with_external_connections": [],
+      "cached_relations": [],
+      "gates": [
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 1
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 3
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 5
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 7
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 1
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 9
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 11
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 2
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 13
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 15
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 3
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 0
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 2
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 4
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 4
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 6
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 5
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 8
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 10
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 6
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 12
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 14
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 7
+                }
+              }
+            }
+          }
+        }
+      ],
+      "intermediate_layer_width": 16
+    },
+    {
+      "layer": 2,
+      "gates_with_external_connections": [],
+      "cached_relations": [],
+      "gates": [
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 0
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 1
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 2
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 3
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 1
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 4
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 5
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 2
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 6
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 7
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 3
+                }
+              }
+            }
+          }
+        }
+      ],
+      "intermediate_layer_width": 8
+    },
+    {
+      "layer": 3,
+      "gates_with_external_connections": [
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 3,
+                    "offset": 0
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 3,
+                    "offset": 1
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 3,
+                    "offset": 2
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 3,
+                    "offset": 3
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "cached_relations": [],
+      "gates": [],
+      "intermediate_layer_width": 4
+    }
+  ],
+  "global_output_map": {
+    "PermutationProduct": [
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 0
+        }
+      },
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 1
+        }
+      }
+    ]
+  },
+  "memory_layout": {
+    "ram_access_sets": [],
+    "machine_state": null,
+    "delegation_state": null,
+    "decoder_input": null,
+    "indirect_access_variable_offsets": [],
+    "teardown_sets": [
+      [
+        [
+          {
+            "BaseLayerMemory": 2
+          },
+          {
+            "BaseLayerMemory": 3
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 0
+          },
+          {
+            "BaseLayerMemory": 1
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 6
+          },
+          {
+            "BaseLayerMemory": 7
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 4
+          },
+          {
+            "BaseLayerMemory": 5
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 10
+          },
+          {
+            "BaseLayerMemory": 11
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 8
+          },
+          {
+            "BaseLayerMemory": 9
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 14
+          },
+          {
+            "BaseLayerMemory": 15
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 12
+          },
+          {
+            "BaseLayerMemory": 13
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 18
+          },
+          {
+            "BaseLayerMemory": 19
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 16
+          },
+          {
+            "BaseLayerMemory": 17
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 22
+          },
+          {
+            "BaseLayerMemory": 23
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 20
+          },
+          {
+            "BaseLayerMemory": 21
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 26
+          },
+          {
+            "BaseLayerMemory": 27
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 24
+          },
+          {
+            "BaseLayerMemory": 25
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 30
+          },
+          {
+            "BaseLayerMemory": 31
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 28
+          },
+          {
+            "BaseLayerMemory": 29
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 34
+          },
+          {
+            "BaseLayerMemory": 35
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 32
+          },
+          {
+            "BaseLayerMemory": 33
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 38
+          },
+          {
+            "BaseLayerMemory": 39
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 36
+          },
+          {
+            "BaseLayerMemory": 37
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 42
+          },
+          {
+            "BaseLayerMemory": 43
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 40
+          },
+          {
+            "BaseLayerMemory": 41
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 46
+          },
+          {
+            "BaseLayerMemory": 47
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 44
+          },
+          {
+            "BaseLayerMemory": 45
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 50
+          },
+          {
+            "BaseLayerMemory": 51
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 48
+          },
+          {
+            "BaseLayerMemory": 49
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 54
+          },
+          {
+            "BaseLayerMemory": 55
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 52
+          },
+          {
+            "BaseLayerMemory": 53
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 58
+          },
+          {
+            "BaseLayerMemory": 59
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 56
+          },
+          {
+            "BaseLayerMemory": 57
+          }
+        ]
+      ],
+      [
+        [
+          {
+            "BaseLayerMemory": 62
+          },
+          {
+            "BaseLayerMemory": 63
+          }
+        ],
+        [
+          {
+            "BaseLayerMemory": 60
+          },
+          {
+            "BaseLayerMemory": 61
+          }
+        ]
+      ]
+    ],
+    "total_width": 64,
+    "inits_and_teardowns_word_bits": 2
+  },
+  "witness_layout": {
+    "multiplicities_columns_for_range_check_16": {
+      "start": 0,
+      "end": 0
+    },
+    "multiplicities_columns_for_timestamp_range_check": {
+      "start": 0,
+      "end": 0
+    },
+    "multiplicities_columns_for_generic_lookup": {
+      "start": 0,
+      "end": 0
+    },
+    "total_width": 0
+  },
+  "scratch_space_size": 0,
+  "num_generic_lookups": 0,
+  "placement_data": {
+    "0": {
+      "BaseLayerMemory": 0
+    },
+    "1": {
+      "BaseLayerMemory": 1
+    },
+    "2": {
+      "BaseLayerMemory": 2
+    },
+    "3": {
+      "BaseLayerMemory": 3
+    },
+    "4": {
+      "BaseLayerMemory": 4
+    },
+    "5": {
+      "BaseLayerMemory": 5
+    },
+    "6": {
+      "BaseLayerMemory": 6
+    },
+    "7": {
+      "BaseLayerMemory": 7
+    },
+    "8": {
+      "BaseLayerMemory": 8
+    },
+    "9": {
+      "BaseLayerMemory": 9
+    },
+    "10": {
+      "BaseLayerMemory": 10
+    },
+    "11": {
+      "BaseLayerMemory": 11
+    },
+    "12": {
+      "BaseLayerMemory": 12
+    },
+    "13": {
+      "BaseLayerMemory": 13
+    },
+    "14": {
+      "BaseLayerMemory": 14
+    },
+    "15": {
+      "BaseLayerMemory": 15
+    },
+    "16": {
+      "BaseLayerMemory": 16
+    },
+    "17": {
+      "BaseLayerMemory": 17
+    },
+    "18": {
+      "BaseLayerMemory": 18
+    },
+    "19": {
+      "BaseLayerMemory": 19
+    },
+    "20": {
+      "BaseLayerMemory": 20
+    },
+    "21": {
+      "BaseLayerMemory": 21
+    },
+    "22": {
+      "BaseLayerMemory": 22
+    },
+    "23": {
+      "BaseLayerMemory": 23
+    },
+    "24": {
+      "BaseLayerMemory": 24
+    },
+    "25": {
+      "BaseLayerMemory": 25
+    },
+    "26": {
+      "BaseLayerMemory": 26
+    },
+    "27": {
+      "BaseLayerMemory": 27
+    },
+    "28": {
+      "BaseLayerMemory": 28
+    },
+    "29": {
+      "BaseLayerMemory": 29
+    },
+    "30": {
+      "BaseLayerMemory": 30
+    },
+    "31": {
+      "BaseLayerMemory": 31
+    },
+    "32": {
+      "BaseLayerMemory": 32
+    },
+    "33": {
+      "BaseLayerMemory": 33
+    },
+    "34": {
+      "BaseLayerMemory": 34
+    },
+    "35": {
+      "BaseLayerMemory": 35
+    },
+    "36": {
+      "BaseLayerMemory": 36
+    },
+    "37": {
+      "BaseLayerMemory": 37
+    },
+    "38": {
+      "BaseLayerMemory": 38
+    },
+    "39": {
+      "BaseLayerMemory": 39
+    },
+    "40": {
+      "BaseLayerMemory": 40
+    },
+    "41": {
+      "BaseLayerMemory": 41
+    },
+    "42": {
+      "BaseLayerMemory": 42
+    },
+    "43": {
+      "BaseLayerMemory": 43
+    },
+    "44": {
+      "BaseLayerMemory": 44
+    },
+    "45": {
+      "BaseLayerMemory": 45
+    },
+    "46": {
+      "BaseLayerMemory": 46
+    },
+    "47": {
+      "BaseLayerMemory": 47
+    },
+    "48": {
+      "BaseLayerMemory": 48
+    },
+    "49": {
+      "BaseLayerMemory": 49
+    },
+    "50": {
+      "BaseLayerMemory": 50
+    },
+    "51": {
+      "BaseLayerMemory": 51
+    },
+    "52": {
+      "BaseLayerMemory": 52
+    },
+    "53": {
+      "BaseLayerMemory": 53
+    },
+    "54": {
+      "BaseLayerMemory": 54
+    },
+    "55": {
+      "BaseLayerMemory": 55
+    },
+    "56": {
+      "BaseLayerMemory": 56
+    },
+    "57": {
+      "BaseLayerMemory": 57
+    },
+    "58": {
+      "BaseLayerMemory": 58
+    },
+    "59": {
+      "BaseLayerMemory": 59
+    },
+    "60": {
+      "BaseLayerMemory": 60
+    },
+    "61": {
+      "BaseLayerMemory": 61
+    },
+    "62": {
+      "BaseLayerMemory": 62
+    },
+    "63": {
+      "BaseLayerMemory": 63
+    }
+  },
+  "generic_lookup_tables_width": 0,
+  "decode_table_columns_mask": [],
+  "tables_ids_in_generic_lookups": false,
+  "degree_2_constraints": [],
+  "degree_1_constraints": [],
+  "structured_statements": [],
+  "generic_lookups": [],
+  "range_check_16_lookup_expressions": [],
+  "timestamp_range_check_lookup_expressions": [],
+  "variable_names": {
+    "0": "Inits and teardowns set 0: teardown value[0]",
+    "1": "Inits and teardowns set 0: teardown value[1]",
+    "2": "Inits and teardowns set 0: teardown timestamp[0]",
+    "3": "Inits and teardowns set 0: teardown timestamp[1]",
+    "4": "Inits and teardowns set 1: teardown value[0]",
+    "5": "Inits and teardowns set 1: teardown value[1]",
+    "6": "Inits and teardowns set 1: teardown timestamp[0]",
+    "7": "Inits and teardowns set 1: teardown timestamp[1]",
+    "8": "Inits and teardowns set 2: teardown value[0]",
+    "9": "Inits and teardowns set 2: teardown value[1]",
+    "10": "Inits and teardowns set 2: teardown timestamp[0]",
+    "11": "Inits and teardowns set 2: teardown timestamp[1]",
+    "12": "Inits and teardowns set 3: teardown value[0]",
+    "13": "Inits and teardowns set 3: teardown value[1]",
+    "14": "Inits and teardowns set 3: teardown timestamp[0]",
+    "15": "Inits and teardowns set 3: teardown timestamp[1]",
+    "16": "Inits and teardowns set 4: teardown value[0]",
+    "17": "Inits and teardowns set 4: teardown value[1]",
+    "18": "Inits and teardowns set 4: teardown timestamp[0]",
+    "19": "Inits and teardowns set 4: teardown timestamp[1]",
+    "20": "Inits and teardowns set 5: teardown value[0]",
+    "21": "Inits and teardowns set 5: teardown value[1]",
+    "22": "Inits and teardowns set 5: teardown timestamp[0]",
+    "23": "Inits and teardowns set 5: teardown timestamp[1]",
+    "24": "Inits and teardowns set 6: teardown value[0]",
+    "25": "Inits and teardowns set 6: teardown value[1]",
+    "26": "Inits and teardowns set 6: teardown timestamp[0]",
+    "27": "Inits and teardowns set 6: teardown timestamp[1]",
+    "28": "Inits and teardowns set 7: teardown value[0]",
+    "29": "Inits and teardowns set 7: teardown value[1]",
+    "30": "Inits and teardowns set 7: teardown timestamp[0]",
+    "31": "Inits and teardowns set 7: teardown timestamp[1]",
+    "32": "Inits and teardowns set 8: teardown value[0]",
+    "33": "Inits and teardowns set 8: teardown value[1]",
+    "34": "Inits and teardowns set 8: teardown timestamp[0]",
+    "35": "Inits and teardowns set 8: teardown timestamp[1]",
+    "36": "Inits and teardowns set 9: teardown value[0]",
+    "37": "Inits and teardowns set 9: teardown value[1]",
+    "38": "Inits and teardowns set 9: teardown timestamp[0]",
+    "39": "Inits and teardowns set 9: teardown timestamp[1]",
+    "40": "Inits and teardowns set 10: teardown value[0]",
+    "41": "Inits and teardowns set 10: teardown value[1]",
+    "42": "Inits and teardowns set 10: teardown timestamp[0]",
+    "43": "Inits and teardowns set 10: teardown timestamp[1]",
+    "44": "Inits and teardowns set 11: teardown value[0]",
+    "45": "Inits and teardowns set 11: teardown value[1]",
+    "46": "Inits and teardowns set 11: teardown timestamp[0]",
+    "47": "Inits and teardowns set 11: teardown timestamp[1]",
+    "48": "Inits and teardowns set 12: teardown value[0]",
+    "49": "Inits and teardowns set 12: teardown value[1]",
+    "50": "Inits and teardowns set 12: teardown timestamp[0]",
+    "51": "Inits and teardowns set 12: teardown timestamp[1]",
+    "52": "Inits and teardowns set 13: teardown value[0]",
+    "53": "Inits and teardowns set 13: teardown value[1]",
+    "54": "Inits and teardowns set 13: teardown timestamp[0]",
+    "55": "Inits and teardowns set 13: teardown timestamp[1]",
+    "56": "Inits and teardowns set 14: teardown value[0]",
+    "57": "Inits and teardowns set 14: teardown value[1]",
+    "58": "Inits and teardowns set 14: teardown timestamp[0]",
+    "59": "Inits and teardowns set 14: teardown timestamp[1]",
+    "60": "Inits and teardowns set 15: teardown value[0]",
+    "61": "Inits and teardowns set 15: teardown value[1]",
+    "62": "Inits and teardowns set 15: teardown timestamp[0]",
+    "63": "Inits and teardowns set 15: teardown timestamp[1]"
+  },
+  "scratch_space_mapping": [],
+  "scratch_space_mapping_rev": {},
+  "aux_layout_data": {
+    "shuffle_ram_timestamp_comparison_aux_vars": []
+  },
+  "_marker": null
+}
