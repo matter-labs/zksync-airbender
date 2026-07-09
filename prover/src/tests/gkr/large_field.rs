@@ -63,7 +63,7 @@ fn basic_fibonacci_config() -> ProgramConfig {
     }
 }
 
-const TRACE_LEN_LOG2: usize = 24;
+const TRACE_LEN_LOG2: usize = 22;
 
 #[test]
 fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
