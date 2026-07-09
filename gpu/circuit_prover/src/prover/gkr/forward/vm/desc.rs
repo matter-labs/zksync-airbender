@@ -60,7 +60,10 @@ const _: () = {
     use crate::upstream::VirtualSetupKind::*;
     use gkr_eval_isa::fwd::source::KIND_ORDER;
     // KIND_ORDER index + 2 == vkind code (a 5th upstream kind fails here
-    // loudly: it would also need a 4th vkind bit and a new native enum value).
+    // loudly: this assert trips on the length mismatch, and separately
+    // `pack_desc`'s `(2..=5)` range check would need widening to `(2..=6)` —
+    // vkind:3 has room (native value 6 still fits 3 bits), so neither guard
+    // is a bit-width problem, just an unhandled-case one).
     assert!(KIND_ORDER.len() == 4);
     assert!(matches!(
         KIND_ORDER[(VKIND_RANGE_CHECK_16_BITS - 2) as usize],

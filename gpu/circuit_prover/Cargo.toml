@@ -48,9 +48,9 @@ type-map = "0.5"
 
 [features]
 default = ["security_80", "deterministic_pow"]
-# Compiles the GKR eval-ISA bench kernels (native/bench/) into
-# circuit_prover_native and enables the cfg(all(test, feature = "bench"))
-# harness modules. Never enabled in production builds.
+# Enables the cfg(all(test, feature = "bench")) GKR eval-ISA A/B bench harness
+# modules (prover::gkr::forward::bench_interp + vm::gpu_tests), which drive
+# the production v2 fwd-VM kernels. Never enabled in production builds.
 bench = []
 deterministic_pow = ["prover/deterministic_pow", "gpu_hash/deterministic_pow"]
 log_gpu_mem_usage = []

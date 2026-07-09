@@ -1,11 +1,9 @@
 //! Production-path compile of a fwd-VM `CompiledCircuit` from committed
 //! fixtures (Task 1). `gkr_eval_isa`/`cs` are dev-dependencies here (the
 //! module is `cfg(all(test, feature = "bench"))`), so the crate's
-//! `crate::upstream` re-export convention does not apply — see
-//! `bench_interp/lower.rs:1-4`.
+//! `crate::upstream` re-export convention does not apply.
 
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::dag_ir::{lower_dag, validate, validate_circuit_schedule, CircuitSchedule, DagCircuit, ReadPlace};
+use cs::gkr_compiler::dag_ir::{lower_dag, validate, validate_circuit_schedule, CircuitSchedule, DagCircuit};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use gkr_eval_isa::fwd::compile::{compile_circuit, load_committed_schedule, CompiledCircuit};
 use gkr_eval_isa::fwd::context::CompiledLayer;
@@ -47,26 +45,6 @@ pub(crate) fn load_fwd_vm_circuit(stem: &str) -> FwdVmCircuit {
         .unwrap_or_else(|e| panic!("[{stem}] compile_circuit: {e:?}"));
 
     FwdVmCircuit { dag, sched, artifact, compiled }
-}
-
-/// Invert `lower_dag`'s `map_address` (`cs/src/gkr_compiler/dag_ir/lower/mod.rs:99`):
-/// a DAG-IR `ReadPlace` maps back to the artifact `GKRAddress` its read was
-/// lowered from. This is the single address mapping both the G-CPU D2H capture
-/// (Task 2) and Task 3's device lowering consume. `VirtualSetup` is never a
-/// `ReadPlace` (it lowers to `SourceKind::VirtualSetup`, resolved separately),
-/// so there is no virtual-setup arm; every `ReadPlace` variant is total here.
-pub(crate) fn read_place_to_gkr_address(
-    place: &ReadPlace,
-    _artifact: &GKRCircuitArtifact<BF>,
-) -> GKRAddress {
-    match *place {
-        ReadPlace::BaseLayerMemory { column } => GKRAddress::BaseLayerMemory(column),
-        ReadPlace::BaseLayerWitness { column } => GKRAddress::BaseLayerWitness(column),
-        ReadPlace::Setup { column } => GKRAddress::Setup(column),
-        ReadPlace::Scratch { slot } => GKRAddress::ScratchSpace(slot),
-        ReadPlace::LayerOutput { layer, offset } => GKRAddress::InnerLayer { layer, offset },
-        ReadPlace::CacheOutput { layer, offset } => GKRAddress::Cached { layer, offset },
-    }
 }
 
 /// Encode one compiled layer's program (spec §5 canonical pre-gate: encode,
