@@ -45,10 +45,10 @@ constexpr u32 FWD_VM_ARENA_RANGE_CHECK_16 = 1;
 constexpr u32 FWD_VM_ARENA_TIMESTAMP = 2;
 
 // --- packed per-descriptor u32 -----------------------------------------------
-// { kind:3 [0..3) | arena:2 [3..5) | set_index:16 [5..21) | vkind:2 [21..23) |
-//   rsvd:9 [23..32) } — set_index needs 16 bits (blake2 L0 has 208 generic
-// sets); vkind is the SD_VIRTUAL kind code = native `gkr_base_source_kind`
-// value - 2 (../support/descriptors.cuh:12-18; pinned by Rust const asserts).
+// { kind:3 [0..3) | arena:2 [3..5) | set_index:16 [5..21) | vkind:3 [21..24) |
+//   rsvd:8 [24..32) } — set_index needs 16 bits (blake2 L0 has 208 generic
+// sets); vkind is the native `gkr_base_source_kind` value (2..=5) stored
+// VERBATIM (../support/descriptors.cuh:12-18; pinned by Rust const asserts).
 constexpr u32 FWD_VM_DESC_KIND_SHIFT = 0;
 constexpr u32 FWD_VM_DESC_KIND_MASK = 0x7;
 constexpr u32 FWD_VM_DESC_ARENA_SHIFT = 3;
@@ -56,7 +56,7 @@ constexpr u32 FWD_VM_DESC_ARENA_MASK = 0x3;
 constexpr u32 FWD_VM_DESC_SET_INDEX_SHIFT = 5;
 constexpr u32 FWD_VM_DESC_SET_INDEX_MASK = 0xffff;
 constexpr u32 FWD_VM_DESC_VKIND_SHIFT = 21;
-constexpr u32 FWD_VM_DESC_VKIND_MASK = 0x3;
+constexpr u32 FWD_VM_DESC_VKIND_MASK = 0x7;
 
 struct fwd_vm_desc {
   // schedule-time-known challenges, inline (16-aligned e4 first: zero padding)

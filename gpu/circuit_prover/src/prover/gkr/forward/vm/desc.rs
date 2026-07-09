@@ -37,68 +37,55 @@ pub(crate) const ARENA_RANGE_CHECK_16: u32 = 1;
 pub(crate) const ARENA_TIMESTAMP: u32 = 2;
 
 // --- SD_VIRTUAL `vkind` codes -------------------------------------------------
-// vkind == `gkr_eval_isa::fwd::source::KIND_ORDER` index == native
-// `gkr_base_source_kind` value - VKIND_NATIVE_BIAS
+// vkind == the native `gkr_base_source_kind` value, stored VERBATIM on the wire
 // (`native/prover/gkr/support/descriptors.cuh:12-18`: the four
-// GKR_BASE_SOURCE_VIRTUAL_* variants are 2..=5, in KIND_ORDER order).
-pub(crate) const VKIND_NATIVE_BIAS: u32 = 2;
-pub(crate) const VKIND_RANGE_CHECK_16_BITS: u32 = 0;
-pub(crate) const VKIND_RANGE_CHECK_TIMESTAMP: u32 = 1;
-pub(crate) const VKIND_INITS_AND_TEARDOWNS_LOW: u32 = 2;
-pub(crate) const VKIND_INITS_AND_TEARDOWNS_HIGH: u32 = 3;
+// GKR_BASE_SOURCE_VIRTUAL_* variants are 2..=5, in `KIND_ORDER`
+// (`gkr_eval_isa::fwd::source::KIND_ORDER`) order).
+pub(crate) const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS: u32 = 2;
+pub(crate) const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP: u32 = 3;
+pub(crate) const GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW: u32 = 4;
+pub(crate) const GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH: u32 = 5;
+pub(crate) const VKIND_RANGE_CHECK_16_BITS: u32 = GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS;
+pub(crate) const VKIND_RANGE_CHECK_TIMESTAMP: u32 = GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP;
+pub(crate) const VKIND_INITS_AND_TEARDOWNS_LOW: u32 =
+    GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW;
+pub(crate) const VKIND_INITS_AND_TEARDOWNS_HIGH: u32 =
+    GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH;
 
-/// Drift guard: the vkind codes above, biased by `VKIND_NATIVE_BIAS`, must
-/// equal the native `gkr_base_source_kind` values (descriptors.cuh:12-18), and
-/// the codes must stay in `KIND_ORDER` order (index == code) — `KIND_ORDER` is
-/// the single upstream source of truth for the wire code.
+/// Drift guard: the vkind codes above must stay in `KIND_ORDER` order
+/// (`KIND_ORDER` index + 2 == code) — `KIND_ORDER` is the single upstream
+/// source of truth for the wire code, and `GKR_BASE_SOURCE_VIRTUAL_*` above
+/// pin the native enum values (descriptors.cuh:12-18).
 const _: () = {
     use crate::upstream::VirtualSetupKind::*;
     use gkr_eval_isa::fwd::source::KIND_ORDER;
-    // native gkr_base_source_kind values (descriptors.cuh:12-18)
-    const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS: u32 = 2;
-    const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP: u32 = 3;
-    const GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW: u32 = 4;
-    const GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH: u32 = 5;
-    assert!(
-        VKIND_RANGE_CHECK_16_BITS + VKIND_NATIVE_BIAS
-            == GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS
-    );
-    assert!(
-        VKIND_RANGE_CHECK_TIMESTAMP + VKIND_NATIVE_BIAS
-            == GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP
-    );
-    assert!(
-        VKIND_INITS_AND_TEARDOWNS_LOW + VKIND_NATIVE_BIAS
-            == GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW
-    );
-    assert!(
-        VKIND_INITS_AND_TEARDOWNS_HIGH + VKIND_NATIVE_BIAS
-            == GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH
-    );
-    // KIND_ORDER index == vkind code (a 5th upstream kind fails here loudly:
-    // it would also need a 3rd vkind bit and a new native enum value).
+    // KIND_ORDER index + 2 == vkind code (a 5th upstream kind fails here
+    // loudly: it would also need a 4th vkind bit and a new native enum value).
     assert!(KIND_ORDER.len() == 4);
     assert!(matches!(
-        KIND_ORDER[VKIND_RANGE_CHECK_16_BITS as usize],
+        KIND_ORDER[(VKIND_RANGE_CHECK_16_BITS - 2) as usize],
         RangeCheck16Bits
     ));
     assert!(matches!(
-        KIND_ORDER[VKIND_RANGE_CHECK_TIMESTAMP as usize],
+        KIND_ORDER[(VKIND_RANGE_CHECK_TIMESTAMP - 2) as usize],
         RangeCheckTimestamp
     ));
     assert!(matches!(
-        KIND_ORDER[VKIND_INITS_AND_TEARDOWNS_LOW as usize],
+        KIND_ORDER[(VKIND_INITS_AND_TEARDOWNS_LOW - 2) as usize],
         InitsAndTeardownsLow
     ));
     assert!(matches!(
-        KIND_ORDER[VKIND_INITS_AND_TEARDOWNS_HIGH as usize],
+        KIND_ORDER[(VKIND_INITS_AND_TEARDOWNS_HIGH - 2) as usize],
         InitsAndTeardownsHigh
     ));
 };
 
 // --- packed per-descriptor u32 -------------------------------------------------
-// { kind:3 [0..3) | arena:2 [3..5) | set_index:16 [5..21) | vkind:2 [21..23) |
-//   rsvd:9 [23..32) } — set_index needs 16 bits (blake2 L0 has 208 generic sets).
+// { kind:3 [0..3) | arena:2 [3..5) | set_index:16 [5..21) | vkind:3 [21..24) |
+//   rsvd:8 [24..32) } — set_index needs 16 bits (blake2 L0 has 208 generic
+// sets); vkind is the native `gkr_base_source_kind` value (2..=5) stored
+// VERBATIM (../support/descriptors.cuh:12-18; pinned by the const asserts
+// above).
 pub(crate) const DESC_KIND_SHIFT: u32 = 0;
 pub(crate) const DESC_KIND_MASK: u32 = 0x7;
 pub(crate) const DESC_ARENA_SHIFT: u32 = 3;
@@ -106,14 +93,17 @@ pub(crate) const DESC_ARENA_MASK: u32 = 0x3;
 pub(crate) const DESC_SET_INDEX_SHIFT: u32 = 5;
 pub(crate) const DESC_SET_INDEX_MASK: u32 = 0xffff;
 pub(crate) const DESC_VKIND_SHIFT: u32 = 21;
-pub(crate) const DESC_VKIND_MASK: u32 = 0x3;
+pub(crate) const DESC_VKIND_MASK: u32 = 0x7;
 
 /// Pack one special descriptor into its wire u32. Fields the kind does not use
 /// must be passed as 0 (the encoder asserts range, not relevance).
 pub(crate) fn pack_desc(kind: u32, arena: u32, set_index: u16, vkind: u32) -> u32 {
     assert!(kind <= SD_VIRTUAL, "desc kind {kind} out of range");
     assert!(arena <= ARENA_TIMESTAMP, "desc arena {arena} out of range");
-    assert!(vkind <= DESC_VKIND_MASK, "desc vkind {vkind} out of range");
+    assert!(
+        vkind == 0 || (2..=5).contains(&vkind),
+        "desc vkind {vkind} out of range"
+    );
     (kind << DESC_KIND_SHIFT)
         | (arena << DESC_ARENA_SHIFT)
         | ((set_index as u32) << DESC_SET_INDEX_SHIFT)
@@ -207,7 +197,12 @@ mod tests {
             (SD_DECODER, ARENA_GENERIC_FAMILY, 208, 0),
             (SD_VIRTUAL, 0, 0, VKIND_RANGE_CHECK_16_BITS),
             (SD_VIRTUAL, 0, 0, VKIND_INITS_AND_TEARDOWNS_HIGH),
-            (SD_VIRTUAL, ARENA_TIMESTAMP, u16::MAX, 3),
+            (
+                SD_VIRTUAL,
+                ARENA_TIMESTAMP,
+                u16::MAX,
+                VKIND_INITS_AND_TEARDOWNS_LOW,
+            ),
         ];
         for &(kind, arena, set_index, vkind) in cases {
             let packed = pack_desc(kind, arena, set_index, vkind);
@@ -227,14 +222,16 @@ mod tests {
         let kind = DESC_KIND_MASK << DESC_KIND_SHIFT;
         let arena = DESC_ARENA_MASK << DESC_ARENA_SHIFT;
         let set_index = pack_desc(0, 0, u16::MAX, 0);
-        let vkind = pack_desc(0, 0, 0, DESC_VKIND_MASK);
+        // Raw shift (not pack_desc): DESC_VKIND_MASK (0x7) is outside
+        // pack_desc's (2..=5) range check.
+        let vkind = DESC_VKIND_MASK << DESC_VKIND_SHIFT;
         assert_eq!(kind & arena, 0);
         assert_eq!((kind | arena) & set_index, 0);
         assert_eq!((kind | arena | set_index) & vkind, 0);
         assert_eq!(
             kind | arena | set_index | vkind,
-            0x007f_ffff,
-            "rsvd bits [23..32) must stay zero"
+            0x00ff_ffff,
+            "rsvd bits [24..32) must stay zero"
         );
     }
 
@@ -246,22 +243,25 @@ mod tests {
 
     #[test]
     fn vkind_codes_match_gkr_eval_isa_wire_codes() {
+        // `virtual_setup_kind_code` returns the `KIND_ORDER` index (0..3);
+        // the packed-desc `vkind` field now stores the native
+        // `gkr_base_source_kind` value verbatim (2..5), i.e. index + 2.
         use cs::gkr_compiler::dag_ir::VirtualSetupKind::*;
         use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
         assert_eq!(
-            virtual_setup_kind_code(&RangeCheck16Bits),
+            virtual_setup_kind_code(&RangeCheck16Bits) + 2,
             VKIND_RANGE_CHECK_16_BITS
         );
         assert_eq!(
-            virtual_setup_kind_code(&RangeCheckTimestamp),
+            virtual_setup_kind_code(&RangeCheckTimestamp) + 2,
             VKIND_RANGE_CHECK_TIMESTAMP
         );
         assert_eq!(
-            virtual_setup_kind_code(&InitsAndTeardownsLow),
+            virtual_setup_kind_code(&InitsAndTeardownsLow) + 2,
             VKIND_INITS_AND_TEARDOWNS_LOW
         );
         assert_eq!(
-            virtual_setup_kind_code(&InitsAndTeardownsHigh),
+            virtual_setup_kind_code(&InitsAndTeardownsHigh) + 2,
             VKIND_INITS_AND_TEARDOWNS_HIGH
         );
     }
