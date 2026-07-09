@@ -184,72 +184,68 @@ fn step_acc_domain_strict(
     }
 }
 
-// ── Check 4: Ext smem alignment ───────────────────────────────────────────────
+// ── Check 4: Smem wire-index bounds (v2 units: bf → lane, ext → bucket) ────────
 
-/// Every Ext smem cell referenced (as source or dst) must have `cell % 4 == 0`
-/// and the four cells [cell, cell+3] must be in-bounds (< budget * 4, where
-/// budget cells are BF-cell-indexed and Ext uses 4 consecutive cells).
-fn check_ext_alignment(compiled: &CompiledLayer) -> Result<(), CompileError> {
-    for instr in &compiled.program.instrs {
+/// Visit every `Smem` reference (operand AND dst) in the program with its
+/// program-instruction index, wire cell index, and governing field bit (Add/Mul
+/// apply `field` to every operand, Fma `field_lhs`/`field_rhs` per side, Mov
+/// `field` to both src and dst). Shared by checks 4 and 8.
+fn for_each_smem_ref(
+    program: &Program,
+    mut f: impl FnMut(usize, u16, OperandField) -> Result<(), CompileError>,
+) -> Result<(), CompileError> {
+    for (i, instr) in program.instrs.iter().enumerate() {
         match instr {
             Instr::Mov { dir, field, dst, src } => {
-                if *field == OperandField::Ext {
-                    if let MovDir::AccFromSrc | MovDir::DstFromSrc = dir {
-                        if let Some(OperandLine::Smem { cell }) = src {
-                            check_ext_cell(*cell, compiled.budget)?;
-                        }
+                if let MovDir::AccFromSrc | MovDir::DstFromSrc = dir {
+                    if let Some(OperandLine::Smem { cell }) = src {
+                        f(i, *cell, *field)?;
                     }
-                    if let MovDir::DstFromAcc | MovDir::DstFromSrc = dir {
-                        if let Some(DstLine::Smem { cell }) = dst {
-                            check_ext_cell(*cell, compiled.budget)?;
-                        }
+                }
+                if let MovDir::DstFromAcc | MovDir::DstFromSrc = dir {
+                    if let Some(DstLine::Smem { cell }) = dst {
+                        f(i, *cell, *field)?;
                     }
                 }
             }
-            Instr::Add { field, operands, .. } if *field == OperandField::Ext => {
+            Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
                 for op in operands {
                     if let OperandLine::Smem { cell } = op {
-                        check_ext_cell(*cell, compiled.budget)?;
-                    }
-                }
-            }
-            Instr::Mul { field, operands, .. } if *field == OperandField::Ext => {
-                for op in operands {
-                    if let OperandLine::Smem { cell } = op {
-                        check_ext_cell(*cell, compiled.budget)?;
+                        f(i, *cell, *field)?;
                     }
                 }
             }
             Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
                 for (l, r) in pairs {
-                    if *field_lhs == OperandField::Ext {
-                        if let OperandLine::Smem { cell } = l {
-                            check_ext_cell(*cell, compiled.budget)?;
-                        }
+                    if let OperandLine::Smem { cell } = l {
+                        f(i, *cell, *field_lhs)?;
                     }
-                    if *field_rhs == OperandField::Ext {
-                        if let OperandLine::Smem { cell } = r {
-                            check_ext_cell(*cell, compiled.budget)?;
-                        }
+                    if let OperandLine::Smem { cell } = r {
+                        f(i, *cell, *field_rhs)?;
                     }
                 }
             }
-            _ => {}
         }
     }
     Ok(())
 }
 
-fn check_ext_cell(cell: u16, budget: usize) -> Result<(), CompileError> {
-    if cell % 4 != 0 {
-        return Err(CompileError::ExtCellMisaligned(cell));
-    }
-    // 4 consecutive BF cells must be in-range within budget.
-    let end = cell as usize + 4;
-    if end > budget {
-        return Err(CompileError::ExtCellMisaligned(cell));
-    }
-    Ok(())
+/// v2 wire units (spec §3): an ext-field `Smem` index is a BUCKET index — its 4-lane
+/// region `[cell*4, cell*4+4)` must fit the (bf-lane) budget — and a bf-field index
+/// is a plain lane index `< budget`. Misalignment is no longer expressible on the
+/// wire (any bucket index IS 4-lane-aligned by construction), so v1's `cell % 4`
+/// check is gone; only bounds remain.
+fn check_smem_bounds(compiled: &CompiledLayer) -> Result<(), CompileError> {
+    for_each_smem_ref(&compiled.program, |_, cell, field| {
+        let floor = match field {
+            OperandField::Ext => cell as usize * 4 + 4,
+            OperandField::Base => cell as usize + 1,
+        };
+        if floor > compiled.budget {
+            return Err(CompileError::BudgetBelowFloor { floor, budget: compiled.budget });
+        }
+        Ok(())
+    })
 }
 
 // ── Check 5: storage-field identity ──────────────────────────────────────────
@@ -386,44 +382,13 @@ fn check_field_storage_agreement(compiled: &CompiledLayer) -> Result<(), Compile
 
 // ── Check 6: structural budget ────────────────────────────────────────────────
 
-/// The program uses ≤ `compiled.budget` cells and every encoded index fits its
-/// lane. Re-run `encode` and assert `Ok`.
+/// Every encoded index fits its lane: re-run `encode` and assert `Ok`. (Smem index
+/// bounds against the budget are check 4's job — `check_smem_bounds` — since v2 the
+/// bound is per-field: bucket vs lane.)
 fn check_budget(compiled: &CompiledLayer) -> Result<(), CompileError> {
-    // Count max smem cell index used.
-    let max_cell = max_smem_cell(&compiled.program);
-    if max_cell > compiled.budget {
-        return Err(CompileError::BudgetBelowFloor {
-            floor: max_cell,
-            budget: compiled.budget,
-        });
-    }
     // Re-encode the program — this also validates arity ≤ 127 and all lane widths.
     encode(&compiled.program).map_err(CompileError::Encode)?;
     Ok(())
-}
-
-fn max_smem_cell(program: &Program) -> usize {
-    let mut max = 0usize;
-    for instr in &program.instrs {
-        match instr {
-            Instr::Mov { src, dst, .. } => {
-                if let Some(OperandLine::Smem { cell }) = src { max = max.max(*cell as usize + 1); }
-                if let Some(DstLine::Smem { cell }) = dst { max = max.max(*cell as usize + 1); }
-            }
-            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
-                for op in operands {
-                    if let OperandLine::Smem { cell } = op { max = max.max(*cell as usize + 1); }
-                }
-            }
-            Instr::Fma { pairs, .. } => {
-                for (l, r) in pairs {
-                    if let OperandLine::Smem { cell } = l { max = max.max(*cell as usize + 1); }
-                    if let OperandLine::Smem { cell } = r { max = max.max(*cell as usize + 1); }
-                }
-            }
-        }
-    }
-    max
 }
 
 // ── Check 7: canonical operands ───────────────────────────────────────────────
@@ -468,6 +433,45 @@ fn instr_operands(instr: &Instr) -> Vec<&OperandLine> {
     }
 }
 
+// ── Check 8: Smem field-vs-placed-width agreement (v2, spec §3/§1.6) ──────────
+
+/// Every `Smem` operand/dst field bit must agree with the PLACED width of the value
+/// occupying that cell/bucket at that instruction: an ext-field reference to bucket
+/// `b` must land on lanes the placement holds as an Ext (all 4 lanes of the bucket
+/// are recorded), and a bf-field reference to lane `c` must not poke into a live Ext
+/// bucket. In v2 the field bit controls the actual load/store width and region, so a
+/// disagreement is a structural error, not a label. Checked against the placement
+/// metadata `compile_layer` retains on `CompileTrace::placed_cell_fields`; an EMPTY
+/// map (hand-built test programs with no placement) skips the check — the same
+/// convention `check_field_storage_agreement` uses for slots absent from the table.
+fn check_smem_region_agreement(compiled: &CompiledLayer) -> Result<(), CompileError> {
+    let placed = &compiled.trace.placed_cell_fields;
+    if placed.is_empty() {
+        return Ok(());
+    }
+    for_each_smem_ref(&compiled.program, |i, cell, field| {
+        match field {
+            OperandField::Ext => {
+                for j in 0..4 {
+                    if let Some(&w) = placed.get(&(i, cell * 4 + j)) {
+                        if w != OperandField::Ext {
+                            return Err(CompileError::SmemRegionMismatch { cell });
+                        }
+                    }
+                }
+            }
+            OperandField::Base => {
+                if let Some(&w) = placed.get(&(i, cell)) {
+                    if w != OperandField::Base {
+                        return Err(CompileError::SmemRegionMismatch { cell });
+                    }
+                }
+            }
+        }
+        Ok(())
+    })
+}
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Backend validation pass (spec §12). Independently re-checks a compiled
@@ -479,11 +483,12 @@ pub fn validate_compiled(compiled: &CompiledLayer, layer: &DagLayer) -> Result<(
     check_coverage(compiled, layer)?;
     check_action_completeness(compiled, layer)?;
     check_field_transitions(compiled)?;
-    check_ext_alignment(compiled)?;
+    check_smem_bounds(compiled)?;
     check_storage_field_identity(compiled)?;
     check_field_storage_agreement(compiled)?;
     check_budget(compiled)?;
     check_canonical_operands(compiled)?;
+    check_smem_region_agreement(compiled)?;
     Ok(())
 }
 
@@ -783,44 +788,47 @@ mod tests {
         assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
     }
 
-    // ── Check 4: Ext smem alignment ───────────────────────────────────────────
+    // ── Check 4: Smem wire-index bounds (v2 units: bf → lane, ext → bucket) ───
 
-    /// Ext smem operand with cell % 4 != 0 → ExtCellMisaligned.
+    /// Ext-field smem index is a BUCKET index: bucket `b`'s lane region
+    /// `[4b, 4b+4)` must fit the (bf-lane) budget. Misalignment is no longer
+    /// expressible on the wire; out-of-bounds is the failure mode.
     #[test]
-    fn ext_smem_misaligned_rejected() {
+    fn ext_smem_bucket_out_of_bounds_rejected() {
         let layer = simple_compute_layer();
         let mut compiled = clean_compiled(&layer);
-        compiled.budget = 32;
+        compiled.budget = 16; // 4 buckets: valid ext indices are 0..=3
         compiled.program.instrs = vec![
             Instr::Mov {
                 dir: MovDir::AccFromSrc,
                 field: OperandField::Ext,
                 dst: None,
-                src: Some(OperandLine::Smem { cell: 3 }), // 3 % 4 != 0
+                src: Some(OperandLine::Smem { cell: 4 }), // bucket 4 → lanes 16..19 ✗
             },
         ];
 
         let result = validate_compiled(&compiled, &layer);
-        assert_eq!(result, Err(CompileError::ExtCellMisaligned(3)));
+        assert_eq!(result, Err(CompileError::BudgetBelowFloor { floor: 20, budget: 16 }));
     }
 
-    /// Ext smem with cell % 4 == 0 and 4 in-bounds cells → Ok.
+    /// In-bounds bucket indices → Ok. At budget 32 (8 buckets), buckets 0 and 4
+    /// (v1 lanes 0 and 16) both validate.
     #[test]
-    fn ext_smem_aligned_ok() {
+    fn ext_smem_bucket_indices_ok() {
         let layer = simple_compute_layer();
         let mut compiled = clean_compiled(&layer);
-        compiled.budget = 32; // 32 BF cells; Ext at cell=0 uses [0..3] ✓
+        compiled.budget = 32; // 8 buckets
         compiled.program.instrs = vec![
             Instr::Mov {
                 dir: MovDir::AccFromSrc,
                 field: OperandField::Ext,
                 dst: None,
-                src: Some(OperandLine::Smem { cell: 0 }), // aligned, in-bounds
+                src: Some(OperandLine::Smem { cell: 0 }), // bucket 0 = lanes 0..3
             },
             Instr::Mov {
                 dir: MovDir::DstFromAcc,
                 field: OperandField::Ext,
-                dst: Some(DstLine::Smem { cell: 4 }), // aligned, in-bounds
+                dst: Some(DstLine::Smem { cell: 4 }), // bucket 4 = lanes 16..19
                 src: None,
             },
         ];
@@ -1306,6 +1314,112 @@ mod tests {
             validate_compiled(&compiled, &layer),
             Err(CompileError::FieldStorageMismatch { slot: 0, col: 1 })
         );
+    }
+
+    // ── Check 8 (Task 6): Smem field-vs-placed-width agreement ───────────────
+
+    /// Record placement-width metadata on a compiled layer's trace (the Task-6
+    /// retained `placed_cell_fields` map: `(program instr idx, bf lane) → width`).
+    fn with_placed(
+        mut compiled: CompiledLayer,
+        entries: &[((usize, u16), OperandField)],
+    ) -> CompiledLayer {
+        for &(k, f) in entries {
+            compiled.trace.placed_cell_fields.insert(k, f);
+        }
+        compiled
+    }
+
+    /// A bf-field `Smem` read of a lane the placement holds as (part of) a live
+    /// Ext bucket → SmemRegionMismatch.
+    #[test]
+    fn smem_base_read_of_ext_lane_rejected() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(OperandLine::Smem { cell: 1 }), // lane 1 = inside ext bucket 0
+        }];
+        let compiled = with_placed(
+            compiled,
+            &[
+                ((0, 0), OperandField::Ext),
+                ((0, 1), OperandField::Ext),
+                ((0, 2), OperandField::Ext),
+                ((0, 3), OperandField::Ext),
+            ],
+        );
+        assert_eq!(
+            validate_compiled(&compiled, &layer),
+            Err(CompileError::SmemRegionMismatch { cell: 1 })
+        );
+    }
+
+    /// An ext-field `Smem` read of a bucket whose lanes the placement holds as
+    /// Base values → SmemRegionMismatch.
+    #[test]
+    fn smem_ext_read_of_base_lane_rejected() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Ext,
+            dst: None,
+            src: Some(OperandLine::Smem { cell: 1 }), // bucket 1 = lanes 4..7
+        }];
+        let compiled = with_placed(compiled, &[((0, 4), OperandField::Base)]);
+        assert_eq!(
+            validate_compiled(&compiled, &layer),
+            Err(CompileError::SmemRegionMismatch { cell: 1 })
+        );
+    }
+
+    /// Field bits agreeing with the placed widths → Ok; and an EMPTY map (hand-built
+    /// program, no placement metadata) skips the check entirely.
+    #[test]
+    fn smem_region_agreement_ok_and_empty_map_skips() {
+        let layer = simple_compute_layer();
+
+        // Agreement: ext read of an ext-placed bucket, bf read of a bf-placed lane.
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Ext,
+                dst: None,
+                src: Some(OperandLine::Smem { cell: 0 }), // bucket 0 = lanes 0..3
+            },
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Base,
+                dst: None,
+                src: Some(OperandLine::Smem { cell: 4 }), // bf lane 4
+            },
+        ];
+        let compiled = with_placed(
+            compiled,
+            &[
+                ((0, 0), OperandField::Ext),
+                ((0, 1), OperandField::Ext),
+                ((0, 2), OperandField::Ext),
+                ((0, 3), OperandField::Ext),
+                ((1, 4), OperandField::Base),
+            ],
+        );
+        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+
+        // Empty map: the same "wrong" shape as smem_base_read_of_ext_lane_rejected
+        // passes when there is no placement metadata to check against.
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(OperandLine::Smem { cell: 1 }),
+        }];
+        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
     }
 
     /// Field bits agreeing with the slot's storage field → Ok (both modes' walk).

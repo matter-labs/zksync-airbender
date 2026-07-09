@@ -69,13 +69,29 @@ fn describe_peek_origin(layer: Option<&DagLayer>, origin: cs::gkr_compiler::dag_
     }
 }
 
+/// Render an `Smem` wire index in its v2 unit (spec §3): the governing field bit
+/// selects the view — bf → 4-B lane (`$cell{n}`, the v1 rendering), ext → 16-B
+/// bucket (`$bucket{n}`, spanning lanes `4n..4n+4`).
+fn fmt_smem(cell: u16, field: OperandField) -> String {
+    match field {
+        OperandField::Base => format!("$cell{cell}"),
+        OperandField::Ext => format!("$bucket{cell}"),
+    }
+}
+
 /// Format one operand line, resolving indices to readable names via the context's
 /// banks/tables. `layer` (when supplied) lets a `PEEK` operand name the DAG leaf its
-/// `origin_expr` reads.
-fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext, layer: Option<&DagLayer>) -> String {
+/// `origin_expr` reads. `field` is the instruction's field bit governing this operand
+/// (per-side for FMA) — it selects the `Smem` index unit (see [`fmt_smem`]).
+fn fmt_operand(
+    op: &OperandLine,
+    field: OperandField,
+    ctx: &DagForwardContext,
+    layer: Option<&DagLayer>,
+) -> String {
     match op {
         OperandLine::Global { slot, col } => fmt_global(*slot, *col, ctx),
-        OperandLine::Smem { cell } => format!("$cell{cell}"),
+        OperandLine::Smem { cell } => fmt_smem(*cell, field),
         OperandLine::Ldc { sub, idx } => match sub {
             LdcSub::Const => match ctx.consts.get(*idx) {
                 Some(v) => format!("#{}", fmt_const(v)),
@@ -110,9 +126,9 @@ fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext, layer: Option<&DagLaye
     }
 }
 
-fn fmt_dst(d: &DstLine, ctx: &DagForwardContext) -> String {
+fn fmt_dst(d: &DstLine, field: OperandField, ctx: &DagForwardContext) -> String {
     match d {
-        DstLine::Smem { cell } => format!("$cell{cell}"),
+        DstLine::Smem { cell } => fmt_smem(*cell, field),
         DstLine::GlobalMaterialize { slot, col } => fmt_global(*slot, *col, ctx),
     }
 }
@@ -179,7 +195,8 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
             } else {
                 "+"
             };
-            let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx, layer)).collect();
+            let lanes: Vec<String> =
+                operands.iter().map(|o| fmt_operand(o, *field, ctx, layer)).collect();
             fmt_lanes(
                 &format!("ADD.{}{} acc {s}= ", field_tag(field), promote_tag(*promote)),
                 &lanes,
@@ -193,7 +210,7 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
                 format!("MUL.{}{neg}{} acc = -acc", field_tag(field), promote_tag(*promote))
             } else {
                 let lanes: Vec<String> =
-                    operands.iter().map(|o| fmt_operand(o, ctx, layer)).collect();
+                    operands.iter().map(|o| fmt_operand(o, *field, ctx, layer)).collect();
                 fmt_lanes(
                     &format!("MUL.{}{neg}{} acc *= ", field_tag(field), promote_tag(*promote)),
                     &lanes,
@@ -215,7 +232,13 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
             };
             let lanes: Vec<String> = pairs
                 .iter()
-                .map(|(l, r)| format!("{}*{}", fmt_operand(l, ctx, layer), fmt_operand(r, ctx, layer)))
+                .map(|(l, r)| {
+                    format!(
+                        "{}*{}",
+                        fmt_operand(l, *field_lhs, ctx, layer),
+                        fmt_operand(r, *field_rhs, ctx, layer)
+                    )
+                })
                 .collect();
             fmt_lanes(
                 &format!(
@@ -236,11 +259,11 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
         } => {
             let d = dst
                 .as_ref()
-                .map(|d| fmt_dst(d, ctx))
+                .map(|d| fmt_dst(d, *field, ctx))
                 .unwrap_or_else(|| "-".into());
             let sc = src
                 .as_ref()
-                .map(|s| fmt_operand(s, ctx, layer))
+                .map(|s| fmt_operand(s, *field, ctx, layer))
                 .unwrap_or_else(|| "-".into());
             match dir {
                 MovDir::AccFromSrc => format!("MOV.{} acc <- {sc}", field_tag(field)),
@@ -269,8 +292,9 @@ pub fn disassemble_layer(
     let _ = writeln!(o, "===== {title} =====");
     let _ = writeln!(
         o,
-        "budget(cells) = {}   instructions = {}",
+        "budget(cells) = {} ({} ext buckets)   instructions = {}",
         compiled.budget,
+        compiled.budget_buckets(),
         compiled.program.instrs.len()
     );
 

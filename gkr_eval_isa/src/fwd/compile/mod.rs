@@ -388,6 +388,10 @@ fn compile_layer_at(
         moves_at.entry(*i).or_default().push(*r);
     }
     let mut program = Program::default();
+    // vinstr index → its materialized instruction's PROGRAM index (they coincide today
+    // — two-phase placement is relocation-free, so no MOVs are interleaved — but the
+    // placed-width map below keys by program index, so track it explicitly).
+    let mut prog_idx_of_vinstr: Vec<usize> = Vec::with_capacity(vinstrs.len());
     for (i, vi) in vinstrs.iter().enumerate() {
         if let Some(ms) = moves_at.get(&i) {
             for r in ms {
@@ -399,6 +403,7 @@ fn compile_layer_at(
                 });
             }
         }
+        prog_idx_of_vinstr.push(program.instrs.len());
         program.instrs.push(materialize_vinstr(vi, i, &placement.cell_of)?);
     }
 
@@ -485,6 +490,25 @@ fn compile_layer_at(
     let mut trace = CompileTrace::default();
     trace.max_live_cells = placement.max_live_cells;
     trace.placement_moves = placement.move_ctx.clone();
+    // Task 6: retain the per-cell placed-width map for `validate.rs`'s
+    // `SmemRegionMismatch` check — `placement.cell_of` is consumed above and dropped
+    // with this function, so project it (via `widths`) onto `(program instr, lane)`
+    // keys now. An Ext value's entry covers all 4 lanes of its bucket, so a bf-view
+    // poke into ANY lane of a live Ext bucket is detectable, not just lane 0.
+    for (&(vi_idx, v), &lane) in &placement.cell_of {
+        let f = *widths.get(&v).expect("placed value has a recorded width");
+        let pi = prog_idx_of_vinstr[vi_idx];
+        match f {
+            OperandField::Ext => {
+                for j in 0..4 {
+                    trace.placed_cell_fields.insert((pi, lane + j), f);
+                }
+            }
+            OperandField::Base => {
+                trace.placed_cell_fields.insert((pi, lane), f);
+            }
+        }
+    }
 
     Ok(CompiledLayer {
         program,
@@ -536,22 +560,41 @@ fn apply_promote(program: &mut Program) {
     }
 }
 
+/// v2 wire index for an `Smem` reference (spec §3): the 14-bit cell field is a plain
+/// index whose UNIT the instruction's field bit selects — bf → the allocator's 4-B
+/// lane index unchanged (v1 bf cell `4b+j`), ext → the 16-B BUCKET index `lane / 4`.
+/// Placement guarantees every Ext lane is 4-aligned (Ext-first quad packing), so the
+/// divide fails CLOSED on a misaligned lane (a compiler bug) instead of flooring.
+fn smem_wire_index(lane: u16, field: OperandField) -> Result<u16, CompileError> {
+    match field {
+        OperandField::Base => Ok(lane),
+        OperandField::Ext => {
+            if lane % 4 != 0 {
+                return Err(CompileError::ExtCellMisaligned(lane));
+            }
+            Ok(lane / 4)
+        }
+    }
+}
+
 /// Materialize one rich `VInstr` to an ISA `Instr` using the allocator's `cell_of` map.
+/// Smem indices are translated to their v2 wire unit per operand/dst field bit
+/// (`smem_wire_index`): Add/Mul apply `field` to every operand, Fma applies
+/// `field_lhs`/`field_rhs` per side, Mov applies `field` to both src and dst.
 fn materialize_vinstr(
     vi: &VInstr,
     i: usize,
     cell_of: &HashMap<(usize, ValueId), u16>,
 ) -> Result<Instr, CompileError> {
-    let op_of = |op: &VirtualOp| -> Result<OperandLine, CompileError> {
+    let lane_of = |v: &ValueId| -> Result<u16, CompileError> {
+        cell_of.get(&(i, *v)).copied().ok_or_else(|| {
+            CompileError::FieldMismatch(format!("no cell for value {} at instr {i}", v.0))
+        })
+    };
+    let op_of = |op: &VirtualOp, field: OperandField| -> Result<OperandLine, CompileError> {
         match op {
             VirtualOp::Value(v) => {
-                let cell = *cell_of.get(&(i, *v)).ok_or_else(|| {
-                    CompileError::FieldMismatch(format!(
-                        "no cell for value {} at instr {i}",
-                        v.0
-                    ))
-                })?;
-                Ok(OperandLine::Smem { cell })
+                Ok(OperandLine::Smem { cell: smem_wire_index(lane_of(v)?, field)? })
             }
             VirtualOp::Global { slot, col } => Ok(OperandLine::Global { slot: *slot, col: *col }),
             VirtualOp::Ldc { sub, idx } => Ok(OperandLine::Ldc { sub: *sub, idx: *idx }),
@@ -564,7 +607,7 @@ fn materialize_vinstr(
             field: *field,
             sign: *sign,
             promote: false,
-            operands: reads.iter().map(&op_of).collect::<Result<_, _>>()?,
+            operands: reads.iter().map(|o| op_of(o, *field)).collect::<Result<_, _>>()?,
         },
         VInstr::Mul { field, reads, .. } => Instr::Mul {
             field: *field,
@@ -573,12 +616,12 @@ fn materialize_vinstr(
             // is "arity 0 iff negate_acc", and the lowering emits an empty-reads Mul
             // only from `emit_unary_negate`). Non-empty Muls never negate.
             negate_acc: reads.is_empty(),
-            operands: reads.iter().map(&op_of).collect::<Result<_, _>>()?,
+            operands: reads.iter().map(|o| op_of(o, *field)).collect::<Result<_, _>>()?,
         },
         VInstr::Fma { field_lhs, field_rhs, sign, pairs, .. } => {
             let mut out = Vec::with_capacity(pairs.len());
             for (l, r) in pairs {
-                out.push((op_of(l)?, op_of(r)?));
+                out.push((op_of(l, *field_lhs)?, op_of(r, *field_rhs)?));
             }
             Instr::Fma { field_lhs: *field_lhs, field_rhs: *field_rhs, sign: *sign, promote: false, pairs: out }
         }
@@ -586,13 +629,7 @@ fn materialize_vinstr(
             let dst = match dst {
                 None => None,
                 Some(VDst::Cell(v)) => {
-                    let cell = *cell_of.get(&(i, *v)).ok_or_else(|| {
-                        CompileError::FieldMismatch(format!(
-                            "no cell for defined value {} at instr {i}",
-                            v.0
-                        ))
-                    })?;
-                    Some(DstLine::Smem { cell })
+                    Some(DstLine::Smem { cell: smem_wire_index(lane_of(v)?, *field)? })
                 }
                 Some(VDst::GlobalMaterialize { slot, col }) => {
                     Some(DstLine::GlobalMaterialize { slot: *slot, col: *col })
@@ -600,7 +637,7 @@ fn materialize_vinstr(
             };
             let src = match src {
                 None => None,
-                Some(op) => Some(op_of(op)?),
+                Some(op) => Some(op_of(op, *field)?),
             };
             Instr::Mov { dir: *dir, field: *field, dst, src }
         }
@@ -720,6 +757,102 @@ mod tests {
         assert!(
             layer_needs_compile(order_would_be_empty, &layer),
             "a materialize-bearing root must force compile_layer even with an empty order"
+        );
+    }
+
+    // ── Task 6: v2 Smem wire units (bf → lane, ext → bucket = lane/4) ─────────
+
+    /// Ext-width `Smem` dsts/operands are emitted as BUCKET indices (`lane / 4`),
+    /// bf-width ones stay plain lane indices (spec §3: same 14-bit field, the
+    /// instruction's field bit selects the view).
+    #[test]
+    fn materialize_emits_bucket_index_for_ext_smem() {
+        let v = ExprId(1);
+        let mut cell_of: std::collections::HashMap<(usize, ExprId), u16> =
+            std::collections::HashMap::new();
+        cell_of.insert((0, v), 8); // allocator lane 8 (4-aligned quad start)
+
+        // Ext evict: `Mov DstFromAcc Cell(v)` at lane 8 → wire bucket 2.
+        let vi = VInstr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Ext,
+            dst: Some(VDst::Cell(v)),
+            src: None,
+            defines: Some(v),
+            is_dram_read: false,
+        };
+        let instr = materialize_vinstr(&vi, 0, &cell_of).unwrap();
+        assert_eq!(
+            instr,
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Ext,
+                dst: Some(DstLine::Smem { cell: 2 }),
+                src: None,
+            },
+            "ext lane 8 must be emitted as bucket 8/4 = 2"
+        );
+
+        // Ext read: `Add{Ext}` of Value(v) at lane 8 → wire bucket 2.
+        let vi = VInstr::Add {
+            field: OperandField::Ext,
+            sign: super::super::isa::Sign::Plus,
+            reads: vec![VirtualOp::Value(v)],
+            defines: None,
+            is_dram_read: false,
+        };
+        let instr = materialize_vinstr(&vi, 0, &cell_of).unwrap();
+        assert_eq!(
+            instr,
+            Instr::Add {
+                field: OperandField::Ext,
+                sign: super::super::isa::Sign::Plus,
+                promote: false,
+                operands: vec![OperandLine::Smem { cell: 2 }],
+            }
+        );
+
+        // Base read of the SAME lane number is a plain lane index — untranslated.
+        let mut cell_of_base: std::collections::HashMap<(usize, ExprId), u16> =
+            std::collections::HashMap::new();
+        cell_of_base.insert((0, v), 6);
+        let vi = VInstr::Add {
+            field: OperandField::Base,
+            sign: super::super::isa::Sign::Plus,
+            reads: vec![VirtualOp::Value(v)],
+            defines: None,
+            is_dram_read: false,
+        };
+        let instr = materialize_vinstr(&vi, 0, &cell_of_base).unwrap();
+        assert_eq!(
+            instr,
+            Instr::Add {
+                field: OperandField::Base,
+                sign: super::super::isa::Sign::Plus,
+                promote: false,
+                operands: vec![OperandLine::Smem { cell: 6 }],
+            }
+        );
+    }
+
+    /// The emission-side divide fails CLOSED on a misaligned Ext lane (never a
+    /// silent floor): placement guarantees 4-alignment, so a violation is a
+    /// compiler bug worth surfacing as `ExtCellMisaligned`.
+    #[test]
+    fn materialize_rejects_misaligned_ext_lane() {
+        let v = ExprId(1);
+        let mut cell_of: std::collections::HashMap<(usize, ExprId), u16> =
+            std::collections::HashMap::new();
+        cell_of.insert((0, v), 6); // NOT 4-aligned
+        let vi = VInstr::Mul {
+            field: OperandField::Ext,
+            reads: vec![VirtualOp::Value(v)],
+            defines: None,
+            is_dram_read: false,
+        };
+        assert_eq!(
+            materialize_vinstr(&vi, 0, &cell_of),
+            Err(CompileError::ExtCellMisaligned(6))
         );
     }
 

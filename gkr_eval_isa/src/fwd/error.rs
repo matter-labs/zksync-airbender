@@ -46,6 +46,10 @@ pub enum CompileError {
     /// matrix; the field bit must AGREE, it selects nothing).
     FieldStorageMismatch { slot: u8, col: u16 },
     ExtCellMisaligned(u16),
+    /// v2 (spec §3): a `Smem` operand/dst whose field bit disagrees with the PLACED
+    /// width of the value occupying that cell/bucket at that instruction. `cell` is
+    /// the WIRE index (bucket index for an Ext field bit, bf-lane index for Base).
+    SmemRegionMismatch { cell: u16 },
     BudgetBelowFloor { floor: usize, budget: usize },
     /// `validate_circuit_schedule` (or `load_committed_schedule` I/O/parse) failed;
     /// the wrapped message is the validator's/serde's own diagnostic.

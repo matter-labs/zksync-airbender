@@ -70,6 +70,16 @@ pub struct CompileTrace {
     /// annotated with the triggering Ext + both live ranges. Empty when no quad had to
     /// be cleared. Instrumentation only — not serialized, not part of value/traffic parity.
     pub placement_moves: Vec<super::compile::MoveCtx>,
+    /// v2 per-cell placed-width map retained from `Placement` (Task 6): `(program
+    /// instruction index, bf-lane index) → placed width` of the value live in that lane
+    /// at that instruction; an Ext entry covers all 4 lanes of its bucket. Consumed by
+    /// `validate::check_smem_region_agreement` (`SmemRegionMismatch`), which needs it
+    /// AFTER `placement.cell_of` is consumed by materialization and dropped. It rides
+    /// `CompileTrace` (rather than a new `CompiledLayer` field) because the trace is
+    /// `Default`-able: hand-built test layers get an EMPTY map, which the validator
+    /// treats as "no placement metadata — skip", the same convention
+    /// `check_field_storage_agreement` uses for slots absent from the backing table.
+    pub placed_cell_fields: std::collections::HashMap<(usize, u16), super::isa::OperandField>,
 }
 
 #[derive(Clone, Debug)]
@@ -79,6 +89,11 @@ pub struct CompiledLayer {
     pub root_outputs: Vec<(RootId, RootOutput)>, // Compute (Cell) + CopyAlias (Alias) roots
     pub skipped: Vec<RootId>,                    // SkipScratchPrefill roots
     pub trace: CompileTrace,
+    /// Smem budget in BF LANES (4-B cells), the allocator's internal unit — 16 at the
+    /// committed b16 corpus. On the v2 wire the same space is `budget / 4` ext-cell
+    /// BUCKETS ([`Self::budget_buckets`]); bf-field `Smem` indices are lane indices
+    /// bounded by `budget`, ext-field indices are bucket indices bounded by
+    /// `budget_buckets()` (spec §3: one number, two views).
     pub budget: usize,
     pub stats: CompileStats,
     /// Stage-3 (schedule-driven) EXPLICIT per-step residency boundary snapshots,
@@ -88,6 +103,15 @@ pub struct CompiledLayer {
     /// (internal lowering temporaries excluded). Empty for layers built by the old
     /// residency-coupled `compile_layer` path.
     pub resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)>,
+}
+
+impl CompiledLayer {
+    /// The smem budget in v2 ext-cell BUCKETS (16 B × blockDim each): `budget / 4`.
+    /// The bound for ext-field `Smem` wire indices (bf indices are bounded by
+    /// [`Self::budget`] directly).
+    pub fn budget_buckets(&self) -> usize {
+        self.budget / 4
+    }
 }
 
 /// Classify every materialize-bearing root of a layer (spec §10). No closures — real metadata.

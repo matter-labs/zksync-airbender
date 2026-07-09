@@ -247,6 +247,83 @@ fn no_negone_mul_idiom() {
     }
 }
 
+/// Task 6 (spec §3): Ext-width `Smem` indices on the wire are BUCKET indices —
+/// every ext-field operand/dst index is `< budget_buckets()` (= budget/4) and equals
+/// the allocator's v1 lane / 4, while bf-field indices stay plain lanes `< budget`.
+/// The `lane/4` equality is asserted via the retained placement-width map: inverting
+/// the bucket (`cell * 4`) must land on a lane the placement recorded as Ext at that
+/// instruction (a missed divide would leave lanes 4/8/12, which also break the
+/// `< budget_buckets` bound at b16).
+#[test]
+fn ext_cells_emit_bucket_indices() {
+    use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandField, OperandLine};
+    let mut ext_refs = 0usize;
+    for &(name, stem) in CORPUS {
+        let (compiled, _dag) = compile_fixture(name, stem);
+        for (l, cl) in compiled.layers.iter().enumerate() {
+            let buckets = cl.budget_buckets();
+            let placed = &cl.trace.placed_cell_fields;
+            let mut check = |i: usize, cell: u16, field: OperandField| match field {
+                OperandField::Ext => {
+                    ext_refs += 1;
+                    assert!(
+                        (cell as usize) < buckets,
+                        "[{name}] layer {l} instr {i}: ext bucket {cell} >= {buckets}"
+                    );
+                    assert_eq!(
+                        placed.get(&(i, cell * 4)),
+                        Some(&OperandField::Ext),
+                        "[{name}] layer {l} instr {i}: bucket {cell} does not invert \
+                         (cell*4 = {}) to a lane placement recorded as Ext",
+                        cell * 4
+                    );
+                }
+                OperandField::Base => {
+                    assert!(
+                        (cell as usize) < cl.budget,
+                        "[{name}] layer {l} instr {i}: bf lane {cell} >= {}",
+                        cl.budget
+                    );
+                }
+            };
+            for (i, instr) in cl.program.instrs.iter().enumerate() {
+                match instr {
+                    Instr::Mov { dir, field, dst, src } => {
+                        if let MovDir::AccFromSrc | MovDir::DstFromSrc = dir {
+                            if let Some(OperandLine::Smem { cell }) = src {
+                                check(i, *cell, *field);
+                            }
+                        }
+                        if let MovDir::DstFromAcc | MovDir::DstFromSrc = dir {
+                            if let Some(DstLine::Smem { cell }) = dst {
+                                check(i, *cell, *field);
+                            }
+                        }
+                    }
+                    Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
+                        for op in operands {
+                            if let OperandLine::Smem { cell } = op {
+                                check(i, *cell, *field);
+                            }
+                        }
+                    }
+                    Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+                        for (lo, ro) in pairs {
+                            if let OperandLine::Smem { cell } = lo {
+                                check(i, *cell, *field_lhs);
+                            }
+                            if let OperandLine::Smem { cell } = ro {
+                                check(i, *cell, *field_rhs);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(ext_refs > 0, "vacuous — no ext-field smem references in the whole corpus");
+}
+
 /// Spec §3 stores invariant: every materialized root is a `GlobalMaterialize`
 /// write-through (or a zero-lane Alias) — no root output resolves to a bare smem cell.
 #[test]

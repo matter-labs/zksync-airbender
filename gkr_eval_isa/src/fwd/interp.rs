@@ -60,43 +60,43 @@ fn interpret_layer_row_impl(
         match instr {
             Instr::Mov { dir, field, dst, src } => match dir {
                 MovDir::AccFromSrc => {
-                    acc = resolve(&src.unwrap(), &cells, &globals, ctx, r, row, layer, mode)?;
+                    acc = resolve(&src.unwrap(), *field, &cells, &globals, ctx, r, row, layer, mode)?;
                     acc_is_ext = *field == OperandField::Ext;
                 }
                 MovDir::DstFromAcc => {
-                    write_dst(&dst.unwrap(), acc, &mut cells, &mut globals);
+                    write_dst(&dst.unwrap(), *field, acc, &mut cells, &mut globals);
                 }
                 MovDir::DstFromSrc => {
-                    let v = resolve(&src.unwrap(), &cells, &globals, ctx, r, row, layer, mode)?;
-                    write_dst(&dst.unwrap(), v, &mut cells, &mut globals);
+                    let v = resolve(&src.unwrap(), *field, &cells, &globals, ctx, r, row, layer, mode)?;
+                    write_dst(&dst.unwrap(), *field, v, &mut cells, &mut globals);
                 }
             },
-            Instr::Add { sign, promote, operands, .. } => {
+            Instr::Add { field, sign, promote, operands } => {
                 acc_is_ext |= *promote;
                 for o in operands {
-                    let v = resolve(o, &cells, &globals, ctx, r, row, layer, mode)?;
+                    let v = resolve(o, *field, &cells, &globals, ctx, r, row, layer, mode)?;
                     match sign {
                         Sign::Plus => { acc.add_assign(&v); }
                         Sign::Minus => { acc.sub_assign(&v); }
                     }
                 }
             }
-            Instr::Mul { promote, negate_acc, operands, .. } => {
+            Instr::Mul { field, promote, negate_acc, operands } => {
                 acc_is_ext |= *promote;
                 // Sign bit = negate acc FIRST (spec §1.2); zero operands = pure negation.
                 if *negate_acc {
                     acc.negate();
                 }
                 for o in operands {
-                    let v = resolve(o, &cells, &globals, ctx, r, row, layer, mode)?;
+                    let v = resolve(o, *field, &cells, &globals, ctx, r, row, layer, mode)?;
                     acc.mul_assign(&v);
                 }
             }
-            Instr::Fma { sign, promote, pairs, .. } => {
+            Instr::Fma { field_lhs, field_rhs, sign, promote, pairs } => {
                 acc_is_ext |= *promote;
                 for (l, rhs) in pairs {
-                    let mut prod = resolve(l, &cells, &globals, ctx, r, row, layer, mode)?;
-                    prod.mul_assign(&resolve(rhs, &cells, &globals, ctx, r, row, layer, mode)?);
+                    let mut prod = resolve(l, *field_lhs, &cells, &globals, ctx, r, row, layer, mode)?;
+                    prod.mul_assign(&resolve(rhs, *field_rhs, &cells, &globals, ctx, r, row, layer, mode)?);
                     match sign {
                         Sign::Plus => { acc.add_assign(&prod); }
                         Sign::Minus => { acc.sub_assign(&prod); }
@@ -117,9 +117,11 @@ fn interpret_layer_row_impl(
             RootOutput::Cell(OutputCell::Global { slot, col }) => {
                 globals[&(*slot, *col)]
             }
-            // CopyAlias: resolved OUTSIDE the ISA stream (zero lanes).
+            // CopyAlias: resolved OUTSIDE the ISA stream (zero lanes). Always a
+            // stable-storage operand (Global/Ldc/Special — never Smem, see
+            // `copy_src_read_place`), so the field bit passed here is inert.
             RootOutput::Alias(op) => {
-                resolve(op, &cells, &globals, ctx, r, row, layer, mode)?
+                resolve(op, OperandField::Base, &cells, &globals, ctx, r, row, layer, mode)?
             }
         };
         by_root.insert(*rid, v);
@@ -127,10 +129,26 @@ fn interpret_layer_row_impl(
     Ok(RowOutputs { by_root })
 }
 
+/// v2 wire unit of an `Smem` index (spec §3): the instruction's field bit selects the
+/// view — bf → 4-B lane index (this model's `cells` vector is lane-addressed, exactly
+/// v1), ext → 16-B BUCKET index, whose value lives at the bucket's first lane
+/// (`cell * 4`). The interpreter is a faithful executor of the WIRE format, so it
+/// multiplies the bucket back onto its lane-addressed cell file.
+#[inline]
+fn smem_lane(cell: u16, field: OperandField) -> usize {
+    match field {
+        OperandField::Base => cell as usize,
+        OperandField::Ext => cell as usize * 4,
+    }
+}
+
 // Free fn (not a closure): borrows `globals` immutably while the caller's loop
-// mutates it via `write_dst`.
+// mutates it via `write_dst`. `field` is the instruction's field bit governing this
+// operand (per-side for FMA) — it selects the `Smem` index unit (see `smem_lane`).
+#[allow(clippy::too_many_arguments)]
 fn resolve(
     o: &OperandLine,
+    field: OperandField,
     cells: &[Ext],
     globals: &HashMap<(u8, u16), Ext>,
     ctx: &DagForwardContext,
@@ -155,7 +173,7 @@ fn resolve(
                 .ok_or(InterpError::UnknownSlot(slot))?;
             Ok(r.read.read(&place, row))
         }
-        OperandLine::Smem { cell } => Ok(cells[cell as usize]),
+        OperandLine::Smem { cell } => Ok(cells[smem_lane(cell, field)]),
         OperandLine::Ldc { sub, idx } => match sub {
             LdcSub::Const => Ok(lift(Bf::from_u32_with_reduction(
                 ctx.consts.get(idx).ok_or(InterpError::UnknownConst(idx))?,
@@ -193,16 +211,18 @@ fn resolve(
 
 fn write_dst(
     dst: &DstLine,
+    field: OperandField,
     v: Ext,
     cells: &mut Vec<Ext>,
     globals: &mut HashMap<(u8, u16), Ext>,
 ) {
     match *dst {
         DstLine::Smem { cell } => {
-            if cells.len() <= cell as usize {
-                cells.resize(cell as usize + 4, Ext::ZERO);
+            let lane = smem_lane(cell, field);
+            if cells.len() <= lane {
+                cells.resize(lane + 4, Ext::ZERO);
             }
-            cells[cell as usize] = v;
+            cells[lane] = v;
         }
         DstLine::GlobalMaterialize { slot, col } => {
             globals.insert((slot, col), v);
