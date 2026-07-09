@@ -28,10 +28,11 @@ use field::PrimeField;
 /// | [9]        | Family 1 unified-only tri-add     | 1     |
 /// | [10..15)   | Family 2 (jump_branch_slt)        | 5     |
 /// | [15..17)   | Family 3 (shift_binop)            | 2     |
-/// | [17]       | Family 3 unified-only xor-rotate  | 1     |
-/// | [18..20)   | Family 4 (mem_word_only)          | 2     |
+/// | [17..19)   | Family 4 (mem_word_only)          | 2     |
 ///
-/// Family 4 is encoded one-hot in the unified bitmask (bit 18 = LW, bit 19 = SW)
+/// (`ZimopIXorRot` rides the Family-3 binary-op bit [16] — no unified-only F3 flag.)
+///
+/// Family 4 is encoded one-hot in the unified bitmask (bit 17 = LW, bit 18 = SW)
 /// to match the per-sub-opcode convention used by Families 1/2/3. This diverges
 /// from the Family-4 standalone encoding (1 bit = is_store) but lets the unified
 /// body read the LW/SW gates directly as Booleans without committing additional
