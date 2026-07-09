@@ -164,12 +164,15 @@ fn fmt_lanes(head: &str, lanes: &[String], cont_op: char) -> String {
 /// multiple rows (see [`fmt_lanes`]); everything else is a single line. Never
 /// includes the leading `[nnnn]` index.
 pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer>) -> String {
+    // v2 wire bits (spec §1.2): `+promote` marks the base→ext acc lift on this
+    // instruction; `.neg` on MUL is negate-acc-first (zero-arity = pure negation).
+    let promote_tag = |p: bool| if p { "+promote" } else { "" };
     match instr {
         Instr::Add {
             field,
             sign,
+            promote,
             operands,
-            ..
         } => {
             let s = if matches!(sign, Sign::Minus) {
                 "-"
@@ -177,18 +180,33 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
                 "+"
             };
             let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx, layer)).collect();
-            fmt_lanes(&format!("ADD.{} acc {s}= ", field_tag(field)), &lanes, '+')
+            fmt_lanes(
+                &format!("ADD.{}{} acc {s}= ", field_tag(field), promote_tag(*promote)),
+                &lanes,
+                '+',
+            )
         }
-        Instr::Mul { field, operands, .. } => {
-            let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx, layer)).collect();
-            fmt_lanes(&format!("MUL.{} acc *= ", field_tag(field)), &lanes, '*')
+        Instr::Mul { field, promote, negate_acc, operands } => {
+            let neg = if *negate_acc { ".neg" } else { "" };
+            if operands.is_empty() {
+                // Zero-arity Mul-minus: pure acc negation (v2 §1.2).
+                format!("MUL.{}{neg}{} acc = -acc", field_tag(field), promote_tag(*promote))
+            } else {
+                let lanes: Vec<String> =
+                    operands.iter().map(|o| fmt_operand(o, ctx, layer)).collect();
+                fmt_lanes(
+                    &format!("MUL.{}{neg}{} acc *= ", field_tag(field), promote_tag(*promote)),
+                    &lanes,
+                    '*',
+                )
+            }
         }
         Instr::Fma {
             field_lhs,
             field_rhs,
             sign,
+            promote,
             pairs,
-            ..
         } => {
             let s = if matches!(sign, Sign::Minus) {
                 "-"
@@ -200,7 +218,12 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
                 .map(|(l, r)| format!("{}*{}", fmt_operand(l, ctx, layer), fmt_operand(r, ctx, layer)))
                 .collect();
             fmt_lanes(
-                &format!("FMA.{}{} acc {s}= ", field_tag(field_lhs), field_tag(field_rhs)),
+                &format!(
+                    "FMA.{}{}{} acc {s}= ",
+                    field_tag(field_lhs),
+                    field_tag(field_rhs),
+                    promote_tag(*promote)
+                ),
                 &lanes,
                 '+',
             )

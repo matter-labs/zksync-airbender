@@ -239,16 +239,16 @@ impl VInstr {
     }
 }
 
-/// Where an atom root's value lands, before cell placement.
+/// Where an atom root's value lands, before cell placement. Task 5 (spec §3 stores
+/// invariant): every materialized root is a `GlobalMaterialize` WRITE-THROUGH — there
+/// is deliberately no smem-cell-resident root variant (no outs/epilogue concept), so
+/// a root output is always a committed backing write or a zero-lane alias of one.
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)] // `Cell` is a reserved interface variant (smem-resident roots; unused in T3a).
 pub(crate) enum VirtualRootOutput {
     /// Materialized to a backing `(slot, col)` — Compute (and Cache) roots.
     Global { slot: u8, col: u16 },
     /// A `CopyAlias` root's stable-storage source operand (zero program lanes).
     Alias(OperandLine),
-    /// A root that stays smem-resident in a cell (unused in T3a; reserved).
-    Cell(ValueId),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -359,10 +359,16 @@ impl<'a> VirtualLower<'a> {
         self.emit_init_field(op, OperandField::Base);
     }
 
+    /// Pure acc negation — a ZERO-ARITY `Mul` (v2 §1.2: the wire's Mul sign bit means
+    /// "negate acc first", and zero-arity Mul is legal iff that bit is set). The empty
+    /// `reads` IS the negate encoding: `materialize_vinstr` maps an empty-operand Mul
+    /// to `Instr::Mul { negate_acc: true, operands: [] }`, replacing the retired unary
+    /// `Mul Special(NegOne)` idiom (value-identical: `acc * -1 == -acc`). The field bit
+    /// is irrelevant at arity 0 (the negate is typed by the acc domain).
     fn emit_unary_negate(&mut self) {
         self.emit(VInstr::Mul {
             field: OperandField::Base,
-            reads: vec![VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 }],
+            reads: vec![],
             defines: None,
             is_dram_read: false,
         });

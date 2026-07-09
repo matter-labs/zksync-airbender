@@ -40,8 +40,9 @@ use super::super::isa::{LdcSub, OperandLine, Special};
 /// - No `-1` factors → `(false, factors.to_vec())`.
 ///
 /// A `MUL` carrying `-1` among other factors must never be emitted; the caller
-/// emits the remaining MUL then, if `negate == true`, a unary `MUL Special(NegOne)`
-/// (spec §6 negate = unary negation, not a mixed multiply).
+/// emits the remaining MUL then, if `negate == true`, the v2 acc negation — a
+/// zero-arity `Mul { negate_acc: true }` (spec v2 §1.2: the Mul sign bit means
+/// "negate acc first"; the v1 unary `MUL Special(NegOne)` idiom is retired).
 pub fn canonicalize_product(factors: &[OperandLine]) -> (bool, Vec<OperandLine>) {
     let neg_one_count = factors
         .iter()
@@ -77,7 +78,7 @@ pub struct Costs {
     pub add: u32,
     /// Cost of one additive accumulation with a `−` sign (ADD−).
     pub sub: u32,
-    /// Cost of a single field negate (`MUL Special(NegOne)`, unary).
+    /// Cost of a single field negate (zero-arity `Mul { negate_acc }`, v2 §1.2).
     pub negate: u32,
 }
 

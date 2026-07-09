@@ -31,7 +31,6 @@ pub enum CompileError {
     UncoveredLookupLeaf(u32),     // ExprId.0
     DegenerateRoot(RootId),       // standalone empty Add/Mul root (bare 0/1 output)
     DegenerateConstProduct,       // product of only −1 factors (constant ±1, never real)
-    PromoteRejected,
     /// v2 acc-domain (§1.2 iff rule): `promote` set on an instruction that does
     /// not require an ext acc, or while the tracked acc domain is already ext.
     PromoteNotRequired,

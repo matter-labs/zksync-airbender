@@ -307,6 +307,61 @@ mod task8_nested_shapes {
         let sched = trivial_schedule(vec![RootId(0), RootId(1)]);
         assert_compiles_and_matches_oracle(&layer, &sched, &[0, 1, 2, 3, 7]);
     }
+
+    // ── Task 5 (fwd v2): negation emission. The committed corpus never reaches the
+    //    unary-negate path (all corpus negations fold into ADD/FMA `Sign::Minus`
+    //    bits), so this synthetic layer is the POSITIVE coverage for it: a root
+    //    `(-1) * x` peels the `-1` factor at ExprId level and must emit the v2
+    //    zero-arity `Mul{negate_acc}` (never the retired unary `Mul Special(NegOne)`
+    //    idiom), while still matching the eval oracle bit-for-bit. ────────────────
+    #[test]
+    fn negation_emits_zero_arity_mul_negate_acc() {
+        use gkr_eval_isa::fwd::isa::{Instr, LdcSub, OperandLine, Special};
+        const BABYBEAR_NEG_ONE: u32 = 0x78000001 - 1;
+        let layer = DagLayer {
+            sources: vec![
+                witness(0),
+                SourceInfo { kind: SourceKind::Constant { value: BABYBEAR_NEG_ONE } },
+            ],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0 = x
+                Expr::Source(SourceId(1)),             // 1 = -1
+                Expr::Mul(vec![ExprId(1), ExprId(0)]), // 2 = root = (-1) * x
+            ],
+            roots: vec![atom_root(ExprId(2), 0)],
+            batching: BatchingOrder { roots: vec![RootId(0)] },
+            resolutions: BTreeMap::new(),
+        };
+        let sched = trivial_schedule(vec![RootId(0)]);
+
+        // Value parity vs the oracle (negation is value-preserving).
+        assert_compiles_and_matches_oracle(&layer, &sched, &[0, 1, 2, 3, 7]);
+
+        // Emission shape: exactly the v2 negation, never the NegOne-mul idiom.
+        let art = compute_artifact_layer();
+        let cross: HashMap<ReadPlace, FieldKind> = HashMap::new();
+        let compiled = compile_layer(&layer, &art, &BTreeMap::new(), &cross, &sched, 16, None)
+            .expect("compile_layer");
+        let mut negates = 0usize;
+        for instr in &compiled.program.instrs {
+            if let Instr::Mul { operands, negate_acc, .. } = instr {
+                if *negate_acc {
+                    negates += 1;
+                    assert!(operands.is_empty(), "negate-acc Mul must be zero-arity");
+                }
+                assert!(
+                    !(operands.len() == 1
+                        && matches!(
+                            operands[0],
+                            OperandLine::Ldc { sub: LdcSub::Special, idx }
+                                if idx == Special::NegOne as u16
+                        )),
+                    "unary Mul Special(NegOne) idiom must not be emitted"
+                );
+            }
+        }
+        assert_eq!(negates, 1, "the (-1)*x root must negate exactly once via Mul{{negate_acc}}");
+    }
 }
 
 // ── StepPlan decoupling (former sub-project-2 Task 1 regression) ──────────────────

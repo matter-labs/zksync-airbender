@@ -402,7 +402,14 @@ fn compile_layer_at(
         program.instrs.push(materialize_vinstr(vi, i, &placement.cell_of)?);
     }
 
-    // Root outputs from the virtual outputs.
+    // Phase 3.5 — v2 promote emission (spec §1.2 iff rule). Runs over the FINAL concrete
+    // stream (post-optimizer, post-placement, relocation MOVs included) so the tracked
+    // acc domain reflects exactly what the VM will execute.
+    apply_promote(&mut program);
+
+    // Root outputs from the virtual outputs. Task 5 (spec §3): every materialized root
+    // is a GlobalMaterialize write-through (or a zero-lane alias of one) — there is no
+    // smem-cell-resident root output variant, by construction of `VirtualRootOutput`.
     let root_outputs: Vec<(RootId, RootOutput)> = vouts
         .into_iter()
         .map(|(rid, vo)| {
@@ -411,18 +418,6 @@ fn compile_layer_at(
                     RootOutput::Cell(OutputCell::Global { slot, col })
                 }
                 VirtualRootOutput::Alias(op) => RootOutput::Alias(op),
-                VirtualRootOutput::Cell(v) => {
-                    // Not emitted in T3a; resolve to its last recorded cell if present.
-                    let cell = placement
-                        .cell_of
-                        .iter()
-                        .filter(|((_, val), _)| *val == v)
-                        .map(|((i, _), c)| (*i, *c))
-                        .max_by_key(|(i, _)| *i)
-                        .map(|(_, c)| c)
-                        .unwrap_or(0);
-                    RootOutput::Cell(OutputCell::Smem(cell))
-                }
             };
             (rid, out)
         })
@@ -503,6 +498,44 @@ fn compile_layer_at(
     })
 }
 
+/// v2 promote emission (spec §1.2): replay the strict acc-domain tracker over the final
+/// instruction stream and set `promote` on exactly the instructions where the tracked
+/// domain before is base (or uninit — treated as base, §1.6) AND the op requires an ext
+/// accumulator (`Add{Ext}`, `Mul{Ext}` with operands, `Fma{·,Ext}`). This satisfies the
+/// iff rule BY CONSTRUCTION — `validate_compiled`'s check 3 replays the same machine.
+/// Promote is value-inert (the golden interp's acc is Ext-valued throughout), so this is
+/// a pure wire-domain annotation, never a value change.
+fn apply_promote(program: &mut Program) {
+    let mut acc_is_ext = false;
+    for instr in &mut program.instrs {
+        match instr {
+            Instr::Mov { dir: MovDir::AccFromSrc, field, .. } => {
+                acc_is_ext = *field == OperandField::Ext;
+            }
+            Instr::Mov { .. } => {} // stores/copies never change the acc domain
+            Instr::Add { field, promote, .. } => {
+                let requires_ext = *field == OperandField::Ext;
+                *promote = requires_ext && !acc_is_ext;
+                acc_is_ext |= requires_ext;
+            }
+            Instr::Mul { field, promote, operands, .. } => {
+                // Mul{Base} dispatches (scale) and zero-arity Mul is pure negation —
+                // neither requires an ext acc; only Mul{Ext} with operands does.
+                let requires_ext = *field == OperandField::Ext && !operands.is_empty();
+                *promote = requires_ext && !acc_is_ext;
+                acc_is_ext |= requires_ext;
+            }
+            Instr::Fma { field_rhs, promote, .. } => {
+                // Fma{B,B} is a bf-product + limb-0 add; Fma{B,E}/{E,E} fold a full e4
+                // product into acc (canonical order puts Ext on the rhs).
+                let requires_ext = *field_rhs == OperandField::Ext;
+                *promote = requires_ext && !acc_is_ext;
+                acc_is_ext |= requires_ext;
+            }
+        }
+    }
+}
+
 /// Materialize one rich `VInstr` to an ISA `Instr` using the allocator's `cell_of` map.
 fn materialize_vinstr(
     vi: &VInstr,
@@ -536,7 +569,10 @@ fn materialize_vinstr(
         VInstr::Mul { field, reads, .. } => Instr::Mul {
             field: *field,
             promote: false,
-            negate_acc: false,
+            // v2 §1.2: zero-arity Mul IS the pure acc negation (the wire legality rule
+            // is "arity 0 iff negate_acc", and the lowering emits an empty-reads Mul
+            // only from `emit_unary_negate`). Non-empty Muls never negate.
+            negate_acc: reads.is_empty(),
             operands: reads.iter().map(&op_of).collect::<Result<_, _>>()?,
         },
         VInstr::Fma { field_lhs, field_rhs, sign, pairs, .. } => {

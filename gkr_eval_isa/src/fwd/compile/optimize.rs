@@ -323,9 +323,9 @@ fn value_read_after(vinstrs: &[VInstr], from: usize, v: ValueId) -> bool {
 /// ASSUMPTION (codex-R7): a value's only consumers are `VInstr` reads — incl. final-sweep
 /// `DstFromSrc(GlobalMaterialize) <- Value(v)`, which `value_read_after` counts (Mov `src`
 /// is scanned). Root outputs live in `vinstrs` as materialize MOVs, not in the separate
-/// `vouts`/`VirtualRootOutput::Cell` channel (that variant is reserved/unused,
-/// `lower.rs:243-252`). If a smem-resident `Cell(v)` root output ever becomes live, this
-/// pass would wrongly drop its sole define; guard by also scanning `vouts` then.
+/// `vouts` channel — Task 5 made this STRUCTURAL: `VirtualRootOutput` has no smem-cell
+/// variant (spec §3 write-through-only stores), so no root output can name a cell whose
+/// sole define this pass might drop.
 fn drop_dead_admissions(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool {
     let mut del: BTreeSet<usize> = BTreeSet::new();
     for i in 0..vinstrs.len() {

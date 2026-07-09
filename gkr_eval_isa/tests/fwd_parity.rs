@@ -163,3 +163,108 @@ fn parity_add_sub() {
 fn parity_all_layout_gkr() {
     run_corpus(CORPUS);
 }
+
+// ── Task 5: compiler emits v2 (promote iff, Mul-minus negation, write-through roots) ──
+
+/// Compile one fixture from its committed schedule (shared by the Task-5 emission tests).
+fn compile_fixture(
+    name: &str,
+    stem: &str,
+) -> (gkr_eval_isa::fwd::compile::CompiledCircuit, cs::gkr_compiler::dag_ir::DagCircuit) {
+    let artifact = load_fixture(name);
+    let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
+    validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate(dag): {e}"));
+    let sp = schedule_path(stem);
+    let sched: CircuitSchedule = serde_json::from_reader(
+        std::fs::File::open(&sp).unwrap_or_else(|e| panic!("open {sp:?}: {e}")),
+    )
+    .unwrap_or_else(|e| panic!("parse {sp:?}: {e}"));
+    let compiled = compile_circuit(&dag, &sched, &artifact)
+        .unwrap_or_else(|e| panic!("[{name}] compile_circuit: {e:?}"));
+    (compiled, dag)
+}
+
+/// Fixtures the Task-5 emission tests walk: the cheap add_sub + shift pair (the
+/// invariants are universal; the full corpus is covered by `parity_all_layout_gkr`).
+const EMISSION_FIXTURES: &[(&str, &str)] = &[
+    ("add_sub_lui_auipc_mop_layout_gkr.json", "add_sub_lui_auipc_mop"),
+    ("shift_binop_layout_gkr.json", "shift_binop"),
+];
+
+/// §1.2 iff rule: the compiler emits `promote` exactly at base→ext acc transitions.
+/// Walk every compiled layer's DECODED program with the strict acc-domain tracker
+/// (validate_compiled's check 3, StrictV2) — zero validation errors.
+#[test]
+fn promote_emitted_iff_transition() {
+    for &(name, stem) in EMISSION_FIXTURES {
+        let (compiled, dag) = compile_fixture(name, stem);
+        for (l, dag_layer) in dag.layers.iter().enumerate() {
+            let cl = &compiled.layers[l];
+            // Decode roundtrip first so the tracker walks the WIRE program.
+            let lanes =
+                encode(&cl.program).unwrap_or_else(|e| panic!("[{name}] layer {l}: encode: {e:?}"));
+            let decoded =
+                decode(&lanes).unwrap_or_else(|e| panic!("[{name}] layer {l}: decode: {e:?}"));
+            assert_eq!(decoded, cl.program, "[{name}] layer {l}: roundtrip mismatch");
+            validate_compiled(cl, dag_layer)
+                .unwrap_or_else(|e| panic!("[{name}] layer {l}: strict v2 validation: {e:?}"));
+        }
+    }
+}
+
+/// §1.2: the unary `Mul Special(NegOne)` negation idiom is gone — negation rides
+/// `Mul{negate_acc}`. NegOne may still appear as a genuine operand elsewhere.
+///
+/// The committed corpus never exercises the negation path at all (every corpus
+/// negation folds into an ADD/FMA `Sign::Minus` bit at classify time; verified by
+/// scanning all 11 fixtures: zero unary-NegOne Muls AND zero negate-acc Muls), so
+/// this scan is an absence lock only. The POSITIVE emission coverage (a compile
+/// that does negate emits `Mul{negate_acc, arity 0}`) lives in
+/// `stage3_schedule_driven.rs::negation_emits_zero_arity_mul_negate_acc` on a
+/// synthetic layer.
+#[test]
+fn no_negone_mul_idiom() {
+    use gkr_eval_isa::fwd::isa::{Instr, LdcSub, OperandLine, Special};
+    for &(name, stem) in EMISSION_FIXTURES {
+        let (compiled, _dag) = compile_fixture(name, stem);
+        for (l, cl) in compiled.layers.iter().enumerate() {
+            for (i, instr) in cl.program.instrs.iter().enumerate() {
+                if let Instr::Mul { operands, .. } = instr {
+                    let unary_negone = operands.len() == 1
+                        && matches!(
+                            operands[0],
+                            OperandLine::Ldc { sub: LdcSub::Special, idx }
+                                if idx == Special::NegOne as u16
+                        );
+                    assert!(
+                        !unary_negone,
+                        "[{name}] layer {l} instr {i}: unary Mul Special(NegOne) negation idiom \
+                         must be emitted as Mul{{negate_acc}}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Spec §3 stores invariant: every materialized root is a `GlobalMaterialize`
+/// write-through (or a zero-lane Alias) — no root output resolves to a bare smem cell.
+#[test]
+fn all_roots_write_through() {
+    use gkr_eval_isa::fwd::context::OutputCell;
+    for &(name, stem) in EMISSION_FIXTURES {
+        let (compiled, _dag) = compile_fixture(name, stem);
+        for (l, cl) in compiled.layers.iter().enumerate() {
+            for (rid, out) in &cl.root_outputs {
+                assert!(
+                    matches!(
+                        out,
+                        RootOutput::Cell(OutputCell::Global { .. }) | RootOutput::Alias(_)
+                    ),
+                    "[{name}] layer {l} root {rid:?}: output resolves to a bare smem cell: {out:?}"
+                );
+            }
+        }
+    }
+}
+
