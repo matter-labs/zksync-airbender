@@ -205,6 +205,7 @@ mod dimension_reducing;
 mod flat_plan;
 pub(crate) mod generated_layer0;
 mod materialize_helpers;
+pub(crate) mod vm;
 
 use cache_relation::{lower_cache_relation, LoweredCacheRelationOutput};
 

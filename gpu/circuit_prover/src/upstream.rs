@@ -79,6 +79,7 @@ pub(crate) use cs::gkr_circuits::{
     shift_binop_circuit_with_preprocessed_bytecode_for_gkr, shift_binop_table_addition_fn,
     shift_binop_table_driver_fn, ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData,
 };
+pub(crate) use cs::gkr_compiler::dag_ir::VirtualSetupKind;
 pub(crate) use cs::gkr_compiler::{
     compile_unrolled_circuit_state_transition_into_gkr, CompiledAddressSpaceRelationStrict,
     CompiledAddressStrict, CompiledMemoryTimestamp, GKRAuxLayoutData, GKRCircuitArtifact,
