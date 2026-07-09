@@ -30,6 +30,7 @@ gpu_hash = { workspace = true }
 gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
 gpu_gkr_model = { workspace = true }
+gkr_eval_isa = { path = "../../gkr_eval_isa" }
 
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
@@ -72,4 +73,3 @@ serde_json = "*"
 # harness (prover::gkr::forward::bench_interp); dev-deps cannot be
 # feature-gated, so they build for all test profiles.
 gkr_design_space = { path = "../../gkr_design_space" }
-gkr_eval_isa = { path = "../../gkr_eval_isa" }
