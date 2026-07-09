@@ -193,3 +193,35 @@ fn relocation_census() {
     );
     assert_eq!(over_floor, 0, "{over_floor} layer(s) regressed above the DRAM floor");
 }
+
+/// Slot-census guard (v2 Task 4, spec §2 open item): under FIELD-QUALIFIED slot
+/// keys (a mixed logical layer/cache output splits into a base slot + an ext
+/// slot) every committed corpus layer program must still fit SLOT_BITS=4 —
+/// ≤ 16 backing slots. `BackingTable::intern` already hard-fails compilation on
+/// the 17th slot, so `compile_circuit` succeeding IS the gate; this census
+/// additionally reports the per-corpus maximum so headroom stays visible.
+/// NOT `#[ignore]`d: SLOT_BITS is a spec assumption, not a knob — if this
+/// fails, STOP and surface it rather than widening the slot field.
+#[test]
+fn slot_census_b16_under_field_split() {
+    let mut max_slots = 0usize;
+    let mut max_at = String::new();
+    for fx in CORPUS {
+        let (dag, sched, artifact) = load_dag_sched(fx);
+        let compiled = compile_circuit(&dag, &sched, &artifact).unwrap_or_else(|e| {
+            panic!("compile_circuit({fx}) failed under field-qualified slots: {e:?}")
+        });
+        for (li, layer) in compiled.layers.iter().enumerate() {
+            let n = layer.ctx.backings.n_slots();
+            assert!(
+                n <= 16,
+                "{fx} layer {li}: {n} backing slots under the field split (> 16, SLOT_BITS=4)"
+            );
+            if n > max_slots {
+                max_slots = n;
+                max_at = format!("{fx} layer {li}");
+            }
+        }
+    }
+    println!("=== slot census: corpus max = {max_slots}/16 slots (at {max_at}) ===");
+}

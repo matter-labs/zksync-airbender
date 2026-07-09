@@ -647,10 +647,15 @@ impl<'a> VirtualLower<'a> {
 
     // ── source resolution (residency-free; mirrors arith::source_to_operand arms) ──
 
+    /// `expected` is the enclosing operand-field context — used ONLY as the
+    /// defensive fallback when a cross-layer Read misses the cross-layer field
+    /// map (mirrors `child_operand_field`'s fallback, so the slot's field key
+    /// and the instruction's field bit cannot disagree).
     fn source_to_vop(
         &mut self,
         layer: &DagLayer,
         expr_id: ExprId,
+        expected: OperandField,
     ) -> Result<VirtualOp, CompileError> {
         if layer.resolutions.contains_key(&expr_id) {
             let desc = *self.desc_by_expr.get(&expr_id).ok_or_else(|| {
@@ -669,7 +674,12 @@ impl<'a> VirtualLower<'a> {
         };
         match &layer.sources[src_id.0 as usize].kind {
             SourceKind::Read { place } => {
-                let (slot, col) = self.ctx.backings.read_slot_col(place)?;
+                // The read's storage field selects the (field-qualified) slot;
+                // for a bare Read source this equals `child_operand_field`'s
+                // label for the same expr, keeping slot keying and instruction
+                // field bits in agreement.
+                let field = super::read_place_operand_field(place, &self.cross, expected);
+                let (slot, col) = self.ctx.backings.read_slot_col(place, field)?;
                 Ok(VirtualOp::Global { slot, col })
             }
             SourceKind::VirtualSetup { kind } => {
@@ -721,7 +731,7 @@ impl<'a> VirtualLower<'a> {
         if layer.resolutions.contains_key(&expr_id)
             || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
         {
-            let op = self.source_to_vop(layer, expr_id)?;
+            let op = self.source_to_vop(layer, expr_id, expected)?;
             if self.decisions.is_some() {
                 let field = child_operand_field(layer, expr_id, expected, &self.cross);
                 if let Some(gen_id) = self.try_admit(expr_id, field) {
@@ -771,7 +781,7 @@ impl<'a> VirtualLower<'a> {
         match &layer.exprs[expr_id.0 as usize] {
             Expr::Source(_) => {
                 let field = child_operand_field(layer, expr_id, expected, &self.cross);
-                let op = self.source_to_vop(layer, expr_id)?;
+                let op = self.source_to_vop(layer, expr_id, expected)?;
                 self.emit_init_field(op, field);
                 self.materialize_cache_root_from_acc(expr_id); // F3: eager cache write from acc
                 Ok(())
@@ -1315,8 +1325,10 @@ pub(crate) fn lower_layer_virtual(
         let rid = RootId(idx as u32);
         let Some(sink) = root.materialize.as_ref() else { continue };
         if matches!(ctx.actions.get(&rid), Some(ForwardAction::Compute)) {
-            let (key, col) = super::sink_to_backing(sink, this_layer);
-            let slot = ctx.backings.intern(key)?;
+            let (key, offset) = super::sink_to_backing(sink, this_layer);
+            // Dense per-slot renumbering via the SAME authority as reads, so the
+            // GlobalMaterialize write and any later read of this value agree.
+            let (slot, col) = ctx.backings.slot_col(key, offset)?;
             let field = super::operand_field_of(sink);
             expr_to_compute.entry(root.expr).or_default().push((rid, slot, col, field));
             if root.claim.is_none() {
@@ -1415,7 +1427,16 @@ pub(crate) fn lower_layer_virtual(
                             rid.0
                         ))
                     })?;
-                    let (slot, col) = st.ctx.backings.read_slot_col(&place)?;
+                    // The alias reads its src backing with the PRODUCING sink's
+                    // field (cross-layer map); a copy preserves the field, so
+                    // the alias root's own sink field is the defensive fallback.
+                    let sink_field = layer.roots[rid.0 as usize]
+                        .materialize
+                        .as_ref()
+                        .map(super::operand_field_of)
+                        .unwrap_or(OperandField::Base);
+                    let field = super::read_place_operand_field(&place, &st.cross, sink_field);
+                    let (slot, col) = st.ctx.backings.read_slot_col(&place, field)?;
                     st.root_outputs
                         .push((rid, VirtualRootOutput::Alias(OperandLine::Global { slot, col })));
                     st.exposed.insert(rid);

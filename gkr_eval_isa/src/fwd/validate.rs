@@ -374,6 +374,62 @@ fn check_storage_field_identity(compiled: &CompiledLayer) -> Result<(), CompileE
     Ok(())
 }
 
+// ── Check 5b: field-vs-storage agreement (v2, spec §2) ───────────────────────
+
+/// Every `Global` operand/dst field bit must match its SLOT's storage field
+/// (`BackingTable::slot_field`): a slot is one homogeneous matrix, so in v2 the
+/// bit controls the actual load/store width — a disagreement is a structural
+/// error, not a label. Runs in BOTH acc-domain modes: the compiler already
+/// emits field-correct Globals (cross-layer reads are labeled with their
+/// producing sink's field via the cross-layer field map), and the slot keys are
+/// derived from those same fields, so agreement holds by construction.
+/// Slots absent from the table (hand-built test programs with an empty
+/// `BackingTable`) are skipped — there is no storage metadata to check against.
+fn check_field_storage_agreement(compiled: &CompiledLayer) -> Result<(), CompileError> {
+    let backings = &compiled.ctx.backings;
+    let check = |slot: u8, col: u16, field: OperandField| -> Result<(), CompileError> {
+        match backings.slot_field(slot) {
+            Some(sf) if sf != field => Err(CompileError::FieldStorageMismatch { slot, col }),
+            _ => Ok(()),
+        }
+    };
+
+    for instr in &compiled.program.instrs {
+        match instr {
+            Instr::Mov { field, src, dst, dir } => {
+                if let MovDir::AccFromSrc | MovDir::DstFromSrc = dir {
+                    if let Some(OperandLine::Global { slot, col }) = src {
+                        check(*slot, *col, *field)?;
+                    }
+                }
+                if let MovDir::DstFromAcc | MovDir::DstFromSrc = dir {
+                    if let Some(DstLine::GlobalMaterialize { slot, col }) = dst {
+                        check(*slot, *col, *field)?;
+                    }
+                }
+            }
+            Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
+                for op in operands {
+                    if let OperandLine::Global { slot, col } = op {
+                        check(*slot, *col, *field)?;
+                    }
+                }
+            }
+            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+                for (l, r) in pairs {
+                    if let OperandLine::Global { slot, col } = l {
+                        check(*slot, *col, *field_lhs)?;
+                    }
+                    if let OperandLine::Global { slot, col } = r {
+                        check(*slot, *col, *field_rhs)?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 // ── Check 6: structural budget ────────────────────────────────────────────────
 
 /// The program uses ≤ `compiled.budget` cells and every encoded index fits its
@@ -493,6 +549,7 @@ fn validate_compiled_with(
     check_field_transitions(compiled, mode)?;
     check_ext_alignment(compiled)?;
     check_storage_field_identity(compiled)?;
+    check_field_storage_agreement(compiled)?;
     check_budget(compiled)?;
     check_canonical_operands(compiled)?;
     Ok(())
@@ -1248,6 +1305,95 @@ mod tests {
             },
         ];
         assert_eq!(validate_compiled_v2(&compiled, &layer), Ok(()));
+    }
+
+    // ── Check 5b: field-vs-storage agreement (v2) ─────────────────────────────
+
+    /// Build a `CompiledLayer` whose `BackingTable` has slot 0 = LayerOutput
+    /// {layer 0, Base} with dense cols 0..2, and the given program.
+    fn compiled_with_base_layer_output_slot(instrs: Vec<Instr>) -> CompiledLayer {
+        use super::super::binding::BackingKey;
+        let mut ctx = DagForwardContext::default();
+        ctx.actions.insert(RootId(0), ForwardAction::Compute);
+        for off in 0..2usize {
+            ctx.backings
+                .slot_col(BackingKey::LayerOutput { layer: 0, field: OperandField::Base }, off)
+                .unwrap();
+        }
+        CompiledLayer {
+            program: Program { instrs },
+            ctx,
+            root_outputs: vec![],
+            skipped: vec![],
+            trace: CompileTrace::default(),
+            budget: 16,
+            stats: CompileStats::default(),
+            resident_realized: vec![],
+        }
+    }
+
+    /// A Global read labeled Ext against a Base-field slot → FieldStorageMismatch.
+    #[test]
+    fn field_storage_mismatch_read_rejected() {
+        let layer = simple_compute_layer();
+        let compiled = compiled_with_base_layer_output_slot(vec![
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Ext, // slot 0's matrix is Base
+                dst: None,
+                src: Some(OperandLine::Global { slot: 0, col: 0 }),
+            },
+        ]);
+        assert_eq!(
+            validate_compiled(&compiled, &layer),
+            Err(CompileError::FieldStorageMismatch { slot: 0, col: 0 })
+        );
+    }
+
+    /// A GlobalMaterialize dst labeled Ext against a Base-field slot →
+    /// FieldStorageMismatch (write side checked identically to reads).
+    #[test]
+    fn field_storage_mismatch_write_rejected() {
+        let layer = simple_compute_layer();
+        let compiled = compiled_with_base_layer_output_slot(vec![
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Ext,
+                dst: None,
+                src: Some(OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 0 }),
+            },
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Ext, // consistent with acc, but slot is Base storage
+                dst: Some(DstLine::GlobalMaterialize { slot: 0, col: 1 }),
+                src: None,
+            },
+        ]);
+        assert_eq!(
+            validate_compiled(&compiled, &layer),
+            Err(CompileError::FieldStorageMismatch { slot: 0, col: 1 })
+        );
+    }
+
+    /// Field bits agreeing with the slot's storage field → Ok (both modes' walk).
+    #[test]
+    fn field_storage_agreement_ok() {
+        let layer = simple_compute_layer();
+        let compiled = compiled_with_base_layer_output_slot(vec![
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Base,
+                dst: None,
+                src: Some(OperandLine::Global { slot: 0, col: 0 }),
+            },
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Base,
+                dst: Some(DstLine::GlobalMaterialize { slot: 0, col: 1 }),
+                src: None,
+            },
+        ]);
+        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
     }
 
     /// Staging guard: the LEGACY entry point still accepts a promote-less

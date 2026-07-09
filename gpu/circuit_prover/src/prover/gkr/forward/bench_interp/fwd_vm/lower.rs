@@ -23,7 +23,7 @@ use field::{Field, FieldExtension, PrimeField};
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::dag_ir::{ChallengeRef, DagLayer, RangeWidth, ReadPlace, RootId};
 
-use gkr_eval_isa::fwd::binding::BackingKey;
+use gkr_eval_isa::fwd::binding::BackingTable;
 use gkr_eval_isa::fwd::context::{CompiledLayer, ForwardAction, OutputCell, RootOutput};
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, OperandField, OperandLine};
 use gkr_eval_isa::fwd::source::{virtual_setup_kind_code, SpecialStrategy};
@@ -292,20 +292,26 @@ fn assert_read_before_write(cl: &CompiledLayer, materialized: &BTreeMap<(u8, u16
     }
 }
 
-/// Inverse of `gkr_eval_isa::fwd::binding::read_place_to_backing` + `super::
-/// compile::read_place_to_gkr_address`, composed for a `BackingTable` slot's
-/// key: the flat `GKRAddress` a non-materialized `(slot,col)` reads from. Every
-/// `BackingKey` resolves — `VirtualSetup` is no longer a backing key (it lowers
-/// to `SpecialStrategy::VirtualSetup`, resolver-computed via `SD_VIRTUAL`).
-fn backing_key_col_to_gkr_address(key: &BackingKey, col: u16) -> GKRAddress {
-    let c = col as usize;
-    match key {
-        BackingKey::BaseLayerMemory => GKRAddress::BaseLayerMemory(c),
-        BackingKey::BaseLayerWitness => GKRAddress::BaseLayerWitness(c),
-        BackingKey::Setup => GKRAddress::Setup(c),
-        BackingKey::Scratch => GKRAddress::ScratchSpace(c),
-        BackingKey::LayerOutput { layer } => GKRAddress::InnerLayer { layer: *layer, offset: c },
-        BackingKey::CacheOutput { layer } => GKRAddress::Cached { layer: *layer, offset: c },
+/// The flat `GKRAddress` a `(slot, col)` reads from / materializes into.
+/// v2 (Task 4): `col` is a DENSE per-slot matrix column, so the ORIGINAL
+/// layer-offset must come from the table's first-class reverse map
+/// (`slot_col_to_read_place`); reconstructing an address from the raw dense
+/// index would silently target the wrong storage column. The resulting
+/// `ReadPlace` maps to a `GKRAddress` exactly as `super::compile::
+/// read_place_to_gkr_address` does. Every interned `(slot, col)` resolves —
+/// `VirtualSetup` is no longer a backing key (it lowers to
+/// `SpecialStrategy::VirtualSetup`, resolver-computed via `SD_VIRTUAL`).
+fn backing_slot_col_to_gkr_address(backings: &BackingTable, slot: u8, col: u16) -> GKRAddress {
+    let place = backings.slot_col_to_read_place(slot, col).unwrap_or_else(|| {
+        panic!("(slot {slot}, col {col}) has no reverse-map entry in the BackingTable")
+    });
+    match place {
+        ReadPlace::BaseLayerMemory { column } => GKRAddress::BaseLayerMemory(column),
+        ReadPlace::BaseLayerWitness { column } => GKRAddress::BaseLayerWitness(column),
+        ReadPlace::Setup { column } => GKRAddress::Setup(column),
+        ReadPlace::Scratch { slot } => GKRAddress::ScratchSpace(slot),
+        ReadPlace::LayerOutput { layer, offset } => GKRAddress::InnerLayer { layer, offset },
+        ReadPlace::CacheOutput { layer, offset } => GKRAddress::Cached { layer, offset },
     }
 }
 
@@ -363,7 +369,7 @@ pub(crate) fn build_fwd_vm_device_setup(
     let mut poison_bufs: Vec<DeviceAllocation<u32>> = Vec::new();
 
     for s in 0..16u8 {
-        let Some(key) = ctx.backings.backing(s) else { continue };
+        if ctx.backings.backing(s).is_none() { continue }
         let Some(max_c) = usage.max_col[s as usize] else { continue };
         for col in 0..=max_c {
             let idx = (col_base[s as usize] + col as u32) as usize;
@@ -384,7 +390,7 @@ pub(crate) fn build_fwd_vm_device_setup(
             // Non-materialized read: point straight at resident production storage.
             // (VirtualSetup is no longer a backing key — it reads nothing and is
             // recomputed via the `SD_VIRTUAL` special path, not the column table.)
-            let addr = backing_key_col_to_gkr_address(key, col);
+            let addr = backing_slot_col_to_gkr_address(&ctx.backings, s, col);
             let (is_e4, p) = fixture.storage_column(addr).unwrap_or_else(|| {
                 panic!(
                     "L{layer_idx}: (slot {s}, col {col}) addr {addr:?} not resident in \
@@ -643,7 +649,7 @@ fn collect_challenge_bank(
 /// trusting `setup.desc`'s own tables, and cross-check against the ACTUAL
 /// device array contents read back (D2H) plus a freshly-queried
 /// `fixture.storage_column`. This shares its address-derivation helpers
-/// (`collect_global_usage`, `backing_key_col_to_gkr_address`) with the
+/// (`collect_global_usage`, `backing_slot_col_to_gkr_address`) with the
 /// builder, so it is a consistency gate against device contents +
 /// `fixture`/`c`, not a fully independent re-derivation — semantic misrouting
 /// of the SAME shared derivation would be caught by G-CPU/G-DEV, not here.
@@ -686,7 +692,7 @@ pub(crate) fn assert_gptr(
     let read_back_e4 = d2h_raw::<u8>(setup.desc.col_is_e4, total_cols, context, 0u8);
 
     for s in 0..16u8 {
-        let Some(key) = ctx.backings.backing(s) else { continue };
+        if ctx.backings.backing(s).is_none() { continue }
         let Some(max_c) = usage.max_col[s as usize] else {
             panic!("L{layer_idx}: slot {s} has a backing but no observed column usage");
         };
@@ -709,7 +715,7 @@ pub(crate) fn assert_gptr(
                     "L{layer_idx}: (slot {s}, col {col}) overlay is_e4 mismatch"
                 );
                 // Output isolation: never the production storage pointer.
-                let addr = backing_key_col_to_gkr_address(key, col);
+                let addr = backing_slot_col_to_gkr_address(&ctx.backings, s, col);
                 if let Some((_, storage_ptr)) = fixture.storage_column(addr) {
                     assert_ne!(
                         read_back_read[idx], storage_ptr as u64,
@@ -721,7 +727,7 @@ pub(crate) fn assert_gptr(
                 // Non-materialized read points at resident production storage.
                 // (VirtualSetup is no longer a backing key — it takes the
                 // resolver-computed `SD_VIRTUAL` special path, not this column table.)
-                let addr = backing_key_col_to_gkr_address(key, col);
+                let addr = backing_slot_col_to_gkr_address(&ctx.backings, s, col);
                 let (is_e4, p) = fixture.storage_column(addr).unwrap_or_else(|| {
                     panic!("L{layer_idx}: (slot {s}, col {col}) addr {addr:?} not resident")
                 });
@@ -1036,12 +1042,7 @@ pub(crate) fn run_gdev_layer(
         for (&(slot, col), &field) in &usage.materialized {
             let idx = (setup.desc.col_base[slot as usize] + col as u32) as usize;
             let overlay_e4 = field == OperandField::Ext;
-            let key = cl
-                .ctx
-                .backings
-                .backing(slot)
-                .unwrap_or_else(|| panic!("L{layer_idx}: no backing for slot {slot}"));
-            let addr = backing_key_col_to_gkr_address(key, col);
+            let addr = backing_slot_col_to_gkr_address(&cl.ctx.backings, slot, col);
             let (flat_e4, flat_ptr) = fixture.storage_column(addr).ok_or_else(|| {
                 format!("L{layer_idx}: materialized {addr:?} not resident in flat storage")
             })?;

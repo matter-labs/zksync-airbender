@@ -104,15 +104,44 @@ pub fn expr_operand_field(
     arith::child_operand_field(layer, expr_id, super::isa::OperandField::Base, cross)
 }
 
-/// Map a sink to the backing `(key, col)` its value materializes into.
+/// Map a sink to the backing `(key, original offset)` its value materializes into.
 /// Cache sinks land in `CacheOutput`; ordinary layer outputs in `LayerOutput`;
 /// scratch in `Scratch`. `this_layer` supplies the layer index for `Export`.
-fn sink_to_backing(sink: &SinkInfo, this_layer: usize) -> (BackingKey, u16) {
+/// Layer/cache keys are FIELD-QUALIFIED by the sink's own field (spec §2: one
+/// slot = one homogeneous matrix); `Scratch` is intrinsically bf. The offset is
+/// the ORIGINAL layer-offset — callers renumber it to a dense per-slot col via
+/// `BackingTable::slot_col` (the same authority the read side uses), so a
+/// value's `GlobalMaterialize` write and its re-reads share one dense col.
+fn sink_to_backing(sink: &SinkInfo, this_layer: usize) -> (BackingKey, usize) {
+    let field = operand_field_of(sink);
     match sink.kind {
-        SinkKind::Cache { layer, offset } => (BackingKey::CacheOutput { layer }, offset as u16),
-        SinkKind::Inner { layer, offset } => (BackingKey::LayerOutput { layer }, offset as u16),
-        SinkKind::Export { slot } => (BackingKey::LayerOutput { layer: this_layer }, slot as u16),
-        SinkKind::Scratch { slot } => (BackingKey::Scratch, slot as u16),
+        SinkKind::Cache { layer, offset } => (BackingKey::CacheOutput { layer, field }, offset),
+        SinkKind::Inner { layer, offset } => (BackingKey::LayerOutput { layer, field }, offset),
+        SinkKind::Export { slot } => (BackingKey::LayerOutput { layer: this_layer, field }, slot),
+        SinkKind::Scratch { slot } => (BackingKey::Scratch, slot),
+    }
+}
+
+/// The storage field of a backing READ: intrinsically-bf places are `Base`; a
+/// cross-layer `LayerOutput`/`CacheOutput` read carries its PRODUCING sink's
+/// field (the cross-layer field map — see `build_cross_layer_field_map`).
+/// `fallback` covers a map miss (defensive; a valid circuit's map contains
+/// every cross-layer-read place) and must match what the caller labels the
+/// instruction with, so slot keying and instruction field bits agree.
+fn read_place_operand_field(
+    place: &ReadPlace,
+    cross: &HashMap<ReadPlace, FieldKind>,
+    fallback: OperandField,
+) -> OperandField {
+    match place {
+        ReadPlace::LayerOutput { .. } | ReadPlace::CacheOutput { .. } => cross
+            .get(place)
+            .map(|f| match f {
+                FieldKind::Base => OperandField::Base,
+                FieldKind::Ext => OperandField::Ext,
+            })
+            .unwrap_or(fallback),
+        _ => OperandField::Base,
     }
 }
 

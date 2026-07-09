@@ -42,6 +42,10 @@ pub enum CompileError {
     /// acc domain is ext — no implicit truncation.
     AccTruncation,
     FieldMismatch(String),
+    /// v2 (spec §2/§12): a `Global` operand/dst whose instruction field bit
+    /// disagrees with its slot's storage field (one slot = one homogeneous
+    /// matrix; the field bit must AGREE, it selects nothing).
+    FieldStorageMismatch { slot: u8, col: u16 },
     ExtCellMisaligned(u16),
     BudgetBelowFloor { floor: usize, budget: usize },
     /// `validate_circuit_schedule` (or `load_committed_schedule` I/O/parse) failed;

@@ -74,10 +74,7 @@ fn describe_peek_origin(layer: Option<&DagLayer>, origin: cs::gkr_compiler::dag_
 /// `origin_expr` reads.
 fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext, layer: Option<&DagLayer>) -> String {
     match op {
-        OperandLine::Global { slot, col } => match ctx.backings.backing(*slot) {
-            Some(k) => format!("{k:?}[s{slot}:c{col}]"),
-            None => format!("Global[s{slot}:c{col}]"),
-        },
+        OperandLine::Global { slot, col } => fmt_global(*slot, *col, ctx),
         OperandLine::Smem { cell } => format!("$cell{cell}"),
         OperandLine::Ldc { sub, idx } => match sub {
             LdcSub::Const => match ctx.consts.get(*idx) {
@@ -116,10 +113,25 @@ fn fmt_operand(op: &OperandLine, ctx: &DagForwardContext, layer: Option<&DagLaye
 fn fmt_dst(d: &DstLine, ctx: &DagForwardContext) -> String {
     match d {
         DstLine::Smem { cell } => format!("$cell{cell}"),
-        DstLine::GlobalMaterialize { slot, col } => match ctx.backings.backing(*slot) {
-            Some(k) => format!("{k:?}[s{slot}:c{col}]"),
-            None => format!("Global[s{slot}:c{col}]"),
-        },
+        DstLine::GlobalMaterialize { slot, col } => fmt_global(*slot, *col, ctx),
+    }
+}
+
+/// Render a `(slot, col)` backing reference. `col` is a DENSE per-slot matrix
+/// column (v2, spec §2); when the reverse map knows its original layer-offset,
+/// it is appended as `=off{n}` so the dump stays traceable to the DAG.
+fn fmt_global(slot: u8, col: u16, ctx: &DagForwardContext) -> String {
+    match ctx.backings.backing(slot) {
+        Some(k) => {
+            let orig = ctx
+                .backings
+                .slot_columns(slot)
+                .get(col as usize)
+                .map(|o| format!("=off{o}"))
+                .unwrap_or_default();
+            format!("{k:?}[s{slot}:c{col}{orig}]")
+        }
+        None => format!("Global[s{slot}:c{col}]"),
     }
 }
 
@@ -339,12 +351,7 @@ pub fn disassemble_layer(
         let mut cl: Vec<_> = ctx.cache_loc.iter().collect();
         cl.sort_by_key(|(r, _)| r.0);
         for (rid, (slot, col)) in cl {
-            let region = ctx
-                .backings
-                .backing(*slot)
-                .map(|k| format!("{k:?}"))
-                .unwrap_or_else(|| "Global".into());
-            let _ = writeln!(o, "  root{} -> {region}[s{slot}:c{col}]", rid.0);
+            let _ = writeln!(o, "  root{} -> {}", rid.0, fmt_global(*slot, *col, ctx));
         }
     }
 

@@ -1,6 +1,5 @@
 //! CPU interpreter (spec §4–§6). Per-row, per-root outputs; reuses dag_ir resolvers.
 
-use super::binding::BackingKey;
 use super::context::{CompiledLayer, DagForwardContext, OutputCell, RootOutput, RowOutputs};
 use super::error::InterpError;
 use super::isa::*;
@@ -146,8 +145,15 @@ fn resolve(
             if let Some(v) = globals.get(&(slot, col)) {
                 return Ok(*v);
             }
-            let key = ctx.backings.backing(slot).ok_or(InterpError::UnknownSlot(slot))?;
-            Ok(r.read.read(&backing_to_read_place(key, col), row))
+            // Dense per-slot col → the ORIGINAL ReadPlace via the table's
+            // first-class reverse map (the dense index is meaningless to the
+            // resolver; a raw (key, col) reconstruction would read the wrong
+            // column).
+            let place = ctx
+                .backings
+                .slot_col_to_read_place(slot, col)
+                .ok_or(InterpError::UnknownSlot(slot))?;
+            Ok(r.read.read(&place, row))
         }
         OperandLine::Smem { cell } => Ok(cells[cell as usize]),
         OperandLine::Ldc { sub, idx } => match sub {
@@ -185,18 +191,6 @@ fn resolve(
     }
 }
 
-fn backing_to_read_place(key: &BackingKey, col: u16) -> ReadPlace {
-    let c = col as usize;
-    match key {
-        BackingKey::BaseLayerMemory => ReadPlace::BaseLayerMemory { column: c },
-        BackingKey::BaseLayerWitness => ReadPlace::BaseLayerWitness { column: c },
-        BackingKey::Setup => ReadPlace::Setup { column: c },
-        BackingKey::Scratch => ReadPlace::Scratch { slot: c },
-        BackingKey::LayerOutput { layer } => ReadPlace::LayerOutput { layer: *layer, offset: c },
-        BackingKey::CacheOutput { layer } => ReadPlace::CacheOutput { layer: *layer, offset: c },
-    }
-}
-
 fn write_dst(
     dst: &DstLine,
     v: Ext,
@@ -221,7 +215,7 @@ fn write_dst(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fwd::binding::{BackingKey, BackingTable};
+    use crate::fwd::binding::BackingTable;
     use crate::fwd::context::{CompiledLayer, CompileTrace, DagForwardContext, OutputCell, RootOutput, RowOutputs};
     use crate::fwd::stats::CompileStats;
     use crate::fwd::error::InterpError;
@@ -302,11 +296,23 @@ mod tests {
         }
     }
 
+    /// One-backing `BackingTable` (BaseLayerMemory) with columns 0..32 interned in
+    /// ascending order, so dense cols == original columns (tests address columns
+    /// directly by number).
+    fn identity_base_mem_backings() -> BackingTable {
+        let mut backings = BackingTable::default();
+        for c in 0..32 {
+            backings
+                .read_slot_col(&ReadPlace::BaseLayerMemory { column: c }, OperandField::Base)
+                .unwrap();
+        }
+        backings
+    }
+
     /// Build a minimal `CompiledLayer` with a one-backing `BackingTable` (BaseLayerMemory),
     /// no consts/challenges/specials.
     fn minimal_compiled(program: Program, root_outputs: Vec<(RootId, RootOutput)>) -> CompiledLayer {
-        let mut backings = BackingTable::default();
-        backings.intern(BackingKey::BaseLayerMemory).unwrap();
+        let backings = identity_base_mem_backings();
         let ctx = DagForwardContext {
             specials: SpecialTable::default(),
             consts: ConstBank::default(),
@@ -634,8 +640,7 @@ mod tests {
         };
         let alpha_val = lift(Bf::from_u32_with_reduction(3));
 
-        let mut backings = BackingTable::default();
-        backings.intern(BackingKey::BaseLayerMemory).unwrap();
+        let backings = identity_base_mem_backings();
         let mut challenges = crate::fwd::source::ChallengeBanks::default();
         let (sub, idx) = challenges.intern(&alpha_ref);
 
@@ -710,8 +715,7 @@ mod tests {
         let alpha_val = lift(Bf::from_u32_with_reduction(3));
 
         // Build compiled with alpha_ref in challenges bank.
-        let mut backings = BackingTable::default();
-        backings.intern(BackingKey::BaseLayerMemory).unwrap();
+        let backings = identity_base_mem_backings();
         let mut challenges = crate::fwd::source::ChallengeBanks::default();
         let (sub, idx) = challenges.intern(&alpha_ref);
 
@@ -848,8 +852,7 @@ mod tests {
             ],
         };
 
-        let mut backings = crate::fwd::binding::BackingTable::default();
-        backings.intern(crate::fwd::binding::BackingKey::BaseLayerMemory).unwrap();
+        let backings = identity_base_mem_backings();
         let ctx = crate::fwd::context::DagForwardContext {
             specials,
             consts: crate::fwd::source::ConstBank::default(),

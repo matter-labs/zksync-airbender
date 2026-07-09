@@ -19,7 +19,7 @@ pub enum Opcode { Add = 0, Mul = 1, Fma = 2, Mov = 3 }
 
 /// Per-instruction operand field bit(s) (spec §5). The field of the operands
 /// consumed by THIS instruction — not the result field.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OperandField { Base = 0, Ext = 1 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
