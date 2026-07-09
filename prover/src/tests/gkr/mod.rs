@@ -19,6 +19,16 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
     serde_json::from_reader(src).unwrap()
 }
 
+pub(crate) fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+    let src = std::fs::File::open(filename).unwrap();
+    bincode::deserialize_from(src).unwrap()
+}
+
+pub(crate) fn bincode_serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
+    let dst = std::fs::File::create(filename).unwrap();
+    bincode::serialize_into(dst, el).unwrap();
+}
+
 mod orchestration;
 
 mod family_circuits;

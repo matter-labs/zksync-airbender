@@ -130,7 +130,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     //     in-coset parallelism) so the full RS codeword is never materialized. ---
     let mem_refs: Vec<&[Proth120]> = mem_polys.iter().map(|p| p.as_slice()).collect();
     log("committing memory oracle (8 cols) coset-by-coset");
-    let mem_commitment = CosetByCosetBaseCommitment::commit(
+    let mem_commitment = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(
         &mem_refs,
         &twiddles,
         lde_factor,
@@ -140,7 +140,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         worker,
     );
     log("committing witness oracle (1 col) coset-by-coset");
-    let wit_commitment = CosetByCosetBaseCommitment::commit(
+    let wit_commitment = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(
         &[wit_poly.as_slice()],
         &twiddles,
         lde_factor,
@@ -153,7 +153,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     // Slim base oracle: whir_fold only reads coset 0 (main domain, for batching) and
     // the cap; round-0 queries are served by the coset-by-coset hook below.
     let build_slim =
-        |c: &CosetByCosetBaseCommitment| -> ColumnMajorBaseOracleForLDE<Proth120, Tree> {
+        |c: &CosetByCosetBaseCommitment<Proth120, Tree>| -> ColumnMajorBaseOracleForLDE<Proth120, Tree> {
             let coset0 = ColumnMajorBaseOracleForCoset {
                 original_values_normal_order: c
                     .main_domain_columns(&twiddles, worker)
@@ -164,7 +164,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
                     })
                     .collect(),
                 offset: Proth120::ONE,
-                trace_len_log2: n,
+                coset_size_log2: n,
             };
             let cap = c.get_cap();
             let cap_tree = Tree::continue_from_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker);
@@ -172,7 +172,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
                 cosets: vec![coset0],
                 tree: cap_tree,
                 values_per_leaf: c.values_per_leaf,
-                trace_len_log2: n,
+                coset_size_log2: n,
             }
         };
     log("building slim base oracles (coset 0 + cap)");

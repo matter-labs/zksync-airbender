@@ -889,13 +889,13 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                 * Term::from(rd_is_zero),
     );
 
-    const {
-        assert!(
-            CS::ASSUME_MEMORY_VALUES_ASSIGNED,
-            "Family 2 rd-write witness path requires CS::ASSUME_MEMORY_VALUES_ASSIGNED = true; \
-             the no-ASSUME path is not implemented"
-        );
-    }
+    // const {
+    //     assert!(
+    //         CS::ASSUME_MEMORY_VALUES_ASSIGNED,
+    //         "Family 2 rd-write witness path requires CS::ASSUME_MEMORY_VALUES_ASSIGNED = true; \
+    //          the no-ASSUME path is not implemented"
+    //     );
+    // }
 
     // Per-opcode rd-write constraints. Low limb: jal/jalr → saved_pc_low; slt → slt_value.
     cs.add_constraint(

@@ -313,7 +313,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         if let Some(funct7) = decoder_data.funct7 {
             self.assign_u8(funct7, &entry.funct7.unwrap());
         }
-        assert!(entry.opcode_family_bits <= 1 << (F::CHAR_BITS - 1));
+        assert!(entry.opcode_family_bits.next_power_of_two().trailing_zeros() < F::CHAR_BITS as u32);
         if decoder_data.circuit_family_extra_mask.is_placeholder() == false {
             assert!(decoder_data.circuit_family_mask_bits.is_empty());
             self.assign_field(

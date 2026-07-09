@@ -495,7 +495,7 @@ where
             let trace_part = ColumnMajorBaseOracleForCoset {
                 original_values_normal_order: Vec::new(),
                 offset,
-                trace_len_log2,
+                coset_size_log2: trace_len_log2,
             };
             cosets.push(trace_part);
         }
@@ -503,7 +503,7 @@ where
             cosets,
             tree: T::dummy(),
             values_per_leaf: 1 << whir_first_fold_step_log2,
-            trace_len_log2,
+            coset_size_log2: trace_len_log2,
         };
     }
 
@@ -525,7 +525,7 @@ where
         let trace_part = ColumnMajorBaseOracleForCoset {
             original_values_normal_order: coset,
             offset,
-            trace_len_log2,
+            coset_size_log2: trace_len_log2,
         };
         cosets.push(trace_part);
     }
@@ -557,7 +557,7 @@ where
         cosets,
         tree,
         values_per_leaf,
-        trace_len_log2,
+        coset_size_log2: trace_len_log2,
     }
 }
 
@@ -604,14 +604,14 @@ where
             cosets.push(ColumnMajorBaseOracleForCoset {
                 original_values_normal_order: Vec::new(),
                 offset: root_powers[i],
-                trace_len_log2: packed_trace_len_log2,
+                coset_size_log2: packed_trace_len_log2,
             });
         }
         return ColumnMajorBaseOracleForLDE {
             cosets,
             tree: T::dummy(),
             values_per_leaf,
-            trace_len_log2: packed_trace_len_log2,
+            coset_size_log2: packed_trace_len_log2,
         };
     }
 
@@ -659,7 +659,7 @@ where
         cosets.push(ColumnMajorBaseOracleForCoset {
             original_values_normal_order,
             offset,
-            trace_len_log2: packed_trace_len_log2,
+            coset_size_log2: packed_trace_len_log2,
         });
     }
     assert_eq!(cosets.len(), lde_factor);
@@ -689,7 +689,7 @@ where
         cosets,
         tree,
         values_per_leaf,
-        trace_len_log2: packed_trace_len_log2,
+        coset_size_log2: packed_trace_len_log2,
     }
 }
 

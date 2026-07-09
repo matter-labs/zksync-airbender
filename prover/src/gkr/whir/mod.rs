@@ -107,14 +107,14 @@ pub use self::whir_proof::*;
 pub struct ColumnMajorBaseOracleForCoset<F: PrimeField + TwoAdicField> {
     pub original_values_normal_order: Vec<ColumnMajorCosetBoundTracePart<F, F>>, // num_columns
     pub offset: F,
-    pub trace_len_log2: usize,
+    pub coset_size_log2: usize,
 }
 
 impl<F: PrimeField + TwoAdicField> ColumnMajorBaseOracleForCoset<F> {
     pub fn values_for_folded_index(&self, index: usize, values_per_leaf: usize) -> Vec<Vec<F>> {
         assert!(values_per_leaf.is_power_of_two());
-        assert!(index < (1 << self.trace_len_log2) / values_per_leaf);
-        let trace_len = 1 << self.trace_len_log2;
+        assert!(index < (1 << self.coset_size_log2) / values_per_leaf);
+        let trace_len = 1 << self.coset_size_log2;
 
         let mut result: Vec<Vec<F>> = (0..values_per_leaf)
             .into_iter()
@@ -123,7 +123,47 @@ impl<F: PrimeField + TwoAdicField> ColumnMajorBaseOracleForCoset<F> {
 
         match values_per_leaf {
             2 => {
-                let offsets = [0, trace_len / 2];
+                let offsets = offsets_for_leaf_construction::<2>(trace_len);
+                for src_poly in self.original_values_normal_order.iter() {
+                    for (j, offset) in offsets.iter().enumerate() {
+                        let i = *offset + index;
+                        let value = src_poly.column[i];
+                        result[j].push(value);
+                    }
+                }
+            }
+            4 => {
+                let offsets = offsets_for_leaf_construction::<4>(trace_len);
+                for src_poly in self.original_values_normal_order.iter() {
+                    for (j, offset) in offsets.iter().enumerate() {
+                        let i = *offset + index;
+                        let value = src_poly.column[i];
+                        result[j].push(value);
+                    }
+                }
+            }
+            8 => {
+                let offsets = offsets_for_leaf_construction::<8>(trace_len);
+                for src_poly in self.original_values_normal_order.iter() {
+                    for (j, offset) in offsets.iter().enumerate() {
+                        let i = *offset + index;
+                        let value = src_poly.column[i];
+                        result[j].push(value);
+                    }
+                }
+            }
+            16 => {
+                let offsets = offsets_for_leaf_construction::<16>(trace_len);
+                for src_poly in self.original_values_normal_order.iter() {
+                    for (j, offset) in offsets.iter().enumerate() {
+                        let i = *offset + index;
+                        let value = src_poly.column[i];
+                        result[j].push(value);
+                    }
+                }
+            }
+            32 => {
+                let offsets = offsets_for_leaf_construction::<32>(trace_len);
                 for src_poly in self.original_values_normal_order.iter() {
                     for (j, offset) in offsets.iter().enumerate() {
                         let i = *offset + index;
@@ -149,22 +189,22 @@ pub struct ColumnMajorBaseOracleForLDE<
     pub cosets: Vec<ColumnMajorBaseOracleForCoset<F>>,
     pub tree: T,
     pub values_per_leaf: usize,
-    pub trace_len_log2: usize,
+    pub coset_size_log2: usize,
 }
 
 impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
     ColumnMajorBaseOracleForLDE<F, T>
 {
-    pub fn empty(values_per_leaf: usize, trace_len_log2: usize, lde_factor: usize) -> Self {
+    pub fn empty(values_per_leaf: usize, coset_size_log2: usize, lde_factor: usize) -> Self {
         let generators: Vec<F> = materialize_powers_serial_starting_with_one(
-            domain_generator_for_size::<F>((1 << trace_len_log2) * lde_factor as u64),
+            domain_generator_for_size::<F>((1 << coset_size_log2) * lde_factor as u64),
             lde_factor,
         );
         let mut new = Self {
             cosets: Vec::with_capacity(lde_factor),
             tree: T::dummy(),
             values_per_leaf,
-            trace_len_log2,
+            coset_size_log2,
         };
 
         for i in 0..lde_factor {
@@ -172,7 +212,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
             let coset = ColumnMajorBaseOracleForCoset {
                 original_values_normal_order: Vec::new(),
                 offset,
-                trace_len_log2,
+                coset_size_log2,
             };
             new.cosets.push(coset);
         }
@@ -191,7 +231,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         let num_cosets = self.cosets.len();
         let coset_index = index & (num_cosets - 1);
         let internal_index = index / num_cosets;
-        let coset_tree_size = (1 << self.trace_len_log2) / self.values_per_leaf;
+        let coset_tree_size = (1 << self.coset_size_log2) / self.values_per_leaf;
         assert!(internal_index < coset_tree_size);
         let values =
             self.cosets[coset_index].values_for_folded_index(internal_index, self.values_per_leaf);
@@ -235,7 +275,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
     ) -> [u32; 8] {
         use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS};
 
-        let trace_len = 1 << coset.trace_len_log2;
+        let trace_len = 1 << coset.coset_size_log2;
         let offsets = offsets_vec_for_leaf_construction(trace_len, values_per_leaf);
 
         let mut buffer = Vec::new();

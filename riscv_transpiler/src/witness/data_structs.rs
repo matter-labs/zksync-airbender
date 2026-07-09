@@ -208,13 +208,10 @@ impl UnifiedOpcodeTracingDataWithTimestamp {
             Self::NonMem(inner) => inner.opcode_data.rs2_value,
             Self::Mem(inner) => {
                 if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
-                    inner.opcode_data.aligned_ram_read_value
+                    inner.as_load_data().aligned_ram_read_value
                 } else {
                     debug_assert_eq!(inner.discr, MEM_STORE_TRACE_DATA_MARKER);
-                    unsafe {
-                        core::mem::transmute::<_, &StoreOpcodeTracingData>(&inner.opcode_data)
-                            .rs2_value
-                    }
+                    inner.as_store_data().rs2_value
                 }
             }
         }
@@ -226,13 +223,10 @@ impl UnifiedOpcodeTracingDataWithTimestamp {
             Self::NonMem(inner) => inner.opcode_data.rd_old_value,
             Self::Mem(inner) => {
                 if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
-                    inner.opcode_data.rd_old_value
+                    inner.as_load_data().rd_old_value
                 } else {
                     debug_assert_eq!(inner.discr, MEM_STORE_TRACE_DATA_MARKER);
-                    unsafe {
-                        core::mem::transmute::<_, &StoreOpcodeTracingData>(&inner.opcode_data)
-                            .aligned_ram_old_value
-                    }
+                    inner.as_store_data().aligned_ram_old_value
                 }
             }
         }
@@ -244,13 +238,10 @@ impl UnifiedOpcodeTracingDataWithTimestamp {
             Self::NonMem(inner) => inner.opcode_data.rd_value,
             Self::Mem(inner) => {
                 if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
-                    inner.opcode_data.rd_value
+                    inner.as_load_data().rd_value
                 } else {
                     debug_assert_eq!(inner.discr, MEM_STORE_TRACE_DATA_MARKER);
-                    unsafe {
-                        core::mem::transmute::<_, &StoreOpcodeTracingData>(&inner.opcode_data)
-                            .aligned_ram_write_value
-                    }
+                    inner.as_store_data().aligned_ram_write_value
                 }
             }
         }

@@ -22,7 +22,8 @@ use crate::definitions::SecurityLevel;
 use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::CommitmentMode;
-use crate::gkr::prover_config::example_configs;
+use crate::gkr::prover::WhirSchedule;
+use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use crate::gkr::witness_gen::family_circuits::{
     build_unified_table_driver, evaluate_gkr_witness_for_executor_family, GKRFullWitnessTrace,
@@ -30,7 +31,9 @@ use crate::gkr::witness_gen::family_circuits::{
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use crate::merkle_trees::DefaultTreeConstructor;
+use crate::tests::gkr::bincode_serialize_to_file;
 use crate::tests::gkr::orchestration::common::dummy_external_challenges;
+use crate::tests::gkr::serialize_to_file;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::baby_bear::ext4::BabyBearExt4;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
@@ -69,7 +72,11 @@ const TRACE_LEN_LOG2: usize = 22;
 fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
     let worker = Worker::new_with_num_threads(8);
     let level = SecurityLevel::Sec80;
-    let pack_log2 = 2usize;
+    // With `pack_log2 = 4` the 2^22 base trace is packed into a single 2^26-variate
+    // multilinear per column — exactly the `message_log2 = 26` of the EVM-production
+    // WHIR config (`generate_whir_input_for_evm_production`), whose parameters we
+    // reuse below.
+    let pack_log2 = 4usize;
     let external_challenges_pow_bits = 0u32;
 
     // 1. Run the plain fibonacci program (reduced machine, no precompiles).
@@ -91,7 +98,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    assert!(num_calls < NUM_CYCLES_PER_CHUNK);
+    assert!(num_calls < (1 << TRACE_LEN_LOG2));
 
     // 3. Build the unified witness trace with precompiles disabled at preprocessing.
     let (full_trace, table_driver, decoder_table) = build_unified_trace_without_precompiles(
@@ -99,16 +106,34 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
         super::unified_reduced_machine_proth120::witness_eval_fn,
         &unified_circuit,
         num_teardown_sets,
+        1 << TRACE_LEN_LOG2,
         &worker,
     );
 
     println!("Preparing data for proving");
-    // 4. Prover config for 80 bits + twiddles.
+    // 4. Prover config for a 2^22 base trace, but with the WHIR schedule taken from
+    //    the EVM-production generator (`generate_whir_input_for_evm_production`,
+    //    message 2^26). Because `pack_log2 = 4` enlarges each column to 2^26 the
+    //    packed polynomials match that message size exactly, so the same folds /
+    //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
-        TRACE_LEN_LOG2,
-        level,
-    );
+    let prover_config = ProverConfig {
+        lde_factor: 1 << 5, // base LDE factor 32 (base_lde_log2 = 5)
+        cap_size: 8,
+        // round-0 values-per-leaf = 2^whir_steps_schedule[0] = 2^2
+        base_oracles_values_per_leaf: 1 << 2,
+        // final poly has 2^(26 - 22) = 2^4 monomials
+        sumcheck_explicit_output_size_log_2: 4,
+        security_level: level,
+        whir_schedule: WhirSchedule {
+            base_lde_factor: 1 << 5,
+            cap_size: 8,
+            whir_steps_schedule: vec![2, 4, 4, 4, 4, 4],
+            whir_queries_schedule: vec![17, 12, 8, 6, 5, 4],
+            whir_steps_lde_factors: vec![1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
+            whir_pow_schedule: vec![30, 30, 27, 25, 21, 24],
+        },
+    };
 
     println!("Computing setup");
     // The proof function's twiddles are of unified circuit size * (1 << pack_log2):
@@ -136,7 +161,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
 
     println!("Trying to prove (unified, packed commitment, pack_log2 = {pack_log2})");
     let now = std::time::Instant::now();
-    let _proof = prove_configured_with_gkr::<
+    let proof = prove_configured_with_gkr::<
         Proth120,
         Proth120,
         Keccak256MerkleTreeWithCap,
@@ -158,6 +183,8 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
         &worker,
     );
     println!("Packed unified proving time is {:?}", now.elapsed());
+
+    serialize_to_file(&proof, "unified_circuit_proof_proth120.json");
 }
 
 /// Inlined analogue of `orchestration::unified::build_unified_full_trace`, but with
@@ -168,6 +195,7 @@ fn build_unified_trace_without_precompiles<C, F: PrimeField>(
     witness_eval_fn_ptr: fn(&mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, F>),
     unified_circuit: &GKRCircuitArtifact<F>,
     num_teardown_sets: usize,
+    cycles_per_chunks: usize,
     worker: &Worker,
 ) -> (
     GKRFullWitnessTrace<F, Global, Global>,
@@ -224,6 +252,8 @@ where
         .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
         .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
 
+    bincode_serialize_to_file(&buffer, "unified_proth120_witness.bin");
+
     let oracle = UnifiedRiscvCircuitOracle {
         inner: &buffer,
         decoder_table: &decoder_table,
@@ -251,7 +281,7 @@ where
     let full_trace = evaluate_gkr_witness_for_executor_family::<F, _, _, _>(
         unified_circuit,
         witness_eval_fn_ptr,
-        NUM_CYCLES_PER_CHUNK,
+        cycles_per_chunks,
         &oracle,
         &unified_table_driver,
         worker,

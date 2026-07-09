@@ -26,6 +26,7 @@ use crate::definitions::DIGEST_SIZE_U32_WORDS;
 use crate::gkr::prover::stages::commitment_utils::{
     compute_column_major_lde_single_coset, compute_column_major_lde_single_coset_with_offset,
     compute_column_major_lde_single_coset_with_offset_serial,
+    pack_polys_parallel_from_hypercubes_to_monomials,
 };
 use crate::merkle_trees::keccak256_for_everything_tree::{Digest32, Keccak256MerkleTreeWithCap};
 use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_cosets;
@@ -77,13 +78,13 @@ fn parallel_collect<T: Send, F: Fn(usize) -> T + Sync>(
 /// Compute one coset's LDE evaluations for every column. Columns are done one at a
 /// time because each `compute_column_major_lde_single_coset` is itself worker-parallel
 /// (parallelizing over columns on top would only oversubscribe the pool).
-fn coset_columns(
-    monomial_forms: &[Vec<Proth120>],
-    twiddles: &Twiddles<Proth120, Global>,
+fn coset_columns<F: PrimeField + TwoAdicField>(
+    monomial_forms: &[Vec<F>],
+    twiddles: &Twiddles<F, Global>,
     lde_factor: usize,
     coset_index: usize,
     worker: &Worker,
-) -> Vec<Box<[Proth120]>> {
+) -> Vec<Box<[F]>> {
     monomial_forms
         .iter()
         .map(|m| {
@@ -96,9 +97,13 @@ fn coset_columns(
 /// coset-by-coset. Holds the message monomial forms (needed to recompute cosets
 /// for queries) and the small top tree over the per-coset subtree roots.
 #[derive(Clone, Debug)]
-pub struct CosetByCosetBaseCommitment {
+pub struct CosetByCosetBaseCommitment<F, T>
+where
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+{
     /// Per-column multilinear monomial coefficients (message-sized, normal order).
-    pub monomial_forms: Vec<Vec<Proth120>>,
+    pub monomial_forms: Vec<Vec<F>>,
     /// log2 of the message (per-coset) length.
     pub trace_len_log2: usize,
     /// Number of LDE cosets (= LDE factor).
@@ -109,10 +114,16 @@ pub struct CosetByCosetBaseCommitment {
     pub cap_size: usize,
     /// Top tree over the per-coset roots (its leaves are the roots in physical,
     /// i.e. bit-reversed-coset, order). Provides the cap and the top-tree paths.
-    pub top_tree: Tree,
+    pub top_tree: T,
+    _marker: PhantomData<F>,
 }
 
-impl CosetByCosetBaseCommitment {
+impl<F, T> CosetByCosetBaseCommitment<F, T>
+where
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    [(); F::DEGREE]: Sized,
+{
     /// Number of leaves in one coset's subtree.
     #[inline]
     pub fn coset_tree_size(&self) -> usize {
@@ -130,17 +141,17 @@ impl CosetByCosetBaseCommitment {
     /// the memory the base oracle must still hold during folding (~num_cols * 2^N).
     pub fn main_domain_columns(
         &self,
-        twiddles: &Twiddles<Proth120, Global>,
+        twiddles: &Twiddles<F, Global>,
         worker: &Worker,
-    ) -> Vec<Box<[Proth120]>> {
+    ) -> Vec<Box<[F]>> {
         coset_columns(&self.monomial_forms, twiddles, self.lde_factor, 0, worker)
     }
 
     /// Commit a batch of columns given on the boolean hypercube (same inputs as
     /// `commit_trace_part`: `input_on_hypercube[col]` is a message-sized column).
     pub fn commit(
-        input_on_hypercube: &[&[Proth120]],
-        twiddles: &Twiddles<Proth120, Global>,
+        input_on_hypercube: &[&[F]],
+        twiddles: &Twiddles<F, Global>,
         lde_factor: usize,
         whir_first_fold_step_log2: usize,
         cap_size: usize,
@@ -162,25 +173,92 @@ impl CosetByCosetBaseCommitment {
         // hypercube evals -> multilinear monomial coefficients (per column, in
         // parallel), same transform the monolithic path applies before the RS
         // encoding.
-        let monomial_forms: Vec<Vec<Proth120>> =
-            parallel_collect(worker, input_on_hypercube.len(), |i| {
-                let col = input_on_hypercube[i];
-                assert_eq!(col.len(), 1usize << trace_len_log2);
-                let mut v = col.to_vec();
-                bitreverse_enumeration_inplace(&mut v);
-                multivariate_hypercube_evals_into_coeffs(&mut v, trace_len_log2 as u32);
-                v
-            });
+        let monomial_forms: Vec<Vec<F>> = parallel_collect(worker, input_on_hypercube.len(), |i| {
+            let col = input_on_hypercube[i];
+            assert_eq!(col.len(), 1usize << trace_len_log2);
+            let mut v = col.to_vec();
+            bitreverse_enumeration_inplace(&mut v);
+            multivariate_hypercube_evals_into_coeffs(&mut v, trace_len_log2 as u32);
+            v
+        });
+
+        Self::from_monomial_forms(
+            monomial_forms,
+            twiddles,
+            lde_factor,
+            values_per_leaf,
+            cap_size,
+            trace_len_log2,
+            worker,
+        )
+    }
+
+    /// Like [`commit`](Self::commit) but PACKS groups of `2^pack_log2` input columns
+    /// into a single `(trace_len_log2 + pack_log2)`-variate multilinear each (via
+    /// `pack_polys_parallel_from_hypercubes_to_monomials`) before committing them
+    /// coset-by-coset. `trace_len_log2` is the per-column (base) size; the committed
+    /// packed polynomials have `trace_len_log2 + pack_log2` variables (so `twiddles`
+    /// must be sized for the enlarged `2^(trace_len_log2 + pack_log2)` domain).
+    pub fn commit_packed(
+        input_on_hypercube: &[&[F]],
+        twiddles: &Twiddles<F, Global>,
+        lde_factor: usize,
+        whir_first_fold_step_log2: usize,
+        cap_size: usize,
+        trace_len_log2: usize,
+        pack_log2: usize,
+        worker: &Worker,
+    ) -> Self {
+        assert!(!input_on_hypercube.is_empty());
+        let values_per_leaf = 1usize << whir_first_fold_step_log2;
+        let packed_trace_len_log2 = trace_len_log2 + pack_log2;
+        // pack + monomialize over ALL (base + pack_log2) variables at once, so each
+        // packed poly is one faithful multilinear (consistent with `merge_claims`).
+        let monomial_forms =
+            pack_polys_parallel_from_hypercubes_to_monomials(input_on_hypercube, pack_log2, worker);
+        for m in monomial_forms.iter() {
+            assert_eq!(m.len(), 1usize << packed_trace_len_log2);
+        }
+        Self::from_monomial_forms(
+            monomial_forms,
+            twiddles,
+            lde_factor,
+            values_per_leaf,
+            cap_size,
+            packed_trace_len_log2,
+            worker,
+        )
+    }
+
+    /// Shared coset-by-coset commit from per-column (already monomial) forms: process
+    /// one LDE coset at a time (peak memory ~one coset), keep only its subtree root,
+    /// then build the small top tree over the per-coset roots.
+    fn from_monomial_forms(
+        monomial_forms: Vec<Vec<F>>,
+        twiddles: &Twiddles<F, Global>,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        cap_size: usize,
+        trace_len_log2: usize,
+        worker: &Worker,
+    ) -> Self {
+        assert!(lde_factor.is_power_of_two());
+        assert!(cap_size.is_power_of_two());
+        // The cap must sit at or above the per-coset subtree roots so it can be built
+        // from them. If cap_size > lde_factor the cap would live *inside* the cosets.
+        assert!(
+            cap_size <= lde_factor,
+            "coset-by-coset commitment requires cap_size ({cap_size}) <= lde_factor ({lde_factor})"
+        );
 
         // Per natural-order coset: root of that coset's leaf subtree. Cosets are
-        // processed sequentially so peak memory stays ~one coset; the work inside a
-        // coset (per-column LDE, leaf hashing, subtree) is what runs in parallel.
-        // For production-sized commits (big cosets) log per-coset progress.
+        // processed sequentially so peak memory stays ~one coset; the per-coset work
+        // (per-column LDE, leaf hashing, subtree) is what runs in parallel.
         let verbose = trace_len_log2 >= 20;
         let t0 = std::time::Instant::now();
-        let mut natural_roots: Vec<Digest32> = Vec::with_capacity(lde_factor);
+        let mut natural_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = Vec::with_capacity(lde_factor);
         for coset_index in 0..lde_factor {
-            let root = coset_subtree_root(
+            let root = coset_subtree_root::<F, T>(
                 &monomial_forms,
                 twiddles,
                 lde_factor,
@@ -204,12 +282,12 @@ impl CosetByCosetBaseCommitment {
         // Physical tree slot `k` sources from coset `bitreverse(k)` (the tree is
         // built with bit-reversed coset order), so reorder the roots accordingly.
         let cosets_log2 = lde_factor.trailing_zeros();
-        let physical_roots: Vec<Digest32> = (0..lde_factor)
+        let physical_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = (0..lde_factor)
             .map(|k| natural_roots[bitreverse_index(k, cosets_log2)])
             .collect();
 
         // Top tree over the per-coset roots -> the commitment cap.
-        let top_tree = Tree::continue_from_leaf_hashes(physical_roots, cap_size, worker);
+        let top_tree = T::build_over_leaf_hashes(physical_roots, cap_size, worker);
 
         Self {
             monomial_forms,
@@ -218,6 +296,7 @@ impl CosetByCosetBaseCommitment {
             values_per_leaf,
             cap_size,
             top_tree,
+            _marker: PhantomData,
         }
     }
 
@@ -227,9 +306,9 @@ impl CosetByCosetBaseCommitment {
     pub fn query(
         &self,
         query_index: usize,
-        twiddles: &Twiddles<Proth120, Global>,
+        twiddles: &Twiddles<F, Global>,
         worker: &Worker,
-    ) -> BaseFieldQuery<Proth120, Tree> {
+    ) -> BaseFieldQuery<F, T> {
         self.query_many(&[query_index], twiddles, worker)
             .pop()
             .unwrap()
@@ -241,12 +320,12 @@ impl CosetByCosetBaseCommitment {
     pub fn query_structured(
         &self,
         query_index: usize,
-        twiddles: &Twiddles<Proth120, Global>,
+        twiddles: &Twiddles<F, Global>,
         worker: &Worker,
-    ) -> (Vec<Vec<Proth120>>, BaseFieldQuery<Proth120, Tree>) {
+    ) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>) {
         let q = self.query(query_index, twiddles, worker);
         let num_cols = self.monomial_forms.len();
-        let leaf: Vec<Vec<Proth120>> = (0..self.values_per_leaf)
+        let leaf: Vec<Vec<F>> = (0..self.values_per_leaf)
             .map(|o| q.leaf_values_concatenated[o * num_cols..(o + 1) * num_cols].to_vec())
             .collect();
         (leaf, q)
@@ -258,9 +337,9 @@ impl CosetByCosetBaseCommitment {
     pub fn query_many(
         &self,
         query_indices: &[usize],
-        twiddles: &Twiddles<Proth120, Global>,
+        twiddles: &Twiddles<F, Global>,
         worker: &Worker,
-    ) -> Vec<BaseFieldQuery<Proth120, Tree>> {
+    ) -> Vec<BaseFieldQuery<F, T>> {
         let num_cosets = self.lde_factor;
         let cosets_log2 = num_cosets.trailing_zeros();
         let coset_tree_size = self.coset_tree_size();
@@ -274,7 +353,7 @@ impl CosetByCosetBaseCommitment {
             by_coset.entry(qi & (num_cosets - 1)).or_default().push(pos);
         }
 
-        let mut out: Vec<Option<BaseFieldQuery<Proth120, Tree>>> =
+        let mut out: Vec<Option<BaseFieldQuery<F, T>>> =
             (0..query_indices.len()).map(|_| None).collect();
 
         for (coset_index, positions) in by_coset.into_iter() {
@@ -288,18 +367,18 @@ impl CosetByCosetBaseCommitment {
                 worker,
             );
 
-            let col_refs: Vec<&[Proth120]> = coset_columns.iter().map(|c| &c[..]).collect();
-            let coset_refs: &[&[Proth120]] = &col_refs[..];
-            let trace: &[&[&[Proth120]]] = std::slice::from_ref(&coset_refs);
-            let leaf_hashes = keccak256_leaf_hashes_from_cosets::<Proth120, Global, Global>(
+            let col_refs: Vec<&[F]> = coset_columns.iter().map(|c| &c[..]).collect();
+            let coset_refs: &[&[F]] = &col_refs[..];
+            let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
+            let subtree = T::construct_from_cosets::<F, Global>(
                 trace,
                 self.values_per_leaf,
+                1,
                 true,
                 false,
                 false,
                 worker,
             );
-            let subtree = Tree::continue_from_leaf_hashes(leaf_hashes, 1, worker);
 
             let physical_slot = bitreverse_index(coset_index, cosets_log2);
             let (_root, top_path) = self.top_tree.get_proof::<Global>(physical_slot);
@@ -311,7 +390,7 @@ impl CosetByCosetBaseCommitment {
 
                 // Leaf values in offset-major order (result[offset][column]), exactly
                 // like `ColumnMajorBaseOracleForCoset::values_for_folded_index`.
-                let mut leaf_values_concatenated: Vec<Proth120> =
+                let mut leaf_values_concatenated: Vec<F> =
                     Vec::with_capacity(self.values_per_leaf * coset_columns.len());
                 for off in offsets.iter() {
                     for col in coset_columns.iter() {
@@ -336,30 +415,34 @@ impl CosetByCosetBaseCommitment {
 }
 
 /// Compute one coset's leaf hashes and build its subtree, returning only the root.
-fn coset_subtree_root(
-    monomial_forms: &[Vec<Proth120>],
-    twiddles: &Twiddles<Proth120, Global>,
+fn coset_subtree_root<F, T>(
+    monomial_forms: &[Vec<F>],
+    twiddles: &Twiddles<F, Global>,
     lde_factor: usize,
     values_per_leaf: usize,
     coset_index: usize,
     worker: &Worker,
-) -> Digest32 {
+) -> [u32; DIGEST_SIZE_U32_WORDS]
+where
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    [(); F::DEGREE]: Sized,
+{
     let coset_columns = coset_columns(monomial_forms, twiddles, lde_factor, coset_index, worker);
 
-    let col_refs: Vec<&[Proth120]> = coset_columns.iter().map(|c| &c[..]).collect();
-    let coset_refs: &[&[Proth120]] = &col_refs[..];
-    let trace: &[&[&[Proth120]]] = std::slice::from_ref(&coset_refs);
+    let col_refs: Vec<&[F]> = coset_columns.iter().map(|c| &c[..]).collect();
+    let coset_refs: &[&[F]] = &col_refs[..];
+    let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
 
-    let leaf_hashes = keccak256_leaf_hashes_from_cosets::<Proth120, Global, Global>(
+    let subtree = T::construct_from_cosets::<F, Global>(
         trace,
         values_per_leaf,
+        1,
         true,
         false,
         false,
         worker,
     );
-    let subtree =
-        Keccak256MerkleTreeWithCap::<Global>::continue_from_leaf_hashes(leaf_hashes, 1, worker);
     subtree.get_cap().cap[0]
 }
 
@@ -774,7 +857,7 @@ mod test {
             trace_len_log2,
             &worker,
         );
-        let coset = CosetByCosetBaseCommitment::commit(
+        let coset = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(
             &col_refs,
             &twiddles,
             lde_factor,
@@ -863,7 +946,7 @@ mod test {
                 trace_len_log2,
                 &worker,
             );
-        let coset = CosetByCosetBaseCommitment::commit(
+        let coset = CosetByCosetBaseCommitment::<Proth120, Tree>::commit(
             &col_refs,
             &twiddles,
             lde_factor,

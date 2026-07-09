@@ -88,16 +88,13 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
     #[track_caller]
     fn add_variable(&mut self) -> Variable {
-        // if self.no_index_assigned == 11 {
-        //     panic!("debug");
-        // }
         let location = std::panic::Location::caller();
         let name = format!("Variable at {}::{}", location.file(), location.line());
         self.add_named_variable(&name)
     }
 
     fn add_named_variable(&mut self, name: &str) -> Variable {
-        // if self.no_index_assigned == 11 {
+        // if self.no_index_assigned == 88 {
         //     panic!("debug on named variable {}", name);
         // }
         let variable = Variable(self.no_index_assigned);
@@ -670,15 +667,15 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         };
                         self.set_values(value_fn);
                     } else {
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let value =
-                                placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
-                                    local_timestamp_in_cycle as usize,
-                                ));
+                        // let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        //     let value =
+                        //         placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
+                        //             local_timestamp_in_cycle as usize,
+                        //         ));
 
-                            placer.assign_u32_from_u16_parts(vars, &value);
-                        };
-                        self.set_values(value_fn);
+                        //     placer.assign_u32_from_u16_parts(vars, &value);
+                        // };
+                        // self.set_values(value_fn);
                     }
 
                     vars
@@ -743,15 +740,15 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         };
                         self.set_values(value_fn);
                     } else {
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let value =
-                                placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
-                                    local_timestamp_in_cycle as usize,
-                                ));
+                        // let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        //     let value =
+                        //         placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
+                        //             local_timestamp_in_cycle as usize,
+                        //         ));
 
-                            placer.assign_u32_from_u16_parts(vars, &value);
-                        };
-                        self.set_values(value_fn);
+                        //     placer.assign_u32_from_u16_parts(vars, &value);
+                        // };
+                        // self.set_values(value_fn);
                     }
 
                     vars

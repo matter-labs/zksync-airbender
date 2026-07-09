@@ -129,6 +129,7 @@ where
     let values_per_leaf = 1 << whir_first_fold_step_log2;
     use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
     let mut cosets = Vec::with_capacity(lde_factor);
+    let new_coset_size_log2 = trace_len_log2 + pack_log2;
 
     for i in 0..lde_factor {
         let mut sources = if i == lde_factor - 1 {
@@ -162,7 +163,7 @@ where
         let trace_part = ColumnMajorBaseOracleForCoset {
             original_values_normal_order,
             offset,
-            trace_len_log2,
+            coset_size_log2: new_coset_size_log2,
         };
         cosets.push(trace_part);
     }
@@ -197,6 +198,6 @@ where
         cosets,
         tree,
         values_per_leaf,
-        trace_len_log2,
+        coset_size_log2: new_coset_size_log2,
     }
 }

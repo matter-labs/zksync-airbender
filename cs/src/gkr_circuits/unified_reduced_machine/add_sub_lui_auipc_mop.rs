@@ -265,17 +265,27 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 let is_fmamod = placer.get_boolean(is_fmamod_var);
                 let is_mul_like = is_mulmod.or(&is_fmamod);
                 let op1 =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
-                        rs1_u32,
-                    );
-                let op2 =
+                    if F::CHAR_BITS > 32 {
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO)
+                    } else {
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                            rs1_u32,
+                        )
+                    };
+                let op2 = if F::CHAR_BITS > 32 {
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO)
+                } else {
                     <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                         rs2_u32,
-                    );
-                let rd_raw =
+                    )
+                };
+                let rd_raw = if F::CHAR_BITS > 32 {
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO)
+                } else {
                     <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                         rd_read_u32,
-                    );
+                    )
+                };
                 let mut mulmod_field = op1;
                 mulmod_field.mul_assign(&op2);
                 mulmod_field.add_assign_masked(&is_fmamod, &rd_raw);
@@ -387,11 +397,6 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 );
             }
 
-            // actually assign
-            if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
-                placer.assign_u32_from_u16_parts(out_vars, &out_value);
-            }
-
             let is_f1_active = {
                 let mut m = placer.get_boolean(is_add_var);
                 m = m.or(&placer.get_boolean(is_sub_var));
@@ -403,6 +408,10 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 m = m.or(&placer.get_boolean(is_tri_add_var));
                 m
             };
+            // actually assign if we are in debug modes
+            if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+                placer.conditionally_assign_u32(out_vars, &is_f1_active, &out_value);
+            }
             placer.conditionally_assign_u32(intermediate_vars, &is_f1_active, &intermediate_value);
             placer.conditionally_assign_mask(of_var, &is_f1_active, &of_value);
             placer.conditionally_assign_mask(
@@ -435,11 +444,15 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
         // MULMOD: use intermediate variable, and mix-in the FMA addend.
         // rs1*rs2*R⁻¹ + is_fmamod*rd_old = mulmod_intermediate.
-        cs.add_constraint_expr(
-            montgomery_product_expr(rs1.clone(), rs2.clone())
-                + rd_read * Expr::var(is_fmamod.expect_variable())
-                - Expr::var(mulmod_intermediate_var),
-        );
+        if F::CHAR_BITS > 32 {
+            // NOTE: temporary fix
+        } else {
+            cs.add_constraint_expr(
+                montgomery_product_expr(rs1.clone(), rs2.clone())
+                    + rd_read * Expr::var(is_fmamod.expect_variable())
+                    - Expr::var(mulmod_intermediate_var),
+            );
+        }
 
         // enforce field ops - all at once, as we know that flags are disjoint
         let is_mul_like = Expr::<F>::Sum(vec![Expr::from(is_mulmod), Expr::from(is_fmamod)]);

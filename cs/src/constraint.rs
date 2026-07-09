@@ -3,13 +3,12 @@ use std::collections::{BTreeSet, HashSet};
 use crate::cs::circuit_trait::Circuit;
 use crate::cs::utils::PreprocessedConstraintForEval;
 use crate::types::{Boolean, Num};
-use crate::witness_placer::{WitnessPlacer, WitnessTypeSet};
-use crate::{cs, definitions::*};
+use crate::witness_placer::WitnessPlacer;
+use crate::definitions::*;
 use field::PrimeField;
 
 pub const TERM_INNER_CAPACITY: usize = 4;
 
-// #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Term<F: PrimeField> {
     Constant(F),
@@ -31,8 +30,8 @@ impl<F: PrimeField> std::fmt::Display for Term<F> {
                 inner,
                 degree,
             } => {
-                let coeff = coeff.as_u32_reduced();
-                let coeff_opp = F::CHARACTERISTICS_U32 - coeff;
+                let coeff = coeff.as_u128_reduced();
+                let coeff_opp = F::CHARACTERISTICS_U128 - coeff;
                 if coeff < coeff_opp {
                     if coeff != 1 {
                         write!(f, " + {coeff}")?;
