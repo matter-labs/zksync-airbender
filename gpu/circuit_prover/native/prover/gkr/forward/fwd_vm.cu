@@ -4,9 +4,11 @@
 // limb 0 IS the bf accumulator (limbs 1-3 zero while the acc is in base
 // domain), and a per-thread cell file in shared memory addressed in BUCKETS
 // (16 B x blockDim each): an ext cell is a whole bucket, per-thread contiguous
-// 16 B at `(b*blockDim + tid)*16` (one lds.128/sts.128); bf cells are the same
-// region viewed as 4 blockDim-strided u32 lanes (bf cell c at u32 lane
-// `c*blockDim + tid`). The instruction's field bit selects the view.
+// 16 B at `(b*blockDim + tid)*16` (one lds.128/sts.128); bf cell c is u32
+// `c % 4` of the SAME thread's 16-B chunk of bucket `c / 4` — the two views
+// must agree on per-thread byte ownership because the compiler time-
+// multiplexes a quad between them (see the cell-file section below). The
+// instruction's field bit selects the view.
 //
 // Dispatch follows the design spec's SS1.3 table on a warp-uniform acc-domain
 // flag (set by Mov AccFromSrc's field bit, flipped base->ext by the `promote`
@@ -88,10 +90,27 @@ template <bool LDG> DEVICE_FORCEINLINE u16 vm_lane(const fwd_vm_desc &d, const u
 // `cells` is the block's file reinterpreted as bf lanes; `nthreads` is
 // blockDim.x (a compile-time 128 in the static release body, so all the index
 // math folds).
+//
+// THREAD-LOCAL VIEW AGREEMENT (value-parity bug fix): bf cell c lives at u32
+// `c % 4` of THIS THREAD's contiguous 16-B chunk of bucket `c / 4` — the same
+// bytes the ext view of that bucket addresses for the same thread. The
+// compiler's allocator time-multiplexes a quad between the two views over
+// disjoint lifetimes (the CPU model's `cells` file aliases them), so the two
+// views MUST agree on per-thread byte ownership: with the previous
+// blockDim-strided bf mapping (`cell * nthreads + tid`), a thread's ext-bucket
+// write covered OTHER threads' bf lanes, and because warps execute the
+// program mutually unordered (no barriers), every cross-view quad reuse was a
+// cross-warp data race (warp-granular, nondeterministic L0 divergence).
+// Intra-thread aliasing is ordered by program order and matches the CPU
+// golden model exactly (bf lane 4b+j ↔ ext limb j). Cost: bf lanes of a warp
+// hit banks with stride 4 (4-way conflict) instead of stride 1 — accepted;
+// the interpreter is DRAM-bound.
 
-DEVICE_FORCEINLINE bf smem_ld_bf(const bf *cells, const u32 cell, const u32 nthreads) { return cells[cell * nthreads + threadIdx.x]; }
+DEVICE_FORCEINLINE u32 smem_bf_unit(const u32 cell, const u32 nthreads) { return ((cell >> 2) * nthreads + threadIdx.x) * 4 + (cell & 3); }
 
-DEVICE_FORCEINLINE void smem_st_bf(bf *cells, const u32 cell, const u32 nthreads, const bf v) { cells[cell * nthreads + threadIdx.x] = v; }
+DEVICE_FORCEINLINE bf smem_ld_bf(const bf *cells, const u32 cell, const u32 nthreads) { return cells[smem_bf_unit(cell, nthreads)]; }
+
+DEVICE_FORCEINLINE void smem_st_bf(bf *cells, const u32 cell, const u32 nthreads, const bf v) { cells[smem_bf_unit(cell, nthreads)] = v; }
 
 // Ext cell = one bucket, per-thread contiguous 16 B: a single lds.128/sts.128
 // via uint4 (the file base is 16-B aligned and the offset is a multiple of
