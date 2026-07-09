@@ -58,6 +58,7 @@ enum TableType : u16 {
   XorRotate12,
   XorRotate8,
   XorRotate7,
+  ConditionalJmpBranchSltUnified,
   DynamicPlaceholder,
 };
 
@@ -127,6 +128,9 @@ template <unsigned K, unsigned V> struct TableDriver {
     case U16SelectByteAndGetByteSign:
     case BlakeGFunctionControlLookup:
     case ConditionalJmpBranchSlt:
+    // Unified rs2-sign-split table: single 7-bit packed key (rs2_sign || rs1_sign ||
+    // unsigned_lt || eq || funct3) that is itself the relative row index.
+    case ConditionalJmpBranchSltUnified:
     case MemoryGetOffsetAndMaskWithTrap:
     case MemoryLoadHalfwordOrByte:
     case MemStoreClearOriginalRamValueLimb:
