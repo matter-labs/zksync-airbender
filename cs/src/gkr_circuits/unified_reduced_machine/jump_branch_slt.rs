@@ -4,11 +4,43 @@ use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints_conditional;
 use crate::gkr_circuits::jump_branch_slt_family::JumpSltBranchFamilyCircuitMask;
 use crate::gkr_circuits::utils::update_intermediate_carry_value;
+use crate::tables::{
+    TableDriver, TableType, CONDITIONAL_RESOLUTION_EQ_BIT_SHIFT,
+    CONDITIONAL_RESOLUTION_FUNCT3_BIT_SHIFT, CONDITIONAL_RESOLUTION_SRC1_SIGN_BIT_SHIFT,
+    CONDITIONAL_RESOLUTION_UNSIGNED_LT_BIT_SHIFT,
+};
 use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
 
 use super::circuit::{LookupRequest, F2_SCRATCH_BOOLS, F2_SCRATCH_VARS};
+
+const UNIFIED_JUMP_BRANCH_SLT_TABLES_WIDTH: usize = 3;
+
+/// Tables the unified Family-2 (jump/branch/slt) body looks up into. Mirrors the standalone
+/// `jump_branch_slt_tables()` but swaps the 2^22 `ConditionalJmpBranchSlt` resolution table
+/// for the 2^7 `ConditionalJmpBranchSltUnified` variant (rs2-sign split). The unified circuit
+/// pays a separate `U16GetSign` lookup to feed the sign bit;
+pub fn jump_branch_slt_unified_tables() -> Vec<TableType> {
+    vec![
+        TableType::RegIsZero,
+        TableType::U16GetSign,
+        TableType::ConditionalJmpBranchSltUnified,
+        TableType::JumpCleanupOffset,
+    ]
+}
+
+pub fn jump_branch_slt_unified_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
+    for el in jump_branch_slt_unified_tables() {
+        cs.materialize_table::<UNIFIED_JUMP_BRANCH_SLT_TABLES_WIDTH>(el);
+    }
+}
+
+pub fn jump_branch_slt_unified_table_driver_fn<F: PrimeField>(table_driver: &mut TableDriver<F>) {
+    for el in jump_branch_slt_unified_tables() {
+        table_driver.materialize_table::<UNIFIED_JUMP_BRANCH_SLT_TABLES_WIDTH>(el);
+    }
+}
 
 /// Family 2 (jump/branch/slt) constraints for the unified circuit. Mirrors the
 /// standalone inner with two unified-specific adaptations:
@@ -379,16 +411,20 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // boolean conditions. The packed input references rs1_sign +
     // comparison_result_is_zero (peeked above); the witness resolver orders the
     // peeks by data dependency.
-    // Second-operand sign source for the comparison table. The table reads the second
-    // operand's sign from bit 15 of its low-16 input. For the immediate variant (SLT/SLTI:
-    // the decoder forces rs2 = x0 and carries the operand in `imm`) that sign must come
-    // from the immediate's high limb, not rs2's (which is 0) -- otherwise signed `slti`
-    // with a negative immediate resolves to the wrong value. Gated by `is_slt` so BRANCH
-    // keeps rs2's high limb (its `imm` is the jump offset, not a comparison operand).
-    // The standalone `jump_branch_slt_family` circuit applies the same fix. Lives in the
-    // shared scratch pool (layer 0, like `rs1_sign`, so the pooled lookup input stays
-    // single-layer); needs its own slot because the gated term is degree 2 and lookup
-    // inputs must be degree 1.
+    // Second-operand sign source for the comparison table. The second operand's sign
+    // bit is extracted from this 16-bit source by the separate U16GetSign lookup below
+    // and fed to the resolution table as bit 0 of its 7-bit key. For the immediate
+    // variant (SLT/SLTI: the decoder forces rs2 = x0 and carries the operand in `imm`)
+    // that sign must come from the immediate's high limb, not rs2's (which is 0) --
+    // otherwise signed `slti` with a negative immediate resolves to the wrong value.
+    // Gated by `is_slt` so BRANCH keeps rs2's high limb (its `imm` is the jump offset,
+    // not a comparison operand). The standalone `jump_branch_slt_family` circuit
+    // applies the same fix. Lives in the shared scratch pool (layer 0, like `rs1_sign`,
+    // so the pooled lookup input stays single-layer); needs its own slot because the
+    // gated term is degree 2 and lookup inputs must be degree 1. NOTE: U16GetSign's
+    // 2^16 key domain also preserves the `slt_sign_source < 2^16` range enforcement
+    // that the old 2^22 resolution-table key provided — do not swap it for a
+    // wider-domain sign table.
     let slt_sign_source = scratch_vars[3];
     let imm_high_var = inputs.decoder_data.imm[1];
     let is_slt_var = is_slt.expect_variable();
@@ -427,25 +463,55 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
             - Term::from(is_slt_var) * Term::from(imm_high_var),
     );
 
+    // Second operand's sign bit, extracted from the sign source. The resolution table
+    // takes the 1-bit sign directly (bit 0 of its 7-bit key); this lookup replaces the
+    // old table's internal `bit 15 of the packed sign source` read. The input MUST be
+    // `slt_sign_source` (not raw rs2_high) — see the sign-source comment above; the
+    // structural tests in both this circuit and the standalone family pin that feed.
+    let rs2_sign = scratch_vars[4];
+    peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
+        cs,
+        &[is_fam2_sum() * Term::from(slt_sign_source)],
+        &[rs2_sign],
+        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        &f2_flag_vars,
+    );
+    let rs2_sign_request = LookupRequest::new(
+        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        vec![
+            is_fam2_sum() * Term::from(slt_sign_source),
+            is_fam2_sum() * Term::from(rs2_sign),
+        ],
+    );
+
     let should_jump_or_slt_value = scratch_vars[2];
     let cond_jmp_input: Constraint<F> = Constraint::empty()
-        + Term::from(slt_sign_source)
-        + Term::from((F::from_u32(1 << 16).unwrap(), rs1_sign))
-        + Term::from((F::from_u32(1 << 17).unwrap(), add_rel_0_final_of_var))
-        + Term::from((F::from_u32(1 << 18).unwrap(), comparison_result_is_zero))
+        + Term::from(rs2_sign)
         + Term::from((
-            F::from_u32(1 << 19).unwrap(),
+            F::from_u32(1 << CONDITIONAL_RESOLUTION_SRC1_SIGN_BIT_SHIFT).unwrap(),
+            rs1_sign,
+        ))
+        + Term::from((
+            F::from_u32(1 << CONDITIONAL_RESOLUTION_UNSIGNED_LT_BIT_SHIFT).unwrap(),
+            add_rel_0_final_of_var,
+        ))
+        + Term::from((
+            F::from_u32(1 << CONDITIONAL_RESOLUTION_EQ_BIT_SHIFT).unwrap(),
+            comparison_result_is_zero,
+        ))
+        + Term::from((
+            F::from_u32(1 << CONDITIONAL_RESOLUTION_FUNCT3_BIT_SHIFT).unwrap(),
             inputs.decoder_data.funct3.expect("must have funct3"),
         ));
     peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
         cs,
         &[is_fam2_sum() * cond_jmp_input.clone()],
         &[should_jump_or_slt_value],
-        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
+        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSltUnified.to_num()),
         &f2_flag_vars,
     );
     let cond_jmp_request = LookupRequest::new(
-        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSlt.to_num()),
+        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSltUnified.to_num()),
         vec![
             is_fam2_sum() * cond_jmp_input,
             is_fam2_sum() * Term::from(should_jump_or_slt_value),
@@ -861,6 +927,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     vec![
         regiszero_request,
         u16getsign_request,
+        rs2_sign_request,
         cond_jmp_request,
         jump_cleanup_request,
     ]
