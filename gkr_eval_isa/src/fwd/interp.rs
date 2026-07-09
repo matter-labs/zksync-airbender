@@ -49,14 +49,20 @@ fn interpret_layer_row_impl(
 ) -> Result<RowOutputs, InterpError> {
     let ctx = &compiled.ctx;
     let mut acc = Ext::ZERO;
+    // Tracked acc domain (spec §1.1): base until a Mov{Ext} AccFromSrc or a
+    // `promote` bit lifts it. On this Ext-valued golden model the flag never
+    // changes a value (bf↪e4 embedding); it exists so the interpreter mirrors
+    // the state the Task 3 validator checks statically.
+    let mut acc_is_ext = false;
     let mut cells: Vec<Ext> = vec![Ext::ZERO; compiled.budget.max(4)];
     let mut globals: HashMap<(u8, u16), Ext> = HashMap::new();
 
     for instr in &compiled.program.instrs {
         match instr {
-            Instr::Mov { dir, field: _, dst, src } => match dir {
+            Instr::Mov { dir, field, dst, src } => match dir {
                 MovDir::AccFromSrc => {
                     acc = resolve(&src.unwrap(), &cells, &globals, ctx, r, row, layer, mode)?;
+                    acc_is_ext = *field == OperandField::Ext;
                 }
                 MovDir::DstFromAcc => {
                     write_dst(&dst.unwrap(), acc, &mut cells, &mut globals);
@@ -66,7 +72,8 @@ fn interpret_layer_row_impl(
                     write_dst(&dst.unwrap(), v, &mut cells, &mut globals);
                 }
             },
-            Instr::Add { sign, operands, .. } => {
+            Instr::Add { sign, promote, operands, .. } => {
+                acc_is_ext |= *promote;
                 for o in operands {
                     let v = resolve(o, &cells, &globals, ctx, r, row, layer, mode)?;
                     match sign {
@@ -75,24 +82,19 @@ fn interpret_layer_row_impl(
                     }
                 }
             }
-            Instr::Mul { operands, .. } => {
-                // Unary MUL Special(NegOne) → negate acc (spec §4).
-                if operands.len() == 1 {
-                    if let OperandLine::Ldc { sub: LdcSub::Special, idx } = operands[0] {
-                        if idx == Special::NegOne as u16 {
-                            let mut n = Ext::ZERO;
-                            n.sub_assign(&acc);
-                            acc = n;
-                            continue;
-                        }
-                    }
+            Instr::Mul { promote, negate_acc, operands, .. } => {
+                acc_is_ext |= *promote;
+                // Sign bit = negate acc FIRST (spec §1.2); zero operands = pure negation.
+                if *negate_acc {
+                    acc.negate();
                 }
                 for o in operands {
                     let v = resolve(o, &cells, &globals, ctx, r, row, layer, mode)?;
                     acc.mul_assign(&v);
                 }
             }
-            Instr::Fma { sign, pairs, .. } => {
+            Instr::Fma { sign, promote, pairs, .. } => {
+                acc_is_ext |= *promote;
                 for (l, rhs) in pairs {
                     let mut prod = resolve(l, &cells, &globals, ctx, r, row, layer, mode)?;
                     prod.mul_assign(&resolve(rhs, &cells, &globals, ctx, r, row, layer, mode)?);
@@ -104,6 +106,10 @@ fn interpret_layer_row_impl(
             }
         }
     }
+
+    // Values on this model never depend on the domain flag; static enforcement
+    // of the promote/domain rules is the validator's job (Task 3).
+    let _ = acc_is_ext;
 
     let mut by_root = HashMap::new();
     for (rid, out) in &compiled.root_outputs {
@@ -524,6 +530,167 @@ mod tests {
         let mut expected = Ext::ZERO;
         expected.sub_assign(&lift(Bf::from_u32_with_reduction(5)));
         assert_eq!(out.by_root[&RootId(0)], expected, "negate mismatch");
+    }
+
+    // ── v2: Mul sign=Minus = negate acc first (spec §1.2) ────────────────────
+
+    /// Program: MOV acc ← Global{col=5}; MUL{negate_acc, arity 0}
+    /// Row = 0. read(5,0) = lift(5). Zero-arity Mul-minus = pure acc negation.
+    /// Expected acc = −lift(5).
+    #[test]
+    fn mul_minus_negates_acc() {
+        let program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Global { slot: 0, col: 5 }),
+                },
+                Instr::Mul {
+                    field: OperandField::Base,
+                    promote: false,
+                    negate_acc: true,
+                    operands: vec![],
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::Smem { cell: 0 }),
+                    src: None,
+                },
+            ],
+        };
+        let compiled = minimal_compiled(
+            program,
+            vec![(RootId(0), RootOutput::Cell(OutputCell::Smem(0)))],
+        );
+        let layer = empty_layer();
+        let read = ColPlusRowReadResolver;
+        let challenge = FixedChallengeResolver(Ext::ZERO);
+        let r = make_resolvers(&read, &challenge);
+
+        let out = interpret_layer_row(&compiled, &layer, &r, 0).unwrap();
+        let mut expected = lift(Bf::from_u32_with_reduction(5));
+        expected.negate();
+        assert_eq!(out.by_root[&RootId(0)], expected, "Mul-minus negation mismatch");
+    }
+
+    /// Program: MOV acc ← Global{col=2}; MUL{negate_acc, [Global{col=3}]}
+    /// Row = 1. acc_before = lift(3); operand = lift(4).
+    /// Expected acc = (−lift(3)) · lift(4) = −lift(12).
+    #[test]
+    fn mul_minus_then_operands() {
+        let program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Global { slot: 0, col: 2 }),
+                },
+                Instr::Mul {
+                    field: OperandField::Base,
+                    promote: false,
+                    negate_acc: true,
+                    operands: vec![OperandLine::Global { slot: 0, col: 3 }],
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::Smem { cell: 0 }),
+                    src: None,
+                },
+            ],
+        };
+        let compiled = minimal_compiled(
+            program,
+            vec![(RootId(0), RootOutput::Cell(OutputCell::Smem(0)))],
+        );
+        let layer = empty_layer();
+        let read = ColPlusRowReadResolver;
+        let challenge = FixedChallengeResolver(Ext::ZERO);
+        let r = make_resolvers(&read, &challenge);
+
+        let out = interpret_layer_row(&compiled, &layer, &r, 1).unwrap();
+        let mut expected = lift(Bf::from_u32_with_reduction(3)); // col 2 + row 1
+        expected.negate();
+        expected.mul_assign(&lift(Bf::from_u32_with_reduction(4))); // col 3 + row 1
+        assert_eq!(out.by_root[&RootId(0)], expected, "Mul-minus-then-mul mismatch");
+    }
+
+    // ── v2: promote lifts a base acc (semantic no-op on the Ext-valued CPU) ──
+
+    /// Program: MOV{Base} acc ← Global{col=2}; ADD{Ext, promote} ConstChallenge.
+    /// acc starts base-domain as lift(2); promote lifts it, then adds the e4
+    /// challenge. On the Ext-valued CPU model values are already embedded, so
+    /// the result must equal lift(2) + challenge exactly.
+    #[test]
+    fn promote_lifts_base_acc() {
+        use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengeRef, ChallengePower};
+        let alpha_ref = ChallengeRef {
+            key: ChallengeKey::LookupAdditive,
+            power: ChallengePower::One,
+        };
+        let alpha_val = lift(Bf::from_u32_with_reduction(3));
+
+        let mut backings = BackingTable::default();
+        backings.intern(BackingKey::BaseLayerMemory).unwrap();
+        let mut challenges = crate::fwd::source::ChallengeBanks::default();
+        let (sub, idx) = challenges.intern(&alpha_ref);
+
+        let ctx = DagForwardContext {
+            specials: SpecialTable::default(),
+            consts: ConstBank::default(),
+            challenges,
+            backings,
+            actions: std::collections::HashMap::new(),
+            cache_loc: std::collections::HashMap::new(),
+            cross_layer_fields: std::collections::HashMap::new(),
+        };
+
+        let program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Global { slot: 0, col: 2 }),
+                },
+                Instr::Add {
+                    field: OperandField::Ext,
+                    sign: Sign::Plus,
+                    promote: true,
+                    operands: vec![OperandLine::Ldc { sub, idx }],
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Ext,
+                    dst: Some(DstLine::Smem { cell: 0 }),
+                    src: None,
+                },
+            ],
+        };
+        let compiled = CompiledLayer {
+            program,
+            ctx,
+            root_outputs: vec![(RootId(0), RootOutput::Cell(OutputCell::Smem(0)))],
+            skipped: vec![],
+            trace: CompileTrace::default(),
+            budget: 4,
+            stats: CompileStats::default(),
+            resident_realized: vec![],
+        };
+
+        let layer = empty_layer();
+        let read = ColPlusRowReadResolver;
+        let challenge = FixedChallengeResolver(alpha_val);
+        let r = make_resolvers(&read, &challenge);
+
+        let out = interpret_layer_row(&compiled, &layer, &r, 0).unwrap();
+        // lift(2) + lift(3) = lift(5)
+        let expected = lift(Bf::from_u32_with_reduction(5));
+        assert_eq!(out.by_root[&RootId(0)], expected, "promote add mismatch");
     }
 
     // ── Test 5: base-acc + Ext-challenge ADD (mixed promote) ─────────────────
