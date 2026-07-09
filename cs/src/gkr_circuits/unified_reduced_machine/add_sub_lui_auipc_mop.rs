@@ -478,11 +478,32 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             - Expr::var(out_low)
             - Expr::var(intermediate_carry_var) * carry_shift;
 
+        // tri-add (unified-only): rd = rs1 + rs2 + rd_old (wrapping u32), per-16-bit-limb.
+        // Each limb carry ∈ {0,1,2} is encoded as a sum of two Booleans (chained-Boolean
+        // carries): low = intermediate_carry (of_slots[1]) + tri_clo_b (of_slots[2]),
+        // high = carry (of_slots[0]) + tri_chi_b (of_slots[3]); out limbs are 16-bit
+        // range-checked, so each limb equation uniquely determines (out, carry) and the
+        // discarded top carry realises the mod-2^32 wrap. Folded into the family
+        // select-then-sum below as a 5th masked branch; idle when is_tri_add = 0.
+        // NOTE: unlike the former standalone is_tri_add-gated constraints, the folded
+        // form is sound only if the F1 flags are mutually exclusive (a two-flag row could
+        // satisfy the sum with eq_add = -eq_tri). Exclusivity is decoder-ROM-guaranteed
+        // (packed bitmask bound atomically per instruction + Booleanity) — the same invariant
+        // the F3 exclusivity deletion relies on.
+        let rd_old_low_e = Expr::var(rd_read_limbs[0]);
+        let rd_old_high_e = Expr::var(rd_read_limbs[1]);
+        let tri_clo = Expr::<F>::from(intermediate_carry) + Expr::<F>::from(tri_clo_b);
+        let tri_chi = Expr::<F>::from(carry) + Expr::<F>::from(tri_chi_b);
+        let eq_tri_low = rs1_low_e.clone() + rs2_low_e.clone() + rd_old_low_e
+            - Expr::var(out_low)
+            - tri_clo.clone() * carry_shift;
+
         cs.add_constraint_expr(Expr::Sum(vec![
             eq_add_low.mask(is_add),
             eq_auipc_low.mask(is_auipc),
             eq_sub_low.mask(is_sub),
             eq_modular_low * is_modular.clone(),
+            eq_tri_low.mask(is_tri_add),
         ]));
 
         // high limb: same structure plus intermediate_carry (carry-in from low limb),
@@ -510,36 +531,18 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             - Expr::var(out_high)
             - Expr::var(carry_var) * carry_shift;
 
+        // tri-add high limb: carry-in = tri_clo (the low limb's 2-bit carry), carry-out = tri_chi.
+        let eq_tri_high = tri_clo + rs1_high_e.clone() + rs2_high_e.clone() + rd_old_high_e
+            - Expr::var(out_high)
+            - tri_chi * carry_shift;
+
         cs.add_constraint_expr(Expr::Sum(vec![
             eq_add_high.mask(is_add),
             eq_auipc_high.mask(is_auipc),
             eq_sub_high.mask(is_sub),
             eq_modular_high * is_modular,
+            eq_tri_high.mask(is_tri_add),
         ]));
-    }
-
-    // tri-add (unified-only): rd = rs1 + rs2 + rd_old (wrapping u32), per-16-bit-limb.
-    // Each limb carry ∈ {0,1,2} is encoded as a sum of two Booleans (chained-Boolean carries):
-    //   low  carry = intermediate_carry (of_slots[1]) + tri_clo_b (of_slots[2])
-    //   high carry = carry              (of_slots[0]) + tri_chi_b (of_slots[3])
-    // out_low/out_high are 16-bit range-checked (above) and rd_read limbs are 16-bit register
-    // reads, so each limb equation uniquely determines (out, carry); the discarded top carry
-    // (chi) ∈ {0,1,2} realises the mod-2^32 wrap. Both gated by is_tri_add (=0 ⇒ trivially sat).
-    {
-        let rd_old_low_e = Expr::var(rd_read_limbs[0]);
-        let rd_old_high_e = Expr::var(rd_read_limbs[1]);
-        let clo = Expr::<F>::from(intermediate_carry) + Expr::<F>::from(tri_clo_b);
-        let chi = Expr::<F>::from(carry) + Expr::<F>::from(tri_chi_b);
-
-        let eq_tri_low = rs1_low_e.clone() + rs2_low_e.clone() + rd_old_low_e
-            - Expr::var(out_low)
-            - clo.clone() * carry_shift;
-        let eq_tri_high = clo + rs1_high_e.clone() + rs2_high_e.clone() + rd_old_high_e
-            - Expr::var(out_high)
-            - chi * carry_shift;
-
-        cs.add_constraint_expr(eq_tri_low.mask(is_tri_add));
-        cs.add_constraint_expr(eq_tri_high.mask(is_tri_add));
     }
 
     // Delegation call
