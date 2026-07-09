@@ -99,7 +99,7 @@ fn operand_field_to_acc(f: OperandField) -> AccField {
     match f { OperandField::Base => AccField::Base, OperandField::Ext => AccField::Ext }
 }
 
-fn check_field_transitions(compiled: &CompiledLayer) -> Result<(), CompileError> {
+fn check_field_transitions(compiled: &CompiledLayer, mode: AccDomainMode) -> Result<(), CompileError> {
     let mut acc = AccField::Uninit;
 
     for instr in &compiled.program.instrs {
@@ -107,14 +107,21 @@ fn check_field_transitions(compiled: &CompiledLayer) -> Result<(), CompileError>
             Instr::Mov { dir, field, dst, .. } => {
                 match dir {
                     MovDir::AccFromSrc => {
-                        // Load into acc — sets acc field from MOV field bit.
+                        // Load into acc — sets acc domain from the MOV field bit
+                        // (§1.1, identical in both modes).
                         acc = operand_field_to_acc(*field);
                     }
                     MovDir::DstFromAcc => {
-                        // Materialize acc → dst. dst field must match acc.
-                        // `promote` is rejected: we only accept what join produces
-                        // from instruction's own field vs acc.
+                        // Materialize acc → dst. dst field must match acc; in
+                        // strict mode a Base store of an ext acc is the §1.4
+                        // implicit-truncation error specifically.
                         let dst_field = *field;
+                        if mode == AccDomainMode::StrictV2
+                            && dst_field == OperandField::Base
+                            && acc == AccField::Ext
+                        {
+                            return Err(CompileError::AccTruncation);
+                        }
                         let expected_acc = operand_field_to_acc(dst_field);
                         if acc != AccField::Uninit && acc != expected_acc {
                             return Err(CompileError::FieldMismatch(format!(
@@ -132,22 +139,39 @@ fn check_field_transitions(compiled: &CompiledLayer) -> Result<(), CompileError>
                     }
                 }
             }
-            Instr::Add { field, .. } => {
-                if acc == AccField::Uninit {
-                    // First ADD without a preceding MOV — treat as initializing.
-                    acc = operand_field_to_acc(*field);
-                } else {
-                    acc = join(acc, *field);
+            Instr::Add { field, promote, .. } => match mode {
+                AccDomainMode::StrictV2 => {
+                    // §1.3: Add{Ext} requires an ext acc; Add{Base} never does.
+                    acc = step_acc_domain_strict(acc, *field == OperandField::Ext, *promote)?;
                 }
-            }
-            Instr::Mul { field, .. } => {
-                if acc == AccField::Uninit {
-                    acc = operand_field_to_acc(*field);
-                } else {
-                    acc = join(acc, *field);
+                AccDomainMode::Legacy => {
+                    if acc == AccField::Uninit {
+                        // First ADD without a preceding MOV — treat as initializing.
+                        acc = operand_field_to_acc(*field);
+                    } else {
+                        acc = join(acc, *field);
+                    }
                 }
-            }
-            Instr::Fma { field_lhs, field_rhs, .. } => {
+            },
+            Instr::Mul { field, promote, operands, .. } => match mode {
+                AccDomainMode::StrictV2 => {
+                    // §1.3: Mul{Base} dispatches on the acc domain (bf mul vs
+                    // 4-limb scale) — it never REQUIRES ext. Zero-arity Mul is
+                    // pure acc negation, typed by the acc domain: no requirement
+                    // regardless of the field bit. Only Mul{Ext} with operands
+                    // requires an ext acc.
+                    let requires_ext = *field == OperandField::Ext && !operands.is_empty();
+                    acc = step_acc_domain_strict(acc, requires_ext, *promote)?;
+                }
+                AccDomainMode::Legacy => {
+                    if acc == AccField::Uninit {
+                        acc = operand_field_to_acc(*field);
+                    } else {
+                        acc = join(acc, *field);
+                    }
+                }
+            },
+            Instr::Fma { field_lhs, field_rhs, promote, .. } => {
                 // EB order is non-canonical — reject structurally (check 7 also
                 // catches this, but assert here as well for field-consistency).
                 if *field_lhs == OperandField::Ext && *field_rhs == OperandField::Base {
@@ -155,19 +179,55 @@ fn check_field_transitions(compiled: &CompiledLayer) -> Result<(), CompileError>
                         "FMA in non-canonical EB order".to_string(),
                     ));
                 }
-                let product_field = join(operand_field_to_acc(*field_lhs), *field_rhs);
-                if acc == AccField::Uninit {
-                    acc = product_field;
-                } else {
-                    acc = match (acc, product_field) {
-                        (AccField::Ext, _) | (_, AccField::Ext) => AccField::Ext,
-                        _ => AccField::Base,
-                    };
+                match mode {
+                    AccDomainMode::StrictV2 => {
+                        // §1.3: Fma{B,B} never requires ext; Fma{B,E} and
+                        // Fma{E,E} do (full e4 add of the product into acc).
+                        acc = step_acc_domain_strict(acc, *field_rhs == OperandField::Ext, *promote)?;
+                    }
+                    AccDomainMode::Legacy => {
+                        let product_field = join(operand_field_to_acc(*field_lhs), *field_rhs);
+                        if acc == AccField::Uninit {
+                            acc = product_field;
+                        } else {
+                            acc = match (acc, product_field) {
+                                (AccField::Ext, _) | (_, AccField::Ext) => AccField::Ext,
+                                _ => AccField::Base,
+                            };
+                        }
+                    }
                 }
             }
         }
     }
     Ok(())
+}
+
+/// Strict v2 acc-domain step for one arith instruction (§1.2 promote-iff).
+///
+/// The tracked domain changes ONLY via `Mov AccFromSrc` (handled by the caller)
+/// and a valid `promote` (base→ext lift). `Uninit` is treated as base for the
+/// promote rules: an ext-requiring op must never execute against an
+/// untracked/base acc (§1.6).
+fn step_acc_domain_strict(
+    acc: AccField,
+    requires_ext: bool,
+    promote: bool,
+) -> Result<AccField, CompileError> {
+    let base_domain = acc != AccField::Ext; // Base or Uninit
+    if promote {
+        // iff rule: promote exactly when the acc is base AND the op requires ext.
+        if !(base_domain && requires_ext) {
+            return Err(CompileError::PromoteNotRequired);
+        }
+        Ok(AccField::Ext)
+    } else if requires_ext && base_domain {
+        Err(CompileError::ExtAccWithoutPromote)
+    } else {
+        // Dispatch-only op: the acc domain is unchanged (a Base op on an ext
+        // acc scales/limb-0-adds in place; the acc stays ext).
+        Ok(acc)
+    }
 }
 
 // ── Check 4: Ext smem alignment ───────────────────────────────────────────────
@@ -400,12 +460,37 @@ fn instr_operands(instr: &Instr) -> Vec<&OperandLine> {
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
+/// Acc-domain validation mode for check 3 (staged v2 rollout).
+///
+/// `Legacy` replays the v1 join model and ignores `promote` — this is what the
+/// current compiler emits (no promote bits yet). `StrictV2` enforces the spec
+/// §1.2 promote-iff acc-domain rules; Task 5 switches the pipeline to it once
+/// the compiler emits promote at base→ext transitions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccDomainMode { Legacy, StrictV2 }
+
 /// Backend validation pass (spec §12). Independently re-checks a compiled
 /// layer's invariants. A successfully compiled layer MUST pass this cleanly.
+/// Uses the LEGACY acc-domain model (compiler does not emit `promote` yet);
+/// see `validate_compiled_v2` for the strict §1.2 rules.
 pub fn validate_compiled(compiled: &CompiledLayer, layer: &DagLayer) -> Result<(), CompileError> {
+    validate_compiled_with(compiled, layer, AccDomainMode::Legacy)
+}
+
+/// `validate_compiled` with the strict v2 acc-domain rules (promote **iff**,
+/// spec §1.2–§1.4). Becomes the pipeline entry point in Task 5.
+pub fn validate_compiled_v2(compiled: &CompiledLayer, layer: &DagLayer) -> Result<(), CompileError> {
+    validate_compiled_with(compiled, layer, AccDomainMode::StrictV2)
+}
+
+fn validate_compiled_with(
+    compiled: &CompiledLayer,
+    layer: &DagLayer,
+    mode: AccDomainMode,
+) -> Result<(), CompileError> {
     check_coverage(compiled, layer)?;
     check_action_completeness(compiled, layer)?;
-    check_field_transitions(compiled)?;
+    check_field_transitions(compiled, mode)?;
     check_ext_alignment(compiled)?;
     check_storage_field_identity(compiled)?;
     check_budget(compiled)?;
@@ -979,6 +1064,208 @@ mod tests {
     fn clean_layer_passes_all_checks() {
         let layer = simple_compute_layer();
         let compiled = clean_compiled(&layer);
+        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+    }
+
+    // ── Check 3 strict v2: promote-iff acc-domain rules (§1.2–§1.4) ──────────
+
+    use super::super::isa::Sign;
+
+    /// Helper: `MOV Acc←Global(0,0)` with the given field bit.
+    fn mov_acc_from_global(field: OperandField) -> Instr {
+        Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field,
+            dst: None,
+            src: Some(OperandLine::Global { slot: 0, col: 0 }),
+        }
+    }
+
+    /// Helper: `ADD{field}` of one ConstChallenge operand (avoids storage-field
+    /// identity interactions with the Global read in the MOV).
+    fn add_challenge(field: OperandField, promote: bool) -> Instr {
+        Instr::Add {
+            field,
+            sign: Sign::Plus,
+            promote,
+            operands: vec![OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 0 }],
+        }
+    }
+
+    /// Spurious promote: `ADD{Base, promote}` on a base acc → the op does not
+    /// require an ext acc, promote violates the iff rule.
+    #[test]
+    fn v2_spurious_promote_on_base_op_rejected() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            mov_acc_from_global(OperandField::Base),
+            add_challenge(OperandField::Base, true), // promote but Add{Base} never requires ext
+        ];
+        assert_eq!(
+            validate_compiled_v2(&compiled, &layer),
+            Err(CompileError::PromoteNotRequired)
+        );
+    }
+
+    /// Promote while the tracked acc domain is already ext → PromoteNotRequired.
+    #[test]
+    fn v2_promote_on_ext_acc_rejected() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            mov_acc_from_global(OperandField::Ext), // acc domain = ext
+            add_challenge(OperandField::Ext, true), // promote on an already-ext acc
+        ];
+        assert_eq!(
+            validate_compiled_v2(&compiled, &layer),
+            Err(CompileError::PromoteNotRequired)
+        );
+    }
+
+    /// Ext-requiring op on a base acc without promote → ExtAccWithoutPromote.
+    #[test]
+    fn v2_ext_op_on_base_acc_without_promote_rejected() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            mov_acc_from_global(OperandField::Base),
+            add_challenge(OperandField::Ext, false), // Add{Ext} requires ext acc
+        ];
+        assert_eq!(
+            validate_compiled_v2(&compiled, &layer),
+            Err(CompileError::ExtAccWithoutPromote)
+        );
+    }
+
+    /// `Fma{B,E}` requires an ext acc too (§1.3) — same rejection without promote.
+    #[test]
+    fn v2_mixed_fma_on_base_acc_without_promote_rejected() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            mov_acc_from_global(OperandField::Base),
+            Instr::Fma {
+                field_lhs: OperandField::Base,
+                field_rhs: OperandField::Ext,
+                sign: Sign::Plus,
+                promote: false,
+                pairs: vec![(
+                    OperandLine::Global { slot: 0, col: 0 },
+                    OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 0 },
+                )],
+            },
+        ];
+        assert_eq!(
+            validate_compiled_v2(&compiled, &layer),
+            Err(CompileError::ExtAccWithoutPromote)
+        );
+    }
+
+    /// `Mov DstFromAcc{Base}` while the tracked acc domain is ext → AccTruncation.
+    #[test]
+    fn v2_base_store_of_ext_acc_rejected() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            mov_acc_from_global(OperandField::Base),
+            add_challenge(OperandField::Ext, true), // correct promote: acc lifts to ext
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Base, // implicit truncation — illegal
+                dst: Some(DstLine::GlobalMaterialize { slot: 0, col: 1 }),
+                src: None,
+            },
+        ];
+        assert_eq!(
+            validate_compiled_v2(&compiled, &layer),
+            Err(CompileError::AccTruncation)
+        );
+    }
+
+    /// The canonical lift program passes strict v2: base load, promote exactly
+    /// at the ext-requiring op, ext store.
+    #[test]
+    fn v2_canonical_promote_program_ok() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            mov_acc_from_global(OperandField::Base),
+            add_challenge(OperandField::Ext, true),
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Ext,
+                dst: Some(DstLine::GlobalMaterialize { slot: 0, col: 1 }),
+                src: None,
+            },
+        ];
+        assert_eq!(validate_compiled_v2(&compiled, &layer), Ok(()));
+    }
+
+    /// `Mul{Base}` dispatches on the acc domain and never REQUIRES ext (§1.3):
+    /// legal on an ext acc (4-limb scale) without promote, and the acc stays ext.
+    #[test]
+    fn v2_base_mul_on_ext_acc_ok_and_keeps_domain() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            mov_acc_from_global(OperandField::Ext), // acc domain = ext
+            Instr::Mul {
+                field: OperandField::Base, // scale — dispatches, no promote needed
+                promote: false,
+                negate_acc: false,
+                operands: vec![OperandLine::Ldc { sub: LdcSub::Const, idx: 0 }],
+            },
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Ext, // acc is still ext after the scale
+                dst: Some(DstLine::GlobalMaterialize { slot: 0, col: 1 }),
+                src: None,
+            },
+        ];
+        assert_eq!(validate_compiled_v2(&compiled, &layer), Ok(()));
+    }
+
+    /// Zero-arity `Mul{negate_acc}` (pure acc negation) dispatches on the acc
+    /// domain — legal on a base acc without promote, acc stays base.
+    #[test]
+    fn v2_zero_arity_negate_on_base_acc_ok() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            mov_acc_from_global(OperandField::Base),
+            Instr::Mul {
+                field: OperandField::Ext, // field bit irrelevant at arity 0
+                promote: false,
+                negate_acc: true,
+                operands: vec![],
+            },
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Base,
+                dst: Some(DstLine::GlobalMaterialize { slot: 0, col: 1 }),
+                src: None,
+            },
+        ];
+        assert_eq!(validate_compiled_v2(&compiled, &layer), Ok(()));
+    }
+
+    /// Staging guard: the LEGACY entry point still accepts a promote-less
+    /// base→ext transition (what the compiler emits until Task 5).
+    #[test]
+    fn legacy_accepts_promoteless_ext_transition() {
+        let layer = simple_compute_layer();
+        let mut compiled = clean_compiled(&layer);
+        compiled.program.instrs = vec![
+            mov_acc_from_global(OperandField::Base),
+            add_challenge(OperandField::Ext, false), // no promote — v1 join model
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Ext,
+                dst: Some(DstLine::GlobalMaterialize { slot: 0, col: 1 }),
+                src: None,
+            },
+        ];
         assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
     }
 }

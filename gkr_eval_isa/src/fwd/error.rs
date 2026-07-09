@@ -32,6 +32,15 @@ pub enum CompileError {
     DegenerateRoot(RootId),       // standalone empty Add/Mul root (bare 0/1 output)
     DegenerateConstProduct,       // product of only −1 factors (constant ±1, never real)
     PromoteRejected,
+    /// v2 acc-domain (§1.2 iff rule): `promote` set on an instruction that does
+    /// not require an ext acc, or while the tracked acc domain is already ext.
+    PromoteNotRequired,
+    /// v2 acc-domain (§1.3): an ext-acc-requiring op (Add{Ext}, Mul{Ext},
+    /// Fma{B,E}/{E,E}) executes on a base-domain acc without `promote` set.
+    ExtAccWithoutPromote,
+    /// v2 acc-domain (§1.4): `Mov DstFromAcc` with field=Base while the tracked
+    /// acc domain is ext — no implicit truncation.
+    AccTruncation,
     FieldMismatch(String),
     ExtCellMisaligned(u16),
     BudgetBelowFloor { floor: usize, budget: usize },
