@@ -618,15 +618,15 @@ template <bool LDG> DEVICE_FORCEINLINE void vm_body_validate(const fwd_vm_desc &
   vm_core<true, LDG>(d, cells, blockDim.x, budget_lanes, gid, error_flag);
 }
 
-// Static-smem body (release, 128 threads): BUCKETS is a compile-time constant,
-// so the __shared__ footprint is visible to ptxas - it feeds the occupancy
-// calculator and the __launch_bounds__ register sizing.
-template <bool LDG, u32 BUCKETS> DEVICE_FORCEINLINE void vm_body_static(const fwd_vm_desc &d) {
-  __shared__ e4 fwd_vm_cells_s[BUCKETS * 128]; // e4-typed for the 16-B base alignment
+// Static-smem body (release, 128 threads): BUCKETS is a compile-time constant.
+// The __shared__ cell file is declared ONCE in the kernel and passed in - if it
+// lived here, the two LDG instantiations would each get their own copy and
+// ptxas would allocate the static smem twice, halving occupancy.
+template <bool LDG, u32 BUCKETS> DEVICE_FORCEINLINE void vm_body_static(const fwd_vm_desc &d, e4 *cell_file) {
   const unsigned gid = blockIdx.x * 128 + threadIdx.x;
   if (gid >= d.count)
     return;
-  bf *cells = reinterpret_cast<bf *>(fwd_vm_cells_s);
+  bf *cells = reinterpret_cast<bf *>(cell_file);
   for (u32 c = 0; c < BUCKETS * 4; c++)
     smem_st_bf(cells, c, 128, bf::ZERO());
   vm_core<false, LDG>(d, cells, 128, BUCKETS * 4, gid, nullptr);
@@ -640,13 +640,17 @@ template <bool LDG, u32 BUCKETS> DEVICE_FORCEINLINE void vm_body_static(const fw
 
 // Release kernel per bucket budget. `program_ldg` selects the LDG fallback
 // once per launch (warp-uniform grid-constant read); the inline-program path
-// is the expected one for the whole committed corpus.
+// is the expected one for the whole committed corpus. The single kernel-scope
+// __shared__ cell file (e4-typed for the 16-B base alignment) is shared by
+// both residency paths, keeping the static smem footprint at one file so the
+// FWDVM_SMEM_BLOCKS occupancy target holds.
 #define FWDVM_STATIC_KERNEL(B)                                                                                                                                 \
   EXTERN __launch_bounds__(128, FWDVM_SMEM_BLOCKS(B)) __global__ void ab_gkr_fwd_vm_s##B##_kernel(const __grid_constant__ fwd_vm_desc desc) {                  \
+    __shared__ e4 fwd_vm_cells_s[(B) * 128];                                                                                                                   \
     if (desc.program_ldg != nullptr)                                                                                                                           \
-      vm_body_static<true, B>(desc);                                                                                                                           \
+      vm_body_static<true, B>(desc, fwd_vm_cells_s);                                                                                                           \
     else                                                                                                                                                       \
-      vm_body_static<false, B>(desc);                                                                                                                          \
+      vm_body_static<false, B>(desc, fwd_vm_cells_s);                                                                                                          \
   }
 
 // 4 buckets == the committed corpus's budget-16 bf lanes.
