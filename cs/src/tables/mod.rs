@@ -806,6 +806,9 @@ impl TableType {
             TableType::ConditionalJmpBranchSlt => {
                 LookupWrapper::Initialized(create_conditional_op_resolution_table(id))
             }
+            TableType::ConditionalJmpBranchSltUnified => {
+                LookupWrapper::Initialized(create_conditional_op_resolution_table_unified(id))
+            }
             TableType::JumpCleanupOffset => {
                 LookupWrapper::Initialized(create_jump_cleanup_offset_table(id))
             }

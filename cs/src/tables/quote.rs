@@ -54,6 +54,9 @@ impl quote::ToTokens for TableType {
             TableType::ConditionalJmpBranchSlt => {
                 quote! { TableType::ConditionalJmpBranchSlt }
             }
+            TableType::ConditionalJmpBranchSltUnified => {
+                quote! { TableType::ConditionalJmpBranchSltUnified }
+            }
             TableType::MemStoreClearOriginalRamValueLimb => {
                 quote! { TableType::MemStoreClearOriginalRamValueLimb }
             }
