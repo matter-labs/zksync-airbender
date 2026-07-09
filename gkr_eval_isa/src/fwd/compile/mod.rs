@@ -501,10 +501,13 @@ fn materialize_vinstr(
         VInstr::Add { field, sign, reads, .. } => Instr::Add {
             field: *field,
             sign: *sign,
+            promote: false,
             operands: reads.iter().map(&op_of).collect::<Result<_, _>>()?,
         },
         VInstr::Mul { field, reads, .. } => Instr::Mul {
             field: *field,
+            promote: false,
+            negate_acc: false,
             operands: reads.iter().map(&op_of).collect::<Result<_, _>>()?,
         },
         VInstr::Fma { field_lhs, field_rhs, sign, pairs, .. } => {
@@ -512,7 +515,7 @@ fn materialize_vinstr(
             for (l, r) in pairs {
                 out.push((op_of(l)?, op_of(r)?));
             }
-            Instr::Fma { field_lhs: *field_lhs, field_rhs: *field_rhs, sign: *sign, pairs: out }
+            Instr::Fma { field_lhs: *field_lhs, field_rhs: *field_rhs, sign: *sign, promote: false, pairs: out }
         }
         VInstr::Mov { dir, field, dst, src, .. } => {
             let dst = match dst {

@@ -341,6 +341,7 @@ mod tests {
                 Instr::Add {
                     field: OperandField::Base,
                     sign: Sign::Plus,
+                    promote: false,
                     operands: vec![OperandLine::Global { slot: 0, col: 5 }],
                 },
             ],
@@ -373,6 +374,7 @@ mod tests {
                 Instr::Add {
                     field: OperandField::Base,
                     sign: Sign::Plus,
+                    promote: false,
                     operands: vec![OperandLine::Global { slot: 0, col: 5 }],
                 },
                 Instr::Mov {
@@ -408,6 +410,8 @@ mod tests {
                 },
                 Instr::Mul {
                     field: OperandField::Base,
+                    promote: false,
+                    negate_acc: false,
                     operands: vec![OperandLine::Global { slot: 0, col: 3 }],
                 },
                 Instr::Mov {
@@ -446,6 +450,7 @@ mod tests {
                     field_lhs: OperandField::Base,
                     field_rhs: OperandField::Base,
                     sign: Sign::Plus,
+                    promote: false,
                     pairs: vec![
                         (OperandLine::Global { slot: 0, col: 1 }, OperandLine::Global { slot: 0, col: 2 }),
                         (OperandLine::Global { slot: 0, col: 3 }, OperandLine::Global { slot: 0, col: 4 }),
@@ -490,6 +495,8 @@ mod tests {
                 },
                 Instr::Mul {
                     field: OperandField::Base,
+                    promote: false,
+                    negate_acc: false,
                     operands: vec![OperandLine::Ldc {
                         sub: LdcSub::Special,
                         idx: Special::NegOne as u16,
@@ -562,6 +569,7 @@ mod tests {
                 Instr::Add {
                     field: OperandField::Ext,
                     sign: Sign::Plus,
+                    promote: false,
                     operands: vec![OperandLine::Ldc { sub, idx }],
                 },
                 Instr::Mov {

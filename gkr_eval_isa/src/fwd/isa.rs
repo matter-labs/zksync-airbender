@@ -53,11 +53,16 @@ pub enum DstLine {
     GlobalMaterialize { slot: u8, col: u16 },
 }
 
+/// `promote` (arith header bit 11) marks the instruction at which the acc lifts
+/// base→ext (design §1.1); encode/decode round-trip it faithfully, the iff
+/// canonicality rule is validation's job. `Mul::negate_acc` rides the sign bit
+/// (bit 12) and means "negate the acc first"; zero-arity Mul is legal iff set
+/// (pure acc negation). Zero-arity Add stays illegal.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Instr {
-    Add { field: OperandField, sign: Sign, operands: Vec<OperandLine> },
-    Mul { field: OperandField, operands: Vec<OperandLine> },
-    Fma { field_lhs: OperandField, field_rhs: OperandField, sign: Sign, pairs: Vec<(OperandLine, OperandLine)> },
+    Add { field: OperandField, sign: Sign, promote: bool, operands: Vec<OperandLine> },
+    Mul { field: OperandField, promote: bool, negate_acc: bool, operands: Vec<OperandLine> },
+    Fma { field_lhs: OperandField, field_rhs: OperandField, sign: Sign, promote: bool, pairs: Vec<(OperandLine, OperandLine)> },
     Mov { dir: MovDir, field: OperandField, dst: Option<DstLine>, src: Option<OperandLine> },
 }
 

@@ -199,7 +199,7 @@ fn check_ext_alignment(compiled: &CompiledLayer) -> Result<(), CompileError> {
                     }
                 }
             }
-            Instr::Mul { field, operands } if *field == OperandField::Ext => {
+            Instr::Mul { field, operands, .. } if *field == OperandField::Ext => {
                 for op in operands {
                     if let OperandLine::Smem { cell } = op {
                         check_ext_cell(*cell, compiled.budget)?;
@@ -292,7 +292,7 @@ fn check_storage_field_identity(compiled: &CompiledLayer) -> Result<(), CompileE
                     }
                 }
             }
-            Instr::Mul { field, operands } => {
+            Instr::Mul { field, operands, .. } => {
                 for op in operands {
                     if let OperandLine::Global { slot, col } = op {
                         record(*slot, *col, *field)?;
@@ -830,6 +830,7 @@ mod tests {
             Instr::Add {
                 field: OperandField::Base,
                 sign: super::super::isa::Sign::Plus,
+                promote: false,
                 operands: vec![
                     OperandLine::Ldc { sub: LdcSub::Special, idx: Special::Zero as u16 },
                 ],
@@ -856,6 +857,7 @@ mod tests {
             Instr::Add {
                 field: OperandField::Base,
                 sign: super::super::isa::Sign::Plus,
+                promote: false,
                 operands: vec![
                     OperandLine::Ldc { sub: LdcSub::Special, idx: Special::One as u16 },
                 ],
@@ -885,6 +887,8 @@ mod tests {
             },
             Instr::Mul {
                 field: OperandField::Base,
+                promote: false,
+                negate_acc: false,
                 operands: vec![
                     OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 },
                 ],
@@ -910,6 +914,7 @@ mod tests {
                 field_lhs: OperandField::Ext,  // EB = non-canonical
                 field_rhs: OperandField::Base,
                 sign: super::super::isa::Sign::Plus,
+                promote: false,
                 pairs: vec![(
                     OperandLine::Global { slot: 0, col: 0 },
                     OperandLine::Global { slot: 0, col: 1 },
@@ -932,6 +937,7 @@ mod tests {
                 field_lhs: OperandField::Base,  // canonical BE
                 field_rhs: OperandField::Ext,
                 sign: super::super::isa::Sign::Plus,
+                promote: false,
                 pairs: vec![(
                     OperandLine::Global { slot: 0, col: 0 },
                     OperandLine::Global { slot: 0, col: 1 },

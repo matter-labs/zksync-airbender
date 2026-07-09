@@ -349,6 +349,7 @@ mod tests {
             instrs: vec![Instr::Add {
                 field: crate::fwd::isa::OperandField::Base,
                 sign: crate::fwd::isa::Sign::Plus,
+                promote: false,
                 operands: vec![OperandLine::Special { desc }],
             }],
         };
@@ -370,6 +371,7 @@ mod tests {
             instrs: vec![Instr::Add {
                 field: crate::fwd::isa::OperandField::Base,
                 sign: crate::fwd::isa::Sign::Plus,
+                promote: false,
                 operands: vec![OperandLine::Special { desc: 0 }],
             }],
         };
@@ -413,6 +415,7 @@ mod tests {
             instrs: vec![Instr::Add {
                 field: crate::fwd::isa::OperandField::Base,
                 sign: crate::fwd::isa::Sign::Plus,
+                promote: false,
                 operands: vec![OperandLine::Special { desc: 0 }],
             }],
         };

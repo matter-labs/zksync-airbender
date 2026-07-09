@@ -15,8 +15,8 @@ pub enum EncodeError {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DecodeError {
-    BadOperandType(u16), BadMovDir(u16), NonZeroReserved, PromoteSet,
-    NonCanonicalField, NonCanonicalSign, ZeroArity, Truncated, SpecialIdx(u16),
+    BadOperandType(u16), BadMovDir(u16), NonZeroReserved,
+    NonCanonicalField, ZeroArity, Truncated, SpecialIdx(u16),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

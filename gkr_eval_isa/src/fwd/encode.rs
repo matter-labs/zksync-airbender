@@ -96,28 +96,31 @@ mod tests {
     }
 }
 
-fn pack_arith_header(op: Opcode, arity: usize, f0: OperandField, f1: OperandField, sign: Sign) -> Result<u16, EncodeError> {
-    if arity == 0 || arity > MAX_ARITY { return Err(EncodeError::ArityOutOfRange(arity)); }
-    Ok((op as u16) | ((arity as u16) << 2) | ((f0 as u16) << 9) | ((f1 as u16) << 10) | ((sign as u16) << 12))
+fn pack_arith_header(op: Opcode, arity: usize, f0: OperandField, f1: OperandField, promote: bool, sign: Sign) -> Result<u16, EncodeError> {
+    // Zero arity is legal only for Mul-minus (pure acc negation, §1.2).
+    let zero_arity_ok = op == Opcode::Mul && sign == Sign::Minus;
+    if (arity == 0 && !zero_arity_ok) || arity > MAX_ARITY { return Err(EncodeError::ArityOutOfRange(arity)); }
+    Ok((op as u16) | ((arity as u16) << 2) | ((f0 as u16) << 9) | ((f1 as u16) << 10) | ((promote as u16) << 11) | ((sign as u16) << 12))
 }
 
 pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
     let mut out = Vec::new();
     for instr in &p.instrs {
         match instr {
-            Instr::Add { field, sign, operands } => {
-                out.push(pack_arith_header(Opcode::Add, operands.len(), *field, OperandField::Base, *sign)?);
+            Instr::Add { field, sign, promote, operands } => {
+                out.push(pack_arith_header(Opcode::Add, operands.len(), *field, OperandField::Base, *promote, *sign)?);
                 for o in operands { out.push(pack_operand(*o)?); }
             }
-            Instr::Mul { field, operands } => {
-                out.push(pack_arith_header(Opcode::Mul, operands.len(), *field, OperandField::Base, Sign::Plus)?);
+            Instr::Mul { field, promote, negate_acc, operands } => {
+                let sign = if *negate_acc { Sign::Minus } else { Sign::Plus };
+                out.push(pack_arith_header(Opcode::Mul, operands.len(), *field, OperandField::Base, *promote, sign)?);
                 for o in operands { out.push(pack_operand(*o)?); }
             }
-            Instr::Fma { field_lhs, field_rhs, sign, pairs } => {
+            Instr::Fma { field_lhs, field_rhs, sign, promote, pairs } => {
                 if *field_lhs == OperandField::Ext && *field_rhs == OperandField::Base {
                     return Err(EncodeError::NonCanonicalFmaOrder);
                 }
-                out.push(pack_arith_header(Opcode::Fma, pairs.len(), *field_lhs, *field_rhs, *sign)?);
+                out.push(pack_arith_header(Opcode::Fma, pairs.len(), *field_lhs, *field_rhs, *promote, *sign)?);
                 for (l, r) in pairs { out.push(pack_operand(*l)?); out.push(pack_operand(*r)?); }
             }
             Instr::Mov { dir, field, dst, src } => {
@@ -154,31 +157,34 @@ pub fn decode(lanes: &[u16]) -> Result<Program, DecodeError> {
             instrs.push(Instr::Mov { dir, field, dst, src });
             continue;
         }
-        if (h >> 11) & 1 == 1 { return Err(DecodeError::PromoteSet); }
         if (h >> 13) != 0 { return Err(DecodeError::NonZeroReserved); }
         let arity = ((h >> 2) & 0x7f) as usize;
-        if arity == 0 { return Err(DecodeError::ZeroArity); }
         let f0 = if (h >> 9) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
         let f1 = if (h >> 10) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
+        let promote = (h >> 11) & 1 == 1;
         let sign = if (h >> 12) & 1 == 1 { Sign::Minus } else { Sign::Plus };
         match op {
             x if x == Opcode::Add as u16 => {
                 if f1 != OperandField::Base { return Err(DecodeError::NonCanonicalField); }
+                if arity == 0 { return Err(DecodeError::ZeroArity); }
                 let operands = (0..arity).map(|_| unpack_operand(next(lanes, &mut i)?)).collect::<Result<_,_>>()?;
-                instrs.push(Instr::Add { field: f0, sign, operands });
+                instrs.push(Instr::Add { field: f0, sign, promote, operands });
             }
             x if x == Opcode::Mul as u16 => {
                 if f1 != OperandField::Base { return Err(DecodeError::NonCanonicalField); }
-                if sign != Sign::Plus { return Err(DecodeError::NonCanonicalSign); }
+                let negate_acc = sign == Sign::Minus;
+                // Zero-arity Mul = pure acc negation, legal iff negate_acc (§1.2).
+                if arity == 0 && !negate_acc { return Err(DecodeError::ZeroArity); }
                 let operands = (0..arity).map(|_| unpack_operand(next(lanes, &mut i)?)).collect::<Result<_,_>>()?;
-                instrs.push(Instr::Mul { field: f0, operands });
+                instrs.push(Instr::Mul { field: f0, promote, negate_acc, operands });
             }
             _ => { // Fma
                 // Mixed FMA is canonical (Base, Ext); EB is the swapped duplicate — reject it.
                 if f0 == OperandField::Ext && f1 == OperandField::Base { return Err(DecodeError::NonCanonicalField); }
+                if arity == 0 { return Err(DecodeError::ZeroArity); }
                 let mut pairs = Vec::with_capacity(arity);
                 for _ in 0..arity { let l = unpack_operand(next(lanes, &mut i)?)?; let r = unpack_operand(next(lanes, &mut i)?)?; pairs.push((l, r)); }
-                instrs.push(Instr::Fma { field_lhs: f0, field_rhs: f1, sign, pairs });
+                instrs.push(Instr::Fma { field_lhs: f0, field_rhs: f1, sign, promote, pairs });
             }
         }
     }
@@ -191,19 +197,53 @@ mod header_tests {
     fn sample() -> Program {
         Program { instrs: vec![
             Instr::Mov { dir: MovDir::AccFromSrc, field: OperandField::Base, dst: None, src: Some(OperandLine::Global { slot: 0, col: 0 }) },
-            Instr::Add { field: OperandField::Base, sign: Sign::Plus, operands: vec![OperandLine::Global { slot: 0, col: 1 }, OperandLine::Smem { cell: 4 }] },
-            Instr::Mul { field: OperandField::Ext, operands: vec![OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 }] },
-            Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, sign: Sign::Minus, pairs: vec![(OperandLine::Global { slot: 1, col: 2 }, OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 1 })] }, // canonical mixed (Base,Ext)
+            Instr::Add { field: OperandField::Base, sign: Sign::Plus, promote: false, operands: vec![OperandLine::Global { slot: 0, col: 1 }, OperandLine::Smem { cell: 4 }] },
+            Instr::Mul { field: OperandField::Ext, promote: false, negate_acc: false, operands: vec![OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 }] },
+            Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, sign: Sign::Minus, promote: false, pairs: vec![(OperandLine::Global { slot: 1, col: 2 }, OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 1 })] }, // canonical mixed (Base,Ext)
             Instr::Mov { dir: MovDir::DstFromAcc, field: OperandField::Ext, dst: Some(DstLine::Smem { cell: 0 }), src: None },
             Instr::Mov { dir: MovDir::DstFromSrc, field: OperandField::Base, dst: Some(DstLine::GlobalMaterialize { slot: 2, col: 5 }), src: Some(OperandLine::Global { slot: 0, col: 9 }) },
         ] }
     }
     #[test] fn full_program_roundtrip() { let p = sample(); assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p); }
-    #[test] fn rejects_promote() { let h = (Opcode::Add as u16) | (1 << 2) | (1 << 11); assert_eq!(decode(&[h, 0]), Err(DecodeError::PromoteSet)); }
+    #[test]
+    fn promote_roundtrips() {
+        // v2: promote (bit 11) is legal on every arith header; encode/decode
+        // round-trip the bit faithfully (semantics are validation's job).
+        let p = Program { instrs: vec![
+            Instr::Add { field: OperandField::Ext, sign: Sign::Plus, promote: true, operands: vec![OperandLine::Smem { cell: 4 }] },
+            Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, sign: Sign::Minus, promote: true, pairs: vec![(OperandLine::Global { slot: 0, col: 1 }, OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 0 })] },
+            Instr::Mul { field: OperandField::Ext, promote: true, negate_acc: false, operands: vec![OperandLine::Smem { cell: 8 }] },
+        ] };
+        assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);
+    }
+    #[test]
+    fn mul_minus_negates() {
+        // Mul sign bit = negate-acc-first; zero-arity Mul is legal iff negate_acc.
+        let zero_arity = Instr::Mul { field: OperandField::Base, promote: false, negate_acc: true, operands: vec![] };
+        let unary = Instr::Mul { field: OperandField::Ext, promote: false, negate_acc: true, operands: vec![OperandLine::Smem { cell: 4 }] };
+        for instr in [zero_arity, unary] {
+            let p = Program { instrs: vec![instr] };
+            assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);
+        }
+    }
+    #[test]
+    fn rejects_zero_arity_mul_plus() {
+        // decode: Mul header, arity 0, sign=Plus.
+        assert_eq!(decode(&[Opcode::Mul as u16]), Err(DecodeError::ZeroArity));
+        // encode: zero-arity Mul without negate_acc.
+        let p = Program { instrs: vec![Instr::Mul { field: OperandField::Base, promote: false, negate_acc: false, operands: vec![] }] };
+        assert_eq!(encode(&p), Err(EncodeError::ArityOutOfRange(0)));
+    }
     #[test] fn rejects_mov_reserved() { assert_eq!(decode(&[(Opcode::Mov as u16) | (1 << 5), 0]), Err(DecodeError::NonZeroReserved)); }
     #[test] fn rejects_add_field1() { let h = (Opcode::Add as u16) | (1 << 2) | (1 << 10); assert_eq!(decode(&[h, 0]), Err(DecodeError::NonCanonicalField)); }
-    #[test] fn rejects_mul_sign() { let h = (Opcode::Mul as u16) | (1 << 2) | (1 << 12); assert_eq!(decode(&[h, 0]), Err(DecodeError::NonCanonicalSign)); }
-    #[test] fn rejects_zero_arity() { assert_eq!(decode(&[Opcode::Add as u16]), Err(DecodeError::ZeroArity)); }
+    #[test]
+    fn rejects_zero_arity_add() {
+        assert_eq!(decode(&[Opcode::Add as u16]), Err(DecodeError::ZeroArity));
+        // Zero-arity Add stays illegal even with sign=Minus (no Add analogue of Mul-minus).
+        assert_eq!(decode(&[(Opcode::Add as u16) | (1 << 12)]), Err(DecodeError::ZeroArity));
+        let p = Program { instrs: vec![Instr::Add { field: OperandField::Base, sign: Sign::Minus, promote: false, operands: vec![] }] };
+        assert_eq!(encode(&p), Err(EncodeError::ArityOutOfRange(0)));
+    }
     #[test] fn rejects_eb_fma() { let h = (Opcode::Fma as u16) | (1 << 2) | (1 << 9); /* f0=Ext,f1=Base */ assert_eq!(decode(&[h, 0, 0]), Err(DecodeError::NonCanonicalField)); }
     #[test] fn encode_rejects_eb_fma_order() {
         // EB (Ext,Base) is the non-canonical duplicate of canonical BE (Base,Ext).
@@ -212,6 +252,7 @@ mod header_tests {
             field_lhs: OperandField::Ext,
             field_rhs: OperandField::Base,
             sign: Sign::Plus,
+            promote: false,
             pairs: vec![(OperandLine::Global { slot: 0, col: 0 }, OperandLine::Global { slot: 0, col: 1 })],
         };
         assert_eq!(
@@ -224,5 +265,5 @@ mod header_tests {
             "sample() must include a canonical BE FMA for this assertion to be meaningful");
         assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);
     }
-    #[test] fn rejects_truncated() { let h = pack_arith_header(Opcode::Add, 2, OperandField::Base, OperandField::Base, Sign::Plus).unwrap(); assert_eq!(decode(&[h, 0]), Err(DecodeError::Truncated)); }
+    #[test] fn rejects_truncated() { let h = pack_arith_header(Opcode::Add, 2, OperandField::Base, OperandField::Base, false, Sign::Plus).unwrap(); assert_eq!(decode(&[h, 0]), Err(DecodeError::Truncated)); }
 }

@@ -157,6 +157,7 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
             field,
             sign,
             operands,
+            ..
         } => {
             let s = if matches!(sign, Sign::Minus) {
                 "-"
@@ -166,7 +167,7 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
             let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx, layer)).collect();
             fmt_lanes(&format!("ADD.{} acc {s}= ", field_tag(field)), &lanes, '+')
         }
-        Instr::Mul { field, operands } => {
+        Instr::Mul { field, operands, .. } => {
             let lanes: Vec<String> = operands.iter().map(|o| fmt_operand(o, ctx, layer)).collect();
             fmt_lanes(&format!("MUL.{} acc *= ", field_tag(field)), &lanes, '*')
         }
@@ -175,6 +176,7 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
             field_rhs,
             sign,
             pairs,
+            ..
         } => {
             let s = if matches!(sign, Sign::Minus) {
                 "-"
