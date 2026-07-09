@@ -42,6 +42,7 @@ default = ["security_80", "deterministic_pow"]
 security_80 = ["gpu_execution_prover/security_80", "gpu_circuit_prover/security_80"]
 security_100 = ["gpu_execution_prover/security_100", "gpu_circuit_prover/security_100"]
 deterministic_pow = ["gpu_execution_prover/deterministic_pow"]
+eval_leaves = ["gpu_execution_prover/eval_leaves", "gpu_circuit_prover/eval_leaves"]
 # Pulls in the embedded verifier circuits so proofs can be verified natively.
 # Non-default: mirrors prover_examples' gating — the verifier build is heavy.
 verifiers = [
