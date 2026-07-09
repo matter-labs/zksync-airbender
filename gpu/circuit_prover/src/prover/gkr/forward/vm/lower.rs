@@ -157,6 +157,15 @@ pub(crate) enum FwdVmLowerError {
     /// Two decoder descs resolved to different execute-predicate columns
     /// (the desc header holds ONE mask pointer).
     DecoderMaskConflict,
+    /// Two dense columns of one slot resolved to the SAME matrix column — a
+    /// resolver bug would otherwise silently alias two distinct dense columns
+    /// onto one wire `col`, producing a well-formed-but-wrong program. Hard
+    /// error: this is the last line of defense before an expensive GPU
+    /// parity debug cycle.
+    ColRemapCollision {
+        slot: u8,
+        matrix_col: usize,
+    },
 }
 
 /// Owning wrapper for one lowered layer. The descriptor is passed BY VALUE at
@@ -274,6 +283,9 @@ fn derive_slot_geometry(
                     matrix_col,
                 });
             }
+            if geom.remap[s].contains(&(matrix_col as u16)) {
+                return Err(FwdVmLowerError::ColRemapCollision { slot, matrix_col });
+            }
             geom.remap[s].push(matrix_col as u16);
         }
     }
@@ -378,9 +390,14 @@ fn rewrite_program(cl: &CompiledLayer, geom: &SlotGeometry) -> Result<Program, F
 /// Length of a `ChallengeBanks` channel — the banks expose no length accessor,
 /// so probe `get` upward from 0 (dense `Vec` internally, terminates at the
 /// real length; same technique as the bench harness).
-fn challenge_bank_len(cl: &CompiledLayer, sub: LdcSub) -> usize {
+///
+/// `cap` structurally bounds the probe at `cap + 1`: the caller's own cap
+/// check (`n > cap` → hard error) fires right after, so a corrupt/oversized
+/// bank can never drive `n` past `cap + 1` and wrap `n as u16` into an
+/// infinite loop (`ARG_CHALLENGE_CAP`/`CONST_CHALLENGE_CAP` are both « 2^16).
+fn challenge_bank_len(cl: &CompiledLayer, sub: LdcSub, cap: usize) -> usize {
     let mut n = 0usize;
-    while cl.ctx.challenges.get(sub, n as u16).is_some() {
+    while n <= cap && cl.ctx.challenges.get(sub, n as u16).is_some() {
         n += 1;
     }
     n
@@ -451,7 +468,7 @@ pub(crate) fn lower_layer_desc(
     }
     desc.n_consts = consts.len() as u32;
 
-    let n_arg = challenge_bank_len(cl, LdcSub::ArgChallenge);
+    let n_arg = challenge_bank_len(cl, LdcSub::ArgChallenge, ARG_CHALLENGE_CAP);
     if n_arg > ARG_CHALLENGE_CAP {
         return Err(FwdVmLowerError::ArgChallengeOverflow { n: n_arg });
     }
@@ -465,7 +482,7 @@ pub(crate) fn lower_layer_desc(
     }
     desc.n_arg_challenge = n_arg as u32;
 
-    let n_const_challenge = challenge_bank_len(cl, LdcSub::ConstChallenge);
+    let n_const_challenge = challenge_bank_len(cl, LdcSub::ConstChallenge, CONST_CHALLENGE_CAP);
     if n_const_challenge > CONST_CHALLENGE_CAP {
         return Err(FwdVmLowerError::ConstChallengeOverflow {
             n: n_const_challenge,

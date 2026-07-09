@@ -518,6 +518,63 @@ fn split_matrix_slot_is_a_geometry_error() {
 }
 
 #[test]
+fn col_remap_collision_is_a_hard_error() {
+    use cs::gkr_compiler::dag_ir::ReadPlace;
+    let mut ctx = DagForwardContext::default();
+    ctx.backings
+        .read_slot_col(&ReadPlace::Setup { column: 0 }, OperandField::Base)
+        .unwrap();
+    ctx.backings
+        .read_slot_col(&ReadPlace::Setup { column: 1 }, OperandField::Base)
+        .unwrap();
+    let cl = synthetic_layer(Program::default(), ctx);
+    // Two DISTINCT dense columns of ONE slot resolving to the SAME matrix
+    // column (same base + same offset) — a resolver bug that must fail
+    // closed rather than silently alias one wire `col` to two dense columns.
+    let resolve = |addr: GKRAddress| -> Option<ResolvedColumn> {
+        match addr {
+            GKRAddress::Setup(0) | GKRAddress::Setup(1) => Some(ResolvedColumn {
+                is_e4: false,
+                ptr: 0x1000_0000usize as *const u8,
+                matrix_base: 0x1000_0000usize as *mut u8,
+                stride_bytes: COUNT * 4,
+            }),
+            _ => None,
+        }
+    };
+    let err = lower_layer_desc(&cl, &mock_header(), &resolve, &mock_challenge, None)
+        .expect_err("col-remap collision must be rejected");
+    assert!(matches!(
+        err,
+        FwdVmLowerError::ColRemapCollision {
+            slot: 0,
+            matrix_col: 0
+        }
+    ));
+}
+
+#[test]
+fn arg_challenge_overflow_is_a_hard_error_and_terminates() {
+    use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengePower};
+    let mut ctx = DagForwardContext::default();
+    for i in 0..(ARG_CHALLENGE_CAP as u32 + 1) {
+        ctx.challenges.intern(&ChallengeRef {
+            key: ChallengeKey::PermutationAdditive,
+            power: ChallengePower::Static(i),
+        });
+    }
+    let cl = synthetic_layer(Program::default(), ctx);
+    // The probe loop must terminate (bounded at cap + 1) rather than wrap
+    // `n as u16` and spin forever on an oversized bank.
+    let err = lower_layer_desc(&cl, &mock_header(), &no_columns, &mock_challenge, None)
+        .expect_err("ARG_CHALLENGE_CAP+1 challenges must overflow");
+    assert!(matches!(
+        err,
+        FwdVmLowerError::ArgChallengeOverflow { n } if n == ARG_CHALLENGE_CAP + 1
+    ));
+}
+
+#[test]
 fn ldg_fallback_pointer_math_is_unreachable_without_context() {
     // Belt-and-braces around the inline/fallback boundary: exactly at the cap
     // the program stays inline (null LDG) — PROGRAM_CAP/2 Movs = PROGRAM_CAP
