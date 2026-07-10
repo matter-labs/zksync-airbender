@@ -164,6 +164,20 @@ jobs:
           verify_output="$(./target/release/cli verify --proof output/recursion_unified.json --bin "$BIN" --text "$TEXT" --security-level ${{ matrix.security_level }} --target recursion-unified)"
           echo "$verify_output"
           echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
+      - name: Combine two recursion unified proofs
+        run: |
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          ./target/release/cli combine --proofs output/recursion_unified.json output/recursion_unified.json --bin "$BIN" --text "$TEXT" --security-level ${{ matrix.security_level }} --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_combined.json
+      - name: Verify combined proof
+        run: |
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          verify_output="$(./target/release/cli verify --proof output/recursion_combined.json --bin "$BIN" --text "$TEXT" --security-level ${{ matrix.security_level }} --target recursion-combined)"
+          echo "$verify_output"
+          # Words 0..8 are the keccak rolling hash of the two combined proofs' outputs;
+          # they depend only on the batch outputs, so they are the same for both security levels.
+          echo "$verify_output" | grep -F "output=[2415612842, 4095476548, 166808046, 1205015445, 2386967993, 3778167604, 679852282, 914660194"
 
   miri:
     name: miri

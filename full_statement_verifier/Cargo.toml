@@ -12,6 +12,7 @@ categories.workspace = true
 [dependencies]
 common_constants = { workspace = true }
 verifier_common = { workspace = true, default-features = false }
+reduced_keccak = { path = "../reduced_keccak" }
 
 blake2_with_compression_verifier = {path = "../circuit_defs/blake2_with_compression/verifier", default-features = false, optional = true }
 bigint_with_control_verifier = {path = "../circuit_defs/bigint_with_control/verifier", default-features = false, optional = true }
