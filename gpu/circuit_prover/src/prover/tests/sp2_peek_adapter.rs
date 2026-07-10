@@ -355,6 +355,15 @@ impl ChallengeResolver for ProverChallengeResolver<'_> {
                      not part of the pinned lookup/permutation layout (escalate)"
                 )
             }
+            // Same rationale as ConstraintAggregation above: ClaimBatching is a
+            // backward-only alpha-spine challenge (Task 4), out of SP2's
+            // layer-0 forward query-fold scope.
+            ChallengeKey::ClaimBatching => {
+                panic!(
+                    "ClaimBatching challenge reached in an SP2 layer-0 query fold; \
+                     not part of the pinned lookup/permutation layout (escalate)"
+                )
+            }
         }
     }
 }

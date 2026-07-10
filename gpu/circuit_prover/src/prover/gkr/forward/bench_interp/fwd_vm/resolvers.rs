@@ -64,6 +64,10 @@ pub(crate) fn challenge_value(fixture: &CircuitFixture, r: &ChallengeRef) -> Ext
             "challenge_value: ConstraintAggregation is not sourced for these circuits' forward \
             programs (no materialized constraint roots): {r:?}"
         ),
+        ChallengeKey::ClaimBatching => panic!(
+            "challenge_value: ClaimBatching is not sourced for these circuits' forward programs \
+            (backward-only alpha-spine challenge, not yet wired): {r:?}"
+        ),
     };
     pow_of(base, &r.power)
 }

@@ -123,6 +123,9 @@ pub(crate) struct RefCtx {
     pub permutation_linearization: [E; 6],
     /// `rho`: constraint aggregation challenge base (powers `rho^p`).
     pub constraint_aggregation: E,
+    /// `beta`: per-layer claim-batching challenge base (powers `beta^i`), used
+    /// by the backward alpha spine (`root_0 + Σ beta^i·root_i`).
+    pub claim_batching: E,
     /// inits/teardowns high-bits shift in effect (0 when the artifact carries no
     /// `inits_and_teardowns_word_bits`, matching the IR lowering).
     pub inits_high_bits_offset: u32,
@@ -164,6 +167,7 @@ impl RefCtx {
                 challenge(73, 79, 83, 89),
             ],
             constraint_aggregation: challenge(97, 101, 103, 107),
+            claim_batching: challenge(109, 113, 127, 131),
             // synthetic single-relation artifacts carry no word_bits → offset 0,
             // matching `dag_ir::lower::memory::top_bits_const`.
             inits_high_bits_offset: 0,
@@ -215,6 +219,15 @@ impl RefCtx {
         let mut acc = E::ONE;
         for _ in 0..p {
             acc.mul_assign(&self.constraint_aggregation);
+        }
+        acc
+    }
+
+    /// `beta^i`.
+    fn beta_pow(&self, i: usize) -> E {
+        let mut acc = E::ONE;
+        for _ in 0..i {
+            acc.mul_assign(&self.claim_batching);
         }
         acc
     }
@@ -286,6 +299,10 @@ impl RefCtx {
             ChallengeKey::ConstraintAggregation => match r.power {
                 cs::gkr_compiler::dag_ir::ChallengePower::One => self.constraint_aggregation,
                 cs::gkr_compiler::dag_ir::ChallengePower::Static(p) => self.rho_pow(p as usize),
+            },
+            ChallengeKey::ClaimBatching => match r.power {
+                cs::gkr_compiler::dag_ir::ChallengePower::One => self.claim_batching,
+                cs::gkr_compiler::dag_ir::ChallengePower::Static(i) => self.beta_pow(i as usize),
             },
         }
     }

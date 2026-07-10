@@ -56,7 +56,9 @@ impl ChallengeBanks {
 pub fn classify_challenge(r: &ChallengeRef) -> LdcSub {
     match &r.key { // ChallengeKey is not Copy (PermutationLinearization payload) — match by ref
         ChallengeKey::LookupAdditive | ChallengeKey::LookupMultiplicative | ChallengeKey::ConstraintAggregation => LdcSub::ConstChallenge,
-        ChallengeKey::PermutationAdditive | ChallengeKey::PermutationLinearization(_) => LdcSub::ArgChallenge,
+        ChallengeKey::PermutationAdditive
+        | ChallengeKey::PermutationLinearization(_)
+        | ChallengeKey::ClaimBatching => LdcSub::ArgChallenge,
     }
 }
 
@@ -139,6 +141,15 @@ mod tests {
         // a permutation challenge goes to the arg channel
         let p = ChallengeRef { key: ChallengeKey::PermutationAdditive, power: ChallengePower::Static(2) };
         assert_eq!(banks.intern(&p).0, LdcSub::ArgChallenge);
+    }
+    #[test]
+    fn claim_batching_classifies_as_arg_challenge() {
+        // ClaimBatching is Ext-valued and, like PermutationAdditive, goes to the arg
+        // channel — NOT the const channel (unlike ConstraintAggregation).
+        let one = ChallengeRef { key: ChallengeKey::ClaimBatching, power: ChallengePower::One };
+        assert_eq!(classify_challenge(&one), LdcSub::ArgChallenge);
+        let static3 = ChallengeRef { key: ChallengeKey::ClaimBatching, power: ChallengePower::Static(3) };
+        assert_eq!(classify_challenge(&static3), LdcSub::ArgChallenge);
     }
     #[test]
     fn kind_order_and_code_roundtrip() {

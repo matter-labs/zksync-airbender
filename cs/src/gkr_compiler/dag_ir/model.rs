@@ -89,6 +89,12 @@ pub enum ChallengeKey {
     PermutationAdditive,
     PermutationLinearization(PermutationSlot),
     ConstraintAggregation,
+    /// Powers of the per-layer claim-batching challenge beta, used by the backward
+    /// alpha spine (`root_0 + Σ beta^i·root_i`). `ChallengePower::One` = beta¹,
+    /// `Static(i)` = betaⁱ (i ≥ 2). Root 0 in batching order is UNSCALED (no
+    /// challenge leaf at all); claim-only constraint roots still consume a power
+    /// slot.
+    ClaimBatching,
 }
 
 // ── ChallengeRef ─────────────────────────────────────────────────────────────
