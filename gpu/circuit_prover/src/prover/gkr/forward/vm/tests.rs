@@ -24,8 +24,8 @@ use gkr_eval_isa::fwd::source::{virtual_setup_kind_code, SpecialStrategy};
 
 use super::desc::{
     unpack_desc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP, ARG_CHALLENGE_CAP,
-    CONST_CAP, CONST_CHALLENGE_CAP, DESC_CAP, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_SETUP,
-    SD_SINGLE_COLUMN, SD_VIRTUAL, SLOT_COUNT,
+    CONST_CAP, CONST_CHALLENGE_CAP, DESC_CAP, FILL_BANK_NONE, PROGRAM_CAP, SD_AGGREGATE,
+    SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN, SD_VIRTUAL, SLOT_COUNT,
 };
 use super::lower::{
     lower_layer_desc, read_place_to_gkr_address, FwdVmHeaderInputs, FwdVmLowerError, ResolvedColumn,
@@ -134,7 +134,6 @@ fn mock_header() -> FwdVmHeaderInputs {
         decoder_mapping_col: Some(37),
         table: 0x9300_0000usize as *const E4,
         table_len: 4242,
-        fill: 0x9400_0000usize as *const E4,
         count: COUNT,
     }
 }
@@ -304,6 +303,11 @@ fn fixture_lowering_struct_invariants() {
                 "L{layer_idx}: const {i}"
             );
         }
+        let has_decoder = cl
+            .ctx
+            .specials
+            .iter()
+            .any(|sd| matches!(sd.strategy, SpecialStrategy::PeekDecoder { .. }));
         let n_arg = challenge_bank_len(cl, LdcSub::ArgChallenge);
         let n_const_ch = challenge_bank_len(cl, LdcSub::ConstChallenge);
         assert!(n_arg <= ARG_CHALLENGE_CAP && n_const_ch <= CONST_CHALLENGE_CAP);
@@ -311,10 +315,24 @@ fn fixture_lowering_struct_invariants() {
             d.n_arg_challenge as usize, n_arg,
             "L{layer_idx}: arg-challenge split"
         );
+        // A decoder layer appends ONE bank slot for the fill value at
+        // fill_bank_idx = the pre-append bank length (mechanism (a)).
         assert_eq!(
-            d.n_const_challenge as usize, n_const_ch,
-            "L{layer_idx}: const-challenge split"
+            d.n_const_challenge as usize,
+            n_const_ch + has_decoder as usize,
+            "L{layer_idx}: const-challenge split (+ appended fill slot)"
         );
+        if has_decoder {
+            assert_eq!(
+                d.fill_bank_idx as usize, n_const_ch,
+                "L{layer_idx}: fill_bank_idx must be the pre-append bank length"
+            );
+        } else {
+            assert_eq!(
+                d.fill_bank_idx, FILL_BANK_NONE,
+                "L{layer_idx}: decoder-free layer must carry the sentinel"
+            );
+        }
         for i in 0..n_arg {
             let r = cl
                 .ctx
@@ -391,9 +409,8 @@ fn fixture_lowering_struct_invariants() {
         );
         assert_eq!(d.table_len, if uses_table { header.table_len } else { 0 });
         assert_eq!(
-            !d.fill.is_null(),
-            uses_decoder,
-            "L{layer_idx}: fill iff decoder"
+            uses_decoder, has_decoder,
+            "L{layer_idx}: specials-loop decoder census disagrees with the strategy scan"
         );
         assert_eq!(
             !d.mask.is_null(),
@@ -411,7 +428,7 @@ fn fixture_lowering_struct_invariants() {
     assert!(total_descs > 0, "fixture exercised no special descriptors");
     assert!(
         saw_decoder,
-        "fixture exercised no PeekDecoder (mask/fill iff-check vacuous)"
+        "fixture exercised no PeekDecoder (mask/fill_bank_idx checks vacuous)"
     );
 }
 

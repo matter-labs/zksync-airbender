@@ -35,7 +35,10 @@
 // `memcpyToSymbolAsync` on `exec_stream` (Task 9); all uploads and all
 // launches that read it are ordered on `exec_stream`, and the bank is
 // per-proof-instance state. `fwd_vm_desc::n_const_challenge` carries the used
-// length so VALIDATE can bounds-check indices.
+// length so VALIDATE can bounds-check indices. The bank ALSO hosts the decoder
+// fill value (same class: one runtime challenge-dependent e4 per layer) at
+// `fwd_vm_desc::fill_bank_idx`, appended after the real ConstChallenge entries
+// by the Rust lowering + upload (`vm/lower.rs`).
 __device__ __constant__ e4 ab_gkr_fwd_vm_const_challenge[airbender::prover::gkr::FWD_VM_CONST_CHALLENGE_CAP];
 
 namespace airbender::prover::gkr {
@@ -44,13 +47,13 @@ namespace airbender::prover::gkr {
 constexpr u32 FWDVM_ERR_TRAILING_LANES = 1;   // decoded lanes != program_lanes
 constexpr u32 FWDVM_ERR_BAD_HEADER = 2;       // reserved bits / bad Mov dir / bad arity / non-canonical fields
 constexpr u32 FWDVM_ERR_NULL_COLUMN = 8;      // base[slot] is null on a Global access
-constexpr u32 FWDVM_ERR_LDC_OOB = 16;         // Ldc idx >= its bank length
+constexpr u32 FWDVM_ERR_LDC_OOB = 16;         // Ldc idx (or decoder fill_bank_idx) >= its bank length
 constexpr u32 FWDVM_ERR_BAD_SPECIAL = 32;     // bad inline special / desc kind / arena / vkind
 constexpr u32 FWDVM_ERR_DESC_OOB = 64;        // Special desc >= n_descs
 constexpr u32 FWDVM_ERR_TABLE_OOB = 128;      // mapped lookup index >= table_len
 constexpr u32 FWDVM_ERR_CELL_OOB = 256;       // cell (bf lane / ext bucket) exceeds the smem budget
 constexpr u32 FWDVM_ERR_FIELD_MISMATCH = 512; // bf-field read of an e4-intrinsic bank/desc, or Base DstFromAcc off an ext acc
-constexpr u32 FWDVM_ERR_NULL_POINTER = 1024;  // null mapping arena / table / mask / fill
+constexpr u32 FWDVM_ERR_NULL_POINTER = 1024;  // null mapping arena / table / mask
 
 // --- wire tags (mirror gkr_eval_isa::fwd::encode; UNCHANGED from v1) ---------
 // operand: [payload:14][tag:2]; tag 00=Global{[col:10][slot:4]} 01=Smem{[cell:14]}
@@ -197,9 +200,19 @@ template <bool VALIDATE> DEVICE_FORCEINLINE bool special_common_checks(const fwd
       err |= FWDVM_ERR_NULL_POINTER;
       return false;
     }
-    if (s.kind == SD_DECODER && (d.mask == nullptr || d.fill == nullptr)) {
-      err |= FWDVM_ERR_NULL_POINTER;
-      return false;
+    if (s.kind == SD_DECODER) {
+      if (d.mask == nullptr) {
+        err |= FWDVM_ERR_NULL_POINTER;
+        return false;
+      }
+      // Fail-closed fill_bank_idx bound: the lowering appends the fill AFTER
+      // the real ConstChallenge entries, so a valid index is < n_const_challenge
+      // (and a fortiori < the cap); the FWD_VM_FILL_BANK_NONE sentinel of a
+      // decoder-free layer trips this loudly if a decoder desc sneaks in.
+      if (d.fill_bank_idx >= FWD_VM_CONST_CHALLENGE_CAP || d.fill_bank_idx >= d.n_const_challenge) {
+        err |= FWDVM_ERR_LDC_OOB;
+        return false;
+      }
     }
     if (s.kind == SD_VIRTUAL && (s.vkind < GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS || s.vkind > GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH)) {
       err |= FWDVM_ERR_BAD_SPECIAL;
@@ -239,7 +252,10 @@ template <bool VALIDATE> DEVICE_FORCEINLINE e4 read_special_e4(const fwd_vm_desc
   case SD_DECODER: {
     const bf mask = load<bf, ld_modifier::ca>(d.mask, gid);
     if (mask.limb == 0)
-      return load<e4, ld_modifier::ca>(d.fill, 0); // challenge-dependent, read through the pointer
+      // Challenge-dependent fill from the __constant__ bank: the index is
+      // warp-uniform (grid-constant desc), only the mask predicate is
+      // per-lane, so this is a constant-cache broadcast.
+      return ::ab_gkr_fwd_vm_const_challenge[d.fill_bank_idx];
     const u32 row = load<u32, ld_modifier::ca>(special_mapping(d, s), gid);
     if constexpr (VALIDATE) {
       if (row >= d.table_len) {

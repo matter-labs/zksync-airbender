@@ -4,8 +4,9 @@
 //! For each of the 3 GPU circuits, every compiled layer:
 //! 1. Build the REAL prover fixture (`bench_interp::fixture::CircuitFixture` —
 //!    the production forward preamble + a capturing flat pass, so the
-//!    consolidated storage matrices, stage-1 mapping arenas, generic-lookup
-//!    table, and decoder fill slot are all the true production buffers).
+//!    consolidated storage matrices, stage-1 mapping arenas, and
+//!    generic-lookup table are all the true production buffers; the decoder
+//!    fill value rides the const-challenge bank upload).
 //! 2. Compile via the production stage-3 chain (committed b16 schedule) and
 //!    lower via `lower_layer_desc` with a resolver over the REAL
 //!    `GpuGKRStorage` consolidated matrices (true per-column `(base, stride)`).
@@ -44,8 +45,9 @@ use cs::definitions::GKRAddress;
 use gkr_eval_isa::fwd::compile::layer_needs_compile;
 use gkr_eval_isa::fwd::context::{CompiledLayer, OutputCell, RootOutput};
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub};
+use gkr_eval_isa::fwd::source::SpecialStrategy;
 
-use super::desc::CONST_CHALLENGE_CAP;
+use super::desc::{CONST_CHALLENGE_CAP, FILL_BANK_NONE};
 use super::lower::{
     lower_layer_desc, read_place_to_gkr_address, FwdVmHeaderInputs, ResolvedColumn,
 };
@@ -121,8 +123,9 @@ pub(crate) fn resolve_storage_column(
 
 /// Per-layer header inputs from the REAL prover buffers: the 3 stage-1 mapping
 /// arenas (column-major, column stride = trace_len), the decoder mapping
-/// column (`num_generic_sets`), the shared α-folded generic-lookup table, and
-/// the production 1-element `device_decoder_lookup_fill_value` slot.
+/// column (`num_generic_sets`), and the shared α-folded generic-lookup table.
+/// The decoder fill VALUE is no header input — it rides the const-challenge
+/// bank upload ([`const_challenge_values`]).
 pub(crate) fn build_header(fixture: &CircuitFixture) -> FwdVmHeaderInputs {
     let stage1 = fixture_stage1(fixture);
     let m = &stage1.lookup_mappings;
@@ -130,7 +133,6 @@ pub(crate) fn build_header(fixture: &CircuitFixture) -> FwdVmHeaderInputs {
         m.trace_len, fixture.trace_len,
         "mapping-arena column stride != trace_len"
     );
-    let forward_setup = fixture.keepalive.forward_setup();
     let (table_ptr, table_len) = fixture.setup_table();
     FwdVmHeaderInputs {
         mapping_arena: [
@@ -155,7 +157,6 @@ pub(crate) fn build_header(fixture: &CircuitFixture) -> FwdVmHeaderInputs {
             .then(|| u16::try_from(m.num_generic_sets).expect("num_generic_sets exceeds u16")),
         table: table_ptr as *const E4,
         table_len,
-        fill: forward_setup.decoder_lookup_fill_value_device().as_ptr(),
         count: fixture.trace_len as u32,
     }
 }
@@ -280,7 +281,15 @@ fn assert_columns_match(
 // ── the gate ──────────────────────────────────────────────────────────────────
 
 /// Values of the layer's `ConstChallenge` bank, via the SAME `ChallengeRef`
-/// mapping the flat fixture/G-CPU harness uses (`challenge_value`).
+/// mapping the flat fixture/G-CPU harness uses (`challenge_value`) — PLUS the
+/// decoder fill value appended when the layer has a `PeekDecoder` special
+/// (mechanism (a) of the `lower_layer_desc` fill contract: the lowering
+/// reserves `fill_bank_idx` = the pre-append length, this fn fills it; the
+/// fixture knows the value host-side, `BenchChallenges::decoder_fill` =
+/// alpha^(width-1) * TableType::Decoder, the same value the flat setup kernel
+/// wrote into `device_decoder_lookup_fill_value`). The value is final here —
+/// the fixture's challenges are fixed before any lowering — satisfying the
+/// upload-before-launch ordering contract.
 pub(crate) fn const_challenge_values(fixture: &CircuitFixture, cl: &CompiledLayer) -> Vec<E4> {
     let mut out = Vec::new();
     let mut i = 0usize;
@@ -288,6 +297,14 @@ pub(crate) fn const_challenge_values(fixture: &CircuitFixture, cl: &CompiledLaye
         out.push(challenge_value(fixture, r));
         i += 1;
         assert!(i <= CONST_CHALLENGE_CAP, "const-challenge bank exceeds cap");
+    }
+    if cl
+        .ctx
+        .specials
+        .iter()
+        .any(|sd| matches!(sd.strategy, SpecialStrategy::PeekDecoder { .. }))
+    {
+        out.push(fixture.bench_challenges().decoder_fill);
     }
     out
 }
@@ -320,7 +337,22 @@ pub(crate) fn run_vm_parity(stem: &str) {
             setup.desc.program_ldg.is_null(),
             "{stem} L{li}: corpus program unexpectedly overflowed inline cap"
         );
-        upload_const_challenges(&const_challenge_values(&fixture, cl), context)
+        // Bank upload incl. the appended decoder fill; the two appends (this
+        // one and the lowering's slot reservation) must agree exactly.
+        let bank = const_challenge_values(&fixture, cl);
+        assert_eq!(
+            bank.len() as u32,
+            setup.desc.n_const_challenge,
+            "{stem} L{li}: uploaded bank length != desc n_const_challenge"
+        );
+        if setup.desc.fill_bank_idx != FILL_BANK_NONE {
+            assert_eq!(
+                setup.desc.fill_bank_idx as usize,
+                bank.len() - 1,
+                "{stem} L{li}: fill_bank_idx is not the appended (last) bank slot"
+            );
+        }
+        upload_const_challenges(&bank, context)
             .unwrap_or_else(|e| panic!("{stem} L{li}: const-challenge upload: {e:?}"));
 
         // Flat oracle snapshot BEFORE any VM launch (the kernel writes into

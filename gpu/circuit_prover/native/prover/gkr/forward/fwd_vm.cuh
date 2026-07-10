@@ -9,8 +9,9 @@
 //
 // Field ORDER deviates from the spec-§2 sketch on purpose: `e4` is
 // `__align__(16)`, so fields are grouped by descending alignment
-// (e4 -> pointers -> u32 -> u16) to make the layout padding-free and the
-// exact-size assert stable. Same members, same semantics.
+// (e4 -> pointers -> u32 -> u16) to keep the layout free of INTERNAL padding
+// and the exact-size assert stable (26,684 field bytes + 4 B tail padding to
+// the 16-B alignment = 26,688). Same members, same semantics.
 //
 // Caps come from the corpus census (`gkr_eval_isa/tests/fwd_vm_desc_census.rs`,
 // maxima across all 11 committed with-caches fixtures) + margin. Overflow
@@ -26,7 +27,9 @@ constexpr u32 FWD_VM_PROGRAM_CAP = 12288;     // u16 lanes, 24 KB inline
 constexpr u32 FWD_VM_CONST_CAP = 40;          // bf constants
 constexpr u32 FWD_VM_ARG_CHALLENGE_CAP = 12;  // schedule-time e4 challenges
 constexpr u32 FWD_VM_DESC_CAP = 370;          // packed special descriptors
-constexpr u32 FWD_VM_CONST_CHALLENGE_CAP = 8; // Task-8 __constant__ e4 bank (not in this struct)
+constexpr u32 FWD_VM_CONST_CHALLENGE_CAP = 8; // Task-8 __constant__ e4 bank (not in this struct);
+                                              // also hosts the decoder fill (see fill_bank_idx)
+constexpr u32 FWD_VM_FILL_BANK_NONE = ~0u;    // fill_bank_idx sentinel: layer has no SD_DECODER desc
 constexpr u32 FWD_VM_SLOT_COUNT = 16;         // field-qualified column slots
 constexpr u32 FWD_VM_MAPPING_ARENA_COUNT = 3; // generic_family / range_check_16 / timestamp
 
@@ -34,7 +37,8 @@ constexpr u32 FWD_VM_MAPPING_ARENA_COUNT = 3; // generic_family / range_check_16
 constexpr u32 SD_SINGLE_COLUMN = 0; // PeekSingleColumn: lift(mapping[row])
 constexpr u32 SD_AGGREGATE = 1;     // PeekAggregate: table[mapping[row]]
 constexpr u32 SD_SETUP = 2;         // PeekSetup: row < table_len ? table[row] : 0
-constexpr u32 SD_DECODER = 3;       // PeekDecoder: mask[row] != 0 ? table[mapping[row]] : *fill
+constexpr u32 SD_DECODER = 3;       // PeekDecoder: mask[row] != 0 ? table[mapping[row]]
+                                    //                            : const_challenge[fill_bank_idx]
 constexpr u32 SD_VIRTUAL = 4;       // VirtualSetup: lift(n(vkind, gid)), no memory reads
 
 // --- mapping-arena selectors (descs[i] arena field) ---------------------------
@@ -74,40 +78,44 @@ struct fwd_vm_desc {
   // a COLUMN of one of these 3 contiguous u32 arenas (GpuGKRLookupMappings,
   // column-major, stride = `count`); the e4 table is the ONE shared
   // generic-lookup arena per layer (contents runtime-filled); mask
-  // (execute-predicate column) and fill are per-circuit singletons.
+  // (execute-predicate column) is a per-circuit singleton. The decoder FILL
+  // value (also a per-circuit singleton, runtime challenge-dependent) is NOT
+  // pointed to from here — it lives in the `ab_gkr_fwd_vm_const_challenge`
+  // bank at `fill_bank_idx` (same class as a ConstChallenge).
   const u32 *mapping_arena[FWD_VM_MAPPING_ARENA_COUNT]; // 328
   const e4 *table;                                      // 352
   const bf *mask;                                       // 360, or null
-  const e4 *fill;                                       // 368: 1-element device slot,
-                                                        // runtime challenge-dependent —
-                                                        // POINTER, never by value
 
   // program header
-  u32 n_instr;       // 376
-  u32 program_lanes; // 380
+  u32 n_instr;       // 368
+  u32 program_lanes; // 372
 
   // column geometry, continued
-  u32 stride_bytes[FWD_VM_SLOT_COUNT]; // 384
+  u32 stride_bytes[FWD_VM_SLOT_COUNT]; // 376
 
   // banks, inline (schedule-time known)
-  u32 n_consts;                // 448
-  bf consts[FWD_VM_CONST_CAP]; // 452, Montgomery
-  u32 n_arg_challenge;         // 612
+  u32 n_consts;                // 440
+  bf consts[FWD_VM_CONST_CAP]; // 444, Montgomery
+  u32 n_arg_challenge;         // 604
 
   // special descriptors
-  u32 n_descs;           // 616
-  u32 n_const_challenge; // 620: used length of the Task-8 __constant__ bank;
+  u32 n_descs;           // 608
+  u32 n_const_challenge; // 612: used length of the Task-8 __constant__ bank
+                         // (INCLUDING the appended decoder fill slot, if any);
                          // read only under VALIDATE
-  u32 table_len;         // 624
+  u32 fill_bank_idx;     // 616: const-challenge bank slot of the decoder fill
+                         // value, or FWD_VM_FILL_BANK_NONE when the layer has
+                         // no SD_DECODER desc; read only on decoder-miss rows
+  u32 table_len;         // 620
 
   // per-desc packed u32 (bit split above)
-  u32 descs[FWD_VM_DESC_CAP]; // 628, 1,480 B
+  u32 descs[FWD_VM_DESC_CAP]; // 624, 1,480 B
 
   // geometry
-  u32 count; // 2108: rows (= trace_len = mapping-arena column stride)
+  u32 count; // 2104: rows (= trace_len = mapping-arena column stride)
 
   // program, inline 16-bit wire lanes (gkr_eval_isa::fwd::encode)
-  u16 program[FWD_VM_PROGRAM_CAP]; // 2112, 24,576 B
+  u16 program[FWD_VM_PROGRAM_CAP]; // 2108, 24,576 B; field bytes end at 26,684
 };
 
 static_assert(sizeof(fwd_vm_desc) == 26688, "fwd_vm_desc/FwdVmDesc ABI size drift");

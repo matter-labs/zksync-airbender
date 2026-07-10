@@ -52,9 +52,12 @@ cuda_struct_and_stub! { static ab_gkr_fwd_vm_const_challenge: [E4; CONST_CHALLEN
 /// Upload a layer's `ConstChallenge` bank into the kernel's `__constant__`
 /// symbol, STREAM-ORDERED on `exec_stream` (GPU scheduling contract: all
 /// uploads and all launches that read the mutable symbol are serialized on
-/// `exec_stream`; the bank is per-proof-instance state). The unused tail of
-/// the 8-slot bank is zero-padded; `FwdVmDesc::n_const_challenge` carries the
-/// used length for the VALIDATE kernel's bounds check.
+/// `exec_stream`; the bank is per-proof-instance state). For a layer with a
+/// decoder desc, `values` must also carry the decoder fill value at
+/// `FwdVmDesc::fill_bank_idx` (appended after the real `ConstChallenge`
+/// entries — see `lower::lower_layer_desc`'s fill contract). The unused tail
+/// of the 8-slot bank is zero-padded; `FwdVmDesc::n_const_challenge` carries
+/// the used length for the VALIDATE kernel's bounds check.
 ///
 /// The pageable stack-local source is safe with the async copy: CUDA stages
 /// pageable host sources before returning (see

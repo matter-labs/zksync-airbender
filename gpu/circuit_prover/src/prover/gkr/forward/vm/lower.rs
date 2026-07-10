@@ -55,8 +55,9 @@ use crate::upstream::{ChallengeRef, GKRAddress, PrimeField, RangeWidth, ReadPlac
 
 use super::desc::{
     pack_desc, FwdVmDesc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP,
-    ARG_CHALLENGE_CAP, CONST_CAP, CONST_CHALLENGE_CAP, DESC_CAP, MAPPING_ARENA_COUNT, PROGRAM_CAP,
-    SD_AGGREGATE, SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN, SD_VIRTUAL, SLOT_COUNT,
+    ARG_CHALLENGE_CAP, CONST_CAP, CONST_CHALLENGE_CAP, DESC_CAP, FILL_BANK_NONE,
+    MAPPING_ARENA_COUNT, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN,
+    SD_VIRTUAL, SLOT_COUNT,
 };
 
 /// One resolved storage column: the column's device pointer plus the geometry
@@ -79,10 +80,13 @@ pub(crate) struct ResolvedColumn {
 /// investigation): the 3 stage-1 mapping arenas (`GpuGKRLookupMappings`
 /// generic_family / range_check_16 / timestamp — column-major, column stride =
 /// `count`), the ONE shared α-folded generic-lookup table
-/// (`GpuGKRForwardSetup::generic_lookup`), the 1-element runtime decoder-fill
-/// device slot (`device_decoder_lookup_fill_value`), and the row count.
-/// Unused pointers may be null — the lowering only requires (and only emits)
-/// the ones the layer's specials actually reference.
+/// (`GpuGKRForwardSetup::generic_lookup`), and the row count. Unused pointers
+/// may be null — the lowering only requires (and only emits) the ones the
+/// layer's specials actually reference.
+///
+/// The decoder FILL value is NOT a header input: the lowering only reserves
+/// its const-challenge bank slot (`FwdVmDesc::fill_bank_idx`); the caller
+/// supplies the value in the bank upload (see [`lower_layer_desc`]).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FwdVmHeaderInputs {
     pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT],
@@ -91,7 +95,6 @@ pub(crate) struct FwdVmHeaderInputs {
     pub decoder_mapping_col: Option<u16>,
     pub table: *const E4,
     pub table_len: u32,
-    pub fill: *const E4,
     /// Rows (= trace_len = mapping-arena column stride).
     pub count: u32,
 }
@@ -164,7 +167,6 @@ pub(crate) enum FwdVmLowerError {
     },
     MissingDecoderMappingCol,
     MissingTable,
-    MissingFill,
     DecoderPredicateUnresolved {
         addr: GKRAddress,
     },
@@ -211,6 +213,7 @@ impl core::fmt::Debug for FwdVmLayerSetup {
             .field("n_consts", &self.desc.n_consts)
             .field("n_arg_challenge", &self.desc.n_arg_challenge)
             .field("n_const_challenge", &self.desc.n_const_challenge)
+            .field("fill_bank_idx", &self.desc.fill_bank_idx)
             .field("n_descs", &self.desc.n_descs)
             .field("count", &self.desc.count)
             .finish_non_exhaustive()
@@ -471,6 +474,19 @@ fn challenge_bank_len(cl: &CompiledLayer, sub: LdcSub, cap: usize) -> usize {
 ///   (`ArgChallenge`) reference. `ConstChallenge` values are NOT part of the
 ///   descriptor — upload them via [`super::upload_const_challenges`]; only the
 ///   bank LENGTH rides the desc (`n_const_challenge`, VALIDATE bounds check).
+/// - **Decoder fill**: for a layer with a `PeekDecoder` special, the lowering
+///   APPENDS one bank slot after the real `ConstChallenge` entries
+///   (`fill_bank_idx` = pre-append length, `n_const_challenge` includes it)
+///   but does NOT supply the value. ORDERING CONTRACT (mechanism (a), fill
+///   value host-known): the caller must place the — final — fill value at
+///   `values[fill_bank_idx]` of the [`super::upload_const_challenges`] upload
+///   and enqueue that upload on `exec_stream` BEFORE any launch of this
+///   layer's descriptor (`gpu_tests::const_challenge_values` implements the
+///   append for the harness/gate callers). If a future production caller only
+///   has the fill device-resident (`device_decoder_lookup_fill_value`), the
+///   alternative is a 16-B D2D `memcpyToSymbolAsync` into bank slot
+///   `fill_bank_idx` enqueued after the bank upload — same ordering contract
+///   against the launches.
 /// - `fallback_context`: required only if the encoded program exceeds
 ///   `PROGRAM_CAP` (never for the committed corpus); `None` turns program
 ///   overflow into a hard error.
@@ -542,13 +558,10 @@ pub(crate) fn lower_layer_desc(
     }
     desc.n_arg_challenge = n_arg as u32;
 
-    let n_const_challenge = challenge_bank_len(cl, LdcSub::ConstChallenge, CONST_CHALLENGE_CAP);
-    if n_const_challenge > CONST_CHALLENGE_CAP {
-        return Err(FwdVmLowerError::ConstChallengeOverflow {
-            n: n_const_challenge,
-        });
-    }
-    desc.n_const_challenge = n_const_challenge as u32;
+    // The decoder fill slot (reserved below) also lives in this bank, so the
+    // final `n_const_challenge`/cap check happen after the specials loop.
+    let mut n_const_challenge =
+        challenge_bank_len(cl, LdcSub::ConstChallenge, CONST_CHALLENGE_CAP);
 
     // ----- special descriptors (packed u32 each) + header pointers. -----
     let n_descs = cl.ctx.specials.len();
@@ -556,7 +569,7 @@ pub(crate) fn lower_layer_desc(
         return Err(FwdVmLowerError::DescOverflow { n: n_descs });
     }
     let mut uses_table = false;
-    let mut uses_fill = false;
+    let mut fill_bank_idx = FILL_BANK_NONE;
     let mut mask: *const BF = ptr::null();
     let require_arena = |arena: u32| -> Result<u32, FwdVmLowerError> {
         if header.mapping_arena[arena as usize].is_null() {
@@ -589,7 +602,13 @@ pub(crate) fn lower_layer_desc(
             }
             SpecialStrategy::PeekDecoder { predicate, .. } => {
                 uses_table = true;
-                uses_fill = true;
+                // Reserve ONE const-challenge bank slot for the per-circuit
+                // fill value (shared by every decoder desc of the layer);
+                // the caller uploads the value there (see the fn doc).
+                if fill_bank_idx == FILL_BANK_NONE {
+                    fill_bank_idx = n_const_challenge as u32;
+                    n_const_challenge += 1;
+                }
                 let arena = require_arena(ARENA_GENERIC_FAMILY)?;
                 let col = header
                     .decoder_mapping_col
@@ -616,6 +635,13 @@ pub(crate) fn lower_layer_desc(
         };
     }
     desc.n_descs = n_descs as u32;
+    if n_const_challenge > CONST_CHALLENGE_CAP {
+        return Err(FwdVmLowerError::ConstChallengeOverflow {
+            n: n_const_challenge,
+        });
+    }
+    desc.n_const_challenge = n_const_challenge as u32;
+    desc.fill_bank_idx = fill_bank_idx;
     desc.mapping_arena = header.mapping_arena;
     if uses_table {
         if header.table.is_null() {
@@ -623,12 +649,6 @@ pub(crate) fn lower_layer_desc(
         }
         desc.table = header.table;
         desc.table_len = header.table_len;
-    }
-    if uses_fill {
-        if header.fill.is_null() {
-            return Err(FwdVmLowerError::MissingFill);
-        }
-        desc.fill = header.fill;
     }
     desc.mask = mask;
 

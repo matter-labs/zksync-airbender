@@ -4,8 +4,10 @@
 //!
 //! Keep field-for-field with the CUDA side. Field ORDER deviates from the
 //! spec-§2 sketch on purpose: `e4`/`E4` is 16-aligned, so fields are grouped
-//! by descending alignment (E4 -> pointers -> u32 -> u16) to make the layout
-//! padding-free and the exact-size assert stable.
+//! by descending alignment (E4 -> pointers -> u32 -> u16) to keep the layout
+//! free of INTERNAL padding and the exact-size assert stable (26,684 field
+//! bytes + 4 B tail padding to the 16-B alignment = 26,688; `repr(C)` and C++
+//! round identically).
 //!
 //! Caps come from the corpus census (`gkr_eval_isa/tests/fwd_vm_desc_census.rs`,
 //! maxima across all 11 committed with-caches fixtures: lanes 6574, consts 27,
@@ -20,7 +22,13 @@ pub(crate) const PROGRAM_CAP: usize = 12288; // u16 lanes, 24 KB inline
 pub(crate) const CONST_CAP: usize = 40; // BF constants
 pub(crate) const ARG_CHALLENGE_CAP: usize = 12; // schedule-time E4 challenges
 pub(crate) const DESC_CAP: usize = 370; // packed special descriptors
-pub(crate) const CONST_CHALLENGE_CAP: usize = 8; // Task-8 __constant__ E4 bank (not in this struct)
+pub(crate) const CONST_CHALLENGE_CAP: usize = 8; // Task-8 __constant__ E4 bank (not in this struct);
+                                                 // also hosts the decoder fill (see `fill_bank_idx`)
+
+/// `fill_bank_idx` sentinel: the layer has no `SD_DECODER` desc (mirrors
+/// `FWD_VM_FILL_BANK_NONE`). Any accidental decoder read through it fails the
+/// VALIDATE kernel's bank-bounds check loudly.
+pub(crate) const FILL_BANK_NONE: u32 = u32::MAX;
 pub(crate) const SLOT_COUNT: usize = 16; // field-qualified column slots
 pub(crate) const MAPPING_ARENA_COUNT: usize = 3; // generic_family / range_check_16 / timestamp
 
@@ -28,7 +36,8 @@ pub(crate) const MAPPING_ARENA_COUNT: usize = 3; // generic_family / range_check
 pub(crate) const SD_SINGLE_COLUMN: u32 = 0; // PeekSingleColumn: lift(mapping[row])
 pub(crate) const SD_AGGREGATE: u32 = 1; // PeekAggregate: table[mapping[row]]
 pub(crate) const SD_SETUP: u32 = 2; // PeekSetup: row < table_len ? table[row] : 0
-pub(crate) const SD_DECODER: u32 = 3; // PeekDecoder: mask[row] != 0 ? table[mapping[row]] : *fill
+pub(crate) const SD_DECODER: u32 = 3; // PeekDecoder: mask[row] != 0 ? table[mapping[row]]
+                                      //                            : const_challenge[fill_bank_idx]
 pub(crate) const SD_VIRTUAL: u32 = 4; // VirtualSetup: lift(n(vkind, gid)), no memory reads
 
 // --- mapping-arena selectors (packed-desc `arena` field) ---------------------
@@ -140,33 +149,39 @@ pub(crate) struct FwdVmDesc {
     pub base: [*mut u8; SLOT_COUNT], // 200
     // special-descriptor header (all schedule-time-known): 3 column-major u32
     // mapping arenas (column stride = `count`), the ONE shared generic-lookup
-    // E4 table (contents runtime-filled), the per-circuit execute-predicate
-    // mask column (or null), and the 1-element decoder-fill device slot —
-    // runtime challenge-dependent, POINTER, never by value.
+    // E4 table (contents runtime-filled), and the per-circuit
+    // execute-predicate mask column (or null). The decoder FILL value (also a
+    // per-circuit singleton, runtime challenge-dependent) is NOT pointed to
+    // from here — it lives in the `ab_gkr_fwd_vm_const_challenge` bank at
+    // `fill_bank_idx` (same class as a ConstChallenge).
     pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT], // 328
     pub table: *const E4,                                 // 352
     pub mask: *const BF,                                  // 360
-    pub fill: *const E4,                                  // 368
     // program header
-    pub n_instr: u32,       // 376
-    pub program_lanes: u32, // 380
+    pub n_instr: u32,       // 368
+    pub program_lanes: u32, // 372
     // column geometry, continued
-    pub stride_bytes: [u32; SLOT_COUNT], // 384
+    pub stride_bytes: [u32; SLOT_COUNT], // 376
     // banks, inline (schedule-time known)
-    pub n_consts: u32,           // 448
-    pub consts: [BF; CONST_CAP], // 452, Montgomery
-    pub n_arg_challenge: u32,    // 612
+    pub n_consts: u32,           // 440
+    pub consts: [BF; CONST_CAP], // 444, Montgomery
+    pub n_arg_challenge: u32,    // 604
     // special descriptors
-    pub n_descs: u32, // 616
-    // used length of the Task-8 __constant__ bank; read only under VALIDATE
-    pub n_const_challenge: u32, // 620
-    pub table_len: u32,         // 624
+    pub n_descs: u32, // 608
+    // used length of the Task-8 __constant__ bank (INCLUDING the appended
+    // decoder fill slot, if any); read only under VALIDATE
+    pub n_const_challenge: u32, // 612
+    // const-challenge bank slot of the decoder fill value, or
+    // `FILL_BANK_NONE` when the layer has no SD_DECODER desc; read only on
+    // decoder-miss rows
+    pub fill_bank_idx: u32, // 616
+    pub table_len: u32,     // 620
     // per-desc packed u32 (bit split above)
-    pub descs: [u32; DESC_CAP], // 628, 1,480 B
+    pub descs: [u32; DESC_CAP], // 624, 1,480 B
     // geometry
-    pub count: u32, // 2108: rows (= trace_len = mapping-arena column stride)
+    pub count: u32, // 2104: rows (= trace_len = mapping-arena column stride)
     // program, inline 16-bit wire lanes (gkr_eval_isa::fwd::encode)
-    pub program: [u16; PROGRAM_CAP], // 2112, 24,576 B
+    pub program: [u16; PROGRAM_CAP], // 2108, 24,576 B; field bytes end at 26,684
 }
 
 /// ABI size guards, paired with the CUDA `static_assert`s in `fwd_vm.cuh`.
@@ -188,6 +203,37 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Walk the byte offsets documented in the struct (and mirrored in
+    /// `fwd_vm.cuh`) — the ABI contract is offset-for-offset, so any layout
+    /// drift (reorder, size change, surprise padding) fails here with the
+    /// field name instead of at the opaque exact-size assert.
+    #[test]
+    fn desc_layout_offsets_match_the_documented_abi() {
+        use core::mem::offset_of;
+        assert_eq!(offset_of!(FwdVmDesc, arg_challenge), 0);
+        assert_eq!(offset_of!(FwdVmDesc, program_ldg), 192);
+        assert_eq!(offset_of!(FwdVmDesc, base), 200);
+        assert_eq!(offset_of!(FwdVmDesc, mapping_arena), 328);
+        assert_eq!(offset_of!(FwdVmDesc, table), 352);
+        assert_eq!(offset_of!(FwdVmDesc, mask), 360);
+        assert_eq!(offset_of!(FwdVmDesc, n_instr), 368);
+        assert_eq!(offset_of!(FwdVmDesc, program_lanes), 372);
+        assert_eq!(offset_of!(FwdVmDesc, stride_bytes), 376);
+        assert_eq!(offset_of!(FwdVmDesc, n_consts), 440);
+        assert_eq!(offset_of!(FwdVmDesc, consts), 444);
+        assert_eq!(offset_of!(FwdVmDesc, n_arg_challenge), 604);
+        assert_eq!(offset_of!(FwdVmDesc, n_descs), 608);
+        assert_eq!(offset_of!(FwdVmDesc, n_const_challenge), 612);
+        assert_eq!(offset_of!(FwdVmDesc, fill_bank_idx), 616);
+        assert_eq!(offset_of!(FwdVmDesc, table_len), 620);
+        assert_eq!(offset_of!(FwdVmDesc, descs), 624);
+        assert_eq!(offset_of!(FwdVmDesc, count), 2104);
+        assert_eq!(offset_of!(FwdVmDesc, program), 2108);
+        // 26,684 field bytes; sizeof rounds to the 16-B alignment.
+        assert_eq!(offset_of!(FwdVmDesc, program) + 2 * PROGRAM_CAP, 26684);
+        assert_eq!(core::mem::size_of::<FwdVmDesc>(), 26688);
+    }
 
     #[test]
     fn pack_desc_round_trips_the_bit_split() {
