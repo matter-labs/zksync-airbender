@@ -674,6 +674,9 @@
             }
           },
           {
+            "Constant": 943718400
+          },
+          {
             "Product": {
               "factors": [
                 6,
@@ -686,7 +689,7 @@
             "Sum": {
               "terms": [
                 5,
-                81
+                82
               ],
               "domain": "Base"
             }
@@ -704,7 +707,7 @@
             "Sum": {
               "terms": [
                 10,
-                83
+                84
               ],
               "domain": "Base"
             }
@@ -712,8 +715,9 @@
           {
             "Product": {
               "factors": [
-                82,
-                84
+                81,
+                83,
+                85
               ],
               "domain": "Base"
             }
@@ -723,7 +727,7 @@
               "terms": [
                 76,
                 80,
-                85
+                86
               ],
               "domain": "Base"
             }
@@ -742,7 +746,7 @@
               "terms": [
                 24,
                 76,
-                87
+                88
               ],
               "domain": "Base"
             }
@@ -759,8 +763,8 @@
           {
             "Product": {
               "factors": [
-                88,
-                89
+                89,
+                90
               ],
               "domain": "Base"
             }
@@ -769,7 +773,7 @@
             "Product": {
               "factors": [
                 72,
-                84
+                85
               ],
               "domain": "Base"
             }
@@ -778,8 +782,8 @@
             "Sum": {
               "terms": [
                 5,
-                81,
-                91
+                82,
+                92
               ],
               "domain": "Base"
             }
@@ -788,7 +792,7 @@
             "Product": {
               "factors": [
                 72,
-                92
+                93
               ],
               "domain": "Base"
             }
@@ -797,8 +801,8 @@
             "Sum": {
               "terms": [
                 24,
-                87,
-                93
+                88,
+                94
               ],
               "domain": "Base"
             }
@@ -807,7 +811,7 @@
             "Product": {
               "factors": [
                 63,
-                94
+                95
               ],
               "domain": "Base"
             }
@@ -817,8 +821,8 @@
               "terms": [
                 5,
                 10,
-                81,
-                83
+                82,
+                84
               ],
               "domain": "Base"
             }
@@ -827,7 +831,7 @@
             "Product": {
               "factors": [
                 72,
-                96
+                97
               ],
               "domain": "Base"
             }
@@ -836,8 +840,8 @@
             "Sum": {
               "terms": [
                 24,
-                87,
-                97
+                88,
+                98
               ],
               "domain": "Base"
             }
@@ -846,7 +850,7 @@
             "Product": {
               "factors": [
                 62,
-                98
+                99
               ],
               "domain": "Base"
             }
@@ -854,9 +858,9 @@
           {
             "Sum": {
               "terms": [
-                90,
-                95,
-                99
+                91,
+                96,
+                100
               ],
               "domain": "Base"
             }
@@ -876,7 +880,7 @@
             "Product": {
               "factors": [
                 72,
-                101
+                102
               ],
               "domain": "Base"
             }
@@ -884,8 +888,8 @@
           {
             "Sum": {
               "terms": [
-                102,
-                103
+                103,
+                104
               ],
               "domain": "Base"
             }
@@ -895,7 +899,8 @@
               "terms": [
                 62,
                 63,
-                64
+                64,
+                65
               ],
               "domain": "Base"
             }
@@ -903,8 +908,8 @@
           {
             "Product": {
               "factors": [
-                104,
-                105
+                105,
+                106
               ],
               "domain": "Base"
             }
@@ -923,8 +928,8 @@
           {
             "Product": {
               "factors": [
-                107,
-                108
+                108,
+                109
               ],
               "domain": "Base"
             }
@@ -942,9 +947,9 @@
             "Sum": {
               "terms": [
                 31,
-                102,
-                109,
-                110
+                103,
+                110,
+                111
               ],
               "domain": "Base"
             }
@@ -952,8 +957,8 @@
           {
             "Product": {
               "factors": [
-                105,
-                111
+                106,
+                112
               ],
               "domain": "Base"
             }
@@ -972,8 +977,8 @@
               "terms": [
                 10,
                 24,
-                109,
-                113
+                110,
+                114
               ],
               "domain": "Base"
             }
@@ -982,7 +987,7 @@
             "Product": {
               "factors": [
                 60,
-                114
+                115
               ],
               "domain": "Base"
             }
@@ -992,8 +997,8 @@
               "terms": [
                 21,
                 57,
-                109,
-                110
+                110,
+                111
               ],
               "domain": "Base"
             }
@@ -1002,7 +1007,7 @@
             "Product": {
               "factors": [
                 61,
-                116
+                117
               ],
               "domain": "Base"
             }
@@ -1013,8 +1018,8 @@
                 5,
                 10,
                 57,
-                109,
-                110
+                110,
+                111
               ],
               "domain": "Base"
             }
@@ -1023,7 +1028,7 @@
             "Product": {
               "factors": [
                 59,
-                118
+                119
               ],
               "domain": "Base"
             }
@@ -1031,10 +1036,10 @@
           {
             "Sum": {
               "terms": [
-                112,
-                115,
-                117,
-                119
+                113,
+                116,
+                118,
+                120
               ],
               "domain": "Base"
             }
@@ -1045,20 +1050,8 @@
           {
             "Product": {
               "factors": [
-                101,
-                108
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Sum": {
-              "terms": [
-                25,
-                36,
-                107,
-                121,
-                122
+                102,
+                109
               ],
               "domain": "Base"
             }
@@ -1066,8 +1059,29 @@
           {
             "Product": {
               "factors": [
-                105,
-                123
+                25,
+                72
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Sum": {
+              "terms": [
+                36,
+                108,
+                122,
+                123,
+                124
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Product": {
+              "factors": [
+                106,
+                125
               ],
               "domain": "Base"
             }
@@ -1086,9 +1100,9 @@
               "terms": [
                 11,
                 25,
-                107,
-                122,
-                125
+                108,
+                123,
+                127
               ],
               "domain": "Base"
             }
@@ -1097,16 +1111,7 @@
             "Product": {
               "factors": [
                 60,
-                126
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Product": {
-              "factors": [
-                25,
-                72
+                128
               ],
               "domain": "Base"
             }
@@ -1116,9 +1121,9 @@
               "terms": [
                 22,
                 58,
-                107,
-                122,
-                128
+                108,
+                123,
+                124
               ],
               "domain": "Base"
             }
@@ -1127,7 +1132,7 @@
             "Product": {
               "factors": [
                 61,
-                129
+                130
               ],
               "domain": "Base"
             }
@@ -1138,9 +1143,9 @@
                 6,
                 11,
                 58,
-                107,
-                122,
-                128
+                108,
+                123,
+                124
               ],
               "domain": "Base"
             }
@@ -1149,7 +1154,7 @@
             "Product": {
               "factors": [
                 59,
-                131
+                132
               ],
               "domain": "Base"
             }
@@ -1157,10 +1162,10 @@
           {
             "Sum": {
               "terms": [
-                124,
-                127,
-                130,
-                132
+                126,
+                129,
+                131,
+                133
               ],
               "domain": "Base"
             }
@@ -1238,8 +1243,8 @@
             "Sum": {
               "terms": [
                 21,
-                141,
-                142
+                142,
+                143
               ],
               "domain": "Base"
             }
@@ -1247,8 +1252,8 @@
           {
             "Product": {
               "factors": [
-                140,
-                143
+                141,
+                144
               ],
               "domain": "Base"
             }
@@ -1257,7 +1262,7 @@
             "Sum": {
               "terms": [
                 72,
-                144
+                145
               ],
               "domain": "Base"
             }
@@ -1265,9 +1270,9 @@
           {
             "Product": {
               "factors": [
-                140,
-                143,
-                145
+                141,
+                144,
+                146
               ],
               "domain": "Base"
             }
@@ -1285,8 +1290,8 @@
             "Sum": {
               "terms": [
                 22,
-                144,
-                147
+                145,
+                148
               ],
               "domain": "Base"
             }
@@ -1307,8 +1312,8 @@
             "Sum": {
               "terms": [
                 13,
-                141,
-                150
+                142,
+                151
               ],
               "domain": "Base"
             }
@@ -1316,8 +1321,8 @@
           {
             "Product": {
               "factors": [
-                149,
-                151
+                150,
+                152
               ],
               "domain": "Base"
             }
@@ -1328,9 +1333,9 @@
           {
             "Product": {
               "factors": [
-                151,
-                151,
-                153
+                152,
+                152,
+                154
               ],
               "domain": "Base"
             }
@@ -1338,8 +1343,8 @@
           {
             "Sum": {
               "terms": [
-                152,
-                154
+                153,
+                155
               ],
               "domain": "Base"
             }
@@ -1357,8 +1362,8 @@
             "Sum": {
               "terms": [
                 27,
-                152,
-                156
+                153,
+                157
               ],
               "domain": "Base"
             }
@@ -1376,7 +1381,7 @@
             "Product": {
               "factors": [
                 59,
-                158
+                159
               ],
               "domain": "Base"
             }
@@ -1394,7 +1399,7 @@
             "Product": {
               "factors": [
                 60,
-                160
+                161
               ],
               "domain": "Base"
             }
@@ -1412,7 +1417,7 @@
             "Product": {
               "factors": [
                 61,
-                162
+                163
               ],
               "domain": "Base"
             }
@@ -1430,7 +1435,7 @@
             "Product": {
               "factors": [
                 62,
-                164
+                165
               ],
               "domain": "Base"
             }
@@ -1448,7 +1453,7 @@
             "Product": {
               "factors": [
                 63,
-                166
+                167
               ],
               "domain": "Base"
             }
@@ -1466,7 +1471,7 @@
             "Product": {
               "factors": [
                 64,
-                168
+                169
               ],
               "domain": "Base"
             }
@@ -1484,7 +1489,7 @@
             "Product": {
               "factors": [
                 65,
-                170
+                171
               ],
               "domain": "Base"
             }
@@ -1502,7 +1507,7 @@
             "Product": {
               "factors": [
                 66,
-                172
+                173
               ],
               "domain": "Base"
             }
@@ -1520,7 +1525,7 @@
             "Product": {
               "factors": [
                 67,
-                174
+                175
               ],
               "domain": "Base"
             }
@@ -1529,7 +1534,7 @@
             "Sum": {
               "terms": [
                 72,
-                107
+                108
               ],
               "domain": "Base"
             }
@@ -1537,8 +1542,8 @@
           {
             "Product": {
               "factors": [
-                107,
-                176
+                108,
+                177
               ],
               "domain": "Base"
             }
@@ -1547,7 +1552,7 @@
             "Sum": {
               "terms": [
                 72,
-                101
+                102
               ],
               "domain": "Base"
             }
@@ -1555,8 +1560,8 @@
           {
             "Product": {
               "factors": [
-                101,
-                178
+                102,
+                179
               ],
               "domain": "Base"
             }
@@ -1574,7 +1579,7 @@
             "Product": {
               "factors": [
                 46,
-                180
+                181
               ],
               "domain": "Base"
             }
@@ -1592,7 +1597,7 @@
             "Product": {
               "factors": [
                 49,
-                182
+                183
               ],
               "domain": "Base"
             }
@@ -1610,7 +1615,7 @@
             "Product": {
               "factors": [
                 52,
-                184
+                185
               ],
               "domain": "Base"
             }
@@ -1963,7 +1968,7 @@
             ]
           },
           {
-            "uses": 8,
+            "uses": 7,
             "footprint": [
               {
                 "BaseLayerMemory": 16
@@ -2427,7 +2432,7 @@
             ]
           },
           {
-            "uses": 6,
+            "uses": 7,
             "footprint": [
               {
                 "BaseLayerWitness": 8
@@ -2673,6 +2678,10 @@
             ]
           },
           {
+            "uses": 1,
+            "footprint": []
+          },
+          {
             "uses": 3,
             "footprint": [
               {
@@ -3063,6 +3072,9 @@
               },
               {
                 "BaseLayerWitness": 7
+              },
+              {
+                "BaseLayerWitness": 8
               }
             ]
           },
@@ -3077,6 +3089,9 @@
               },
               {
                 "BaseLayerWitness": 7
+              },
+              {
+                "BaseLayerWitness": 8
               },
               {
                 "BaseLayerWitness": 14
@@ -3138,6 +3153,9 @@
                 "BaseLayerWitness": 7
               },
               {
+                "BaseLayerWitness": 8
+              },
+              {
                 "BaseLayerWitness": 11
               },
               {
@@ -3296,6 +3314,9 @@
               },
               {
                 "BaseLayerWitness": 7
+              },
+              {
+                "BaseLayerWitness": 8
               },
               {
                 "BaseLayerWitness": 11
@@ -3330,6 +3351,14 @@
             ]
           },
           {
+            "uses": 3,
+            "footprint": [
+              {
+                "BaseLayerMemory": 16
+              }
+            ]
+          },
+          {
             "uses": 1,
             "footprint": [
               {
@@ -3357,6 +3386,9 @@
               },
               {
                 "BaseLayerWitness": 7
+              },
+              {
+                "BaseLayerWitness": 8
               },
               {
                 "BaseLayerWitness": 12
@@ -3418,14 +3450,6 @@
               {
                 "BaseLayerMemory": 8
               },
-              {
-                "BaseLayerMemory": 16
-              }
-            ]
-          },
-          {
-            "uses": 2,
-            "footprint": [
               {
                 "BaseLayerMemory": 16
               }
@@ -3546,6 +3570,9 @@
               },
               {
                 "BaseLayerWitness": 7
+              },
+              {
+                "BaseLayerWitness": 8
               },
               {
                 "BaseLayerWitness": 12
@@ -5239,11 +5266,11 @@
                     5,
                     [
                       [
-                        1,
+                        943718400,
                         10
                       ],
                       [
-                        65536,
+                        2013235201,
                         11
                       ]
                     ]
@@ -5252,11 +5279,11 @@
                     6,
                     [
                       [
-                        65536,
+                        2013235201,
                         10
                       ],
                       [
-                        268435454,
+                        1,
                         11
                       ]
                     ]
@@ -5270,14 +5297,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 86
+              "expr": 87
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 24,
-              "value": 86
+              "value": 87
             }
           ],
           "num_challenges": 1
@@ -5383,14 +5410,14 @@
                 "linear": [],
                 "constant": 0
               },
-              "expr": 100
+              "expr": 101
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 25,
-              "value": 100
+              "value": 101
             }
           ],
           "num_challenges": 1
@@ -5405,7 +5432,7 @@
                     [
                       [
                         2013265920,
-                        101
+                        102
                       ]
                     ]
                   ],
@@ -5414,7 +5441,7 @@
                     [
                       [
                         2013265920,
-                        101
+                        102
                       ]
                     ]
                   ],
@@ -5423,7 +5450,16 @@
                     [
                       [
                         2013265920,
-                        101
+                        102
+                      ]
+                    ]
+                  ],
+                  [
+                    65,
+                    [
+                      [
+                        2013265920,
+                        102
                       ]
                     ]
                   ]
@@ -5440,18 +5476,22 @@
                   [
                     1,
                     64
+                  ],
+                  [
+                    1,
+                    65
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 106
+              "expr": 107
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 26,
-              "value": 106
+              "value": 107
             }
           ],
           "num_challenges": 1
@@ -5479,7 +5519,7 @@
                     [
                       [
                         2013200385,
-                        107
+                        108
                       ],
                       [
                         1,
@@ -5500,7 +5540,7 @@
                     [
                       [
                         2013200385,
-                        107
+                        108
                       ],
                       [
                         2013265920,
@@ -5521,7 +5561,7 @@
                     [
                       [
                         2013200385,
-                        107
+                        108
                       ],
                       [
                         2013265920,
@@ -5542,7 +5582,7 @@
                       ],
                       [
                         2013200385,
-                        107
+                        108
                       ],
                       [
                         2013265920,
@@ -5559,7 +5599,7 @@
                       ],
                       [
                         2013200385,
-                        107
+                        108
                       ],
                       [
                         2013265920,
@@ -5576,7 +5616,24 @@
                       ],
                       [
                         2013200385,
-                        107
+                        108
+                      ],
+                      [
+                        2013265920,
+                        24
+                      ]
+                    ]
+                  ],
+                  [
+                    65,
+                    [
+                      [
+                        1,
+                        31
+                      ],
+                      [
+                        2013200385,
+                        108
                       ],
                       [
                         2013265920,
@@ -5597,18 +5654,22 @@
                   [
                     1,
                     64
+                  ],
+                  [
+                    1,
+                    65
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 120
+              "expr": 121
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 27,
-              "value": 120
+              "value": 121
             }
           ],
           "num_challenges": 1
@@ -5636,11 +5697,11 @@
                     [
                       [
                         1,
-                        107
+                        108
                       ],
                       [
                         2013200385,
-                        101
+                        102
                       ],
                       [
                         1,
@@ -5661,11 +5722,11 @@
                     [
                       [
                         1,
-                        107
+                        108
                       ],
                       [
                         2013200385,
-                        101
+                        102
                       ],
                       [
                         2013265920,
@@ -5686,11 +5747,11 @@
                     [
                       [
                         1,
-                        107
+                        108
                       ],
                       [
                         2013200385,
-                        101
+                        102
                       ],
                       [
                         2013265920,
@@ -5711,14 +5772,14 @@
                       ],
                       [
                         1,
-                        107
+                        108
                       ],
                       [
                         2013200385,
-                        101
+                        102
                       ],
                       [
-                        1,
+                        2013265920,
                         25
                       ]
                     ]
@@ -5732,14 +5793,14 @@
                       ],
                       [
                         1,
-                        107
+                        108
                       ],
                       [
                         2013200385,
-                        101
+                        102
                       ],
                       [
-                        1,
+                        2013265920,
                         25
                       ]
                     ]
@@ -5753,14 +5814,35 @@
                       ],
                       [
                         1,
-                        107
+                        108
                       ],
                       [
                         2013200385,
-                        101
+                        102
+                      ],
+                      [
+                        2013265920,
+                        25
+                      ]
+                    ]
+                  ],
+                  [
+                    65,
+                    [
+                      [
+                        1,
+                        36
                       ],
                       [
                         1,
+                        108
+                      ],
+                      [
+                        2013200385,
+                        102
+                      ],
+                      [
+                        2013265920,
                         25
                       ]
                     ]
@@ -5778,18 +5860,22 @@
                   [
                     30720,
                     64
+                  ],
+                  [
+                    30720,
+                    65
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 133
+              "expr": 134
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 28,
-              "value": 133
+              "value": 134
             }
           ],
           "num_challenges": 1
@@ -5812,14 +5898,14 @@
                 "linear": [],
                 "constant": 0
               },
-              "expr": 134
+              "expr": 135
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 29,
-              "value": 134
+              "value": 135
             }
           ],
           "num_challenges": 1
@@ -5842,14 +5928,14 @@
                 "linear": [],
                 "constant": 0
               },
-              "expr": 135
+              "expr": 136
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 30,
-              "value": 135
+              "value": 136
             }
           ],
           "num_challenges": 1
@@ -5872,14 +5958,14 @@
                 "linear": [],
                 "constant": 0
               },
-              "expr": 136
+              "expr": 137
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 31,
-              "value": 136
+              "value": 137
             }
           ],
           "num_challenges": 1
@@ -5902,14 +5988,14 @@
                 "linear": [],
                 "constant": 0
               },
-              "expr": 137
+              "expr": 138
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 32,
-              "value": 137
+              "value": 138
             }
           ],
           "num_challenges": 1
@@ -5932,14 +6018,14 @@
                 "linear": [],
                 "constant": 0
               },
-              "expr": 138
+              "expr": 139
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 33,
-              "value": 138
+              "value": 139
             }
           ],
           "num_challenges": 1
@@ -5962,14 +6048,14 @@
                 "linear": [],
                 "constant": 0
               },
-              "expr": 139
+              "expr": 140
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 34,
-              "value": 139
+              "value": 140
             }
           ],
           "num_challenges": 1
@@ -6014,14 +6100,14 @@
                 ],
                 "constant": 1006755833
               },
-              "expr": 146
+              "expr": 147
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 35,
-              "value": 146
+              "value": 147
             }
           ],
           "num_challenges": 1
@@ -6051,14 +6137,14 @@
                 ],
                 "constant": 2013143041
               },
-              "expr": 148
+              "expr": 149
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 36,
-              "value": 148
+              "value": 149
             }
           ],
           "num_challenges": 1
@@ -6103,14 +6189,14 @@
                 ],
                 "constant": 235944960
               },
-              "expr": 155
+              "expr": 156
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 37,
-              "value": 155
+              "value": 156
             }
           ],
           "num_challenges": 1
@@ -6140,14 +6226,14 @@
                 ],
                 "constant": 15360
               },
-              "expr": 157
+              "expr": 158
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 38,
-              "value": 157
+              "value": 158
             }
           ],
           "num_challenges": 1
@@ -6175,14 +6261,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 159
+              "expr": 160
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 39,
-              "value": 159
+              "value": 160
             }
           ],
           "num_challenges": 1
@@ -6210,14 +6296,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 161
+              "expr": 162
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 40,
-              "value": 161
+              "value": 162
             }
           ],
           "num_challenges": 1
@@ -6245,14 +6331,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 163
+              "expr": 164
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 41,
-              "value": 163
+              "value": 164
             }
           ],
           "num_challenges": 1
@@ -6280,14 +6366,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 165
+              "expr": 166
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 42,
-              "value": 165
+              "value": 166
             }
           ],
           "num_challenges": 1
@@ -6315,14 +6401,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 167
+              "expr": 168
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 43,
-              "value": 167
+              "value": 168
             }
           ],
           "num_challenges": 1
@@ -6350,14 +6436,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 169
+              "expr": 170
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 44,
-              "value": 169
+              "value": 170
             }
           ],
           "num_challenges": 1
@@ -6385,14 +6471,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 171
+              "expr": 172
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 45,
-              "value": 171
+              "value": 172
             }
           ],
           "num_challenges": 1
@@ -6420,14 +6506,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 173
+              "expr": 174
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 46,
-              "value": 173
+              "value": 174
             }
           ],
           "num_challenges": 1
@@ -6455,14 +6541,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 175
+              "expr": 176
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 47,
-              "value": 175
+              "value": 176
             }
           ],
           "num_challenges": 1
@@ -6473,11 +6559,11 @@
               "flat": {
                 "quadratic": [
                   [
-                    107,
+                    108,
                     [
                       [
                         1,
-                        107
+                        108
                       ]
                     ]
                   ]
@@ -6485,19 +6571,19 @@
                 "linear": [
                   [
                     2013265920,
-                    107
+                    108
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 177
+              "expr": 178
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 48,
-              "value": 177
+              "value": 178
             }
           ],
           "num_challenges": 1
@@ -6508,11 +6594,11 @@
               "flat": {
                 "quadratic": [
                   [
-                    101,
+                    102,
                     [
                       [
                         1,
-                        101
+                        102
                       ]
                     ]
                   ]
@@ -6520,19 +6606,19 @@
                 "linear": [
                   [
                     2013265920,
-                    101
+                    102
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 179
+              "expr": 180
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 49,
-              "value": 179
+              "value": 180
             }
           ],
           "num_challenges": 1
@@ -6560,14 +6646,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 181
+              "expr": 182
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 50,
-              "value": 181
+              "value": 182
             }
           ],
           "num_challenges": 1
@@ -6595,14 +6681,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 183
+              "expr": 184
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 51,
-              "value": 183
+              "value": 184
             }
           ],
           "num_challenges": 1
@@ -6630,14 +6716,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 185
+              "expr": 186
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 52,
-              "value": 185
+              "value": 186
             }
           ],
           "num_challenges": 1
@@ -6647,17 +6733,17 @@
         {
           "kind": "VectorizedLookupSetup",
           "inputs": [
-            186,
             187,
             188,
             189,
             190,
             191,
             192,
-            193
+            193,
+            194
           ],
           "out": [
-            194,
+            195,
             {
               "Cached": {
                 "layer": 0,
@@ -9531,6 +9617,11 @@
       true
     ],
     "table_offsets": [
+      0,
+      0,
+      0,
+      0,
+      0,
       0,
       0,
       0,

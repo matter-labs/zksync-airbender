@@ -155,7 +155,7 @@
           {
             "Place": {
               "addr": {
-                "BaseLayerWitness": 25
+                "BaseLayerWitness": 26
               },
               "domain": "Base"
             }
@@ -248,7 +248,7 @@
           {
             "Place": {
               "addr": {
-                "BaseLayerWitness": 26
+                "BaseLayerWitness": 27
               },
               "domain": "Base"
             }
@@ -430,7 +430,7 @@
           {
             "Place": {
               "addr": {
-                "BaseLayerWitness": 27
+                "BaseLayerWitness": 28
               },
               "domain": "Base"
             }
@@ -902,6 +902,35 @@
             }
           },
           {
+            "Product": {
+              "factors": [
+                57,
+                61,
+                82
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Product": {
+              "factors": [
+                57,
+                85
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Sum": {
+              "terms": [
+                97,
+                98,
+                99
+              ],
+              "domain": "Base"
+            }
+          },
+          {
             "Place": {
               "addr": {
                 "BaseLayerWitness": 18
@@ -910,10 +939,18 @@
             }
           },
           {
+            "Place": {
+              "addr": {
+                "BaseLayerWitness": 19
+              },
+              "domain": "Base"
+            }
+          },
+          {
             "Product": {
               "factors": [
                 57,
-                98
+                102
               ],
               "domain": "Base"
             }
@@ -922,7 +959,7 @@
             "Product": {
               "factors": [
                 68,
-                97
+                101
               ],
               "domain": "Base"
             }
@@ -930,8 +967,8 @@
           {
             "Sum": {
               "terms": [
-                99,
-                100
+                103,
+                104
               ],
               "domain": "Base"
             }
@@ -948,7 +985,7 @@
             "Product": {
               "factors": [
                 69,
-                102
+                106
               ],
               "domain": "Base"
             }
@@ -967,8 +1004,8 @@
               "terms": [
                 64,
                 76,
-                103,
-                104
+                107,
+                108
               ],
               "domain": "Base"
             }
@@ -977,7 +1014,7 @@
             "Product": {
               "factors": [
                 61,
-                105
+                109
               ],
               "domain": "Base"
             }
@@ -989,7 +1026,7 @@
             "Sum": {
               "terms": [
                 60,
-                107
+                111
               ],
               "domain": "Base"
             }
@@ -997,8 +1034,8 @@
           {
             "Product": {
               "factors": [
-                98,
-                108
+                102,
+                112
               ],
               "domain": "Base"
             }
@@ -1007,7 +1044,7 @@
             "Product": {
               "factors": [
                 68,
-                105
+                109
               ],
               "domain": "Base"
             }
@@ -1017,8 +1054,8 @@
               "terms": [
                 60,
                 66,
-                103,
-                104
+                107,
+                108
               ],
               "domain": "Base"
             }
@@ -1027,7 +1064,7 @@
             "Product": {
               "factors": [
                 65,
-                111
+                115
               ],
               "domain": "Base"
             }
@@ -1037,8 +1074,8 @@
               "terms": [
                 60,
                 64,
-                103,
-                104
+                107,
+                108
               ],
               "domain": "Base"
             }
@@ -1047,7 +1084,7 @@
             "Product": {
               "factors": [
                 62,
-                113
+                117
               ],
               "domain": "Base"
             }
@@ -1055,11 +1092,11 @@
           {
             "Sum": {
               "terms": [
-                106,
-                109,
                 110,
-                112,
-                114
+                113,
+                114,
+                116,
+                118
               ],
               "domain": "Base"
             }
@@ -1084,7 +1121,7 @@
             "Product": {
               "factors": [
                 69,
-                116
+                120
               ],
               "domain": "Base"
             }
@@ -1093,7 +1130,7 @@
             "Product": {
               "factors": [
                 57,
-                117
+                121
               ],
               "domain": "Base"
             }
@@ -1102,9 +1139,9 @@
             "Sum": {
               "terms": [
                 20,
-                102,
-                118,
-                119
+                106,
+                122,
+                123
               ],
               "domain": "Base"
             }
@@ -1113,7 +1150,7 @@
             "Product": {
               "factors": [
                 61,
-                120
+                124
               ],
               "domain": "Base"
             }
@@ -1122,7 +1159,7 @@
             "Product": {
               "factors": [
                 82,
-                98
+                102
               ],
               "domain": "Base"
             }
@@ -1131,7 +1168,7 @@
             "Product": {
               "factors": [
                 68,
-                120
+                124
               ],
               "domain": "Base"
             }
@@ -1141,9 +1178,9 @@
               "terms": [
                 82,
                 84,
-                102,
-                118,
-                119
+                106,
+                122,
+                123
               ],
               "domain": "Base"
             }
@@ -1152,7 +1189,7 @@
             "Product": {
               "factors": [
                 65,
-                124
+                128
               ],
               "domain": "Base"
             }
@@ -1162,48 +1199,9 @@
               "terms": [
                 20,
                 82,
-                102,
-                118,
-                119
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Product": {
-              "factors": [
-                62,
-                126
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Sum": {
-              "terms": [
-                121,
+                106,
                 122,
-                123,
-                125,
-                127
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Place": {
-              "addr": {
-                "BaseLayerWitness": 19
-              },
-              "domain": "Base"
-            }
-          },
-          {
-            "Sum": {
-              "terms": [
-                62,
-                65,
-                98
+                123
               ],
               "domain": "Base"
             }
@@ -1211,8 +1209,20 @@
           {
             "Product": {
               "factors": [
-                129,
+                62,
                 130
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Sum": {
+              "terms": [
+                125,
+                126,
+                127,
+                129,
+                131
               ],
               "domain": "Base"
             }
@@ -1226,10 +1236,37 @@
             }
           },
           {
+            "Sum": {
+              "terms": [
+                62,
+                65,
+                102
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Product": {
+              "factors": [
+                133,
+                134
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "BaseLayerWitness": 21
+              },
+              "domain": "Base"
+            }
+          },
+          {
             "Product": {
               "factors": [
                 57,
-                132
+                136
               ],
               "domain": "Base"
             }
@@ -1247,42 +1284,6 @@
             "Product": {
               "factors": [
                 14,
-                134
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Product": {
-              "factors": [
-                61,
-                97
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Sum": {
-              "terms": [
-                133,
-                135,
-                136
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Place": {
-              "addr": {
-                "BaseLayerWitness": 21
-              },
-              "domain": "Base"
-            }
-          },
-          {
-            "Product": {
-              "factors": [
-                57,
                 138
               ],
               "domain": "Base"
@@ -1291,8 +1292,8 @@
           {
             "Product": {
               "factors": [
-                19,
-                134
+                61,
+                101
               ],
               "domain": "Base"
             }
@@ -1300,8 +1301,44 @@
           {
             "Sum": {
               "terms": [
+                137,
                 139,
                 140
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "BaseLayerWitness": 22
+              },
+              "domain": "Base"
+            }
+          },
+          {
+            "Product": {
+              "factors": [
+                57,
+                142
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Product": {
+              "factors": [
+                19,
+                138
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Sum": {
+              "terms": [
+                143,
+                144
               ],
               "domain": "Base"
             }
@@ -1326,7 +1363,7 @@
             "Product": {
               "factors": [
                 57,
-                143
+                147
               ],
               "domain": "Base"
             }
@@ -1338,7 +1375,7 @@
             "Product": {
               "factors": [
                 57,
-                142
+                146
               ],
               "domain": "Base"
             }
@@ -1346,8 +1383,8 @@
           {
             "Sum": {
               "terms": [
-                145,
-                146
+                149,
+                150
               ],
               "domain": "Base"
             }
@@ -1355,8 +1392,8 @@
           {
             "Product": {
               "factors": [
-                132,
-                147
+                136,
+                151
               ],
               "domain": "Base"
             }
@@ -1364,8 +1401,8 @@
           {
             "Sum": {
               "terms": [
-                144,
-                148
+                148,
+                152
               ],
               "domain": "Base"
             }
@@ -1382,7 +1419,7 @@
             "Product": {
               "factors": [
                 57,
-                150
+                154
               ],
               "domain": "Base"
             }
@@ -1390,8 +1427,8 @@
           {
             "Product": {
               "factors": [
-                138,
-                147
+                142,
+                151
               ],
               "domain": "Base"
             }
@@ -1399,8 +1436,8 @@
           {
             "Sum": {
               "terms": [
-                151,
-                152
+                155,
+                156
               ],
               "domain": "Base"
             }
@@ -1429,8 +1466,8 @@
             "Sum": {
               "terms": [
                 76,
-                154,
-                156
+                158,
+                160
               ],
               "domain": "Base"
             }
@@ -1438,8 +1475,8 @@
           {
             "Product": {
               "factors": [
-                155,
-                157
+                159,
+                161
               ],
               "domain": "Base"
             }
@@ -1450,9 +1487,9 @@
           {
             "Product": {
               "factors": [
-                157,
-                157,
-                159
+                161,
+                161,
+                163
               ],
               "domain": "Base"
             }
@@ -1460,8 +1497,8 @@
           {
             "Sum": {
               "terms": [
-                158,
-                160
+                162,
+                164
               ],
               "domain": "Base"
             }
@@ -1478,7 +1515,7 @@
             "Product": {
               "factors": [
                 57,
-                162
+                166
               ],
               "domain": "Base"
             }
@@ -1487,8 +1524,8 @@
             "Sum": {
               "terms": [
                 30,
-                158,
-                163
+                162,
+                167
               ],
               "domain": "Base"
             }
@@ -1506,7 +1543,7 @@
             "Product": {
               "factors": [
                 62,
-                165
+                169
               ],
               "domain": "Base"
             }
@@ -1524,7 +1561,7 @@
             "Product": {
               "factors": [
                 65,
-                167
+                171
               ],
               "domain": "Base"
             }
@@ -1542,7 +1579,7 @@
             "Product": {
               "factors": [
                 61,
-                169
+                173
               ],
               "domain": "Base"
             }
@@ -1560,7 +1597,7 @@
             "Product": {
               "factors": [
                 68,
-                171
+                175
               ],
               "domain": "Base"
             }
@@ -1569,7 +1606,7 @@
             "Sum": {
               "terms": [
                 57,
-                142
+                146
               ],
               "domain": "Base"
             }
@@ -1577,8 +1614,8 @@
           {
             "Product": {
               "factors": [
-                142,
-                173
+                146,
+                177
               ],
               "domain": "Base"
             }
@@ -1596,7 +1633,7 @@
             "Product": {
               "factors": [
                 63,
-                175
+                179
               ],
               "domain": "Base"
             }
@@ -1614,60 +1651,16 @@
             "Product": {
               "factors": [
                 83,
-                177
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Sum": {
-              "terms": [
-                57,
-                102
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Product": {
-              "factors": [
-                102,
-                179
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Sum": {
-              "terms": [
-                57,
-                116
-              ],
-              "domain": "Base"
-            }
-          },
-          {
-            "Product": {
-              "factors": [
-                116,
                 181
               ],
               "domain": "Base"
             }
           },
           {
-            "Place": {
-              "addr": {
-                "BaseLayerWitness": 22
-              },
-              "domain": "Base"
-            }
-          },
-          {
             "Sum": {
               "terms": [
                 57,
-                183
+                106
               ],
               "domain": "Base"
             }
@@ -1675,8 +1668,26 @@
           {
             "Product": {
               "factors": [
-                183,
-                184
+                106,
+                183
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Sum": {
+              "terms": [
+                57,
+                120
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Product": {
+              "factors": [
+                120,
+                185
               ],
               "domain": "Base"
             }
@@ -1693,7 +1704,7 @@
             "Sum": {
               "terms": [
                 57,
-                186
+                187
               ],
               "domain": "Base"
             }
@@ -1701,8 +1712,8 @@
           {
             "Product": {
               "factors": [
-                186,
-                187
+                187,
+                188
               ],
               "domain": "Base"
             }
@@ -1719,7 +1730,7 @@
             "Sum": {
               "terms": [
                 57,
-                189
+                190
               ],
               "domain": "Base"
             }
@@ -1727,8 +1738,34 @@
           {
             "Product": {
               "factors": [
-                189,
-                190
+                190,
+                191
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Place": {
+              "addr": {
+                "BaseLayerWitness": 25
+              },
+              "domain": "Base"
+            }
+          },
+          {
+            "Sum": {
+              "terms": [
+                57,
+                193
+              ],
+              "domain": "Base"
+            }
+          },
+          {
+            "Product": {
+              "factors": [
+                193,
+                194
               ],
               "domain": "Base"
             }
@@ -2299,7 +2336,7 @@
             "uses": 2,
             "footprint": [
               {
-                "BaseLayerWitness": 25
+                "BaseLayerWitness": 26
               }
             ]
           },
@@ -2318,7 +2355,7 @@
                 "BaseLayerWitness": 8
               },
               {
-                "BaseLayerWitness": 25
+                "BaseLayerWitness": 26
               },
               {
                 "VirtualSetup": "RangeCheck16Bits"
@@ -2332,7 +2369,7 @@
                 "BaseLayerWitness": 8
               },
               {
-                "BaseLayerWitness": 25
+                "BaseLayerWitness": 26
               },
               {
                 "VirtualSetup": "RangeCheck16Bits"
@@ -2405,7 +2442,7 @@
             "uses": 2,
             "footprint": [
               {
-                "BaseLayerWitness": 26
+                "BaseLayerWitness": 27
               }
             ]
           },
@@ -2421,7 +2458,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 26
+                "BaseLayerWitness": 27
               },
               {
                 "BaseLayerMemory": 24
@@ -2435,7 +2472,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 26
+                "BaseLayerWitness": 27
               },
               {
                 "BaseLayerMemory": 24
@@ -2641,7 +2678,7 @@
             "uses": 2,
             "footprint": [
               {
-                "BaseLayerWitness": 27
+                "BaseLayerWitness": 28
               }
             ]
           },
@@ -2660,7 +2697,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 27
+                "BaseLayerWitness": 28
               },
               {
                 "BaseLayerMemory": 17
@@ -2683,7 +2720,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 27
+                "BaseLayerWitness": 28
               },
               {
                 "BaseLayerMemory": 17
@@ -2815,7 +2852,7 @@
             ]
           },
           {
-            "uses": 27,
+            "uses": 29,
             "footprint": []
           },
           {
@@ -2843,7 +2880,7 @@
             ]
           },
           {
-            "uses": 8,
+            "uses": 9,
             "footprint": [
               {
                 "BaseLayerWitness": 5
@@ -3102,7 +3139,7 @@
             ]
           },
           {
-            "uses": 5,
+            "uses": 6,
             "footprint": [
               {
                 "BaseLayerWitness": 1
@@ -3345,7 +3382,7 @@
             ]
           },
           {
-            "uses": 3,
+            "uses": 2,
             "footprint": [
               {
                 "BaseLayerWitness": 17
@@ -3353,10 +3390,13 @@
             ]
           },
           {
-            "uses": 4,
+            "uses": 1,
             "footprint": [
               {
-                "BaseLayerWitness": 18
+                "BaseLayerWitness": 1
+              },
+              {
+                "BaseLayerWitness": 5
               }
             ]
           },
@@ -3364,7 +3404,48 @@
             "uses": 1,
             "footprint": [
               {
+                "BaseLayerMemory": 8
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "BaseLayerWitness": 1
+              },
+              {
+                "BaseLayerWitness": 5
+              },
+              {
+                "BaseLayerWitness": 17
+              },
+              {
+                "BaseLayerMemory": 8
+              }
+            ]
+          },
+          {
+            "uses": 3,
+            "footprint": [
+              {
                 "BaseLayerWitness": 18
+              }
+            ]
+          },
+          {
+            "uses": 4,
+            "footprint": [
+              {
+                "BaseLayerWitness": 19
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "BaseLayerWitness": 19
               }
             ]
           },
@@ -3375,7 +3456,7 @@
                 "BaseLayerWitness": 6
               },
               {
-                "BaseLayerWitness": 17
+                "BaseLayerWitness": 18
               }
             ]
           },
@@ -3386,10 +3467,10 @@
                 "BaseLayerWitness": 6
               },
               {
-                "BaseLayerWitness": 17
+                "BaseLayerWitness": 18
               },
               {
-                "BaseLayerWitness": 18
+                "BaseLayerWitness": 19
               }
             ]
           },
@@ -3467,7 +3548,7 @@
                 "BaseLayerWitness": 0
               },
               {
-                "BaseLayerWitness": 18
+                "BaseLayerWitness": 19
               }
             ]
           },
@@ -3587,7 +3668,7 @@
                 "BaseLayerWitness": 13
               },
               {
-                "BaseLayerWitness": 18
+                "BaseLayerWitness": 19
               },
               {
                 "BaseLayerMemory": 2
@@ -3672,158 +3753,6 @@
               {
                 "BaseLayerWitness": 1
               },
-              {
-                "BaseLayerWitness": 18
-              }
-            ]
-          },
-          {
-            "uses": 1,
-            "footprint": [
-              {
-                "BaseLayerWitness": 6
-              },
-              {
-                "BaseLayerWitness": 13
-              },
-              {
-                "BaseLayerWitness": 14
-              },
-              {
-                "BaseLayerMemory": 19
-              },
-              {
-                "BaseLayerMemory": 23
-              }
-            ]
-          },
-          {
-            "uses": 1,
-            "footprint": [
-              {
-                "BaseLayerWitness": 1
-              },
-              {
-                "BaseLayerWitness": 13
-              },
-              {
-                "BaseLayerWitness": 14
-              },
-              {
-                "BaseLayerMemory": 3
-              },
-              {
-                "BaseLayerMemory": 23
-              }
-            ]
-          },
-          {
-            "uses": 1,
-            "footprint": [
-              {
-                "BaseLayerWitness": 1
-              },
-              {
-                "BaseLayerWitness": 4
-              },
-              {
-                "BaseLayerWitness": 13
-              },
-              {
-                "BaseLayerWitness": 14
-              },
-              {
-                "BaseLayerMemory": 3
-              },
-              {
-                "BaseLayerMemory": 23
-              }
-            ]
-          },
-          {
-            "uses": 1,
-            "footprint": [
-              {
-                "BaseLayerWitness": 1
-              },
-              {
-                "BaseLayerWitness": 13
-              },
-              {
-                "BaseLayerWitness": 14
-              },
-              {
-                "BaseLayerMemory": 19
-              },
-              {
-                "BaseLayerMemory": 23
-              }
-            ]
-          },
-          {
-            "uses": 1,
-            "footprint": [
-              {
-                "BaseLayerWitness": 1
-              },
-              {
-                "BaseLayerWitness": 3
-              },
-              {
-                "BaseLayerWitness": 13
-              },
-              {
-                "BaseLayerWitness": 14
-              },
-              {
-                "BaseLayerMemory": 19
-              },
-              {
-                "BaseLayerMemory": 23
-              }
-            ]
-          },
-          {
-            "uses": 0,
-            "footprint": [
-              {
-                "BaseLayerWitness": 1
-              },
-              {
-                "BaseLayerWitness": 3
-              },
-              {
-                "BaseLayerWitness": 4
-              },
-              {
-                "BaseLayerWitness": 5
-              },
-              {
-                "BaseLayerWitness": 6
-              },
-              {
-                "BaseLayerWitness": 13
-              },
-              {
-                "BaseLayerWitness": 14
-              },
-              {
-                "BaseLayerWitness": 18
-              },
-              {
-                "BaseLayerMemory": 3
-              },
-              {
-                "BaseLayerMemory": 19
-              },
-              {
-                "BaseLayerMemory": 23
-              }
-            ]
-          },
-          {
-            "uses": 2,
-            "footprint": [
               {
                 "BaseLayerWitness": 19
               }
@@ -3833,13 +3762,105 @@
             "uses": 1,
             "footprint": [
               {
-                "BaseLayerWitness": 3
+                "BaseLayerWitness": 6
+              },
+              {
+                "BaseLayerWitness": 13
+              },
+              {
+                "BaseLayerWitness": 14
+              },
+              {
+                "BaseLayerMemory": 19
+              },
+              {
+                "BaseLayerMemory": 23
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "BaseLayerWitness": 1
+              },
+              {
+                "BaseLayerWitness": 13
+              },
+              {
+                "BaseLayerWitness": 14
+              },
+              {
+                "BaseLayerMemory": 3
+              },
+              {
+                "BaseLayerMemory": 23
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "BaseLayerWitness": 1
               },
               {
                 "BaseLayerWitness": 4
               },
               {
-                "BaseLayerWitness": 18
+                "BaseLayerWitness": 13
+              },
+              {
+                "BaseLayerWitness": 14
+              },
+              {
+                "BaseLayerMemory": 3
+              },
+              {
+                "BaseLayerMemory": 23
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "BaseLayerWitness": 1
+              },
+              {
+                "BaseLayerWitness": 13
+              },
+              {
+                "BaseLayerWitness": 14
+              },
+              {
+                "BaseLayerMemory": 19
+              },
+              {
+                "BaseLayerMemory": 23
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "BaseLayerWitness": 1
+              },
+              {
+                "BaseLayerWitness": 3
+              },
+              {
+                "BaseLayerWitness": 13
+              },
+              {
+                "BaseLayerWitness": 14
+              },
+              {
+                "BaseLayerMemory": 19
+              },
+              {
+                "BaseLayerMemory": 23
               }
             ]
           },
@@ -3847,16 +3868,37 @@
             "uses": 0,
             "footprint": [
               {
+                "BaseLayerWitness": 1
+              },
+              {
                 "BaseLayerWitness": 3
               },
               {
                 "BaseLayerWitness": 4
               },
               {
-                "BaseLayerWitness": 18
+                "BaseLayerWitness": 5
+              },
+              {
+                "BaseLayerWitness": 6
+              },
+              {
+                "BaseLayerWitness": 13
+              },
+              {
+                "BaseLayerWitness": 14
               },
               {
                 "BaseLayerWitness": 19
+              },
+              {
+                "BaseLayerMemory": 3
+              },
+              {
+                "BaseLayerMemory": 19
+              },
+              {
+                "BaseLayerMemory": 23
               }
             ]
           },
@@ -3872,7 +3914,46 @@
             "uses": 1,
             "footprint": [
               {
+                "BaseLayerWitness": 3
+              },
+              {
+                "BaseLayerWitness": 4
+              },
+              {
+                "BaseLayerWitness": 19
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "BaseLayerWitness": 3
+              },
+              {
+                "BaseLayerWitness": 4
+              },
+              {
+                "BaseLayerWitness": 19
+              },
+              {
                 "BaseLayerWitness": 20
+              }
+            ]
+          },
+          {
+            "uses": 2,
+            "footprint": [
+              {
+                "BaseLayerWitness": 21
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "BaseLayerWitness": 21
               }
             ]
           },
@@ -3908,7 +3989,7 @@
                 "BaseLayerWitness": 5
               },
               {
-                "BaseLayerWitness": 17
+                "BaseLayerWitness": 18
               }
             ]
           },
@@ -3928,10 +4009,10 @@
                 "BaseLayerWitness": 8
               },
               {
-                "BaseLayerWitness": 17
+                "BaseLayerWitness": 18
               },
               {
-                "BaseLayerWitness": 20
+                "BaseLayerWitness": 21
               }
             ]
           },
@@ -3939,7 +4020,7 @@
             "uses": 2,
             "footprint": [
               {
-                "BaseLayerWitness": 21
+                "BaseLayerWitness": 22
               }
             ]
           },
@@ -3947,7 +4028,7 @@
             "uses": 1,
             "footprint": [
               {
-                "BaseLayerWitness": 21
+                "BaseLayerWitness": 22
               }
             ]
           },
@@ -3978,7 +4059,7 @@
                 "BaseLayerWitness": 9
               },
               {
-                "BaseLayerWitness": 21
+                "BaseLayerWitness": 22
               }
             ]
           },
@@ -4033,7 +4114,7 @@
                 "BaseLayerWitness": 7
               },
               {
-                "BaseLayerWitness": 20
+                "BaseLayerWitness": 21
               }
             ]
           },
@@ -4044,7 +4125,7 @@
                 "BaseLayerWitness": 7
               },
               {
-                "BaseLayerWitness": 20
+                "BaseLayerWitness": 21
               },
               {
                 "BaseLayerMemory": 15
@@ -4074,7 +4155,7 @@
                 "BaseLayerWitness": 7
               },
               {
-                "BaseLayerWitness": 21
+                "BaseLayerWitness": 22
               }
             ]
           },
@@ -4085,7 +4166,7 @@
                 "BaseLayerWitness": 7
               },
               {
-                "BaseLayerWitness": 21
+                "BaseLayerWitness": 22
               },
               {
                 "BaseLayerMemory": 16
@@ -4341,30 +4422,6 @@
             "uses": 4,
             "footprint": [
               {
-                "BaseLayerWitness": 22
-              }
-            ]
-          },
-          {
-            "uses": 1,
-            "footprint": [
-              {
-                "BaseLayerWitness": 22
-              }
-            ]
-          },
-          {
-            "uses": 0,
-            "footprint": [
-              {
-                "BaseLayerWitness": 22
-              }
-            ]
-          },
-          {
-            "uses": 4,
-            "footprint": [
-              {
                 "BaseLayerWitness": 23
               }
             ]
@@ -4406,6 +4463,30 @@
             "footprint": [
               {
                 "BaseLayerWitness": 24
+              }
+            ]
+          },
+          {
+            "uses": 4,
+            "footprint": [
+              {
+                "BaseLayerWitness": 25
+              }
+            ]
+          },
+          {
+            "uses": 1,
+            "footprint": [
+              {
+                "BaseLayerWitness": 25
+              }
+            ]
+          },
+          {
+            "uses": 0,
+            "footprint": [
+              {
+                "BaseLayerWitness": 25
               }
             ]
           },
@@ -4663,7 +4744,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 22
+                "BaseLayerWitness": 23
               },
               {
                 "BaseLayerMemory": 0
@@ -4677,7 +4758,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 22
+                "BaseLayerWitness": 23
               },
               {
                 "BaseLayerMemory": 1
@@ -4691,7 +4772,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 23
+                "BaseLayerWitness": 24
               },
               {
                 "BaseLayerMemory": 5
@@ -4705,7 +4786,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 23
+                "BaseLayerWitness": 24
               },
               {
                 "BaseLayerMemory": 6
@@ -4719,7 +4800,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 24
+                "BaseLayerWitness": 25
               },
               {
                 "BaseLayerMemory": 10
@@ -4733,7 +4814,7 @@
             "uses": 0,
             "footprint": [
               {
-                "BaseLayerWitness": 24
+                "BaseLayerWitness": 25
               },
               {
                 "BaseLayerMemory": 11
@@ -4970,7 +5051,7 @@
                 "BaseLayerWitness": 17
               },
               {
-                "BaseLayerMemory": 8
+                "BaseLayerWitness": 18
               }
             ]
           },
@@ -4981,7 +5062,7 @@
                 "BaseLayerWitness": 10
               },
               {
-                "BaseLayerWitness": 19
+                "BaseLayerWitness": 20
               },
               {
                 "BaseLayerMemory": 22
@@ -5857,11 +5938,50 @@
               "flat": {
                 "quadratic": [
                   [
+                    82,
+                    [
+                      [
+                        2013265920,
+                        61
+                      ]
+                    ]
+                  ]
+                ],
+                "linear": [
+                  [
+                    1,
+                    97
+                  ],
+                  [
+                    2013265920,
+                    85
+                  ]
+                ],
+                "constant": 0
+              },
+              "expr": 100
+            }
+          },
+          "dst": [],
+          "batch_terms": [
+            {
+              "power": 28,
+              "value": 100
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "EnforceSingleMaxQuadraticConstraint": {
+              "flat": {
+                "quadratic": [
+                  [
                     68,
                     [
                       [
                         1,
-                        97
+                        101
                       ]
                     ]
                   ]
@@ -5869,19 +5989,19 @@
                 "linear": [
                   [
                     2013265920,
-                    98
+                    102
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 101
+              "expr": 105
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 28,
-              "value": 101
+              "power": 29,
+              "value": 105
             }
           ],
           "num_challenges": 1
@@ -5904,7 +6024,7 @@
                       ],
                       [
                         1,
-                        98
+                        102
                       ]
                     ]
                   ],
@@ -5917,7 +6037,7 @@
                       ],
                       [
                         2013200385,
-                        102
+                        106
                       ],
                       [
                         1,
@@ -5934,7 +6054,7 @@
                       ],
                       [
                         2013200385,
-                        102
+                        106
                       ],
                       [
                         1,
@@ -5951,7 +6071,7 @@
                       ],
                       [
                         2013200385,
-                        102
+                        106
                       ],
                       [
                         1,
@@ -5968,7 +6088,7 @@
                       ],
                       [
                         2013200385,
-                        102
+                        106
                       ],
                       [
                         1,
@@ -5988,19 +6108,19 @@
                   ],
                   [
                     2013265917,
-                    98
+                    102
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 115
+              "expr": 119
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 29,
-              "value": 115
+              "power": 30,
+              "value": 119
             }
           ],
           "num_challenges": 1
@@ -6023,7 +6143,7 @@
                       ],
                       [
                         1,
-                        98
+                        102
                       ]
                     ]
                   ],
@@ -6032,11 +6152,11 @@
                     [
                       [
                         1,
-                        102
+                        106
                       ],
                       [
                         2013200385,
-                        116
+                        120
                       ],
                       [
                         1,
@@ -6044,7 +6164,7 @@
                       ],
                       [
                         2013265920,
-                        117
+                        121
                       ]
                     ]
                   ],
@@ -6053,11 +6173,11 @@
                     [
                       [
                         1,
-                        102
+                        106
                       ],
                       [
                         2013200385,
-                        116
+                        120
                       ],
                       [
                         1,
@@ -6065,7 +6185,7 @@
                       ],
                       [
                         2013265920,
-                        117
+                        121
                       ]
                     ]
                   ],
@@ -6074,11 +6194,11 @@
                     [
                       [
                         1,
-                        102
+                        106
                       ],
                       [
                         2013200385,
-                        116
+                        120
                       ],
                       [
                         1,
@@ -6086,7 +6206,7 @@
                       ],
                       [
                         2013265920,
-                        117
+                        121
                       ]
                     ]
                   ],
@@ -6095,11 +6215,11 @@
                     [
                       [
                         1,
-                        102
+                        106
                       ],
                       [
                         2013200385,
-                        116
+                        120
                       ],
                       [
                         1,
@@ -6107,7 +6227,7 @@
                       ],
                       [
                         2013265920,
-                        117
+                        121
                       ]
                     ]
                   ]
@@ -6115,14 +6235,14 @@
                 "linear": [],
                 "constant": 0
               },
-              "expr": 128
+              "expr": 132
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 30,
-              "value": 128
+              "power": 31,
+              "value": 132
             }
           ],
           "num_challenges": 1
@@ -6137,7 +6257,7 @@
                     [
                       [
                         1,
-                        129
+                        133
                       ]
                     ]
                   ],
@@ -6146,16 +6266,16 @@
                     [
                       [
                         1,
-                        129
+                        133
                       ]
                     ]
                   ],
                   [
-                    98,
+                    102,
                     [
                       [
                         1,
-                        129
+                        133
                       ]
                     ]
                   ]
@@ -6163,14 +6283,14 @@
                 "linear": [],
                 "constant": 0
               },
-              "expr": 131
+              "expr": 135
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 31,
-              "value": 131
+              "power": 32,
+              "value": 135
             }
           ],
           "num_challenges": 1
@@ -6203,7 +6323,7 @@
                     [
                       [
                         1,
-                        97
+                        101
                       ]
                     ]
                   ]
@@ -6211,51 +6331,7 @@
                 "linear": [
                   [
                     2013265920,
-                    132
-                  ]
-                ],
-                "constant": 0
-              },
-              "expr": 137
-            }
-          },
-          "dst": [],
-          "batch_terms": [
-            {
-              "power": 32,
-              "value": 137
-            }
-          ],
-          "num_challenges": 1
-        },
-        {
-          "kind": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "flat": {
-                "quadratic": [
-                  [
-                    62,
-                    [
-                      [
-                        1,
-                        19
-                      ]
-                    ]
-                  ],
-                  [
-                    65,
-                    [
-                      [
-                        1,
-                        19
-                      ]
-                    ]
-                  ]
-                ],
-                "linear": [
-                  [
-                    2013265920,
-                    138
+                    136
                   ]
                 ],
                 "constant": 0
@@ -6278,35 +6354,40 @@
               "flat": {
                 "quadratic": [
                   [
-                    142,
+                    62,
                     [
                       [
-                        2013265920,
-                        132
+                        1,
+                        19
+                      ]
+                    ]
+                  ],
+                  [
+                    65,
+                    [
+                      [
+                        1,
+                        19
                       ]
                     ]
                   ]
                 ],
                 "linear": [
                   [
-                    1,
-                    132
-                  ],
-                  [
                     2013265920,
-                    143
+                    142
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 149
+              "expr": 145
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 34,
-              "value": 149
+              "value": 145
             }
           ],
           "num_challenges": 1
@@ -6317,11 +6398,11 @@
               "flat": {
                 "quadratic": [
                   [
-                    142,
+                    146,
                     [
                       [
                         2013265920,
-                        138
+                        136
                       ]
                     ]
                   ]
@@ -6329,11 +6410,11 @@
                 "linear": [
                   [
                     1,
-                    138
+                    136
                   ],
                   [
                     2013265920,
-                    150
+                    147
                   ]
                 ],
                 "constant": 0
@@ -6356,11 +6437,50 @@
               "flat": {
                 "quadratic": [
                   [
-                    154,
+                    146,
+                    [
+                      [
+                        2013265920,
+                        142
+                      ]
+                    ]
+                  ]
+                ],
+                "linear": [
+                  [
+                    1,
+                    142
+                  ],
+                  [
+                    2013265920,
+                    154
+                  ]
+                ],
+                "constant": 0
+              },
+              "expr": 157
+            }
+          },
+          "dst": [],
+          "batch_terms": [
+            {
+              "power": 36,
+              "value": 157
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "EnforceSingleMaxQuadraticConstraint": {
+              "flat": {
+                "quadratic": [
+                  [
+                    158,
                     [
                       [
                         14745600,
-                        154
+                        158
                       ],
                       [
                         1983774721,
@@ -6381,7 +6501,7 @@
                 "linear": [
                   [
                     117968640,
-                    154
+                    158
                   ],
                   [
                     1895297281,
@@ -6390,14 +6510,14 @@
                 ],
                 "constant": 235944960
               },
-              "expr": 161
+              "expr": 165
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 36,
-              "value": 161
+              "power": 37,
+              "value": 165
             }
           ],
           "num_challenges": 1
@@ -6410,11 +6530,11 @@
                 "linear": [
                   [
                     3840,
-                    154
+                    158
                   ],
                   [
                     2013265920,
-                    162
+                    166
                   ],
                   [
                     2013262081,
@@ -6427,14 +6547,14 @@
                 ],
                 "constant": 15360
               },
-              "expr": 164
+              "expr": 168
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 37,
-              "value": 164
+              "power": 38,
+              "value": 168
             }
           ],
           "num_challenges": 1
@@ -6462,14 +6582,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 166
+              "expr": 170
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 38,
-              "value": 166
+              "power": 39,
+              "value": 170
             }
           ],
           "num_challenges": 1
@@ -6497,14 +6617,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 168
+              "expr": 172
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 39,
-              "value": 168
+              "power": 40,
+              "value": 172
             }
           ],
           "num_challenges": 1
@@ -6532,14 +6652,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 170
+              "expr": 174
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 40,
-              "value": 170
+              "power": 41,
+              "value": 174
             }
           ],
           "num_challenges": 1
@@ -6567,14 +6687,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 172
+              "expr": 176
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 41,
-              "value": 172
+              "power": 42,
+              "value": 176
             }
           ],
           "num_challenges": 1
@@ -6585,11 +6705,11 @@
               "flat": {
                 "quadratic": [
                   [
-                    142,
+                    146,
                     [
                       [
                         1,
-                        142
+                        146
                       ]
                     ]
                   ]
@@ -6597,19 +6717,19 @@
                 "linear": [
                   [
                     2013265920,
-                    142
+                    146
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 174
+              "expr": 178
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 42,
-              "value": 174
+              "power": 43,
+              "value": 178
             }
           ],
           "num_challenges": 1
@@ -6637,14 +6757,14 @@
                 ],
                 "constant": 0
               },
-              "expr": 176
+              "expr": 180
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 43,
-              "value": 176
+              "power": 44,
+              "value": 180
             }
           ],
           "num_challenges": 1
@@ -6672,83 +6792,13 @@
                 ],
                 "constant": 0
               },
-              "expr": 178
-            }
-          },
-          "dst": [],
-          "batch_terms": [
-            {
-              "power": 44,
-              "value": 178
-            }
-          ],
-          "num_challenges": 1
-        },
-        {
-          "kind": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "flat": {
-                "quadratic": [
-                  [
-                    102,
-                    [
-                      [
-                        1,
-                        102
-                      ]
-                    ]
-                  ]
-                ],
-                "linear": [
-                  [
-                    2013265920,
-                    102
-                  ]
-                ],
-                "constant": 0
-              },
-              "expr": 180
-            }
-          },
-          "dst": [],
-          "batch_terms": [
-            {
-              "power": 45,
-              "value": 180
-            }
-          ],
-          "num_challenges": 1
-        },
-        {
-          "kind": {
-            "EnforceSingleMaxQuadraticConstraint": {
-              "flat": {
-                "quadratic": [
-                  [
-                    116,
-                    [
-                      [
-                        1,
-                        116
-                      ]
-                    ]
-                  ]
-                ],
-                "linear": [
-                  [
-                    2013265920,
-                    116
-                  ]
-                ],
-                "constant": 0
-              },
               "expr": 182
             }
           },
           "dst": [],
           "batch_terms": [
             {
-              "power": 46,
+              "power": 45,
               "value": 182
             }
           ],
@@ -6760,11 +6810,11 @@
               "flat": {
                 "quadratic": [
                   [
-                    183,
+                    106,
                     [
                       [
                         1,
-                        183
+                        106
                       ]
                     ]
                   ]
@@ -6772,19 +6822,54 @@
                 "linear": [
                   [
                     2013265920,
-                    183
+                    106
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 185
+              "expr": 184
+            }
+          },
+          "dst": [],
+          "batch_terms": [
+            {
+              "power": 46,
+              "value": 184
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "EnforceSingleMaxQuadraticConstraint": {
+              "flat": {
+                "quadratic": [
+                  [
+                    120,
+                    [
+                      [
+                        1,
+                        120
+                      ]
+                    ]
+                  ]
+                ],
+                "linear": [
+                  [
+                    2013265920,
+                    120
+                  ]
+                ],
+                "constant": 0
+              },
+              "expr": 186
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 47,
-              "value": 185
+              "value": 186
             }
           ],
           "num_challenges": 1
@@ -6795,11 +6880,11 @@
               "flat": {
                 "quadratic": [
                   [
-                    186,
+                    187,
                     [
                       [
                         1,
-                        186
+                        187
                       ]
                     ]
                   ]
@@ -6807,19 +6892,19 @@
                 "linear": [
                   [
                     2013265920,
-                    186
+                    187
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 188
+              "expr": 189
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 48,
-              "value": 188
+              "value": 189
             }
           ],
           "num_challenges": 1
@@ -6830,11 +6915,11 @@
               "flat": {
                 "quadratic": [
                   [
-                    189,
+                    190,
                     [
                       [
                         1,
-                        189
+                        190
                       ]
                     ]
                   ]
@@ -6842,19 +6927,54 @@
                 "linear": [
                   [
                     2013265920,
-                    189
+                    190
                   ]
                 ],
                 "constant": 0
               },
-              "expr": 191
+              "expr": 192
             }
           },
           "dst": [],
           "batch_terms": [
             {
               "power": 49,
-              "value": 191
+              "value": 192
+            }
+          ],
+          "num_challenges": 1
+        },
+        {
+          "kind": {
+            "EnforceSingleMaxQuadraticConstraint": {
+              "flat": {
+                "quadratic": [
+                  [
+                    193,
+                    [
+                      [
+                        1,
+                        193
+                      ]
+                    ]
+                  ]
+                ],
+                "linear": [
+                  [
+                    2013265920,
+                    193
+                  ]
+                ],
+                "constant": 0
+              },
+              "expr": 195
+            }
+          },
+          "dst": [],
+          "batch_terms": [
+            {
+              "power": 50,
+              "value": 195
             }
           ],
           "num_challenges": 1
@@ -6887,9 +7007,9 @@
                   "timestamp_offset": 0
                 },
                 "operands": [
-                  192,
-                  193,
-                  194,
+                  196,
+                  197,
+                  198,
                   66,
                   84
                 ]
@@ -6897,14 +7017,14 @@
             }
           },
           "inputs": [
-            192,
-            193,
-            194,
+            196,
+            197,
+            198,
             66,
             84
           ],
           "out": [
-            195,
+            199,
             {
               "Cached": {
                 "layer": 0,
@@ -6939,9 +7059,9 @@
                   "timestamp_offset": 0
                 },
                 "operands": [
-                  196,
-                  197,
-                  198,
+                  200,
+                  201,
+                  202,
                   67,
                   85
                 ]
@@ -6949,14 +7069,14 @@
             }
           },
           "inputs": [
-            196,
-            197,
-            198,
+            200,
+            201,
+            202,
             67,
             85
           ],
           "out": [
-            199,
+            203,
             {
               "Cached": {
                 "layer": 0,
@@ -6991,9 +7111,9 @@
                   "timestamp_offset": 0
                 },
                 "operands": [
-                  192,
-                  154,
-                  162,
+                  196,
+                  158,
+                  166,
                   66,
                   84
                 ]
@@ -7001,14 +7121,14 @@
             }
           },
           "inputs": [
-            192,
-            154,
-            162,
+            196,
+            158,
+            166,
             66,
             84
           ],
           "out": [
-            200,
+            204,
             {
               "Cached": {
                 "layer": 0,
@@ -7043,9 +7163,9 @@
                   "timestamp_offset": 1
                 },
                 "operands": [
-                  196,
-                  154,
-                  162,
+                  200,
+                  158,
+                  166,
                   67,
                   85
                 ]
@@ -7053,14 +7173,14 @@
             }
           },
           "inputs": [
-            196,
-            154,
-            162,
+            200,
+            158,
+            166,
             67,
             85
           ],
           "out": [
-            201,
+            205,
             {
               "Cached": {
                 "layer": 0,
@@ -7095,24 +7215,24 @@
                   "timestamp_offset": 0
                 },
                 "operands": [
-                  202,
-                  203,
-                  204,
-                  205,
-                  206
+                  206,
+                  207,
+                  208,
+                  209,
+                  210
                 ]
               }
             }
           },
           "inputs": [
-            202,
-            203,
-            204,
-            205,
-            206
+            206,
+            207,
+            208,
+            209,
+            210
           ],
           "out": [
-            207,
+            211,
             {
               "Cached": {
                 "layer": 0,
@@ -7147,8 +7267,8 @@
                   "timestamp_offset": 0
                 },
                 "operands": [
-                  154,
-                  162,
+                  158,
+                  166,
                   64,
                   20
                 ]
@@ -7156,13 +7276,13 @@
             }
           },
           "inputs": [
-            154,
-            162,
+            158,
+            166,
             64,
             20
           ],
           "out": [
-            208,
+            212,
             {
               "Cached": {
                 "layer": 0,
@@ -7197,24 +7317,24 @@
                   "timestamp_offset": 2
                 },
                 "operands": [
-                  202,
-                  154,
-                  162,
-                  143,
-                  150
+                  206,
+                  158,
+                  166,
+                  147,
+                  154
                 ]
               }
             }
           },
           "inputs": [
-            202,
-            154,
-            162,
-            143,
-            150
+            206,
+            158,
+            166,
+            147,
+            154
           ],
           "out": [
-            209,
+            213,
             {
               "Cached": {
                 "layer": 0,
@@ -7251,8 +7371,8 @@
                 "operands": [
                   25,
                   30,
-                  210,
-                  117
+                  214,
+                  121
                 ]
               }
             }
@@ -7260,11 +7380,11 @@
           "inputs": [
             25,
             30,
-            210,
-            117
+            214,
+            121
           ],
           "out": [
-            211,
+            215,
             {
               "Cached": {
                 "layer": 0,
@@ -7280,15 +7400,15 @@
                 "terms": [
                   [
                     2013265920,
-                    154
+                    158
                   ],
                   [
                     1,
-                    193
+                    197
                   ],
                   [
                     524288,
-                    183
+                    187
                   ]
                 ],
                 "constant": 0
@@ -7298,12 +7418,12 @@
             }
           },
           "inputs": [
-            154,
-            193,
-            183
+            158,
+            197,
+            187
           ],
           "out": [
-            212,
+            216,
             {
               "Cached": {
                 "layer": 0,
@@ -7319,15 +7439,15 @@
                 "terms": [
                   [
                     2013265920,
-                    162
+                    166
                   ],
                   [
                     1,
-                    194
+                    198
                   ],
                   [
                     2013265920,
-                    183
+                    187
                   ]
                 ],
                 "constant": 524288
@@ -7337,12 +7457,12 @@
             }
           },
           "inputs": [
-            162,
-            194,
-            183
+            166,
+            198,
+            187
           ],
           "out": [
-            213,
+            217,
             {
               "Cached": {
                 "layer": 0,
@@ -7358,15 +7478,15 @@
                 "terms": [
                   [
                     2013265920,
-                    154
+                    158
                   ],
                   [
                     1,
-                    197
+                    201
                   ],
                   [
                     524288,
-                    186
+                    190
                   ]
                 ],
                 "constant": 2013265920
@@ -7376,12 +7496,12 @@
             }
           },
           "inputs": [
-            154,
-            197,
-            186
+            158,
+            201,
+            190
           ],
           "out": [
-            214,
+            218,
             {
               "Cached": {
                 "layer": 0,
@@ -7397,15 +7517,15 @@
                 "terms": [
                   [
                     2013265920,
-                    162
+                    166
                   ],
                   [
                     1,
-                    198
+                    202
                   ],
                   [
                     2013265920,
-                    186
+                    190
                   ]
                 ],
                 "constant": 524288
@@ -7415,12 +7535,12 @@
             }
           },
           "inputs": [
-            162,
-            198,
-            186
+            166,
+            202,
+            190
           ],
           "out": [
-            215,
+            219,
             {
               "Cached": {
                 "layer": 0,
@@ -7436,15 +7556,15 @@
                 "terms": [
                   [
                     2013265920,
-                    154
+                    158
                   ],
                   [
                     1,
-                    203
+                    207
                   ],
                   [
                     524288,
-                    189
+                    193
                   ]
                 ],
                 "constant": 2013265919
@@ -7454,12 +7574,12 @@
             }
           },
           "inputs": [
-            154,
-            203,
-            189
+            158,
+            207,
+            193
           ],
           "out": [
-            216,
+            220,
             {
               "Cached": {
                 "layer": 0,
@@ -7475,15 +7595,15 @@
                 "terms": [
                   [
                     2013265920,
-                    162
+                    166
                   ],
                   [
                     1,
-                    204
+                    208
                   ],
                   [
                     2013265920,
-                    189
+                    193
                   ]
                 ],
                 "constant": 524288
@@ -7493,12 +7613,12 @@
             }
           },
           "inputs": [
-            162,
-            204,
-            189
+            166,
+            208,
+            193
           ],
           "out": [
-            217,
+            221,
             {
               "Cached": {
                 "layer": 0,
@@ -7533,15 +7653,6 @@
                   "terms": [
                     [
                       1,
-                      192
-                    ]
-                  ],
-                  "constant": 0
-                },
-                {
-                  "terms": [
-                    [
-                      1,
                       196
                     ]
                   ],
@@ -7551,7 +7662,16 @@
                   "terms": [
                     [
                       1,
-                      202
+                      200
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "terms": [
+                    [
+                      1,
+                      206
                     ]
                   ],
                   "constant": 0
@@ -7578,7 +7698,7 @@
                   "terms": [
                     [
                       1,
-                      218
+                      222
                     ]
                   ],
                   "constant": 0
@@ -7603,7 +7723,7 @@
                     ],
                     [
                       16,
-                      142
+                      146
                     ]
                   ],
                   "constant": 0
@@ -7619,20 +7739,20 @@
           "inputs": [
             64,
             20,
-            192,
             196,
-            202,
+            200,
+            206,
             60,
             82,
-            218,
+            222,
             62,
             65,
             61,
             68,
-            142
+            146
           ],
           "out": [
-            219,
+            223,
             {
               "Cached": {
                 "layer": 0,
@@ -7644,19 +7764,19 @@
         {
           "kind": "VectorizedLookupSetup",
           "inputs": [
-            220,
-            221,
-            222,
-            223,
             224,
             225,
             226,
             227,
             228,
-            229
+            229,
+            230,
+            231,
+            232,
+            233
           ],
           "out": [
-            230,
+            234,
             {
               "Cached": {
                 "layer": 0,
@@ -7686,7 +7806,7 @@
                   "terms": [
                     [
                       1,
-                      231
+                      235
                     ]
                   ],
                   "constant": 0
@@ -7730,10 +7850,10 @@
           "inputs": [
             14,
             19,
-            231
+            235
           ],
           "out": [
-            232,
+            236,
             {
               "Cached": {
                 "layer": 0,
@@ -7759,7 +7879,7 @@
                   "terms": [
                     [
                       1,
-                      233
+                      237
                     ]
                   ],
                   "constant": 0
@@ -7802,10 +7922,10 @@
           },
           "inputs": [
             84,
-            233
+            237
           ],
           "out": [
-            234,
+            238,
             {
               "Cached": {
                 "layer": 0,
@@ -7822,11 +7942,7 @@
                   "terms": [
                     [
                       524288,
-                      218
-                    ],
-                    [
-                      1,
-                      85
+                      222
                     ],
                     [
                       131072,
@@ -7834,11 +7950,15 @@
                     ],
                     [
                       262144,
-                      231
+                      235
                     ],
                     [
                       65536,
-                      233
+                      237
+                    ],
+                    [
+                      1,
+                      97
                     ]
                   ],
                   "constant": 0
@@ -7847,7 +7967,7 @@
                   "terms": [
                     [
                       1,
-                      97
+                      101
                     ]
                   ],
                   "constant": 0
@@ -7889,15 +8009,15 @@
             }
           },
           "inputs": [
-            218,
-            85,
+            222,
             83,
-            231,
-            233,
-            97
+            235,
+            237,
+            97,
+            101
           ],
           "out": [
-            235,
+            239,
             {
               "Cached": {
                 "layer": 0,
@@ -7923,7 +8043,7 @@
                   "terms": [
                     [
                       1,
-                      129
+                      133
                     ]
                   ],
                   "constant": 0
@@ -7932,7 +8052,7 @@
                   "terms": [
                     [
                       1,
-                      210
+                      214
                     ]
                   ],
                   "constant": 0
@@ -7971,11 +8091,11 @@
           },
           "inputs": [
             23,
-            129,
-            210
+            133,
+            214
           ],
           "out": [
-            236,
+            240,
             {
               "Cached": {
                 "layer": 0,
@@ -11108,6 +11228,11 @@
       4456448,
       4456448,
       4456448,
+      4456448,
+      4456448,
+      4456448,
+      4456448,
+      4456448,
       4456448
     ],
     "total_tables_size": 5505024,
@@ -11304,18 +11429,18 @@
     },
     "witness_layout": {
       "multiplicities_columns_for_range_check_16": {
-        "start": 25,
-        "end": 26
-      },
-      "multiplicities_columns_for_timestamp_range_check": {
         "start": 26,
         "end": 27
       },
-      "multiplicities_columns_for_generic_lookup": {
+      "multiplicities_columns_for_timestamp_range_check": {
         "start": 27,
         "end": 28
       },
-      "total_width": 28
+      "multiplicities_columns_for_generic_lookup": {
+        "start": 28,
+        "end": 29
+      },
+      "total_width": 29
     }
   }
 }

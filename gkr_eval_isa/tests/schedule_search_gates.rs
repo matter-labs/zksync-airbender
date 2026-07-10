@@ -215,7 +215,19 @@ fn produce_all_schedules() {
         return;
     }
     let cfg = gkr_eval_isa::schedule_search::search::search_config_from_env();
+    // Optional substring filter (`GKR_SCHEDULE_ONLY=jump_branch,add_sub`): regenerate
+    // only the matching fixtures. The full-corpus sweep runs a production-budget
+    // search per layer for EVERY circuit just to conclude "kept, no rewrite" on the
+    // unchanged ones — when only specific circuits changed structurally, filter to
+    // those (use `validate_all_committed_schedules` below to enumerate them).
+    let only = std::env::var("GKR_SCHEDULE_ONLY").ok();
     for fixture in ALL_FIXTURES {
+        if let Some(filter) = &only {
+            if !filter.split(',').any(|s| !s.trim().is_empty() && fixture.contains(s.trim())) {
+                eprintln!("skipped {fixture} (GKR_SCHEDULE_ONLY={filter})");
+                continue;
+            }
+        }
         let (dag, artifact, _cross) = load_dag(fixture);
         // Reverse trim order (review CA-2/#4 of the deleted v1 producer): the
         // `_preprocessed_layout_gkr.json` variant ends with `_layout_gkr.json` too, so
@@ -232,9 +244,24 @@ fn produce_all_schedules() {
         // below the persisted traffic (non-regression by construction), while the
         // tuned GA improves where it can. A missing committed file (should not
         // happen — the corpus is fully committed) degrades to seed-from-scratch.
-        let incumbent = gkr_eval_isa::fwd::compile::load_committed_schedule(&out).ok();
+        // A STALE incumbent (fails `validate_circuit_schedule` against the current
+        // DAG, e.g. after a circuit-semantics change) must also degrade to
+        // seed-from-scratch: `search_layer`'s post-hoc non-regression floor keeps the
+        // incumbent's RAW structure whenever its genome projection scores <= the GA
+        // result — but the projection silently drops stale sites, so a kept stale
+        // incumbent round-trips its invalid site into the output and fails the
+        // producer's final validation.
+        let incumbent = gkr_eval_isa::fwd::compile::load_committed_schedule(&out)
+            .ok()
+            .filter(|s| match validate_circuit_schedule(&dag, s) {
+                Ok(()) => true,
+                Err(e) => {
+                    eprintln!("NOTE: stale incumbent for {stem} ({e}); seeding from scratch");
+                    false
+                }
+            });
         if incumbent.is_none() {
-            eprintln!("NOTE: no committed incumbent for {stem}; seeding from scratch");
+            eprintln!("NOTE: no (valid) committed incumbent for {stem}; seeding from scratch");
         }
         let mut sched =
             produce_circuit_schedule(&dag, &artifact, REAL_BUDGET, &cfg, incumbent.as_ref());
@@ -268,4 +295,33 @@ fn produce_all_schedules() {
             }
         }
     }
+}
+
+/// Diagnostic sweep: validate EVERY committed `*_schedule_b{REAL_BUDGET}_gkr.json`
+/// against its (re)generated layout fixture WITHOUT aborting at the first stale
+/// circuit (the corpus-loop gates panic at the first failure, masking later ones).
+/// Prints one PASS/STALE line per stem and fails listing all stale stems — feed
+/// those to `GKR_SCHEDULE_ONLY` for a targeted `produce_all_schedules` run.
+#[test]
+#[ignore = "diagnostic: run explicitly with --ignored to enumerate stale schedules"]
+fn validate_all_committed_schedules() {
+    let mut stale: Vec<String> = Vec::new();
+    for fixture in ALL_FIXTURES {
+        let (dag, _artifact, _cross) = load_dag(fixture);
+        let stem = fixture
+            .trim_end_matches("_preprocessed_layout_gkr.json")
+            .trim_end_matches("_layout_gkr.json");
+        let path = compiled_circuit_dir().join(format!("{stem}_schedule_b{REAL_BUDGET}_gkr.json"));
+        let result = gkr_eval_isa::fwd::compile::load_committed_schedule(&path)
+            .map_err(|e| format!("{e:?}"))
+            .and_then(|sched| validate_circuit_schedule(&dag, &sched));
+        match result {
+            Ok(()) => eprintln!("PASS  {stem}"),
+            Err(e) => {
+                eprintln!("STALE {stem}: {e}");
+                stale.push(stem.to_string());
+            }
+        }
+    }
+    assert!(stale.is_empty(), "stale committed schedules: {stale:?}");
 }
