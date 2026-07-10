@@ -754,6 +754,7 @@ fn capture_layer(
         &compiled_circuit.scratch_space_mapping,
         storage,
         external_challenges,
+        &[], // bench fixtures carry no inits-and-teardowns top bits
         trace_len,
         context,
     )?;

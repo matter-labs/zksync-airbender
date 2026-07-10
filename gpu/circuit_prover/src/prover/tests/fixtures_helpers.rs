@@ -1222,9 +1222,13 @@ pub(crate) fn prepare_basic_unrolled_add_sub_fixture_for_bench() -> (
         binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
         text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
         layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+        circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+        )),
         non_determinism_reads: &[15, 1],
         compute_cpu_reference: false,
         device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+        security_level: crate::upstream::SecurityLevel::Sec80,
     })
 }
 
