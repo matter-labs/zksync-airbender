@@ -5,3 +5,4 @@ pub mod source;
 pub mod distill;
 pub mod compile;
 pub mod interp;
+pub mod search;
