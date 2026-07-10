@@ -355,10 +355,24 @@ pub(crate) fn run_vm_parity(stem: &str) {
         context.get_exec_stream().synchronize().unwrap();
         words_checked += assert_columns_match(&fixture, &cols, stem, li, "s4");
 
+        // ── Determinism: relaunch the release kernel twice more (3 release
+        // launches total), fresh poison each time, bit-compare vs the oracle
+        // each time. Nondeterminism across identical launches is the exact
+        // signature that caught the Task-10 cross-warp smem race.
+        for rep in 1..=2u32 {
+            poison_columns(&fixture, &cols);
+            launch_fwd_vm_s4(&setup, cl.budget as u32, context)
+                .unwrap_or_else(|e| panic!("{stem} L{li}: s4 relaunch {rep}: {e:?}"));
+            context.get_exec_stream().synchronize().unwrap();
+            words_checked +=
+                assert_columns_match(&fixture, &cols, stem, li, &format!("s4-relaunch-{rep}"));
+        }
+
         cols_checked += cols.len();
         layers_gated += 1;
         eprintln!(
-            "[fwdvm-v2-parity] {stem} L{li}: {} materialized columns bit-exact (validate + s4)",
+            "[fwdvm-v2-parity] {stem} L{li}: {} materialized columns bit-exact \
+             (validate + s4 + 2 determinism relaunches)",
             cols.len()
         );
     }

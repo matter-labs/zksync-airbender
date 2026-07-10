@@ -2,13 +2,14 @@
 // gkr_eval_isa fwd-VM v2 16-bit-lane wire format (`gkr_eval_isa::fwd::encode`).
 // One thread = one row (`gid`), a SINGLE e4 accumulator in registers whose
 // limb 0 IS the bf accumulator (limbs 1-3 zero while the acc is in base
-// domain), and a per-thread cell file in shared memory addressed in BUCKETS
-// (16 B x blockDim each): an ext cell is a whole bucket, per-thread contiguous
-// 16 B at `(b*blockDim + tid)*16` (one lds.128/sts.128); bf cell c is u32
-// `c % 4` of the SAME thread's 16-B chunk of bucket `c / 4` — the two views
-// must agree on per-thread byte ownership because the compiler time-
-// multiplexes a quad between them (see the cell-file section below). The
-// instruction's field bit selects the view.
+// domain), and a WARP-PARTITIONED cell file in shared memory addressed in
+// BUCKETS (one 512-B chunk per bucket inside each warp's private contiguous
+// partition; no warp touches another warp's partition): an ext cell is a whole
+// bucket chunk viewed as 32 per-lane 16-B slices (one lds.128/sts.128); bf
+// cell c is word `lane` of line `c % 4` of bucket `c / 4`'s chunk. Both views
+// are bank-conflict-free and all cross-view aliasing is warp-contained — see
+// the cell-file section below for the layout + the issue-order safety
+// invariant. The instruction's field bit selects the view.
 //
 // Dispatch follows the design spec's SS1.3 table on a warp-uniform acc-domain
 // flag (set by Mov AccFromSrc's field bit, flipped base->ext by the `promote`
@@ -86,42 +87,63 @@ template <bool LDG> DEVICE_FORCEINLINE u16 vm_lane(const fwd_vm_desc &d, const u
     return d.program[i];
 }
 
-// --- bucket smem cell file (SS3) ---------------------------------------------
-// `cells` is the block's file reinterpreted as bf lanes; `nthreads` is
-// blockDim.x (a compile-time 128 in the static release body, so all the index
-// math folds).
+// --- warp-partitioned bucket smem cell file (SS3) ------------------------------
+// The block's cell file is partitioned into per-WARP partitions of contiguous
+// smem, `budget_buckets * 512 B` each (512 B = 32 lanes x 16 B); warp w's
+// partition starts at `w * budget_buckets * 512` bytes from the file base. No
+// warp ever touches another warp's partition, so inter-warp races are
+// structurally impossible. Within a partition, bucket b owns the contiguous
+// 512-B chunk at `b * 512`. The instruction's field bit selects one of two
+// views of a chunk (wire encoding unchanged: a bf cell index c is a lane index
+// with bucket c >> 2 and sub-index c & 3; an ext cell index IS the bucket
+// index):
+//   - e4 view: lane t owns bytes [t*16, t*16+16) of the chunk -> a single
+//     lds.128/sts.128. The warp accesses 512 contiguous bytes = four 128-B
+//     subtransactions, each covering all 32 banks exactly once -> conflict-free.
+//   - 4xbf view: the chunk is 4 lines of 32 bf values; bf cell c lives in line
+//     c & 3 at word t for lane t -> `chunk + (c & 3)*128 + lane*4`, a regular
+//     .32 access. The warp accesses 128 contiguous bytes = all 32 banks
+//     exactly once -> conflict-free.
 //
-// THREAD-LOCAL VIEW AGREEMENT (value-parity bug fix): bf cell c lives at u32
-// `c % 4` of THIS THREAD's contiguous 16-B chunk of bucket `c / 4` — the same
-// bytes the ext view of that bucket addresses for the same thread. The
+// SAFETY INVARIANT (cross-view aliasing): cross-view reuse of a bucket — the
 // compiler's allocator time-multiplexes a quad between the two views over
-// disjoint lifetimes (the CPU model's `cells` file aliases them), so the two
-// views MUST agree on per-thread byte ownership: with the previous
-// blockDim-strided bf mapping (`cell * nthreads + tid`), a thread's ext-bucket
-// write covered OTHER threads' bf lanes, and because warps execute the
-// program mutually unordered (no barriers), every cross-view quad reuse was a
-// cross-warp data race (warp-granular, nondeterministic L0 divergence).
-// Intra-thread aliasing is ordered by program order and matches the CPU
-// golden model exactly (bf lane 4b+j ↔ ext limb j). Cost: bf lanes of a warp
-// hit banks with stride 4 (4-way conflict) instead of stride 1 — accepted;
-// the interpreter is DRAM-bound.
+// disjoint lifetimes (the CPU model's `cells` file aliases them) —
+// redistributes bytes ACROSS LANES OF THE SAME WARP: lane t's bf words overlap
+// OTHER lanes' e4 slices. This is safe because (a) all aliasing is
+// warp-contained (the partition), and (b) a converged warp issues instructions
+// in program order and the smem/MIO pipeline processes a warp's wavefronts in
+// issue order — and the interpreter's control flow is warp-uniform (program
+// lanes are grid-constant broadcasts; the only divergence is the
+// `gid >= count` early-exit, which only removes writers). Formally the PTX
+// memory model calls unsynchronized cross-lane conflicting access a race; the
+// in-order-per-warp hardware argument is load-bearing and holds only under
+// warp-uniform control flow.
+//
+// `cells` is the block's file reinterpreted as bf lanes (u32 words);
+// `budget_buckets` is the bucket budget (a compile-time constant in the static
+// release body, so all the index math folds). blockDim.x must be a multiple
+// of 32 (both kernels launch at 128).
 
-DEVICE_FORCEINLINE u32 smem_bf_unit(const u32 cell, const u32 nthreads) { return ((cell >> 2) * nthreads + threadIdx.x) * 4 + (cell & 3); }
+DEVICE_FORCEINLINE u32 smem_warp_base(const u32 budget_buckets) { return (threadIdx.x >> 5) * budget_buckets * 128; }
 
-DEVICE_FORCEINLINE bf smem_ld_bf(const bf *cells, const u32 cell, const u32 nthreads) { return cells[smem_bf_unit(cell, nthreads)]; }
+DEVICE_FORCEINLINE u32 smem_bf_unit(const u32 cell, const u32 budget_buckets) {
+  return smem_warp_base(budget_buckets) + (cell >> 2) * 128 + (cell & 3) * 32 + (threadIdx.x & 31);
+}
 
-DEVICE_FORCEINLINE void smem_st_bf(bf *cells, const u32 cell, const u32 nthreads, const bf v) { cells[smem_bf_unit(cell, nthreads)] = v; }
+DEVICE_FORCEINLINE bf smem_ld_bf(const bf *cells, const u32 cell, const u32 budget_buckets) { return cells[smem_bf_unit(cell, budget_buckets)]; }
 
-// Ext cell = one bucket, per-thread contiguous 16 B: a single lds.128/sts.128
-// via uint4 (the file base is 16-B aligned and the offset is a multiple of
-// 16 B, so the vector access is legal).
-DEVICE_FORCEINLINE e4 smem_ld_e4(const bf *cells, const u32 bucket, const u32 nthreads) {
-  const uint4 v = *reinterpret_cast<const uint4 *>(cells + (bucket * nthreads + threadIdx.x) * 4);
+DEVICE_FORCEINLINE void smem_st_bf(bf *cells, const u32 cell, const u32 budget_buckets, const bf v) { cells[smem_bf_unit(cell, budget_buckets)] = v; }
+
+// Ext cell = the lane's 16-B slice of the bucket chunk: a single
+// lds.128/sts.128 via uint4 (the file base is 16-B aligned and the word offset
+// is a multiple of 4, so the vector access is legal).
+DEVICE_FORCEINLINE e4 smem_ld_e4(const bf *cells, const u32 bucket, const u32 budget_buckets) {
+  const uint4 v = *reinterpret_cast<const uint4 *>(cells + smem_warp_base(budget_buckets) + bucket * 128 + (threadIdx.x & 31) * 4);
   return *reinterpret_cast<const e4 *>(&v);
 }
 
-DEVICE_FORCEINLINE void smem_st_e4(bf *cells, const u32 bucket, const u32 nthreads, const e4 v) {
-  *reinterpret_cast<uint4 *>(cells + (bucket * nthreads + threadIdx.x) * 4) = *reinterpret_cast<const uint4 *>(&v);
+DEVICE_FORCEINLINE void smem_st_e4(bf *cells, const u32 bucket, const u32 budget_buckets, const e4 v) {
+  *reinterpret_cast<uint4 *>(cells + smem_warp_base(budget_buckets) + bucket * 128 + (threadIdx.x & 31) * 4) = *reinterpret_cast<const uint4 *>(&v);
 }
 
 // --- Global{slot,col}: one field-qualified homogeneous matrix per slot -------
@@ -318,7 +340,7 @@ template <bool VALIDATE> DEVICE_FORCEINLINE e4 read_ldc_e4(const fwd_vm_desc &d,
 // load<e4>. Smem: the field bit selects the view (bf lane vs ext bucket).
 
 template <bool VALIDATE>
-DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, const u32 nthreads, const u32 budget_lanes, const unsigned gid, const u16 l,
+DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 l,
                                       u32 &err) {
   switch (l & 0b11) {
   case 0b00: { // Global { slot, col }
@@ -340,7 +362,7 @@ DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, con
         return bf::ZERO();
       }
     }
-    return smem_ld_bf(cells, cell, nthreads);
+    return smem_ld_bf(cells, cell, budget_buckets);
   }
   case 0b10: // Ldc { sub, idx }
     return read_ldc_bf<VALIDATE>(d, (l >> 2) & 0b11, l >> 4, err);
@@ -350,7 +372,7 @@ DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, con
 }
 
 template <bool VALIDATE>
-DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, const u32 nthreads, const u32 budget_lanes, const unsigned gid, const u16 l,
+DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 l,
                                       u32 &err) {
   switch (l & 0b11) {
   case 0b00: { // Global { slot, col }: one vectorized 16-B load
@@ -372,7 +394,7 @@ DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, con
         return e4::ZERO();
       }
     }
-    return smem_ld_e4(cells, bucket, nthreads);
+    return smem_ld_e4(cells, bucket, budget_buckets);
   }
   case 0b10: // Ldc { sub, idx }
     return read_ldc_e4<VALIDATE>(d, (l >> 2) & 0b11, l >> 4, err);
@@ -387,8 +409,8 @@ DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, con
 // (post-F7, cache roots flow through the acc, not back through DRAM).
 
 template <bool VALIDATE>
-DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const u32 nthreads, const u32 budget_lanes, const unsigned gid, const u16 dl, const bf v,
-                                     u32 &err) {
+DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 dl,
+                                     const bf v, u32 &err) {
   if ((dl & 1) == 0) { // Smem { cell }: bf lane
     const u32 cell = dl >> 1;
     if constexpr (VALIDATE) {
@@ -397,7 +419,7 @@ DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const u32 
         return;
       }
     }
-    smem_st_bf(cells, cell, nthreads, v);
+    smem_st_bf(cells, cell, budget_buckets, v);
   } else { // GlobalMaterialize { slot, col }
     const u32 slot = (dl >> 1) & 0xF;
     const u32 col = dl >> 5;
@@ -412,8 +434,8 @@ DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const u32 
 }
 
 template <bool VALIDATE>
-DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const u32 nthreads, const u32 budget_lanes, const unsigned gid, const u16 dl, const e4 v,
-                                     u32 &err) {
+DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 dl,
+                                     const e4 v, u32 &err) {
   if ((dl & 1) == 0) { // Smem { cell }: ext bucket
     const u32 bucket = dl >> 1;
     if constexpr (VALIDATE) {
@@ -422,7 +444,7 @@ DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const u32 
         return;
       }
     }
-    smem_st_e4(cells, bucket, nthreads, v);
+    smem_st_e4(cells, bucket, budget_buckets, v);
   } else { // GlobalMaterialize { slot, col }
     const u32 slot = (dl >> 1) & 0xF;
     const u32 col = dl >> 5;
@@ -442,10 +464,10 @@ DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const u32 
 // header validity - `err` and every `if constexpr (VALIDATE)` branch compile
 // away.
 template <bool VALIDATE, bool LDG>
-DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 nthreads, const u32 budget_lanes, const unsigned gid, u32 *error_flag) {
+DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, u32 *error_flag) {
 #define FWDVM_LANE() vm_lane<LDG>(d, i++)
-#define FWDVM_READ_BF() read_operand_bf<VALIDATE>(d, cells, nthreads, budget_lanes, gid, FWDVM_LANE(), err)
-#define FWDVM_READ_E4() read_operand_e4<VALIDATE>(d, cells, nthreads, budget_lanes, gid, FWDVM_LANE(), err)
+#define FWDVM_READ_BF() read_operand_bf<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, FWDVM_LANE(), err)
+#define FWDVM_READ_E4() read_operand_e4<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, FWDVM_LANE(), err)
   u32 i = 0;   // lane cursor (warp-uniform)
   u32 err = 0; // dead in release (never written, checks compiled out)
   e4 acc = e4::ZERO();
@@ -488,19 +510,19 @@ DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 nthre
         }
         const u16 dl = FWDVM_LANE();
         if (fe4)
-          write_dst_e4<VALIDATE>(d, cells, nthreads, budget_lanes, gid, dl, acc, err);
+          write_dst_e4<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, dl, acc, err);
         else
-          write_dst_bf<VALIDATE>(d, cells, nthreads, budget_lanes, gid, dl, acc[0][0], err);
+          write_dst_bf<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, dl, acc[0][0], err);
         break;
       }
       default: { // 2 = DstFromSrc: dst lane, then src lane (encode order)
         const u16 dl = FWDVM_LANE();
         if (fe4) {
           const e4 v = FWDVM_READ_E4();
-          write_dst_e4<VALIDATE>(d, cells, nthreads, budget_lanes, gid, dl, v, err);
+          write_dst_e4<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, dl, v, err);
         } else {
           const bf v = FWDVM_READ_BF();
-          write_dst_bf<VALIDATE>(d, cells, nthreads, budget_lanes, gid, dl, v, err);
+          write_dst_bf<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, dl, v, err);
         }
         break;
       }
@@ -606,16 +628,25 @@ DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 nthre
 // checks. Occupancy is opaque to ptxas here - fine for a harness-only kernel.
 template <bool LDG> DEVICE_FORCEINLINE void vm_body_validate(const fwd_vm_desc &d, u32 *error_flag) {
   extern __shared__ e4 fwd_vm_cells_dyn[]; // e4-typed for the 16-B base alignment
+  u32 smem_bytes;
+  asm("mov.u32 %0, %%dynamic_smem_size;" : "=r"(smem_bytes));
+  // Bucket-granular recovery: the launcher sizes the file as a whole number of
+  // buckets; flooring keeps the fail-closed lane bound consistent with the
+  // warp-partitioned addressing (a lane past the last whole bucket would cross
+  // into the next warp's partition).
+  const u32 budget_buckets = smem_bytes / (blockDim.x * static_cast<u32>(sizeof(bf))) / 4;
+  const u32 budget_lanes = budget_buckets * 4;
+  bf *cells = reinterpret_cast<bf *>(fwd_vm_cells_dyn);
+  // Zero-init BEFORE the row early-exit: in the warp-partitioned layout a
+  // lane's e4 slices cover OTHER lanes' bf zero-init words, so an exited lane
+  // must still zero its words for a partial tail warp to read zeros from
+  // never-written cells (matching the CPU model's zeroed cell file).
+  for (u32 c = 0; c < budget_lanes; c++)
+    smem_st_bf(cells, c, budget_buckets, bf::ZERO());
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= d.count)
     return;
-  u32 smem_bytes;
-  asm("mov.u32 %0, %%dynamic_smem_size;" : "=r"(smem_bytes));
-  const u32 budget_lanes = smem_bytes / (blockDim.x * static_cast<u32>(sizeof(bf)));
-  bf *cells = reinterpret_cast<bf *>(fwd_vm_cells_dyn);
-  for (u32 c = 0; c < budget_lanes; c++)
-    smem_st_bf(cells, c, blockDim.x, bf::ZERO());
-  vm_core<true, LDG>(d, cells, blockDim.x, budget_lanes, gid, error_flag);
+  vm_core<true, LDG>(d, cells, budget_buckets, budget_lanes, gid, error_flag);
 }
 
 // Static-smem body (release, 128 threads): BUCKETS is a compile-time constant.
@@ -623,13 +654,15 @@ template <bool LDG> DEVICE_FORCEINLINE void vm_body_validate(const fwd_vm_desc &
 // lived here, the two LDG instantiations would each get their own copy and
 // ptxas would allocate the static smem twice, halving occupancy.
 template <bool LDG, u32 BUCKETS> DEVICE_FORCEINLINE void vm_body_static(const fwd_vm_desc &d, e4 *cell_file) {
+  bf *cells = reinterpret_cast<bf *>(cell_file);
+  // Zero-init BEFORE the row early-exit (see vm_body_validate): an exited
+  // lane's zero-init words are covered by surviving lanes' e4 slices.
+  for (u32 c = 0; c < BUCKETS * 4; c++)
+    smem_st_bf(cells, c, BUCKETS, bf::ZERO());
   const unsigned gid = blockIdx.x * 128 + threadIdx.x;
   if (gid >= d.count)
     return;
-  bf *cells = reinterpret_cast<bf *>(cell_file);
-  for (u32 c = 0; c < BUCKETS * 4; c++)
-    smem_st_bf(cells, c, 128, bf::ZERO());
-  vm_core<false, LDG>(d, cells, 128, BUCKETS * 4, gid, nullptr);
+  vm_core<false, LDG>(d, cells, BUCKETS, BUCKETS * 4, gid, nullptr);
 }
 
 // minBlocks = the occupancy the static smem permits: SM shared capacity
