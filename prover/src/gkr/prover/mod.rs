@@ -665,7 +665,6 @@ where
         worker,
     );
 
-    // let output_map = &compiled_circuit.global_output_map;
     let mut top_layer_claims: BTreeMap<GKRAddress, E> = BTreeMap::new();
     let output_map = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
     top_layer_claims.insert(
@@ -930,9 +929,13 @@ where
                         F,
                         Global,
                     >(&column.column[..], twiddles);
-                    // monomials -> hypercube evaluations of the packed multilinear
+                    // monomials -> hypercube evaluations of the packed multilinear,
+                    // then bit-reverse (the packing committed `evals_into_coeffs(bitrev(H))`,
+                    // so the inverse is `coeffs_into_hypercube_evals` then `bitreverse`;
+                    // this mirrors `whir_fold`'s own claim recomputation).
                     let size_log2 = hypercube_evals.len().trailing_zeros();
                     multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, size_log2);
+                    crate::fft::bitreverse_enumeration_inplace(&mut hypercube_evals);
                     // re-evaluate at the extended claim point and compare
                     assert_eq!(hypercube_evals.len(), eq_at_point.len());
                     let reevaluated =
@@ -1111,13 +1114,14 @@ mod packing_merge_tests {
 
     /// Inverse of `pack_polys_parallel_from_hypercubes_to_monomials` for a single
     /// packed poly: turn the whole `(N + pack_log2)`-variate monomial vector back
-    /// into hypercube evaluations. The forward transform is
+    /// into hypercube evaluations. The forward transform is `bitreverse` then
     /// `multivariate_hypercube_evals_into_coeffs` over ALL variables, so the inverse
-    /// is `multivariate_coeffs_into_hypercube_evals` over all of them. The vector is
+    /// is `multivariate_coeffs_into_hypercube_evals` then `bitreverse`. The vector is
     /// treated as one multilinear — it can NOT be split into per-sub-poly halves.
     fn packed_monomials_to_hypercube_evals(packed: &mut [F]) {
         let size_log2 = packed.len().trailing_zeros();
         multivariate_coeffs_into_hypercube_evals(packed, size_log2);
+        crate::fft::bitreverse_enumeration_inplace(packed);
     }
 
     /// Concatenate two `2^N`-sized multilinear polys `a`, `b` into a single

@@ -728,16 +728,20 @@ pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + T
     // poly a faithful multilinear whose evaluations agree with `merge_claims`
     // (the block index is the most-significant coordinate of the enumeration).
     //
-    // Each packed poly is large, so we transform them one at a time and let the
-    // multilinear transform use all cores internally (nesting a per-poly
-    // `worker.scope` here would deadlock the thread pool). The output is the
-    // NATURAL monomial coefficients `M = evals_into_coeffs(H)` of the packed
-    // multilinear; the coset LDE step in `initial_commit` applies the usual
-    // bit-reversal that the Cooley-Tukey NTT expects, so no extra reordering is
-    // done here (adding one would commit a bit-permuted polynomial that no longer
-    // matches the GKR / `merge_claims` evaluations).
+    // Each packed poly is large, so we transform them one at a time and let both the
+    // bit-reversal and the multilinear transform use all cores internally (nesting a
+    // per-poly `worker.scope` here would deadlock the thread pool).
+    //
+    // We apply `bitreverse` THEN `evals_into_coeffs` (over ALL variables of the packed
+    // poly), matching the base-commitment convention used everywhere else: the
+    // monolithic `commit_trace_part` / `CosetByCosetBaseCommitment::commit` transform,
+    // and the inverse that `whir_fold`'s claim recomputation performs
+    // (`IFFT -> coeffs_into_hypercube_evals -> bitreverse -> evaluate`). Omitting the
+    // bit-reversal here would commit a bit-permuted polynomial whose reconstructed
+    // evaluation no longer matches the GKR / `merge_claims` claim.
     for packed in result.iter_mut() {
         let size_log2 = packed.len().trailing_zeros();
+        parallel_bitreverse_enumeration_inplace(&mut packed[..], worker);
         hypercube_to_monomial::parallel_multivariate_hypercube_evals_into_coeffs(
             &mut packed[..],
             size_log2,

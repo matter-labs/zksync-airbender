@@ -245,15 +245,22 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let recomputed = Self::compute_base_field_leaf_hash(
-                &self.cosets[coset_index],
-                internal_index,
-                self.values_per_leaf,
-            );
-            assert_eq!(
-                recomputed, _leaf_hash,
-                "Leaf hash mismatch at query_index={index}, tree_index={tree_index}"
-            );
+            // This recomputation is blake2s + u32-field (BabyBear) specific. Skip it for
+            // larger fields (e.g. Proth120, committed with a keccak tree): the field has
+            // no `as_u32_raw_repr_reduced` and the hash algorithm would not match anyway;
+            // the coset-by-coset tests already validate that leaf hashing against the
+            // monolithic tree.
+            if core::mem::size_of::<F>() <= core::mem::size_of::<u32>() {
+                let recomputed = Self::compute_base_field_leaf_hash(
+                    &self.cosets[coset_index],
+                    internal_index,
+                    self.values_per_leaf,
+                );
+                assert_eq!(
+                    recomputed, _leaf_hash,
+                    "Leaf hash mismatch at query_index={index}, tree_index={tree_index}"
+                );
+            }
         }
 
         let query = BaseFieldQuery::<F, T> {
