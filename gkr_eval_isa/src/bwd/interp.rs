@@ -63,8 +63,12 @@ pub enum Role {
 
 /// Combine the pair `(a = v(2x), b = v(2x+1))` at the role's evaluation point:
 /// `T0 -> a`; `T2 -> 2·b − a`.
+///
+/// Exposed so the value-parity oracle (`tests/bwd_value_parity.rs`) applies the
+/// EXACT SAME role transform as the interpreter — the differential is
+/// program-vs-expression, never transform-vs-transform.
 #[inline]
-fn role_combine(role: Role, a: Ext, b: Ext) -> Ext {
+pub fn role_combine(role: Role, a: Ext, b: Ext) -> Ext {
     match role {
         Role::T0 => a,
         Role::T2 => {
@@ -91,23 +95,26 @@ fn read_prim(p: &ReadPrim<'_>, y: usize, r: &Resolvers<'_>) -> Ext {
     }
 }
 
-/// The depth-`depth` sumcheck fold of `p` at position `y` from originals, using
-/// `ch[..depth]` (round 0 innermost, round `depth-1` outermost).
-fn fold_prim(
-    p: &ReadPrim<'_>,
+/// The depth-`depth` sumcheck fold of the point function `base` at position
+/// `y` from originals, using `ch[..depth]` (round 0 innermost, round
+/// `depth-1` outermost): `fold(y) = fold(2y) + c·(fold(2y+1) − fold(2y))`.
+///
+/// Exposed so the value-parity oracle and its materialized-buffer resolver fold
+/// with the EXACT SAME recurrence the interpreter uses (see [`role_combine`]).
+pub fn sumcheck_fold_point(
+    base: &dyn Fn(usize) -> Ext,
     y: usize,
     depth: u8,
     ch: &[Ext],
-    r: &Resolvers<'_>,
 ) -> Result<Ext, InterpError> {
     if depth == 0 {
-        return Ok(read_prim(p, y, r));
+        return Ok(base(y));
     }
     let c = ch
         .get(depth as usize - 1)
         .ok_or_else(|| InterpError::MalformedInstr("round_challenges shorter than fold depth".into()))?;
-    let a = fold_prim(p, 2 * y, depth - 1, ch, r)?;
-    let b = fold_prim(p, 2 * y + 1, depth - 1, ch, r)?;
+    let a = sumcheck_fold_point(base, 2 * y, depth - 1, ch)?;
+    let b = sumcheck_fold_point(base, 2 * y + 1, depth - 1, ch)?;
     // a + c·(b − a)
     let mut d = b;
     d.sub_assign(&a);
@@ -115,6 +122,18 @@ fn fold_prim(
     let mut out = a;
     out.add_assign(&d);
     Ok(out)
+}
+
+/// The depth-`depth` sumcheck fold of read primitive `p` at position `y`,
+/// reading originals through `r`.
+fn fold_prim(
+    p: &ReadPrim<'_>,
+    y: usize,
+    depth: u8,
+    ch: &[Ext],
+    r: &Resolvers<'_>,
+) -> Result<Ext, InterpError> {
+    sumcheck_fold_point(&|z| read_prim(p, z, r), y, depth, ch)
 }
 
 /// The element value `v(y)` of a fold source under its bound `state`.
