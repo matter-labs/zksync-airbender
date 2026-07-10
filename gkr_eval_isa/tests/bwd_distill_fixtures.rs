@@ -17,7 +17,9 @@ use cs::gkr_compiler::dag_ir::{
     ChallengeRef, DagLayer, Expr, ExprId, Ext, Resolvers, SourceKind,
 };
 use field::Field;
+use gkr_eval_isa::bwd::compile::{compile_distilled, spine_terms};
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
+use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine, Program};
 
 /// The 12 pinned Global Constraints fixtures: the 11 classic with-caches
 /// layouts (same list as `fwd_vm_desc_census.rs`) + the unified machine.
@@ -176,5 +178,167 @@ fn distill_all_fixtures_both_regimes() {
     assert!(
         add_sub_nonempty_domain,
         "at least one add_sub distilled layer must expose a non-empty backward site domain"
+    );
+}
+
+// ── Task 5: compile smoke over every distillable layer, b16, both regimes ─────
+
+/// Spec §3 terminal convention: no `GlobalMaterialize` anywhere; the last
+/// instruction leaves the root value in acc (arith fold or `Mov AccFromSrc`).
+fn assert_result_in_acc(p: &Program, ctx: &str) {
+    assert!(!p.instrs.is_empty(), "[{ctx}] empty bwd program");
+    for i in &p.instrs {
+        if let Instr::Mov { dst: Some(DstLine::GlobalMaterialize { .. }), .. } = i {
+            panic!("[{ctx}] bwd program must never emit GlobalMaterialize: {i:?}");
+        }
+    }
+    match p.instrs.last().unwrap() {
+        Instr::Add { .. } | Instr::Mul { .. } | Instr::Fma { .. } => {}
+        Instr::Mov { dir: MovDir::AccFromSrc, .. } => {}
+        other => panic!("[{ctx}] terminal instruction must leave the value in acc: {other:?}"),
+    }
+}
+
+/// Distilled layer x regime instances whose placement FLOOR exceeds b16 —
+/// `"{stem}[L{layer}][{regime}] floor={floor}"`, pinned exactly so drift is
+/// loud. These are the wide delegation-circuit cones: the backward rebuild
+/// INLINES every `LookupValue` query cone (fwd fences them behind terminal
+/// resolution Specials), so `compile_reduction_virtual`/FMA pre-materialization
+/// needs far more concurrent temps than the same layer's forward atoms.
+/// Compiling these at b16 requires a bwd-side accumulation strategy inside the
+/// shared reduction lowering (NOT part of Task 5's behavior-inert hook seam) —
+/// tracked as an open follow-up; they compile fine at their floors.
+const PINNED_B16_INFEASIBLE: &[&str] = &[
+    "bigint_with_extended_control[L0][R0] floor=83",
+    "bigint_with_extended_control[L0][Ext] floor=320",
+    "keccak_special5[L0][R0] floor=46",
+    "keccak_special5[L0][Ext] floor=172",
+    "unsigned_mul_div[L1][Ext] floor=40",
+];
+
+/// Task-5 smoke: `compile_distilled` at the committed b16 budget over EVERY
+/// distillable (non-decoder) fixture layer, BOTH regimes, uncached (no bwd
+/// genome exists yet — `decisions: None`). Cross-layer field map: WHOLE-CIRCUIT
+/// (`build_cross_layer_field_map`), the same superset choice as the Task-4
+/// smoke above — an upto-layer map would be a strict subset with no behavioral
+/// difference for the layers it covers, so the simple superset is used
+/// consistently for both bwd fixture harnesses.
+#[test]
+fn compile_distilled_all_fixtures_b16() {
+    const BUDGET: usize = 16;
+    let mut compiled = 0usize;
+    let mut fold_layers = 0usize;
+    let mut infeasible: BTreeSet<String> = BTreeSet::new();
+
+    for name in FIXTURES {
+        let stem = common::schedule_stem(name);
+        let artifact = load_fixture(name);
+        let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
+        validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
+        let cross = build_cross_layer_field_map(&dag);
+
+        for (li, layer) in dag.layers.iter().enumerate() {
+            if bwd_roots(layer).is_empty() {
+                continue; // nothing to prove backward
+            }
+            for regime in [BwdRegime::R0, BwdRegime::Ext] {
+                let d = gkr_eval_isa::bwd::distill::distill(layer, regime, &cross, None);
+                if d.skipped_decoder {
+                    continue; // OUT of v1 in both regimes
+                }
+                let ctx = format!("{stem} L{li} {regime:?}");
+                let c = match compile_distilled(&d, BUDGET, None) {
+                    Ok(c) => c,
+                    // A placement floor above b16 is the pinned known limitation
+                    // (see PINNED_B16_INFEASIBLE); anything else is a hard failure.
+                    Err(gkr_eval_isa::fwd::error::CompileError::BudgetBelowFloor {
+                        floor, ..
+                    }) => {
+                        infeasible.insert(format!("{stem}[L{li}][{regime:?}] floor={floor}"));
+                        continue;
+                    }
+                    Err(e) => panic!("[{ctx}] compile_distilled: {e:?}"),
+                };
+                compiled += 1;
+
+                assert_result_in_acc(&c.program, &ctx);
+                assert!(c.stats.program_lanes > 0, "[{ctx}] stats not populated");
+                assert_eq!(
+                    c.stats.op_counts.iter().sum::<usize>(),
+                    c.stats.program_lanes,
+                    "[{ctx}] op_counts must partition program_lanes"
+                );
+                assert!(
+                    c.stats.max_live_cells <= BUDGET,
+                    "[{ctx}] max_live_cells {} > budget {BUDGET}",
+                    c.stats.max_live_cells
+                );
+                // A multi-term spine spills at least one partial → live cells.
+                if spine_terms(&d).len() >= 2 {
+                    assert!(c.stats.max_live_cells > 0, "[{ctx}] compound layer used no cells");
+                }
+                // Traffic-tally consistency (search-facing extension).
+                assert_eq!(
+                    c.stats_ext.fold_traffic,
+                    4 * c.stats_ext.fold_uses,
+                    "[{ctx}] role-neutral fold traffic is 4 cells/use"
+                );
+                assert_eq!(
+                    c.stats_ext.global, c.stats.dram_traffic,
+                    "[{ctx}] stats_ext.global mirrors width-weighted Global traffic"
+                );
+                match regime {
+                    // R0: Reads stay Global backings; only VirtualSetup descs exist,
+                    // which are NOT FoldSources.
+                    BwdRegime::R0 => assert_eq!(
+                        c.stats_ext.fold_uses, 0,
+                        "[{ctx}] R0 has no FoldSource descs"
+                    ),
+                    // Ext: every origin Read/VirtualSetup is a FoldSource — a layer
+                    // whose program still reads Global would be a hook bypass.
+                    BwdRegime::Ext => {
+                        if c.stats_ext.fold_uses > 0 {
+                            fold_layers += 1;
+                        }
+                        let mut global_ops = 0usize;
+                        for instr in &c.program.instrs {
+                            let mut f = |op: &OperandLine| {
+                                if matches!(op, OperandLine::Global { .. }) {
+                                    global_ops += 1;
+                                }
+                            };
+                            match instr {
+                                Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                                    operands.iter().for_each(&mut f)
+                                }
+                                Instr::Fma { pairs, .. } => pairs.iter().for_each(|(l, r)| {
+                                    f(l);
+                                    f(r);
+                                }),
+                                Instr::Mov { src: Some(op), .. } => f(op),
+                                Instr::Mov { src: None, .. } => {}
+                            }
+                        }
+                        assert_eq!(
+                            global_ops, 0,
+                            "[{ctx}] Ext regime must lower every origin leaf via its \
+                             FoldSource desc, never a Global backing"
+                        );
+                    }
+                }
+            }
+        }
+    }
+    println!("compiled {compiled} distilled layer x regime instances; {fold_layers} Ext instances with fold uses");
+    println!("b16-infeasible ({}):", infeasible.len());
+    for s in &infeasible {
+        println!("  {s}");
+    }
+    assert!(compiled > 0, "smoke must compile at least one distillable layer");
+    assert!(fold_layers > 0, "at least one Ext layer must exercise FoldSource operands");
+    let pinned: BTreeSet<String> = PINNED_B16_INFEASIBLE.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        infeasible, pinned,
+        "b16-infeasible set drifted from the pinned expectation — update deliberately"
     );
 }

@@ -522,6 +522,83 @@ fn compile_layer_at(
     })
 }
 
+/// Task 5: lower + place + materialize a DISTILLED backward layer's one-root
+/// program (the bwd sibling of `compile_layer_at`'s phases 1–3.5, minus the
+/// fwd-only root-output/skip/trace/stats plumbing). Returns the concrete
+/// `Program` (promote-annotated) and placement's `max_live_cells`; the caller
+/// (`bwd::compile`) owns the bwd stats tally (fwd's `tally_operand` reads the
+/// fwd `SpecialTable`, which bwd descriptors do not index). Kept here — not in
+/// `bwd::compile` — because it composes the crate-private `lower`/`optimize`/
+/// `place` internals; fwd behavior is untouched (`compile_layer_at` unchanged).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compile_bwd_program(
+    layer: &DagLayer,
+    root_expr: ExprId,
+    terms: &[ExprId],
+    ctx: &mut DagForwardContext,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+    field_overrides: &BTreeMap<ExprId, FieldKind>,
+    streams: Option<self::decisions::OccurrenceStreams>,
+    place_budget: usize,
+    lower_budget: usize,
+) -> Result<(Program, usize), CompileError> {
+    // Phase 1 — the bwd one-root driver (result-in-acc terminal convention).
+    let (vinstrs, step_of) = self::lower::lower_bwd_root_virtual(
+        layer, root_expr, terms, ctx, leaf_descs, field_overrides, streams, lower_budget,
+    )?;
+
+    // Phase 1.5 — the shared value-preserving peephole. Safe for the terminal-acc
+    // convention: no rule changes the FINAL accumulator value (F1 only fuses a
+    // load whose acc value is dead — the terminal instruction is an acc-writing
+    // arith/init by construction of the driver, never a trailing evict pair).
+    let (vinstrs, step_of) = self::optimize::optimize_vinstrs(vinstrs, step_of);
+
+    let mut widths: HashMap<ValueId, OperandField> = HashMap::new();
+    for vi in &vinstrs {
+        if let Some(v) = vi.defines() {
+            widths.insert(v, vi.field());
+        }
+    }
+
+    // Phase 2 — lifetime-overlap placement (one step per spine term).
+    let n_steps = terms.len().max(1);
+    let free_steps: Vec<ResidencyStep> = (0..n_steps).map(|_| ResidencyStep::default()).collect();
+    let place_instrs: Vec<self::place::VirtualInstr> =
+        vinstrs.iter().map(|vi| vi.to_place()).collect();
+    let placement = plan_placement(&PlacementInput {
+        instrs: &place_instrs,
+        steps: &free_steps,
+        step_of_instr: &step_of,
+        widths: &widths,
+        budget: place_budget,
+    })?;
+
+    // Phase 3 — materialize to ISA instructions (+ any relocation MOVs).
+    let mut moves_at: HashMap<usize, Vec<RelocStep>> = HashMap::new();
+    for (i, r) in &placement.moves {
+        moves_at.entry(*i).or_default().push(*r);
+    }
+    let mut program = Program::default();
+    for (i, vi) in vinstrs.iter().enumerate() {
+        if let Some(ms) = moves_at.get(&i) {
+            for r in ms {
+                program.instrs.push(Instr::Mov {
+                    dir: MovDir::DstFromSrc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::Smem { cell: r.to }),
+                    src: Some(OperandLine::Smem { cell: r.from }),
+                });
+            }
+        }
+        program.instrs.push(materialize_vinstr(vi, i, &placement.cell_of)?);
+    }
+
+    // Phase 3.5 — v2 promote annotation (value-inert), same machine as fwd.
+    apply_promote(&mut program);
+
+    Ok((program, placement.max_live_cells))
+}
+
 /// v2 promote emission (spec §1.2): replay the strict acc-domain tracker over the final
 /// instruction stream and set `promote` on exactly the instructions where the tracked
 /// domain before is base (or uninit — treated as base, §1.6) AND the op requires an ext

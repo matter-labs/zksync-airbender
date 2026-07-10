@@ -266,6 +266,48 @@ impl OccurrenceStreams {
         // fan-out-1 values are refused.
         let admittable: BTreeSet<ExprId> =
             enumerate_site_domain(layer).into_iter().map(|k| k.value).collect();
+        Self::from_flat(layer, flat, d, admittable)
+    }
+
+    /// Task 5 bwd twin of [`build`]: the occurrence replay for the ONE-ROOT bwd
+    /// driver (`lower_bwd_root_virtual`). Mirrors its exact demand order — one
+    /// `RootOutput` site for the distilled root's own serve, then `demand_expand`
+    /// over each spine TERM in the driver's decomposition order (`terms` MUST be
+    /// the same slice handed to the driver; the spine `Add` itself is decomposed
+    /// by the driver, so — unlike a fwd root — its top-level children get NO
+    /// per-child operand site of their own). `domain` is the DISTILLED backward
+    /// site domain (`bwd::distill::distilled_site_domain`) — it, not the fwd
+    /// `enumerate_site_domain`, gates admissibility (`is_admittable`), so Read
+    /// fold leaves (Ext) / VirtualSetup leaves (Ext) with fan-out >= 2 admit per
+    /// the REV2 backward-cacheable rule. `SiteDecisions` genes are keyed to
+    /// DISTILLED `ExprId`s; the fwd consumer-field looseness (FMA re-parenting
+    /// vs cs raw child indexing) applies unchanged — a missing gene reads 0.0.
+    pub fn build_bwd_root(
+        layer: &DagLayer,
+        root_id: RootId,
+        root_expr: ExprId,
+        terms: &[ExprId],
+        d: &SiteDecisions,
+        domain: &BTreeSet<SiteKey>,
+    ) -> Self {
+        let mut flat: Vec<SiteKey> =
+            vec![SiteKey { root: root_id, consumer: SiteConsumer::RootOutput, value: root_expr }];
+        for &t in terms {
+            demand_expand(layer, root_id, t, &mut flat);
+        }
+        let admittable: BTreeSet<ExprId> = domain.iter().map(|k| k.value).collect();
+        Self::from_flat(layer, flat, d, admittable)
+    }
+
+    /// Shared tail of [`build`]/[`build_bwd_root`]: fold the flat demand-order site
+    /// list into per-value queues + the admission-side sets (pure code motion from
+    /// `build` — byte-identical fwd behavior).
+    fn from_flat(
+        layer: &DagLayer,
+        flat: Vec<SiteKey>,
+        d: &SiteDecisions,
+        admittable: BTreeSet<ExprId>,
+    ) -> Self {
         let mut streams: BTreeMap<ExprId, VecDeque<(SiteKey, f64)>> = BTreeMap::new();
         let mut operand_reads: BTreeMap<ExprId, usize> = BTreeMap::new();
         for key in flat {

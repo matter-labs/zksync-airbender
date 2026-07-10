@@ -150,6 +150,61 @@ fn join_field(a: FieldKind, b: FieldKind) -> FieldKind {
     }
 }
 
+/// Override-aware variant of [`child_operand_field`] (Task 5 bwd leaf-field hook).
+///
+/// `overrides` maps DISTILLED leaf `ExprId`s to a FORCED field (the bwd Ext-regime
+/// fold leaves carry `Ext`); it is consulted BEFORE the canonical classification at
+/// EVERY node of the walk, and — unlike the canonical path — the whole-expr
+/// `expr_field` shortcut is NOT taken, because a compound containing an overridden
+/// leaf must join the override up the tree (e.g. `Read+Read` is canonically `Base`
+/// but `Ext` once both leaves are Ext fold sources). The fwd path never calls this
+/// (it passes an EMPTY override map and stays on `child_operand_field`), so fwd
+/// classification is bit-identical by construction.
+pub(crate) fn child_operand_field_overridden(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    id: ExprId,
+    expected: OperandField,
+    map: &HashMap<ReadPlace, FieldKind>,
+    overrides: &std::collections::BTreeMap<ExprId, FieldKind>,
+) -> OperandField {
+    match expr_field_with_overrides(layer, id, map, overrides) {
+        Some(f) => to_operand_field(f),
+        // Defensive fallback, mirroring `child_operand_field`'s `None` arm.
+        None => expected,
+    }
+}
+
+/// Override-then-canonical field walk: an overridden node takes its forced field
+/// verbatim (no descent); otherwise leaves classify via `expr_field`/the cross-layer
+/// `map` and compounds join their children (same lattice as `expr_field_with_map`).
+fn expr_field_with_overrides(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    id: ExprId,
+    map: &HashMap<ReadPlace, FieldKind>,
+    overrides: &std::collections::BTreeMap<ExprId, FieldKind>,
+) -> Option<FieldKind> {
+    if let Some(&f) = overrides.get(&id) {
+        return Some(f);
+    }
+    match &layer.exprs[id.0 as usize] {
+        Expr::Source(_) => match expr_field(&layer.exprs, &layer.sources, id) {
+            Ok(f) => Some(f),
+            Err(place) => map.get(&place).copied(),
+        },
+        Expr::Add(children) | Expr::Mul(children) => {
+            let mut acc = FieldKind::Base;
+            for &c in children {
+                let f = expr_field_with_overrides(layer, c, map, overrides)?;
+                acc = join_field(acc, f);
+                if acc == FieldKind::Ext {
+                    return Some(FieldKind::Ext);
+                }
+            }
+            Some(acc)
+        }
+    }
+}
+
 
 pub(crate) fn field_from_u8(v: u8) -> OperandField {
     if v == 0 {

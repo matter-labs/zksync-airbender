@@ -33,15 +33,15 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use cs::gkr_compiler::dag_ir::{
-    DagLayer, Expr, ExprId, LayerSchedule, ReadPlace, RootId, SourceKind,
+    DagLayer, Expr, ExprId, FieldKind, LayerSchedule, ReadPlace, RootId, SourceKind,
 };
 
 use super::super::context::{DagForwardContext, ForwardAction};
 use super::super::isa::{LdcSub, MovDir, OperandField, OperandLine, Sign, Special, MAX_ARITY};
 use super::analyze::{analyze_layer, materialize_descriptors};
 use super::arith::{
-    child_operand_field, classify_additive_child, field_from_u8, is_constant_one,
-    is_neg_one_factor, is_zero_expr, sign_from_u8, AdditiveChild,
+    child_operand_field, child_operand_field_overridden, classify_additive_child, field_from_u8,
+    is_constant_one, is_neg_one_factor, is_zero_expr, sign_from_u8, AdditiveChild,
 };
 use super::decisions::{OccurrenceStreams, SiteDecisions};
 use super::place::{ValueId, VInstrKind, VirtualInstr, VirtualOp};
@@ -286,7 +286,25 @@ struct VirtualLower<'a> {
     /// path (still the default for callers that pass no decisions). This is now the
     /// ONLY mode carrier — no separate policy field.
     decisions: Option<DecisionsState>,
+    /// Task 5 bwd HOOK 1 (source resolution): distilled leaf `ExprId` → its
+    /// `BwdSpecialTable` descriptor. Consulted FIRST by `source_to_vop` — a hit
+    /// lowers to `VirtualOp::Special { desc }` in the BWD descriptor namespace
+    /// before any canonical `SourceKind` handling (fold-source Reads in the Ext
+    /// regime, VirtualSetup in both). fwd callers pass the EMPTY map (identity
+    /// hook: the lookup never hits, canonical handling is bit-identical).
+    leaf_descs: &'a BTreeMap<ExprId, u16>,
+    /// Task 5 bwd HOOK 2 (leaf field): distilled leaf `ExprId` → forced field
+    /// (Ext for fold leaves), consulted BEFORE the canonical `expr_field`
+    /// classification at every node of the field walk (see `operand_field`).
+    /// fwd callers pass the EMPTY map (identity hook — `operand_field` then
+    /// short-circuits to the canonical `child_operand_field`).
+    field_overrides: &'a BTreeMap<ExprId, FieldKind>,
 }
+
+/// The fwd identity hooks: empty maps (`const`-constructible), so every fwd call
+/// site stays on the canonical classification/resolution paths bit-identically.
+static EMPTY_LEAF_DESCS: BTreeMap<ExprId, u16> = BTreeMap::new();
+static EMPTY_FIELD_OVERRIDES: BTreeMap<ExprId, FieldKind> = BTreeMap::new();
 
 impl<'a> VirtualLower<'a> {
     fn emit(&mut self, vi: VInstr) {
@@ -651,6 +669,25 @@ impl<'a> VirtualLower<'a> {
         desc
     }
 
+    /// Field classification behind the Task 5 leaf-field hook: identical to
+    /// `child_operand_field` when `field_overrides` is empty (every fwd call —
+    /// a single `is_empty` branch, no behavior change), else the override-aware
+    /// walk (`child_operand_field_overridden`) that forces fold-leaf fields and
+    /// joins them up the tree. ALL in-lowerer field classification goes through
+    /// here so the two paths cannot drift per call site.
+    fn operand_field(
+        &self,
+        layer: &DagLayer,
+        id: ExprId,
+        expected: OperandField,
+    ) -> OperandField {
+        if self.field_overrides.is_empty() {
+            child_operand_field(layer, id, expected, &self.cross)
+        } else {
+            child_operand_field_overridden(layer, id, expected, &self.cross, self.field_overrides)
+        }
+    }
+
     // ── source resolution (residency-free; mirrors arith::source_to_operand arms) ──
 
     /// `expected` is the enclosing operand-field context — used ONLY as the
@@ -663,6 +700,12 @@ impl<'a> VirtualLower<'a> {
         expr_id: ExprId,
         expected: OperandField,
     ) -> Result<VirtualOp, CompileError> {
+        // Task 5 bwd HOOK 1: a distilled leaf carrying a BwdSpecialTable desc lowers
+        // to a Special operand in the BWD namespace, before any canonical handling.
+        // fwd identity: the map is empty, so this never fires on a fwd compile.
+        if let Some(&desc) = self.leaf_descs.get(&expr_id) {
+            return Ok(VirtualOp::Special { desc });
+        }
         if layer.resolutions.contains_key(&expr_id) {
             let desc = *self.desc_by_expr.get(&expr_id).ok_or_else(|| {
                 CompileError::FieldMismatch(format!(
@@ -739,7 +782,7 @@ impl<'a> VirtualLower<'a> {
         {
             let op = self.source_to_vop(layer, expr_id, expected)?;
             if self.decisions.is_some() {
-                let field = child_operand_field(layer, expr_id, expected, &self.cross);
+                let field = self.operand_field(layer, expr_id, expected);
                 if let Some(gen_id) = self.try_admit(expr_id, field) {
                     // HIGH-1: eager cache write from the SOURCE (F1-clean). Writing from acc
                     // here would wedge a `DstFromAcc(cache)` between the leaf load and the
@@ -758,7 +801,7 @@ impl<'a> VirtualLower<'a> {
         }
         // 3. Compound: recompute the cone into the acc, then finalize residency (Task 3
         //    `Decisions` admission; a no-op when `decisions` is `None`).
-        let field = child_operand_field(layer, expr_id, expected, &self.cross);
+        let field = self.operand_field(layer, expr_id, expected);
         self.compile_expr_virtual(layer, expr_id, field)?;
         self.materialize_if_root(expr_id, true);
         self.finalize_produced(expr_id, field)
@@ -779,14 +822,14 @@ impl<'a> VirtualLower<'a> {
                     expr_id.0
                 ))
             })?;
-            let field = child_operand_field(layer, expr_id, expected, &self.cross);
+            let field = self.operand_field(layer, expr_id, expected);
             self.emit_init_field(VirtualOp::Special { desc }, field);
             self.materialize_cache_root_from_acc(expr_id); // F3: eager cache write from acc
             return Ok(());
         }
         match &layer.exprs[expr_id.0 as usize] {
             Expr::Source(_) => {
-                let field = child_operand_field(layer, expr_id, expected, &self.cross);
+                let field = self.operand_field(layer, expr_id, expected);
                 let op = self.source_to_vop(layer, expr_id, expected)?;
                 self.emit_init_field(op, field);
                 self.materialize_cache_root_from_acc(expr_id); // F3: eager cache write from acc
@@ -991,7 +1034,7 @@ impl<'a> VirtualLower<'a> {
             } else {
                 (c, Sign::Plus)
             };
-            let field = child_operand_field(layer, to_lower, expected, &self.cross);
+            let field = self.operand_field(layer, to_lower, expected);
             let op = self.lower_operand_virtual(layer, to_lower, expected)?;
             ops.push((field, op, sign));
         }
@@ -1121,15 +1164,15 @@ impl<'a> VirtualLower<'a> {
         let mut addend_ops: Vec<(OperandField, VirtualOp, Sign)> =
             Vec::with_capacity(addends.len());
         for &(sign, c) in &addends {
-            let f = child_operand_field(layer, c, expected, &self.cross);
+            let f = self.operand_field(layer, c, expected);
             let op = self.lower_operand_virtual(layer, c, expected)?;
             addend_ops.push((f, op, sign));
         }
         let mut lo: Vec<(Sign, OperandField, VirtualOp, OperandField, VirtualOp)> =
             Vec::with_capacity(products.len());
         for &(sign, lhs, rhs) in &products {
-            let lf = child_operand_field(layer, lhs, expected, &self.cross);
-            let rf = child_operand_field(layer, rhs, expected, &self.cross);
+            let lf = self.operand_field(layer, lhs, expected);
+            let rf = self.operand_field(layer, rhs, expected);
             let lhs_op = self.lower_operand_virtual(layer, lhs, expected)?;
             let rhs_op = self.lower_operand_virtual(layer, rhs, expected)?;
             lo.push((sign, lf, lhs_op, rf, rhs_op));
@@ -1373,6 +1416,9 @@ pub(crate) fn lower_layer_virtual(
         desc_by_expr,
         virtual_setup_descs: HashMap::new(),
         decisions: decisions_state,
+        // fwd identity hooks — canonical resolution/classification, bit-identical.
+        leaf_descs: &EMPTY_LEAF_DESCS,
+        field_overrides: &EMPTY_FIELD_OVERRIDES,
     };
 
     let mut resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)> =
@@ -1414,7 +1460,7 @@ pub(crate) fn lower_layer_virtual(
                     } else {
                         st.compile_expr_virtual(layer, expr, expected)?;
                         st.materialize_if_root(expr, true);
-                        let field = child_operand_field(layer, expr, expected, &st.cross);
+                        let field = st.operand_field(layer, expr, expected);
                         let admit =
                             if st.decisions.is_some() { st.try_admit(expr, field) } else { None };
                         if let Some(gen_id) = admit {
@@ -1471,13 +1517,105 @@ pub(crate) fn lower_layer_virtual(
         if st.defined.contains(&expr) {
             st.materialize_if_root(expr, false);
         } else {
-            let field = child_operand_field(layer, expr, OperandField::Base, &st.cross);
+            let field = st.operand_field(layer, expr, OperandField::Base);
             st.compile_expr_virtual(layer, expr, field)?;
             st.materialize_if_root(expr, true);
         }
     }
 
     Ok((st.out, st.step_of_instr, st.root_outputs, resident_realized))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// The Task-5 bwd one-root driver (result-in-acc terminal convention, spec §3).
+// ─────────────────────────────────────────────────────────────────────────────────
+
+/// Lower a DISTILLED backward layer's single alpha-spine root to a rich `VInstr`
+/// stream whose FINAL instruction leaves the root's value in the accumulator.
+///
+/// `terms` is the caller's term decomposition of the spine (`bwd::compile::spine_terms`
+/// — the top-level children of the flattened/sorted spine `Add`, or the root expr
+/// itself). The driver accumulates term-by-term: term 0 is computed straight into the
+/// acc; every subsequent term first SPILLS the running partial into a fresh Ext temp,
+/// computes the term into the acc via the shared `compile_expr_virtual` machinery
+/// (identical arithmetic lowering to fwd, through the two Task-5 hooks), then folds
+/// the spilled partial back with one `Add`. This bounds concurrent term state to ONE
+/// Ext spill cell instead of pre-materializing every term operand (which the wide
+/// spine `Add` would do through `compile_reduction_virtual`/FMA and which can never
+/// fit a b16 cell file for a whole-layer root). Value-identical by Add commutativity.
+///
+/// No root is ever admitted/evicted for the root value itself and `expr_to_compute`/
+/// `expr_to_cache_root` are empty, so `VDst::GlobalMaterialize` is UNEMITTABLE by
+/// construction (the spec §3 bwd stores rule). A source-only root degenerates to a
+/// single `Mov AccFromSrc` via `compile_expr_virtual`'s source arm.
+///
+/// `streams` must be the bwd occurrence replay built over the SAME `terms`
+/// (`OccurrenceStreams::build_bwd_root`), keyed to DISTILLED `ExprId`s.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn lower_bwd_root_virtual(
+    layer: &DagLayer,
+    root_expr: ExprId,
+    terms: &[ExprId],
+    ctx: &mut DagForwardContext,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+    field_overrides: &BTreeMap<ExprId, FieldKind>,
+    streams: Option<OccurrenceStreams>,
+    budget: usize,
+) -> Result<(Vec<VInstr>, Vec<usize>), CompileError> {
+    assert!(
+        (layer.exprs.len() as u64) < INTERNAL_BASE as u64,
+        "layer has {} exprs; internal ValueId base {INTERNAL_BASE} would collide",
+        layer.exprs.len()
+    );
+    let decisions_state = streams.map(|s| DecisionsState {
+        streams: s,
+        resident: BTreeMap::new(),
+        budget,
+        live_width: 0,
+        pending_temps: std::collections::HashSet::new(),
+        pending_reads: std::collections::HashMap::new(),
+        evicted_ever: HashSet::new(),
+        generation: HashMap::new(),
+    });
+    let cross = ctx.cross_layer_fields.clone();
+    let mut st = VirtualLower {
+        ctx,
+        cross,
+        out: Vec::new(),
+        step_of_instr: Vec::new(),
+        cur_step: 0,
+        defined: HashSet::new(),
+        widths: HashMap::new(),
+        next_internal: INTERNAL_BASE,
+        expr_to_compute: HashMap::new(),   // no materialize sinks: GlobalMaterialize unemittable
+        expr_to_cache_root: HashMap::new(),
+        exposed: HashSet::new(),
+        root_outputs: Vec::new(),
+        desc_by_expr: HashMap::new(), // distilled resolutions are CLEARED by contract
+        virtual_setup_descs: HashMap::new(),
+        decisions: decisions_state,
+        leaf_descs,
+        field_overrides,
+    };
+
+    // The root's own output demand — mirrors `build_bwd_root`'s RootOutput site
+    // (exactly one serve, before any term lowering).
+    st.serve_occurrence(root_expr);
+
+    for (i, &term) in terms.iter().enumerate() {
+        st.cur_step = i;
+        if i == 0 {
+            st.compile_expr_virtual(layer, term, OperandField::Ext)?;
+        } else {
+            // Spill the running partial (conservatively Ext — the spine value is Ext
+            // once any beta/challenge term folds in; an Ext store of a base-domain
+            // acc is value-preserving), compute the term, fold the partial back.
+            let t = st.alloc_temp_evicting(OperandField::Ext)?;
+            st.compile_expr_virtual(layer, term, OperandField::Ext)?;
+            st.push_fold(OperandField::Ext, vec![VirtualOp::Value(t)], /* is_add */ true, Sign::Plus);
+        }
+    }
+    Ok((st.out, st.step_of_instr))
 }
 
 /// Sorted real (non-internal) `ExprId`s of a defined-resident set.
