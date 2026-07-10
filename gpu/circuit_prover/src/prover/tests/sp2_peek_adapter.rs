@@ -600,14 +600,9 @@ fn build_real_data(recipe: CircuitRecipe) -> RealData {
     assert_eq!(expected_final_state, state);
 
     let decoder_table_data = &preprocessing_data[&family_idx];
-    let witness_gen_data = decoder_table_data
-        .iter()
-        .map(|entry| entry.unwrap_or_default())
-        .collect_vec();
-
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
         default_pc_value_in_padding: 4,
     };
 
@@ -618,6 +613,7 @@ fn build_real_data(recipe: CircuitRecipe) -> RealData {
         &oracle,
         &table_driver,
         &worker,
+        None,
         Global,
         Global,
     );

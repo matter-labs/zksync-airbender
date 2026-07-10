@@ -275,7 +275,7 @@ pub(super) fn finish_proof_fixture(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, _>(
             &compiled_circuit,
             &external_challenges,
             full_trace,
@@ -285,6 +285,7 @@ pub(super) fn finish_proof_fixture(
             &prover_config,
             vec![],
             trace_len,
+            Option::<()>::None,
             &worker,
         );
         eprintln!("fixture: cpu proof ready");

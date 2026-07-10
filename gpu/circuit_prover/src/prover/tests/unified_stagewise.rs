@@ -584,6 +584,7 @@ fn run_unified_stagewise_parity_test() {
                 &canonical_top_bits,
                 address_high_bits_shift,
                 &external_challenges,
+                Option::<&()>::None,
                 &mut seed,
                 &worker,
             );

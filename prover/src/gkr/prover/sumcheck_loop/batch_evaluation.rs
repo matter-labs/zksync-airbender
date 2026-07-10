@@ -448,7 +448,6 @@ pub(crate) fn evaluate_batched_gkr_description<
             println!("Evaluating round {} took {:?}", step, now.elapsed());
         }
         3.. => {
-            // At the last round we will just collect 2 values per poly, and interpolate it out of the valuation loop
             fill_constant_term::<_, _, false>(description.constant_term, accumulator, worker);
 
             for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
@@ -464,11 +463,6 @@ pub(crate) fn evaluate_batched_gkr_description<
                         accumulator,
                         worker,
                     );
-
-                    if round + 1 == total_sumcheck_rounds {
-                        dump_last_evals(a, a_s, last_evaluations);
-                        dump_last_evals(b, b_s, last_evaluations);
-                    }
                 }
             }
             for (a, other_terms) in description.quadratic_part_base_by_ext.iter() {
@@ -484,11 +478,6 @@ pub(crate) fn evaluate_batched_gkr_description<
                         accumulator,
                         worker,
                     );
-
-                    if round + 1 == total_sumcheck_rounds {
-                        dump_last_evals(a, a_s, last_evaluations);
-                        dump_last_evals(b, b_s, last_evaluations);
-                    }
                 }
             }
             for (a, other_terms) in description.quadratic_part_ext_by_ext.iter() {
@@ -504,28 +493,15 @@ pub(crate) fn evaluate_batched_gkr_description<
                         accumulator,
                         worker,
                     );
-
-                    if round + 1 == total_sumcheck_rounds {
-                        dump_last_evals(a, a_s, last_evaluations);
-                        dump_last_evals(b, b_s, last_evaluations);
-                    }
                 }
             }
             for (a, c) in description.linear_part_base_by_everything.iter() {
                 let a_s = storage.make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
                 evaluate_linear_term::<F, E, _, _, false, false>(&a_s, *c, accumulator, worker);
-
-                if round + 1 == total_sumcheck_rounds {
-                    dump_last_evals(a, a_s, last_evaluations);
-                }
             }
             for (a, c) in description.linear_part_ext_by_everything.iter() {
                 let a_s = storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
                 evaluate_linear_term::<F, E, _, _, false, false>(&a_s, *c, accumulator, worker);
-
-                if round + 1 == total_sumcheck_rounds {
-                    dump_last_evals(a, a_s, last_evaluations);
-                }
             }
             println!("Evaluating round {} took {:?}", step, now.elapsed());
         }

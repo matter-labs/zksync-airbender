@@ -202,7 +202,7 @@ pub fn collect_sorted_unique_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddres
                 addrs.insert(input[1][0]);
                 addrs.insert(input[1][1]);
             }
-            R::EnforceSingleMaxQuadraticConstraint { input } => {
+            R::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 for (addr, terms) in input.quadratic_terms.iter() {
                     addrs.insert(*addr);
                     for &(_, b) in terms.iter() {
@@ -226,6 +226,16 @@ pub fn collect_sorted_unique_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddres
                 for addr in setup.1.iter() {
                     addrs.insert(*addr);
                 }
+                for col in &input.1.columns {
+                    for (_, addr) in &col.linear_terms {
+                        addrs.insert(*addr);
+                    }
+                }
+            }
+            R::LookupWithDensAndCachedSetup { input, setup, .. } => {
+                addrs.insert(input.0);
+                addrs.insert(setup.0);
+                addrs.insert(setup.1);
                 for col in &input.1.columns {
                     for (_, addr) in &col.linear_terms {
                         addrs.insert(*addr);

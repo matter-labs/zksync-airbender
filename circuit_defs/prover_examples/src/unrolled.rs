@@ -1190,7 +1190,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
             let now = std::time::Instant::now();
             let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
                     &setup.compiled_circuit,
                     &external_challenges,
                     witness_trace,
@@ -1200,6 +1200,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     &prover_config,
                     vec![],
                     trace_len,
+                    Option::<()>::None,
                     &worker,
                 );
             println!(
@@ -1355,7 +1356,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
             let now = std::time::Instant::now();
             let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
                     &setup.compiled_circuit,
                     &external_challenges,
                     witness_trace,
@@ -1365,6 +1366,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     &prover_config,
                     vec![],
                     trace_len,
+                    Option::<()>::None,
                     &worker,
                 );
             println!(
@@ -1437,7 +1439,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
             &setup.compiled_circuit,
             &external_challenges,
             witness_trace,
@@ -1447,6 +1449,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             &prover_config,
             inits_and_teardowns_top_bits,
             trace_len,
+            Option::<()>::None,
             &worker,
         );
 
@@ -1765,7 +1768,7 @@ pub(crate) fn prove_delegation_circuit<
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         assert!(delegation_type < 1 << 12);
-        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
             &setup.compiled_circuit,
             &external_challenges,
             witness_trace,
@@ -1775,6 +1778,7 @@ pub(crate) fn prove_delegation_circuit<
             prover_config,
             vec![],
             trace_len,
+            Option::<()>::None,
             &worker,
         );
         #[cfg(feature = "timing_logs")]

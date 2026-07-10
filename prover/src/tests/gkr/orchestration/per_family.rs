@@ -158,7 +158,7 @@ pub fn prove_built_family_trace(
 
     println!("Trying to prove");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
         circuit,
         external_challenges,
         full_trace,
@@ -168,6 +168,7 @@ pub fn prove_built_family_trace(
         &prover_config,
         Vec::new(),
         trace_len,
+        Option::<()>::None,
         worker,
     );
     println!("Proving time is {:?}", now.elapsed());
@@ -458,7 +459,7 @@ pub fn prove_inits_and_teardowns(
         .collect();
 
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
         &circuit,
         external_challenges,
         full_trace,
@@ -468,6 +469,7 @@ pub fn prove_inits_and_teardowns(
         &prover_config,
         inits_and_teardowns_top_bits,
         trace_len,
+        Option::<()>::None,
         worker,
     );
     println!("Proving time is {:?}", now.elapsed());

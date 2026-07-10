@@ -697,7 +697,7 @@ const ALL_LAYOUT_FIXTURES: [&str; 11] = [
     "bigint_with_extended_control_layout_gkr.json",
     "blake2_g_function_layout_gkr.json",
     "blake2_with_extended_control_layout_gkr.json",
-    "inits_and_teardowns_preprocessed_layout_gkr.json",
+    "inits_and_teardowns_layout_gkr.json",
     "jump_branch_slt_layout_gkr.json",
     "keccak_special5_layout_gkr.json",
     "mem_subword_only_layout_gkr.json",

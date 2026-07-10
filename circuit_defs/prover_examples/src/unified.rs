@@ -702,7 +702,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
 
             let now = std::time::Instant::now();
             let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
                     &unified_setup.compiled_circuit,
                     &external_challenges,
                     witness_trace,
@@ -712,6 +712,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                     &prover_config,
                     top_bits.clone(),
                     trace_len,
+                    Option::<()>::None,
                     worker,
                 );
             println!("Proving time for unified circuit is {:?}", now.elapsed());

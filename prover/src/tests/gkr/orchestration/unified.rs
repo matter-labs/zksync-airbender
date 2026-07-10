@@ -821,7 +821,7 @@ pub fn prove_built_unified_trace(
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
         unified_circuit,
         external_challenges,
         unified_full_trace,
@@ -831,6 +831,7 @@ pub fn prove_built_unified_trace(
         &prover_config,
         unified_top_bits,
         trace_len,
+        Option::<()>::None,
         worker,
     );
     println!("Unified proving time is {:?}", now.elapsed());

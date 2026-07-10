@@ -697,6 +697,7 @@ pub fn generate_layer_compute_claim<MW: FieldWrapper>(
             | R::LookupUnbalancedPairWithVectorInputs { output, .. }
             | R::LookupWithCachedDensAndSetup { output, .. }
             | R::LookupWithDensAndSetupExpressions { output, .. }
+            | R::LookupWithDensAndCachedSetup { output, .. }
             | R::LookupFromVectorInputWithSetup { output, .. }
             | R::LookupFromMaterializedVectorInputWithSetup { output, .. } => {
                 descs.push((
@@ -1068,7 +1069,7 @@ fn emit_single_output_value<MW: FieldWrapper>(
 ) -> Option<TokenStream> {
     use NoFieldGKRRelation as R;
     match &gate.enforced_relation {
-        R::EnforceSingleMaxQuadraticConstraint { input } => Some(emit_max_quadratic_eval::<MW>(
+        R::EnforceSingleMaxQuadraticConstraint { input, .. } => Some(emit_max_quadratic_eval::<MW>(
             input,
             "val",
             input_sorted_addrs,

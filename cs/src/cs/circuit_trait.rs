@@ -160,6 +160,21 @@ pub trait Circuit<F: PrimeField>: Sized {
         None
     }
 
+    // Constraint-based entry points kept for circuits not yet migrated to the
+    // `Expr` API: they bridge into the corresponding `Expr` methods.
+    #[track_caller]
+    fn add_constraint(&mut self, constraint: crate::constraint::Constraint<F>) {
+        self.add_constraint_expr(Expr::from(constraint));
+    }
+    #[track_caller]
+    fn add_intermediate_named_variable_from_constraint(
+        &mut self,
+        constraint: crate::constraint::Constraint<F>,
+        name: &str,
+    ) -> Variable {
+        self.add_intermediate_named_variable_from_expr(Expr::from(constraint), name)
+    }
+
     fn add_constraint_expr(&mut self, expr: Expr<F>);
     fn add_constraint_expr_allow_explicit_linear(&mut self, expr: Expr<F>);
     fn add_constraint_expr_allow_explicit_linear_prevent_optimizations_expr(

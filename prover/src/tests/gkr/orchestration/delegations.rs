@@ -131,7 +131,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
 
     println!("Trying to prove");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, _>(
         circuit,
         external_challenges,
         full_trace,
@@ -141,6 +141,7 @@ fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
         &prover_config,
         Vec::new(),
         num_delegation_cycles,
+        Option::<()>::None,
         worker,
     );
     println!("Proving time is {:?}", now.elapsed());

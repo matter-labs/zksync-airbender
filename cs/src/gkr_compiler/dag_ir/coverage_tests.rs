@@ -58,14 +58,12 @@ fn load_fixture(path: &PathBuf) -> Option<GKRCircuitArtifact<BabyBearField>> {
 // ── Fixture file lists ───────────────────────────────────────────────────────
 
 /// Every committed `*_layout_gkr.json` fixture.
-/// The `inits_and_teardowns` layout is named `..._preprocessed_layout_gkr.json`
-/// so we list it explicitly rather than deriving from a base name.
 const LAYOUT_GKR_FIXTURES: &[&str] = &[
     "add_sub_lui_auipc_mop_layout_gkr.json",
     "bigint_with_extended_control_layout_gkr.json",
     "blake2_g_function_layout_gkr.json",
     "blake2_with_extended_control_layout_gkr.json",
-    "inits_and_teardowns_preprocessed_layout_gkr.json",
+    "inits_and_teardowns_layout_gkr.json",
     "jump_branch_slt_layout_gkr.json",
     "keccak_special5_layout_gkr.json",
     "mem_subword_only_layout_gkr.json",

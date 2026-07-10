@@ -326,14 +326,9 @@ fn generated_forward_layer0_matches_cpu_evaluate_layer_real_witness() {
     assert_eq!(expected_final_state, state);
 
     let decoder_table_data = &preprocessing_data[&ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX];
-    let witness_gen_data = decoder_table_data
-        .iter()
-        .map(|entry| entry.unwrap_or_default())
-        .collect_vec();
-
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
         default_pc_value_in_padding: 4,
     };
 
@@ -344,6 +339,7 @@ fn generated_forward_layer0_matches_cpu_evaluate_layer_real_witness() {
         &oracle,
         &TableDriver::new(),
         &worker,
+        None,
         Global,
         Global,
     );

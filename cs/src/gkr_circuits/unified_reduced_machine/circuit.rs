@@ -652,12 +652,26 @@ mod test {
             BabyBearField::from_u32(TableType::U16GetSign as u32).expect("table id fits");
 
         // Walk the pooled lookup slots by their generated names; stop at the first gap.
+        // `variables_from_constraints` maps a variable to the index of its defining
+        // `StructuredStatement::Define`, which carries the compiled constraint.
+        let constraint_for = |var| {
+            let idx = output.variables_from_constraints[&var];
+            let crate::structured_expr::StructuredStatement::Define {
+                compiled_constraint,
+                ..
+            } = &output.structured_statements[idx]
+            else {
+                unreachable!()
+            };
+            compiled_constraint
+        };
+
         let mut found = false;
         for k in 0..UNIFIED_LOOKUP_WIDTH * 8 {
             let Some(tid_var) = var_by_name(&format!("pooled lookup table_id (slot {k})")) else {
                 break;
             };
-            let tid_c = &output.variables_from_constraints[&tid_var];
+            let tid_c = constraint_for(tid_var);
             // F2's contribution to the slot's table id is `is_fam2_sum() * U16GetSign`,
             // i.e. degree-1 terms with the table id as coefficient.
             let has_u16getsign = tid_c.terms.iter().any(|t| {
@@ -667,7 +681,7 @@ mod test {
             else {
                 continue;
             };
-            let in0_c = &output.variables_from_constraints[&in0_var];
+            let in0_c = constraint_for(in0_var);
             let reads_sign_source = in0_c
                 .terms
                 .iter()

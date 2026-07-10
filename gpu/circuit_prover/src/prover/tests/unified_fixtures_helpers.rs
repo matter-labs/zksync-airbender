@@ -258,7 +258,7 @@ where
         num_delegation_cycles.trailing_zeros() as usize,
         worker,
     );
-    prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+    prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, _>(
         circuit,
         external_challenges,
         full_trace,
@@ -268,6 +268,7 @@ where
         &prover_config,
         Vec::new(),
         num_delegation_cycles,
+        Option::<()>::None,
         worker,
     )
 }
@@ -995,7 +996,7 @@ fn prepare_unified_fixture(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, _>(
             &compiled_circuit,
             &external_challenges,
             full_trace,
@@ -1005,6 +1006,7 @@ fn prepare_unified_fixture(
             &prover_config,
             (0..num_unified_teardown_sets as u32).collect::<Vec<u32>>(),
             trace_len,
+            Option::<()>::None,
             &worker,
         );
 

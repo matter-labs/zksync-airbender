@@ -236,7 +236,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        Some(prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+        Some(prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, _>(
             &compiled_circuit,
             &external_challenges,
             make_full_trace(),
@@ -246,6 +246,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             &prover_config,
             canonical_top_bits.clone(),
             trace_len,
+            Option::<()>::None,
             &worker,
         ))
     } else {

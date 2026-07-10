@@ -293,7 +293,7 @@ where
             _marker: core::marker::PhantomData,
         };
 
-        let (folding_challenges, internal_round_coefficients, last_evaluations, final_accumulator) =
+        let (folding_challenges, internal_round_coefficients, last_evaluations, _final_claim) =
             run_sumcheck_loop::<F, E, 2, true>(
                 &collector,
                 claim,
@@ -308,11 +308,23 @@ where
 
         #[cfg(feature = "gkr_self_checks")]
         {
+            // We use old function to perform evaluate of gates at-point, but we will just ignore the second evaluation point.
+            // Final claim represents something like eq(prev_round_challenges, folding_challenges) * a(folding_challenges) * b(folding_challenges)
+            // for same sized kernels, and eq(prev_round_challenges, folding_challenges, 0) * a(folding_challenges, 1) for dimension reducing kernels
+            let last_r = *folding_challenges
+                .last()
+                .expect("at least one folding round");
+            let augmented_claims: BTreeMap<_, [E; 2]> = last_evaluations
+                .iter()
+                .map(|(addr, &[f0, f1])| {
+                    (*addr, [interpolate_linear::<F, E>(f0, f1, &last_r), E::ZERO])
+                })
+                .collect();
             let recomputed = collector
-                .compute_last_step_accumulator_from_evals(&challenge_constants, &last_evaluations);
+                .compute_last_step_accumulator_from_evals(&challenge_constants, &augmented_claims);
             assert_eq!(
-                recomputed, final_accumulator,
-                "last_evaluations inconsistent with final accumulator"
+                recomputed[0], _final_claim,
+                "last_evaluations inconsistent with final accumulator constant term G(0)"
             );
         }
 
@@ -343,23 +355,6 @@ where
         .iter()
         .map(|(addr, &[f0, f1])| (*addr, interpolate_linear::<F, E>(f0, f1, &last_r)))
         .collect();
-
-    #[cfg(feature = "gkr_self_checks")]
-    {
-        // We use old function to perform evaluate of gates at-point, but we will just ignore the second evaluation point.
-        // Final claim represents something like eq(prev_round_challenges, folding_challenges) * a(folding_challenges) * b(folding_challenges)
-        // for same sized kernels, and eq(prev_round_challenges, folding_challenges, 0) * a(folding_challenges, 1) for dimension reducing kernels
-        let augmented_claims: BTreeMap<_, [E; 2]> = new_claims
-            .iter()
-            .map(|(addr, v)| (*addr, [*v, E::ZERO]))
-            .collect();
-        let recomputed = collector
-            .compute_last_step_accumulator_from_evals(&challenge_constants, &augmented_claims);
-        assert_eq!(
-            recomputed[0], final_claim,
-            "last_evaluations inconsistent with final accumulator constant term G(0)"
-        );
-    }
 
     // Snapshot the at-point evaluations to send in the proof before the cached-relation
     // handling extends `new_claims` with extra explicitly-computed dependencies.
