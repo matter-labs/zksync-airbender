@@ -55,10 +55,9 @@ constexpr u32 FWDVM_ERR_CELL_OOB = 256;       // cell (bf lane / ext bucket) exc
 constexpr u32 FWDVM_ERR_FIELD_MISMATCH = 512; // bf-field read of an e4-intrinsic bank/desc, or Base DstFromAcc off an ext acc
 constexpr u32 FWDVM_ERR_NULL_POINTER = 1024;  // null mapping arena / table / mask
 
-// --- wire tags (mirror gkr_eval_isa::fwd::encode; UNCHANGED from v1) ---------
-// operand: [payload:14][tag:2]; tag 00=Global{[col:10][slot:4]} 01=Smem{[cell:14]}
-//          10=Ldc{[idx:12][sub:2]} 11=Special{[desc:14]}
-// dst: [payload][kind:1]; kind 0=Smem{[cell:14]} 1=GlobalMaterialize{[col:10][slot:4]}
+// --- Ldc sub-source / inline-special payload values ---------------------------
+// (mirror gkr_eval_isa::fwd::isa::{LdcSub, Special}; UNCHANGED from v1). The
+// lane-layout shifts/masks/tags themselves are the FWD_VM_* block in fwd_vm.cuh.
 constexpr u32 LDC_CONST = 0;
 constexpr u32 LDC_CONST_CHALLENGE = 1;
 constexpr u32 LDC_ARG_CHALLENGE = 2;
@@ -125,12 +124,24 @@ template <bool LDG> DEVICE_FORCEINLINE u16 vm_lane(const fwd_vm_desc &d, const u
 // `cells` is the block's file reinterpreted as bf lanes (u32 words);
 // `budget_buckets` is the bucket budget (a compile-time constant in the static
 // release body, so all the index math folds). blockDim.x must be a multiple
-// of 32 (both kernels launch at 128).
+// of FWD_VM_WARP_LANES (both kernels launch at 128).
 
-DEVICE_FORCEINLINE u32 smem_warp_base(const u32 budget_buckets) { return (threadIdx.x >> 5) * budget_buckets * 128; }
+constexpr u32 FWD_VM_WARP_LANES = 32;                                    // hardware warp size
+constexpr u32 FWD_VM_WARP_SHIFT = 5;                                     // log2(FWD_VM_WARP_LANES)
+constexpr u32 FWD_VM_LANE_MASK = FWD_VM_WARP_LANES - 1;                  // threadIdx.x & mask -> lane
+constexpr u32 FWD_VM_E4_WORDS = 4;                                       // u32 words per e4 limb vector
+constexpr u32 FWD_VM_BUCKET_WORDS = FWD_VM_WARP_LANES * FWD_VM_E4_WORDS; // 128 words = one 512-B chunk
+constexpr u32 FWD_VM_BF_PER_BUCKET = FWD_VM_E4_WORDS;                    // bf cells per bucket (4 lines of 32)
+constexpr u32 FWD_VM_BF_SUB_MASK = FWD_VM_BF_PER_BUCKET - 1;             // bf cell & mask -> line in bucket
+constexpr u32 FWD_VM_BF_BUCKET_SHIFT = 2;                                // log2(FWD_VM_BF_PER_BUCKET); bf cell >> shift -> bucket
+static_assert(1u << FWD_VM_WARP_SHIFT == FWD_VM_WARP_LANES, "warp shift/size drift");
+static_assert(1u << FWD_VM_BF_BUCKET_SHIFT == FWD_VM_BF_PER_BUCKET, "bf bucket shift/size drift");
+
+DEVICE_FORCEINLINE u32 smem_warp_base(const u32 budget_buckets) { return (threadIdx.x >> FWD_VM_WARP_SHIFT) * budget_buckets * FWD_VM_BUCKET_WORDS; }
 
 DEVICE_FORCEINLINE u32 smem_bf_unit(const u32 cell, const u32 budget_buckets) {
-  return smem_warp_base(budget_buckets) + (cell >> 2) * 128 + (cell & 3) * 32 + (threadIdx.x & 31);
+  return smem_warp_base(budget_buckets) + (cell >> FWD_VM_BF_BUCKET_SHIFT) * FWD_VM_BUCKET_WORDS + (cell & FWD_VM_BF_SUB_MASK) * FWD_VM_WARP_LANES +
+         (threadIdx.x & FWD_VM_LANE_MASK);
 }
 
 DEVICE_FORCEINLINE bf smem_ld_bf(const bf *cells, const u32 cell, const u32 budget_buckets) { return cells[smem_bf_unit(cell, budget_buckets)]; }
@@ -141,12 +152,14 @@ DEVICE_FORCEINLINE void smem_st_bf(bf *cells, const u32 cell, const u32 budget_b
 // lds.128/sts.128 via uint4 (the file base is 16-B aligned and the word offset
 // is a multiple of 4, so the vector access is legal).
 DEVICE_FORCEINLINE e4 smem_ld_e4(const bf *cells, const u32 bucket, const u32 budget_buckets) {
-  const uint4 v = *reinterpret_cast<const uint4 *>(cells + smem_warp_base(budget_buckets) + bucket * 128 + (threadIdx.x & 31) * 4);
+  const uint4 v = *reinterpret_cast<const uint4 *>(cells + smem_warp_base(budget_buckets) + bucket * FWD_VM_BUCKET_WORDS +
+                                                   (threadIdx.x & FWD_VM_LANE_MASK) * FWD_VM_E4_WORDS);
   return *reinterpret_cast<const e4 *>(&v);
 }
 
 DEVICE_FORCEINLINE void smem_st_e4(bf *cells, const u32 bucket, const u32 budget_buckets, const e4 v) {
-  *reinterpret_cast<uint4 *>(cells + smem_warp_base(budget_buckets) + bucket * 128 + (threadIdx.x & 31) * 4) = *reinterpret_cast<const uint4 *>(&v);
+  *reinterpret_cast<uint4 *>(cells + smem_warp_base(budget_buckets) + bucket * FWD_VM_BUCKET_WORDS + (threadIdx.x & FWD_VM_LANE_MASK) * FWD_VM_E4_WORDS) =
+      *reinterpret_cast<const uint4 *>(&v);
 }
 
 // --- Global{slot,col}: one field-qualified homogeneous matrix per slot -------
@@ -358,10 +371,10 @@ template <bool VALIDATE> DEVICE_FORCEINLINE e4 read_ldc_e4(const fwd_vm_desc &d,
 template <bool VALIDATE>
 DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 l,
                                       u32 &err) {
-  switch (l & 0b11) {
-  case 0b00: { // Global { slot, col }
-    const u32 slot = (l >> 2) & 0xF;
-    const u32 col = l >> 6;
+  switch (l & FWD_VM_OPERAND_TAG_MASK) {
+  case FWD_VM_OPERAND_GLOBAL: { // Global { slot, col }
+    const u32 slot = (l >> FWD_VM_OPERAND_SLOT_SHIFT) & FWD_VM_SLOT_MASK;
+    const u32 col = l >> FWD_VM_OPERAND_COL_SHIFT;
     if constexpr (VALIDATE) {
       if (d.base[slot] == nullptr) {
         err |= FWDVM_ERR_NULL_COLUMN;
@@ -370,8 +383,8 @@ DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, con
     }
     return load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(global_col(d, slot, col)), gid);
   }
-  case 0b01: { // Smem { cell }: bf -> 4-B lane index
-    const u32 cell = l >> 2;
+  case FWD_VM_OPERAND_SMEM: { // Smem { cell }: bf -> 4-B lane index
+    const u32 cell = l >> FWD_VM_OPERAND_CELL_SHIFT;
     if constexpr (VALIDATE) {
       if (cell >= budget_lanes) {
         err |= FWDVM_ERR_CELL_OOB;
@@ -380,20 +393,20 @@ DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, con
     }
     return smem_ld_bf(cells, cell, budget_buckets);
   }
-  case 0b10: // Ldc { sub, idx }
-    return read_ldc_bf<VALIDATE>(d, (l >> 2) & 0b11, l >> 4, err);
-  default: // 0b11 Special { desc }
-    return read_special_bf<VALIDATE>(d, l >> 2, gid, err);
+  case FWD_VM_OPERAND_LDC: // Ldc { sub, idx }
+    return read_ldc_bf<VALIDATE>(d, (l >> FWD_VM_LDC_SUB_SHIFT) & FWD_VM_LDC_SUB_MASK, l >> FWD_VM_LDC_IDX_SHIFT, err);
+  default: // FWD_VM_OPERAND_SPECIAL: Special { desc }
+    return read_special_bf<VALIDATE>(d, l >> FWD_VM_OPERAND_DESC_SHIFT, gid, err);
   }
 }
 
 template <bool VALIDATE>
 DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 l,
                                       u32 &err) {
-  switch (l & 0b11) {
-  case 0b00: { // Global { slot, col }: one vectorized 16-B load
-    const u32 slot = (l >> 2) & 0xF;
-    const u32 col = l >> 6;
+  switch (l & FWD_VM_OPERAND_TAG_MASK) {
+  case FWD_VM_OPERAND_GLOBAL: { // Global { slot, col }: one vectorized 16-B load
+    const u32 slot = (l >> FWD_VM_OPERAND_SLOT_SHIFT) & FWD_VM_SLOT_MASK;
+    const u32 col = l >> FWD_VM_OPERAND_COL_SHIFT;
     if constexpr (VALIDATE) {
       if (d.base[slot] == nullptr) {
         err |= FWDVM_ERR_NULL_COLUMN;
@@ -402,20 +415,20 @@ DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, con
     }
     return load<e4, ld_modifier::ca>(reinterpret_cast<const e4 *>(global_col(d, slot, col)), gid);
   }
-  case 0b01: { // Smem { cell }: ext -> BUCKET index
-    const u32 bucket = l >> 2;
+  case FWD_VM_OPERAND_SMEM: { // Smem { cell }: ext -> BUCKET index
+    const u32 bucket = l >> FWD_VM_OPERAND_CELL_SHIFT;
     if constexpr (VALIDATE) {
-      if (bucket * 4 + 4 > budget_lanes) {
+      if (bucket * FWD_VM_BF_PER_BUCKET + FWD_VM_BF_PER_BUCKET > budget_lanes) {
         err |= FWDVM_ERR_CELL_OOB;
         return e4::ZERO();
       }
     }
     return smem_ld_e4(cells, bucket, budget_buckets);
   }
-  case 0b10: // Ldc { sub, idx }
-    return read_ldc_e4<VALIDATE>(d, (l >> 2) & 0b11, l >> 4, err);
-  default: // 0b11 Special { desc }
-    return read_special_e4<VALIDATE>(d, l >> 2, gid, err);
+  case FWD_VM_OPERAND_LDC: // Ldc { sub, idx }
+    return read_ldc_e4<VALIDATE>(d, (l >> FWD_VM_LDC_SUB_SHIFT) & FWD_VM_LDC_SUB_MASK, l >> FWD_VM_LDC_IDX_SHIFT, err);
+  default: // FWD_VM_OPERAND_SPECIAL: Special { desc }
+    return read_special_e4<VALIDATE>(d, l >> FWD_VM_OPERAND_DESC_SHIFT, gid, err);
   }
 }
 
@@ -427,8 +440,8 @@ DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, con
 template <bool VALIDATE>
 DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 dl,
                                      const bf v, u32 &err) {
-  if ((dl & 1) == 0) { // Smem { cell }: bf lane
-    const u32 cell = dl >> 1;
+  if ((dl & FWD_VM_DST_TAG_MASK) == FWD_VM_DST_SMEM) { // Smem { cell }: bf lane
+    const u32 cell = dl >> FWD_VM_DST_CELL_SHIFT;
     if constexpr (VALIDATE) {
       if (cell >= budget_lanes) {
         err |= FWDVM_ERR_CELL_OOB;
@@ -437,8 +450,8 @@ DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const u32 
     }
     smem_st_bf(cells, cell, budget_buckets, v);
   } else { // GlobalMaterialize { slot, col }
-    const u32 slot = (dl >> 1) & 0xF;
-    const u32 col = dl >> 5;
+    const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_SLOT_MASK;
+    const u32 col = dl >> FWD_VM_DST_COL_SHIFT;
     if constexpr (VALIDATE) {
       if (d.base[slot] == nullptr) {
         err |= FWDVM_ERR_NULL_COLUMN;
@@ -452,18 +465,18 @@ DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const u32 
 template <bool VALIDATE>
 DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 dl,
                                      const e4 v, u32 &err) {
-  if ((dl & 1) == 0) { // Smem { cell }: ext bucket
-    const u32 bucket = dl >> 1;
+  if ((dl & FWD_VM_DST_TAG_MASK) == FWD_VM_DST_SMEM) { // Smem { cell }: ext bucket
+    const u32 bucket = dl >> FWD_VM_DST_CELL_SHIFT;
     if constexpr (VALIDATE) {
-      if (bucket * 4 + 4 > budget_lanes) {
+      if (bucket * FWD_VM_BF_PER_BUCKET + FWD_VM_BF_PER_BUCKET > budget_lanes) {
         err |= FWDVM_ERR_CELL_OOB;
         return;
       }
     }
     smem_st_e4(cells, bucket, budget_buckets, v);
   } else { // GlobalMaterialize { slot, col }
-    const u32 slot = (dl >> 1) & 0xF;
-    const u32 col = dl >> 5;
+    const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_SLOT_MASK;
+    const u32 col = dl >> FWD_VM_DST_COL_SHIFT;
     if constexpr (VALIDATE) {
       if (d.base[slot] == nullptr) {
         err |= FWDVM_ERR_NULL_COLUMN;
@@ -495,21 +508,21 @@ DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 budge
         break;
     }
     const u16 h = FWDVM_LANE();
-    const u32 op = h & 0b11;
+    const u32 op = h & FWD_VM_OP_MASK;
 
-    if (op == 0b11) {
+    if (op == FWD_VM_OP_MOV) {
       // --- Mov: [field:1@4][dir:2@2][op=3:2]; bits 5+ reserved. The field bit
       // types the transfer width (bf = limb 0 / 1 lane; ext = 16 B).
-      const u32 dir = (h >> 2) & 0b11;
-      const bool fe4 = ((h >> 4) & 1) != 0;
+      const u32 dir = (h >> FWD_VM_MOV_DIR_SHIFT) & FWD_VM_MOV_DIR_MASK;
+      const bool fe4 = ((h >> FWD_VM_MOV_FIELD_SHIFT) & 1) != 0;
       if constexpr (VALIDATE) {
-        if ((h >> 5) != 0 || dir == 3) {
+        if ((h >> FWD_VM_MOV_RSVD_SHIFT) != 0 || dir == FWD_VM_MOV_DIR_RESERVED) {
           err |= FWDVM_ERR_BAD_HEADER;
           break;
         }
       }
       switch (dir) {
-      case 0: // AccFromSrc: sets the acc domain from the field bit
+      case FWD_VM_MOV_ACC_FROM_SRC: // sets the acc domain from the field bit
         if (fe4) {
           acc = FWDVM_READ_E4();
         } else {
@@ -517,7 +530,7 @@ DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 budge
         }
         acc_ext = fe4;
         break;
-      case 1: { // DstFromAcc
+      case FWD_VM_MOV_DST_FROM_ACC: {
         if constexpr (VALIDATE) {
           if (!fe4 && acc_ext) { // no implicit truncation
             err |= FWDVM_ERR_FIELD_MISMATCH;
@@ -531,7 +544,7 @@ DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 budge
           write_dst_bf<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, dl, acc[0][0], err);
         break;
       }
-      default: { // 2 = DstFromSrc: dst lane, then src lane (encode order)
+      default: { // FWD_VM_MOV_DST_FROM_SRC: dst lane, then src lane (encode order)
         const u16 dl = FWDVM_LANE();
         if (fe4) {
           const e4 v = FWDVM_READ_E4();
@@ -547,22 +560,23 @@ DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 budge
     }
 
     // --- Arith: [rsvd:3][sign:1@12][promote:1@11][f1:1@10][f0:1@9][arity:7@2][op:2]
-    const u32 arity = (h >> 2) & 0x7F;
-    const bool f0 = ((h >> 9) & 1) != 0;
-    const bool minus = ((h >> 12) & 1) != 0;
+    const u32 arity = (h >> FWD_VM_HDR_ARITY_SHIFT) & FWD_VM_HDR_ARITY_MASK;
+    const bool f0 = ((h >> FWD_VM_HDR_F0_SHIFT) & 1) != 0;
+    const bool minus = ((h >> FWD_VM_HDR_SIGN_SHIFT) & 1) != 0;
     if constexpr (VALIDATE) {
-      const bool f1v = ((h >> 10) & 1) != 0;
-      const bool zero_arity_ok = op == 0b01 && minus; // zero-arity Mul-minus = pure negation
-      if ((h >> 13) != 0 || (op != 0b10 && f1v) || (arity == 0 && !zero_arity_ok) || (op == 0b10 && f0 && !f1v) /* (Ext,Base) FMA is non-canonical */) {
+      const bool f1v = ((h >> FWD_VM_HDR_F1_SHIFT) & 1) != 0;
+      const bool zero_arity_ok = op == FWD_VM_OP_MUL && minus; // zero-arity Mul-minus = pure negation
+      if ((h >> FWD_VM_HDR_RSVD_SHIFT) != 0 || (op != FWD_VM_OP_FMA && f1v) || (arity == 0 && !zero_arity_ok) ||
+          (op == FWD_VM_OP_FMA && f0 && !f1v) /* (Ext,Base) FMA is non-canonical */) {
         err |= FWDVM_ERR_BAD_HEADER;
         break;
       }
     }
     // promote (bit 11): the base->ext acc lift. Representationally free (limbs
     // 1-3 are already zero); it flips the domain flag BEFORE the op executes.
-    acc_ext |= ((h >> 11) & 1) != 0;
+    acc_ext |= ((h >> FWD_VM_HDR_PROMOTE_SHIFT) & 1) != 0;
 
-    if (op == 0b00) {
+    if (op == FWD_VM_OP_ADD) {
       // Add: limb-0 bf add/sub for {Base} (identical in both domains - a
       // lifted bf only touches limb 0), full e4 add/sub for {Ext}.
       if (f0) {
@@ -576,7 +590,7 @@ DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 budge
           acc = minus ? e4::sub(acc, v) : e4::add(acc, v); // e4 +/- bf = limb-0 only
         }
       }
-    } else if (op == 0b01) {
+    } else if (op == FWD_VM_OP_MUL) {
       // Mul: sign bit = NEGATE ACC FIRST, typed by the (post-promote) domain.
       if (minus) {
         if (acc_ext)
@@ -600,7 +614,7 @@ DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 budge
     } else {
       // Fma: acc +/-= sum of L*R pairs; per-side fields, canonical (Base,Ext)
       // mixed order only.
-      const bool f1 = ((h >> 10) & 1) != 0;
+      const bool f1 = ((h >> FWD_VM_HDR_F1_SHIFT) & 1) != 0;
       if (!f0 && !f1) {
         // Fma{B,B}: bf mul + limb-0 add/sub (identical in both domains).
         for (u32 t = 0; t < arity; t++) {
@@ -650,8 +664,8 @@ template <bool LDG> DEVICE_FORCEINLINE void vm_body_validate(const fwd_vm_desc &
   // buckets; flooring keeps the fail-closed lane bound consistent with the
   // warp-partitioned addressing (a lane past the last whole bucket would cross
   // into the next warp's partition).
-  const u32 budget_buckets = smem_bytes / (blockDim.x * static_cast<u32>(sizeof(bf))) / 4;
-  const u32 budget_lanes = budget_buckets * 4;
+  const u32 budget_buckets = smem_bytes / (blockDim.x * static_cast<u32>(sizeof(bf))) / FWD_VM_E4_WORDS;
+  const u32 budget_lanes = budget_buckets * FWD_VM_BF_PER_BUCKET;
   bf *cells = reinterpret_cast<bf *>(fwd_vm_cells_dyn);
   // Zero-init BEFORE the row early-exit: in the warp-partitioned layout a
   // lane's e4 slices cover OTHER lanes' bf zero-init words, so an exited lane
@@ -673,12 +687,12 @@ template <bool LDG, u32 BUCKETS> DEVICE_FORCEINLINE void vm_body_static(const fw
   bf *cells = reinterpret_cast<bf *>(cell_file);
   // Zero-init BEFORE the row early-exit (see vm_body_validate): an exited
   // lane's zero-init words are covered by surviving lanes' e4 slices.
-  for (u32 c = 0; c < BUCKETS * 4; c++)
+  for (u32 c = 0; c < BUCKETS * FWD_VM_BF_PER_BUCKET; c++)
     smem_st_bf(cells, c, BUCKETS, bf::ZERO());
   const unsigned gid = blockIdx.x * 128 + threadIdx.x;
   if (gid >= d.count)
     return;
-  vm_core<false, LDG>(d, cells, BUCKETS, BUCKETS * 4, gid, nullptr);
+  vm_core<false, LDG>(d, cells, BUCKETS, BUCKETS * FWD_VM_BF_PER_BUCKET, gid, nullptr);
 }
 
 // minBlocks = the occupancy the static smem permits: SM shared capacity

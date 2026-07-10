@@ -1,10 +1,18 @@
 //! ISA vocabulary for the forward-eval VM (spec §6, §7). No encoding here.
+//!
+//! The lane-layout constants below are the SINGLE Rust definition site for the
+//! 16-bit wire format (`encode.rs` routes every pack/unpack through them). The
+//! CUDA interpreter mirrors them as the `FWD_VM_*` lane-layout constexpr block
+//! in `gpu/circuit_prover/native/prover/gkr/forward/fwd_vm.cuh` — the two
+//! sides cannot share a header, so keep the blocks in sync.
 
 pub const TYPE_BITS: u32 = 2;
+pub const TYPE_MASK: u16 = (1 << TYPE_BITS) - 1;
 pub const SLOT_BITS: u32 = 4;      // ≤16 backings/layer
 pub const COL_BITS: u32 = 10;      // ≤1024 cols
 pub const CELL_BITS: u32 = 14;     // smem cell index
 pub const LDC_SUB_BITS: u32 = 2;
+pub const LDC_SUB_MASK: u16 = (1 << LDC_SUB_BITS) - 1;
 pub const LDC_IDX_BITS: u32 = 12;  // ldc_idx < 4096
 pub const DESC_BITS: u32 = 14;     // special-source descriptor index
 pub const MAX_SLOTS: u32 = 1 << SLOT_BITS;   // 16
@@ -13,6 +21,39 @@ pub const MAX_LDC_IDX: u32 = 1 << LDC_IDX_BITS; // 4096
 pub const MAX_CELL: u32 = 1 << CELL_BITS;
 pub const MAX_DESC: u32 = 1 << DESC_BITS;
 pub const MAX_ARITY: usize = 127;  // 7-bit arity
+
+// Operand-lane type tags ([tag:2] at bit 0; payload starts at TYPE_BITS).
+pub const TAG_GLOBAL: u16 = 0b00;  // Global { [slot:4 @2][col @6] }
+pub const TAG_SMEM: u16 = 0b01;    // Smem { [cell @2] }
+pub const TAG_LDC: u16 = 0b10;     // Ldc { [sub:2 @2][idx @4] }
+pub const TAG_SPECIAL: u16 = 0b11; // Special { [desc @2] }
+
+// Dst lane: [tag:1 @0]; tag 0 = Smem { [cell @1] },
+// tag 1 = GlobalMaterialize { [slot:4 @1][col @5] }.
+pub const DST_TAG_BITS: u32 = 1;
+pub const DST_TAG_MASK: u16 = (1 << DST_TAG_BITS) - 1;
+pub const DST_TAG_SMEM: u16 = 0;
+pub const DST_TAG_GLOBAL: u16 = 1;
+
+// Arith header:
+// [op:2][arity:7 @2][f0:1 @9][f1:1 @10][promote:1 @11][sign:1 @12][rsvd @13+].
+pub const OPCODE_BITS: u32 = 2;
+pub const OPCODE_MASK: u16 = (1 << OPCODE_BITS) - 1;
+pub const ARITY_SHIFT: u32 = OPCODE_BITS;           // 2
+pub const ARITY_BITS: u32 = 7;
+pub const ARITY_MASK: u16 = (1 << ARITY_BITS) - 1;  // 0x7f; MAX_ARITY fits
+pub const F0_SHIFT: u32 = ARITY_SHIFT + ARITY_BITS; // 9
+pub const F1_SHIFT: u32 = F0_SHIFT + 1;             // 10
+pub const PROMOTE_SHIFT: u32 = F1_SHIFT + 1;        // 11
+pub const SIGN_SHIFT: u32 = PROMOTE_SHIFT + 1;      // 12
+pub const ARITH_RSVD_SHIFT: u32 = SIGN_SHIFT + 1;   // 13
+
+// Mov header: [op=3:2][dir:2 @2][field:1 @4][rsvd @5+].
+pub const MOV_DIR_SHIFT: u32 = OPCODE_BITS;                    // 2
+pub const MOV_DIR_BITS: u32 = 2;
+pub const MOV_DIR_MASK: u16 = (1 << MOV_DIR_BITS) - 1;
+pub const MOV_FIELD_SHIFT: u32 = MOV_DIR_SHIFT + MOV_DIR_BITS; // 4
+pub const MOV_RSVD_SHIFT: u32 = MOV_FIELD_SHIFT + 1;           // 5
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Opcode { Add = 0, Mul = 1, Fma = 2, Mov = 3 }
@@ -77,7 +118,25 @@ mod tests {
         assert_eq!(MAX_SLOTS, 16);
         assert_eq!(MAX_COLS, 1024);
         assert_eq!(MAX_LDC_IDX, 4096);
-        assert!(MAX_ARITY < (1 << 7));
+        assert!(MAX_ARITY < (1 << ARITY_BITS));
         assert!(SLOT_BITS + COL_BITS <= 14);
+    }
+    #[test]
+    fn header_field_positions_pin_the_wire_format() {
+        // Numeric pins for the derived shift chain: these are the wire format
+        // (mirrored by fwd_vm.cuh's FWD_VM_* block), not free parameters.
+        assert_eq!(ARITY_SHIFT, 2);
+        assert_eq!(ARITY_MASK, 0x7f);
+        assert_eq!(F0_SHIFT, 9);
+        assert_eq!(F1_SHIFT, 10);
+        assert_eq!(PROMOTE_SHIFT, 11);
+        assert_eq!(SIGN_SHIFT, 12);
+        assert_eq!(ARITH_RSVD_SHIFT, 13);
+        assert_eq!(MOV_DIR_SHIFT, 2);
+        assert_eq!(MOV_FIELD_SHIFT, 4);
+        assert_eq!(MOV_RSVD_SHIFT, 5);
+        assert_eq!(TYPE_BITS + SLOT_BITS, 6); // operand Global col shift
+        assert_eq!(TYPE_BITS + LDC_SUB_BITS, 4); // operand Ldc idx shift
+        assert_eq!(DST_TAG_BITS + SLOT_BITS, 5); // dst GlobalMaterialize col shift
     }
 }

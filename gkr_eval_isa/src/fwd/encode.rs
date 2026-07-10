@@ -3,44 +3,42 @@
 use super::error::{DecodeError, EncodeError};
 use super::isa::*;
 
-const TYPE_MASK: u16 = 0b11;
-
 pub fn pack_operand(o: OperandLine) -> Result<u16, EncodeError> {
     match o {
         OperandLine::Global { slot, col } => {
             if (slot as u32) >= MAX_SLOTS { return Err(EncodeError::SlotOutOfRange(slot)); }
             if (col as u32) >= MAX_COLS { return Err(EncodeError::ColOutOfRange(col)); }
-            Ok(0b00 | ((slot as u16) << TYPE_BITS) | (col << (TYPE_BITS + SLOT_BITS)))
+            Ok(TAG_GLOBAL | ((slot as u16) << TYPE_BITS) | (col << (TYPE_BITS + SLOT_BITS)))
         }
         OperandLine::Smem { cell } => {
             if (cell as u32) >= MAX_CELL { return Err(EncodeError::CellOutOfRange(cell)); }
-            Ok(0b01 | (cell << TYPE_BITS))
+            Ok(TAG_SMEM | (cell << TYPE_BITS))
         }
         OperandLine::Ldc { sub, idx } => {
             if (idx as u32) >= MAX_LDC_IDX { return Err(EncodeError::LdcIdxOutOfRange(idx)); }
-            Ok(0b10 | ((sub as u16) << TYPE_BITS) | (idx << (TYPE_BITS + LDC_SUB_BITS)))
+            Ok(TAG_LDC | ((sub as u16) << TYPE_BITS) | (idx << (TYPE_BITS + LDC_SUB_BITS)))
         }
         OperandLine::Special { desc } => {
             if (desc as u32) >= MAX_DESC { return Err(EncodeError::DescOutOfRange(desc)); }
-            Ok(0b11 | (desc << TYPE_BITS))
+            Ok(TAG_SPECIAL | (desc << TYPE_BITS))
         }
     }
 }
 
 pub fn unpack_operand(lane: u16) -> Result<OperandLine, DecodeError> {
     match lane & TYPE_MASK {
-        0b00 => Ok(OperandLine::Global {
+        TAG_GLOBAL => Ok(OperandLine::Global {
             slot: ((lane >> TYPE_BITS) & ((1 << SLOT_BITS) - 1)) as u8,
             col: lane >> (TYPE_BITS + SLOT_BITS),
         }),
-        0b01 => Ok(OperandLine::Smem { cell: (lane >> TYPE_BITS) & ((1 << CELL_BITS) - 1) }),
-        0b10 => {
-            let sub = match (lane >> TYPE_BITS) & 0b11 {
+        TAG_SMEM => Ok(OperandLine::Smem { cell: (lane >> TYPE_BITS) & ((1 << CELL_BITS) - 1) }),
+        TAG_LDC => {
+            let sub = match (lane >> TYPE_BITS) & LDC_SUB_MASK {
                 0 => LdcSub::Const, 1 => LdcSub::ConstChallenge, 2 => LdcSub::ArgChallenge, _ => LdcSub::Special,
             };
             Ok(OperandLine::Ldc { sub, idx: lane >> (TYPE_BITS + LDC_SUB_BITS) })
         }
-        _ => Ok(OperandLine::Special { desc: lane >> TYPE_BITS }),
+        _ => Ok(OperandLine::Special { desc: lane >> TYPE_BITS }), // TAG_SPECIAL
     }
 }
 
@@ -48,23 +46,23 @@ pub fn pack_dst(d: DstLine) -> Result<u16, EncodeError> {
     match d {
         DstLine::Smem { cell } => {
             if (cell as u32) >= MAX_CELL { return Err(EncodeError::CellOutOfRange(cell)); }
-            Ok(cell << 1)
+            Ok(DST_TAG_SMEM | (cell << DST_TAG_BITS))
         }
         DstLine::GlobalMaterialize { slot, col } => {
             if (slot as u32) >= MAX_SLOTS { return Err(EncodeError::SlotOutOfRange(slot)); }
             if (col as u32) >= MAX_COLS { return Err(EncodeError::ColOutOfRange(col)); }
-            Ok(0b1 | ((slot as u16) << 1) | (col << (1 + SLOT_BITS)))
+            Ok(DST_TAG_GLOBAL | ((slot as u16) << DST_TAG_BITS) | (col << (DST_TAG_BITS + SLOT_BITS)))
         }
     }
 }
 
 pub fn unpack_dst(lane: u16) -> Result<DstLine, DecodeError> {
-    if lane & 1 == 0 {
-        Ok(DstLine::Smem { cell: (lane >> 1) & ((1 << CELL_BITS) - 1) })
+    if lane & DST_TAG_MASK == DST_TAG_SMEM {
+        Ok(DstLine::Smem { cell: (lane >> DST_TAG_BITS) & ((1 << CELL_BITS) - 1) })
     } else {
         Ok(DstLine::GlobalMaterialize {
-            slot: ((lane >> 1) & ((1 << SLOT_BITS) - 1)) as u8,
-            col: lane >> (1 + SLOT_BITS),
+            slot: ((lane >> DST_TAG_BITS) & ((1 << SLOT_BITS) - 1)) as u8,
+            col: lane >> (DST_TAG_BITS + SLOT_BITS),
         })
     }
 }
@@ -100,7 +98,12 @@ fn pack_arith_header(op: Opcode, arity: usize, f0: OperandField, f1: OperandFiel
     // Zero arity is legal only for Mul-minus (pure acc negation, §1.2).
     let zero_arity_ok = op == Opcode::Mul && sign == Sign::Minus;
     if (arity == 0 && !zero_arity_ok) || arity > MAX_ARITY { return Err(EncodeError::ArityOutOfRange(arity)); }
-    Ok((op as u16) | ((arity as u16) << 2) | ((f0 as u16) << 9) | ((f1 as u16) << 10) | ((promote as u16) << 11) | ((sign as u16) << 12))
+    Ok((op as u16)
+        | ((arity as u16) << ARITY_SHIFT)
+        | ((f0 as u16) << F0_SHIFT)
+        | ((f1 as u16) << F1_SHIFT)
+        | ((promote as u16) << PROMOTE_SHIFT)
+        | ((sign as u16) << SIGN_SHIFT))
 }
 
 pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
@@ -124,7 +127,7 @@ pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
                 for (l, r) in pairs { out.push(pack_operand(*l)?); out.push(pack_operand(*r)?); }
             }
             Instr::Mov { dir, field, dst, src } => {
-                out.push((Opcode::Mov as u16) | ((*dir as u16) << 2) | ((*field as u16) << 4));
+                out.push((Opcode::Mov as u16) | ((*dir as u16) << MOV_DIR_SHIFT) | ((*field as u16) << MOV_FIELD_SHIFT));
                 match dir {
                     MovDir::AccFromSrc => out.push(pack_operand(src.expect("AccFromSrc src"))?),
                     MovDir::DstFromAcc => out.push(pack_dst(dst.expect("DstFromAcc dst"))?),
@@ -144,11 +147,11 @@ pub fn decode(lanes: &[u16]) -> Result<Program, DecodeError> {
     }
     while i < lanes.len() {
         let h = next(lanes, &mut i)?;
-        let op = h & 0b11;
+        let op = h & OPCODE_MASK;
         if op == Opcode::Mov as u16 {
-            if (h >> 5) != 0 { return Err(DecodeError::NonZeroReserved); } // acc_sel + high bits
-            let dir = match (h >> 2) & 0b11 { 0 => MovDir::AccFromSrc, 1 => MovDir::DstFromAcc, 2 => MovDir::DstFromSrc, d => return Err(DecodeError::BadMovDir(d)) };
-            let field = if (h >> 4) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
+            if (h >> MOV_RSVD_SHIFT) != 0 { return Err(DecodeError::NonZeroReserved); } // acc_sel + high bits
+            let dir = match (h >> MOV_DIR_SHIFT) & MOV_DIR_MASK { 0 => MovDir::AccFromSrc, 1 => MovDir::DstFromAcc, 2 => MovDir::DstFromSrc, d => return Err(DecodeError::BadMovDir(d)) };
+            let field = if (h >> MOV_FIELD_SHIFT) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
             let (dst, src) = match dir {
                 MovDir::AccFromSrc => (None, Some(unpack_operand(next(lanes, &mut i)?)?)),
                 MovDir::DstFromAcc => (Some(unpack_dst(next(lanes, &mut i)?)?), None),
@@ -157,12 +160,12 @@ pub fn decode(lanes: &[u16]) -> Result<Program, DecodeError> {
             instrs.push(Instr::Mov { dir, field, dst, src });
             continue;
         }
-        if (h >> 13) != 0 { return Err(DecodeError::NonZeroReserved); }
-        let arity = ((h >> 2) & 0x7f) as usize;
-        let f0 = if (h >> 9) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
-        let f1 = if (h >> 10) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
-        let promote = (h >> 11) & 1 == 1;
-        let sign = if (h >> 12) & 1 == 1 { Sign::Minus } else { Sign::Plus };
+        if (h >> ARITH_RSVD_SHIFT) != 0 { return Err(DecodeError::NonZeroReserved); }
+        let arity = ((h >> ARITY_SHIFT) & ARITY_MASK) as usize;
+        let f0 = if (h >> F0_SHIFT) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
+        let f1 = if (h >> F1_SHIFT) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
+        let promote = (h >> PROMOTE_SHIFT) & 1 == 1;
+        let sign = if (h >> SIGN_SHIFT) & 1 == 1 { Sign::Minus } else { Sign::Plus };
         match op {
             x if x == Opcode::Add as u16 => {
                 if f1 != OperandField::Base { return Err(DecodeError::NonCanonicalField); }
@@ -193,6 +196,9 @@ pub fn decode(lanes: &[u16]) -> Result<Program, DecodeError> {
 
 #[cfg(test)]
 mod header_tests {
+    // Hand-built headers below use RAW shift literals on purpose: they pin the
+    // wire format independently of the isa.rs constants (a swapped constant
+    // pair must fail here, not be silently self-consistent).
     use super::*;
     fn sample() -> Program {
         Program { instrs: vec![
