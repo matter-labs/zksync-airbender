@@ -193,12 +193,23 @@ fn search_bwd_layer_smoke() {
         let outcome = search_bwd_layer(layer, pick.regime, &cross, pick.budget, &cfg);
         let out_traffic = outcome.stats.global + outcome.stats.fold_traffic;
 
+        // Both picks have caching headroom at their budgets: the GA finds a
+        // strictly-better candidate, so the outcome carries real decisions (the
+        // fallback branch is covered by the floor-budget test below).
+        assert!(
+            outcome.decisions.is_some(),
+            "[{}] expected a strictly-improving Some(decisions) outcome",
+            pick.name
+        );
+
         // (i) outcome decisions compile feasibly at the pick's budget. The
         // decisions are keyed to the WINNING permutation's distilled ExprIds, so
         // they must be replayed against a distill of that same permutation (the
-        // intended consumer contract — decisions + unit_permutation used together).
+        // intended consumer contract — decisions + unit_permutation used
+        // together; `decisions: None` = the no-decisions baseline outcome).
         let d_perm = distill(layer, pick.regime, &cross, Some(&outcome.unit_permutation));
-        let recompiled = match compile_distilled(&d_perm, pick.budget, Some(&outcome.decisions)) {
+        let recompiled = match compile_distilled(&d_perm, pick.budget, outcome.decisions.as_ref())
+        {
             Ok(c) => c,
             Err(CompileError::BudgetBelowFloor { floor, .. }) => panic!(
                 "[{}] outcome decisions infeasible at budget {} (floor {floor})",
@@ -214,7 +225,10 @@ fn search_bwd_layer_smoke() {
             pick.name
         );
 
-        // (ii) non-regression: outcome traffic <= no-decisions baseline.
+        // (ii) non-regression: outcome traffic <= no-decisions baseline. This
+        // now holds BY CONSTRUCTION — `search_bwd_layer` evaluates the
+        // `None`-decisions baseline itself and returns it whenever the GA's best
+        // is infeasible or not strictly better; asserted anyway as the gate.
         assert!(
             out_traffic <= baseline_traffic,
             "[{}] regression: outcome traffic {out_traffic} > baseline {baseline_traffic}",
@@ -246,4 +260,58 @@ fn search_bwd_layer_smoke() {
             outcome.stats.fold_traffic, outcome.unit_permutation,
         );
     }
+}
+
+/// The baseline-fallback path: at a budget equal to the `None`-decisions
+/// placement FLOOR (probed at runtime — `compile_distilled` at budget 1 reports
+/// it), bigint L0 R0's decision-candidates all land infeasible or no better
+/// than the baseline (caching at the floor has no headroom), so the search must
+/// return the baseline outcome: `decisions: None`, identity `unit_permutation`,
+/// and stats identical to the no-decisions compile. Deterministic (fixed seed)
+/// and fast (the tight budget makes every candidate compile cheap). The picks
+/// above prove the OTHER branch (a strictly-better `Some` outcome); together
+/// they cover both sides of the by-construction non-regression floor.
+#[test]
+fn search_bwd_layer_falls_back_to_none_baseline_at_floor_budget() {
+    let name = "bigint_with_extended_control_layout_gkr.json";
+    let regime = BwdRegime::R0;
+
+    let artifact = load_fixture(name);
+    let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
+    validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
+    let cross = build_cross_layer_field_map(&dag);
+    let layer = &dag.layers[0];
+
+    // Probe the None-decisions floor (budget 1 is always below it for a
+    // compound layer), then compile the baseline exactly at that floor.
+    let d0 = distill(layer, regime, &cross, None);
+    let floor = match compile_distilled(&d0, 1, None) {
+        Err(CompileError::BudgetBelowFloor { floor, .. }) => floor,
+        Ok(_) => 1,
+        Err(e) => panic!("[{name}] floor probe: {e:?}"),
+    };
+    let baseline = compile_distilled(&d0, floor, None)
+        .unwrap_or_else(|e| panic!("[{name}] baseline compile at floor {floor}: {e:?}"));
+
+    let cfg = BwdSearchConfig { pop: 4, evals: 12, seed: 0, mutation_sigma: 0.2 };
+    let outcome = search_bwd_layer(layer, regime, &cross, floor, &cfg);
+
+    assert!(
+        outcome.decisions.is_none(),
+        "[{name}] at the None floor budget {floor} the search must fall back to the \
+         no-decisions baseline"
+    );
+    assert_eq!(
+        outcome.unit_permutation,
+        (0..d0.unit_order.len()).collect::<Vec<_>>(),
+        "[{name}] baseline fallback must report the canonical identity permutation"
+    );
+    assert_eq!(
+        outcome.stats, baseline.stats_ext,
+        "[{name}] baseline fallback stats must equal the no-decisions compile's"
+    );
+    println!(
+        "[{name}] fallback exercised at floor budget {floor}: traffic={}",
+        outcome.stats.global + outcome.stats.fold_traffic
+    );
 }

@@ -70,11 +70,14 @@ impl Default for BwdSearchConfig {
 }
 
 /// Result of searching one backward layer × regime: the winning
-/// [`SiteDecisions`] (keyed to the winning candidate's distilled site domain),
-/// its `unit_permutation` (feed back into [`distill`] to reproduce the schedule),
+/// [`SiteDecisions`] (keyed to the winning candidate's distilled site domain;
+/// `None` = compile with NO decisions — the uncached per-demand-recompute
+/// baseline, returned whenever no GA candidate strictly beats it, which makes
+/// non-regression true BY CONSTRUCTION), its `unit_permutation` (feed back into
+/// [`distill`] to reproduce the schedule; canonical identity for the baseline),
 /// and the winning compile's search-facing traffic stats.
 pub struct BwdSearchOutcome {
-    pub decisions: SiteDecisions,
+    pub decisions: Option<SiteDecisions>,
     pub unit_permutation: Vec<usize>,
     pub stats: BwdTrafficStats,
 }
@@ -278,9 +281,21 @@ fn seed_population(n_units: usize, n_sites: usize, pop: usize, rng: &mut SeedRng
 
 /// Search one backward layer × regime for a low-traffic `(unit_permutation,
 /// SiteDecisions)` at `budget`, via a compact deterministic GA over the fwd gene
-/// types. Every genome scored is a real [`compile_distilled`]; the returned
-/// outcome is the best candidate found (never worse than the neutral seed, which
-/// is always evaluated first).
+/// types. Every genome scored is a real [`compile_distilled`].
+///
+/// NON-REGRESSION BY CONSTRUCTION: the `decisions: None` baseline compile at the
+/// same budget (canonical unit order, uncached per-demand recompute — the exact
+/// compile the fixture gates pin) is always evaluated as the post-hoc floor. If
+/// the GA's best candidate is infeasible OR its `(infeasible, traffic, instrs)`
+/// key is worse than the baseline's, the baseline outcome is returned
+/// (`decisions: None`, identity `unit_permutation`, baseline stats) — so the
+/// result is NEVER worse than an unsearched compile, and decision-candidates
+/// whose caching raises the placement floor above `budget` (observed: blake2 L0
+/// Ext floor 20 > b16) can no longer panic the search.
+///
+/// Panics only if even the `None` baseline is infeasible at `budget` — a real
+/// layer/budget problem (the `PINNED_B16_INFEASIBLE` class), not a schedule one;
+/// the message names layer shape, regime, budget, and floor.
 ///
 /// A layer with zero relation units (nothing to order) still runs — the order
 /// genes are empty, so the GA only tunes cache priorities (or is a no-op if the
@@ -302,6 +317,23 @@ pub fn search_bwd_layer(
     let d0 = distill(layer, regime, cross, None);
     let n_units = d0.unit_order.len();
     let n_sites = distilled_site_domain(&d0).len();
+
+    // The `None`-decisions baseline: the non-regression floor AND the fallback
+    // when every decision-candidate is infeasible. If even this is infeasible,
+    // the layer genuinely does not fit the budget — fail loudly with context.
+    let baseline = match compile_distilled(&d0, budget, None) {
+        Ok(c) => BwdScore {
+            infeasible: false,
+            traffic: c.stats_ext.global + c.stats_ext.fold_traffic,
+            instrs: c.stats.program_lanes,
+            stats: c.stats_ext,
+        },
+        Err(CompileError::BudgetBelowFloor { floor, .. }) => panic!(
+            "search_bwd_layer: even the no-decisions baseline is infeasible \
+             ({regime:?}, budget {budget}, floor {floor}, {n_units} units, {n_sites} sites)"
+        ),
+        Err(e) => panic!("search_bwd_layer: baseline compile error: {e:?}"),
+    };
 
     let mut rng = SeedRng::new(cfg.seed);
     let seeds = seed_population(n_units, n_sites, cfg.pop.min(cfg.evals), &mut rng);
@@ -354,11 +386,18 @@ pub fn search_bwd_layer(
         .expect("non-empty population");
     let (unit_permutation, decisions, score) =
         score_candidate(&best.0, layer, regime, cross, budget);
-    assert!(
-        !score.infeasible,
-        "search_bwd_layer: best candidate infeasible at budget {budget} \
-         ({n_units} units, {n_sites} sites)"
-    );
 
-    BwdSearchOutcome { decisions, unit_permutation, stats: score.stats }
+    // Post-hoc baseline floor: fall back to the `None`-decisions compile if the
+    // GA's best is infeasible or not strictly better — non-regression BY
+    // CONSTRUCTION (baseline wins ties: identical traffic with decisions buys
+    // nothing over the simpler uncached compile).
+    if score.infeasible || objective_key(&score) >= objective_key(&baseline) {
+        return BwdSearchOutcome {
+            decisions: None,
+            unit_permutation: (0..n_units).collect(),
+            stats: baseline.stats,
+        };
+    }
+
+    BwdSearchOutcome { decisions: Some(decisions), unit_permutation, stats: score.stats }
 }
