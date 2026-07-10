@@ -4,4 +4,4 @@
 pub mod source;
 pub mod distill;
 pub mod compile;
-// pub mod interp; // Task 6
+pub mod interp;

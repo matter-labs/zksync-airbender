@@ -135,7 +135,7 @@ fn interpret_layer_row_impl(
 /// (`cell * 4`). The interpreter is a faithful executor of the WIRE format, so it
 /// multiplies the bucket back onto its lane-addressed cell file.
 #[inline]
-fn smem_lane(cell: u16, field: OperandField) -> usize {
+pub(crate) fn smem_lane(cell: u16, field: OperandField) -> usize {
     match field {
         OperandField::Base => cell as usize,
         OperandField::Ext => cell as usize * 4,
