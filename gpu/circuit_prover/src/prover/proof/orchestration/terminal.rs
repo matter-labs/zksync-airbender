@@ -26,9 +26,8 @@ pub(in crate::prover::proof) fn schedule_terminal_proof_assembly(
     // `schedule_prepare_base_layer_claims_with_sources` and handed off via
     // `take_pending_aggregation`. Invoked at the head of this terminal
     // callback so `clone_base_layer_extra_evaluations_from_slab` below sees
-    // the populated `base_layer_claims_shared_state.result`. Phase E folds
-    // this into the terminal callback so exactly one host callback fires
-    // per proof.
+    // the populated `base_layer_claims_shared_state.result`. This is folded
+    // into the terminal callback so exactly one host callback fires per proof.
     pending_aggregation: Box<dyn Fn() + Send + Sync + 'static>,
     external_challenges: GKRExternalChallenges<BF, E4>,
     inits_and_teardowns_top_bits: Vec<u32>,
@@ -58,7 +57,7 @@ pub(in crate::prover::proof) fn schedule_terminal_proof_assembly(
                 // (no CUDA calls); the metadata sink read by
                 // `clone_base_layer_extra_evaluations_from_slab` below.
                 pending_aggregation();
-                // Phase 4: source all device-produced proof fields from the
+                // Source all device-produced proof fields from the
                 // terminal-D2H'd slab — including `final_explicit_evaluations`,
                 // which final forward dim-reduction wrote directly into the
                 // slab's `output_evaluations` block.
@@ -93,6 +92,12 @@ pub(in crate::prover::proof) fn schedule_terminal_proof_assembly(
                     whir_proof,
                     grand_product_accumulator_computed,
                     inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.clone(),
+                    // Ground on device by the pow-aware challenge draws (0 at
+                    // Sec80, non-zero at Sec100) and read back from the slab.
+                    lookup_challenges_pow_nonce: proof_layout_for_parse
+                        .lookup_pow_nonce_host(slab_bytes),
+                    batched_proximity_check_pow_nonce: proof_layout_for_parse
+                        .batched_proximity_pow_nonce_host(slab_bytes),
                 });
             }
         },

@@ -22,6 +22,11 @@ serde_json = "*"
 [features]
 default = ["security_80"]
 no_caches = ["verifier_common/no_caches"]
+# When set, the generated verifier reads WHIR intermediate-oracle leaves in
+# evaluation form (fold_coset). Default (feature off) is coefficient form.
+# Only drives this crate's `cfg!(feature = "eval_leaves")` token emission; the
+# prover sets its matching feature independently (see gkr_test.sh --encoding).
+eval_leaves = []
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
 

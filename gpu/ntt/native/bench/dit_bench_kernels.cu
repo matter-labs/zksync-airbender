@@ -59,9 +59,8 @@ DIT_2P_FIXED(12, 2, 4)
 DIT_2P_FIXED(12, 2, 8)
 DIT_2P_FIXED(12, 2, 16)
 #undef DIT_2P_FIXED
-// NOTE: ab_dit_single_stream_* moved to production (dit_kernels_extern.cu) —
-// it is now the production single-pass launch path, so it is no longer a
-// bench-only wrapper. The bench's Bench1pStream bindings link those symbols.
+// The bench's Bench1pStream bindings link the ab_dit_single_stream_* symbols,
+// which are the production single-pass launch path defined in dit_kernels_extern.cu.
 #define DIT_1P_FIXED(LOGN, LOGVPT, K)                                                                                                                          \
   EXTERN __launch_bounds__(4u * 32u)                                                                                                                           \
       __global__ void ab_dit_single_fixed_##LOGN##_##LOGVPT##_##K(const bf *mono, const bf *tw_clean, bf *out, u32 cfp0, u32 step, u32 cstride) {              \

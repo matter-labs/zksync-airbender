@@ -1,4 +1,8 @@
-#![cfg(feature = "security_80")]
+// Corruption tests. The bulk of the suite is Sec80-only (it depends on the Sec80 NDS layout
+// and the Sec80 generated verifier), so those tests are gated at their macro invocation below.
+// The PoW-nonce tests run at *every* enabled security level: at Sec80 a tampered nonce is caught
+// downstream (0-bit threshold is vacuous), while at Sec100 it is caught directly by `verify_pow`'s
+// threshold check — so this is the coverage of the nonzero-bit rejection branch.
 
 #[macro_use]
 mod common;
@@ -8,8 +12,8 @@ use field::Field;
 use verifier_common::errors::VerificationError;
 
 use common::{
-    assert_rejects_corrupted_nds, assert_rejects_via_panic, assert_rejects_with_variant,
-    SecurityLevel, VerifyRejection,
+    assert_rejects_any, assert_rejects_corrupted_nds, assert_rejects_via_panic,
+    assert_rejects_with_variant, SecurityLevel, VerifyRejection,
 };
 
 fn test_rejects_garbage_proof(name: &str) {
@@ -284,9 +288,23 @@ fn test_rejects_non_canonical_field_element(name: &str) {
             SecurityLevel::Sec80,
             "non_canonical_field_element",
             |nds| {
-                nds[gkr_off + 4] ^= 0x7800_0001;
+                nds[gkr_off + 4] |= 0x8000_0000;
             },
-            |r| matches!(r, VerifyRejection::Error(..)),
+            |r| {
+                matches!(
+                    r,
+                    VerifyRejection::Error(
+                        VerificationError::GkrSumcheckRoundFailed { .. }
+                            | VerificationError::GkrFinalStepCheckFailed { .. }
+                            | VerificationError::GkrGrandProductCheckFailed
+                            | VerificationError::GkrPermutationCacheRelationFailed { .. }
+                            | VerificationError::GkrSingleLookupCacheRelationFailed { .. }
+                            | VerificationError::GkrVectorLookupCacheRelationFailed { .. }
+                            | VerificationError::GkrLookupIdentityFailed { .. }
+                            | VerificationError::GkrVirtualSetupEvalMismatch { .. }
+                    )
+                )
+            },
         );
     });
 }
@@ -313,6 +331,23 @@ fn test_rejects_corrupted_pow_nonce(name: &str) {
     );
     proof.whir_proof.pow_nonces[0] ^= 1;
     assert_rejects_via_panic(name, SecurityLevel::Sec80, "corrupted PoW nonce", &proof);
+}
+
+fn test_rejects_corrupted_lookup_pow_nonce(name: &str, level: SecurityLevel) {
+    let circuit_data = common::circuit_by_name(name);
+    let mut proof = circuit_data.proof_for(level);
+    // The lookup-challenge PoW nonce is bound into the transcript seed. Tampering with it
+    // must be rejected — directly by `verify_pow` when the bit-count is non-zero (Sec100),
+    // otherwise downstream once the diverged seed corrupts every later challenge (Sec80).
+    proof.lookup_challenges_pow_nonce ^= 1;
+    assert_rejects_any(name, level, "corrupted lookup PoW nonce", &proof);
+}
+
+fn test_rejects_corrupted_batched_proximity_pow_nonce(name: &str, level: SecurityLevel) {
+    let circuit_data = common::circuit_by_name(name);
+    let mut proof = circuit_data.proof_for(level);
+    proof.batched_proximity_check_pow_nonce ^= 1;
+    assert_rejects_any(name, level, "corrupted batched-proximity PoW nonce", &proof);
 }
 
 #[cfg(not(feature = "no_caches"))]
@@ -355,83 +390,122 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
     );
 }
 
+fn test_rejects_corrupted_it_evals(name: &str) {
+    with_circuit!(name, SecurityLevel::Sec80, |m| {
+        type InitialTranscript = m::constants::ConcreteInitialTranscript;
+        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
+            - (core::mem::offset_of!(InitialTranscript, setup_caps)
+                - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
+        let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
+
+        assert!(
+            m::constants::GKR_EVALS >= 160,
+            "{name} must have the 160-eval layout (i/t evals at [128..160])"
+        );
+        // First word of the first inits/teardowns ext4 eval (evals_slice[128]).
+        let it_eval_off = gkr_off + 128 * 4;
+
+        assert_rejects_corrupted_nds(
+            name,
+            SecurityLevel::Sec80,
+            "it_evals",
+            |nds| nds[it_eval_off] ^= 1,
+            |r| {
+                matches!(
+                    r,
+                    VerifyRejection::Error(
+                        VerificationError::GkrSumcheckRoundFailed { .. }
+                            | VerificationError::GkrFinalStepCheckFailed { .. }
+                            | VerificationError::GkrGrandProductCheckFailed
+                    )
+                )
+            },
+        );
+    });
+}
+
+#[test]
+fn rejects_corrupted_it_evals_unified_reduced_machine_sec_80() {
+    test_rejects_corrupted_it_evals("unified_reduced_machine");
+}
+
 macro_rules! generate_corruption_tests {
     ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         $(
             paste::paste! {
                 #[test]
-                fn [<rejects_garbage_proof_ $name>]() {
+                fn [<rejects_garbage_proof_ $name _sec_80>]() {
                     test_rejects_garbage_proof(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corruption_ $name>]() {
+                fn [<rejects_corruption_ $name _sec_80>]() {
                     test_rejects_corruption_at_fractions(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_gkr_region_ $name>]() {
+                fn [<rejects_corrupted_gkr_region_ $name _sec_80>]() {
                     test_rejects_corrupted_gkr_region(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_whir_region_ $name>]() {
+                fn [<rejects_corrupted_whir_region_ $name _sec_80>]() {
                     test_rejects_corrupted_whir_region(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_zeroed_regions_ $name>]() {
+                fn [<rejects_zeroed_regions_ $name _sec_80>]() {
                     test_rejects_zeroed_regions(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_shifted_nds_ $name>]() {
+                fn [<rejects_shifted_nds_ $name _sec_80>]() {
                     test_rejects_shifted_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_oracle_caps_ $name>]() {
+                fn [<rejects_corrupted_oracle_caps_ $name _sec_80>]() {
                     test_rejects_corrupted_oracle_caps(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_truncated_nds_ $name>]() {
+                fn [<rejects_truncated_nds_ $name _sec_80>]() {
                     test_rejects_truncated_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_final_monomials_ $name>]() {
+                fn [<rejects_corrupted_final_monomials_ $name _sec_80>]() {
                     test_rejects_corrupted_final_monomials(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_cross_circuit_nds_ $name>]() {
+                fn [<rejects_cross_circuit_nds_ $name _sec_80>]() {
                     test_rejects_cross_circuit_nds(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_init_teardown_bits_ $name>]() {
+                fn [<rejects_corrupted_init_teardown_bits_ $name _sec_80>]() {
                     test_rejects_corrupted_init_teardown_bits(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_non_canonical_field_element_ $name>]() {
+                fn [<rejects_non_canonical_field_element_ $name _sec_80>]() {
                     test_rejects_non_canonical_field_element(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_ood_sample_ $name>]() {
+                fn [<rejects_corrupted_ood_sample_ $name _sec_80>]() {
                     test_rejects_corrupted_ood_sample(stringify!($name));
                 }
 
                 #[test]
-                fn [<rejects_corrupted_pow_nonce_ $name>]() {
+                fn [<rejects_corrupted_pow_nonce_ $name _sec_80>]() {
                     test_rejects_corrupted_pow_nonce(stringify!($name));
                 }
 
                 #[cfg(not(feature = "no_caches"))]
                 #[test]
-                fn [<rejects_corrupted_cache_relations_ $name>]() {
+                fn [<rejects_corrupted_cache_relations_ $name _sec_80>]() {
                     test_rejects_corrupted_cache_relations(stringify!($name));
                 }
 
@@ -439,4 +513,39 @@ macro_rules! generate_corruption_tests {
         )*
     };
 }
+// The bulk of the corruption suite is Sec80-only (Sec80 NDS layout + Sec80 verifier).
+#[cfg(feature = "security_80")]
 verifier_common::gkr_circuits!(generate_corruption_tests);
+
+// PoW-nonce corruption runs at every enabled security level — the only corruption tests that
+// exercise Sec100. At Sec100 (non-zero PoW bits) these hit `verify_pow`'s threshold-rejection
+// branch directly; at Sec80 (0 bits) they verify the nonce is transcript-bound (downstream reject).
+macro_rules! generate_pow_nonce_corruption_tests {
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+        $(
+            paste::paste! {
+                #[cfg(feature = "security_80")]
+                #[test]
+                fn [<rejects_corrupted_lookup_pow_nonce_sec80_ $name>]() {
+                    test_rejects_corrupted_lookup_pow_nonce(stringify!($name), SecurityLevel::Sec80);
+                }
+                #[cfg(feature = "security_100")]
+                #[test]
+                fn [<rejects_corrupted_lookup_pow_nonce_sec100_ $name>]() {
+                    test_rejects_corrupted_lookup_pow_nonce(stringify!($name), SecurityLevel::Sec100);
+                }
+                #[cfg(feature = "security_80")]
+                #[test]
+                fn [<rejects_corrupted_batched_proximity_pow_nonce_sec80_ $name>]() {
+                    test_rejects_corrupted_batched_proximity_pow_nonce(stringify!($name), SecurityLevel::Sec80);
+                }
+                #[cfg(feature = "security_100")]
+                #[test]
+                fn [<rejects_corrupted_batched_proximity_pow_nonce_sec100_ $name>]() {
+                    test_rejects_corrupted_batched_proximity_pow_nonce(stringify!($name), SecurityLevel::Sec100);
+                }
+            }
+        )*
+    };
+}
+verifier_common::gkr_circuits!(generate_pow_nonce_corruption_tests);

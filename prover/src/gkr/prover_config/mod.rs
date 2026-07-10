@@ -1,19 +1,22 @@
 use std::collections::BTreeMap;
 
+use crate::definitions::SecurityLevel;
 use crate::gkr::{prover::WhirSchedule, whir::proximity_testing_modes::ProximityTestingMode};
 
 pub mod example_configs;
+pub mod pow_bits;
 
 #[derive(Clone, Debug)]
 pub struct ProverConfig {
     pub lde_factor: usize,
     pub cap_size: usize,
     pub base_oracles_values_per_leaf: usize,
-    pub lookup_challenges_pow_bits: u32,
     // we do not expect any challenges for sumcheck, as it's soundness
     // error is very small
     pub sumcheck_explicit_output_size_log_2: usize,
-    pub batched_proximity_check_challenge_pow_bits: u32,
+    // Both proof-of-work bit counts (lookup challenges, WHIR batching) are derived
+    // per-circuit from `security_level` via `pow_bits`, so neither is stored here.
+    pub security_level: SecurityLevel,
     pub whir_schedule: WhirSchedule,
 }
 
@@ -95,9 +98,8 @@ pub fn compute_best_prover_config_guess(
     lde_factor: usize,
     cap_size: usize,
     base_oracles_values_per_leaf: usize,
-    lookup_challenges_pow_bits: u32, // we use these as inputs for now
     sumcheck_explicit_output_size_log_2: usize,
-    batched_proximity_check_challenge_pow_bits: u32,
+    security_bits: u32,
     first_round_pow_bits: u32,
     other_rounds_pow_bits: u32,
     min_pow_bits: u32,
@@ -165,9 +167,8 @@ pub fn compute_best_prover_config_guess(
     //     lde_factor,
     //     cap_size,
     //     base_oracles_values_per_leaf,
-    //     lookup_challenges_pow_bits,
     //     sumcheck_explicit_output_size_log_2,
-    //     batched_proximity_check_challenge_pow_bits,
+    //     security_level,
     //     whir_schedule,
     // }
 }
@@ -308,7 +309,6 @@ mod test {
             DEFAULT_LDE_FACTOR,
             DEFAULT_CAP_SIZE,
             2,
-            0,
             DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             0,
             28,

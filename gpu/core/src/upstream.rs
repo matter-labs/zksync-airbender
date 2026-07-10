@@ -4,10 +4,6 @@
 //! listed here. Currently that is a small subset of `field` — no `cs`,
 //! `prover`, `setups`, or `trace_and_split` symbols are needed.
 
-// -----------------------------------------------------------------------
-// `field` — base field, extension towers
-// -----------------------------------------------------------------------
-
 pub(crate) use field::baby_bear::base::BabyBearField;
 pub(crate) use field::baby_bear::ext2::BabyBearExt2;
 pub(crate) use field::baby_bear::ext4::BabyBearExt4;

@@ -571,14 +571,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
     pub(super) fn register(&mut self, kernel: KernelVariant<F, E>) {
         // Kernels can have a bug in them, place to debug
-        if self.layer == 0 {
-            if self.kernels.len() < 45 {
-                self.kernels.push(kernel)
-            } else {
-            }
-            return;
-        }
-
         match kernel {
             // KernelVariant::LookupVectorPair(..) if self.layer == 1 => {}
             // KernelVariant::AggregateLookupPair(..) if self.layer == 1 => {}
@@ -648,7 +640,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
         for (k, v) in layer {
             match *k {
-                OutputType::PermutationProduct => {
+                OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                     for (inp, out) in v.inputs.iter().zip(v.output.iter()) {
                         let challenge = [get_challenge(&mut collector.current_batch_challenge)];
                         collector.register(KernelVariant::PairwiseProductDimensionReducing(
@@ -694,14 +686,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
-        // let is_final_step = step + 1 == folding_steps;
         self.kernels.iter().for_each(|kernel| {
-            // let before = if is_final_step && accumulator.len() == 1 {
-            //     Some(accumulator[0])
-            // } else {
-            //     None
-            // };
-
             kernel.evaluate_over_storage(
                 storage,
                 step,
@@ -711,39 +696,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 last_evaluations,
                 worker,
             );
-
-            // if let Some(before) = before {
-            //     let after = accumulator[0];
-            //     let mut delta0 = after[0];
-            //     delta0.sub_assign(&before[0]);
-            //     let mut delta1 = after[1];
-            //     delta1.sub_assign(&before[1]);
-            //     #[cfg(feature = "gkr_self_checks")]
-            //     let expected = kernel.debug_compute_final_step_contribution(last_evaluations);
-            //     println!(
-            //         "Final-step kernel contribution {:?}: actual=[{:?}, {:?}]{}",
-            //         kernel,
-            //         delta0,
-            //         delta1,
-            //         {
-            //             #[cfg(feature = "gkr_self_checks")]
-            //             {
-            //                 format!(", expected=[{:?}, {:?}]", expected[0], expected[1])
-            //             }
-            //             #[cfg(not(feature = "gkr_self_checks"))]
-            //             {
-            //                 String::new()
-            //             }
-            //         }
-            //     );
-            //     #[cfg(feature = "gkr_self_checks")]
-            //     if [delta0, delta1] != expected {
-            //         println!(
-            //             "Final-step kernel mismatch for {:?}: actual=[{:?}, {:?}], expected=[{:?}, {:?}]",
-            //             kernel, delta0, delta1, expected[0], expected[1]
-            //         );
-            //     }
-            // }
         });
     }
 }

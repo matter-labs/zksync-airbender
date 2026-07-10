@@ -106,8 +106,6 @@ pub(crate) struct UnrolledUnifiedTraceDevice {
     pub tracing_data: DeviceAllocation<UnifiedOpcodeTracingDataWithTimestamp>,
 }
 
-// Unified execution scaffolding — kept for future use; not yet wired in.
-#[allow(dead_code)]
 #[repr(C)]
 pub(crate) struct UnrolledUnifiedTraceRaw {
     pub cycles_count: u32,
@@ -126,8 +124,6 @@ impl From<&UnrolledUnifiedTraceDevice> for UnrolledUnifiedTraceRaw {
 pub(crate) type UnrolledUnifiedTraceHost<A> =
     ChunkedTraceHolder<UnifiedOpcodeTracingDataWithTimestamp, A>;
 
-// Unified execution scaffolding — kept for future use; not yet wired in.
-#[allow(dead_code)]
 #[repr(C)]
 pub(crate) struct UnrolledUnifiedOracle {
     pub trace: UnrolledUnifiedTraceRaw,

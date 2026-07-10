@@ -10,7 +10,7 @@
 pub(crate) use gpu_core::allocator;
 pub(crate) use gpu_core::primitives;
 pub(crate) mod ops;
-// `prover` and `witness` are `pub` (not `pub(crate)`): `execution_prover` is
+// `prover` and `witness` are `pub` (not `pub(crate)`): `gpu_execution_prover` is
 // carved into its own crate and drives the proving pipeline through these
 // module paths. The proving entry points / host-transfer types it consumes are
 // individually widened to `pub`; the rest of the trees stay `pub(crate)`.

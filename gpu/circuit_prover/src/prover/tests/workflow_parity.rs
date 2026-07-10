@@ -136,7 +136,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
 
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
         default_pc_value_in_padding: 0,
     };
     let mut table_driver = TableDriver::new();
@@ -146,6 +146,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         NUM_CYCLES_PER_CHUNK,
         &oracle,
         &worker,
+        None,
         Global,
         Global,
     );
@@ -156,6 +157,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         &oracle,
         &table_driver,
         &worker,
+        None,
         Global,
         Global,
     );
@@ -762,7 +764,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
 
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
         default_pc_value_in_padding: 4,
     };
     let mut table_driver = TableDriver::new();
@@ -772,6 +774,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
         NUM_CYCLES_PER_CHUNK,
         &oracle,
         &worker,
+        None,
         Global,
         Global,
     );
@@ -782,6 +785,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
         &oracle,
         &table_driver,
         &worker,
+        None,
         Global,
         Global,
     );

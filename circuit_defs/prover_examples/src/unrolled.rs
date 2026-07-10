@@ -33,6 +33,7 @@ use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use prover::worker;
+use prover::worker::Worker;
 use riscv_transpiler::cycle::MachineConfig;
 use riscv_transpiler::cycle::NUM_REGISTERS;
 use riscv_transpiler::vm::Counters;
@@ -58,7 +59,7 @@ use trace_and_split::commit_memory_tree_for_delegation_circuit;
 use trace_and_split::commit_memory_tree_for_inits_and_teardowns;
 use trace_and_split::commit_memory_tree_for_unrolled_mem_circuits;
 use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
-use trace_and_split::fs_transform_for_permutation_argument;
+use trace_and_split::fs_transform_unrolled_for_permutation_argument;
 
 pub fn run_unrolled_machine_in_full<M: MachineConfig, C: Counters>(
     cycles_bound: usize,
@@ -346,6 +347,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         recursion_chain_hash: None,
         recursion_chain_preimage: None,
         pow_challenge: 0,
+        num_it_circuits: None,
     };
 
     let mut risc_v_setup_params = BTreeMap::new();
@@ -407,8 +409,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         expected_final_state,
     ) = run_unrolled_machine_in_full::<C, DelegationsAndFamiliesCounters>(
         cycles_bound,
-        text_section,
         binary_image,
+        text_section,
         ram_bound,
         DelegationsAndFamiliesCounters::default(),
         non_determinism,
@@ -955,7 +957,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             .collect();
 
     // commit memory challenges
-    let all_challenges_seed = fs_transform_for_permutation_argument::<true>(
+    let all_challenges_seed = fs_transform_unrolled_for_permutation_argument::<true>(
         &register_final_state,
         final_pc,
         final_timestamp,
@@ -1058,39 +1060,37 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     let mut main_proofs = BTreeMap::new();
     for (family_idx, witness_chunks) in non_mem_circuits.into_iter() {
         if witness_chunks.is_empty() {
-            // for consistency
-            main_proofs.insert(family_idx, vec![]);
+            if let Some(setup) = setups.get(&family_idx) {
+                // for consistency
+                main_proofs.insert(family_idx, vec![]);
 
-            let setup = &setups[&family_idx];
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
-            let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
-                &*twiddles_for_size,
-                prover_config.lde_factor,
-                prover_config.whir_schedule.whir_steps_schedule[0],
-                prover_config.cap_size,
-                trace_len.trailing_zeros() as usize,
-                &worker,
-            );
+                // dump setup if it's present for existing machine
+                let trace_len = setup.trace_len;
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let twiddles_for_size = twiddles
+                    .entry(trace_len)
+                    .or_insert_with(|| Twiddles::new(trace_len, worker));
+                let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
+                    &*twiddles_for_size,
+                    prover_config.lde_factor,
+                    prover_config.whir_schedule.whir_steps_schedule[0],
+                    prover_config.cap_size,
+                    trace_len.trailing_zeros() as usize,
+                    &worker,
+                );
 
-            risc_v_setup_params.insert(
-                family_idx as u32,
-                UnrolledCircuitSetupParams {
-                    family_idx: family_idx as u32,
-                    capacity: trace_len as u32,
-                    setup_caps: MerkleTreeCap {
-                        cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
+                risc_v_setup_params.insert(
+                    family_idx as u32,
+                    UnrolledCircuitSetupParams::from_setup_tree_cap(
+                        family_idx as u32,
+                        trace_len as u32,
+                        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
                             BabyBearField,
-                        >>::get_cap(&setup_commitment.tree)
-                        .cap
-                        .try_into()
-                        .unwrap(),
-                    },
-                },
-            );
+                        >>::get_cap(&setup_commitment.tree),
+                    ),
+                );
+            }
+
             continue;
         }
 
@@ -1114,18 +1114,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         risc_v_setup_params.insert(
             family_idx as u32,
-            UnrolledCircuitSetupParams {
-                family_idx: family_idx as u32,
-                capacity: trace_len as u32,
-                setup_caps: MerkleTreeCap {
-                    cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                        BabyBearField,
-                    >>::get_cap(&setup_commitment.tree)
-                    .cap
-                    .try_into()
-                    .unwrap(),
-                },
-            },
+            UnrolledCircuitSetupParams::from_setup_tree_cap(
+                family_idx as u32,
+                trace_len as u32,
+                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
+                    &setup_commitment.tree,
+                ),
+            ),
         );
 
         let UnrolledCircuitWitnessEvalFn::NonMemory {
@@ -1172,6 +1167,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 &oracle,
                 &setup.table_driver,
                 &worker,
+                None,
                 Global,
                 Global,
             );
@@ -1233,39 +1229,35 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
     for (family_idx, witness_chunks) in mem_circuits.into_iter() {
         if witness_chunks.is_empty() {
-            // for consistency
-            main_proofs.insert(family_idx, vec![]);
+            if let Some(setup) = setups.get(&family_idx) {
+                // for consistency
+                main_proofs.insert(family_idx, vec![]);
 
-            let setup = &setups[&family_idx];
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
-            let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
-                &*twiddles_for_size,
-                prover_config.lde_factor,
-                prover_config.whir_schedule.whir_steps_schedule[0],
-                prover_config.cap_size,
-                trace_len.trailing_zeros() as usize,
-                &worker,
-            );
+                let trace_len = setup.trace_len;
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let twiddles_for_size = twiddles
+                    .entry(trace_len)
+                    .or_insert_with(|| Twiddles::new(trace_len, worker));
+                let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
+                    &*twiddles_for_size,
+                    prover_config.lde_factor,
+                    prover_config.whir_schedule.whir_steps_schedule[0],
+                    prover_config.cap_size,
+                    trace_len.trailing_zeros() as usize,
+                    &worker,
+                );
 
-            risc_v_setup_params.insert(
-                family_idx as u32,
-                UnrolledCircuitSetupParams {
-                    family_idx: family_idx as u32,
-                    capacity: trace_len as u32,
-                    setup_caps: MerkleTreeCap {
-                        cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
+                risc_v_setup_params.insert(
+                    family_idx as u32,
+                    UnrolledCircuitSetupParams::from_setup_tree_cap(
+                        family_idx as u32,
+                        trace_len as u32,
+                        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
                             BabyBearField,
-                        >>::get_cap(&setup_commitment.tree)
-                        .cap
-                        .try_into()
-                        .unwrap(),
-                    },
-                },
-            );
+                        >>::get_cap(&setup_commitment.tree),
+                    ),
+                );
+            }
             continue;
         }
 
@@ -1289,18 +1281,13 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         risc_v_setup_params.insert(
             family_idx as u32,
-            UnrolledCircuitSetupParams {
-                family_idx: family_idx as u32,
-                capacity: trace_len as u32,
-                setup_caps: MerkleTreeCap {
-                    cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                        BabyBearField,
-                    >>::get_cap(&setup_commitment.tree)
-                    .cap
-                    .try_into()
-                    .unwrap(),
-                },
-            },
+            UnrolledCircuitSetupParams::from_setup_tree_cap(
+                family_idx as u32,
+                trace_len as u32,
+                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
+                    &setup_commitment.tree,
+                ),
+            ),
         );
 
         let UnrolledCircuitWitnessEvalFn::Memory {
@@ -1345,6 +1332,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 &oracle,
                 &setup.table_driver,
                 &worker,
+                None,
                 Global,
                 Global,
             );
@@ -1632,7 +1620,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     assert_eq!(&aux_delegation_memory_trees, &delegation_memory_trees_vec);
 
     // compare challenge
-    let aux_all_challenges_seed = fs_transform_for_permutation_argument::<true>(
+    let aux_all_challenges_seed = fs_transform_unrolled_for_permutation_argument::<true>(
         &register_final_state,
         final_pc,
         final_timestamp,
@@ -1648,7 +1636,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     (program_proof, risc_v_setup_params)
 }
 
-fn prove_delegation_circuit<
+pub(crate) fn prove_delegation_circuit<
     A: GoodAllocator,
     D: DelegationAbiDescription,
     const REG_ACCESSES: usize,
@@ -1889,7 +1877,7 @@ pub(crate) mod test {
                         _,
                         DebugErrorCreator,
                         true,
-                    >(&mut i);
+                    >(&mut it);
                 dbg!(&verification_result);
                 assert!(verification_result.is_ok());
             })

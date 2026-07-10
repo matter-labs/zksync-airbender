@@ -73,7 +73,8 @@ pub(crate) struct GpuGKRTraceGeometry {
 pub(crate) struct BackwardLayerDims {
     pub(crate) layer_idx: usize,
     /// Total sumcheck rounds for this layer; `internal_round_coefficients` has
-    /// length `sumcheck_num_rounds - 1`, each element `[E4; 4]`.
+    /// length `sumcheck_num_rounds`, each element `[E4; 4]` (every round
+    /// — including the last — emits a univariate monomial).
     pub(crate) sumcheck_num_rounds: usize,
     /// Addresses for `final_step_evaluations`, in a stable order. Each entry
     /// contributes `final_step_eval_degree` `E4` values.
@@ -134,7 +135,7 @@ pub(crate) struct WhirDims {
     /// `pow_nonces.len()` — equal to `whir_pow_schedule.len()`.
     pub(crate) pow_rounds: usize,
     /// `final_monomials.len()`. Must be derivable from the WHIR schedule at
-    /// `prove()` start — see the iterative-knitting-bumblebee plan.
+    /// `prove()` start.
     pub(crate) final_monomials_len: usize,
 }
 
@@ -167,7 +168,7 @@ pub(crate) struct OutputEvaluationsLayout {
 pub(crate) struct BackwardLayerLayout {
     pub(crate) layer_idx: usize,
     /// `internal_round_coefficients` — flat array of `[E4; 4]`,
-    /// length `sumcheck_num_rounds - 1`.
+    /// length `sumcheck_num_rounds`.
     pub(crate) internal_round_coefficients: Range<usize>,
     /// `final_step_evaluations` flat array — `addresses.len() *
     /// final_step_eval_degree` `E4` values, address order matches
@@ -246,6 +247,12 @@ pub(crate) struct ProofLayout {
     pub(crate) output_evaluations: BTreeMap<OutputType, OutputEvaluationsLayout>,
     pub(crate) backward: Vec<BackwardLayerLayout>,
     pub(crate) whir: WhirLayout,
+    /// `GKRProof::lookup_challenges_pow_nonce` — a single `u64` ground by the
+    /// pow-aware lookup-challenge draw (0 at Sec80).
+    pub(crate) lookup_pow_nonce: Range<usize>,
+    /// `GKRProof::batched_proximity_check_pow_nonce` — a single `u64` ground by
+    /// the pow-aware WHIR batching-challenge draw (0 at Sec80).
+    pub(crate) batched_proximity_pow_nonce: Range<usize>,
     pub(crate) total_bytes: usize,
 }
 
@@ -307,7 +314,10 @@ impl ProofLayout {
         // Backward layers, in the order given.
         let mut backward = Vec::with_capacity(inputs.backward_layers.len());
         for layer in inputs.backward_layers.iter() {
-            let internal_count = layer.sumcheck_num_rounds.saturating_sub(1);
+            // Every sumcheck round (incl. the last) emits a univariate
+            // monomial, so `internal_round_coefficients` has `sumcheck_num_rounds`
+            // entries.
+            let internal_count = layer.sumcheck_num_rounds;
             let internal_round_coefficients = alloc(&mut cur, internal_count * 4, size_of::<E4>());
             let final_evals_count =
                 layer.final_step_eval_addresses.len() * layer.final_step_eval_degree;
@@ -336,11 +346,19 @@ impl ProofLayout {
         // WHIR base layers + intermediates + flat arrays.
         let whir = Self::lay_whir(&mut cur, &inputs.whir);
 
+        // The two prove-local pow nonces (lookup challenges, WHIR batching). Each
+        // is a single `u64` written by the pow-aware draw and read back into
+        // `GKRProof` with the rest of the slab.
+        let lookup_pow_nonce = alloc(&mut cur, 1, size_of::<u64>());
+        let batched_proximity_pow_nonce = alloc(&mut cur, 1, size_of::<u64>());
+
         let total_bytes = align_up(cur, FIELD_ALIGN);
         ProofLayout {
             output_evaluations,
             backward,
             whir,
+            lookup_pow_nonce,
+            batched_proximity_pow_nonce,
             total_bytes,
         }
     }

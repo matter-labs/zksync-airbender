@@ -858,10 +858,6 @@ struct UnrolledUnifiedOracle {
       switch (placeholder.payload[0]) {
       case 0:
         return decoded.rs1_index;
-      // case 1:
-      //   return decoded.rs2_index;
-      // case 2:
-      //   return decoded.rd_index;
       default:
         __trap();
       }

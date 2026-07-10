@@ -10,6 +10,10 @@ use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;
+use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
+use riscv_transpiler::ir::{
+    FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
+};
 use riscv_transpiler::jit::{
     Context, ContextImpl, JittedCode, MachineState, MemoryHolder, TraceChunk, MAX_NUM_COUNTERS,
     RAM_SIZE,
@@ -129,6 +133,7 @@ pub(crate) struct SimulationRunner<
     T: TracingType + 'static,
 > {
     pub batch_id: u64,
+    pub machine_type: MachineType,
     pub non_determinism_source: ND,
     pub free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
     pub free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
@@ -163,6 +168,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         let tracing_data_producers = Some(tracing_data_producers);
         Self {
             batch_id,
+            machine_type,
             non_determinism_source,
             free_trace_chunks_sender,
             free_trace_chunks_receiver,
@@ -197,7 +203,36 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
                 entry.clone()
             } else {
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiling bytecode");
-                let jitted_code = JittedCode::preprocess_bytecode(&text_section, cycles_bound);
+                // JittedCode::preprocess_bytecode takes pre-decoded
+                // `&[Instruction]`. The JIT's delegation lowering recovers a
+                // delegated call's length by scanning the run of identical
+                // delegation instructions (jit/impls.rs, `Op::ZicsrDelegation`),
+                // so it requires the UNPROTECTED tape layout
+                // (`PROTECT_AGAINST_MID_DELEGATION_JUMPS=false`, which fills
+                // every slot of the run). The protected layout keeps only the
+                // run head and loses the 7-vs-10 blake round count, aborting
+                // the JIT on any delegation-bearing binary.
+                let instructions: Vec<Instruction> = match self.machine_type {
+                    MachineType::Full => {
+                        preprocess_bytecode::<FullMachineDecoderConfig, false>(&text_section)
+                    }
+                    MachineType::FullUnsigned => preprocess_bytecode::<
+                        FullUnsignedMachineDecoderConfig,
+                        false,
+                    >(&text_section),
+                    MachineType::Reduced => {
+                        preprocess_bytecode::<ReducedMachineDecoderConfig, false>(&text_section)
+                    }
+                };
+                // This prover stack is BabyBear end to end: the replay worker
+                // replays with `gpu_core::primitives::field::BF` and the GKR
+                // circuits' MOP tables are BabyBear, so the JIT must simulate
+                // MOP (Zimop) opcodes over the same field.
+                let jitted_code = JittedCode::preprocess_bytecode(
+                    &instructions,
+                    cycles_bound,
+                    riscv_transpiler::jit::MopField::BabyBear,
+                );
                 trace!("BATCH[{batch_id}] SIMULATOR JIT compiled bytecode");
                 let jitted_code = Arc::new(jitted_code);
                 guard.insert(jitted_code.clone());
@@ -281,8 +316,9 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             .expect("simulation runner results channel closed during snapshot production");
         let counters_diff = machine_state
             .counters
+            .values
             .iter()
-            .zip_eq(initial_state.counters.iter())
+            .zip_eq(initial_state.counters.values.iter())
             .map(|(a, b)| a - b)
             .collect_array::<MAX_NUM_COUNTERS>()
             .unwrap();
@@ -294,8 +330,8 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             .unwrap()
             .process_snapshot(
                 snapshot_index,
-                &initial_state.counters,
-                &machine_state.counters,
+                &initial_state.counters.values,
+                &machine_state.counters.values,
             );
         let snapshot = Snapshot {
             index: snapshot_index,

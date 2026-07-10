@@ -322,6 +322,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         first_lde_factor,
         1 << next_folding_steps,
         whir_schedule.cap_size,
+        true, // #279: coeff-form recursive WHIR oracles (match production)
         context,
     )
     .unwrap();
@@ -386,6 +387,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         first_lde_factor,
         1 << next_folding_steps,
         whir_schedule.cap_size,
+        true, // #279: coeff-form recursive WHIR oracles (match production)
         context,
     )
     .unwrap();
@@ -536,6 +538,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             lde_factor,
             1 << next_folding_steps,
             whir_schedule.cap_size,
+            true, // #279: coeff-form recursive WHIR oracles (match production)
             context,
         )
         .unwrap();
@@ -611,16 +614,10 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             assert_eq!(gpu_query.path, cpu_query.path);
 
             let query_point = query_domain_generator.pow(query_index as u32);
-            let base_root = extended_generator.pow(query_index as u32);
-            let base_root_inv = base_root.inverse().unwrap();
-            let folded = fold_coset_for_test(
-                cpu_values,
-                num_folding_steps,
-                &folding_challenges_in_round,
-                &base_root_inv,
-                &high_powers_offsets,
-                &two_inv,
-            );
+            // #279: recursive oracle leaves are multilinear coeffs — evaluate at
+            // the folding challenges directly instead of FRI-folding eval form.
+            let folded =
+                eval_multilinear_from_coeffs_for_test(&cpu_values, &folding_challenges_in_round);
             let mut t = folded;
             t.mul_assign(&current_delinearization_challenge);
             claim_correction.add_assign(&t);
@@ -700,16 +697,10 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         assert_eq!(gpu_query.path, cpu_query.path);
 
         let query_point = query_domain_generator.pow(query_index as u32);
-        let base_root = extended_generator.pow(query_index as u32);
-        let base_root_inv = base_root.inverse().unwrap();
-        let folded = fold_coset_for_test(
-            cpu_values,
-            final_folding_steps,
-            &folding_challenges_in_round,
-            &base_root_inv,
-            &high_powers_offsets,
-            &two_inv,
-        );
+        // #279: final recursive oracle leaf is multilinear coeffs — evaluate at
+        // the folding challenges directly instead of FRI-folding eval form.
+        let folded =
+            eval_multilinear_from_coeffs_for_test(&cpu_values, &folding_challenges_in_round);
         assert_eq!(
             folded,
             evaluate_monomial_form_for_test(
@@ -863,8 +854,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     .unwrap();
     // Test-side slab D2H + parse. This mirrors the production terminal
     // assembly path (`schedule_terminal_proof_assembly`) without going through
-    // the orchestration helper, and replaces the prior cfg(test)-gated
-    // host-mirror writebacks that populated `proof.*` directly via callbacks.
+    // the orchestration helper.
     let mut slab_mirror =
         unsafe { context.alloc_host_uninit_slice::<u8>(whir_proof_layout.total_bytes) };
     {

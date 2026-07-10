@@ -1,43 +1,7 @@
 use crate::GoodAllocator;
+// Only the `#[cfg(test)]` module below needs field types (via `use super::*`).
+#[cfg(test)]
 use ::field::*;
-
-// for: https://www.robinscheibler.org/2013/02/13/real-fft.html
-pub fn pack_reals_as_complex<F: Field, E: FieldExtension<F>>(
-    left: &[F],
-    right: &[F],
-    res_buf: &mut [E],
-) {
-    assert_eq!(left.len(), right.len());
-    assert_eq!(left.len(), res_buf.len());
-    assert_eq!(E::DEGREE, 2);
-
-    left.iter()
-        .zip(right.iter())
-        .zip(res_buf.iter_mut())
-        .for_each(|((left, right), out)| {
-            *out = E::from_coeffs(E::Coeffs::from_array([*left, *right]))
-        })
-}
-
-pub fn unpack_complex_into_reals<F: Field, E: FieldExtension<F>>(
-    input: &[E],
-    left_res: &mut [F],
-    right_res: &mut [F],
-) {
-    assert_eq!(left_res.len(), right_res.len());
-    assert_eq!(left_res.len(), input.len());
-    assert_eq!(E::DEGREE, 2);
-
-    left_res
-        .iter_mut()
-        .zip(right_res.iter_mut())
-        .zip(input.iter())
-        .for_each(|((left, right), input)| {
-            let elems_in_base = input.into_coeffs().into_array::<2>();
-            *left = elems_in_base[0];
-            *right = elems_in_base[1];
-        })
-}
 
 const TINY_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE: usize = 3;
 const TINY_BITREVERSE_LOOKUP_TABLE: [u8; 1 << TINY_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE] = const {

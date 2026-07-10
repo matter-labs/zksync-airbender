@@ -385,15 +385,29 @@ pub(super) fn assert_gkr_proof_structure_for_test(
         !proof.sumcheck_intermediate_values.is_empty(),
         "proof must contain sumcheck intermediate values",
     );
-    for key in [
-        OutputType::PermutationProduct,
-        OutputType::Lookup16Bits,
-        OutputType::LookupTimestamps,
-        OutputType::GenericLookup,
-    ] {
+    // `PermutationProduct` (the memory argument) is the only output type every
+    // circuit carries. The 16-bit / timestamp / generic lookups are present for
+    // the executor families but NOT for the memory-only inits-and-teardowns
+    // circuit, whose layout emits `PermutationProduct` alone. So the structural
+    // invariant is: PermutationProduct present, and every present key is a known
+    // output type — not that all four are present.
+    assert!(
+        proof
+            .final_explicit_evaluations
+            .contains_key(&OutputType::PermutationProduct),
+        "proof must contain explicit evaluations for PermutationProduct",
+    );
+    for key in proof.final_explicit_evaluations.keys() {
         assert!(
-            proof.final_explicit_evaluations.contains_key(&key),
-            "proof must contain explicit evaluations for {key:?}",
+            matches!(
+                key,
+                OutputType::PermutationProduct
+                    | OutputType::Lookup16Bits
+                    | OutputType::LookupTimestamps
+                    | OutputType::GenericLookup
+                    | OutputType::InitsAndTeardownsProduct
+            ),
+            "proof contains unexpected explicit-evaluation output type {key:?}",
         );
     }
     assert_eq!(

@@ -107,7 +107,7 @@ pub trait SetByRef: Sized {
     const KERNEL_FUNCTION: SetByRefSignature<Self>;
 }
 
-// `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `circuit_prover`'s test suites can
+// `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
 // reach this helper across the crate boundary.
 #[doc(hidden)]
 pub fn set_by_ref<T: SetByRef>(

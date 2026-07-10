@@ -1,11 +1,11 @@
 use crate::messages::{GpuWorkBatch, GpuWorkRequest, GpuWorkResult, WorkerResult};
 use crate::workers::gpu::get_gpu_worker_func;
-use circuit_prover::prover::ProverContextConfig;
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 use crossbeam_utils::sync::WaitGroup;
 use crossbeam_utils::thread::{scope, Scope};
 use era_cudart::device::get_device_count;
 use era_cudart::result::CudaResult;
+use gpu_circuit_prover::prover::ProverContextConfig;
 use itertools::Itertools;
 use log::{error, info, trace};
 use std::collections::{HashMap, HashSet, VecDeque};

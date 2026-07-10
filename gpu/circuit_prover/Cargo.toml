@@ -1,5 +1,5 @@
 [package]
-name = "circuit_prover"
+name = "gpu_circuit_prover"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -39,7 +39,7 @@ crossbeam-channel = "0.5"
 crossbeam-utils = "0.8"
 # Pinned to 0.14 (matching the dev-dep): the execution workers use
 # `Itertools::collect_array`, which only exists in 0.14. The previous `"*"`
-# under-constrained the lib, so building circuit_prover as a dependency could
+# under-constrained the lib, so building gpu_circuit_prover as a dependency could
 # resolve the older 0.13 in the workspace lock and fail to find the method.
 itertools = "0.14"
 log = "0.4.29"
@@ -57,11 +57,17 @@ log_gpu_mem_usage = []
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
 test_no_inline = ["field/no_inline"]
+# Commit recursive WHIR oracle leaves in evaluation form instead of the default
+# coefficient form (#279). PROTOCOL-level: the generated verifier must be built
+# with the matching encoding (verifier_generator `eval_leaves`). circuit_prover
+# local — the GPU commit transform is native, independent of `prover`/`gpu_hash`.
+eval_leaves = []
 
 [build-dependencies]
 gpu_native_build = { workspace = true }
 
 [dev-dependencies]
+prover = { workspace = true, features = ["test-utils"] }
 env_logger = "0.11"
 itertools = "0.14"
 rand = "0.9"

@@ -1,5 +1,5 @@
 [package]
-name = "execution_prover"
+name = "gpu_execution_prover"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -11,12 +11,12 @@ categories.workspace = true
 
 [dependencies]
 # The proving substrate this orchestrator drives. `default-features = false`
-# so the security level is selected by execution_prover's own features below.
-circuit_prover = { workspace = true, default-features = false }
+# so the security level is selected by gpu_execution_prover's own features below.
+gpu_circuit_prover = { workspace = true, default-features = false }
 gpu_core = { workspace = true }
 
 # Upstream crates, reached exclusively through the local `upstream` shim
-# (mirrors circuit_prover's `upstream` audit-point convention).
+# (mirrors gpu_circuit_prover's `upstream` audit-point convention).
 cs = { workspace = true, features = ["compiler"] }
 field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
@@ -34,7 +34,7 @@ era_cudart_sys = "=0.156.0"
 
 crossbeam-channel = "0.5"
 crossbeam-utils = "0.8"
-# Pinned to 0.14 (matching circuit_prover): the workers use
+# Pinned to 0.14 (matching gpu_circuit_prover): the workers use
 # `Itertools::collect_array`, which only exists in 0.14.
 itertools = "0.14"
 log = "0.4.29"
@@ -43,16 +43,17 @@ type-map = "0.5"
 
 [features]
 default = ["security_80", "deterministic_pow"]
-security_80 = ["circuit_prover/security_80"]
-security_100 = ["circuit_prover/security_100"]
-deterministic_pow = ["circuit_prover/deterministic_pow"]
+security_80 = ["gpu_circuit_prover/security_80"]
+security_100 = ["gpu_circuit_prover/security_100"]
+deterministic_pow = ["gpu_circuit_prover/deterministic_pow"]
+eval_leaves = ["gpu_circuit_prover/eval_leaves"]
 
 [dev-dependencies]
 env_logger = "0.11"
 serial_test = "3"
 
 [lints.rust]
-# `no_cuda` is set by circuit_prover's build script; execution_prover has no
+# `no_cuda` is set by gpu_circuit_prover's build script; gpu_execution_prover has no
 # build script of its own, so declare the cfg here to satisfy `unexpected_cfgs`
-# for the `#[cfg(not(no_cuda))]`-gated GPU tests carried over from circuit_prover.
+# for the `#[cfg(not(no_cuda))]`-gated GPU tests carried over from gpu_circuit_prover.
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(no_cuda)'] }

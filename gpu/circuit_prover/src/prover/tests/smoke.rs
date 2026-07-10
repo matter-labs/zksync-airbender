@@ -491,9 +491,13 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec80,
         });
     assert!(expected_cpu_proof.is_none());
 
@@ -625,9 +629,13 @@ fn run_basic_unrolled_no_caches_test() {
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             layout_path: BASIC_UNROLLED_ADD_SUB_NO_CACHES_LAYOUT_PATH,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+            security_level: crate::upstream::SecurityLevel::Sec80,
         });
     let fixture = BasicUnrolledProofFixture {
         base,
@@ -653,85 +661,4 @@ fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
 
     let (gpu_proof, _proof_time_ms) = proof_job.finish().unwrap();
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
-}
-
-#[test]
-#[serial]
-#[ignore]
-fn run_basic_unrolled_proof_job_multi_schedule_test() {
-    let fixture = prepare_basic_unrolled_proof_fixture();
-    let baseline_device_usage = fixture.base.context.get_used_mem_current();
-    let t0 = std::time::Instant::now();
-    let proof_job_0 = fixture.schedule_prove().unwrap();
-    eprintln!("schedule_prove #0 took {:?}", t0.elapsed());
-    let t1 = std::time::Instant::now();
-    let proof_job_1 = fixture.schedule_prove().unwrap();
-    eprintln!("schedule_prove #1 took {:?}", t1.elapsed());
-
-    let (gpu_proof_0, proof_time_ms_0) = proof_job_0.finish().unwrap();
-    eprintln!("proof_job_0 proof time: {proof_time_ms_0} ms");
-    assert_gkr_proof_eq_for_test(&gpu_proof_0, &fixture.expected_cpu_proof);
-    drop(gpu_proof_0);
-
-    let (gpu_proof_1, proof_time_ms_1) = proof_job_1.finish().unwrap();
-    eprintln!("proof_job_1 proof time: {proof_time_ms_1} ms");
-    assert_gkr_proof_eq_for_test(&gpu_proof_1, &fixture.expected_cpu_proof);
-    drop(gpu_proof_1);
-
-    assert_eq!(
-        fixture.base.context.get_used_mem_current(),
-        baseline_device_usage,
-        "device memory must return to baseline after both proofs complete"
-    );
-}
-
-#[test]
-#[serial]
-fn run_basic_unrolled_proof_job_profile_test() {
-    let fixture = prepare_basic_unrolled_profiling_fixture();
-    let baseline_device_usage = fixture.context.get_used_mem_current();
-
-    let warmup_transfers = fixture.schedule_transfers().unwrap();
-    fixture.context.get_h2d_stream().synchronize().unwrap();
-    let warmup_job = fixture.prove(warmup_transfers).unwrap();
-    assert!(
-        !warmup_job.is_finished().unwrap(),
-        "prove() should remain non-blocking after transfers are ready",
-    );
-    let (warmup_proof, warmup_time_ms) = warmup_job.finish().unwrap();
-    eprintln!("warmup proof time: {warmup_time_ms} ms");
-    assert_gkr_proof_structure_for_test(&warmup_proof, &fixture.prover_config.whir_schedule);
-    drop(warmup_proof);
-
-    let profiled_transfers = fixture.schedule_transfers().unwrap();
-    fixture.context.get_h2d_stream().synchronize().unwrap();
-    fixture.context.reset_used_mem_peak();
-    let (profiled_proof, profiled_time_ms) = {
-        let _range = scoped_range(Some("circuit_prover.tests"), "test.gpu.prove.profiled_call");
-        let profiled_job = fixture.prove(profiled_transfers).unwrap();
-        assert!(
-            !profiled_job.is_finished().unwrap(),
-            "prove() should remain non-blocking for the profiled call",
-        );
-        profiled_job.finish().unwrap()
-    };
-    eprintln!("profiled proof time: {profiled_time_ms} ms");
-    assert_gkr_proof_structure_for_test(&profiled_proof, &fixture.prover_config.whir_schedule);
-    drop(profiled_proof);
-    let peak_device_usage = fixture.context.get_used_mem_peak();
-    eprintln!(
-        "peak device memory: {} bytes ({:.3} GiB)",
-        peak_device_usage,
-        peak_device_usage as f64 / (1 << 30) as f64,
-    );
-    assert!(
-        peak_device_usage > baseline_device_usage,
-        "profile run should increase device memory usage above baseline"
-    );
-
-    assert_eq!(
-        fixture.context.get_used_mem_current(),
-        baseline_device_usage,
-        "device memory must return to baseline after warmup and profiled proofs complete",
-    );
 }

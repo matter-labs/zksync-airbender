@@ -30,6 +30,12 @@ const KECCAK_DOMAIN_SIZE: usize =
 
 const ADD_SUB_DOMAIN_SIZE: usize =
     1 << <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
+// The unified reduced-machine circuit is compiled at trace_len_log2 = 24
+// (cs/src/gkr_circuits/unified_reduced_machine/circuit.rs:604; layout JSON
+// trace_len = 16777216 = 2^24). There is no live upstream DOMAIN_SIZE_LOG2 trait
+// const to mirror here: the circuit_defs unified circuit type is commented out of
+// `setups` and is stale at TRACE_LEN_LOG2 = 23, while the PR #305 CPU truth is 24.
+const UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE: usize = 1 << 24;
 const JUMP_BRANCH_DOMAIN_SIZE: usize =
     1 << <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
 const SHIFT_BINARY_DOMAIN_SIZE: usize =
@@ -134,6 +140,15 @@ mod tests {
 
         assert_eq!(err.raw, u16::MAX);
     }
+
+    #[test]
+    fn unified_domain_size_is_two_pow_24() {
+        assert_eq!(
+            UnrolledCircuitType::Unified.get_domain_size(),
+            1 << 24,
+            "unified reduced-machine domain size must match the CPU trace_len_log2 = 24"
+        );
+    }
 }
 
 impl TryFrom<u16> for DelegationCircuitType {
@@ -162,17 +177,13 @@ pub enum UnrolledCircuitType {
 }
 
 impl UnrolledCircuitType {
-    const fn unified_unimplemented() -> ! {
-        panic!("Unified circuit metadata is unavailable because Unified execution is unimplemented")
-    }
-
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         match self {
             Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_DOMAIN_SIZE,
             Self::Memory(circuit_type) => circuit_type.get_domain_size(),
             Self::NonMemory(circuit_type) => circuit_type.get_domain_size(),
-            Self::Unified => Self::unified_unimplemented(),
+            Self::Unified => UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE,
         }
     }
 
@@ -270,13 +281,20 @@ impl UnrolledNonMemoryCircuitType {
         }
     }
 
+    /// Final-PC value substituted into padding rows of the memory columns.
+    /// Must equal the `PC_STEP` the CPU setups pass to
+    /// `make_setup_for_non_mem_circuit` for every family — the GPU proof-parity
+    /// fixtures thread THIS value into their CPU oracle, so a stale entry here
+    /// is invisible to the parity suite (it diverged for JumpBranchSlt until
+    /// the gpu_program_prover base-layer verify e2e caught it) — hence the arms
+    /// reference the upstream constant directly instead of a literal.
     #[inline(always)]
     pub const fn get_default_pc_value_in_padding(&self) -> u32 {
         match self {
-            Self::AddSubLuiAuipcMop => 4,
-            Self::JumpBranchSlt => 0,
-            Self::MulDivUnsigned => 4,
-            Self::ShiftBinaryCsr => 4,
+            Self::AddSubLuiAuipcMop => common_constants::PC_STEP as u32,
+            Self::JumpBranchSlt => common_constants::PC_STEP as u32,
+            Self::MulDivUnsigned => common_constants::PC_STEP as u32,
+            Self::ShiftBinaryCsr => common_constants::PC_STEP as u32,
         }
     }
 }

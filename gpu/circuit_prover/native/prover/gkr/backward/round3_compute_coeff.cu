@@ -14,4 +14,18 @@ EXTERN __launch_bounds__(128, 8) __global__
   coefficients[gid] = eval_single_recipe(desc.headers[gid], desc, *batch_base, *lookup_mul, *lookup_add, ext_challenges);
 }
 
+// Device-pointer companion of the continuation eval-recipes kernel (see the
+// round-0 devptr kernel). Reads the recipe/term/immediate tables from device
+// buffers for delegations whose continuation recipe count overflows the inline
+// caps. Byte-identical results to the inline form.
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_gkr_flat_continuation_eval_recipes_e4_devptr_kernel(const e4 *batch_base, const e4 *lookup_mul, const e4 *lookup_add, const e4 *ext_challenges,
+                                                                __grid_constant__ const gpu_flat_recipe_eval_desc_devptr desc, e4 *coefficients,
+                                                                const unsigned num_recipes) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= num_recipes)
+    return;
+  coefficients[gid] = eval_single_recipe(desc.headers[gid], desc, *batch_base, *lookup_mul, *lookup_add, ext_challenges);
+}
+
 } // namespace airbender::prover::gkr::backward

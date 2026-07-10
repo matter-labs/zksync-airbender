@@ -11,10 +11,14 @@ Dependency edges may only point DOWN this order; never up. Enforcement is doc-on
 (no mechanical check) — keep it true by review.
 
 ```text
-gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash, gpu_cub }  <  circuit_prover  <  execution_prover
+gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash, gpu_cub }  <  circuit_prover  <  execution_prover  <  program_prover
 ```
 
-Plus two off-DAG crates: **`gpu_gkr_model`** (pure-CPU GKR layout model — address
+Plus three off-DAG crates: **`gpu_witness_eval_generator`** (`witness_eval_generator/`:
+pure-CPU codegen producing the committed `circuit_defs/**/generated/witness_generation_fn.cuh`
+CUDA witness bodies that `circuit_prover`'s native templates `#include`; run manually via its
+`generate` bin, drift-guarded by its `generate_all` test; has its own `AGENTS.md`),
+**`gpu_gkr_model`** (pure-CPU GKR layout model — address
 audit, storage layout, circuit transform; deps `cs` + `field`, no CUDA; consumed
 by `circuit_prover`'s `gkr` via `gkr::{gkr_address_audit, storage_layout,
 transform}` facade re-exports) and **`gpu_native_build`** (the shared build-script
@@ -53,9 +57,8 @@ helper, a build-dependency only).
   `links = "gpu_hash_native"` → `circuit_prover` reads `DEP_GPU_HASH_NATIVE_INCLUDE`
   so the blake2s-dependent kernels that stayed there (`gkr_ops.cu`, `leaves.cu`)
   resolve `#include "hash.cuh"`. Deps: `gpu_core` + `gpu_ops`. The GKR/WHIR
-  **protocol** kernels lifted OUT of `ops/blake2s/` to **`ops::gkr_ops`** (stays
-  in `circuit_prover`); the 6 fns re-pointed in 12 consumers from
-  `ops::blake2s::` to `ops::gkr_ops::`. PoW determinism is feature-propagated:
+  **protocol** kernels live in **`ops::gkr_ops`** (in `circuit_prover`), not
+  `ops/blake2s/`. PoW determinism is feature-propagated:
   `gpu_hash` has a `deterministic_pow` feature → `AB_DETERMINISTIC_POW` in its
   CMake, enabled by `circuit_prover/deterministic_pow` (without it the moved
   `ab_blake2s_pow_kernel` runs a non-deterministic search → silent proof-parity
@@ -79,6 +82,13 @@ helper, a build-dependency only).
 `crate::ops::blake2s`, `crate::ops::cub`), so in-crate paths are unchanged. The
 only `native/` left in `circuit_prover` is the GKR/WHIR protocol + witness CUDA.
 `execution_prover` holds `ExecutionProver` + the 9-symbol facade.
+`program_prover` is the program-level driver on top of `execution_prover`: it
+assembles `ProveResult` into `full_statement_verifier::ProgramProof`, builds the
+non-determinism streams the `fsv_*` verifier binaries consume, and (behind its
+non-default `verifiers` feature) verifies proofs natively. It replaces the dead
+`execution_utils` GPU recursion driver; the recursion protocol helpers come
+from upstream library code (`full_statement_verifier::host_utils` /
+`recursion_chain`, `verifier_common::fsv_binaries`) via its `upstream.rs` shim.
 
 ## Cross-crate conventions (apply when adding/editing a kernel crate)
 

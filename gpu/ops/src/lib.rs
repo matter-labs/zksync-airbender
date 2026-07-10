@@ -19,7 +19,7 @@ pub mod squaring;
 pub mod transpose;
 
 // Test-support batch-inversion primitive. `#[doc(hidden)] pub` (not
-// `#[cfg(test)]`) so `circuit_prover`'s own test suites can reach it across the
+// `#[cfg(test)]`) so `gpu_circuit_prover`'s own test suites can reach it across the
 // crate boundary — a dependency's `#[cfg(test)]` items are invisible to
 // consumers.
 #[doc(hidden)]

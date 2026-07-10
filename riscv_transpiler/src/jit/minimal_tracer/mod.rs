@@ -73,7 +73,7 @@ impl<'a, const N: usize, A: Allocator> ContextImpl for PreallocatedSnapshots<'a,
         self.non_determinism.read()
     }
     #[inline(always)]
-    fn write_nondeterminism(&mut self, value: u32, memory: &[u32; RAM_SIZE]) {
+    fn write_nondeterminism(&mut self, value: u32, memory: &RamImage) {
         self.non_determinism
             .write_with_memory_access_dyn(memory, value);
     }
@@ -119,14 +119,12 @@ impl<'a, const N: usize, A: Allocator> ContextImpl for PreallocatedSnapshots<'a,
             );
 
             // we do VERY stupid prefetch here
-            unsafe {
-                core::intrinsics::prefetch_write_data::<u32, 2>(
-                    addr_of!((*(next.as_ptr() as *const TraceChunk)).values).cast(),
-                );
-                core::intrinsics::prefetch_write_data::<TimestampScalar, 2>(
-                    addr_of!((*(next.as_ptr() as *const TraceChunk)).timestamps).cast(),
-                );
-            }
+            core::intrinsics::prefetch_write_data::<u32, 2>(
+                addr_of!((*(next.as_ptr() as *const TraceChunk)).values).cast(),
+            );
+            core::intrinsics::prefetch_write_data::<TimestampScalar, 2>(
+                addr_of!((*(next.as_ptr() as *const TraceChunk)).timestamps).cast(),
+            );
 
             self.filled
                 .store(filled as u64, std::sync::atomic::Ordering::SeqCst);

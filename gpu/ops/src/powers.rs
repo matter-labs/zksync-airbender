@@ -38,7 +38,7 @@ pub trait GetPowersByVal: Sized {
     const KERNEL_FUNCTION: GetPowersByValSignature<Self>;
 }
 
-// `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `circuit_prover`'s test suites can
+// `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
 // reach this helper across the crate boundary.
 #[doc(hidden)]
 pub fn get_powers_by_val<T: GetPowersByVal>(

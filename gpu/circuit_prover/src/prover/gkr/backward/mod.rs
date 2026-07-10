@@ -113,9 +113,15 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         lookup_additive_challenge: E,
         is_delegation: bool,
     ) -> GpuGKRMainLayerBackwardState<E> {
+        // Test-only dynamic-challenge path: fixtures always carry real i&t
+        // data, so the canonical top bits are the actual ones.
+        let inits_and_teardowns_top_bits = canonical_inits_and_teardowns_top_bits(
+            compiled_circuit.memory_layout.teardown_sets.len(),
+        );
         self.into_main_layer_backward_state_inner(
             compiled_circuit,
             external_challenges,
+            inits_and_teardowns_top_bits,
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
             is_delegation,
@@ -126,11 +132,13 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         self,
         compiled_circuit: GKRCircuitArtifact<BF>,
         external_challenges: GKRExternalChallenges<BF, E>,
+        inits_and_teardowns_top_bits: Vec<u32>,
         is_delegation: bool,
     ) -> GpuGKRMainLayerBackwardState<E> {
         self.into_main_layer_backward_state_inner(
             compiled_circuit,
             external_challenges,
+            inits_and_teardowns_top_bits,
             E::ZERO,
             E::ZERO,
             is_delegation,
@@ -141,6 +149,9 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         self,
         compiled_circuit: GKRCircuitArtifact<BF>,
         external_challenges: GKRExternalChallenges<BF, E>,
+        // ACTUAL per-circuit i&t top bits: canonical for real i&t data, all
+        // zeros for trivial (dummy) unified chunks (CPU-reference parity).
+        inits_and_teardowns_top_bits: Vec<u32>,
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
         is_delegation: bool,
@@ -161,9 +172,14 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
                 .collect(),
             trace_len: compiled_circuit.trace_len,
             external_challenges,
-            inits_and_teardowns_top_bits: canonical_inits_and_teardowns_top_bits(
-                compiled_circuit.memory_layout.teardown_sets.len(),
-            ),
+            inits_and_teardowns_top_bits: {
+                assert_eq!(
+                    inits_and_teardowns_top_bits.len(),
+                    compiled_circuit.memory_layout.teardown_sets.len(),
+                    "i&t top bits must have one entry per teardown set",
+                );
+                inits_and_teardowns_top_bits
+            },
             inits_and_teardowns_address_high_bits_shift: if compiled_circuit
                 .memory_layout
                 .teardown_sets

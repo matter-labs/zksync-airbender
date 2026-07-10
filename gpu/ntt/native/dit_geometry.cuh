@@ -1,4 +1,4 @@
-// Ported from ntt-experiments include/ntt/geometry.cuh (rr/v8-logn13-two-pass-ntt).
+// Ported from ntt-experiments include/ntt/geometry.cuh.
 // Compile-time geometry for the unified kernels.
 #pragma once
 #include <primitives/field.cuh>

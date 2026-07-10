@@ -81,6 +81,11 @@ cuda_kernel!(
     ab_transcript_squeeze_e4_kernel(seed_io: *mut u32, output_e4: *mut E4, count: u32)
 );
 
+cuda_kernel!(
+    ReduceRawWordsToE4,
+    ab_reduce_raw_words_to_e4_kernel(raw: *const u32, output_e4: *mut E4, count: u32)
+);
+
 /// Chunked variant of [`transcript_commit_initial`]: computes
 /// `seed = Blake2s(chunk_0 || chunk_1 || ... || chunk_{N-1})` from the IV without
 /// requiring the host to first concatenate the chunks into a single contiguous
@@ -170,6 +175,33 @@ pub fn transcript_squeeze_e4(
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = TranscriptSqueezeE4Arguments::new(seed_ptr, output_ptr, count as u32);
     TranscriptSqueezeE4Function::default().launch(&config, &args)
+}
+
+/// Device-side reduction of a flat run of raw squeeze u32 words into `count` E4
+/// challenges — the `from_raw_repr_with_reduction` half of `draw_random_field_els*`,
+/// WITHOUT touching a seed. `raw` must hold at least `count * 4` words; PoW-gated
+/// draws pass a slice starting at word 1 to honor the skip-first-word convention of
+/// `draw_random_field_els_with_pow`. Pair it with a preceding `transcript_squeeze`
+/// (which advances the seed over the padded raw words) to implement the pow-aware
+/// challenge draw.
+pub fn reduce_raw_words_to_e4(
+    raw: &DeviceSlice<u32>,
+    output: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = output.len();
+    assert!(count > 0);
+    assert!(count <= u32::MAX as usize);
+    assert!(
+        raw.len() >= count * 4,
+        "reduce_raw_words_to_e4 needs >= count*4 words (count={count}, raw={})",
+        raw.len(),
+    );
+    let raw_ptr = raw.as_ptr();
+    let output_ptr = output.as_mut_ptr();
+    let config = CudaLaunchConfig::basic(1u32, count as u32, stream);
+    let args = ReduceRawWordsToE4Arguments::new(raw_ptr, output_ptr, count as u32);
+    ReduceRawWordsToE4Function::default().launch(&config, &args)
 }
 
 pub fn blake2s_pow(

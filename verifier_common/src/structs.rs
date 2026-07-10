@@ -50,6 +50,8 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
 
 pub struct BitSource<'a> {
     u32_values: &'a [u32],
+    /// Bit cursor into the LE bitstream formed by `u32_values` (bit `p` is bit `p % 32` of
+    /// `u32_values[p / 32]`).
     index: usize,
 }
 
@@ -60,38 +62,45 @@ impl<'a> BitSource<'a> {
             index: 0,
         }
     }
-}
 
-impl<'a> Iterator for BitSource<'a> {
-    type Item = usize;
+    /// Take the next `num_bits` bits (LE) from the stream and advance the cursor.
+    ///
+    /// A query index always fits in a `u32`, so `num_bits <= 32` and the requested field spans
+    /// at most two adjacent words. We read those two words, combine them into a `u64`, and
+    /// extract the field with a shift + mask instead of iterating bit-by-bit.
+    #[inline(always)]
+    pub fn take_bits(&mut self, num_bits: usize) -> usize {
+        debug_assert!(num_bits <= u32::BITS as usize);
+        let start = self.index;
+        let word_index = start / (u32::BITS as usize);
+        let bit_offset = (start % (u32::BITS as usize)) as u32;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.u32_values.len() * (u32::BITS as usize) {
-            return None;
-        }
+        // Low word is always in range (callers size the draw buffer with margin). The high word
+        // only contributes when the field straddles a word boundary; guard the read so we never
+        // index past the end when the field sits entirely in the final word.
+        let len = self.u32_values.len();
+        let lo_word = unsafe { *self.u32_values.get_unchecked(word_index) };
+        let hi_word = if word_index + 1 < len {
+            unsafe { *self.u32_values.get_unchecked(word_index + 1) }
+        } else {
+            0
+        };
+        let combined = (lo_word as u64) | ((hi_word as u64) << 32);
 
-        let word_index = self.index / (u32::BITS as usize);
-        let bit_index = self.index % (u32::BITS as usize);
-        let word = unsafe { core::ptr::read_volatile(&self.u32_values[word_index]) };
-        let bit = (word >> bit_index) & 1;
-        self.index += 1;
+        // `1u64 << num_bits` is well-defined for `num_bits <= 32` (no `u32`-width overflow).
+        let mask = (1u64 << num_bits) - 1;
+        let value = ((combined >> bit_offset) & mask) as usize;
 
-        Some(bit as usize)
+        self.index = start + num_bits;
+        value
     }
 }
 
-pub fn assemble_query_index(
-    num_bits: usize,
-    bit_source: &mut impl Iterator<Item = usize>,
-) -> usize {
-    // assemble as LE
-    debug_assert!(num_bits <= usize::BITS as usize);
-    let mut result = 0usize;
-    for i in 0..num_bits {
-        result |= unsafe { bit_source.next().unwrap_unchecked() } << i;
-    }
-
-    result
+#[inline(always)]
+pub fn assemble_query_index(num_bits: usize, bit_source: &mut BitSource) -> usize {
+    // Query index assembled little-endian from `num_bits` bits of the stream.
+    debug_assert!(num_bits <= u32::BITS as usize);
+    bit_source.take_bits(num_bits)
 }
 
 pub fn bitreverse_for_bitlength(num: u32, bitlength: u32) -> u32 {

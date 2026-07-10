@@ -181,6 +181,20 @@ impl ProofLayout {
         Self::device_typed::<E4>(slab_base, &self.whir.final_monomials)
     }
 
+    pub(crate) unsafe fn lookup_pow_nonce_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut u64, usize) {
+        Self::device_typed::<u64>(slab_base, &self.lookup_pow_nonce)
+    }
+
+    pub(crate) unsafe fn batched_proximity_pow_nonce_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut u64, usize) {
+        Self::device_typed::<u64>(slab_base, &self.batched_proximity_pow_nonce)
+    }
+
     fn whir_base(&self, which: WhirBaseLayerKind) -> &WhirBaseLayerByteLayout {
         match which {
             WhirBaseLayerKind::Setup => &self.whir.setup,
@@ -290,11 +304,11 @@ impl ProofLayout {
             .collect()
     }
 
-    /// Phase 3 (WHIR-on-device): parse every slab-resident WHIR proof field
-    /// into a fresh `WhirPolyCommitProof`. Base-layer `queries` are
-    /// populated directly from the slab — the Phase 3 gather kernels write
-    /// `query_indices` / `query_leaves` / `query_paths` for each base oracle
-    /// in row-major-per-query layout matching what the verifier consumes.
+    /// Parse every slab-resident WHIR proof field into a fresh
+    /// `WhirPolyCommitProof`. Base-layer `queries` are populated directly
+    /// from the slab — the gather kernels write `query_indices` /
+    /// `query_leaves` / `query_paths` for each base oracle in
+    /// row-major-per-query layout matching what the verifier consumes.
     pub(crate) fn parse_whir_proof(
         &self,
         slab: &[u8],
@@ -317,8 +331,19 @@ impl ProofLayout {
                     indices: &[u32]|
          -> WhirBaseLayerCommitmentAndQueries<BF, E4, DefaultTreeConstructor> {
             let base_layout = self.whir_base(which);
-            let cap_flat = self.whir_base_cap_host(slab, which);
-            let cap = digest_bytes_of(cap_flat);
+            // Zero-width base layers (e.g. the width-0 witness layer of the
+            // standalone inits-and-teardowns circuit, or an absent setup) commit
+            // to a dummy tree on the CPU (`commit_trace_part` short-circuits to
+            // `T::dummy()`, whose `get_cap()` is empty). The slab still reserves a
+            // cap region sized by the base geometry and stage 1 fills it with a
+            // degenerate hash, but the proof must present an EMPTY cap to match
+            // the CPU reference. This mirrors the `num_columns == 0` gate already
+            // applied to `queries` below.
+            let cap = if base_layout.num_columns == 0 {
+                Vec::new()
+            } else {
+                digest_bytes_of(self.whir_base_cap_host(slab, which))
+            };
             let evals = self.whir_base_evals_host(slab, which).to_vec();
             let query_count = base_layout.query_count;
             let leaf_values_len = base_layout.leaf_values_len;
@@ -418,7 +443,7 @@ impl ProofLayout {
         }
     }
 
-    /// Phase 4: parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
+    /// Parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
     /// from the D2H'd slab.
     ///
     /// `extra_evaluations_by_layer` is the caller-provided sparse map for
@@ -437,10 +462,8 @@ impl ProofLayout {
         let mut result = BTreeMap::new();
         for (layer_slot, bw) in self.backward.iter().enumerate() {
             let coeffs_flat = self.backward_internal_coeffs_host(slab, layer_slot);
-            debug_assert_eq!(
-                coeffs_flat.len(),
-                bw.sumcheck_num_rounds.saturating_sub(1) * 4
-            );
+            // `sumcheck_num_rounds` monomials.
+            debug_assert_eq!(coeffs_flat.len(), bw.sumcheck_num_rounds * 4);
             let internal_round_coefficients: Vec<[E4; 4]> = coeffs_flat
                 .chunks_exact(4)
                 .map(|c| [c[0], c[1], c[2], c[3]])
@@ -577,5 +600,13 @@ impl ProofLayout {
 
     pub(crate) fn whir_final_monomials_host<'a>(&self, slab: &'a [u8]) -> &'a [E4] {
         Self::host_typed::<E4>(slab, &self.whir.final_monomials)
+    }
+
+    pub(crate) fn lookup_pow_nonce_host(&self, slab: &[u8]) -> u64 {
+        Self::host_typed::<u64>(slab, &self.lookup_pow_nonce)[0]
+    }
+
+    pub(crate) fn batched_proximity_pow_nonce_host(&self, slab: &[u8]) -> u64 {
+        Self::host_typed::<u64>(slab, &self.batched_proximity_pow_nonce)[0]
     }
 }

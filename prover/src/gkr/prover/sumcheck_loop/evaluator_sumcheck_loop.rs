@@ -14,7 +14,6 @@ fn compute_combined_claim<F: PrimeField, E: FieldExtension<F> + Field>(
         .gates
         .iter()
         .chain(layer.gates_with_external_connections.iter())
-        .take(45)
     {
         let num_challenges = gate.enforced_relation.num_challenges();
         let outputs = gate.enforced_relation.ordered_outputs_for_batching();

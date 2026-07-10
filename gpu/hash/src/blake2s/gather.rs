@@ -48,7 +48,7 @@ cuda_kernel!(
     )
 );
 
-/// Phase 3 (WHIR-on-device, GKR consolidation): gather base-field leaves for
+/// Gather base-field leaves for
 /// all LDE cosets and all active oracles in one launch. The kernel handles the
 /// coset filter internally and dispatches oracles via `gridDim.z`.
 ///
@@ -179,8 +179,7 @@ pub fn launch_gather_leaves_for_queries_from_ntt(
     // One thread per (query, col_in_leaf). Block dim x is a warp-multiple so
     // adjacent threads share the same col_in_leaf and read consecutive query
     // indexes (coalesced over `query_indexes`); the loaded `ntt_output` rows
-    // depend on the q values so DRAM coalescing there is workload-dependent
-    // (see spec §3.1 coalescing note).
+    // depend on the q values so DRAM coalescing there is workload-dependent.
     let (grid_dim_query, block_dim) =
         get_grid_block_dims_for_threads_count(WARP_SIZE, indexes_count);
     let grid_dim = (grid_dim_query.x, dst_cols, 1u32);
@@ -213,7 +212,7 @@ cuda_kernel!(
     )
 );
 
-/// Phase 3 (WHIR-on-device, Step 3 consolidation): single-launch Full-tree
+/// Single-launch Full-tree
 /// merkle-path gather across all LDE cosets for one oracle. The kernel
 /// resolves the per-coset segment internally via `coset = q & lde_mask`.
 ///
@@ -326,7 +325,7 @@ cuda_kernel!(
     )
 );
 
-/// Phase 3 (WHIR-on-device, GKR consolidation): single-launch Partial-tree
+/// Single-launch Partial-tree
 /// merkle-path gather across all LDE cosets and all active oracles.
 ///
 /// For each query, the kernel hashes the first `LOG_WARP_SIZE` layers on the
@@ -532,7 +531,7 @@ cuda_kernel!(
 
 /// Maximum source addresses the `gather_e_addresses` kernel-arg descriptor can
 /// hold. See `gkr_address_audit_helpers::GKR_GATHER_MAX_ADDRESSES` in
-/// `circuit_prover` for the rationale; the audit panics if any future circuit
+/// `gpu_circuit_prover` for the rationale; the audit panics if any future circuit
 /// exceeds this.
 pub const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
 

@@ -2,10 +2,9 @@
 //!
 //! `select_ntt_strategy` returns an `NttStrategy` describing how a given
 //! `(log_n, num_columns, num_cosets)` NTT should be executed on the active
-//! device. Phase A of the WHIR perf work routes the existing
-//! `bitreversed_monomials_to_natural_evals` through this selector without
-//! behavior change for the supported `log_n` range; Phase B extends the
-//! supported range with new compact kernels.
+//! device. It routes the existing `bitreversed_monomials_to_natural_evals`
+//! through this selector, and compact kernels extend the supported `log_n`
+//! range.
 
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;
@@ -197,7 +196,7 @@ fn v8_viable(log_n: usize, cc_major: u32, optin_limit: usize) -> bool {
     ((smem <= 49152) || (smem <= optin_limit)) && cc_major >= 10
 }
 
-/// Pure DIT-variant selector (Decision D4). Extracted from device-property
+/// Pure DIT-variant selector. Extracted from device-property
 /// reads so the truth table is unit-testable without a GPU.
 ///
 /// - `log_n == 2`: v8 needs `log_n >= 3`, so always `V4Single`.
@@ -460,7 +459,7 @@ fn select_forward_strategy(
     }
     // Unified DIT NTT engine for log_n in [2, 13]: the production replacement
     // for the streaming kernel family. Wins vs subwarp (low log_n) and
-    // smem_packed/compact (mid log_n) per the DIT design spec. When the gate
+    // smem_packed/compact (mid log_n). When the gate
     // declines (single-pass num_cosets divisibility miss, log_n=13 on non-v8
     // hardware -> CompactFallback, or two-pass dynamic smem over the device's
     // opt-in cap) execution falls through to the COMPACT arm (log_n in [1, 12])
@@ -1345,7 +1344,7 @@ mod tests {
         }
     }
 
-    // ---- Decision D4: pure DIT selector / applicability truth table --------
+    // ---- pure DIT selector / applicability truth table --------
     // These exercise `dit_select_impl` and `dit_is_applicable` directly (no
     // GPU). `dit_select_impl` takes raw fields so the v8/v4 x single/two-pass
     // map is verified without a device; `DeviceProperties` is a plain pub-field

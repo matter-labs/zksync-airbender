@@ -1,0 +1,21 @@
+[package]
+name = "mop_smoke"
+version = "0.1.0"
+edition = "2021"
+authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
+license = "MIT OR Apache-2.0"
+
+
+[dependencies]
+common_constants = { path = "../../common_constants" }
+riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
+field = { path = "../../field", default-features = false, features = ["modular_fma"] }
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = true

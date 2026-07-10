@@ -108,6 +108,7 @@ pub(super) fn build_flat_forward_plan<E>(
     scratch_space_mapping: &BTreeMap<GKRAddress, usize>,
     storage: &mut GpuGKRStorage<BF, E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
+    inits_and_teardowns_top_bits: &[u32],
     trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<FlatForwardPlan<E>>
@@ -694,7 +695,7 @@ where
                     dst: dst_view.clone_shared(),
                     timestamp_and_value: timestamp_and_value.clone(),
                     setup: *setup,
-                    address_high_bits: set_idxes.map(|idx| idx as u32),
+                    address_high_bits: set_idxes.map(|idx| inits_and_teardowns_top_bits[idx]),
                     address_high_bits_shift: high_bits_offset_for_inits_and_teardowns::<2>(
                         trace_len,
                     ),

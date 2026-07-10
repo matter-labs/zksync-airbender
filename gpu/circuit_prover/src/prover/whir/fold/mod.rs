@@ -118,6 +118,28 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     _recursive_caps_keepalive: Vec<crate::prover::whir::GpuWhirExtensionOracleKeepalive>,
 }
 
+impl GpuWhirFoldScheduledExecution {
+    /// Release the device-resident reservations this scheduled WHIR fold
+    /// execution still owns. All fold / OOD / delinearization / PoW / query
+    /// kernels and the slab-bound D2D/D2H copies that read them have been
+    /// enqueued on `exec_stream` by prove-end, so these pool reservations free
+    /// stream-ordered. The host query-index callbacks and tracing ranges stay
+    /// (they may still be consumed on the exec stream). Each clear is on its
+    /// own line so a single buffer class can be re-retained when bisecting a
+    /// multi-schedule regression.
+    pub(crate) fn release_device_buffers(&mut self) {
+        // Per-fold-round device challenge buffers.
+        self._fold_round_group_keepalives.device_challenges.clear();
+        // Per-round OOD points + delinearization ephemerals.
+        self._ood_point_devices.clear();
+        self._delinearization_ephemerals.clear();
+        // PoW raw-bits + assembled query-index device buffers.
+        self._pow_round_state.clear();
+        // Retired intermediate-oracle trace holders (their unified device caps).
+        self._recursive_caps_keepalive.clear();
+    }
+}
+
 impl GpuWhirState {
     fn new(trace_len: usize, context: &ProverContext) -> CudaResult<Self> {
         assert!(trace_len.is_power_of_two());

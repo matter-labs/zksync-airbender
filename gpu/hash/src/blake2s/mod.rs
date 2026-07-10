@@ -721,7 +721,7 @@ pub fn gather_merkle_paths_from_rows(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 (WHIR-on-device): slab-write gather variants for base-layer queries.
+// Slab-write gather variants for base-layer queries.
 //
 // These variants mirror the existing gather kernels' source addressing but
 // write into the proof slab's per-query layout that `parse_whir_proof`

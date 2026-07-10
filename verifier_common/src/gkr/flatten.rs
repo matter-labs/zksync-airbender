@@ -55,6 +55,12 @@ where
             .add_into_buffer(&mut result);
     }
 
+    // Lookup-challenge PoW nonce: read by the verifier right after `commit_initial`, before
+    // drawing the lookup challenges (and before reading the explicit evaluations below).
+    let lookup_nonce = proof.lookup_challenges_pow_nonce;
+    result.push(lookup_nonce as u32);
+    result.push((lookup_nonce >> 32) as u32);
+
     for (_output_type, pair) in &proof.final_explicit_evaluations {
         flatten_field_els::<F, E>(&pair[0], &mut result);
         flatten_field_els::<F, E>(&pair[1], &mut result);
@@ -91,6 +97,12 @@ where
             flatten_field_els::<F, E>(&[*eval], &mut result);
         }
     }
+
+    // Batched-proximity (WHIR batching) PoW nonce: read by the verifier at the end of GKR, right
+    // before drawing the WHIR batching challenge and entering WHIR.
+    let batching_nonce = proof.batched_proximity_check_pow_nonce;
+    result.push(batching_nonce as u32);
+    result.push((batching_nonce >> 32) as u32);
 
     let whir = &proof.whir_proof;
     let whir_schedule = &whir.whir_schedule;

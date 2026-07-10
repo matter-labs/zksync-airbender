@@ -44,7 +44,8 @@ use crate::witness::circuit_type::{
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceHost,
-    UnrolledMemoryTraceDevice, UnrolledNonMemoryTraceDevice, PAGE_SIZE_LOG2,
+    UnrolledMemoryTraceDevice, UnrolledNonMemoryTraceDevice, UnrolledUnifiedTraceDevice,
+    PAGE_SIZE_LOG2,
 };
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
@@ -61,19 +62,22 @@ use itertools::Itertools;
 
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
+use riscv_transpiler::ir::DecodingOptions;
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
+use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
-    Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
-    SimpleTape, State, VM,
+    Counters, DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters, RamWithRomRegion,
+    ReplayBuffer, SimpleSnapshotter, SimpleTape, State, VM,
 };
+use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use riscv_transpiler::witness::{
     BigintDelegationDestinationHolder, BlakeDelegationDestinationHolder,
     KeccakDelegationDestinationHolder, MemDestinationHolder, MemoryOpcodeTracingDataWithTimestamp,
-    NonMemDestinationHolder, NonMemoryOpcodeTracingDataWithTimestamp,
+    NonMemDestinationHolder, NonMemoryOpcodeTracingDataWithTimestamp, UnifiedDestinationHolder,
 };
 use serial_test::serial;
 use std::alloc::Global;
@@ -90,6 +94,11 @@ const BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH: &str =
     "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json";
 const BASIC_UNROLLED_ADD_SUB_NO_CACHES_LAYOUT_PATH: &str =
     "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json";
+const JUMP_BRANCH_SLT_LAYOUT_PATH: &str = "cs/compiled_circuits/jump_branch_slt_layout_gkr.json";
+const SHIFT_BINOP_LAYOUT_PATH: &str = "cs/compiled_circuits/shift_binop_layout_gkr.json";
+const UNSIGNED_MUL_DIV_LAYOUT_PATH: &str = "cs/compiled_circuits/unsigned_mul_div_layout_gkr.json";
+const MEM_WORD_ONLY_LAYOUT_PATH: &str = "cs/compiled_circuits/mem_word_only_layout_gkr.json";
+const MEM_SUBWORD_ONLY_LAYOUT_PATH: &str = "cs/compiled_circuits/mem_subword_only_layout_gkr.json";
 
 mod asserts;
 mod basic_unrolled_parity;
@@ -102,9 +111,11 @@ mod generated_forward_layer0_real_witness;
 mod inits_and_teardowns;
 mod memory_workflow;
 mod poly_helpers;
+mod proof_matrix;
 mod smoke;
 mod sp2_peek_adapter;
 mod stagewise;
+mod unified_stagewise;
 mod whir_oracle_parity;
 mod workflow_parity;
 
@@ -362,11 +373,22 @@ fn compute_initial_sumcheck_claims_from_explicit_evaluations_for_test<E: Field>(
 fn make_decoder_table_host_for_test(
     witness_gen_data: &[cs::gkr_circuits::ExecutorFamilyDecoderData],
 ) -> Arc<crate::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>> {
-    let data: Vec<_> = witness_gen_data
+    let mut data: Vec<_> = witness_gen_data
         .iter()
         .copied()
         .map(ExecutorFamilyDecoderData::from)
         .collect();
+    // Delegations carry no decoder lookup, so the delegation fixtures pass an
+    // empty slice; the resulting host is never transferred (`create_transfers`
+    // gates the decoder transfer on `compiled_circuit.has_decoder_lookup`). A
+    // zero-length pinned allocation panics, so materialize one benign default
+    // element for that unused path — this keeps harness SETUP from erroring so
+    // that only the delegation `prove()` itself is the point that can fail.
+    if data.is_empty() {
+        data.push(ExecutorFamilyDecoderData::from(
+            cs::gkr_circuits::ExecutorFamilyDecoderData::default(),
+        ));
+    }
     Arc::new(
         alloc_static_pinned_box_from_slice(&data)
             .expect("decoder table should fit in static pinned host memory"),
@@ -377,6 +399,22 @@ fn make_non_memory_tracing_host_for_test(
     buffer: Vec<NonMemoryOpcodeTracingDataWithTimestamp>,
 ) -> TracingDataHost<Global> {
     TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(ChunkedTraceHolder {
+        chunks: vec![Arc::new(buffer)],
+    }))
+}
+
+fn make_unified_tracing_host_for_test(
+    buffer: Vec<UnifiedOpcodeTracingDataWithTimestamp>,
+) -> TracingDataHost<Global> {
+    TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(ChunkedTraceHolder {
+        chunks: vec![Arc::new(buffer)],
+    }))
+}
+
+fn make_memory_tracing_host_for_test(
+    buffer: Vec<MemoryOpcodeTracingDataWithTimestamp>,
+) -> TracingDataHost<Global> {
+    TracingDataHost::Unrolled(UnrolledTracingDataHost::Memory(ChunkedTraceHolder {
         chunks: vec![Arc::new(buffer)],
     }))
 }
@@ -439,6 +477,10 @@ where
     crate::ops::simple::Sub: crate::ops::simple::BinaryOp<E, BF, E>,
     crate::ops::simple::Sub: crate::ops::simple::BinaryOp<BF, BF, BF>,
 {
+    // Test fixtures always carry real i&t data (when they have teardown sets
+    // at all), so the canonical top bits are the actual ones.
+    let inits_and_teardowns_top_bits =
+        crate::prover::proof::canonical_inits_and_teardowns_top_bits(compiled_circuit);
     schedule_forward_pass_impl(
         Some(&setup_transfer.trace_holder),
         None,
@@ -446,6 +488,7 @@ where
         forward_setup,
         compiled_circuit,
         external_challenges,
+        &inits_and_teardowns_top_bits,
         final_trace_size_log_2,
         None,
         // These direct-call tests always exercise the normal forward path; the
@@ -463,11 +506,27 @@ pub(crate) struct BasicUnrolledFixture {
     pub(crate) external_challenges: GKRExternalChallenges<BF, E4>,
     pub(crate) prover_config: ProverConfig,
     pub(crate) final_trace_size_log_2: usize,
-    pub(crate) gpu_setup_host: Arc<GpuGKRSetupHost>,
+    /// GPU setup (preprocessed) trace host. `None` for the standalone
+    /// inits-and-teardowns circuit, which has a zero-width setup layout
+    /// (`witness_layout.total_width == 0`) and is proven with `setup = None`
+    /// (the forward pass uses a synthetic zero-width setup holder). All other
+    /// circuits carry a real setup trace.
+    pub(crate) gpu_setup_host: Option<Arc<GpuGKRSetupHost>>,
     pub(crate) decoder_table_host:
         Arc<crate::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>>,
     pub(crate) tracing_data_host: TracingDataHost<Global>,
     pub(crate) memory_tree_caps: Vec<MerkleTreeCapVarLength>,
+    /// Sparse RAM init/teardown trace host. `None` for per-family fixtures
+    /// (their memory is fully covered by the per-row shuffle); `Some` for the
+    /// unified fixture, which proves the inits-and-teardowns layer.
+    pub(crate) inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost>,
+    /// Closure-assembly metadata captured from the same VM run, consumed by the
+    /// unified e2e test to drive the no-filter grand-product
+    /// accumulator to ONE. Empty/`None`/default for per-family fixtures.
+    pub(crate) unified_register_final_state: [(u32, (u32, u32)); 32],
+    pub(crate) unified_final_pc: u32,
+    pub(crate) unified_final_timestamp: common_constants::TimestampScalar,
+    pub(crate) delegation_grand_product_factors: Vec<E4>,
 }
 
 type BasicUnrolledTransfers<'a> = crate::prover::proof::inputs::GpuGKRProofTransfer<'a, Global>;
@@ -486,10 +545,11 @@ impl BasicUnrolledFixture {
         &self,
         context: &ProverContext,
     ) -> CudaResult<BasicUnrolledTransfers<'static>> {
-        let setup_transfer = Some(GpuGKRSetupTransfer::new(
-            Arc::clone(&self.gpu_setup_host),
-            context,
-        )?);
+        let setup_transfer = self
+            .gpu_setup_host
+            .as_ref()
+            .map(|host| GpuGKRSetupTransfer::new(Arc::clone(host), context))
+            .transpose()?;
         let decoder_transfer = if self.compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(
                 Arc::clone(&self.decoder_table_host),
@@ -502,11 +562,24 @@ impl BasicUnrolledFixture {
             self.tracing_data_host.clone(),
             context,
         )?);
+        // Memory-cap geometry comes from the setup host when present; the
+        // standalone i/t circuit has no setup host, so fall back to the
+        // equivalent values carried by the WHIR schedule.
+        let (mem_log_lde_factor, mem_log_tree_cap_size) = match self.gpu_setup_host.as_ref() {
+            Some(host) => (host.log_lde_factor, host.log_tree_cap_size),
+            None => (
+                self.prover_config
+                    .whir_schedule
+                    .base_lde_factor
+                    .trailing_zeros(),
+                self.prover_config.whir_schedule.cap_size.trailing_zeros(),
+            ),
+        };
         let memory_transfer_host = Arc::new(
             crate::prover::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
                 &self.memory_tree_caps,
-                self.gpu_setup_host.log_lde_factor,
-                self.gpu_setup_host.log_tree_cap_size,
+                mem_log_lde_factor,
+                mem_log_tree_cap_size,
             )?,
         );
         let memory_transfer = crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer::new(
@@ -514,12 +587,18 @@ impl BasicUnrolledFixture {
             context,
         )?;
 
+        let inits_and_teardowns_transfer = self
+            .inits_and_teardowns_host
+            .clone()
+            .map(|host| InitsAndTeardownsTransfer::new(host, context))
+            .transpose()?;
+
         let canonical_top_bits =
             crate::prover::proof::canonical_inits_and_teardowns_top_bits(&self.compiled_circuit);
         BasicUnrolledTransfers::new(
             setup_transfer,
             decoder_transfer,
-            None,
+            inits_and_teardowns_transfer,
             tracing_data_transfer,
             memory_transfer,
             &canonical_top_bits,
@@ -557,6 +636,12 @@ impl BasicUnrolledFixture {
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
+        // Invariant: prove() is balanced — it releases every device allocation
+        // it makes (stream-ordered) before returning, so used device memory
+        // right after prove() returns equals used device memory right before
+        // it was called. The transfers above are allocated before this point
+        // and ride on in the job's keepalive, so they appear on both sides.
+        let mem_before_prove = self.context.get_used_mem_current();
         let mut proof_job = prove::<Global>(
             self.circuit_type,
             self.compiled_circuit.clone(),
@@ -565,6 +650,15 @@ impl BasicUnrolledFixture {
             transfers,
             &self.context,
         )?;
+        let mem_after_prove = self.context.get_used_mem_current();
+        assert_eq!(
+            mem_after_prove,
+            mem_before_prove,
+            "prove() must release every device allocation it makes: \
+             before={mem_before_prove} after={mem_after_prove} \
+             net_retained={}",
+            mem_after_prove as i64 - mem_before_prove as i64,
+        );
         proof_job.ranges.insert(0, transfer_range);
         Ok(proof_job)
     }
@@ -580,9 +674,11 @@ struct BasicUnrolledFixtureBuildConfig<'a> {
     binary_path: &'a str,
     text_path: &'a str,
     layout_path: &'a str,
+    circuit_type: CircuitType,
     non_determinism_reads: &'a [u32],
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
+    security_level: crate::upstream::SecurityLevel,
 }
 
 fn assert_generic_family_mapping_contract(
@@ -775,3 +871,6 @@ pub(crate) mod fixtures_helpers;
 // (`build_basic_unrolled_forward_capture`, `prepare_basic_unrolled_add_sub_fixture_for_bench`,
 // `BasicUnrolledForwardPreambleRefs`) and `BasicUnrolledFixture`.
 pub(crate) use fixtures_helpers::*;
+
+mod unified_fixtures_helpers;
+pub(super) use unified_fixtures_helpers::*;

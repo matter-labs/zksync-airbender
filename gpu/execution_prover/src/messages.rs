@@ -1,11 +1,11 @@
 use crate::precomputations::CircuitPrecomputations;
 use crate::A;
-use circuit_prover::prover::trace::tracing_data::TracingDataHost;
-use circuit_prover::witness::circuit_type::CircuitType;
-use circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
 use fft::GoodAllocator;
+use gpu_circuit_prover::prover::trace::tracing_data::TracingDataHost;
+use gpu_circuit_prover::witness::circuit_type::CircuitType;
+use gpu_circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use gpu_core::primitives::field::{BF, E4};
 
 use crate::upstream::{

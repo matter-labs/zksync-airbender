@@ -21,6 +21,7 @@ pub const LENGTH_CMEM_COARSE: usize = 1 << CMEM_COARSE_LOG_COUNT;
 pub const CMEM_FINE_LOG_COUNT: usize = CMEM_LOG_ORDER - CMEM_COARSE_LOG_COUNT - 1;
 pub const GMEM_COARSE_LOG_COUNT: usize = 13;
 pub const LENGTH_GMEM_COARSE: usize = 1 << GMEM_COARSE_LOG_COUNT;
+pub const MAX_FULLY_PRECOMPUTED_SIZE: usize = 1 << 18;
 
 #[repr(C)]
 struct PowersLayerData {
@@ -83,6 +84,7 @@ cuda_struct_and_stub! { static ab_fwd_cmem_twiddles_finest_11: [BF; 1 << 11]; }
 cuda_struct_and_stub! { static ab_inv_cmem_twiddles_finest_11: [BF; 1 << 11]; }
 cuda_struct_and_stub! { static ab_fwd_gmem_twiddles_coarse: *const BF; }
 cuda_struct_and_stub! { static ab_inv_gmem_twiddles_coarse: *const BF; }
+cuda_struct_and_stub! { static ab_fully_precomputed_bitrev_twiddles: *const BF; }
 
 unsafe fn copy_to_symbols(
     powers_of_w_fine: *const BF,
@@ -94,6 +96,7 @@ unsafe fn copy_to_symbols(
     inv_sizes_host: [BF; OMEGA_LOG_ORDER as usize + 1],
     fwd_gmem_twiddles_coarse: *const BF,
     inv_gmem_twiddles_coarse: *const BF,
+    fully_precomputed_bitrev_twiddles: *const BF,
     fwd_cmem_twiddles_coarse: [BF; 1 << CMEM_COARSE_LOG_COUNT],
     inv_cmem_twiddles_coarse: [BF; 1 << CMEM_COARSE_LOG_COUNT],
     fwd_cmem_twiddles_fine: [BF; 1 << CMEM_FINE_LOG_COUNT],
@@ -124,6 +127,10 @@ unsafe fn copy_to_symbols(
     memcpy_to_symbol(&ab_inv_sizes, &inv_sizes_host)?;
     memcpy_to_symbol(&ab_fwd_gmem_twiddles_coarse, &fwd_gmem_twiddles_coarse)?;
     memcpy_to_symbol(&ab_inv_gmem_twiddles_coarse, &inv_gmem_twiddles_coarse)?;
+    memcpy_to_symbol(
+        &ab_fully_precomputed_bitrev_twiddles,
+        &fully_precomputed_bitrev_twiddles,
+    )?;
     memcpy_to_symbol(&ab_fwd_cmem_twiddles_coarse, &fwd_cmem_twiddles_coarse)?;
     memcpy_to_symbol(&ab_inv_cmem_twiddles_coarse, &inv_cmem_twiddles_coarse)?;
     memcpy_to_symbol(&ab_fwd_cmem_twiddles_fine, &fwd_cmem_twiddles_fine)?;
@@ -184,6 +191,7 @@ pub struct DeviceContext {
     _powers_of_w_inv_coarse_for_ntt: DeviceAllocation<BF>,
     _fwd_gmem_twiddles_coarse: DeviceAllocation<BF>,
     _inv_gmem_twiddles_coarse: DeviceAllocation<BF>,
+    _fully_precomputed_bitrev_twiddles: DeviceAllocation<BF>,
     /// The fixed, indexed set of DIT butterfly-triangle buffers, precomputed
     /// on-device at `create` and read-only afterward.
     dit_triangles: DitTriangles,
@@ -234,6 +242,19 @@ impl DeviceContext {
             false,
         )?;
 
+        // Specialized power tables for small and intermediate-size LDEs twiddles.
+        // These greatly simplify the LDE kernels.
+        let fully_precomputed_base =
+            domain_generator_for_size::<BF>(MAX_FULLY_PRECOMPUTED_SIZE as u64);
+        let mut fully_precomputed_bitrev_twiddles =
+            DeviceAllocation::<BF>::alloc(MAX_FULLY_PRECOMPUTED_SIZE >> 1)?;
+        generate_powers_dev(
+            fully_precomputed_base,
+            &mut fully_precomputed_bitrev_twiddles,
+            true,
+            false,
+        )?;
+
         let two_inv = BF::new(2)
             .inverse()
             .expect("2 must be invertible in BabyBear");
@@ -259,7 +280,6 @@ impl DeviceContext {
             true,
         )?;
 
-        // trust me
         fn generate_fwd_inv_arrays<const COUNT: usize>(
             fwd_generator: BF,
         ) -> ([BF; COUNT], [BF; COUNT]) {
@@ -305,6 +325,7 @@ impl DeviceContext {
                 inv_sizes_host,
                 fwd_gmem_twiddles_coarse.as_ptr(),
                 inv_gmem_twiddles_coarse.as_ptr(),
+                fully_precomputed_bitrev_twiddles.as_ptr(),
                 fwd_cmem_twiddles_coarse,
                 inv_cmem_twiddles_coarse,
                 fwd_cmem_twiddles_fine,
@@ -332,6 +353,7 @@ impl DeviceContext {
             _powers_of_w_inv_coarse_for_ntt: powers_of_w_inv_coarse_for_ntt,
             _fwd_gmem_twiddles_coarse: fwd_gmem_twiddles_coarse,
             _inv_gmem_twiddles_coarse: inv_gmem_twiddles_coarse,
+            _fully_precomputed_bitrev_twiddles: fully_precomputed_bitrev_twiddles,
             dit_triangles,
         })
     }

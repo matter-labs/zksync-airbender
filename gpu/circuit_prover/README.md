@@ -9,7 +9,7 @@ CUDA-backed proving crate for the `zksync-airbender` workspace.
 - Run tests with field inlining disabled (faster compile times for large test sets):
   - `cargo test -p circuit_prover --features test_no_inline`
 - Run benchmarks with default inlining behavior (for representative performance):
-  - `cargo bench -p circuit_prover --bench field`
+  - The field micro-benchmark lives in `gpu_core`: `cargo bench -p gpu_core --features bench --bench field`
 
 ## Feature Flags
 

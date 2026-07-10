@@ -8,7 +8,7 @@ use riscv_transpiler::witness::{
 
 pub struct MemoryCircuitOracle<'a> {
     pub inner: &'a [MemoryOpcodeTracingDataWithTimestamp],
-    pub decoder_table: &'a [ExecutorFamilyDecoderData],
+    pub decoder_table: &'a [Option<ExecutorFamilyDecoderData>],
 }
 
 impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
@@ -230,6 +230,12 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
             return Default::default();
         };
         let pc = cycle_data.opcode_data.initial_pc;
-        self.decoder_table[(pc as usize) / 4]
+        self.decoder_table[(pc as usize) / 4].unwrap_or_else(|| {
+            panic!(
+                "no decoder entry for PC {pc:#010x} (index {}): this family's oracle was \
+                 queried for a captured cycle whose opcode it does not decode",
+                (pc as usize) / 4
+            )
+        })
     }
 }

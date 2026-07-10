@@ -1,17 +1,17 @@
 use crate::messages::{TracingData, WorkerResult};
 use crate::A;
-use circuit_prover::prover::trace::tracing_data::{
+use crossbeam_channel::{Receiver, Sender};
+use gpu_circuit_prover::prover::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
-use circuit_prover::witness::circuit_type::{
+use gpu_circuit_prover::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use circuit_prover::witness::trace::ChunkedTraceHolder;
-use crossbeam_channel::{Receiver, Sender};
+use gpu_circuit_prover::witness::trace::ChunkedTraceHolder;
 use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
-use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
+use riscv_transpiler::jit::{CounterType, MachineCounters, MAX_NUM_COUNTERS};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters,
 };
@@ -67,7 +67,7 @@ pub(crate) trait TracingType {
     type Ranges: DataTraceRanges;
     type Producers: TracingDataProducers<Ranges = Self::Ranges>;
     type Tracer: Tracer<Ranges = Self::Ranges>;
-    type Counters: Counters + From<[u64; MAX_NUM_COUNTERS]>;
+    type Counters: Counters + From<MachineCounters>;
 }
 
 pub(crate) struct SplitTracingType;
@@ -417,8 +417,8 @@ trait TracingDataProducerType: Sized {
 // One impl per `DelegationTracingDataHostSource` type. This was a blanket
 // `impl<T: DelegationTracingDataHostSource> TracingDataProducerType for T` while
 // `execution` lived inside the prover crate, but once carved into
-// `execution_prover` the trait `DelegationTracingDataHostSource` became foreign
-// (it lives in `circuit_prover`), so a blanket impl over it is no longer
+// `gpu_execution_prover` the trait `DelegationTracingDataHostSource` became foreign
+// (it lives in `gpu_circuit_prover`), so a blanket impl over it is no longer
 // coherent — the compiler can no longer prove the unrolled types below don't
 // also implement it. Enumerating the four delegation witness types is
 // behavior-identical (the trait has exactly these four impls upstream).
@@ -722,14 +722,12 @@ impl TracingDataProducers for SplitTracingDataProducers {
                     final_count,
                     &mut trace_ranges.slt_branch_family,
                 ),
-                CounterType::ShiftBinaryCsr => {
-                    self.binary_shift_csr_family_producer.process_snapshot(
-                        snapshot_index,
-                        initial_count,
-                        final_count,
-                        &mut trace_ranges.binary_shift_csr_family,
-                    )
-                }
+                CounterType::ShiftBinary => self.binary_shift_csr_family_producer.process_snapshot(
+                    snapshot_index,
+                    initial_count,
+                    final_count,
+                    &mut trace_ranges.binary_shift_csr_family,
+                ),
                 CounterType::MulDiv => self.mul_div_family_producer.process_snapshot(
                     snapshot_index,
                     initial_count,
@@ -865,7 +863,7 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
             match counter_type {
                 CounterType::AddSubLui
                 | CounterType::BranchSlt
-                | CounterType::ShiftBinaryCsr
+                | CounterType::ShiftBinary
                 | CounterType::MulDiv
                 | CounterType::MemWord
                 | CounterType::MemSubword => {

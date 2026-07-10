@@ -300,7 +300,7 @@ EXTERN __global__ void ab_gather_e_addresses_kernel(__grid_constant__ const gpu_
   }
 }
 
-// Phase 3 (WHIR-on-device): per-query, compute the merkle tree-index from a raw
+// Per-query, compute the merkle tree-index from a raw
 // query index. The verifier's BaseFieldQuery.index expects the tree-space index
 //   tree = bitreverse(coset, log_lde) * coset_tree_size + internal
 // where coset = q & (lde-1) and internal = q >> log_lde_factor. One thread per
@@ -319,7 +319,7 @@ EXTERN __global__ void ab_query_index_to_tree_index_kernel(const u32 *d_query_in
   d_out[i] = tree_idx;
 }
 
-// Phase 3 (WHIR-on-device, GKR consolidation): single-launch base-field leaf
+// Single-launch base-field leaf
 // gather across all LDE cosets and up to three oracles. The kernel reads the
 // consolidated cosets backing
 // for each active oracle: coset `c` lives at
@@ -415,7 +415,7 @@ EXTERN __global__ void ab_gather_leaves_for_queries_from_ntt_kernel(const bf *nt
   slab_dst[idx * dst_cols + col_in_leaf] = load_cs(ntt_output + src_row + static_cast<size_t>(src_col) * trace_len);
 }
 
-// Phase 3 (WHIR-on-device, Step 3 consolidation): consolidated single-oracle
+// Consolidated single-oracle
 // Full-tree merkle-path gather. Each thread reads one digest word from the
 // consolidated tree backing, resolving the per-coset segment via
 // `coset = q & lde_mask`. The consolidated backing stores cosets in NATURAL
@@ -447,7 +447,7 @@ EXTERN __global__ void ab_gather_merkle_paths_full_for_queries_kernel(const u32 
   slab_dst[dst_index] = consolidated_tree[src_index];
 }
 
-// Phase 3 (WHIR-on-device, GKR consolidation): consolidated multi-oracle
+// Consolidated multi-oracle
 // Partial-tree merkle-path gather. Hashes the bottom `LOG_WARP_SIZE` layers on
 // the fly from the consolidated per-oracle BF cosets backing via warp-shuffle
 // compression; reads the upper layers from the consolidated per-oracle

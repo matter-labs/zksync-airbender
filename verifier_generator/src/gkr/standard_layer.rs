@@ -72,7 +72,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         #[inline(always)]
         #[allow(unused_variables)]
         pub unsafe fn eval_linear_relation(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             terms: &[(usize, usize)],
             constant: usize,
             j: usize,
@@ -92,7 +92,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         #[inline(always)]
         #[allow(unused_variables)]
         pub unsafe fn eval_vector_lookup(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             alpha: #quartic_struct,
             col_descs: &[(usize, usize)],
             terms: &[(usize, usize)],
@@ -123,7 +123,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         #[inline(always)]
         #[allow(unused_variables)]
         pub unsafe fn eval_max_quadratic(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             quad_outer: &[(usize, usize)],
             quad_inner: &[(usize, usize)],
             linear: &[(usize, usize)],
@@ -173,7 +173,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         #[inline(always)]
         #[allow(unused_variables)]
         pub unsafe fn eval_memory_expr(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             challenges: &[#quartic_struct],
             additive_part: #quartic_struct,
             ops: &[[usize; 6]],
@@ -322,7 +322,7 @@ fn emit_single_output_gate<MW: FieldWrapper>(
         {
             let bc = current_batch;
             #mul_batch;
-            for j in 0..2 {
+            for j in 0..1 {
                 #val_computation
                 let mut contrib = bc;
                 #mul_contrib;
@@ -899,7 +899,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                     SimpleGateType::Copy => {
                         let bc = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let val = evals.get_unchecked(idx[0])[j];
                             let mut contrib = bc;
                             #mul_contrib;
@@ -909,7 +909,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                     SimpleGateType::Product => {
                         let bc = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut val = evals.get_unchecked(idx[0])[j];
                             let vb = evals.get_unchecked(idx[1])[j];
                             #mul_ab;
@@ -921,7 +921,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                     SimpleGateType::MaskToIdentity => {
                         let bc = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut val = evals.get_unchecked(idx[0])[j];
                             let mask_val = evals.get_unchecked(idx[1])[j];
                             #sub_one;
@@ -935,7 +935,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                     SimpleGateType::UnbalancedProduct => {
                         let bc = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut val = evals.get_unchecked(idx[0])[j];
                             let vi = evals.get_unchecked(idx[1])[j];
                             #mul_si;
@@ -949,7 +949,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut bg = evals.get_unchecked(idx[0])[j];
                             let mut dg = evals.get_unchecked(idx[1])[j];
                             #add_gamma_bg;
@@ -969,7 +969,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut bg = evals.get_unchecked(idx[0])[j];
                             let mut dg = evals.get_unchecked(idx[2])[j];
                             let mut cb = evals.get_unchecked(idx[1])[j];
@@ -991,7 +991,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let a_val = evals.get_unchecked(idx[0])[j];
                             let b_val = evals.get_unchecked(idx[1])[j];
                             let mut r_g = evals.get_unchecked(idx[2])[j];
@@ -1012,7 +1012,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let a_val = evals.get_unchecked(idx[0])[j];
                             let b_val = evals.get_unchecked(idx[1])[j];
                             let c_val = evals.get_unchecked(idx[2])[j];
@@ -1035,7 +1035,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let a_val = evals.get_unchecked(idx[0])[j];
                             let mut b_cd = evals.get_unchecked(idx[1])[j];
                             let c_val = evals.get_unchecked(idx[2])[j];
@@ -1352,7 +1352,13 @@ fn emit_inits_teardowns<MW: FieldWrapper>(
                 {
                     let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                     let mut addr_hi = evals.get_unchecked(#setup_hi_idx)[j];
-                    let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
+                    // The init/teardown address window is bound to the runtime, FS-committed
+                    // `top_bits[set_idx]` (mirrors the prover at
+                    // `prover/src/gkr/prover/sumcheck_loop/kernel_collector.rs:518`), NOT the
+                    // compile-time `set_idx`. For single-instance proofs `top_bits` is the
+                    // identity (`top_bits[set_idx] == set_idx`) so this is behaviourally
+                    // unchanged; for multi-instance it enforces the disjoint per-instance window.
+                    let set_bits = inits_and_teardowns_top_bits[#set_idx_val] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = #field_struct_local::from_u32_unchecked(set_bits);
                         #add_addr_set;
@@ -1478,13 +1484,14 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper>(
         #[inline(always)]
         #[allow(unused_variables, unused_mut, unused_unsafe)]
         unsafe fn #fn_name(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             batch_base: #quartic_struct,
             lookup_additive_challenge: #quartic_struct,
             lookup_alpha: #quartic_struct,
             linearization_challenges: &[#quartic_struct],
             permutation_argument_additive_part: #quartic_struct,
             address_high_bits_shift: u32,
+            inits_and_teardowns_top_bits: &[u32],
         ) -> [#quartic_struct; 2] {
             #body
         }
@@ -1516,7 +1523,7 @@ fn generate_two_output_body<MW: FieldWrapper>(
             #mul_batch;
             let bc1 = current_batch;
             #mul_batch;
-            for j in 0..2 {
+            for j in 0..1 {
                 #setup_vars
                 let out0 = { #num_expr };
                 let out1 = { #den_expr };

@@ -17,6 +17,7 @@ macro_rules! gkr_circuits {
             keccak_special5; 22 ; "_layout",
             blake2_g_function; 22 ; "_layout",
             inits_and_teardowns; 24 ; "_layout",
+            unified_reduced_machine; 24 ; "_layout",
         }
     };
 }
@@ -35,6 +36,108 @@ pub const fn transcript_challenge_array_size(num_elements: usize, pow_bits: usiz
         (num_elements + 1).next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)
     } else {
         num_elements.next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)
+    }
+}
+
+/// log2 of `BabyBearExt4` field size.
+/// `|F| = ORDER^4` with `ORDER = 0x7800_0001 = 2^31 - 2^27 + 1 ≈ 2^30.907`, so
+/// `log2 |F| ≈ 123.63`. We floor it: using a *lower* bound on `|F|` gives an *upper*
+/// bound on the Schwartz–Zippel collision probability `degree / |F|`, i.e. the
+/// soundness-conservative rounding direction.
+pub const BABYBEAR_EXT4_SIZE_LOG2: usize = 123;
+
+/// log2 ceiling on the TOTAL number of permutation-argument elements that share the
+/// memory/delegation external (linearization) challenges — the Schwartz–Zippel degree of the
+/// shared grand-product equality. Used purely to derive [`MEMORY_DELEGATION_POW_BITS`].
+///
+/// A hardcoded, deliberately conservative limit — intentionally NOT derived from the max cycle
+/// count. Main RISC-V circuits contribute at most ~`2^38` elements (`total_cycles * 4`,
+/// `total_cycles < 2^36`), but delegation circuits add elements independently of the
+/// timestamp/cycle bound (they do not drive timestamps), so there is no clean logical link
+/// between max cycles and the total. `40` is a sane upper bound that is hardly reachable in
+/// practice; if some security level's PoW came out too high we would simply lower it. The
+/// runtime `assert!(total_permutation_elements < 1 << MAX_PERMUTATION_ELEMENTS_LOG2)` in
+/// `full_statement_verifier::unrolled_proof_statement` enforces it against the actual proof.
+pub const MAX_PERMUTATION_ELEMENTS_LOG2: usize = 40;
+
+/// Schwartz–Zippel base soundness (in bits) of the shared memory/delegation permutation
+/// argument *before* any proof-of-work. Each permutation key is a degree-1 affine form in the
+/// drawn challenges (`AddrSpace + Σ data_limbᵢ·χᵢ + γ`, with the χ independent — NOT powers of one
+/// challenge), so the collision polynomial `∏read − ∏write` has total degree = the element count,
+/// giving an EXACT SZ base of `field_size_log2 - max_elements_log2` (= 123 - 40 = 83 here). The
+/// `- 2` is therefore NOT a degree correction (there is no hidden degree inflation) but a
+/// deliberate 2-bit (factor-4) conservative margin on top of that exact bound, absorbing read/write
+/// two-sidedness + any linearization slack
+const fn permutation_argument_base_security_bits(
+    field_size_log2: usize,
+    max_elements_log2: usize,
+) -> usize {
+    assert!(field_size_log2 > max_elements_log2 + 2);
+    field_size_log2 - max_elements_log2 - 2
+}
+
+/// Generic PoW derivation: grinding bits required to lift the permutation-argument base
+/// soundness up to `security_bits`: `max(0, security_bits - base)`
+const fn pow_bits_for_target_security(
+    security_bits: usize,
+    field_size_log2: usize,
+    max_elements_log2: usize,
+) -> usize {
+    let base = permutation_argument_base_security_bits(field_size_log2, max_elements_log2);
+    // == max(0, security_bits - base)
+    security_bits.saturating_sub(base)
+}
+
+pub const fn memory_delegation_pow_bits(level: ::prover::definitions::SecurityLevel) -> usize {
+    pow_bits_for_target_security(
+        level.security_bits(),
+        BABYBEAR_EXT4_SIZE_LOG2,
+        MAX_PERMUTATION_ELEMENTS_LOG2,
+    )
+}
+
+#[cfg(all(feature = "security_80", feature = "security_100"))]
+compile_error!(
+    "features `security_80` and `security_100` are mutually exclusive — enable exactly one"
+);
+
+#[cfg(feature = "security_100")]
+pub const MEMORY_DELEGATION_POW_BITS: usize =
+    memory_delegation_pow_bits(::prover::definitions::SecurityLevel::Sec100);
+#[cfg(not(feature = "security_100"))]
+pub const MEMORY_DELEGATION_POW_BITS: usize =
+    memory_delegation_pow_bits(::prover::definitions::SecurityLevel::Sec80);
+
+#[cfg(test)]
+mod memory_delegation_pow_tests {
+    use super::*;
+    use ::prover::definitions::SecurityLevel;
+
+    #[test]
+    fn derivation_matches_expected_values() {
+        // Pins the PoW-derivation inputs. Deliberately changing MAX_PERMUTATION_ELEMENTS_LOG2
+        // (the policy ceiling) or the field size re-derives the PoW — update these expectations
+        // and re-review soundness when that happens.
+        assert_eq!(MAX_PERMUTATION_ELEMENTS_LOG2, 40);
+        // base = 123 - 40 - 2 = 81
+        assert_eq!(
+            permutation_argument_base_security_bits(
+                BABYBEAR_EXT4_SIZE_LOG2,
+                MAX_PERMUTATION_ELEMENTS_LOG2
+            ),
+            81
+        );
+        // 80-bit target is already met without PoW; 100-bit needs 19.
+        assert_eq!(memory_delegation_pow_bits(SecurityLevel::Sec80), 0);
+        assert_eq!(memory_delegation_pow_bits(SecurityLevel::Sec100), 19);
+    }
+
+    #[test]
+    fn active_constant_matches_selected_security_level() {
+        #[cfg(feature = "security_100")]
+        assert_eq!(MEMORY_DELEGATION_POW_BITS, 19);
+        #[cfg(not(feature = "security_100"))]
+        assert_eq!(MEMORY_DELEGATION_POW_BITS, 0);
     }
 }
 
@@ -60,6 +163,8 @@ pub use non_determinism_source;
 pub use prover;
 pub use transcript;
 pub mod errors;
+#[cfg(feature = "proof_utils")]
+pub mod fsv_binaries;
 pub mod gkr;
 pub mod structs;
 #[cfg(feature = "proof_utils")]
@@ -151,6 +256,12 @@ pub fn parse_field_els_as_u32_from_u16_limbs_checked(
     low | (high << 16)
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct InitsAndTeardownsProduct<E: Field> {
+    pub read_product: E,
+    pub write_product: E,
+}
+
 pub struct VerifierOutput<
     E: Field,
     const INIT_AND_TEARDOWN_SETS: usize,
@@ -163,6 +274,7 @@ pub struct VerifierOutput<
     pub setup_caps: [[[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]; CAP_SIZE]; NUM_SETUP_COMMITS],
     pub grand_product_read_set_accumulator: E,
     pub grand_product_write_set_accumulator: E,
+    pub inits_and_teardowns: Option<InitsAndTeardownsProduct<E>>,
 }
 
 impl<
@@ -292,12 +404,22 @@ pub fn verify_impl<
         nd_source,
     )?;
 
+    let inits_and_teardowns = if INIT_AND_TEARDOWN_SETS > 0 {
+        Some(InitsAndTeardownsProduct {
+            read_product: gkr_output.inits_and_teardowns_read_product,
+            write_product: gkr_output.inits_and_teardowns_write_product,
+        })
+    } else {
+        None
+    };
+
     Ok(VerifierOutput {
         inits_and_teardowns_top_bits: initial_transcript_values.inits_and_teardowns_top_bits,
         memory_caps: initial_transcript_values.memory_caps,
         setup_caps: initial_transcript_values.setup_caps,
         grand_product_read_set_accumulator: gkr_output.permutation_read_product,
         grand_product_write_set_accumulator: gkr_output.permutation_write_product,
+        inits_and_teardowns,
     })
 }
 

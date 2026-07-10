@@ -843,6 +843,7 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
         first_recursive_lde_factor,
         1 << next_folding_steps,
         tree_cap_size,
+        true, // #279: coeff-form recursive WHIR oracles (match production)
         context,
     )?;
     let recursive_cap = oracle.get_tree_cap(context)?;

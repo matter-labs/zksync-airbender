@@ -35,10 +35,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     tree_cap_size: usize,
     trace_len_log2: usize,
     use_hypercube_evals_for_batching: bool,
-    // Phase 3: slab + layout thread through so WHIR sub-phases can route
-    // proof fields (`pow_nonces` today; caps, evals, queries, ood_samples,
-    // sumcheck_polys, final_monomials in follow-up commits) into slab
-    // offsets via `ProofLayout` accessors.
+    // slab + layout thread through so WHIR sub-phases route proof fields
+    // (`pow_nonces`, caps, evals, queries, ood_samples, sumcheck_polys,
+    // final_monomials) into slab offsets via `ProofLayout` accessors.
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     context: &ProverContext,
@@ -93,7 +92,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
     let total_sumcheck_polys = whir_steps_schedule.iter().sum::<usize>();
     let num_whir_steps = whir_steps_lde_factors.len();
-    // Phase 8: base-layer unified caps (witness/memory/setup) are written
+    // Base-layer unified caps (witness/memory/setup) are written
     // directly into the slab earlier — witness by stage 1's commit kernel
     // via `commit_all_into(slab.whir.witness.cap, ...)`, memory and setup
     // by the H2Ds scheduled in `prepare_stage1_and_forward_setup` that
@@ -270,12 +269,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let queries_range = Range::new("gkr.whir.base_round.0.queries")?;
         queries_range.start(stream)?;
-        // Phase 3 (WHIR-on-device): compute per-query tree-indices on device
+        // Compute per-query tree-indices on device
         // (= bitreverse(coset) * coset_tree_size + internal), D2D-copy them
         // into each base oracle's slab `query_indices` range, and let each
         // coset's gather kernel write directly into the slab's `query_leaves`
-        // / `query_paths` ranges. Replaces the prior per-query / per-coset host
-        // gather + final-callback host-fill loop.
+        // / `query_paths` ranges.
         let device_query_indexes_for_base: &era_cudart::slice::DeviceSlice<u32> = &pow_round_state
             .last()
             .expect("pow_round_state pushed above for base round")
@@ -303,7 +301,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             coset_tree_size_log2,
             stream,
         )?;
-        // Single-launch multi-oracle base-round gather (Step 3 consolidation).
+        // Single-launch multi-oracle base-round gather.
         // Memory / Witness / Setup share `log_lde_factor`, `log_domain_size`,
         // and `log_rows_per_leaf` (asserted above) and all run in
         // `TreesCacheMode::CachePartial`. We descriptor-pack the three
@@ -447,9 +445,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             device_query_indexes_for_base,
             stream,
         )?;
-        // Phase C (WHIR-on-device): materialize all per-query squaring
-        // sequences in a single kernel launch reading device-resident query
-        // indices. The OOD anchor already lives in slot 0 of per_query_pows
+        // Materialize all per-query squaring sequences in a single kernel
+        // launch reading device-resident query indices. The OOD anchor
+        // already lives in slot 0 of per_query_pows
         // (written by `schedule_delinearization_running_powers_phase`), so
         // the squaring kernel only fills the per-query tail at `[log_n..]`.
         crate::ops::squaring::query_squaring_sequences_bf_to_e4(
@@ -588,8 +586,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let queries_name = format!("{round_name}.queries");
         let queries_range = Range::new(&*queries_name)?;
         queries_range.start(stream)?;
-        // Phase 4 (WHIR-on-device): batched device-side tree-index transform
-        // + slab-direct gather replaces the per-query host-callback round-trip.
+        // Batched device-side tree-index transform + slab-direct gather.
         let device_query_indexes_for_round: &era_cudart::slice::DeviceSlice<u32> = &pow_round_state
             .last()
             .expect("pow_round_state pushed above for this round")
@@ -639,8 +636,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 context,
             )?;
         }
-        // Phase C (WHIR-on-device): materialize all per-query squaring
-        // sequences in a single kernel launch. The OOD anchor already lives
+        // Materialize all per-query squaring sequences in a single kernel
+        // launch. The OOD anchor already lives
         // in slot 0 of per_query_pows (written by
         // `schedule_delinearization_running_powers_phase`), so the squaring
         // kernel only fills the per-query tail at `[log_n..]`.
@@ -700,12 +697,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         // Mirror CPU `prover/src/gkr/whir/mod.rs` lines 1297 and 1391: after the final fold
         // and before drawing the final PoW/query bits, CPU commits the remaining
         // monomial-form coefficients into the transcript seed, and later stores them on the
-        // proof as `final_monomials`. Phase D (WHIR-on-device) keeps this entirely on the
+        // proof as `final_monomials`. This is kept entirely on the
         // device: transpose writes the monomials directly into the slab
         // `whir.final_monomials` range, then `bit_reverse_in_place` runs in
         // place on the same slab range before the transcript commit.
         //
-        // Phase 1 (WHIR-on-device) cross-check: confirm that `state.current_len`
+        // Cross-check: confirm that `state.current_len`
         // at the end of the final fold matches the slab-allocated
         // `final_monomials_len` from `build_proof_layout_inputs`. Both should
         // equal `1 << (trace_len_log2 - sum(whir_steps_schedule))`.
@@ -714,13 +711,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             1usize << (trace_len_log2 - total_sumcheck_polys),
             "WHIR final-fold current_len must match slab final_monomials_len",
         );
-        // Phase D (WHIR-on-device): transpose writes the pre-bitreverse
+        // Transpose writes the pre-bitreverse
         // monomials directly into the slab `whir.final_monomials` range, then
         // `bit_reverse_in_place::<E4>` reorders them in place on the same
         // range. The transcript commit hashes the bit-reversed slab range so
         // the device-side seed advances identically to the CPU prover's
-        // `commit_field_els`. This removes the temp `final_monomials_device`
-        // allocation and the per-proof D2D into the slab.
+        // `commit_field_els`.
         {
             let (dst_ptr, dst_len) = unsafe {
                 proof_layout.whir_final_monomials_device_mut(proof_slab.as_ptr() as *mut u8)
@@ -793,8 +789,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let queries_range = Range::new("gkr.whir.final_round.queries")?;
         queries_range.start(stream)?;
         let final_oracle_index = num_whir_steps.saturating_sub(1);
-        // Phase 4 (WHIR-on-device): batched device-side gather replaces the
-        // per-query host-callback round-trip for the final round too.
+        // Batched device-side gather for the final round too.
         let device_query_indexes_for_round: &era_cudart::slice::DeviceSlice<u32> = &pow_round_state
             .last()
             .expect("pow_round_state pushed above for final round")

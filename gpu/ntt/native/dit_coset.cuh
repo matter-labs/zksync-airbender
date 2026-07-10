@@ -1,10 +1,10 @@
-// Ported from ntt-experiments include/ntt/coset.cuh (rr/v8-logn13-two-pass-ntt).
+// Ported from ntt-experiments include/ntt/coset.cuh.
 // Shared coset glue. Initial per-slot twist mono[r] *= w^(bitrev(slot)*cfp);
 // single-pass holds the per-step delta in registers (multi-coset walk).
-// Coset omega now sourced from red's get_forward_twiddle_power (context.cuh),
-// backed by red's Rust-initialized ab_ntt_forward_powers __constant__ table.
+// Coset omega is sourced from get_forward_twiddle_power (context.cuh),
+// backed by the Rust-initialized ab_ntt_forward_powers __constant__ table.
 #pragma once
-#include "context.cuh"    // get_forward_twiddle_power (red's Rust-initialized twiddle table)
+#include "context.cuh"    // get_forward_twiddle_power (the Rust-initialized twiddle table)
 #include "dit_memory.cuh" // bitrev_u32
 #include <primitives/field.cuh>
 using namespace ::airbender::primitives::field;

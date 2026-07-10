@@ -64,7 +64,7 @@ fn consolidated_views_share_backing_and_offset() {
 
     // Repeat allocations for the same address return views into the same
     // backing (caller is responsible for not aliasing writes; this is
-    // the same property that lets circuit_prover keep pointers alive across
+    // the same property that lets gpu_circuit_prover keep pointers alive across
     // descriptor builds).
     let view_a_again = storage.allocate_base_view(0, base_a, &context).unwrap();
     assert!(view_a.shares_backing_with(&view_a_again));

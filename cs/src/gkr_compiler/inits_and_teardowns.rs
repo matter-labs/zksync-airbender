@@ -15,7 +15,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
 
     let num_bytes_per_set: u64 = (1u64 << trace_len_log2) << WORD_BITS;
     assert!(num_bytes_per_set * (num_sets as u64) <= 1u64 << 32);
-    println!("Compiling inits and teardowns circuit for {} sets, 2^{} bytes each, {} bytes init in total", num_sets, num_bytes_per_set.trailing_zeros(), num_bytes_per_set * (num_sets as u64));
+    // println!("Compiling inits and teardowns circuit for {} sets, 2^{} bytes each, {} bytes init in total", num_sets, num_bytes_per_set.trailing_zeros(), num_bytes_per_set * (num_sets as u64));
 
     let mut variable_names = HashMap::new();
 
@@ -112,8 +112,11 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
     assert_eq!(read_set.len(), 1);
     assert_eq!(write_set.len(), 1);
 
-    let (layers, global_output_map) =
-        graph.layout_layers([read_set[0].clone(), write_set[0].clone()], BTreeMap::new());
+    let (layers, global_output_map) = graph.layout_layers(
+        [read_set[0].clone(), write_set[0].clone()],
+        BTreeMap::new(),
+        None,
+    );
 
     let mut placement_data = BTreeMap::new();
     placement_data.extend(graph.base_layer_memory.iter().map(|(k, v)| (*k, *v)));
@@ -170,7 +173,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
     }
 }
 
-fn create_inits_and_teardowns_set(
+pub(crate) fn create_inits_and_teardowns_set(
     graph: &mut impl GraphHolder,
     set_idxes: [usize; 2],
     allocated_teardown_ts_and_values: [([GKRAddress; 2], [GKRAddress; 2]); 2],
@@ -268,7 +271,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/inits_and_teardowns_preprocessed_layout_gkr.json",
+            "compiled_circuits/inits_and_teardowns_layout_gkr.json",
         );
     }
 

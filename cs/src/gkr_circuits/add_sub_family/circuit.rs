@@ -1,7 +1,7 @@
 use super::decoder::AddSubLuiAuipcMopDecoder;
 use super::*;
 use crate::cs::circuit_trait::*;
-use crate::gkr_circuits::utils::update_intermediate_carry_value;
+use crate::gkr_circuits::utils::{montgomery_product_expr, update_intermediate_carry_value};
 use crate::oracle::Placeholder;
 use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
@@ -271,15 +271,11 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
             let rs1_f =
                 <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                    rs1_u32,
+                    rs1_u32.clone(),
                 );
             let rs2_f =
                 <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                    rs2_u32,
-                );
-            let rd_f =
-                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                    rd_read_u32,
+                    rs2_u32.clone(),
                 );
 
             // addmod
@@ -350,14 +346,28 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 let is_mulmod = placer.get_boolean(is_mulmod_var);
                 let is_fmamod = placer.get_boolean(is_fmamod_var);
                 let is_mul_like = is_mulmod.or(&is_fmamod);
-                let mut mulmod_field = {
-                    let mut mulmod_f = rs1_f.clone();
-                    mulmod_f.mul_assign(&rs2_f);
-                    mulmod_f
-                };
-                mulmod_field.add_assign_masked(&is_fmamod, &rd_f);
-                placer.assign_field(mulmod_intermediate_var, &mulmod_field);
-                let mulmod_result = mulmod_field.clone().as_integer();
+                let op1 =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                        rs1_u32,
+                    );
+                let op2 =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                        rs2_u32,
+                    );
+                let rd_raw =
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                        rd_read_u32,
+                    );
+                let mut mulmod_field = op1;
+                mulmod_field.mul_assign(&op2);
+                mulmod_field.add_assign_masked(&is_fmamod, &rd_raw);
+                let mulmod_result = mulmod_field.into_raw_repr_reduced();
+                placer.assign_field(
+                    mulmod_intermediate_var,
+                    &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
+                        mulmod_result.clone(),
+                    ),
+                );
                 let mul_mod_low = mulmod_result.truncate();
                 out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
                     &is_mul_like,
@@ -420,6 +430,7 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         Expr::from(is_addmod),
         Expr::from(is_submod),
         Expr::from(is_mulmod),
+        Expr::from(is_fmamod),
     ]);
 
     {
@@ -440,7 +451,8 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
         {
             // use intermediate variable, and mix-in the addition part
             cs.add_constraint_expr(
-                rs1.clone() * rs2.clone() + rd_read * Expr::var(is_fmamod.get_variable().unwrap())
+                montgomery_product_expr(rs1.clone(), rs2.clone())
+                    + rd_read * Expr::var(is_fmamod.get_variable().unwrap())
                     - Expr::var(mulmod_intermediate_var),
             );
         }
@@ -523,11 +535,10 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             Expr::<F>::from(intermediate_carry) + Expr::var(out_high) + Expr::var(rs2_limbs[1])
                 - Expr::var(rs1_limbs[1])
                 - Expr::var(carry_var) * carry_shift;
-        // modular ops flip the out_high sign (canonical reduction goes the other way)
         let eq_modular_high = Expr::<F>::from(intermediate_carry)
             + Expr::var(intermediate_tmp.0[1].get_variable())
             + Expr::<F>::constant(modulus_high)
-            + Expr::var(out_high)
+            - Expr::var(out_high)
             - Expr::var(carry_var) * carry_shift;
 
         cs.add_constraint_expr(Expr::Sum(vec![

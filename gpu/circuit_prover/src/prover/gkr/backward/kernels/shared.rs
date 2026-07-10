@@ -11,7 +11,19 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
 
-pub(crate) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 128;
+/// Raised to 1024 for the blake2_with_compression delegation, whose largest
+/// main layer fuses 547 kernels (Stage 4). 1024 gives ~2x headroom and stays
+/// under the dim-reducing descriptor-size projection ceiling (~1712 before the
+/// projected struct would exceed the 32 KB kernel-arg limit; see
+/// `gkr_address_audit_helpers::compaction_sizes`).
+///
+/// MUST stay in lockstep with the native mirror in
+/// `native/prover/gkr/support/descriptors.cuh` (`GKR_BACKWARD_MAX_KERNELS_PER_LAYER`).
+/// Unlike the dim-reducing caps, this one sizes no shared `extern "C"` array (it
+/// is only a `<=` capacity assert on both sides), so nothing structural catches
+/// drift — the `gkr_backward_max_kernels_lockstep` test below pins the value to
+/// force a matching native edit.
+pub(crate) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 1024;
 /// Supported GKR trace-length ceiling. Backward folding uses one challenge per
 /// trace dimension, so a `2^24` trace has at most 24 folding steps.
 pub(crate) const GKR_BACKWARD_MAX_TRACE_LEN_LOG2: usize = 24;
@@ -93,19 +105,32 @@ pub(crate) struct ScheduledChallengeBuffer<E> {
 pub(crate) struct ScheduledChallengeStorage<E> {
     #[allow(dead_code)] // keepalive: callbacks must outlive the scheduled stream ops.
     pub(crate) callbacks: Callbacks<'static>,
-    pub(crate) device: Box<SharedChallengeDevice<E>>,
+    pub(crate) device: Option<Box<SharedChallengeDevice<E>>>,
 }
 
 impl<E> ScheduledChallengeStorage<E> {
     pub(crate) fn new(device: DeviceAllocation<E>) -> Self {
         Self {
             callbacks: Callbacks::new(),
-            device: Box::new(SharedChallengeDevice::new(device)),
+            device: Some(Box::new(SharedChallengeDevice::new(device))),
         }
     }
 
     pub(crate) fn device_accessor(&self) -> UnsafeAccessor<SharedChallengeDevice<E>> {
-        UnsafeAccessor::new(self.device.as_ref())
+        UnsafeAccessor::new(
+            self.device
+                .as_deref()
+                .expect("challenge storage device already released"),
+        )
+    }
+
+    /// Release the per-layer batch-challenge device buffer. Its last scheduled
+    /// use is this main layer's backward sumcheck (the `device_accessor`
+    /// pointer is only dereferenced by those enqueued kernels), so the
+    /// reservation frees stream-ordered at prove-end like the other backward
+    /// handoff buffers.
+    pub(crate) fn release_device(&mut self) {
+        self.device = None;
     }
 }
 
@@ -223,4 +248,18 @@ where
     E: FieldExtension<BF> + Field,
 {
     Box::new(ScheduledBackwardWorkflowState::deferred())
+}
+
+#[cfg(test)]
+mod cap_tests {
+    use super::GKR_BACKWARD_MAX_KERNELS_PER_LAYER;
+
+    // Lockstep guard, mirroring `gkr_dim_reducing_caps_lockstep`: this value is
+    // mirrored verbatim into native/prover/gkr/support/descriptors.cuh:51. It
+    // sizes no shared array, so there is no ABI tie to catch drift — if you
+    // change one side you MUST change the other; this test fails loudly to force it.
+    #[test]
+    fn gkr_backward_max_kernels_lockstep() {
+        assert_eq!(GKR_BACKWARD_MAX_KERNELS_PER_LAYER, 1024);
+    }
 }

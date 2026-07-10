@@ -16,9 +16,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let worker = Worker::new_with_num_threads(8);
     // load binary
 
-    // let binary = std::fs::read(test_artifact_path("examples/basic_fibonacci/app.bin")).unwrap();
     let binary = std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.bin")).unwrap();
-    // let binary = std::fs::read(test_artifact_path("riscv_transpiler/examples/keccak_f1600/app.bin")).unwrap();
     assert_eq!(binary.len() % 4, 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -27,13 +25,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    // let text_section =
-    //     std::fs::read(test_artifact_path("examples/basic_fibonacci/app.text")).unwrap();
     let text_section =
         std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.text")).unwrap();
-    // let text_section =
-    //     std::fs::read(test_artifact_path("riscv_transpiler/examples/keccak_f1600/app.text"))
-    //         .unwrap();
     assert_eq!(text_section.len() % 4, 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -76,11 +69,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
         total_shuffle_entries, 0,
         "expected RAM touches for stagewise parity test"
     );
-
-    // let flattened_inits_and_teardowns: Vec<_> = shuffle_ram_touched_addresses
-    //     .into_iter()
-    //     .flatten()
-    //     .collect();
 
     let mut expected_final_state = state;
     expected_final_state.counters = Default::default();
@@ -190,7 +178,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
-        decoder_table: &witness_gen_data,
+        decoder_table: decoder_table_data,
         default_pc_value_in_padding: 4,
     };
 
@@ -199,6 +187,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         NUM_CYCLES_PER_CHUNK,
         &oracle,
         &worker,
+        None,
         Global,
         Global,
     );
@@ -210,6 +199,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &oracle,
         &TableDriver::new(),
         &worker,
+        None,
         Global,
         Global,
     );
@@ -968,6 +958,31 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .trace_holder
         .ensure_cosets_materialized(&context)
         .unwrap();
+    // Stage1 leaves the memory holder in `CacheNone`; production commits its
+    // Partial trees just-in-time before WHIR (see
+    // `proof/orchestration/whir.rs` `pre_whir_memory_commit`). The single-launch
+    // base-round gather needs a consolidated tree, so replicate that upgrade
+    // here — the `commit_all` above only builds caps from a transient tree slab
+    // and leaves `trees = None`.
+    {
+        use crate::prover::trace::holder::{
+            allocate_trees, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
+        };
+        let instances_count = 1usize << stage1_output.memory_trace_holder.log_lde_factor;
+        stage1_output.memory_trace_holder.trees = TreesHolder::Partial(
+            allocate_trees(
+                instances_count,
+                stage1_output.memory_trace_holder.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                stage1_output.memory_trace_holder.log_rows_per_leaf,
+                &context,
+            )
+            .unwrap(),
+        );
+        stage1_output
+            .memory_trace_holder
+            .build_and_cache_partial_trees(&context)
+            .unwrap();
+    }
     // The per-round WHIR check takes tree caps from the trace holders, so we
     // capture the full GPU WHIR proof from this call rather than running a
     // second gpu_whir_fold_supported_path (which would try to take the
@@ -1040,6 +1055,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         grand_product_accumulator_computed,
         inits_and_teardowns_top_bits: (0..add_sub_circuit.memory_layout.teardown_sets.len() as u32)
             .collect(),
+        lookup_challenges_pow_nonce: 0,
+        batched_proximity_check_pow_nonce: 0,
     };
     let _elapsed = now.elapsed();
 }

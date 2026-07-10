@@ -8,8 +8,7 @@
 //! - slots 0..2 are layer-0 read sources (BaseLayerWitness, BaseLayerMemory,
 //!   Setup + VirtualSetup) and are externally backed by trace holders.
 //! - slots 5..6 are this-layer write targets (Cached and InnerLayer) and are
-//!   the freshly-allocated consolidated backings the storage refactor will
-//!   target.
+//!   the freshly-allocated consolidated backings.
 //! - slot 7 is layer-0 ScratchSpace, externally backed by `stage1`.
 //! - slots 3..4 are kernel-side aliases for prev-layer slots 5/6 — never
 //!   populated in the storage layout.
@@ -67,7 +66,7 @@ pub struct GpuGKRLayerLayout {
     /// `GKRAddress -> (storage slot, field type, poly_idx within slot)`.
     pub index: BTreeMap<GKRAddress, (AddressClass, FieldType, u32)>,
     /// Poly count per `(slot, FieldType)`. Determines the size of the
-    /// consolidated backing the storage refactor will allocate.
+    /// consolidated backing.
     pub slot_poly_counts: BTreeMap<StorageSlot, u32>,
     /// Per-poly stride at this layer; one poly occupies `1 << log2_stride`
     /// elements within its `(slot, FieldType)` consolidated backing.
@@ -98,6 +97,13 @@ pub struct GpuGKRStorageLayout {
     /// outputs. Aliases share their canonical's storage and do not claim
     /// their own slot in `index` / `slot_poly_counts`.
     pub aliases: BTreeMap<GKRAddress, GKRAddress>,
+    /// `artifact.scratch_space_mapping_rev` (scratch slot -> logical
+    /// `InnerLayer` address). Retained so the backward scheduler can recover a
+    /// scratch-aliased value's logical protocol/claim identity via
+    /// [`crate::transform::logical_protocol_address`]. See that function for
+    /// why storage and protocol identity must diverge for scratch-backed
+    /// values.
+    pub scratch_space_mapping_rev: BTreeMap<usize, GKRAddress>,
 }
 
 impl GpuGKRStorageLayout {
@@ -249,6 +255,7 @@ impl GpuGKRStorageLayout {
             artifact_log2_stride: log2_stride,
             layers,
             aliases,
+            scratch_space_mapping_rev: artifact.scratch_space_mapping_rev.clone(),
         };
         layout.assert_within_phase0_budgets();
         layout.assert_aliases_resolve();
@@ -411,9 +418,9 @@ fn build_layer_layout_from_writes(
 
 /// Append per-tower-layer `GpuGKRLayerLayout` entries to `layers`, mirroring
 /// the address derivation in
-/// `circuit_prover::prover::gkr::backward::derive_dimension_reducing_inputs`
+/// `gpu_circuit_prover::prover::gkr::backward::derive_dimension_reducing_inputs`
 /// and the output assignment in
-/// `circuit_prover::prover::gkr::forward::lower_dimension_reducing_forward_round`.
+/// `gpu_circuit_prover::prover::gkr::forward::lower_dimension_reducing_forward_round`.
 ///
 /// Tower layer N (relative to the artifact's last storage layer) holds polys
 /// of size `1 << (initial_trace_log_2 - 1 - N)` (one halving per round).
@@ -622,7 +629,7 @@ fn relation_outputs(rel: &NoFieldGKRRelation) -> Vec<(GKRAddress, FieldType)> {
 
 /// Builds a small hand-crafted layout: layer 0 holds 2 base polys (slot
 /// `ThisLayerInnerLayerWrite`) + 2 ext polys (slot `ThisLayerCachedWrite`),
-/// trace_len 4. Exposed (`#[doc(hidden)]`) only so `circuit_prover`'s GPU-storage
+/// trace_len 4. Exposed (`#[doc(hidden)]`) only so `gpu_circuit_prover`'s GPU-storage
 /// integration tests can build a deterministic layout without a real artifact.
 #[doc(hidden)]
 pub fn handcrafted_layout(
@@ -682,6 +689,7 @@ pub fn handcrafted_layout(
             log2_stride,
         }],
         aliases: BTreeMap::new(),
+        scratch_space_mapping_rev: BTreeMap::new(),
     }
 }
 

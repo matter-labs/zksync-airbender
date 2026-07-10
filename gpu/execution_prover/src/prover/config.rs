@@ -6,17 +6,18 @@ use type_map::concurrent::TypeMap;
 
 use crate::precomputations::CircuitPrecomputations;
 use crate::upstream::SecurityLevel;
-use circuit_prover::prover::config::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
-use circuit_prover::prover::ProverContextConfig;
-use circuit_prover::witness::circuit_type::UnrolledCircuitType;
+use gpu_circuit_prover::prover::config::{
+    UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS,
+};
+use gpu_circuit_prover::prover::ProverContextConfig;
+use gpu_circuit_prover::witness::circuit_type::UnrolledCircuitType;
 use gpu_core::primitives::machine_type::MachineType;
 
 /// Specifies the execution mode for the prover.
 ///
 /// - `Unrolled`: per-family circuits (split memory / non-memory / I&T).
-/// - `Unified`: the reduced-machine unified circuit. Public surface is wired
-///   up, but the remaining GPU dispatch path still rejects unified execution
-///   explicitly until that flow is implemented.
+/// - `Unified`: the reduced-machine unified circuit (single circuit family,
+///   `MachineType::Reduced` only).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ExecutionKind {
     Unrolled,

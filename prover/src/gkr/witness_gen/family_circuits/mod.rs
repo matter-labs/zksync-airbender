@@ -13,14 +13,12 @@ use worker::WorkerGeometry;
 
 mod init_and_teardown;
 mod memory;
-// mod unified;
+mod unified;
 pub(crate) mod witness;
 
 pub use self::init_and_teardown::evaluate_init_and_teardown_memory_witness;
 pub use self::memory::evaluate_gkr_memory_witness_for_executor_family;
-// pub use self::unified::{
-//     evaluate_memory_witness_for_unified_executor, evaluate_witness_for_unified_executor,
-// };
+pub use self::unified::build_unified_table_driver;
 pub use self::witness::evaluate_gkr_witness_for_executor_family;
 
 pub use self::memory::GKRMemoryOnlyWitnessTrace;

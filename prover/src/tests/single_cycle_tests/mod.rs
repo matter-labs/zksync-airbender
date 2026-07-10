@@ -48,7 +48,7 @@ pub(crate) fn test_single_non_mem_cycle<F: PrimeField, OPT: DecodingOptions>(
 
         let oracle = NonMemoryCircuitOracle {
             inner: &[oracle_input],
-            decoder_table: &[decoder_data],
+            decoder_table: &[Some(decoder_data)],
             default_pc_value_in_padding: 4,
         };
 

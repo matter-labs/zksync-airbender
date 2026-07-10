@@ -1,4 +1,5 @@
 use super::*;
+use gpu_circuit_prover::prover::proof::canonical_inits_and_teardowns_top_bits;
 
 impl ExecutionProver {
     fn derive_proof_artifacts(
@@ -17,22 +18,68 @@ impl ExecutionProver {
             circuit_families_memory_caps,
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
+            num_trivial_unified_circuits,
             binary_handle: _,
         } = memory_commitment;
-        let all_challenges_seed = fs_transform_for_permutation_argument(
-            final_register_values,
-            *final_pc,
-            *final_timestamp,
-            &circuit_families_memory_caps
-                .iter()
-                .map(|(i, v)| (*i as u32, v.clone()))
-                .collect_vec(),
-            inits_and_teardowns_memory_caps,
-            &delegation_circuits_memory_caps
-                .iter()
-                .map(|(i, v)| (*i, v.clone()))
-                .collect_vec(),
-        );
+        let execution_kind = self.binary_holders[&binary_key].execution_kind;
+        let all_challenges_seed = match execution_kind {
+            ExecutionKind::Unrolled => fs_transform_for_permutation_argument(
+                final_register_values,
+                *final_pc,
+                *final_timestamp,
+                &circuit_families_memory_caps
+                    .iter()
+                    .map(|(i, v)| (*i as u32, v.clone()))
+                    .collect_vec(),
+                inits_and_teardowns_memory_caps,
+                &delegation_circuits_memory_caps
+                    .iter()
+                    .map(|(i, v)| (*i, v.clone()))
+                    .collect_vec(),
+            ),
+            ExecutionKind::Unified => {
+                // Inits and teardowns are inline in the unified circuit, so the
+                // dedicated i&t slot must be empty (mirrors the CPU reference in
+                // prover_examples::unified).
+                assert!(
+                    inits_and_teardowns_memory_caps.is_empty(),
+                    "unified execution must not produce separate inits-and-teardowns memory caps"
+                );
+                let unified_family_idx = UnrolledCircuitType::Unified.get_family_idx();
+                assert!(
+                    circuit_families_memory_caps
+                        .keys()
+                        .all(|k| *k == unified_family_idx),
+                    "unified execution must only commit the unified circuit family, got {:?}",
+                    circuit_families_memory_caps.keys().collect_vec()
+                );
+                let unified_memory_caps = circuit_families_memory_caps
+                    .get(&unified_family_idx)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]);
+                // The GPU prove path derives i&t top bits canonically from the
+                // compiled circuit (`canonical_inits_and_teardowns_top_bits`);
+                // the FS seed must be built from the same top bits to stay
+                // self-consistent.
+                let compiled_circuit = self.binary_holders[&binary_key].precomputations
+                    [&UnrolledCircuitType::Unified]
+                    .compiled_circuit
+                    .as_ref();
+                let canonical_top_bits = canonical_inits_and_teardowns_top_bits(compiled_circuit);
+                fs_transform_unified(
+                    final_register_values,
+                    *final_pc,
+                    *final_timestamp,
+                    &canonical_top_bits,
+                    *num_trivial_unified_circuits,
+                    unified_memory_caps,
+                    &delegation_circuits_memory_caps
+                        .iter()
+                        .map(|(i, v)| (*i, v.clone()))
+                        .collect_vec(),
+                )
+            }
+        };
         let pow_challenge = if MEMORY_DELEGATION_POW_BITS == 0 {
             0
         } else {
@@ -211,6 +258,65 @@ fn fs_transform_for_permutation_argument(
     )
 }
 
+/// Unified-execution counterpart of the wrapper above. Each unified circuit
+/// contributes one `(inits-and-teardowns top bits, memory cap)` pair. The GPU
+/// memory commitment repacks the single unified memory-tree cap into
+/// natural-coset-order `MerkleTreeCapVarLength` chunks
+/// (`gpu_circuit_prover::prover::trace::memory`); concatenating them in order
+/// reconstructs the single cap the CPU reference absorbs.
+fn fs_transform_unified(
+    final_register_values: &[FinalRegisterValue; 32],
+    final_pc: u32,
+    final_timestamp: TimestampScalar,
+    canonical_top_bits: &[u32],
+    // Number of LEADING unified circuits (by sequence id) with trivial
+    // (dummy) inits-and-teardowns. Those must contribute all-zero top bits to
+    // the FS seed — the CPU reference uses `vec![0u32; num_teardown_sets]`
+    // for dummies — while the trailing real circuits use the canonical top
+    // bits (== the real ones in the supported regime).
+    num_trivial_unified_circuits: usize,
+    unified_memory_caps: &[Vec<MerkleTreeCapVarLength>],
+    delegation_circuits_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
+) -> crate::upstream::Seed {
+    let unified_circuits_memory_caps = unified_memory_caps
+        .iter()
+        .enumerate()
+        .map(|(sequence_id, per_coset_caps)| {
+            let cap = MerkleTreeCapVarLength {
+                cap: per_coset_caps
+                    .iter()
+                    .flat_map(|caps| caps.cap.iter().copied())
+                    .collect_vec(),
+            };
+            let top_bits = if sequence_id < num_trivial_unified_circuits {
+                vec![0u32; canonical_top_bits.len()]
+            } else {
+                canonical_top_bits.to_vec()
+            };
+            (top_bits, cap)
+        })
+        .collect_vec();
+    let delegation_circuits_memory_caps = delegation_circuits_memory_caps
+        .iter()
+        .map(|(delegation_type, per_sequence_caps)| {
+            (
+                *delegation_type,
+                per_sequence_caps
+                    .iter()
+                    .flat_map(|caps| caps.iter().cloned())
+                    .collect_vec(),
+            )
+        })
+        .collect_vec();
+    crate::upstream::fs_transform_unified_for_permutation_argument::<true>(
+        final_register_values,
+        final_pc,
+        final_timestamp,
+        &unified_circuits_memory_caps,
+        &delegation_circuits_memory_caps,
+    )
+}
+
 fn unrolled_circuit_type_from_family_idx(
     family_idx: u8,
     machine_type: MachineType,
@@ -225,5 +331,22 @@ fn unrolled_circuit_type_from_family_idx(
             return UnrolledCircuitType::NonMemory(*ct);
         }
     }
+    if family_idx == UnrolledCircuitType::Unified.get_family_idx() {
+        return UnrolledCircuitType::Unified;
+    }
     panic!("unknown unrolled family idx {family_idx} for machine type {machine_type:?}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reduced_machine_idx_maps_to_unified() {
+        let ct = unrolled_circuit_type_from_family_idx(
+            UnrolledCircuitType::Unified.get_family_idx(),
+            MachineType::Reduced,
+        );
+        assert_eq!(ct, UnrolledCircuitType::Unified);
+    }
 }

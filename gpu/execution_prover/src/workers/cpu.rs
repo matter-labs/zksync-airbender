@@ -5,11 +5,11 @@ use crate::workers::simulation_runner::{
     LockedBoxedMemoryHolder, LockedBoxedTraceChunk, SimulationRunner, Snapshot,
 };
 use crate::A;
-use circuit_prover::witness::circuit_type::{CircuitType, UnrolledCircuitType};
-use circuit_prover::witness::trace::ChunkedTraceHolder;
-use circuit_prover::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
+use gpu_circuit_prover::witness::circuit_type::{CircuitType, UnrolledCircuitType};
+use gpu_circuit_prover::witness::trace::ChunkedTraceHolder;
+use gpu_circuit_prover::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 use gpu_core::primitives::machine_type::MachineType;
 use itertools::Itertools;
 use log::{debug, trace};
@@ -158,10 +158,11 @@ pub(crate) fn run_simulator<
                 .expect("CPU worker results channel closed while sending init/teardown data");
             instant = Instant::now();
         }
+        let register_timestamps = state.register_timestamps_array();
         let final_register_values = state
-            .registers
+            .materialized_registers()
             .into_iter()
-            .zip(state.register_timestamps.into_iter())
+            .zip(register_timestamps.into_iter())
             .map(|(value, last_access_timestamp)| FinalRegisterValue {
                 value,
                 last_access_timestamp,

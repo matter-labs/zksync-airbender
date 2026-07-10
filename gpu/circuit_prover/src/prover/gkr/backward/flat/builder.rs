@@ -216,6 +216,12 @@ impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
         self.recipes_c1_bf_e4.push(recipe);
     }
 
+    // No gate emits a round-0 `c1_linear` term: the only former caller was the
+    // materialize gate, whose linear form contributes nothing at round 0 (the
+    // CPU `evaluate_linear_term` returns early for `FIRST_ROUND`). The tier +
+    // its device descriptor are retained (kept in Rust↔CUDA lockstep) for
+    // potential future gates and to avoid a descriptor-layout churn.
+    #[allow(dead_code)]
     pub(crate) fn push_c1_linear(&mut self, source_idx: u32, recipe: CoefficientRecipe<E>) {
         let i = self.desc.num_c1_linear as usize;
         assert!(

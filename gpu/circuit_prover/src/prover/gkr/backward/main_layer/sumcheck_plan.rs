@@ -66,7 +66,11 @@ where
         unsafe {
             // SAFETY: the freshly allocated challenge buffer is only re-viewed
             // at the concrete `E4` layout used by this scheduler.
-            let dst_slice = storage.device.slice_mut(0, len);
+            let dst_slice = storage
+                .device
+                .as_deref_mut()
+                .expect("challenge storage device just allocated")
+                .slice_mut(0, len);
             let dst_e4 = dst_slice.transmute_mut::<E4>();
             let batching_e4 = batching_slice.transmute::<E4>();
             crate::ops::powers::get_powers_by_ref::<E4>(
@@ -105,7 +109,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(
-            self.flat_recipe_desc.is_some(),
+            self.flat_recipe_desc.is_some() || self.flat_recipe_desc_device.is_some(),
             "flat round 0 recipe descriptor must be scheduled"
         );
         let plan_compact = self
@@ -140,7 +144,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(
-            self.flat_cont_recipe_desc.is_some(),
+            self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
         let sizes = self
@@ -151,17 +155,47 @@ where
             .flat_round1_unified_desc_compact
             .as_ref()
             .expect("flat round 1 compact desc must be built");
-        compact::launch_main_round1_unified(
-            compact_desc,
-            null(),
-            sizes.fold_stride,
-            sizes.next_layer_size,
-            self.round_scratch.eq_low_group.as_ptr(),
-            &self.eq_sizes,
-            self.round_scratch.accumulator.as_mut_ptr(),
-            acc_size as u32,
-            context,
-        )
+        if let Some((devptr, bufs)) = self.flat_round1_terms_device.as_ref() {
+            // Stage 3b device-terms path (terms/tiles + coeffs from device).
+            compact::launch_main_round1_unified_devptr_terms(
+                devptr,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                bufs.tables,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        } else if self.flat_cont_use_constant {
+            compact::launch_main_round1_unified(
+                compact_desc,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        } else {
+            compact::launch_main_round1_unified_devptr(
+                compact_desc,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        }
     }
 
     fn launch_round2_kernels_from_symbol(
@@ -170,7 +204,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(
-            self.flat_cont_recipe_desc.is_some(),
+            self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
         let sizes = self
@@ -181,17 +215,47 @@ where
             .flat_round2_unified_desc_compact
             .as_ref()
             .expect("flat round 2 compact desc must be built");
-        compact::launch_main_round2_unified(
-            compact_desc,
-            compact::get_main_layer_claim_point_device_ptr() as *const E,
-            sizes.fold_stride,
-            sizes.next_layer_size,
-            self.round_scratch.eq_low_group.as_ptr(),
-            &self.eq_sizes,
-            self.round_scratch.accumulator.as_mut_ptr(),
-            acc_size as u32,
-            context,
-        )
+        if let Some((devptr, bufs)) = self.flat_round2_terms_device.as_ref() {
+            // Stage 3b device-terms path (terms/tiles + coeffs from device).
+            compact::launch_main_round2_unified_devptr_terms(
+                devptr,
+                compact::get_main_layer_claim_point_device_ptr() as *const E,
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                bufs.tables,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        } else if self.flat_cont_use_constant {
+            compact::launch_main_round2_unified(
+                compact_desc,
+                compact::get_main_layer_claim_point_device_ptr() as *const E,
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        } else {
+            compact::launch_main_round2_unified_devptr(
+                compact_desc,
+                compact::get_main_layer_claim_point_device_ptr() as *const E,
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                context,
+            )
+        }
     }
 
     fn launch_round3_kernels_from_symbol(
@@ -202,7 +266,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(
-            self.flat_cont_recipe_desc.is_some(),
+            self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
         let sizes = self
@@ -218,19 +282,58 @@ where
             .unwrap_or_else(|| {
                 panic!("flat continuation compact desc must be built for step {step}")
             });
-        compact::launch_main_round3_unified(
-            compact_desc,
-            null(),
-            sizes.fold_stride,
-            sizes.next_layer_size,
-            (step - 1) as u32,
-            self.round_scratch.eq_low_group.as_ptr(),
-            &self.eq_sizes,
-            self.round_scratch.accumulator.as_mut_ptr(),
-            acc_size as u32,
-            explicit_form,
-            context,
-        )
+        if let Some((_, devptr, bufs)) = self
+            .flat_continuation_terms_device
+            .iter()
+            .find(|(s, _, _)| *s == step)
+        {
+            // Stage 3b device-terms path (terms/tiles + coeffs from device).
+            return compact::launch_main_round3_unified_devptr_terms(
+                devptr,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                (step - 1) as u32,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                bufs.tables,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                explicit_form,
+                context,
+            );
+        }
+        if self.flat_cont_use_constant {
+            compact::launch_main_round3_unified(
+                compact_desc,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                (step - 1) as u32,
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                explicit_form,
+                context,
+            )
+        } else {
+            compact::launch_main_round3_unified_devptr(
+                compact_desc,
+                null(),
+                sizes.fold_stride,
+                sizes.next_layer_size,
+                (step - 1) as u32,
+                self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                self.round_scratch.eq_low_group.as_ptr(),
+                &self.eq_sizes,
+                self.round_scratch.accumulator.as_mut_ptr(),
+                acc_size as u32,
+                explicit_form,
+                context,
+            )
+        }
     }
 
     /// Warp-partial round-kernel launcher. `step == 0` uses the round-0
@@ -246,14 +349,17 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         debug_assert!(acc_size >= 32);
-        assert!(
-            self.flat_use_constant,
-            "warp-partial main-layer dispatch only supports the constant-coefficient path"
-        );
         let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
         let eq_low_ptr = self.round_scratch.eq_low_group.as_ptr() as *const E4;
 
         if step == 0 {
+            // Round 0's warp-partial kernel only has a constant-coefficient
+            // variant. A round-0 coefficient overflow is handled by the
+            // unfused device-buffer path (`launch_main_round0`), not here.
+            assert!(
+                self.flat_use_constant,
+                "warp-partial round-0 dispatch only supports the constant-coefficient path"
+            );
             let plan_compact = self
                 .flat_round0_template_compact
                 .as_ref()
@@ -278,16 +384,43 @@ where
                     .flat_round1_unified_desc_compact
                     .as_ref()
                     .expect("flat round 1 compact desc must be built");
-                super::super::kernels::launch_main_round1_unified_warp_partial(
-                    compact_desc,
-                    sizes.fold_stride,
-                    sizes.next_layer_size,
-                    eq_low_ptr,
-                    &self.eq_sizes,
-                    partials_ptr,
-                    acc_size as u32,
-                    context,
-                )
+                if let Some((devptr, bufs)) = self.flat_round1_terms_device.as_ref() {
+                    super::super::kernels::launch_main_round1_unified_warp_partial_devptr_terms(
+                        devptr,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        bufs.tables,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else if self.flat_cont_use_constant {
+                    super::super::kernels::launch_main_round1_unified_warp_partial(
+                        compact_desc,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else {
+                    super::super::kernels::launch_main_round1_unified_warp_partial_devptr(
+                        compact_desc,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                }
             }
             2 => {
                 let sizes = self
@@ -298,17 +431,46 @@ where
                     .flat_round2_unified_desc_compact
                     .as_ref()
                     .expect("flat round 2 compact desc must be built");
-                super::super::kernels::launch_main_round2_unified_warp_partial(
-                    compact_desc,
-                    super::super::compact::get_main_layer_claim_point_device_ptr() as *const E4,
-                    sizes.fold_stride,
-                    sizes.next_layer_size,
-                    eq_low_ptr,
-                    &self.eq_sizes,
-                    partials_ptr,
-                    acc_size as u32,
-                    context,
-                )
+                if let Some((devptr, bufs)) = self.flat_round2_terms_device.as_ref() {
+                    super::super::kernels::launch_main_round2_unified_warp_partial_devptr_terms(
+                        devptr,
+                        super::super::compact::get_main_layer_claim_point_device_ptr() as *const E4,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        bufs.tables,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else if self.flat_cont_use_constant {
+                    super::super::kernels::launch_main_round2_unified_warp_partial(
+                        compact_desc,
+                        super::super::compact::get_main_layer_claim_point_device_ptr() as *const E4,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else {
+                    super::super::kernels::launch_main_round2_unified_warp_partial_devptr(
+                        compact_desc,
+                        super::super::compact::get_main_layer_claim_point_device_ptr() as *const E4,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                }
             }
             step => {
                 let sizes = self
@@ -324,17 +486,51 @@ where
                     .unwrap_or_else(|| {
                         panic!("flat continuation compact desc must be built for step {step}")
                     });
-                super::super::kernels::launch_main_round3_unified_warp_partial(
-                    compact_desc,
-                    sizes.fold_stride,
-                    sizes.next_layer_size,
-                    (step - 1) as u32,
-                    eq_low_ptr,
-                    &self.eq_sizes,
-                    partials_ptr,
-                    acc_size as u32,
-                    context,
-                )
+                if let Some((_, devptr, bufs)) = self
+                    .flat_continuation_terms_device
+                    .iter()
+                    .find(|(s, _, _)| *s == step)
+                {
+                    return super::super::kernels::launch_main_round3_unified_warp_partial_devptr_terms(
+                        devptr,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        (step - 1) as u32,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        bufs.tables,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    );
+                }
+                if self.flat_cont_use_constant {
+                    super::super::kernels::launch_main_round3_unified_warp_partial(
+                        compact_desc,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        (step - 1) as u32,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                } else {
+                    super::super::kernels::launch_main_round3_unified_warp_partial_devptr(
+                        compact_desc,
+                        sizes.fold_stride,
+                        sizes.next_layer_size,
+                        (step - 1) as u32,
+                        self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr() as *const E4,
+                        eq_low_ptr,
+                        &self.eq_sizes,
+                        partials_ptr,
+                        acc_size as u32,
+                        context,
+                    )
+                }
             }
         }
     }
@@ -442,10 +638,11 @@ where
         external_challenges_ptr: *const E,
         context: &ProverContext,
     ) -> CudaResult<Callbacks<'static>> {
-        let desc = match self.flat_recipe_desc {
-            Some(ref desc) => desc,
-            None => return Ok(Callbacks::new()),
-        };
+        // Either an inline descriptor or a device-pointer descriptor is present
+        // (mutually exclusive; Stage 3c). No recipes at all => nothing to launch.
+        if self.flat_recipe_desc.is_none() && self.flat_recipe_desc_device.is_none() {
+            return Ok(Callbacks::new());
+        }
         let stream = context.get_exec_stream();
 
         // SAFETY: `device_claim_point_in` outlives this scheduling call (held
@@ -471,16 +668,32 @@ where
                 .cast()
         };
 
-        crate::prover::gkr::eval_recipes::eval_recipes_e4(
-            batch_base_ptr,
-            lookup_mul_ptr,
-            lookup_add_ptr,
-            external_challenges_ptr,
-            desc,
-            self.flat_recipe_count,
-            coeff_out_ptr,
-            stream,
-        )?;
+        // Route to the device-pointer eval-recipes kernel when the recipe tables
+        // overflowed the inline caps (Stage 3c); otherwise use the inline desc.
+        if let Some(ref desc_device) = self.flat_recipe_desc_device {
+            crate::prover::gkr::eval_recipes::eval_recipes_e4_devptr(
+                batch_base_ptr,
+                lookup_mul_ptr,
+                lookup_add_ptr,
+                external_challenges_ptr,
+                &desc_device.desc,
+                self.flat_recipe_count,
+                coeff_out_ptr,
+                stream,
+            )?;
+        } else {
+            let desc = self.flat_recipe_desc.as_ref().unwrap();
+            crate::prover::gkr::eval_recipes::eval_recipes_e4(
+                batch_base_ptr,
+                lookup_mul_ptr,
+                lookup_add_ptr,
+                external_challenges_ptr,
+                desc,
+                self.flat_recipe_count,
+                coeff_out_ptr,
+                stream,
+            )?;
+        }
 
         Ok(Callbacks::new())
     }
@@ -497,23 +710,51 @@ where
         external_challenges_ptr: *const E4,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let desc = match self.flat_cont_recipe_desc {
-            Some(ref desc) => desc,
-            None => return Ok(()),
+        // Inline or device-pointer descriptor (mutually exclusive; Stage 3c). No
+        // continuation recipes at all => nothing to launch.
+        if self.flat_cont_recipe_desc.is_none() && self.flat_cont_recipe_desc_device.is_none() {
+            return Ok(());
+        }
+
+        // Route the continuation coefficients to the `__constant__` symbol when
+        // the count fits, else to the device buffer read by the devptr kernels.
+        let coeff_out_ptr: *mut E4 = if self.flat_cont_use_constant {
+            flat::get_constant_coefficients_device_ptr()
+        } else {
+            self.flat_cont_coeff_device_buf
+                .as_mut()
+                .unwrap()
+                .as_mut_ptr()
+                .cast()
         };
+        let stream = context.get_exec_stream();
 
-        let coeff_out_ptr: *mut E4 = flat::get_constant_coefficients_device_ptr();
-
-        flat::eval_continuation_recipes_e4(
-            batch_base_ptr,
-            lookup_mul_ptr,
-            lookup_add_ptr,
-            external_challenges_ptr,
-            desc,
-            self.flat_cont_recipe_count,
-            coeff_out_ptr,
-            context.get_exec_stream(),
-        )?;
+        // Route to the device-pointer eval-recipes kernel when the recipe tables
+        // overflowed the inline caps (Stage 3c); otherwise use the inline desc.
+        if let Some(ref desc_device) = self.flat_cont_recipe_desc_device {
+            flat::eval_continuation_recipes_e4_devptr(
+                batch_base_ptr,
+                lookup_mul_ptr,
+                lookup_add_ptr,
+                external_challenges_ptr,
+                &desc_device.desc,
+                self.flat_cont_recipe_count,
+                coeff_out_ptr,
+                stream,
+            )?;
+        } else {
+            let desc = self.flat_cont_recipe_desc.as_ref().unwrap();
+            flat::eval_continuation_recipes_e4(
+                batch_base_ptr,
+                lookup_mul_ptr,
+                lookup_add_ptr,
+                external_challenges_ptr,
+                desc,
+                self.flat_cont_recipe_count,
+                coeff_out_ptr,
+                stream,
+            )?;
+        }
 
         Ok(())
     }
@@ -626,7 +867,11 @@ where
         let mut device_claim: DeviceAllocation<E> = context.alloc(1, AllocationPlacement::Top)?;
         let mut device_eq_prefactor: DeviceAllocation<E> =
             context.alloc(1, AllocationPlacement::Top)?;
-        let coeffs_total_len = last_step * 4;
+        // Every round — including the last (acc_size == 1) — emits a
+        // univariate monomial, so `internal_round_coefficients` has
+        // `folding_steps` entries. Matches the
+        // `ProofLayout` allocation (`sumcheck_num_rounds * 4`).
+        let coeffs_total_len = self.folding_steps * 4;
         // B1: per-round kernels write coeffs straight into the slab's
         // `internal_round_coefficients` range for this layer — no standalone
         // allocation, no post-loop slab D2D.
@@ -765,7 +1010,14 @@ where
             // fallback. The warp shfl_xor in the warp-partial kernel uses a
             // full 0xFFFFFFFF mask, so `acc_size < 32` would deadlock with
             // dead lanes — late rounds run the unfused 5-launch path.
-            let use_warp_partial = acc_size >= 32;
+            //
+            // Round 0's warp-partial kernel has only a constant-coefficient
+            // variant. When round-0 coefficients overflow the `__constant__`
+            // symbol (large delegations → `flat_use_constant == false`), fall
+            // back to the unfused round-0 path (`launch_round0_kernels`), which
+            // supports the device-buffer coeff loader. Fast-path circuits keep
+            // the warp-partial path (their round-0 fits `__constant__`).
+            let use_warp_partial = acc_size >= 32 && !(step == 0 && !self.flat_use_constant);
 
             // Round-kernel launch.
             if use_warp_partial {
@@ -845,32 +1097,84 @@ where
                 )?;
             }
         }
-        self.launch_round3_kernels_from_symbol(last_step, 1, true, context)?;
+        // #320 final round (step == last_step == folding_steps - 1, acc_size == 1).
+        // The factored eq is fully consumed (identity), so the round runs in
+        // monomial form (`explicit_form = false`) — the CPU `evaluate::<_, false>`
+        // last round — and emits the `last_step`-th monomial + draws `last_r`
+        // into `device_claim_point_out[last_step]`, WITHOUT folding eq again
+        // (skip `fold_eq_values_for_next_round`). The `[E;2]` last-round line is
+        // still read from the round storage by
+        // `final_evaluation_sources_for_last_step(last_step)` below.
+        self.launch_round3_kernels_from_symbol(last_step, 1, false, context)?;
+        {
+            // SAFETY: `last_step == folding_steps - 1`, so this input claim-point
+            // coordinate (`z_{last_step}`) exists.
+            let prev_coord_slice = unsafe { device_claim_point_in.slice(last_step, 1) };
+            // SAFETY: `coeffs_total_len = folding_steps * 4`, so the
+            // `last_step`-th 4-element window is in-bounds.
+            let coeffs_round_slice =
+                unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(last_step * 4), 4) };
+            // SAFETY: `device_claim_point_out` is length `folding_steps + 1`;
+            // slot `last_step = folding_steps - 1` (= `last_r`) is in bounds and
+            // uniquely written here.
+            let challenge_slot = unsafe { device_claim_point_out.slice_mut(last_step, 1) };
+            // No `fold_eq_values_for_next_round`: there is no next round and the
+            // factored eq is the identity at `acc_size == 1`.
+            self.run_round_coefficients_reduction_device(last_step, 1, context)?;
+            E::launch_backward_sumcheck_round_update(
+                &self.round_scratch.reduction_output,
+                prev_coord_slice,
+                &mut device_seed,
+                &mut device_claim,
+                &mut device_eq_prefactor,
+                coeffs_round_slice,
+                challenge_slot,
+                stream,
+            )?;
+        }
 
         // B1: coeffs already landed in the slab via the per-round kernels
         // (or in `fallback_device_coeffs` for test paths). No post-loop slab
         // D2D needed.
 
-        // Device-side inter-layer transcript (main-layer variant): pack the
-        // flattened last-round evaluations (2 E per address, vs 4 in dim-
-        // reducing) — written **directly into the slab** via B2. Absorbed
-        // into device_seed via transcript_commit, then squeezed into 2 E4
-        // challenges `[last_r, next_batching_challenge]`. The same packed
-        // buffer feeds `backward_new_claims_linear`.
+        // Device-side inter-layer transcript (main-layer variant, #320). The
+        // last round now emits its monomial + draws `last_r` in-loop; the
+        // `[E;2]` last-round line is gathered into a TEMP buffer and reduced at
+        // `last_r` into the single at-point evaluation that is BOTH the
+        // next-layer claim and the degree-1 `final_step_evaluations` (written to
+        // the slab, committed, and sent in the proof). We then squeeze the 1
+        // remaining challenge `[next_batching_challenge]`.
         let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
         let num_addresses = transcript_input_sources.len();
-        let transcript_inputs_len = num_addresses * 2;
+        let last_evals_len = num_addresses * 2;
         let transcript_input_addresses: Vec<GKRAddress> =
             transcript_input_sources.keys().copied().collect();
-        // B2: per-address gather writes straight into the slab's
-        // `final_step_evaluations` range. Flat layout (2 E per address, in
-        // BTreeMap key order from `final_evaluation_sources_for_last_step`)
-        // matches what `build_proof_layout_inputs` stored in
-        // `ProofLayout.backward[slot].final_step_eval_addresses`.
-        let transcript_inputs_buffer_ptr: *mut E = if transcript_inputs_len > 0 {
-            // SAFETY: `layer_slot` selects this layer's slab segment and
-            // the returned region is validated against
-            // `transcript_inputs_len` immediately below.
+
+        // TEMP `[E;2]` gather target (the slab now holds the degree-1 at-point
+        // evals, not the raw line).
+        let mut device_last_evals: DeviceAllocation<E> =
+            context.alloc(last_evals_len.max(1), AllocationPlacement::Top)?;
+        if num_addresses > 0 {
+            let src_ptrs: Vec<u64> = transcript_input_sources
+                .values()
+                .map(|p| *p as u64)
+                .collect();
+            // SAFETY: `device_last_evals` holds `last_evals_len` ext elements;
+            // the E4 view matches the only instantiated extension layout.
+            let dst = unsafe {
+                DeviceSlice::from_raw_parts_mut(
+                    device_last_evals.as_mut_ptr() as *mut E4,
+                    last_evals_len,
+                )
+            };
+            crate::ops::blake2s::gather_e_addresses(&src_ptrs, dst, 2, stream)?;
+        }
+
+        // Slab destination for the degree-1 `final_step_evaluations` (BTreeMap
+        // key order matches `final_step_eval_addresses`).
+        let final_step_evals_buffer_ptr: *mut E = if num_addresses > 0 {
+            // SAFETY: `layer_slot` selects this layer's slab segment; validated
+            // against `num_addresses` immediately below.
             let (dst_ptr, dst_len) = unsafe {
                 proof_layout.backward_final_step_evals_device_mut(
                     proof_slab.as_ptr() as *mut u8,
@@ -878,54 +1182,64 @@ where
                 )
             };
             debug_assert_eq!(
-                dst_len, transcript_inputs_len,
-                "slab final_step_evaluations range must match main-layer transcript_inputs_len",
+                dst_len, num_addresses,
+                "slab final_step_evaluations range must match main-layer num_addresses (degree 1)",
             );
             dst_ptr as *mut E
         } else {
             null_mut()
         };
-        // B7: per-address gather kernel for the main-layer variant (2 E per
-        // address). Pointer table rides inline in the kernel-arg struct; see
-        // the dim-reducing twin for context.
+
+        // #320: reduce the `[E;2]` line at `last_r` (drawn in-loop,
+        // `claim_point_out[last_step]`) into the single at-point evaluation,
+        // written directly into the slab final-step range.
         if num_addresses > 0 {
-            let src_ptrs: Vec<u64> = transcript_input_sources
-                .values()
-                .map(|p| *p as u64)
-                .collect();
-            // SAFETY: the slab/fallback transcript-input buffer was allocated
-            // for `transcript_inputs_len` ext elements; reinterpreting it as an
-            // `E4` slice matches the only instantiated extension layout.
-            let dst = unsafe {
-                DeviceSlice::from_raw_parts_mut(
-                    transcript_inputs_buffer_ptr as *mut E4,
-                    transcript_inputs_len,
+            // SAFETY: TEMP `[E;2]` buffer, E = E4, alive through the launch.
+            let last_evals_e4 = unsafe {
+                DeviceSlice::from_raw_parts(device_last_evals.as_ptr() as *const E4, last_evals_len)
+            };
+            // SAFETY: `claim_point_out[last_step]` is `last_r` (in-loop draw).
+            let last_r_view = unsafe {
+                DeviceSlice::from_raw_parts(
+                    device_claim_point_out.as_ptr().add(last_step) as *const E4,
+                    1,
                 )
             };
-            crate::ops::blake2s::gather_e_addresses(&src_ptrs, dst, 2, stream)?;
+            // SAFETY: slab final-step region, E = E4, `num_addresses` elements.
+            let final_step_e4 = unsafe {
+                DeviceSlice::from_raw_parts_mut(
+                    final_step_evals_buffer_ptr as *mut E4,
+                    num_addresses,
+                )
+            };
+            crate::ops::gkr_ops::backward_new_claims_linear(
+                last_evals_e4,
+                last_r_view,
+                final_step_e4,
+                stream,
+            )?;
         }
 
-        // SAFETY: E = E4 in every instantiation of this scheduler. The
-        // slab/fallback memory is alive through the kernel launch, and
-        // `transcript_commit` only reads.
-        let transcript_inputs_e_slice = unsafe {
-            DeviceSlice::from_raw_parts(
-                transcript_inputs_buffer_ptr as *const E,
-                transcript_inputs_len,
-            )
+        // Commit the degree-1 final_step_evaluations (matches host
+        // `commit_field_els::<BF, E4>` over the at-point evals).
+        // SAFETY: slab final-step region is alive through the launch; E = E4 so
+        // the u32 view matches the host byte layout. Empty when 0 addresses.
+        let final_step_evals_e_slice = unsafe {
+            DeviceSlice::from_raw_parts(final_step_evals_buffer_ptr as *const E, num_addresses)
         };
-        // SAFETY: `E = E4` in this scheduler, so the transcript input slice is
-        // byte-identical to the `u32` view that `transcript_commit` expects.
-        let d_transcript_inputs_u32 = unsafe { transcript_inputs_e_slice.transmute::<u32>() };
-        crate::ops::blake2s::transcript_commit(&mut device_seed, d_transcript_inputs_u32, stream)?;
+        // SAFETY: `E = E4`, so the slice is byte-identical to the `u32` view
+        // that `transcript_commit` expects.
+        let d_final_step_evals_u32 = unsafe { final_step_evals_e_slice.transmute::<u32>() };
+        crate::ops::blake2s::transcript_commit(&mut device_seed, d_final_step_evals_u32, stream)?;
 
-        // Squeeze the 2 layer challenges directly into the tail of
-        // `device_claim_point_out` — slots
-        // `[last_step..last_step + 2] = [last_r, next_batching_challenge]`.
-        // SAFETY: `last_step + 2 = folding_steps + 1 = next_claim_point_and_batching_len`,
-        // so the range is in-bounds, and only this scheduling site writes it.
+        // Squeeze the 1 remaining challenge `[next_batching_challenge]` into
+        // `device_claim_point_out[folding_steps]`. `last_r` was drawn in-loop at
+        // `claim_point_out[folding_steps - 1]`.
+        // SAFETY: `folding_steps + 1 = next_claim_point_and_batching_len`, so the
+        // slot is in-bounds, and only this scheduling site writes it.
         {
-            let layer_challenges_dst = unsafe { device_claim_point_out.slice_mut(last_step, 2) };
+            let layer_challenges_dst =
+                unsafe { device_claim_point_out.slice_mut(self.folding_steps, 1) };
             // SAFETY: E = E4 in every instantiation; matches host `draw_random_field_els::<BF, E4>`.
             let layer_challenges_dst_e4 = unsafe { layer_challenges_dst.transmute_mut::<E4>() };
             crate::ops::blake2s::transcript_squeeze_e4(
@@ -955,44 +1269,22 @@ where
         }
         let total_new_claims_len = num_addresses + orphan_count;
 
-        // Device-side per-address `new_claims` evaluator (main-layer variant:
-        // interpolate `v0, v1` at `last_r`). Replaces the host loop inside the
-        // final readback callback. Allocation extends by `orphan_count` so
-        // the on-device extras kernel can write extras into the tail.
+        // Device-side per-address `new_claims` (main-layer #320: the at-point
+        // evaluation is BOTH the next-layer claim and the degree-1
+        // `final_step_evaluations`, already computed into the slab above).
+        // Copy the slab at-point evals into the head of `device_new_claims`;
+        // the allocation extends by `orphan_count` so the on-device extras
+        // kernel can write extras into the tail.
         let mut device_new_claims: DeviceAllocation<E> =
             context.alloc(total_new_claims_len.max(1), AllocationPlacement::Top)?;
         if num_addresses > 0 {
-            // SAFETY: E = E4 in every instantiation; transmutes match the
-            // kernel's `e4` view of the packed evals and challenges. The
-            // slab/fallback memory is alive through the kernel launch.
-            let transcript_inputs_e_view = unsafe {
-                DeviceSlice::from_raw_parts(
-                    transcript_inputs_buffer_ptr as *const E,
-                    transcript_inputs_len,
-                )
+            // SAFETY: slab final-step region holds `num_addresses` live E evals.
+            let final_step_src = unsafe {
+                DeviceSlice::from_raw_parts(final_step_evals_buffer_ptr as *const E, num_addresses)
             };
-            // SAFETY: the packed eval buffer is laid out as `E4` elements in
-            // this scheduler instantiation.
-            let transcript_inputs_e4: &era_cudart::slice::DeviceSlice<E4> =
-                unsafe { transcript_inputs_e_view.transmute::<E4>() };
-            // SAFETY: layer-challenge tail lives at
-            // `claim_point_out[last_step..last_step + 2]`; reading the first
-            // element (`last_r`) for the kernel.
-            let challenges_view = unsafe {
-                DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr().add(last_step), 1)
-            };
-            // SAFETY: the just-squeezed challenge tail is stored in the same
-            // concrete `E4` layout that the kernel helper expects.
-            let challenges_e4: &era_cudart::slice::DeviceSlice<E4> =
-                unsafe { challenges_view.transmute::<E4>() };
-            // SAFETY: `device_new_claims` was allocated as `E` and is viewed at
-            // the concrete `E4` layout used by the kernel helper.
-            let new_claims_e4: &mut era_cudart::slice::DeviceSlice<E4> =
-                unsafe { device_new_claims[..num_addresses].transmute_mut::<E4>() };
-            crate::ops::gkr_ops::backward_new_claims_linear(
-                transcript_inputs_e4,
-                challenges_e4,
-                new_claims_e4,
+            memory_copy_async(
+                &mut device_new_claims[..num_addresses],
+                final_step_src,
                 stream,
             )?;
         }
@@ -1038,6 +1330,39 @@ where
             None
         };
 
+        // Commit the orphan/extra at-point evaluations to the transcript,
+        // mirroring the CPU's
+        // `commit_field_els(seed, extra_evaluations_from_caching_relations.values())`
+        // (`sumcheck_loop/mod.rs:439-445`), which runs AFTER the
+        // next-batching-challenge squeeze. These extras advance the running seed
+        // entering the next (lower) main layer. Omitting this commit left the
+        // next layer's round-0 seed at the pre-extras state (the β-state), so any
+        // layer whose child layer produces orphan outputs (e.g. a layer with
+        // `cached_relations`, like the unified circuit's layer 1) diverged from
+        // the CPU at the child's round-0 folding challenge while β itself still
+        // matched. The orphan set + sorted order mirror the CPU BTreeMap (see
+        // `compute_main_layer_orphan_output_addresses_per_layer`).
+        if orphan_count > 0 {
+            // SAFETY: the orphan eval scheduled above wrote `orphan_count` E4
+            // values into this slot's `extra_evaluations` slab range on
+            // `exec_stream`; this commit is stream-ordered after it. E4 matches
+            // the host flatten byte layout (4 u32 limbs per element).
+            let (extra_ptr, extra_len) = unsafe {
+                proof_layout.backward_extra_evaluations_device_mut(
+                    proof_slab.as_ptr() as *mut u8,
+                    layer_slot,
+                )
+            };
+            debug_assert_eq!(
+                extra_len, orphan_count,
+                "extra_evaluations slab len must match orphan_count",
+            );
+            let extra_e4_slice =
+                unsafe { DeviceSlice::from_raw_parts(extra_ptr as *const E4, extra_len) };
+            let d_extra_u32 = unsafe { extra_e4_slice.transmute::<u32>() };
+            crate::ops::blake2s::transcript_commit(&mut device_seed, d_extra_u32, stream)?;
+        }
+
         // `device_claim_point_out` is already populated in place — slots
         // `[0..last_step]` by the per-round update kernels (folding challenges)
         // and slots `[last_step..last_step + 2]` by the transcript squeeze
@@ -1060,10 +1385,14 @@ where
             // via B1/B2 and not D2H'd here). The join lets exec wait for the per-layer D2Hs
             // before scheduling the final-readback callback and dropping the source
             // allocations at end of this function.
+            // #320: `last_r` is now drawn in-loop and lives among the folding
+            // challenges `claim_point_out[0..folding_steps]`; only
+            // `[next_batching_challenge]` is squeezed post-loop.
+            let folding_steps = self.folding_steps;
             // SAFETY: these pinned host buffers are written by the D2H copies
             // below before any host callback reads them.
             let mut layer_challenges_host: HostAllocation<[E]> =
-                unsafe { context.alloc_host_uninit_slice(2) };
+                unsafe { context.alloc_host_uninit_slice(1) };
             let layer_challenges_accessor = layer_challenges_host.get_accessor();
             let mut new_claims_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(total_new_claims_len.max(1)) };
@@ -1075,19 +1404,19 @@ where
             // SAFETY: this pinned host buffer is also a pure D2H destination
             // before the final callback consumes it.
             let mut final_folding_challenges_host: HostAllocation<[E]> =
-                unsafe { context.alloc_host_uninit_slice(last_step) };
+                unsafe { context.alloc_host_uninit_slice(folding_steps) };
             let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
             crate::prover::transfer::fork_join_exec_to_d2h(
                 stream,
                 context.get_d2h_stream(),
                 |d2h_stream| {
-                    // SAFETY: `[last_step..last_step + 2]` were just written by the
-                    // transcript squeeze on `stream`; d2h_stream waits on the fork event
-                    // before this read.
+                    // SAFETY: `[folding_steps] = next_batching_challenge` was just
+                    // written by the transcript squeeze on `stream`; d2h_stream
+                    // waits on the fork event before this read.
                     let layer_challenges_src = unsafe {
                         DeviceSlice::from_raw_parts(
-                            device_claim_point_out.as_ptr().add(last_step),
-                            2,
+                            device_claim_point_out.as_ptr().add(folding_steps),
+                            1,
                         )
                     };
                     memory_copy_async(
@@ -1112,10 +1441,12 @@ where
                     // setup; coeffs and packed last-evaluations stay on device and flow
                     // through the proof slab via B1/B2).
                     memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
-                    // SAFETY: `[0..last_step]` were written in-place by the per-round
-                    // update kernels.
+                    // SAFETY: `[0..folding_steps]` were written in-place by the
+                    // per-round update kernels — slots `[0..folding_steps - 1]` by
+                    // the loop rounds and `[folding_steps - 1]` (= `last_r`) by the
+                    // in-loop final round.
                     let folding_src = unsafe {
-                        DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr(), last_step)
+                        DeviceSlice::from_raw_parts(device_claim_point_out.as_ptr(), folding_steps)
                     };
                     memory_copy_async(&mut final_folding_challenges_host, folding_src, d2h_stream)?;
                     Ok(())
@@ -1131,8 +1462,9 @@ where
                 // after the fork/join D2H sequence has completed.
                 move || unsafe {
                     // Populate the rolling state from the D2H'd device state. The
-                    // seed captured here is already post-commit+squeeze; the 2
-                    // challenges live in `layer_challenges_host`.
+                    // seed captured here is already post-commit+squeeze; the 1
+                    // post-loop challenge lives in `layer_challenges_host` and
+                    // `last_r` is already among the folding challenges.
                     let state = shared_state_for_callback.get_mut();
                     state.seed = Seed(
                         <&[u32; STATE_SIZE]>::try_from(final_seed_accessor.get())
@@ -1140,16 +1472,17 @@ where
                             .to_owned(),
                     );
                     state.folding_challenges.clear();
+                    // Includes `last_r` at index `folding_steps - 1`.
                     state
                         .folding_challenges
                         .extend_from_slice(final_folding_challenges_accessor.get());
 
-                    let [last_r, next_batching_challenge]: [E; 2] = layer_challenges_accessor
+                    let [next_batching_challenge]: [E; 1] = layer_challenges_accessor
                         .get()
                         .try_into()
-                        .expect("layer challenges D2H has length 2");
-                    let mut new_claim_point = state.folding_challenges.clone();
-                    new_claim_point.push(last_r);
+                        .expect("layer challenges D2H has length 1");
+                    // `last_r` is already the last folding challenge — no push.
+                    let new_claim_point = state.folding_challenges.clone();
                     // Rebuild `new_claims` from the D2H'd device-computed buffer
                     // (host `interpolate_linear` loop is now a kernel).
                     let new_claims_slice = new_claims_accessor.get();
@@ -1181,6 +1514,9 @@ where
 
         drop(device_claim);
         drop(device_eq_prefactor);
+        // TEMP `[E;2]` gather buffer: freed (stream-ordered) after the
+        // at-point reduce kernel that reads it has been scheduled.
+        drop(device_last_evals);
         drop(device_claim_point_in);
         drop(device_claims_in);
         // Stream-ordered drop: every scheduled extras-eval kernel +

@@ -5,13 +5,13 @@
 //!   v8 (LOG_VPT=3): LOG_N ∈ {3,4,5,6,7,8}  → ab_dit_single_{3..8}_3
 //!   v4 (LOG_VPT=2): LOG_N ∈ {2,3,4,5,6,7}  → ab_dit_single_{2..7}_2
 //!
-//! Every config is validated against red's `bitreversed_monomials_to_natural_evals`
+//! Every config is validated against the `bitreversed_monomials_to_natural_evals`
 //! oracle across ALL cosets emitted by a single grid=1 launch.
 //!
-//! Architecture notes (decided upstream — see the task spec):
+//! Architecture notes:
 //!  - The per-stage butterfly triangle (`tw_clean`) is computed in Rust and
 //!    uploaded; there is NO host-side CUDA twiddle code in the bring-up path.
-//!  - The engine reads the coset root ω on-device from red's Rust-initialized
+//!  - The engine reads the coset root ω on-device from the Rust-initialized
 //!    `ab_ntt_forward_powers` table (via `get_forward_twiddle_power`), so the
 //!    harness MUST create a `DeviceContext` before launching (done by
 //!    `make_context()`).
@@ -69,7 +69,7 @@ dit_single!(ab_dit_single_7_2);
 // Rust port of the deleted C++ host builder `build_clean_triangle<LOG_M,LOG_VPT>`
 // (recovered from `git show d68a60a5^:gpu/ntt/native/dit_twiddles.cuh`).
 // Ported index-for-index; only the host-arithmetic primitives differ (we use
-// red's `BF` powering instead of the experiment's host Montgomery math).
+// the `BF` powering instead of the experiment's host Montgomery math).
 // ---------------------------------------------------------------------------
 
 /// `clean_triangle_count<LOG_M, LOG_VPT>()` == 2^M - 1.
@@ -88,7 +88,7 @@ fn hbr(x: u32, n: u32) -> u32 {
 }
 
 /// ω^idx, ω = order-2^27 root = `domain_generator_for_size::<BF>(1<<27)` (= 31^15),
-/// the SAME root red's `ab_ntt_forward_powers` is built from. Matches the C++
+/// the SAME root `ab_ntt_forward_powers` is built from. Matches the C++
 /// `host_omega_pow(idx)`.
 fn host_omega_pow(idx: u32) -> BF {
     let omega = domain_generator_for_size::<BF>(1u64 << OMEGA_LOG_ORDER);
@@ -199,7 +199,7 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
         let mono_ptr = monomials_dev[..].as_ptr();
         let tw_ptr = tw_clean_dev[..].as_ptr();
         let out_ptr = (&mut out_dev[..]).as_mut_ptr();
-        // coset_out_stride = N keeps the Phase-1 contiguous-output expectation.
+        // coset_out_stride = N keeps the contiguous-output expectation.
         let coset_out_stride: u32 = 1u32 << log_n;
         let args = DitSingleArguments::new(
             mono_ptr,
@@ -322,7 +322,7 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
 
     println!(
         "DIT single-pass parity PASS: log_n={log_n}, log_vpt={log_vpt}, \
-         num_cosets={num_cosets} (all match red's oracle)"
+         num_cosets={num_cosets} (all match the oracle)"
     );
 }
 
@@ -363,7 +363,7 @@ dit_single_parity_test!(dit_single_7_2_parity, 7, 2);
 //   v8 (LOG_VPT=3): LOG_N ∈ {9,10,11,12,13} → ab_dit_two_pass_{9..13}_3
 //   v4 (LOG_VPT=2): LOG_N ∈ {8,9,10,11,12}  → ab_dit_two_pass_{8..12}_2
 //
-// Each config is exercised against red's `bitreversed_monomials_to_natural_evals`
+// Each config is exercised against the `bitreversed_monomials_to_natural_evals`
 // oracle across pow2-divisor grid shapes: grid=1 (one block does all cosets), a
 // mid grid (grid = coset_count / 2), and grid = coset_count (one coset per
 // block). The kernel processes EXACTLY `cosets_per_block = coset_count / grid`
@@ -469,7 +469,7 @@ fn coupled_triangle_count(log_n: u32, log_vpt: u32, log_n1: u32) -> usize {
 // ---------------------------------------------------------------------------
 // Rust port of `build_coupled_triangle<LOG_N, LOG_VPT, LOG_N1>(bf* dst)`
 // (recovered from `git show d68a60a5^:gpu/ntt/native/dit_twiddles.cuh`).
-// Ported index-for-index; only the host-arithmetic primitive differs (red `BF`
+// Ported index-for-index; only the host-arithmetic primitive differs (the `BF`
 // powering via `host_omega_pow`). COUPLED triangle: THREADS rows keyed on tid,
 // the n2-block folded into the group index; LOG_TBL = LOG_N, shift = 27 - N.
 // ---------------------------------------------------------------------------
@@ -519,9 +519,8 @@ fn build_coupled_triangle(log_n: u32, log_vpt: u32, log_n1: u32) -> Vec<BF> {
 }
 
 // ---------------------------------------------------------------------------
-// Rust port of `build_coset_delta_table<LOG_N, LOG_VPT>(bf* dst, step_per_iter)`
-// (from `/home/rr/code/ntt-experiments/include/twiddles_2pass.cuh`). Fills
-// VPT*THREADS = N entries in natural index order:
+// Rust port of `build_coset_delta_table<LOG_N, LOG_VPT>(bf* dst, step_per_iter)`.
+// Fills VPT*THREADS = N entries in natural index order:
 //   d[i] = ω^(bitrev(i, LOG_N) * step_per_iter),  i ∈ [0, N).
 // NO OMEGA_SHIFT — matches the kernel's `pow_omega` (br * step) convention.
 // ---------------------------------------------------------------------------
@@ -549,7 +548,7 @@ fn ntt_two_pass_smem_bytes(g: &TwoPassGeom) -> usize {
 // ---------------------------------------------------------------------------
 // Parameterized two-pass parity helper.
 //
-// Coset walk (must stay LDE-compatible so red's oracle applies):
+// Coset walk (must stay LDE-compatible so the oracle applies):
 //   block `bx` processes EXACTLY `cosets_per_block` cosets
 //   {bx, bx+grid, bx+2·grid, …, bx+(cosets_per_block-1)·grid}; iteration `c`
 //   writes coset `ci = bx + c·grid` to out[ci*N .. ci*N+N], with twist exponent
@@ -557,7 +556,7 @@ fn ntt_two_pass_smem_bytes(g: &TwoPassGeom) -> usize {
 // `grid` MUST be a power-of-two divisor of `total` so `grid * cosets_per_block
 // == total` exactly and the grid-walk covers every coset with no ragged tail
 // (the kernel no longer supports `grid ∤ total`). With cfp_0=0 and
-// coset_step=2^(27 - LOG_N - log_lde_factor), global coset `ci` maps to red
+// coset_step=2^(27 - LOG_N - log_lde_factor), global coset `ci` maps to the
 // coset index `ci` (identical to the single-pass harness). The d-table is built
 // with step_per_iter = grid * coset_step.
 // ---------------------------------------------------------------------------
@@ -625,7 +624,7 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
         let tw_p2_ptr = tw_p2_dev[..].as_ptr();
         let d_ptr = d_table_dev[..].as_ptr();
         let out_ptr = (&mut out_dev[..]).as_mut_ptr();
-        // coset_out_stride = N keeps the Phase-1 contiguous-output expectation.
+        // coset_out_stride = N keeps the contiguous-output expectation.
         let coset_out_stride: u32 = 1u32 << log_n;
         let args = DitTwoPassArguments::new(
             mono_ptr,
@@ -761,7 +760,7 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
 
     println!(
         "DIT two-pass parity PASS: log_n={log_n}, log_vpt={log_vpt}, \
-         total={total}, grid={grid} (all cosets match red's oracle)"
+         total={total}, grid={grid} (all cosets match the oracle)"
     );
 }
 
@@ -813,11 +812,11 @@ dit_two_pass_parity_test!(dit_two_pass_11_2_parity, 11, 2);
 dit_two_pass_parity_test!(dit_two_pass_12_2_parity, 12, 2);
 
 // ===========================================================================
-// PHASE-2 device twiddle FILL kernels — parity vs the Rust builders.
+// Device twiddle FILL kernels — parity vs the Rust builders.
 //
 // The fill kernels (`gpu/ntt/native/dit_twiddle_fill.cu`, bound in
 // `super::super::dit`) construct the per-config butterfly-triangle and coset
-// d-table buffers ON-DEVICE, reading red's `ab_ntt_forward_powers` via
+// d-table buffers ON-DEVICE, reading the `ab_ntt_forward_powers` via
 // `get_forward_twiddle_power`. They must reproduce the exact buffers the
 // parity-proven Rust `build_clean_triangle` / `build_coupled_triangle` /
 // `build_coset_delta_table` produce.
@@ -998,7 +997,7 @@ dit_fill_d_table_parity_test!(dit_fill_d_table_12_parity, 12);
 dit_fill_d_table_parity_test!(dit_fill_d_table_13_parity, 13);
 
 // ===========================================================================
-// PHASE-2 Task 2 — context-init triangle precompute parity.
+// Context-init triangle precompute parity.
 //
 // `DeviceContext::create` builds the FULL fixed triangle set on-device (the
 // CLEAN + COUPLED config arrays in `super::super::dit`) right after the ω table
@@ -1066,14 +1065,14 @@ fn dit_context_triangle_precompute_parity() {
 }
 
 // ===========================================================================
-// PHASE-2 Task 3 — production launcher (`monomials_to_evals_dit`) parity.
+// Production launcher (`monomials_to_evals_dit`) parity.
 //
-// Exercises the launcher end-to-end vs red's `bitreversed_monomials_to_natural_evals`
+// Exercises the launcher end-to-end vs the `bitreversed_monomials_to_natural_evals`
 // oracle across BOTH paths (single-pass, two-pass) AND the strided/multi-column
 // output layout enabled by the `coset_out_stride` ABI change. The launcher
 // borrows the precomputed triangles from the `DeviceContext` and fills the
 // two-pass d-table at runtime, so this covers the full production code path
-// (minus strategy/dispatch wiring, which is Task 4).
+// (minus strategy/dispatch wiring).
 //
 // Output layout (column-major): coset `k`, column `col` occupies the matrix
 // column `k*num_cols_per_coset + col`, i.e. BF offset
@@ -1084,7 +1083,7 @@ fn dit_context_triangle_precompute_parity() {
 
 /// Core launcher parity check. Builds `num_ntts` distinct monomial columns,
 /// runs `monomials_to_evals_dit` into a strided output, and compares each
-/// (coset, column) slab against red's per-coset oracle for that column.
+/// (coset, column) slab against the per-coset oracle for that column.
 fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: usize) {
     use crate::ntt::dit::monomials_to_evals_dit;
 
@@ -1225,7 +1224,7 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
 
     println!(
         "DIT launcher parity PASS: log_n={log_n}, log_vpt={log_vpt}, \
-         num_cosets={num_cosets}, num_ntts={num_ntts} (all (coset,col) slabs match red's oracle)"
+         num_cosets={num_cosets}, num_ntts={num_ntts} (all (coset,col) slabs match the oracle)"
     );
 }
 
@@ -1393,7 +1392,7 @@ mod bench_variants {
             let tw_p2_ptr = tw_p2_dev[..].as_ptr();
             let d_ptr = d_table_dev[..].as_ptr();
             let out_ptr = (&mut out_dev[..]).as_mut_ptr();
-            // coset_out_stride = N keeps the Phase-1 contiguous-output expectation.
+            // coset_out_stride = N keeps the contiguous-output expectation.
             let coset_out_stride: u32 = 1u32 << log_n;
             // 8-arg ABI: NO cosets_per_block (K is a compile-time template arg).
             let args = DitTwoPassFixedArguments::new(
@@ -1515,7 +1514,7 @@ mod bench_variants {
 
         println!(
             "DIT two_pass_fixed parity PASS: log_n={log_n}, log_vpt={log_vpt}, \
-             k={k}, total={total}, grid={grid} (all cosets match red's oracle)"
+             k={k}, total={total}, grid={grid} (all cosets match the oracle)"
         );
     }
 
@@ -1579,7 +1578,7 @@ mod bench_variants {
             let mono_ptr = monomials_dev[..].as_ptr();
             let tw_ptr = tw_clean_dev[..].as_ptr();
             let out_ptr = (&mut out_dev[..]).as_mut_ptr();
-            // coset_out_stride = N keeps the Phase-1 contiguous-output expectation.
+            // coset_out_stride = N keeps the contiguous-output expectation.
             let coset_out_stride: u32 = 1u32 << log_n;
             // 7-arg ABI: runtime num_cosets (guard bound), NO d-table.
             let args = DitSingleStreamArguments::new(
@@ -1686,7 +1685,7 @@ mod bench_variants {
         println!(
             "DIT single_stream parity PASS: log_n={log_n}, log_vpt={log_vpt}, \
              grid={grid}, total={total}, cosets_per_block={cosets_per_block} \
-             (all match red's oracle)"
+             (all match the oracle)"
         );
     }
 

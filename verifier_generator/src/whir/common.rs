@@ -15,9 +15,6 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
 
     // read_and_batch_leaf ops
     let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
-    // let mul_term_base = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
-    // let add_acc0_term = MW::add_assign(quote! { *acc0 }, quote! { term });
-    // let add_acc1_term = MW::add_assign(quote! { *acc1 }, quote! { term });
 
     let fma_into_acc_0 =
         MW::add_assign_product_with_base(quote! { *acc0 }, quote! { gamma }, quote! { base_val });
@@ -32,30 +29,25 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let add_claim_c1 = MW::add_assign(quote! { new_claim }, quote! { c1 });
     let add_claim_c0 = MW::add_assign(quote! { new_claim }, quote! { c0 });
 
-    // gamma power / fold coset ops
+    // gamma power ops (shared by both encodings: used by materialize_gamma_powers
+    // and compute_high_powers_offsets).
     let mul_pow_gen = MW::mul_assign(quote! { pow }, quote! { set_gen_inv });
     let mul_gamma_pow = MW::mul_assign(quote! { gamma_pow }, quote! { gamma });
-    let sub_t_b = MW::sub_assign(quote! { t }, quote! { b });
-    let mul_t_challenge = MW::mul_assign(quote! { t }, quote! { challenge });
-    let mul_t_root = MW::mul_assign_by_base(quote! { t }, quote! { root });
-    let add_t_a = MW::add_assign(quote! { t }, quote! { a });
-    let add_t_b = MW::add_assign(quote! { t }, quote! { b });
-    let mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
-    let mul_root_offset = MW::mul_assign(quote! { root }, quote! { high_powers_offset });
-    let square_root_inv = MW::square(quote! { root_inv });
 
+    // The per-leaf fold helpers differ between coefficient and evaluation form.
+    // Exactly one branch is emitted (compile-time `eval_leaves`), so the generated
+    // verifier carries a single fold implementation with no runtime branching.
+    let fold_helpers = build_fold_helpers::<MW>();
+
+    // eq(z, α) = (1-α) + (2α-1)·z. Precompute (1-α) and the coefficient (2α-1) once per fold
+    // call, then evaluate each inner `eq` with a single fused multiply-add. This removes the
+    // per-entry extension-field add and sub that the explicit `(1-α) + 2α·z - z` form needed.
     let sub_oma_alpha = MW::sub_assign(quote! { one_minus_alpha }, quote! { alpha });
-    let double_two_alpha = MW::double(quote! { two_alpha });
-    let mul_two_a_zi_zi = MW::mul_assign(quote! { two_a_zi }, quote! { zi });
-    let add_eq_two_a_zi = MW::add_assign(quote! { eq }, quote! { two_a_zi });
-    let eq_add_two_a_zi =
-        MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { zi });
-    let sub_eq_zi = MW::sub_assign(quote! { eq }, quote! { zi });
+    let double_alpha_coeff = MW::double(quote! { alpha_coeff });
+    let sub_coeff_one = MW::sub_assign_base(quote! { alpha_coeff }, MW::field_one());
+    let fma_eq_zi = MW::add_assign_product(quote! { eq }, quote! { alpha_coeff }, quote! { zi });
     let mul_prefactor_eq = MW::mul_assign(quote! { acc.z_initial_prefactor }, quote! { eq });
-    let mul_two_a_s_s = MW::mul_assign(quote! { two_a_s }, quote! { s });
-    let add_eq_two_a_s = MW::add_assign(quote! { eq }, quote! { two_a_s });
-    let sub_eq_s = MW::sub_assign(quote! { eq }, quote! { s });
-    let eq_add_two_a_s = MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { s });
+    let fma_eq_s = MW::add_assign_product(quote! { eq }, quote! { alpha_coeff }, quote! { s });
     let mul_entry_prefactor_eq = MW::mul_assign(quote! { entry.prefactor }, quote! { eq });
     let square_current_scalar = MW::square(quote! { entry.current_scalar });
 
@@ -150,71 +142,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             unsafe { powers.into_array() }
         }
 
-        #[inline(always)]
-        #[allow(clippy::too_many_arguments)]
-        pub fn fold_coset(
-            evals: &[#quartic_struct],
-            num_rounds: usize,
-            folding_challenges: &[#quartic_struct],
-            mut root_inv: #field_struct,
-            high_powers_offsets: &[#field_struct],
-            buf_a: &mut [#quartic_struct],
-            buf_b: &mut [#quartic_struct],
-        ) -> #quartic_struct {
-            debug_assert!(num_rounds == 0 || high_powers_offsets.len() >= 1 << (num_rounds - 1));
-            let mut round = 0;
-            while round < num_rounds {
-                let half = 1 << (num_rounds - round - 1);
-                let challenge = unsafe { *folding_challenges.get_unchecked(round) };
-
-                let src: &[#quartic_struct] = if round == 0 {
-                    evals
-                } else if round % 2 == 1 {
-                    unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), half * 2) }
-                } else {
-                    unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), half * 2) }
-                };
-                let dst: &mut [#quartic_struct] = if round % 2 == 0 {
-                    unsafe { core::slice::from_raw_parts_mut(buf_a.as_mut_ptr(), half) }
-                } else {
-                    unsafe { core::slice::from_raw_parts_mut(buf_b.as_mut_ptr(), half) }
-                };
-
-                let mut pair_idx = 0;
-                while pair_idx < half {
-                    let src_idx = pair_idx * 2;
-                    let a = unsafe { *src.get_unchecked(src_idx) };
-                    let b = unsafe { *src.get_unchecked(src_idx + 1) };
-
-                    let mut t = a;
-                    #sub_t_b;
-                    #mul_t_challenge;
-
-                    let mut root = root_inv;
-                    let high_powers_offset = unsafe { *high_powers_offsets.get_unchecked(pair_idx) };
-                    #mul_root_offset;
-                    #mul_t_root;
-
-                    #add_t_a;
-                    #add_t_b;
-                    #mul_t_half;
-
-                    unsafe { *dst.get_unchecked_mut(pair_idx) = t; }
-                    pair_idx += 1;
-                }
-
-                #square_root_inv;
-                round += 1;
-            }
-
-            if num_rounds == 0 {
-                unsafe { *evals.get_unchecked(0) }
-            } else if num_rounds % 2 == 1 {
-                unsafe { *buf_a.get_unchecked(0) }
-            } else {
-                unsafe { *buf_b.get_unchecked(0) }
-            }
-        }
+        #fold_helpers
 
         pub const MAX_HIGH_POWERS: usize = #max_high_powers;
 
@@ -286,18 +214,10 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 let base_val = #from_raw;
                 #fma_into_acc_0;
 
-                // let mut term = gamma;
-                // #mul_term_base;
-                // #add_acc0_term;
-
                 let raw = read_reduced_field_el::<I>(nd_source);
                 *hash_buf.get_unchecked_mut(idx + 1) = raw;
                 let base_val = #from_raw;
                 #fma_into_acc_1;
-
-                // let mut term = gamma;
-                // #mul_term_base;
-                // #add_acc1_term;
 
                 col += 1;
             }
@@ -309,26 +229,20 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             alpha: #quartic_struct,
             z_initial: &[#quartic_struct],
         ) {
-            // eq(z, α) = (1-z)(1-α) + zα = (1-α) - z + 2αz
-            // precompute (1-α) and 2α; each inner eq eval is 1 mul + 1 add + 1 sub.
+            // eq(z, α) = (1-z)(1-α) + zα = (1-α) + (2α-1)·z.
+            // Precompute (1-α) and (2α-1) once; each inner eq eval is then a single fused
+            // multiply-add `eq = (1-α); eq += (2α-1)·z`, i.e. one extension multiply with the
+            // accumulate fused in - no separate add/sub per entry.
             let mut one_minus_alpha = #quartic_one;
             #sub_oma_alpha;
-            let mut two_alpha = alpha;
-            #double_two_alpha;
+            let mut alpha_coeff = alpha;
+            #double_alpha_coeff;
+            #sub_coeff_one;
 
             unsafe {
                 let zi = *z_initial.get_unchecked(acc.z_initial_idx);
                 let mut eq = one_minus_alpha;
-                // eq += 2 * alpha * zi
-
-                // #eq_add_two_a_zi; // not beneficial
-
-                let mut two_a_zi = two_alpha;
-                #mul_two_a_zi_zi;
-                #add_eq_two_a_zi;
-
-                // eq -= zi
-                #sub_eq_zi;
+                #fma_eq_zi;
                 #mul_prefactor_eq;
                 acc.z_initial_idx += 1;
             }
@@ -340,16 +254,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                     let entry = acc.pow_entries.get_unchecked_mut(i);
                     let s = entry.current_scalar;
                     let mut eq = one_minus_alpha;
-                    // eq += two_alpha * s
-
-                    // #eq_add_two_a_s; // not beneficial
-
-                    let mut two_a_s = two_alpha;
-                    #mul_two_a_s_s;
-                    #add_eq_two_a_s;
-
-                    // eq -= s
-                    #sub_eq_s;
+                    #fma_eq_s;
                     #mul_entry_prefactor_eq;
                     #square_current_scalar;
                 }
@@ -406,6 +311,152 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 return Err(E::whir_merkle_path_failed(query));
             }
             Ok(())
+        }
+    }
+}
+
+/// Emits the per-leaf fold helper(s) for the active leaf encoding. The whole
+/// generator is compiled either with or without `eval_leaves`, so exactly one
+/// branch contributes to the generated verifier — there is no runtime dispatch
+/// and the generated fold path is identical to the hand-written reference for
+/// that encoding.
+fn build_fold_helpers<MW: FieldWrapper>() -> TokenStream {
+    let quartic_struct = MW::quartic_struct();
+    let field_struct = MW::field_struct();
+    if cfg!(feature = "eval_leaves") {
+        // ---- evaluation form: fold_coset butterfly ----
+        // fold_coset butterfly: t = (a - b)*challenge*root, then t = (t + a + b)/2
+        let sub_t_b = MW::sub_assign(quote! { t }, quote! { b });
+        let mul_t_challenge = MW::mul_assign(quote! { t }, quote! { challenge });
+        let mul_t_root = MW::mul_assign_by_base(quote! { t }, quote! { root });
+        let add_t_a = MW::add_assign(quote! { t }, quote! { a });
+        let add_t_b = MW::add_assign(quote! { t }, quote! { b });
+        let mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
+        let mul_root_offset = MW::mul_assign(quote! { root }, quote! { high_powers_offset });
+        let square_root_inv = MW::square(quote! { root_inv });
+        let _ = &field_struct;
+        quote! {
+        #[inline(always)]
+        #[allow(clippy::too_many_arguments)]
+        pub fn fold_coset(
+            evals: &[#quartic_struct],
+            num_rounds: usize,
+            folding_challenges: &[#quartic_struct],
+            mut root_inv: #field_struct,
+            high_powers_offsets: &[#field_struct],
+            buf_a: &mut [#quartic_struct],
+            buf_b: &mut [#quartic_struct],
+        ) -> #quartic_struct {
+            debug_assert!(num_rounds == 0 || high_powers_offsets.len() >= 1 << (num_rounds - 1));
+            let mut round = 0;
+            while round < num_rounds {
+                let half = 1 << (num_rounds - round - 1);
+                let challenge = unsafe { *folding_challenges.get_unchecked(round) };
+
+                let src: &[#quartic_struct] = if round == 0 {
+                    evals
+                } else if round % 2 == 1 {
+                    unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), half * 2) }
+                } else {
+                    unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), half * 2) }
+                };
+                let dst: &mut [#quartic_struct] = if round % 2 == 0 {
+                    unsafe { core::slice::from_raw_parts_mut(buf_a.as_mut_ptr(), half) }
+                } else {
+                    unsafe { core::slice::from_raw_parts_mut(buf_b.as_mut_ptr(), half) }
+                };
+
+                let mut pair_idx = 0;
+                while pair_idx < half {
+                    let src_idx = pair_idx * 2;
+                    let a = unsafe { *src.get_unchecked(src_idx) };
+                    let b = unsafe { *src.get_unchecked(src_idx + 1) };
+
+                    let mut t = a;
+                    #sub_t_b;
+                    #mul_t_challenge;
+
+                    let mut root = root_inv;
+                    let high_powers_offset = unsafe { *high_powers_offsets.get_unchecked(pair_idx) };
+                    #mul_root_offset;
+                    #mul_t_root;
+
+                    #add_t_a;
+                    #add_t_b;
+                    #mul_t_half;
+
+                    unsafe { *dst.get_unchecked_mut(pair_idx) = t; }
+                    pair_idx += 1;
+                }
+
+                #square_root_inv;
+                round += 1;
+            }
+
+            if num_rounds == 0 {
+                unsafe { *evals.get_unchecked(0) }
+            } else if num_rounds % 2 == 1 {
+                unsafe { *buf_a.get_unchecked(0) }
+            } else {
+                unsafe { *buf_b.get_unchecked(0) }
+            }
+        }
+        }
+    } else {
+        // ---- coefficient form (default): evals -> multilinear coeffs, then
+        // evaluate with the monomial tensor of the folding challenges ----
+        let quartic_one = MW::quartic_one();
+        // eval_multilinear_with_monomial_tensor: result += c * w
+        let term_mul_weight = MW::mul_assign(quote! { term }, quote! { w });
+        let result_add_term = MW::add_assign(quote! { result }, quote! { term });
+        // precompute_monomial_tensor: w_alpha = w * alpha
+        let walpha_mul_alpha = MW::mul_assign(quote! { w_alpha }, quote! { alpha });
+        quote! {
+        #[inline(always)]
+        pub fn precompute_monomial_tensor<const N: usize>(
+            challenges: &[#quartic_struct],
+            weights: &mut LazyVec<#quartic_struct, N>,
+        ) {
+            let k = challenges.len();
+            let len = 1usize << k;
+            debug_assert!(len <= N);
+            unsafe { weights.set_unchecked(0, #quartic_one); }
+            let mut j = 0;
+            while j < k {
+                let alpha = unsafe { *challenges.get_unchecked(j) };
+                let bit = 1usize << j;
+                let mut i = bit;
+                while i > 0 {
+                    i -= 1;
+                    let w = unsafe { *weights.get_unchecked(i) };
+                    let mut w_alpha = w;
+                    #walpha_mul_alpha;
+                    unsafe { weights.set_unchecked(i + bit, w_alpha); }
+                }
+                j += 1;
+            }
+            unsafe { weights.set_len(len); }
+        }
+
+        #[inline(always)]
+        pub fn eval_multilinear_with_monomial_tensor(
+            coeffs: &[#quartic_struct],
+            weights: &[#quartic_struct],
+        ) -> #quartic_struct {
+            debug_assert_eq!(coeffs.len(), weights.len());
+            debug_assert!(unsafe { *weights.get_unchecked(0) } == #quartic_one);
+            let n = coeffs.len();
+            let mut result = unsafe { *coeffs.get_unchecked(0) };
+            let mut i = 1;
+            while i < n {
+                let mut term = unsafe { *coeffs.get_unchecked(i) };
+                let w = unsafe { *weights.get_unchecked(i) };
+                #term_mul_weight;
+                #result_add_term;
+                i += 1;
+            }
+            result
+        }
         }
     }
 }

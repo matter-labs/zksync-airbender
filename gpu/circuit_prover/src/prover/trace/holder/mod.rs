@@ -1,9 +1,10 @@
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 #[cfg(test)]
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
-use era_cudart::stream::CudaStream;
+use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
 
 use crate::allocator::tracker::AllocationPlacement;
 #[cfg(test)]
@@ -18,14 +19,17 @@ use crate::ops::blake2s::{
 };
 use crate::ops::ntt::{
     bitreversed_monomials_to_natural_evals_multi_coset, hypercube_x1_msb_evals_to_x1_msb_monomials,
-    log_size_supports_transposed_monomials,
+    lde_with_coset_range, log_size_supports_transposed_monomials,
+    transform_whir_leaves_from_ntt_in_place_multi_coset,
 };
 use crate::primitives::context::DeviceAllocation;
 #[cfg(test)]
 use crate::primitives::context::HostAllocation;
-use crate::primitives::device_structures::DeviceMatrixChunk;
 #[cfg(test)]
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::primitives::device_structures::DeviceMatrix;
+use crate::primitives::device_structures::{
+    DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
+};
 use crate::primitives::field::BF;
 use crate::prover::ProverContext;
 
@@ -194,6 +198,18 @@ impl<T> TraceHolder<T> {
         self.cosets_materialized
     }
 
+    /// Release the materialized LDE cosets, returning the holder to its
+    /// pre-`ensure_cosets_materialized` state (`raw_hypercube_evals`, cached
+    /// partial trees, and the unified cap are kept). The cosets are a transient
+    /// expansion needed only while committing / WHIR-opening this trace; once
+    /// those reads have been scheduled the reservation is freed stream-ordered
+    /// (same basis as the other prove-end device releases). A subsequent
+    /// `ensure_cosets_materialized` re-allocates them on demand.
+    pub(crate) fn release_cosets(&mut self) {
+        self.cosets = CosetsHolder::None(std::marker::PhantomData);
+        self.cosets_materialized = false;
+    }
+
     pub(crate) fn mark_cosets_materialized(&mut self) {
         self.cosets_materialized = true;
     }
@@ -220,6 +236,7 @@ impl<T> TraceHolder<T> {
     /// directly into the cosets backing). Asserts `!self.cosets_materialized`;
     /// the caller is responsible for calling `mark_cosets_materialized` once the
     /// fill completes.
+    #[allow(dead_code)]
     pub(crate) fn get_uninit_consolidated_cosets_mut(&mut self) -> &mut DeviceSlice<T> {
         assert!(
             !self.cosets_materialized,
@@ -621,39 +638,41 @@ impl TraceHolder<BF> {
     /// (the WHIR oracle's TraceHolder shape). The natural lde factor and
     /// per-leaf size are passed as arguments — they live outside the TraceHolder
     /// abstraction.
-    pub(crate) fn commit_all_into_from_ntt(
+    pub(crate) fn whir_lde_and_commit_all_into(
         &mut self,
+        inputs_matrix: &DeviceMatrixChunk<BF>,
         dst_u32: &mut DeviceSlice<u32>,
         log_trace_len: u32,
         natural_log_lde_factor: u32,
         log_values_per_leaf: u32,
         src_cols_per_coset: usize,
+        transform_leaves_to_multilinear_coeffs: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert_eq!(
             self.log_lde_factor, 0,
-            "commit_all_into_from_ntt: TraceHolder must be the WHIR-oracle shape (log_lde_factor = 0)"
+            "whir_lde_and_commit_all_into: TraceHolder must be the WHIR-oracle shape (log_lde_factor = 0)"
         );
         assert_eq!(
             self.log_rows_per_leaf, 0,
-            "commit_all_into_from_ntt: TraceHolder must be the WHIR-oracle shape (log_rows_per_leaf = 0)"
+            "whir_lde_and_commit_all_into: TraceHolder must be the WHIR-oracle shape (log_rows_per_leaf = 0)"
         );
         assert!(
-            self.cosets_materialized,
-            "commit_all_into_from_ntt: cosets backing must be materialized first"
+            !self.cosets_materialized,
+            "whir_lde_and_commit_all_into: cosets already materialized"
         );
         let stream = context.get_exec_stream();
         let cap_size = 1usize << self.log_tree_cap_size;
         assert_eq!(
             dst_u32.len(),
             cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS,
-            "commit_all_into_from_ntt dst_u32 length must match cap_size * DIGEST_U32_WORDS",
+            "whir_lde_and_commit_all_into dst_u32 length must match cap_size * DIGEST_U32_WORDS",
         );
 
         // Snapshot the cosets backing as a raw const slice so we can borrow
         // `self.cosets` shared and `self.trees` mutable in the same scope.
-        let evals_ptr = match &self.cosets {
-            CosetsHolder::Full(backing) => backing.as_ptr(),
+        let evals_ptr = match &mut self.cosets {
+            CosetsHolder::Full(backing) => backing.as_mut_ptr(),
             CosetsHolder::None(_) => {
                 panic!("cosets not allocated — call ensure_cosets_materialized first")
             }
@@ -663,8 +682,8 @@ impl TraceHolder<BF> {
         let evals_total_len = lde_factor * trace_len * src_cols_per_coset;
         // SAFETY: cosets backing remains alive for `&self`; evals range is
         // disjoint from the trees backing.
-        let ntt_output: &DeviceSlice<BF> =
-            unsafe { DeviceSlice::from_raw_parts(evals_ptr, evals_total_len) };
+        let ntt_output: &mut DeviceSlice<BF> =
+            unsafe { DeviceSlice::from_raw_parts_mut(evals_ptr, evals_total_len) };
 
         let total_leaf_count_log2 = (log_trace_len - log_values_per_leaf) + natural_log_lde_factor;
         let total_leaf_count = 1usize << total_leaf_count_log2;
@@ -677,6 +696,7 @@ impl TraceHolder<BF> {
         match &mut self.trees {
             TreesHolder::Full(backing) => {
                 commit_trace_from_ntt_single_tree(
+                    inputs_matrix,
                     ntt_output,
                     backing,
                     log_trace_len,
@@ -684,8 +704,8 @@ impl TraceHolder<BF> {
                     log_values_per_leaf,
                     self.log_tree_cap_size,
                     src_cols_per_coset,
-                    /*coset_index_base=*/ 0,
-                    stream,
+                    transform_leaves_to_multilinear_coeffs,
+                    context,
                 )?;
             }
             TreesHolder::Partial(backing) => {
@@ -703,6 +723,7 @@ impl TraceHolder<BF> {
                 // = PARTIAL_TREE_REDUCTION_LAYERS.
                 let top_log_cap = total_leaf_count_log2 + 1 - PARTIAL_TREE_REDUCTION_LAYERS;
                 commit_trace_from_ntt_single_tree(
+                    inputs_matrix,
                     ntt_output,
                     &mut tree_top[..],
                     log_trace_len,
@@ -710,8 +731,8 @@ impl TraceHolder<BF> {
                     log_values_per_leaf,
                     top_log_cap,
                     src_cols_per_coset,
-                    /*coset_index_base=*/ 0,
-                    stream,
+                    transform_leaves_to_multilinear_coeffs,
+                    context,
                 )?;
                 // Bottom: read the "top layer" digests out of `tree_top` and
                 // continue the merkle tree into `backing` for the remaining
@@ -732,7 +753,7 @@ impl TraceHolder<BF> {
                 transient_tree_tops = None; // partial path doesn't reuse via gather
             }
             TreesHolder::None => {
-                panic!("commit_all_into_from_ntt: TreesCacheMode::CacheNone is not supported; use CachePartial or CacheFull");
+                panic!("whir_lde_and_commit_all_into: TreesCacheMode::CacheNone is not supported; use CachePartial or CacheFull");
             }
         }
 
@@ -788,16 +809,18 @@ impl TraceHolder<BF> {
         Ok(())
     }
 
-    /// Wrapper around `commit_all_into_from_ntt` that allocates a private
+    /// Wrapper around `whir_lde_and_commit_all_into` that allocates a private
     /// `unified_device_cap` (mirrors `commit_all`'s relationship to
     /// `commit_all_into`). Used by `#[cfg(test)]` callers that don't have a slab
     /// destination handy.
-    pub(crate) fn commit_all_from_ntt(
+    pub(crate) fn whir_lde_and_commit_all(
         &mut self,
+        inputs_matrix: &DeviceMatrixChunk<BF>,
         log_trace_len: u32,
         natural_log_lde_factor: u32,
         log_values_per_leaf: u32,
         src_cols_per_coset: usize,
+        transform_leaves_to_multilinear_coeffs: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let cap_size = 1usize << self.log_tree_cap_size;
@@ -813,12 +836,14 @@ impl TraceHolder<BF> {
         let dst_ptr = unified_cap_mut.as_mut_ptr() as *mut u32;
         let dst_len = cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS;
         let dst_u32 = unsafe { DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len) };
-        self.commit_all_into_from_ntt(
+        self.whir_lde_and_commit_all_into(
+            inputs_matrix,
             dst_u32,
             log_trace_len,
             natural_log_lde_factor,
             log_values_per_leaf,
             src_cols_per_coset,
+            transform_leaves_to_multilinear_coeffs,
             context,
         )
     }
@@ -1267,45 +1292,185 @@ pub(crate) fn commit_trace_multi_coset(
 /// (typically `whir_steps_lde_factors[i].trailing_zeros()`), NOT the
 /// `TraceHolder`'s `log_lde_factor`.
 pub(crate) fn commit_trace_from_ntt_single_tree(
-    ntt_output: &DeviceSlice<BF>,
+    inputs_matrix: &DeviceMatrixChunk<BF>,
+    ntt_output: &mut DeviceSlice<BF>,
     trees_backing: &mut DeviceSlice<Digest>,
     log_trace_len: u32,
     natural_log_lde_factor: u32,
     log_values_per_leaf: u32,
     log_tree_cap_size: u32,
     src_cols_per_coset: usize,
-    coset_index_base: u32,
-    stream: &CudaStream,
+    transform_leaves_to_multilinear_coeffs: bool,
+    context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(natural_log_lde_factor >= 1);
     assert!(log_trace_len >= log_values_per_leaf);
+    let trace_len = 1 << log_trace_len;
     let packed_leaf_count = 1usize << (log_trace_len - log_values_per_leaf);
-    let cosets_in_tile = 1usize << natural_log_lde_factor;
     let total_leaf_count = packed_leaf_count
-        .checked_mul(cosets_in_tile)
+        .checked_mul(1 << natural_log_lde_factor)
         .expect("total_leaf_count overflow");
     assert_eq!(trees_backing.len(), total_leaf_count << 1);
     let total_leaf_count_log2 = (log_trace_len - log_values_per_leaf) + natural_log_lde_factor;
     assert!(log_tree_cap_size <= total_leaf_count_log2);
     let layers_count = total_leaf_count_log2 + 1 - log_tree_cap_size;
     let (leaves, nodes) = trees_backing.split_at_mut(total_leaf_count);
-    crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
-        ntt_output,
-        leaves,
-        log_values_per_leaf,
-        src_cols_per_coset as u32,
-        natural_log_lde_factor,
-        coset_index_base,
-        cosets_in_tile,
-        packed_leaf_count,
-        1u32 << log_trace_len,
-        stream,
-    )?;
+
+    let device_properties = context.get_device_properties();
+    let ntt_ctx = context.ntt_device_context();
+    // Recursive WHIR folds to a small trace (trace_len_log2 <= 13), the DIT
+    // forward-NTT range, which needs a pooled d-table scratch (len >= N).
+    // Allocate from the stream-ordered pool so this stays enqueue-only per
+    // the GPU scheduling contract; the handle outlives the launches below.
+    // Outside the DIT range the compact path ignores the scratch, so the
+    // allocation is skipped entirely.
+    let mut d_scratch = if log_trace_len <= 13 {
+        Some(context.alloc::<BF>(trace_len, AllocationPlacement::BestFit)?)
+    } else {
+        None
+    };
+
+    let total_cosets = 1 << natural_log_lde_factor;
+    // Default: no L2 chunking
+    let mut cosets_in_tile_chunk = total_cosets;
+    let mut num_streams = 1;
+    // Deactivate chunking for log_trace_len < 14 because it doesn't play well
+    // with the small dit kernels.
+    // TODO: extend chunk-friendly kernels to smaller sizes
+    let l2_bytes = device_properties.l2_cache_size_bytes;
+    let single_bf_col_bytes = std::mem::size_of::<BF>() << log_trace_len;
+    let single_coset_bytes = src_cols_per_coset * single_bf_col_bytes;
+    if log_trace_len >= 14 {
+        let half_l2_bytes = l2_bytes >> 1;
+        if single_coset_bytes > half_l2_bytes {
+            cosets_in_tile_chunk = 1;
+        } else {
+            let nearest = half_l2_bytes / single_coset_bytes;
+            if nearest.is_power_of_two() {
+                cosets_in_tile_chunk = nearest;
+                num_streams = 2;
+            } else {
+                cosets_in_tile_chunk = nearest.next_power_of_two() >> 1;
+                num_streams = 2;
+            }
+        }
+    }
+
+    if total_cosets > cosets_in_tile_chunk {
+        assert_eq!(total_cosets % cosets_in_tile_chunk, 0);
+    }
+
+    let mut ntt_output_matrix = DeviceMatrixMut::new(ntt_output, trace_len);
+
+    let (start_event, end_event) = if num_streams > 1 {
+        (
+            Some(CudaEvent::create_with_flags(
+                CudaEventCreateFlags::DISABLE_TIMING,
+            )?),
+            Some(CudaEvent::create_with_flags(
+                CudaEventCreateFlags::DISABLE_TIMING,
+            )?),
+        )
+    } else {
+        (None, None)
+    };
+
+    let mut occupancy_hint_numerator = 1;
+    let mut occupancy_hint_denominator = 1;
+    let exec_stream = context.get_exec_stream();
+    let side_stream = context.get_side_stream();
+    let streams = [exec_stream, side_stream];
+    if num_streams > 1 {
+        occupancy_hint_numerator = 5;
+        occupancy_hint_denominator = 8;
+        start_event.as_ref().unwrap().record(exec_stream)?;
+        side_stream.wait_event(
+            start_event.as_ref().unwrap(),
+            CudaStreamWaitEventFlags::DEFAULT,
+        )?;
+    }
+
+    for coset_index_base in (0..total_cosets).step_by(num_streams * cosets_in_tile_chunk) {
+        let mut helpers_per_stream = Vec::with_capacity(2);
+        for i in 0..num_streams {
+            let coset_index_base_this_stream = coset_index_base + i * cosets_in_tile_chunk;
+            if coset_index_base_this_stream < total_cosets {
+                let cosets_in_tile = std::cmp::min(
+                    cosets_in_tile_chunk,
+                    total_cosets - coset_index_base_this_stream,
+                );
+                let offset = src_cols_per_coset * trace_len * coset_index_base_this_stream;
+                helpers_per_stream.push((coset_index_base_this_stream, cosets_in_tile, offset));
+            }
+        }
+        // If we're using two streams, dispatch with breadth-first ping pong pattern
+        for (i, &(coset_index_base_this_stream, cosets_in_tile, offset)) in
+            helpers_per_stream.iter().enumerate()
+        {
+            let scratch_opt = d_scratch.as_mut().map(|s| &mut s[..]);
+            lde_with_coset_range(
+                inputs_matrix,
+                &mut (ntt_output_matrix.slice_mut())[offset..],
+                log_trace_len as usize,
+                natural_log_lde_factor as usize,
+                cosets_in_tile,
+                coset_index_base_this_stream,
+                src_cols_per_coset,
+                occupancy_hint_numerator,
+                occupancy_hint_denominator,
+                ntt_ctx,
+                scratch_opt,
+                streams[i],
+                device_properties,
+            )?;
+        }
+        if transform_leaves_to_multilinear_coeffs {
+            for (i, &(coset_index_base_this_stream, cosets_in_tile, _offset)) in
+                helpers_per_stream.iter().enumerate()
+            {
+                transform_whir_leaves_from_ntt_in_place_multi_coset(
+                    &mut ntt_output_matrix,
+                    log_trace_len,
+                    natural_log_lde_factor,
+                    log_values_per_leaf,
+                    coset_index_base_this_stream as u32,
+                    cosets_in_tile as u32,
+                    src_cols_per_coset as u32,
+                    streams[i],
+                )?;
+            }
+        }
+        for (i, &(coset_index_base_this_stream, cosets_in_tile, offset)) in
+            helpers_per_stream.iter().enumerate()
+        {
+            crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
+                &(ntt_output_matrix.slice())[offset..],
+                leaves,
+                log_values_per_leaf,
+                src_cols_per_coset as u32,
+                natural_log_lde_factor,
+                coset_index_base_this_stream as u32,
+                cosets_in_tile,
+                packed_leaf_count,
+                trace_len as u32,
+                streams[i],
+            )?;
+        }
+    }
+
+    if num_streams > 1 {
+        end_event.as_ref().unwrap().record(side_stream)?;
+        exec_stream.wait_event(
+            end_event.as_ref().unwrap(),
+            CudaStreamWaitEventFlags::DEFAULT,
+        )?;
+    }
+
     // Single-tree node layers: build_merkle_tree_nodes operates on a flat
     // `[leaves | nodes]` slab. `layers_count - 1` because the leaf layer is
     // already written; the function builds the remaining `layers_count - 1`
     // node layers.
-    crate::ops::blake2s::build_merkle_tree_nodes(leaves, nodes, layers_count - 1, stream)
+    crate::ops::blake2s::build_merkle_tree_nodes(leaves, nodes, layers_count - 1, exec_stream)
 }
 
 /// Multi-coset variant of `commit_trace_with_partial_tree`: takes one big

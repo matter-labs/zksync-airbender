@@ -491,13 +491,12 @@ mod test {
             "shift_binop",
             "mem_word_only",
             "mem_subword_only",
-            // "mul_div_preprocessed",
             "unsigned_mul_div",
-            // "reduced_machine_preprocessed",
             "blake2_with_extended_control",
             "bigint_with_extended_control",
             "keccak_special5",
             "blake2_g_function",
+            "unified_reduced_machine",
         ] {
             // let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
             //     &format!("../cs/compiled_circuits/{}_layout_no_caches_gkr.json", prefix),

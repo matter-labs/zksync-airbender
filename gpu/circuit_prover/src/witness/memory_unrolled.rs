@@ -2,13 +2,15 @@ use crate::ops::simple::set_to_zero;
 use crate::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use crate::primitives::field::BF;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::witness::circuit_type::{UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType};
+use crate::witness::circuit_type::{
+    UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
+};
 use crate::witness::option::u32::Option;
 use crate::witness::ram_access::{RamAuxComparisonSet, RamQuery};
 use crate::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceRaw,
     UnrolledMemoryOracle, UnrolledMemoryTraceDevice, UnrolledNonMemoryOracle,
-    UnrolledNonMemoryTraceDevice,
+    UnrolledNonMemoryTraceDevice, UnrolledUnifiedOracle, UnrolledUnifiedTraceDevice,
 };
 use crate::witness::Address;
 
@@ -303,42 +305,6 @@ impl<
     }
 }
 
-// pub const SHUFFLE_RAM_INIT_AND_TEARDOWN_LAYOUT_WIDTH: usize =
-//     REGISTER_SIZE * 2 + NUM_TIMESTAMP_COLUMNS_FOR_RAM;
-//
-// #[repr(C)]
-// #[derive(Clone, Copy, Default, Debug)]
-// pub struct ShuffleRamInitAndTeardownLayout {
-//     pub lazy_init_addresses_columns: [u32; REGISTER_SIZE],
-//     pub lazy_teardown_values_columns: [u32; REGISTER_SIZE],
-//     pub lazy_teardown_timestamps_columns: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-// }
-//
-// pub const MAX_INITS_AND_TEARDOWNS_SETS_COUNT: usize = 16;
-//
-// #[repr(C)]
-// #[derive(Clone, Copy, Default, Debug)]
-// pub struct ShuffleRamInitAndTeardownLayouts {
-//     pub count: u32,
-//     pub layouts: [ShuffleRamInitAndTeardownLayout; MAX_INITS_AND_TEARDOWNS_SETS_COUNT],
-// }
-//
-// impl<T: Deref<Target = [cs::definitions::ShuffleRamInitAndTeardownLayout]>> From<&T>
-//     for ShuffleRamInitAndTeardownLayouts
-// {
-//     fn from(value: &T) -> Self {
-//         let len = value.len();
-//         assert!(len <= MAX_INITS_AND_TEARDOWNS_SETS_COUNT);
-//         let count = len as u32;
-//         let mut layouts =
-//             [ShuffleRamInitAndTeardownLayout::default(); MAX_INITS_AND_TEARDOWNS_SETS_COUNT];
-//         for (&src, dst) in value.iter().zip(layouts.iter_mut()) {
-//             *dst = src.into();
-//         }
-//         Self { count, layouts }
-//     }
-// }
-
 cuda_kernel!(GenerateMemoryValuesUnrolledMemory,
     ab_generate_memory_values_unrolled_memory_kernel(
         layout: UnrolledMemoryLayout,
@@ -357,24 +323,14 @@ cuda_kernel!(GenerateMemoryValuesUnrolledNonMemory,
     )
 );
 
-// cuda_kernel!(GenerateMemoryValuesUnrolledInitsAndTeardowns,
-//     ab_generate_memory_values_unrolled_inits_and_teardowns_kernel(
-//         init_and_teardown_layouts: ShuffleRamInitAndTeardownLayouts,
-//         inits_and_teardowns: ShuffleRamInitsAndTeardownsRaw,
-//         memory: MutPtrAndStride<BF>,
-//         count: u32,
-//     )
-// );
-//
-// cuda_kernel!(GenerateMemoryValuesUnrolledUnified,
-//     ab_generate_memory_values_unrolled_unified_kernel(
-//         subtree: UnrolledFamilyMemorySubtree,
-//         inits_and_teardowns: ShuffleRamInitsAndTeardownsRaw,
-//         oracle: UnrolledUnifiedOracle,
-//         memory: MutPtrAndStride<BF>,
-//         count: u32,
-//     )
-// );
+cuda_kernel!(GenerateMemoryValuesUnrolledUnified,
+    ab_generate_memory_values_unrolled_unified_kernel(
+        layout: UnrolledMemoryLayout,
+        oracle: UnrolledUnifiedOracle,
+        memory: MutPtrAndStride<BF>,
+        count: u32,
+    )
+);
 
 cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledMemory,
     ab_generate_memory_and_witness_values_unrolled_memory_kernel(
@@ -409,21 +365,18 @@ cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardowns,
         pages_per_set_log2: u32,
     )
 );
-//
-// cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledUnified,
-//     ab_generate_memory_and_witness_values_unrolled_unified_kernel(
-//         subtree: UnrolledFamilyMemorySubtree,
-//         aux_comparison_sets: ShuffleRamAuxComparisonSets,
-//         executor_family_circuit_next_timestamp_aux_var: Option<ColumnAddress>,
-//         memory_queries_timestamp_comparison_aux_vars: MemoryQueriesTimestampComparisonAuxVars,
-//         inits_and_teardowns: ShuffleRamInitsAndTeardownsRaw,
-//         oracle: UnrolledUnifiedOracle,
-//         memory: MutPtrAndStride<BF>,
-//         witness: MutPtrAndStride<BF>,
-//         decoder_lookup_mapping: *mut u32,
-//         count: u32,
-//     )
-// );
+
+cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledUnified,
+    ab_generate_memory_and_witness_values_unrolled_unified_kernel(
+        layout: UnrolledMemoryLayout,
+        aux_layout_data: AuxLayoutData,
+        oracle: UnrolledUnifiedOracle,
+        memory: MutPtrAndStride<BF>,
+        witness: MutPtrAndStride<BF>,
+        decoder_lookup_mapping: *mut u32,
+        count: u32,
+    )
+);
 
 pub(crate) fn generate_memory_values_unrolled_memory(
     circuit_type: UnrolledMemoryCircuitType,
@@ -476,66 +429,29 @@ pub(crate) fn generate_memory_values_unrolled_non_memory(
     GenerateMemoryValuesUnrolledNonMemoryFunction::default().launch(&config, &args)
 }
 
-// pub(crate) fn generate_memory_values_unrolled_inits_and_teardowns(
-//     subtree: &MemorySubtree,
-//     inits_and_teardowns: &ShuffleRamInitsAndTeardownsDevice,
-//     memory: &mut impl DeviceMatrixMutImpl<BF>,
-//     stream: &CudaStream,
-// ) -> CudaResult<()> {
-//     let count = memory.stride() - 1;
-//     let cols = memory.cols();
-//     assert_eq!(cols, subtree.total_width);
-//     assert!(cols.is_multiple_of(SHUFFLE_RAM_INIT_AND_TEARDOWN_LAYOUT_WIDTH));
-//     assert!(count <= u32::MAX as usize);
-//     let count = count as u32;
-//     let layouts = (&subtree.shuffle_ram_inits_and_teardowns).into();
-//     let inits_and_teardowns = inits_and_teardowns.into();
-//     let memory = memory.as_mut_ptr_and_stride();
-//     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
-//     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-//     let args = GenerateMemoryValuesUnrolledInitsAndTeardownsArguments::new(
-//         layouts,
-//         inits_and_teardowns,
-//         memory,
-//         count,
-//     );
-//     GenerateMemoryValuesUnrolledInitsAndTeardownsFunction::default().launch(&config, &args)
-// }
-//
-// pub(crate) fn generate_memory_values_unrolled_unified(
-//     subtree: &MemorySubtree,
-//     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
-//     inits_and_teardowns: &std::option::Option<ShuffleRamInitsAndTeardownsDevice>,
-//     trace: &UnrolledUnifiedTraceDevice,
-//     memory: &mut impl DeviceMatrixMutImpl<BF>,
-//     stream: &CudaStream,
-// ) -> CudaResult<()> {
-//     let count = UnrolledCircuitType::Unified.get_num_cycles();
-//     assert_eq!(memory.stride(), count + 1);
-//     assert_eq!(memory.cols(), subtree.total_width);
-//     assert!(count <= u32::MAX as usize);
-//     let count = count as u32;
-//     let subtree = subtree.into();
-//     let inits_and_teardowns = inits_and_teardowns
-//         .as_ref()
-//         .map(<&ShuffleRamInitsAndTeardownsDevice>::into)
-//         .unwrap_or_default();
-//     let oracle = UnrolledUnifiedOracle {
-//         trace: trace.into(),
-//         decoder_table: decoder_table.as_ptr(),
-//     };
-//     let memory = memory.as_mut_ptr_and_stride();
-//     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
-//     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-//     let args = GenerateMemoryValuesUnrolledUnifiedArguments::new(
-//         subtree,
-//         inits_and_teardowns,
-//         oracle,
-//         memory,
-//         count,
-//     );
-//     GenerateMemoryValuesUnrolledUnifiedFunction::default().launch(&config, &args)
-// }
+pub(crate) fn generate_memory_values_unrolled_unified(
+    memory_layout: &GKRMemoryLayout,
+    decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
+    trace: &UnrolledUnifiedTraceDevice,
+    memory: &mut impl DeviceMatrixMutImpl<BF>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = UnrolledCircuitType::Unified.get_domain_size();
+    assert_eq!(memory.stride(), count);
+    assert_eq!(memory.cols(), memory_layout.total_width);
+    assert!(count <= u32::MAX as usize);
+    let count = count as u32;
+    let layout = memory_layout.into();
+    let oracle = UnrolledUnifiedOracle {
+        trace: trace.into(),
+        decoder_table: decoder_table.as_ptr(),
+    };
+    let memory = memory.as_mut_ptr_and_stride();
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GenerateMemoryValuesUnrolledUnifiedArguments::new(layout, oracle, memory, count);
+    GenerateMemoryValuesUnrolledUnifiedFunction::default().launch(&config, &args)
+}
 
 pub(crate) fn generate_memory_and_witness_values_unrolled_memory(
     circuit_type: UnrolledMemoryCircuitType,
@@ -655,57 +571,49 @@ pub(crate) fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
     GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsFunction::default()
         .launch(&config, &args)
 }
-//
-// pub(crate) fn generate_memory_and_witness_values_unrolled_unified(
-//     subtree: &MemorySubtree,
-//     aux_comparison_sets: &[cs::definitions::ShuffleRamAuxComparisonSet],
-//     executor_family_circuit_next_timestamp_aux_var: std::option::Option<
-//         cs::definitions::ColumnAddress,
-//     >,
-//     memory_queries_timestamp_comparison_aux_vars: &[cs::definitions::ColumnAddress],
-//     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
-//     inits_and_teardowns: &std::option::Option<ShuffleRamInitsAndTeardownsDevice>,
-//     trace: &UnrolledUnifiedTraceDevice,
-//     memory: &mut impl DeviceMatrixMutImpl<BF>,
-//     witness: &mut impl DeviceMatrixMutImpl<BF>,
-//     decoder_lookup_mapping: &mut DeviceSlice<u32>,
-//     stream: &CudaStream,
-// ) -> CudaResult<()> {
-//     let count = UnrolledCircuitType::Unified.get_num_cycles();
-//     assert_eq!(memory.stride(), count + 1);
-//     assert_eq!(memory.cols(), subtree.total_width);
-//     assert!(count <= u32::MAX as usize);
-//     let count = count as u32;
-//     let subtree = subtree.into();
-//     let aux_comparison_sets = (&aux_comparison_sets).into();
-//     let executor_family_circuit_next_timestamp_aux_var =
-//         executor_family_circuit_next_timestamp_aux_var.into();
-//     let memory_queries_timestamp_comparison_aux_vars =
-//         (&memory_queries_timestamp_comparison_aux_vars).into();
-//     let inits_and_teardowns = inits_and_teardowns
-//         .as_ref()
-//         .map(<&ShuffleRamInitsAndTeardownsDevice>::into)
-//         .unwrap_or_default();
-//     let oracle = UnrolledUnifiedOracle {
-//         trace: trace.into(),
-//         decoder_table: decoder_table.as_ptr(),
-//     };
-//     let memory = memory.as_mut_ptr_and_stride();
-//     let witness = witness.as_mut_ptr_and_stride();
-//     let decoder_lookup_mapping = decoder_lookup_mapping.as_mut_ptr();
-//     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
-//     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-//     let args = GenerateMemoryAndWitnessValuesUnrolledUnifiedArguments::new(
-//         subtree,
-//         aux_comparison_sets,
-//         executor_family_circuit_next_timestamp_aux_var,
-//         memory_queries_timestamp_comparison_aux_vars,
-//         inits_and_teardowns,
-//         oracle,
-//         memory,
-//         witness,
-//         decoder_lookup_mapping,
-//         count,
-//     );
-//     GenerateMemoryAndWitnessValuesUnrolledUnifiedFunction::default().launch(&config, &args)
-// }
+
+/// NOTE (unified two-launch composition): this launcher writes only the per-row
+/// machine_state + shuffle_ram columns and does NOT zero the matrix. The unified
+/// inits/teardowns columns are produced by a SEPARATE page launch
+/// (`generate_memory_and_witness_values_unrolled_inits_and_teardowns`), which
+/// `set_to_zero`s the ENTIRE memory matrix before its sparse writes. The i/t page
+/// launch MUST therefore run BEFORE this per-row launch, or it will wipe the
+/// machine/shuffle columns this kernel produced.
+pub(crate) fn generate_memory_and_witness_values_unrolled_unified(
+    layout: &GKRMemoryLayout,
+    aux_layout_data: &GKRAuxLayoutData,
+    decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
+    decoder_lookup_offset: u32,
+    trace: &UnrolledUnifiedTraceDevice,
+    memory: &mut impl DeviceMatrixMutImpl<BF>,
+    witness: &mut impl DeviceMatrixMutImpl<BF>,
+    decoder_lookup_mapping: &mut DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = UnrolledCircuitType::Unified.get_domain_size();
+    assert_eq!(memory.stride(), count);
+    assert_eq!(memory.cols(), layout.total_width);
+    assert!(count <= u32::MAX as usize);
+    let count = count as u32;
+    let layout = UnrolledMemoryLayout::from_parts(layout, decoder_lookup_offset);
+    let aux_layout_data = aux_layout_data.into();
+    let oracle = UnrolledUnifiedOracle {
+        trace: trace.into(),
+        decoder_table: decoder_table.as_ptr(),
+    };
+    let memory = memory.as_mut_ptr_and_stride();
+    let witness = witness.as_mut_ptr_and_stride();
+    let decoder_lookup_mapping = decoder_lookup_mapping.as_mut_ptr();
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GenerateMemoryAndWitnessValuesUnrolledUnifiedArguments::new(
+        layout,
+        aux_layout_data,
+        oracle,
+        memory,
+        witness,
+        decoder_lookup_mapping,
+        count,
+    );
+    GenerateMemoryAndWitnessValuesUnrolledUnifiedFunction::default().launch(&config, &args)
+}

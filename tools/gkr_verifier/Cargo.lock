@@ -38,10 +38,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "full_statement_verifier"
+version = "0.1.0"
+dependencies = [
+ "common_constants",
+ "serde",
+ "verifier_common",
+]
+
+[[package]]
 name = "gkr_verifier"
 version = "0.1.0"
 dependencies = [
  "field",
+ "full_statement_verifier",
  "non_determinism_source",
  "riscv_common",
  "verifier_common",

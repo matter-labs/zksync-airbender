@@ -1,10 +1,9 @@
 use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::UnsafeMutAccessor;
-use crate::primitives::device_structures::DeviceMatrixMut;
+use crate::primitives::device_structures::{DeviceMatrixMut, DeviceMatrixMutImpl};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
-use crate::prover::config::assert_gpu_supported_pow_config;
 use crate::prover::trace::holder::{bitreverse_index, TraceHolder, TreesCacheMode};
 use crate::prover::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
@@ -15,6 +14,7 @@ use crate::witness::memory_delegation::generate_memory_values_delegation;
 use crate::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_inits_and_teardowns,
     generate_memory_values_unrolled_memory, generate_memory_values_unrolled_non_memory,
+    generate_memory_values_unrolled_unified,
 };
 use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, PAGE_SIZE_LOG2};
 
@@ -67,7 +67,6 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
     inputs_keepalive: Option<super::memory_transfer::GpuGKRCommitMemoryTransferKeepalive<'a, A>>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a, A>> {
-    assert_gpu_supported_pow_config(prover_config);
     assert_eq!(
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.whir_schedule.whir_steps_schedule[0]
@@ -181,9 +180,41 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
         }
         (
             CircuitType::Unrolled(UnrolledCircuitType::Unified),
-            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(_))),
+            Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
         ) => {
-            unimplemented!("unified memory commitment is not implemented yet")
+            // Inline i/t paged sweep FIRST (page-based-reuse, per Global Constraints): it zeroes the
+            // whole matrix (set_to_zero) then writes the teardown columns; the per-row unified
+            // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone i/t
+            // commit-memory arm at trace/memory.rs:169-180 (inits_and_teardowns + log_domain_size +
+            // PAGE_SIZE_LOG2 + the i/t launcher are already in scope/imported there).
+            //
+            // `None` = a TRIVIAL (dummy) unified init/teardown chunk: the CPU reference
+            // (prover_examples::unified) commits all-zero i&t columns for the leading
+            // `num_dummy_inits_and_teardowns` circuits. The i/t launcher only zeroes the whole
+            // matrix and writes teardown timestamp/value columns at page-covered rows, so the
+            // all-zero case is exactly "zero the matrix and skip the teardown-column writes".
+            match inits_and_teardowns.as_ref() {
+                Some(inits_and_teardowns) => {
+                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                        &compiled_circuit.memory_layout,
+                        log_domain_size,
+                        PAGE_SIZE_LOG2,
+                        inits_and_teardowns,
+                        memory,
+                        stream,
+                    )?;
+                }
+                None => {
+                    crate::ops::simple::set_to_zero(memory.slice_mut(), stream)?;
+                }
+            }
+            generate_memory_values_unrolled_unified(
+                &compiled_circuit.memory_layout,
+                decoder_table.expect("unified circuit requires a decoder table"),
+                trace,
+                memory,
+                stream,
+            )?;
         }
         _ => unimplemented!(
             "commit_memory received an unsupported witness shape for circuit {circuit_type:?}"

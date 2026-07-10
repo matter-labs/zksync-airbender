@@ -1,12 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use era_cudart::event::CudaEvent;
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation};
+use crate::primitives::context::HostAllocation;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
@@ -42,20 +41,14 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     pub(super) _backward: GpuGKRBackwardScheduledExecution<BF, E4>,
     pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     pub(super) _whir: GpuWhirFoldScheduledExecution,
-    /// Device-resident WHIR base batching-challenge buffer drawn from the
-    /// rolling backward seed before WHIR fold. Kept alive on the proof-job
-    /// keepalive so any scheduled kernel still reading from it remains valid
-    /// until `finish()` syncs the exec stream.
-    #[allow(dead_code)]
-    pub(super) _whir_batching_challenge_device: DeviceAllocation<E4>,
     /// Pinned host mirror of the device-resident proof slab (Phase 4). Populated
-    /// by the terminal D2H; read by the single assembly callback.
+    /// by the terminal D2H; read by the single assembly callback. This is the
+    /// only buffer (host, pinned) the keepalive still owns past prove-end — the
+    /// device reservations (proof slab, WHIR caps/ephemerals, batching
+    /// challenge, backward handoff buffers) are released stream-ordered at the
+    /// end of `prove()`.
     #[allow(dead_code)]
     pub(super) _proof_host_mirror: Option<HostAllocation<[u8]>>,
-    /// Proof slab itself — held here so it outlives all scheduled writes and
-    /// the terminal D2H.
-    #[allow(dead_code)]
-    pub(super) _proof_slab: Arc<DeviceAllocation<E4>>,
 }
 
 pub struct GpuGKRProofJob<'a, A: GoodAllocator> {
@@ -117,6 +110,15 @@ pub(crate) fn top_layer_claim_layout(
         addresses.insert(output.output[0]);
         addresses.insert(output.output[1]);
     }
+    // Unified circuit (PR #305): the inline inits/teardowns grand product adds a
+    // second top-layer product channel. Mirror the CPU top_layer_claims insert
+    // at prover/src/gkr/prover/mod.rs:556-559 (claim_initset @ output[0],
+    // claim_teardownset @ output[1]) so every output_layer_for_sumcheck entry
+    // has a claim address and the backward claim_idx lookup never panics.
+    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::InitsAndTeardownsProduct) {
+        addresses.insert(output.output[0]);
+        addresses.insert(output.output[1]);
+    }
     ClaimBufferLayout::from_addresses(addresses.into_iter().collect())
 }
 
@@ -140,6 +142,28 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
             .inverse()
             .expect("read-set accumulator must not be zero"),
     );
+
+    // Unified circuit (PR #305): fold the inline inits/teardowns product into the
+    // accumulator so the caller's `initial_contribution * accumulator == ONE`
+    // closure holds as a single check. Exact mirror of the CPU prover at
+    // prover/src/gkr/prover/mod.rs:813-823 — it_evals[0] = init_set,
+    // it_evals[1] = teardown_set, contribution = teardown * init.inverse().
+    if let Some(it_evals) = final_explicit_evaluations.get(&OutputType::InitsAndTeardownsProduct) {
+        let [init_set_computed, teardown_set_computed] = it_evals.clone().map(|els| {
+            let mut result = E4::ONE;
+            for el in els.iter() {
+                result.mul_assign(el);
+            }
+            result
+        });
+        let mut it_contribution = teardown_set_computed;
+        it_contribution.mul_assign(
+            &init_set_computed
+                .inverse()
+                .expect("init-set accumulator must not be zero"),
+        );
+        grand_product_accumulator_computed.mul_assign(&it_contribution);
+    }
 
     grand_product_accumulator_computed
 }

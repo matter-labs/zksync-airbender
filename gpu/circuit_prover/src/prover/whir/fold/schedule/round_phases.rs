@@ -45,6 +45,10 @@ pub(super) fn schedule_commit_next_oracle_phase(
         lde_factor,
         1 << next_folding_steps,
         tree_cap_size,
+        // transform_leaves_to_multilinear_coeffs: coeff form by default (CPU #279
+        // commits recursive WHIR oracles in coeff form); the `eval_leaves` feature
+        // selects eval form to mirror the CPU prover's recursive-oracle encoding.
+        !cfg!(feature = "eval_leaves"),
         &mut cap_dst_u32,
         context,
     )?;

@@ -1,4 +1,4 @@
-// Ported from ntt-experiments include/ntt/kernels.cuh (rr/v8-logn13-two-pass-ntt).
+// Ported from ntt-experiments include/ntt/kernels.cuh.
 // Unified NTT kernels: ntt_single (one engine call, no smem hop) + ntt_two_pass.
 #pragma once
 #include "dit_memory.cuh" // StoreMode, load_vec_vpt, store_vec_vpt,

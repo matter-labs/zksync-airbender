@@ -9,6 +9,7 @@ target_sources(circuit_prover_native PRIVATE
         load_store_word_only.cu
         mul_div_unsigned.cu
         shift_binary_csr.cu
+        unified_reduced_machine.cu
         template_delegation.cuh
         template_unrolled.cuh
 )
