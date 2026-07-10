@@ -283,7 +283,16 @@ fn fwd_vm_interp_ncu_target() {
     let challenge = |r: &_| super::resolvers::challenge_value(&fixture, r);
     let mut setup = lower_layer_desc(cl, &header, &resolve, &challenge, None).unwrap();
     upload_const_challenges(&const_challenge_values(&fixture, cl), context).unwrap();
-    setup.desc.count = fixture.trace_len.min(TIMING_COUNT_CAP) as u32;
+    // Env-gated full-domain override for docs-compliant ncu captures: profile
+    // the circuit's REAL trace_len (the fixture already allocates full-trace
+    // storage). Default keeps the A/B timing cap for cross-history parity.
+    let count = if std::env::var("FWDVM_NCU_FULL_TRACE").is_ok() {
+        fixture.trace_len
+    } else {
+        fixture.trace_len.min(TIMING_COUNT_CAP)
+    };
+    println!("ncu target: count = {count} (trace_len = {})", fixture.trace_len);
+    setup.desc.count = count as u32;
     launch_fwd_vm_s4(&setup, cl.budget as u32, context).unwrap();
     context.get_exec_stream().synchronize().unwrap();
     println!("ncu target: v2 fwd-VM release launch complete");
