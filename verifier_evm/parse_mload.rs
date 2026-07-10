@@ -13,7 +13,6 @@ use cs::{
 };
 // use cs::gkr_compiler::NoFieldStructuredExpression;
 use field::baby_bear::base::BabyBearField;
-use field::PrimeField;
 
 trait EachRefRev<T, const N: usize> {
     fn each_ref_rev(&self) -> [&T; N];
@@ -134,7 +133,7 @@ impl Yul {
         idx.parse().unwrap()
     }
     fn mstore(idx: &usize) -> Self {
-        yul_format!("mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, {idx})), mod(gate, P))") // mod to prevent overflows with pointcheck const-cache multiplications
+        yul_format!("mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, {idx})), mod(gate, P()))") // mod to prevent overflows with pointcheck const-cache multiplications
     }
     fn logup_gamma() -> Self {
         yul_format!("mload(add(LOGUP_CHALLS_PTR(), 32))")
@@ -175,7 +174,7 @@ fn const_to_evm(c: &u32) -> Dual {
     // first check if negative
     let (sign, modc, yul) = if *c > BabyBearField::ORDER / 2 {
         let modc = BabyBearField::ORDER - c;
-        ("-", modc, yul_format!("sub(P, {modc})"))
+        ("-", modc, yul_format!("sub(P(), {modc})"))
     } else { 
         ("", *c, yul_format!("{c}"))
     };
@@ -189,7 +188,7 @@ fn const_to_evm(c: &u32) -> Dual {
     Dual(normal, yul)
 }
 fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
-    Dual(format!("-{input}"), yul_format!("sub(mul(2, P), {yul:x})"))
+    Dual(format!("-{input}"), yul_format!("sub(mul(2, P()), {yul:x})"))
 }
 
 fn main() {
@@ -286,7 +285,7 @@ fn main() {
                     _ => todo!("unexpected address {address:?} for layer {expected_layer}")
                 }
             }
-            // fn linrel_to_calldata(inputs: &NoFieldLinearRelation<BabyBearField>, expected_layer: usize) -> String {
+            // fn linrel_to_calldata(inputs: &NoFieldLinearRelation, expected_layer: usize) -> String {
             //     let NoFieldLinearRelation { linear_terms, constant } = inputs;
             //     let linear = linear_terms.iter().map(|(c, addr)| {
             //         let input = gkraddress_to_calldata(addr, expected_layer);
@@ -410,7 +409,7 @@ fn main() {
             let GateArtifacts { output_layer, enforced_relation } = gate;
             assert!(*output_layer == i+1);
             let relation_name =  serde_json::to_value(enforced_relation).unwrap().as_object().unwrap().keys().next().unwrap().clone();
-            let pointcheck_update = yul_format!("acc := add(mulmod(acc, alpha, P), gate)");
+            let pointcheck_update = yul_format!("acc := add(mulmod(acc, alpha, P()), gate)");
 
             fn gkraddress_to_calldata(address: &GKRAddress, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let (l0_memvars, l0_witvars, _l0_setupvars, l0_cachevars) = layer0_group_widths;
@@ -597,7 +596,8 @@ fn main() {
                     }
                 }
             }
-            fn lookrelsingle_to_calldata(tuple: &NoFieldSingleColumnLookupRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn lookrelsingle_to_calldata(tuple: &NoFieldSingleColumnLookupRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+                // TODO: THIS IS EXPENSIVE FOR BYTECODE SIZE
                 let NoFieldSingleColumnLookupRelation { input, lookup_set_index: _ } = tuple;
                 let compressed = linrel_to_calldata_inner(input, expected_layer, layer0_group_widths, running_max_group_offsets);
                 let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
@@ -606,7 +606,8 @@ fn main() {
                     yul_format!("add({logup_gamma:x}, {compressed:x})")
                 )
             }
-            fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+            fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+                // TODO: THIS IS EXPENSIVE FOR BYTECODE (was able to save 20% by specialising to actual realistic scenario of single variables)
                 let NoFieldVectorLookupRelation { columns, lookup_set_index: _ } = tuple;
                 assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
                 let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
@@ -621,38 +622,44 @@ fn main() {
                     yul_format!("add({logup_gamma:x}, gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, {col5:x}, {col6:x}, {col7:x}, {col8:x}, {col9:x}), {col0:x}, {col1:x}, {col2:x}, {col3:x}, {col4:x}))")
                 )
             }
-            fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+            fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+                // TODO: THIS IS EXPENSIVE FOR BYTECODE SIZE
                 let NoFieldLinearRelation { linear_terms, constant } = inputs;
-                let linear = linear_terms.iter().map(|(c, addr)| {
-                    let input = gkraddress_to_calldata(addr, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let c = const_to_evm(&c.as_u32_reduced());
-                    Dual(format!("{c}{input}"), yul_format!("mulmod({c:x}, {input:x}, P)"))
-                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual("0".to_string(), yul_format!("0")));
-                let constant = const_to_evm(&constant.as_u32_reduced());
+                let linear = linterms_to_calldata_inner(linear_terms, expected_layer, layer0_group_widths, running_max_group_offsets);
+                let constant = const_to_evm(constant);
                 Dual(format!("{constant} + {linear}"), yul_format!("add({constant:x}, {linear:x})"))
             }
-            fn quadrel_to_calldata_inner(input: &NoFieldMaxQuadraticGKRRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn linterms_to_calldata_inner(linear_terms: &Box<[(u32, GKRAddress)]>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+                linear_terms.iter().map(|(c, addr)| {
+                    let input = gkraddress_to_calldata(addr, expected_layer, layer0_group_widths, running_max_group_offsets);
+                    let c = const_to_evm(c);
+                    if c.1.0.starts_with("sub(P(), ") { // avoid overflows
+                        let modc = c.1.0.strip_circumfix("sub(P(), ", ")").unwrap();
+                        let neg_input = u128_to_neg(&input);
+                        Dual(format!("{modc}{neg_input}"), yul_format!("mul({modc}, {neg_input:x})"))
+                    } else {
+                        Dual(format!("{c}{input}"), yul_format!("mul({c:x}, {input:x})"))
+                    }
+                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual(format!("0"), yul_format!("0")))
+            }
+            fn quadrel_to_calldata_inner(input: &NoFieldMaxQuadraticGKRRelation, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldMaxQuadraticGKRRelation { quadratic_terms, linear_terms, constant } = input;
                 let quadratic = quadratic_terms.iter().map(|(address, linear_terms)| {
                     let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let linear = linear_terms.iter().map(|(c, address)| {
-                        let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                        let c = const_to_evm(&c.as_u32_reduced());
-                        format!("{c}{read}")
-                    }).collect::<Vec<_>>().join(" + ");
-                    format!("{read}({linear})")
-                }).collect::<Vec<_>>().join(" + ");
-                let linear = linear_terms.iter().map(|(c, address)| {
-                    let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let c = const_to_evm(&c.as_u32_reduced());
-                    format!("{c}{read}")
-                }).collect::<Vec<_>>().join(" + ");
-                let constant = const_to_evm(&constant.as_u32_reduced());
-                format!("{constant} + {linear} + {quadratic}")
+                    let linear = linterms_to_calldata_inner(linear_terms, expected_layer, layer0_group_widths, running_max_group_offsets);
+                    // TODO: maybe call a fn to collect all quadratics..
+                    Dual(format!("{read}({linear})"), yul_format!("mulmod({read:x}, {linear:x}, P())"))
+                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual(format!("0"), yul_format!("0")));
+                let linear = linterms_to_calldata_inner(linear_terms, expected_layer, layer0_group_widths, running_max_group_offsets);
+                let constant = const_to_evm(constant);
+                Dual(
+                    format!("{constant} + {linear} + {quadratic}"),
+                    yul_format!("add(add({constant:x}, {linear:x}), {quadratic:x})")
+                )
             }
             // fn expression_to_calldata(expression: &NoFieldStructuredExpression, expected_layer: usize, layer0_group_widths: (usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize)) -> String {
             //    match expression {
-            //         NoFieldStructuredExpression::Constant(c) => const_to_evm(&c.as_u32_reduced()),
+            //         NoFieldStructuredExpression::Constant(c) => const_to_evm(c),
             //         NoFieldStructuredExpression::Place(address) => gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets),
             //         NoFieldStructuredExpression::Sum(terms) => {
             //             let term = terms.iter().map(|expression| {
@@ -725,7 +732,7 @@ fn main() {
                     // println!("{relation_name}: {lhs}*{rhs} = {output}");
                     yul_println!("
                     \t{{  // {relation_name}: {lhs}*{rhs} = {output}
-                    \t    let gate := mulmod({lhs:x}, {rhs:x}, P)
+                    \t    let gate := mulmod({lhs:x}, {rhs:x}, P())
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
@@ -737,10 +744,10 @@ fn main() {
                     // println!("{relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}");
                     yul_println!("
                     \t{{  // {relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}
-                    \t    let den_out := mulmod({den:x}, add({logup_gamma:x}, {remainder:x}), P)
+                    \t    let den_out := mulmod({den:x}, add({logup_gamma:x}, {remainder:x}), P())
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
-                    \t    let num_out := add(mulmod({num:x}, add({logup_gamma:x}, {remainder:x}), P), {den:x})
+                    \t    let num_out := add(mulmod({num:x}, add({logup_gamma:x}, {remainder:x}), P()), {den:x})
                     \t    gate := num_out
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -754,7 +761,7 @@ fn main() {
                     \t{{  // {relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}
                     \t    let den1 := {den1:x} // for generic lookups we collect
                     \t    let den2 := {den2:x} // for generic lookups we collect
-                    \t    let den_out := mulmod(den1, den2, P)
+                    \t    let den_out := mulmod(den1, den2, P())
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
                     \t    let num_out := add(den1, den2)
@@ -770,10 +777,10 @@ fn main() {
                     yul_println!("
                     \t{{  // {relation_name}: {num1}/{den1} + 1/{den2} = {num_out}/{den_out}
                     \t    let den2 := {den2:x} // for generic lookups we collect
-                    \t    let den_out := mulmod({den1:x}, den2, P)
+                    \t    let den_out := mulmod({den1:x}, den2, P())
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
-                    \t    let num_out := add(mulmod({num1:x}, den2, P), {den1:x})
+                    \t    let num_out := add(mulmod({num1:x}, den2, P()), {den1:x})
                     \t    gate := num_out
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -788,7 +795,7 @@ fn main() {
                     \t{{  // {relation_name}: {lhs}*{rhs} = {output}
                     \t    let lhs := {lhs:x} // for memrel we collect
                     \t    let rhs := {rhs:x} // for memrel we collect
-                    \t    let gate := mulmod(lhs, rhs, P)
+                    \t    let gate := mulmod(lhs, rhs, P())
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
@@ -800,10 +807,10 @@ fn main() {
                     // println!("{relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}");
                     yul_println!("
                     \t{{  // {relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}
-                    \t    let den_out := mulmod(add({logup_gamma:x}, {input:x}), add({logup_gamma:x}, {setup:x}), P)
+                    \t    let den_out := mulmod(add({logup_gamma:x}, {input:x}), add({logup_gamma:x}, {setup:x}), P())
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
-                    \t    let num_out := add(add({logup_gamma:x}, {setup:x}), sub(P, mulmod({multiplicity:x}, add({logup_gamma:x}, {input:x}), P)))
+                    \t    let num_out := add(add({logup_gamma:x}, {setup:x}), sub(P(), mulmod({multiplicity:x}, add({logup_gamma:x}, {input:x}), P())))
                     \t    gate := num_out
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -815,7 +822,7 @@ fn main() {
                     // TODO: THIS ADDS A LOT OF BYTECODE (+10%)
                     yul_println!("
                     \t{{  // {relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}
-                    \t    let den_out := mulmod({den1:x}, {den2:x}, P)
+                    \t    let den_out := mulmod({den1:x}, {den2:x}, P())
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
                     \t    let num_out := add({den1:x}, {den2:x})
@@ -861,10 +868,10 @@ fn main() {
                     \t{{  // {relation_name}: {input_mask}/{input_den} - {setup_multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}
                     \t    let input_den := {input_den:x} // for generic lookups we collect
                     \t    let setup_den := add({logup_gamma:x}, {setup:x}) // for generic lookups we collect
-                    \t    let den_out := mulmod(input_den, setup_den, P)
+                    \t    let den_out := mulmod(input_den, setup_den, P())
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
-                    \t    let num_out := add(mulmod({input_mask:x}, setup_den, P), sub(P, mulmod(input_den, {setup_multiplicity:x}, P)))
+                    \t    let num_out := add(mulmod({input_mask:x}, setup_den, P()), sub(P(), mulmod(input_den, {setup_multiplicity:x}, P())))
                     \t    gate := num_out
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -889,7 +896,7 @@ fn main() {
                         let high_bits_shift = prover::gkr::high_bits_offset_for_inits_and_teardowns::<2>(circuit.trace_len);
                         let top_bits = set_idxes.map(|c| c << high_bits_shift);
                         let memory_alpha2 = Dual(format!("α²"), Yul::memory_alpha(1));
-                        top_bits.map(|c| Dual(format!("{memory_alpha2}({setup_high} + {c})"), yul_format!("mulmod({memory_alpha2:x}, add({setup_high:x}, {c}), P)")))
+                        top_bits.map(|c| Dual(format!("{memory_alpha2}({setup_high} + {c})"), yul_format!("mulmod({memory_alpha2:x}, add({setup_high:x}, {c}), P())")))
                     };
                     let [lhs_timestamp_and_value, rhs_timestamp_and_value] = memrelinitparts_to_calldata_inner(timestamp_and_value, &mut running_max_group_offsets);
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
@@ -897,7 +904,7 @@ fn main() {
                         let address_space = AddressSpaceType::RAM as u32;
                         let memory_gamma = Dual(format!("γ"), Yul::memory_gamma());
                         let memory_alpha1 = Dual(format!("α"), Yul::memory_alpha(0));
-                        Dual(format!("{memory_gamma} + {address_space} + {memory_alpha1}{setup_low}"), yul_format!("add(add({memory_gamma:x}, {address_space}), mulmod({memory_alpha1:x}, {setup_low:x}, P))"))
+                        Dual(format!("{memory_gamma} + {address_space} + {memory_alpha1}{setup_low}"), yul_format!("add(add({memory_gamma:x}, {address_space}), mulmod({memory_alpha1:x}, {setup_low:x}, P()))"))
                     };
                     // println!("{relation_name}: ({shared} + {lhs_addr_high} + {lhs_timestamp_and_value}) * ({shared} + {rhs_addr_high} + {rhs_timestamp_and_value}) = {output}");
                     yul_println!("
@@ -905,7 +912,7 @@ fn main() {
                     \t    let shared := {shared:x}
                     \t    let lhs := add(shared, add({lhs_addr_high:x}, {lhs_timestamp_and_value:x})) // for memrel we collect
                     \t    let rhs := add(shared, add({rhs_addr_high:x}, {rhs_timestamp_and_value:x})) // for memrel we collect
-                    \t    let gate := mulmod(lhs, rhs, P)
+                    \t    let gate := mulmod(lhs, rhs, P())
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
@@ -946,16 +953,16 @@ fn main() {
 
         let check = if DEBUG_ENABLE_DUMMY_CHECKS {
             yul_format!("
-            let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
+            let dummy_check := mod(add(claim, sub(P(), rhs_scaled)), P())
             \tmstore(GKR_CIRCUIT_CACHE_PTR(), dummy_check)
             ")
         } else {
             yul_format!("
-            if mod(add(claim, sub(P, rhs_scaled)), P) {{ revert(0, 0) }}
+            if mod(add(claim, sub(P(), rhs_scaled)), P()) {{ revert(0, 0) }}
             ")
         };
         yul_println!("
-            let rhs_scaled := mulmod(acc, eq_scale, P)
+            let rhs_scaled := mulmod(acc, eq_scale, P())
             // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
             // after stack-heavy values are dead
             {check:x}
@@ -974,12 +981,12 @@ fn main() {
     // GREAT FOR BYTECODE REDUCTION!!
     let check = if DEBUG_ENABLE_DUMMY_CHECKS {
         yul_format!("
-        let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
+        let dummy_check := mod(add(claim, sub(P(), g0g1_scaled)), P())
         \t\tmstore(GKR_CIRCUIT_CACHE_PTR(), dummy_check)
         ")
     } else {
         yul_format!("
-        if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
+        if mod(add(claim, sub(P(), g0g1_scaled)), P()) {{ revert(0, 0) }}
         ")
     };
     let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
@@ -992,18 +999,18 @@ fn main() {
                 let w0 := calldataload(ptr)
                 let w1 := calldataload(add(ptr, 32))
                 let c0 := shr(128, w0)
-                let c1 := and(w0, MASK)
+                let c1 := and(w0, MASK())
                 let c2 := shr(128, w1)
-                let c3 := and(w1, MASK)
-                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
+                let c3 := and(w1, MASK())
+                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P())
                 let r := transcript_4to1_dual(w0, w1) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-                if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
+                if mod(add(claim, sub(P(), g0g1_scaled)), P()) {{ revert(0, 0) }}
                 {check:x}
-                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
+                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P()), c2), r, P()), c1), r, P()), c0)
                 let z := mload(add(POINT_PTR(), mul(i, 32)))
-                let zr := mulmod(z, r, P)
-                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
+                let zr := mulmod(z, r, P())
+                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P()), add(z, r)))
                 mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }}
@@ -1027,22 +1034,22 @@ fn main() {
             let pairs := shr(1, even_points)
             for {{ let pair := sub(pairs, 1) }} lt(pair, pairs) {{ pair := sub(pair, 1) }} {{
                 let word := calldataload(add(ptr, mul(pair, 32)))
-                let el1 := and(MASK, word)
+                let el1 := and(MASK(), word)
                 let el0 := shr(128, word)
-                next_claim := add(mulmod(next_claim, next_alpha, P), el1)
-                next_claim := add(mulmod(next_claim, next_alpha, P), el0)
+                next_claim := add(mulmod(next_claim, next_alpha, P()), el1)
+                next_claim := add(mulmod(next_claim, next_alpha, P()), el0)
             }}
             next_ptr := add(ptr, mul(16, points))
         }}
 
         function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {{
             compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
-            compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
+            compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P()))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P()))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P()))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P()))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P()))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P()))
         }}
 
         // Fold five generic lookup tuple columns into an existing Horner accumulator.
@@ -1051,23 +1058,23 @@ fn main() {
         // two five-column calls keeps each call boundary small while still supporting
         // arbitrary linrel_to_calldata_inner() output for every column.
         function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {{
-            acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P), c4)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c3)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c2)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c1)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c0)
+            acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P()), c4)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P()), c3)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P()), c2)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P()), c1)
+            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P()), c0)
         }}
 
         // function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {{
         //     compressed := add(compressed, add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space))
-        //     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
-        //     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
+        //     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P()))
+        //     compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P()))
         // }}
         function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compressed {{
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P()))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P()))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P()))
+            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P()))
         }}
 
         function gkr_virtual_poly_compose_vars(len, skip) -> eval {{
@@ -1085,11 +1092,11 @@ fn main() {
         function gkr_virtual_poly_zero_vars(len) -> eval {{
             eval := 1
             for {{ let i := 0 }} lt(i, len) {{ i := add(i, 1) }} {{
-                eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR(), mul(i, 32))))), P)
+                eval := mulmod(eval, add(1, sub(mul(2, P()), mload(add(POINT_PTR(), mul(i, 32))))), P())
             }}
         }}
         function gkr_virtual_poly_rangecheck(width) -> eval {{
-            eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
+            eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(GKR_CIRCUIT_LAYER_ROUNDS, width)), P())
         }}
 
         function gate_calldataload(ptr, idx) -> load {{
@@ -1099,14 +1106,14 @@ fn main() {
             load := {gate_mload_inner}
         }}
         function pointcheck_update(acc, alpha, gate) -> next_acc {{
-            next_acc := add(mulmod(acc, alpha, P), gate)
+            next_acc := add(mulmod(acc, alpha, P()), gate)
         }}
         function logup_pointcheck_update(acc, alpha, num_out, den_out) -> next_acc {{
             acc := pointcheck_update(acc, alpha, den_out)
             next_acc := pointcheck_update(acc, alpha, num_out)
         }}
         function u128_neg(input) -> neg_input {{
-            neg_input := sub(mul(2, P), input)
+            neg_input := sub(mul(2, P()), input)
         }}
 
         // 3
@@ -1115,8 +1122,8 @@ fn main() {
             let num2 := gate_calldataload(ptr, num2_idx)
             let den1 := gate_calldataload(ptr, den1_idx)
             let den2 := gate_calldataload(ptr, den2_idx)
-            let den_out := mulmod(den1, den2, P)
-            let num_out := add(mulmod(num1, den2, P), mulmod(num2, den1, P))
+            let den_out := mulmod(den1, den2, P())
+            let num_out := add(mulmod(num1, den2, P()), mulmod(num2, den1, P()))
             next_acc := logup_pointcheck_update(acc, alpha, num_out, den_out)
         }}
         function gate_copyinextensionfield(ptr, alpha, acc, input_idx) -> next_acc {{
@@ -1129,9 +1136,9 @@ fn main() {
             let input := gate_calldataload(ptr, input_idx)
             let mask := gate_calldataload(ptr, mask_idx)
             // let neg_mask := u128_neg(mask)
-            // let gate := add(mulmod(input, mask, P), add(1, neg_mask))
-            let neg_one := sub(P, 1)
-            let gate := add(mulmod(mask, add(input, neg_one), P), 1)
+            // let gate := add(mulmod(input, mask, P()), add(1, neg_mask))
+            let neg_one := sub(P(), 1)
+            let gate := add(mulmod(mask, add(input, neg_one), P()), 1)
             next_acc := pointcheck_update(acc, alpha, gate)
         }}
     ");

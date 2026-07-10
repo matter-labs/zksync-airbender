@@ -8,3 +8,4 @@ tools/gkr_verifier/target
 rustc-ice-*.*
 .DS_Store
 **/.DS_Store
+verifier_evm/private/*_gist.sh

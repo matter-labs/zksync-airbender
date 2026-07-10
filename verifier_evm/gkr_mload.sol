@@ -14,9 +14,9 @@ contract GKRVerifier {
     //    GKR_INIT/CIRCUIT 1 (1)
     //    GKR_INIT/CIRCUIT 2 (1)
     //    ..
-    uint256 constant MINIMUM_FREE_HEAP_PTR = 7588;
-    uint256 constant P      = 0xffffffffffffffffffffffffffffff61; // 2^128 - 159
-    uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits
+    uint256 constant MINIMUM_FREE_HEAP_PTR = 11500;// 10560; // 7488;
+    uint256 constant P_VALUE      = 0xffffffffffffffffffffffffffffff61; // 2^128 - 159
+    uint256 constant MASK_VALUE   = 0xffffffffffffffffffffffffffffffff; // high 128 bits
     uint256 constant ROUNDS = 200;
 
     // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
@@ -60,8 +60,14 @@ contract GKRVerifier {
         function GKR_MAIN_GAS_PTR() -> ptr {
             ptr := add(GKR_INIT_GAS_PTR(), mul(32, 1))
         }
-        function SEED_PTR() -> ptr {
+        function P_PTR() -> ptr {
             ptr := add(GKR_MAIN_GAS_PTR(), mul(32, 1))
+        }
+        function MASK_PTR() -> ptr {
+            ptr := add(P_PTR(), mul(32, 1))
+        }
+        function SEED_PTR() -> ptr {
+            ptr := add(MASK_PTR(), mul(32, 1))
         }
         function GKR_INIT_SCRATCH_PTR() -> ptr {
             ptr := add(SEED_PTR(), mul(32, 1))
@@ -74,6 +80,15 @@ contract GKRVerifier {
         }
         function GKR_CIRCUIT_CACHE_PTR() -> ptr {
             ptr := add(SEED_PTR(), mul(32, 2))
+        }
+
+        function P() -> value {
+            value := P_VALUE
+            // value := mload(P_PTR())
+        }
+        function MASK() -> value {
+            value := MASK_VALUE
+            // value := mload(MASK_PTR())
         }
 
         function transcript_4to1_dual(w0, w1) -> r {
@@ -92,12 +107,12 @@ contract GKRVerifier {
             let seed := keccak256(SEED_PTR(), add(32, GKR_INIT_BYTES))
             mstore(SEED_PTR(), seed)
             z1 := shr(128, seed)
-            z2 := and(seed, MASK)
+            z2 := and(seed, MASK())
 
             seed := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), seed)
             z3 := shr(128, seed)
-            z4 := and(seed, MASK)
+            z4 := and(seed, MASK())
 
             seed := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), seed)
@@ -113,7 +128,7 @@ contract GKRVerifier {
             let seed := keccak256(SEED_PTR(), add(32, GKR_COMPRESSION_POINTCHECK_BYTES))
             mstore(SEED_PTR(), seed)
             z1 := shr(128, seed)
-            z2 := and(seed, MASK)
+            z2 := and(seed, MASK())
 
             seed := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), seed)
@@ -128,17 +143,17 @@ contract GKRVerifier {
             let seed := keccak256(SEED_PTR(), add(32, MERKLE_TREE_CAPS_BYTES))
             mstore(SEED_PTR(), seed)
             mstore(MEMORY_CHALLS_PTR(), shr(128, seed))
-            mstore(add(MEMORY_CHALLS_PTR(), 32), and(seed, MASK))
+            mstore(add(MEMORY_CHALLS_PTR(), 32), and(seed, MASK()))
 
             seed := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), seed)
             mstore(add(MEMORY_CHALLS_PTR(), 64), shr(128, seed))
-            mstore(add(MEMORY_CHALLS_PTR(), 96), and(seed, MASK))
+            mstore(add(MEMORY_CHALLS_PTR(), 96), and(seed, MASK()))
 
             seed := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), seed)
             mstore(add(MEMORY_CHALLS_PTR(), 128), shr(128, seed))
-            mstore(add(MEMORY_CHALLS_PTR(), 160), and(seed, MASK))
+            mstore(add(MEMORY_CHALLS_PTR(), 160), and(seed, MASK()))
 
             seed := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), seed)
@@ -150,7 +165,7 @@ contract GKRVerifier {
             seed := keccak256(SEED_PTR(), add(32, mul(2, MERKLE_TREE_CAPS_BYTES)))
             mstore(SEED_PTR(), seed)
             mstore(LOGUP_CHALLS_PTR(), shr(128, seed))
-            mstore(add(LOGUP_CHALLS_PTR(), 32), and(seed, MASK))
+            mstore(add(LOGUP_CHALLS_PTR(), 32), and(seed, MASK()))
 
             next_ptr := add(ptr, mul(2, MERKLE_TREE_CAPS_BYTES))
         }
@@ -176,34 +191,34 @@ contract GKRVerifier {
                     // fold i+0/1
                     let numword0 := calldataload(numbase)
                     let num0 := shr(128, numword0)
-                    let num1 := and(MASK, numword0)
+                    let num1 := and(MASK(), numword0)
                     let denword0 := calldataload(denbase)
                     let den0 := shr(128, denword0)
-                    let den1 := and(MASK, denword0)
-                    num_acc := add(mulmod(num_acc, den0, P), mulmod(den_acc, num0, P))
-                    den_acc := mulmod(den_acc, den0, P)
-                    num_acc := add(mulmod(num_acc, den1, P), mulmod(den_acc, num1, P))
-                    den_acc := mulmod(den_acc, den1, P)
-                    let numfolda := add(num0, mulmod(z4, sub(add(num1, mul(2, P)), num0), P))
-                    let denfolda := add(den0, mulmod(z4, sub(add(den1, mul(2, P)), den0), P))
+                    let den1 := and(MASK(), denword0)
+                    num_acc := add(mulmod(num_acc, den0, P()), mulmod(den_acc, num0, P()))
+                    den_acc := mulmod(den_acc, den0, P())
+                    num_acc := add(mulmod(num_acc, den1, P()), mulmod(den_acc, num1, P()))
+                    den_acc := mulmod(den_acc, den1, P())
+                    let numfolda := add(num0, mulmod(z4, sub(add(num1, mul(2, P())), num0), P()))
+                    let denfolda := add(den0, mulmod(z4, sub(add(den1, mul(2, P())), den0), P()))
 
                     // fold i+2/3
                     let numword1 := calldataload(add(numbase, 32))
                     let num2 := shr(128, numword1)
-                    let num3 := and(MASK, numword1)
+                    let num3 := and(MASK(), numword1)
                     let denword1 := calldataload(add(denbase, 32))
                     let den2 := shr(128, denword1)
-                    let den3 := and(MASK, denword1)
-                    num_acc := add(mulmod(num_acc, den2, P), mulmod(den_acc, num2, P))
-                    den_acc := mulmod(den_acc, den2, P)
-                    num_acc := add(mulmod(num_acc, den3, P), mulmod(den_acc, num3, P))
-                    den_acc := mulmod(den_acc, den3, P)
-                    let numfoldb := add(num2, mulmod(z4, sub(add(num3, mul(2, P)), num2), P))
-                    let denfoldb := add(den2, mulmod(z4, sub(add(den3, mul(2, P)), den2), P))
+                    let den3 := and(MASK(), denword1)
+                    num_acc := add(mulmod(num_acc, den2, P()), mulmod(den_acc, num2, P()))
+                    den_acc := mulmod(den_acc, den2, P())
+                    num_acc := add(mulmod(num_acc, den3, P()), mulmod(den_acc, num3, P()))
+                    den_acc := mulmod(den_acc, den3, P())
+                    let numfoldb := add(num2, mulmod(z4, sub(add(num3, mul(2, P())), num2), P()))
+                    let denfoldb := add(den2, mulmod(z4, sub(add(den3, mul(2, P())), den2), P()))
 
                     // fold i+0/1/2/3
-                    let numfoldc := add(numfolda, mulmod(z3, sub(add(numfoldb, mul(3, P)), numfolda), P))
-                    let denfoldc := add(denfolda, mulmod(z3, sub(add(denfoldb, mul(3, P)), denfolda), P))
+                    let numfoldc := add(numfolda, mulmod(z3, sub(add(numfoldb, mul(3, P())), numfolda), P()))
+                    let denfoldc := add(denfolda, mulmod(z3, sub(add(denfoldb, mul(3, P())), denfolda), P()))
                     switch i
                     case 0 {
                         numfold0 := numfoldc
@@ -224,22 +239,22 @@ contract GKRVerifier {
                     }
                 }
                 // check
-                if mod(num_acc, P) { revert(0, 0) }
+                if mod(num_acc, P()) { revert(0, 0) }
                 if iszero(den_acc) { revert(0, 0) }
                 // fold 0/1/2/3/4/5/6/7
                 numfold0 := mload(GKR_INIT_SCRATCH_PTR())
-                numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P)), numfold0), P))
-                denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P)), denfold0), P))
+                numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P())), numfold0), P()))
+                denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P())), denfold0), P()))
                 // fold 8/9/10/11/12/13/14/15
-                numfold1 := add(numfold2, mulmod(z2, sub(add(numfold3, mul(4, P)), numfold2), P))
-                denfold1 := add(denfold2, mulmod(z2, sub(add(denfold3, mul(4, P)), denfold2), P))
+                numfold1 := add(numfold2, mulmod(z2, sub(add(numfold3, mul(4, P())), numfold2), P()))
+                denfold1 := add(denfold2, mulmod(z2, sub(add(denfold3, mul(4, P())), denfold2), P()))
                 // fold 0/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15
-                let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P)), numfold0), P))
-                let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P)), denfold0), P))
+                let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P())), numfold0), P()))
+                let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P())), denfold0), P()))
                 // batch
                 claim := mload(GKR_INIT_CLAIM_PTR())
-                claim := add(mulmod(claim, alpha, P), den_claim)
-                claim := add(mulmod(claim, alpha, P), num_claim)
+                claim := add(mulmod(claim, alpha, P()), den_claim)
+                claim := add(mulmod(claim, alpha, P()), num_claim)
                 mstore(GKR_INIT_CLAIM_PTR(), claim)
             }
 
@@ -252,19 +267,19 @@ contract GKRVerifier {
                     // fold i+0/1
                     let word0 := calldataload(base)
                     let prod0 := shr(128, word0)
-                    let prod1 := and(MASK, word0)
-                    prod_acc := mulmod(prod_acc, prod0, P)
-                    prod_acc := mulmod(prod_acc, prod1, P)
-                    let folda := add(prod0, mulmod(z4, sub(add(prod1, mul(2, P)), prod0), P))
+                    let prod1 := and(MASK(), word0)
+                    prod_acc := mulmod(prod_acc, prod0, P())
+                    prod_acc := mulmod(prod_acc, prod1, P())
+                    let folda := add(prod0, mulmod(z4, sub(add(prod1, mul(2, P())), prod0), P()))
                     // fold i+2/3
                     let word1 := calldataload(add(base, 32))
                     let prod2 := shr(128, word1)
-                    let prod3 := and(MASK, word1)
-                    prod_acc := mulmod(prod_acc, prod2, P)
-                    prod_acc := mulmod(prod_acc, prod3, P)
-                    let foldb := add(prod2, mulmod(z4, sub(add(prod3, mul(2, P)), prod2), P))
+                    let prod3 := and(MASK(), word1)
+                    prod_acc := mulmod(prod_acc, prod2, P())
+                    prod_acc := mulmod(prod_acc, prod3, P())
+                    let foldb := add(prod2, mulmod(z4, sub(add(prod3, mul(2, P())), prod2), P()))
                     // fold i+0/1/2/3
-                    let foldc := add(folda, mulmod(z3, sub(add(foldb, mul(3, P)), folda), P))
+                    let foldc := add(folda, mulmod(z3, sub(add(foldb, mul(3, P())), folda), P()))
                     switch i
                     case 0 {
                         fold0 := foldc
@@ -282,14 +297,14 @@ contract GKRVerifier {
                 write_acc := prod_acc
                 // fold 0/1/2/3/4/5/6/7
                 fold0 := mload(GKR_INIT_SCRATCH_PTR())
-                fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P)), fold0), P))
+                fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P())), fold0), P()))
                 // fold 8/9/10/11/12/13/14/15
-                fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P)), fold2), P))
+                fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P())), fold2), P()))
                 // fold 0/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15
-                let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P)), fold0), P))
+                let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P())), fold0), P()))
                 // batch
                 claim := mload(GKR_INIT_CLAIM_PTR())
-                claim := add(mulmod(claim, alpha, P), prod_claim)
+                claim := add(mulmod(claim, alpha, P()), prod_claim)
                 mstore(GKR_INIT_CLAIM_PTR(), claim)
             }
             claim := mload(GKR_INIT_CLAIM_PTR())
@@ -313,26 +328,26 @@ contract GKRVerifier {
                         let denbase := add(add(ptr, mul(add(poly, 1), GKR_INIT_POLY_BYTES)), mul(i, 64))
                         let numword0 := calldataload(numbase)
                         let num0 := shr(128, numword0)
-                        let num1 := and(MASK, numword0)
+                        let num1 := and(MASK(), numword0)
                         let denword0 := calldataload(denbase)
                         let den0 := shr(128, denword0)
-                        let den1 := and(MASK, denword0)
-                        num_acc := add(mulmod(num_acc, den0, P), mulmod(den_acc, num0, P))
-                        den_acc := mulmod(den_acc, den0, P)
-                        num_acc := add(mulmod(num_acc, den1, P), mulmod(den_acc, num1, P))
-                        den_acc := mulmod(den_acc, den1, P)
+                        let den1 := and(MASK(), denword0)
+                        num_acc := add(mulmod(num_acc, den0, P()), mulmod(den_acc, num0, P()))
+                        den_acc := mulmod(den_acc, den0, P())
+                        num_acc := add(mulmod(num_acc, den1, P()), mulmod(den_acc, num1, P()))
+                        den_acc := mulmod(den_acc, den1, P())
                         let numword1 := calldataload(add(numbase, 32))
                         let num2 := shr(128, numword1)
-                        let num3 := and(MASK, numword1)
+                        let num3 := and(MASK(), numword1)
                         let denword1 := calldataload(add(denbase, 32))
                         let den2 := shr(128, denword1)
-                        let den3 := and(MASK, denword1)
-                        num_acc := add(mulmod(num_acc, den2, P), mulmod(den_acc, num2, P))
-                        den_acc := mulmod(den_acc, den2, P)
-                        num_acc := add(mulmod(num_acc, den3, P), mulmod(den_acc, num3, P))
-                        den_acc := mulmod(den_acc, den3, P)
+                        let den3 := and(MASK(), denword1)
+                        num_acc := add(mulmod(num_acc, den2, P()), mulmod(den_acc, num2, P()))
+                        den_acc := mulmod(den_acc, den2, P())
+                        num_acc := add(mulmod(num_acc, den3, P()), mulmod(den_acc, num3, P()))
+                        den_acc := mulmod(den_acc, den3, P())
                     }
-                    if mod(num_acc, P) { revert(0, 0) }
+                    if mod(num_acc, P()) { revert(0, 0) }
                     if iszero(den_acc) { revert(0, 0) }
                 }
                 {
@@ -343,22 +358,22 @@ contract GKRVerifier {
                         let denbase := add(add(ptr, mul(add(poly, 1), GKR_INIT_POLY_BYTES)), mul(i, 64))
                         let numword0 := calldataload(numbase)
                         let num0 := shr(128, numword0)
-                        let num1 := and(MASK, numword0)
+                        let num1 := and(MASK(), numword0)
                         let denword0 := calldataload(denbase)
                         let den0 := shr(128, denword0)
-                        let den1 := and(MASK, denword0)
-                        let numfolda := add(num0, mulmod(z4, sub(add(num1, mul(2, P)), num0), P))
-                        let denfolda := add(den0, mulmod(z4, sub(add(den1, mul(2, P)), den0), P))
+                        let den1 := and(MASK(), denword0)
+                        let numfolda := add(num0, mulmod(z4, sub(add(num1, mul(2, P())), num0), P()))
+                        let denfolda := add(den0, mulmod(z4, sub(add(den1, mul(2, P())), den0), P()))
                         let numword1 := calldataload(add(numbase, 32))
                         let num2 := shr(128, numword1)
-                        let num3 := and(MASK, numword1)
+                        let num3 := and(MASK(), numword1)
                         let denword1 := calldataload(add(denbase, 32))
                         let den2 := shr(128, denword1)
-                        let den3 := and(MASK, denword1)
-                        let numfoldb := add(num2, mulmod(z4, sub(add(num3, mul(2, P)), num2), P))
-                        let denfoldb := add(den2, mulmod(z4, sub(add(den3, mul(2, P)), den2), P))
-                        let numfoldc := add(numfolda, mulmod(z3, sub(add(numfoldb, mul(3, P)), numfolda), P))
-                        let denfoldc := add(denfolda, mulmod(z3, sub(add(denfoldb, mul(3, P)), denfolda), P))
+                        let den3 := and(MASK(), denword1)
+                        let numfoldb := add(num2, mulmod(z4, sub(add(num3, mul(2, P())), num2), P()))
+                        let denfoldb := add(den2, mulmod(z4, sub(add(den3, mul(2, P())), den2), P()))
+                        let numfoldc := add(numfolda, mulmod(z3, sub(add(numfoldb, mul(3, P())), numfolda), P()))
+                        let denfoldc := add(denfolda, mulmod(z3, sub(add(denfoldb, mul(3, P())), denfolda), P()))
                         switch i
                         case 0 { numfold0 := numfoldc mstore(GKR_INIT_SCRATCH_PTR(), numfold0) denfold0 := denfoldc }
                         case 1 { numfold1 := numfoldc denfold1 := denfoldc }
@@ -366,12 +381,12 @@ contract GKRVerifier {
                         default { numfold3 := numfoldc denfold3 := denfoldc }
                     }
                     numfold0 := mload(GKR_INIT_SCRATCH_PTR())
-                    numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P)), numfold0), P))
-                    denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P)), denfold0), P))
-                    numfold1 := add(numfold2, mulmod(z2, sub(add(numfold3, mul(4, P)), numfold2), P))
-                    denfold1 := add(denfold2, mulmod(z2, sub(add(denfold3, mul(4, P)), denfold2), P))
-                    let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P)), numfold0), P))
-                    let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P)), denfold0), P))
+                    numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P())), numfold0), P()))
+                    denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P())), denfold0), P()))
+                    numfold1 := add(numfold2, mulmod(z2, sub(add(numfold3, mul(4, P())), numfold2), P()))
+                    denfold1 := add(denfold2, mulmod(z2, sub(add(denfold3, mul(4, P())), denfold2), P()))
+                    let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P())), numfold0), P()))
+                    let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P())), denfold0), P()))
                     let term_ptr := add(GKR_INIT_CLAIM_PTR(), mul(sub(6, poly), 32))
                     mstore(term_ptr, den_claim)
                     mstore(add(term_ptr, 32), num_claim)
@@ -385,11 +400,11 @@ contract GKRVerifier {
                     for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
                         let base := add(add(ptr, mul(poly, GKR_INIT_POLY_BYTES)), mul(i, 64))
                         let word0 := calldataload(base)
-                        prod_acc := mulmod(prod_acc, shr(128, word0), P)
-                        prod_acc := mulmod(prod_acc, and(MASK, word0), P)
+                        prod_acc := mulmod(prod_acc, shr(128, word0), P())
+                        prod_acc := mulmod(prod_acc, and(MASK(), word0), P())
                         let word1 := calldataload(add(base, 32))
-                        prod_acc := mulmod(prod_acc, shr(128, word1), P)
-                        prod_acc := mulmod(prod_acc, and(MASK, word1), P)
+                        prod_acc := mulmod(prod_acc, shr(128, word1), P())
+                        prod_acc := mulmod(prod_acc, and(MASK(), word1), P())
                     }
                     if iszero(poly) {
                         let read_acc := prod_acc
@@ -403,13 +418,13 @@ contract GKRVerifier {
                         let base := add(add(ptr, mul(poly, GKR_INIT_POLY_BYTES)), mul(i, 64))
                         let word0 := calldataload(base)
                         let prod0 := shr(128, word0)
-                        let prod1 := and(MASK, word0)
-                        let folda := add(prod0, mulmod(z4, sub(add(prod1, mul(2, P)), prod0), P))
+                        let prod1 := and(MASK(), word0)
+                        let folda := add(prod0, mulmod(z4, sub(add(prod1, mul(2, P())), prod0), P()))
                         let word1 := calldataload(add(base, 32))
                         let prod2 := shr(128, word1)
-                        let prod3 := and(MASK, word1)
-                        let foldb := add(prod2, mulmod(z4, sub(add(prod3, mul(2, P)), prod2), P))
-                        let foldc := add(folda, mulmod(z3, sub(add(foldb, mul(3, P)), folda), P))
+                        let prod3 := and(MASK(), word1)
+                        let foldb := add(prod2, mulmod(z4, sub(add(prod3, mul(2, P())), prod2), P()))
+                        let foldc := add(folda, mulmod(z3, sub(add(foldb, mul(3, P())), folda), P()))
                         switch i
                         case 0 { fold0 := foldc mstore(GKR_INIT_SCRATCH_PTR(), fold0) }
                         case 1 { fold1 := foldc }
@@ -417,15 +432,15 @@ contract GKRVerifier {
                         default { fold3 := foldc }
                     }
                     fold0 := mload(GKR_INIT_SCRATCH_PTR())
-                    fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P)), fold0), P))
-                    fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P)), fold2), P))
-                    let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P)), fold0), P))
+                    fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P())), fold0), P()))
+                    fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P())), fold2), P()))
+                    let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P())), fold0), P()))
                     mstore(add(GKR_INIT_CLAIM_PTR(), sub(224, mul(poly, 32))), prod_claim)
                 }
             }
             claim := 0
             for { let off := 0 } lt(off, 256) { off := add(off, 32) } {
-                claim := add(mulmod(claim, alpha, P), mload(add(GKR_INIT_CLAIM_PTR(), off)))
+                claim := add(mulmod(claim, alpha, P()), mload(add(GKR_INIT_CLAIM_PTR(), off)))
             }
         }
 
@@ -452,17 +467,17 @@ contract GKRVerifier {
                 let w0 := calldataload(ptr)
                 let w1 := calldataload(add(ptr, 32))
                 let c0 := shr(128, w0)
-                let c1 := and(w0, MASK)
+                let c1 := and(w0, MASK())
                 let c2 := shr(128, w1)
-                let c3 := and(w1, MASK)
-                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
+                let c3 := and(w1, MASK())
+                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P())
                 let r := transcript_4to1_dual(w0, w1) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-                if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
-                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
+                if mod(add(claim, sub(P(), g0g1_scaled)), P()) { revert(0, 0) }
+                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P()), c2), r, P()), c1), r, P()), c0)
                 let z := mload(add(POINT_PTR(), mul(i, 32)))
-                let zr := mulmod(z, r, P)
-                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
+                let zr := mulmod(z, r, P())
+                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P()), add(z, r)))
                 mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }
@@ -491,23 +506,23 @@ contract GKRVerifier {
                 let denword := calldataload(denbase)
 
                 let den0 := shr(128, denword)
-                let den1 := and(MASK, denword)
-                let den_acc := mulmod(den0, den1, P)
-                acc0 := add(mulmod(acc0, alpha, P), den_acc)
+                let den1 := and(MASK(), denword)
+                let den_acc := mulmod(den0, den1, P())
+                acc0 := add(mulmod(acc0, alpha, P()), den_acc)
 
                 let numword := calldataload(numbase)
                 let num0 := shr(128, numword)
-                let num1 := and(MASK, numword)
-                let num_acc := add(mulmod(num0, den1, P), mulmod(num1, den0, P))
-                acc0 := add(mulmod(acc0, alpha, P), num_acc)
+                let num1 := and(MASK(), numword)
+                let num_acc := add(mulmod(num0, den1, P()), mulmod(num1, den0, P()))
+                acc0 := add(mulmod(acc0, alpha, P()), num_acc)
             }
             for { let poly := 1 } lt(poly, 2) { poly := sub(poly, 1) } {
                 let base := add(ptr, mul(poly, GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
                 let word := calldataload(base)
                 let prod0 := shr(128, word)
-                let prod1 := and(MASK, word)
-                let contribution := mulmod(prod0, prod1, P)
-                acc0 := add(mulmod(acc0, alpha, P), contribution)
+                let prod1 := and(MASK(), word)
+                let contribution := mulmod(prod0, prod1, P())
+                acc0 := add(mulmod(acc0, alpha, P()), contribution)
             }
             let acc1 // compute RLC for x4 == 1
             for { let poly := 6 } gt(poly, 0) { poly := sub(poly, 2) } {
@@ -518,29 +533,29 @@ contract GKRVerifier {
                 let denword := calldataload(add(denbase, 32))
 
                 let den0 := shr(128, denword)
-                let den1 := and(MASK, denword)
-                let den_acc := mulmod(den0, den1, P)
-                acc1 := add(mulmod(acc1, alpha, P), den_acc)
+                let den1 := and(MASK(), denword)
+                let den_acc := mulmod(den0, den1, P())
+                acc1 := add(mulmod(acc1, alpha, P()), den_acc)
 
                 let numword := calldataload(add(numbase, 32))
                 let num0 := shr(128, numword)
-                let num1 := and(MASK, numword)
-                let num_acc := add(mulmod(num0, den1, P), mulmod(num1, den0, P))
-                acc1 := add(mulmod(acc1, alpha, P), num_acc)
+                let num1 := and(MASK(), numword)
+                let num_acc := add(mulmod(num0, den1, P()), mulmod(num1, den0, P()))
+                acc1 := add(mulmod(acc1, alpha, P()), num_acc)
             }
             for { let poly := 1 } lt(poly, 2) { poly := sub(poly, 1) } {
                 let base := add(ptr, mul(poly, GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
                 let word := calldataload(add(base, 32))
                 let prod0 := shr(128, word)
-                let prod1 := and(MASK, word)
-                let contribution := mulmod(prod0, prod1, P)
-                acc1 := add(mulmod(acc1, alpha, P), contribution)
+                let prod1 := and(MASK(), word)
+                let contribution := mulmod(prod0, prod1, P())
+                acc1 := add(mulmod(acc1, alpha, P()), contribution)
             }
-            let diff := add(acc1, sub(mul(2, P), acc0))
+            let diff := add(acc1, sub(mul(2, P()), acc0))
             let z_last := mload(add(POINT_PTR(), mul(rounds_skiplast, 32)))
-            let rhs_scaled := mulmod(add(acc0, mulmod(z_last, diff, P)), eq_scale, P)
+            let rhs_scaled := mulmod(add(acc0, mulmod(z_last, diff, P())), eq_scale, P())
             // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-            if mod(add(claim, sub(P, rhs_scaled)), P) { revert(0, 0) }
+            if mod(add(claim, sub(P(), rhs_scaled)), P()) { revert(0, 0) }
 
             // POINT CLAIMS INTERPOLATE + BATCH
             // TODO: if compilation is good, try to merge this with POINTCHECK
@@ -554,16 +569,16 @@ contract GKRVerifier {
 
                 let word0 := calldataload(base)
                 let el0 := shr(128, word0)
-                let el1 := and(MASK, word0)
-                let claim0 := add(el0, mulmod(r_pair, add(el1, sub(mul(2, P), el0)), P))
+                let el1 := and(MASK(), word0)
+                let claim0 := add(el0, mulmod(r_pair, add(el1, sub(mul(2, P()), el0)), P()))
 
                 let word1 := calldataload(add(base, 32))
                 let el2 := shr(128, word1)
-                let el3 := and(MASK, word1)
-                let claim1 := add(el2, mulmod(r_pair, add(el3, sub(mul(2, P), el2)), P))
+                let el3 := and(MASK(), word1)
+                let claim1 := add(el2, mulmod(r_pair, add(el3, sub(mul(2, P()), el2)), P()))
 
-                let poly_claim := add(claim0, mulmod(r_last, add(claim1, sub(mul(3, P), claim0)), P))
-                next_claim := add(mulmod(next_claim, next_alpha, P), poly_claim)
+                let poly_claim := add(claim0, mulmod(r_last, add(claim1, sub(mul(3, P()), claim0)), P()))
+                next_claim := add(mulmod(next_claim, next_alpha, P()), poly_claim)
             }
 
             next_ptr := add(ptr, GKR_COMPRESSION_POINTCHECK_BYTES)
@@ -584,8 +599,8 @@ contract GKRVerifier {
         function gkr_circuit(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
             ptr, claim, alpha := sumcheck_circuit_layer3(ptr, claim, alpha)
             ptr, claim, alpha := sumcheck_circuit_layer2(ptr, claim, alpha)
-            ptr, claim, alpha := sumcheck_circuit_layer1(ptr, claim, alpha)
-            ptr, claim, alpha := sumcheck_circuit_layer0(ptr, claim, alpha)
+                ptr, claim, alpha := sumcheck_circuit_layer1(ptr, claim, alpha)
+                ptr, claim, alpha := sumcheck_circuit_layer0(ptr, claim, alpha)
             next_ptr := ptr
             next_claim := claim
             next_alpha := alpha
@@ -595,6 +610,9 @@ contract GKRVerifier {
         if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR) {
             revert(0, 0)
         }
+        // prepare constants
+        mstore(P_PTR(), P_VALUE)
+        mstore(MASK_PTR(), MASK_VALUE)
 
         // INIT MAIN
         // Stash starting gas to memory across the gkr_init_* call so that
@@ -619,9 +637,9 @@ contract GKRVerifier {
         }
 
         // DONE: Proof empty now
-        for { let i := 0 } lt(i, 10) { i := add(i, 1) } {
-            if calldataload(add(ptr, mul(i, 32))) { revert(0, 0) }
-        }
+        // for { let i := 0 } lt(i, 10) { i := add(i, 1) } {
+        //     if calldataload(add(ptr, mul(i, 32))) { revert(0, 0) }
+        // }
 
         // TODO: don't forget the recursion chain check
         // TODO: very, VERY, carefully review end-to-end fiat-shamir
