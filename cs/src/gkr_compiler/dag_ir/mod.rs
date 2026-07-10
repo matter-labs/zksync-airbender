@@ -19,6 +19,9 @@ pub use validate::*;
 pub mod schedule;
 pub use schedule::*;
 
+pub mod bwd_schedule;
+pub use bwd_schedule::*;
+
 pub(crate) mod simplify;
 pub use simplify::simplify_circuit;
 
