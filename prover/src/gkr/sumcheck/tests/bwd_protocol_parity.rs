@@ -1357,6 +1357,30 @@ fn check_family(fam: Family) {
     // among the batched `last_evaluations` — and (ii) each opened claim matches
     // an independent instrument-style full fold of the same column.
     if let Some((_cache_addr, relation)) = &fam.cache_relation {
+        // Fence-fired guard (cheap, matches the bigint-gate check above): the
+        // Ext distillate must fence the cache root into exactly one
+        // `Read(CacheOutput)` fold leaf. Without this, a fence regression that
+        // silently falls back to inlining the cache's dependency cones would
+        // still pass the rest of this family's checks (the (a)-(e) chain below
+        // only cross-validates values, not that the fence produced the
+        // `CacheOutput` leaf shape).
+        let cache_fold_leaves = (0..d_ext.specials.len())
+            .filter(|&i| {
+                matches!(
+                    d_ext.specials.get(i as u16),
+                    Some(BwdSpecial::FoldSource {
+                        origin: OriginLeaf::Read(ReadPlace::CacheOutput { .. }),
+                    })
+                )
+            })
+            .count();
+        assert_eq!(
+            cache_fold_leaves, 1,
+            "[{}] cache fence did not fire — expected exactly 1 CacheOutput \
+             FoldSource desc in the Ext distillate, found {cache_fold_leaves}",
+            fam.name
+        );
+
         let drawn = &run.folding_challenges;
         assert_eq!(drawn.len(), k, "[{}] folding challenge count", fam.name);
         let eq_at_z = make_eq_poly_in_full::<Ext>(drawn, &worker);
@@ -2034,6 +2058,23 @@ fn protocol_parity_bigint_l0() {
         })
         .collect();
     assert!(!fold_places.is_empty());
+    // Fence-fired guard: without this, a regression that silently produces
+    // zero `CacheOutput` fold leaves (e.g. the fence stops synthesizing them,
+    // or distill falls back to inlining same-layer caches again) would still
+    // pass the rest of this test — nothing else here depends on the fence
+    // having fired. The Task-5 report measured exactly 140 `CacheOutput`
+    // leaves for bigint L0 on the schedule at that commit; pinned as a wide
+    // `>= 100` floor rather than the exact count so an unrelated
+    // schedule/search change doesn't flake this gate.
+    let cache_fold_places = fold_places
+        .iter()
+        .filter(|p| matches!(p, ReadPlace::CacheOutput { .. }))
+        .count();
+    assert!(
+        cache_fold_places >= 100,
+        "cache fence did not fire on bigint L0 — no CacheOutput fold leaves in the Ext distillate \
+         (found {cache_fold_places}, expected >= 100)"
+    );
 
     // Output claims at the previous layer's point (storage layer 1 holds
     // exactly the L0 outputs after the forward loop).
