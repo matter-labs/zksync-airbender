@@ -299,6 +299,14 @@ struct VirtualLower<'a> {
     /// fwd callers pass the EMPTY map (identity hook — `operand_field` then
     /// short-circuits to the canonical `child_operand_field`).
     field_overrides: &'a BTreeMap<ExprId, FieldKind>,
+    /// SP1 backward reduction streaming: when `true`, `compile_reduction_virtual`
+    /// folds children through the one-Ext-cell stash+refold engine
+    /// (`fold_reduction_streamed`) instead of pre-materializing every child into
+    /// its own concurrent cell. Set ONLY on the backward one-root driver
+    /// (`lower_bwd_root_virtual`), and there only as the legacy-first FALLBACK
+    /// engaged when the pre-materialize lowering overflows the budget. Every fwd
+    /// construction site sets `false`, so the forward program is byte-identical.
+    stream_reductions: bool,
 }
 
 /// The fwd identity hooks: empty maps (`const`-constructible), so every fwd call
@@ -1022,6 +1030,12 @@ impl<'a> VirtualLower<'a> {
         expected: OperandField,
     ) -> Result<(), CompileError> {
         debug_assert!(!children.is_empty());
+        // SP1 backward streaming fallback: fold children through the one-Ext-cell
+        // stash+refold engine instead of pre-materializing every child concurrently.
+        // Only the backward driver ever sets this; fwd stays on the legacy path below.
+        if self.stream_reductions {
+            return self.fold_reduction_streamed(layer, children, is_add, negate, expected);
+        }
         // Pre-materialize every child to an operand BEFORE seeding the acc (a compound
         // child clobbers the acc during its own lowering).
         let mut ops: Vec<(OperandField, VirtualOp, Sign)> = Vec::with_capacity(children.len());
@@ -1097,6 +1111,241 @@ impl<'a> VirtualLower<'a> {
             self.emit_reduction_group_virtual(field, group, is_add, sign)?;
         }
         if negate && !seed_is_base {
+            self.emit_unary_negate();
+        }
+        Ok(())
+    }
+
+    // ── SP1: backward streamed reduction (one-Ext-cell stash + refold) ────────────
+
+    /// Direct-fold vs must-stash classifier for a reduction child (SP1). Mirrors the
+    /// arms of `lower_operand_virtual`: a resident hit is served directly; a source /
+    /// resolution leaf is direct UNLESS it MAY attempt admission (which emits an
+    /// `init;evict` pair that clobbers the acc); anything compound recomputes its cone
+    /// into the acc and so must be stashed. `true` = must stash, `false` = fold direct.
+    fn is_compound_or_may_admit(&self, layer: &DagLayer, id: ExprId) -> bool {
+        if self.defined.contains(&id) {
+            return false; // resident hit → served directly from its cell
+        }
+        if layer.resolutions.contains_key(&id)
+            || matches!(&layer.exprs[id.0 as usize], Expr::Source(_))
+        {
+            return self.may_attempt_admit(id); // source leaf: stash iff it may admit
+        }
+        true // compound cone → recompute clobbers the acc → stash
+    }
+
+    /// Whether lowering `id` as an operand MAY reach `try_admit`'s eager `init;evict`
+    /// (which clobbers the acc). This is `try_admit`'s stateless admissibility prefix
+    /// (`is_admittable` ∧ (`reaches_dram` ∨ operand-read-count ≥ 2)) plus a
+    /// remaining-occurrence lookahead (`effective_priority` is `Some`), so a genuine
+    /// last-use source is NOT needlessly stashed. `false` under `decisions: None` — no
+    /// admission ever happens there, so every source folds directly (legacy read-side).
+    fn may_attempt_admit(&self, id: ExprId) -> bool {
+        match &self.decisions {
+            None => false,
+            Some(ds) => {
+                ds.streams.is_admittable(id)
+                    && (ds.streams.reaches_dram(id) || ds.streams.operand_read_count(id) >= 2)
+                    && ds.streams.effective_priority(id).is_some()
+            }
+        }
+    }
+
+    /// Serve `id`'s occurrence and return a direct operand: its resident cell if defined,
+    /// else its source/leaf operand. Precondition: `is_compound_or_may_admit(id)` is
+    /// `false`, so lowering `id` does not clobber the acc. Mirrors the serve +
+    /// resident-hit / source arms of `lower_operand_virtual` (`:768`-`:800`), minus the
+    /// admission branch (a direct child, by classification, will not admit).
+    fn direct_operand(
+        &mut self,
+        layer: &DagLayer,
+        id: ExprId,
+        expected: OperandField,
+    ) -> Result<VirtualOp, CompileError> {
+        self.serve_occurrence(id);
+        if self.defined.contains(&id) {
+            let g = self.current_value_id(id);
+            return Ok(self.defer_read(g));
+        }
+        self.source_to_vop(layer, id, expected)
+    }
+
+    /// Fold one compound (or may-admit) child `id` into the running partial `P` (held in
+    /// `stash`), leaving `acc = P ⊕ (sign)·child`. `field` is the child's field,
+    /// `acc_field` is `P`'s field. Serves the child, recomputes its cone into the acc via
+    /// the SHARED `compile_expr_virtual` machinery (hook-preserving), runs its
+    /// materialize/admission obligations, then combines with the stashed partial:
+    ///   * ADMITTED: evict the child to its resident cell, reload `P` from `stash`, and
+    ///     fold the child back from its cell (so its residency is available to later
+    ///     occurrences) — `acc = P ⊕ (sign)·cell`.
+    ///   * NOT admitted: negate in place for a `Minus` add, then fold `P` back —
+    ///     `acc = (±child) ⊕ P` (Add commutes; a `Mul` child is always `Plus`, giving
+    ///     `acc = child · P`).
+    #[allow(clippy::too_many_arguments)]
+    fn fold_compound_child_into_partial(
+        &mut self,
+        layer: &DagLayer,
+        id: ExprId,
+        sign: Sign,
+        field: OperandField,
+        is_add: bool,
+        acc_field: OperandField,
+        stash: ValueId,
+    ) -> Result<(), CompileError> {
+        self.serve_occurrence(id);
+        self.compile_expr_virtual(layer, id, field)?;
+        self.materialize_if_root(id, true);
+        let admitted = if self.decisions.is_some() { self.try_admit(id, field) } else { None };
+        if let Some(g) = admitted {
+            self.widths.insert(g, field);
+            self.emit_evict_to_cell(g, field);
+            self.defined.insert(id);
+            let cop = self.defer_read(g);
+            self.emit_init_field(VirtualOp::Value(stash), acc_field); // acc = P
+            self.push_fold(field, vec![cop], is_add, sign); // acc = P ⊕ (sign)·child
+        } else {
+            if is_add && sign == Sign::Minus {
+                self.emit_unary_negate(); // acc = -child
+            }
+            // acc = (±child) ⊕ P  (Add commutes; Mul child·P, sign always Plus).
+            self.push_fold(acc_field, vec![VirtualOp::Value(stash)], is_add, Sign::Plus);
+        }
+        Ok(())
+    }
+
+    /// Fold every DIRECT (`!must_stash`) child of `kids` in field `phase` into the acc,
+    /// grouped by sign so each homogeneous group is one (`MAX_ARITY`-split) fold. Serves
+    /// each such child (via `direct_operand`) in `kids` order. Grouping ONLY — the
+    /// reduction's single tail negate is applied by `fold_reduction_streamed`.
+    fn fold_direct_group(
+        &mut self,
+        layer: &DagLayer,
+        kids: &[Kid],
+        seed: usize,
+        phase: OperandField,
+        is_add: bool,
+        expected: OperandField,
+    ) -> Result<(), CompileError> {
+        let mut plus: Vec<VirtualOp> = Vec::new();
+        let mut minus: Vec<VirtualOp> = Vec::new();
+        for i in 0..kids.len() {
+            if i == seed || kids[i].must_stash || kids[i].field != phase {
+                continue;
+            }
+            let op = self.direct_operand(layer, kids[i].id, expected)?;
+            match kids[i].sign {
+                Sign::Plus => plus.push(op),
+                Sign::Minus => minus.push(op),
+            }
+        }
+        if !plus.is_empty() {
+            self.emit_reduction_group_virtual(phase, plus, is_add, Sign::Plus)?;
+        }
+        if !minus.is_empty() {
+            self.emit_reduction_group_virtual(phase, minus, is_add, Sign::Minus)?;
+        }
+        Ok(())
+    }
+
+    /// SP1 streamed reduction: fold `children` bounding concurrent state to ONE stash
+    /// cell (the running partial) plus each child's own transient compute, instead of
+    /// the legacy pre-materialize-every-child loop. Value-identical to the legacy body
+    /// by Add/Mul commutativity; feasibility with streaming ⊇ legacy. Field-first phase
+    /// ordering (all Base children, then all Ext) lifts the acc to Ext at most once.
+    fn fold_reduction_streamed(
+        &mut self,
+        layer: &DagLayer,
+        children: &[ExprId],
+        is_add: bool,
+        negate: bool,
+        expected: OperandField,
+    ) -> Result<(), CompileError> {
+        // Classify every child (pre-lowering): (id, sign, field, must_stash).
+        let mut kids: Vec<Kid> = Vec::with_capacity(children.len());
+        for &c in children {
+            let (id, sign) = if is_add {
+                match classify_additive_child(layer, c) {
+                    // The reduction path is only reached after `try_compile_fma_virtual`
+                    // found no product child, so `Product` never occurs here.
+                    AdditiveChild::Product { .. } => (c, Sign::Plus),
+                    AdditiveChild::Addend { sign, id } => (id, sign),
+                }
+            } else {
+                (c, Sign::Plus)
+            };
+            let field = self.operand_field(layer, id, expected);
+            let must_stash = self.is_compound_or_may_admit(layer, id);
+            kids.push(Kid { id, sign, field, must_stash });
+        }
+
+        // Seed by the LEGACY field/sign policy over ALL kids (Base-Plus, else Plus, else
+        // Base, else 0); `!must_stash` is only a tie-break. A compound/may-admit seed is
+        // computed into the acc directly (nothing to combine yet — no outer stash).
+        let seed = pick_seed(&kids);
+        let mut acc_field = kids[seed].field;
+        if kids[seed].must_stash {
+            self.serve_occurrence(kids[seed].id);
+            self.compile_expr_virtual(layer, kids[seed].id, kids[seed].field)?;
+            self.materialize_if_root(kids[seed].id, true);
+            if self.decisions.is_some() {
+                if let Some(g) = self.try_admit(kids[seed].id, kids[seed].field) {
+                    self.widths.insert(g, kids[seed].field);
+                    self.emit_evict_to_cell(g, kids[seed].field);
+                    self.defined.insert(kids[seed].id);
+                    // Re-seed the acc from the resident cell so it holds the seed value.
+                    let cop = self.defer_read(g);
+                    self.emit_init_field(cop, kids[seed].field);
+                }
+            }
+        } else {
+            let op = self.direct_operand(layer, kids[seed].id, expected)?;
+            self.emit_init_field(op, kids[seed].field);
+        }
+        if kids[seed].sign == Sign::Minus {
+            self.emit_unary_negate();
+        }
+        if kids.len() == 1 {
+            if negate {
+                self.emit_unary_negate();
+            }
+            return Ok(());
+        }
+
+        // Field phases: fold all BASE children, then all EXT children, so the acc lifts
+        // to Ext at most once. Within a phase: direct children (grouped) first, then
+        // stash each compound/may-admit child through the one-cell stash+refold.
+        for phase in [OperandField::Base, OperandField::Ext] {
+            self.fold_direct_group(layer, &kids, seed, phase, is_add, expected)?;
+            if phase == OperandField::Ext
+                && kids
+                    .iter()
+                    .enumerate()
+                    .any(|(i, k)| i != seed && !k.must_stash && k.field == OperandField::Ext)
+            {
+                // An Ext direct fold just lifted the acc to Ext.
+                acc_field = OperandField::Ext;
+            }
+            for i in 0..kids.len() {
+                if i == seed || !kids[i].must_stash || kids[i].field != phase {
+                    continue;
+                }
+                let stash = self.alloc_temp_evicting(acc_field)?;
+                self.fold_compound_child_into_partial(
+                    layer,
+                    kids[i].id,
+                    kids[i].sign,
+                    kids[i].field,
+                    is_add,
+                    acc_field,
+                    stash,
+                )?;
+                if kids[i].field == OperandField::Ext {
+                    acc_field = OperandField::Ext;
+                }
+            }
+        }
+        if negate {
             self.emit_unary_negate();
         }
         Ok(())
@@ -1296,6 +1545,34 @@ impl<'a> VirtualLower<'a> {
     }
 }
 
+/// A classified reduction child for the SP1 streamed fold: its lowering id, fold sign,
+/// operand field, and whether it must be stashed (compound or may-admit) rather than
+/// folded directly. Built once per reduction by `fold_reduction_streamed`.
+struct Kid {
+    id: ExprId,
+    sign: Sign,
+    field: OperandField,
+    must_stash: bool,
+}
+
+/// Seed selection for the SP1 streamed reduction: the LEGACY heuristic
+/// (`compile_reduction_virtual` seed pick) — a Base-Plus child, else any Plus, else any
+/// Base, else index 0 — with `!must_stash` as a final tie-break WITHIN each criterion (a
+/// directly-foldable seed avoids a compound recompute for the initial acc load, but never
+/// changes which field/sign class wins, so the acc's seed field matches legacy).
+fn pick_seed(kids: &[Kid]) -> usize {
+    let by = |pred: &dyn Fn(&Kid) -> bool| -> Option<usize> {
+        kids
+            .iter()
+            .position(|k| pred(k) && !k.must_stash)
+            .or_else(|| kids.iter().position(|k| pred(k)))
+    };
+    by(&|k| k.field == OperandField::Base && k.sign == Sign::Plus)
+        .or_else(|| by(&|k| k.sign == Sign::Plus))
+        .or_else(|| by(&|k| k.field == OperandField::Base))
+        .unwrap_or(0)
+}
+
 /// True if `op` is a real backing (DRAM) read. Over-counts VirtualSetup-backed reads as
 /// DRAM (cosmetic — `is_dram_read` is Task-5 metadata, unused by placement/interp).
 fn is_dram_op(op: &VirtualOp) -> bool {
@@ -1419,6 +1696,8 @@ pub(crate) fn lower_layer_virtual(
         // fwd identity hooks — canonical resolution/classification, bit-identical.
         leaf_descs: &EMPTY_LEAF_DESCS,
         field_overrides: &EMPTY_FIELD_OVERRIDES,
+        // Forward lowering never streams reductions (byte-identical fwd programs).
+        stream_reductions: false,
     };
 
     let mut resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)> =
@@ -1561,6 +1840,7 @@ pub(crate) fn lower_bwd_root_virtual(
     field_overrides: &BTreeMap<ExprId, FieldKind>,
     streams: Option<OccurrenceStreams>,
     budget: usize,
+    stream_reductions: bool,
 ) -> Result<(Vec<VInstr>, Vec<usize>), CompileError> {
     assert!(
         (layer.exprs.len() as u64) < INTERNAL_BASE as u64,
@@ -1596,6 +1876,7 @@ pub(crate) fn lower_bwd_root_virtual(
         decisions: decisions_state,
         leaf_descs,
         field_overrides,
+        stream_reductions,
     };
 
     // The root's own output demand — mirrors `build_bwd_root`'s RootOutput site

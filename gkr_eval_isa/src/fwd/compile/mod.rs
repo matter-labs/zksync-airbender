@@ -541,10 +541,12 @@ pub(crate) fn compile_bwd_program(
     streams: Option<self::decisions::OccurrenceStreams>,
     place_budget: usize,
     lower_budget: usize,
+    stream_reductions: bool,
 ) -> Result<(Program, usize), CompileError> {
     // Phase 1 — the bwd one-root driver (result-in-acc terminal convention).
     let (vinstrs, step_of) = self::lower::lower_bwd_root_virtual(
         layer, root_expr, terms, ctx, leaf_descs, field_overrides, streams, lower_budget,
+        stream_reductions,
     )?;
 
     // Phase 1.5 — the shared value-preserving peephole. Safe for the terminal-acc

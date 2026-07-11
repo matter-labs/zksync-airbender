@@ -108,18 +108,50 @@ pub fn spine_terms(d: &DistilledLayer) -> Vec<ExprId> {
 /// per-demand recompute). Bindings are deliberately NOT an input — see the
 /// module doc (round/policy invariance).
 ///
-/// Fill-then-trim (same semantics as fwd `compile_layer` at the same budget):
-/// lower with eviction effectively disabled (FILL), let `plan_placement` at the
-/// real `budget` be the feasibility oracle, and on overflow binary-search the
-/// largest lowering budget whose placement fits (`lower_budget == budget` is
-/// the guaranteed baseline).
+/// Legacy-first compile driver (SP1). The baseline is the pre-materialize
+/// lowering (`stream_reductions = false`, byte-identical to before this task);
+/// only when it reports [`CompileError::BudgetBelowFloor`] do we retry with the
+/// one-Ext-cell reduction streaming engaged. Feasibility with streaming ⊇ legacy
+/// and streamed programs are value-identical to legacy on both the uncached and
+/// searched paths, so this fallback never changes a value or shrinks feasibility.
 pub fn compile_distilled(
     d: &DistilledLayer,
     budget: usize,
     decisions: Option<&SiteDecisions>,
 ) -> Result<BwdCompiledLayer, CompileError> {
+    match compile_distilled_streamed(d, budget, decisions, false) {
+        Err(CompileError::BudgetBelowFloor { .. }) => {
+            compile_distilled_streamed(d, budget, decisions, true)
+        }
+        other => other,
+    }
+}
+
+/// The legacy pre-materialize lowering ONLY (`stream_reductions = false`) — the
+/// SP1 baseline, exposed for the parity tests that must observe the un-streamed
+/// floor (a `BudgetBelowFloor` that streaming would otherwise mask).
+pub fn compile_distilled_legacy_only(
+    d: &DistilledLayer,
+    budget: usize,
+    decisions: Option<&SiteDecisions>,
+) -> Result<BwdCompiledLayer, CompileError> {
+    compile_distilled_streamed(d, budget, decisions, false)
+}
+
+/// Fill-then-trim compile at a fixed `stream_reductions` (same semantics as fwd
+/// `compile_layer` at the same budget): lower with eviction effectively disabled
+/// (FILL), let `plan_placement` at the real `budget` be the feasibility oracle,
+/// and on overflow binary-search the largest lowering budget whose placement fits
+/// (`lower_budget == budget` is the guaranteed baseline). `pub` for the SP1 parity
+/// tests, which pin the streamed vs legacy variants against each other.
+pub fn compile_distilled_streamed(
+    d: &DistilledLayer,
+    budget: usize,
+    decisions: Option<&SiteDecisions>,
+    stream_reductions: bool,
+) -> Result<BwdCompiledLayer, CompileError> {
     const FILL: usize = 1 << 20;
-    let at = |lb: usize| compile_distilled_at(d, budget, lb, decisions);
+    let at = |lb: usize| compile_distilled_at(d, budget, lb, decisions, stream_reductions);
     match at(FILL) {
         Ok(c) => return Ok(c),
         Err(CompileError::BudgetBelowFloor { .. }) => {}
@@ -148,6 +180,7 @@ fn compile_distilled_at(
     place_budget: usize,
     lower_budget: usize,
     decisions: Option<&SiteDecisions>,
+    stream_reductions: bool,
 ) -> Result<BwdCompiledLayer, CompileError> {
     let layer = &d.layer;
     let root_expr = layer.roots[d.root.0 as usize].expr;
@@ -179,6 +212,7 @@ fn compile_distilled_at(
         streams,
         place_budget,
         lower_budget,
+        stream_reductions,
     )?;
 
     // The bwd lowering runs the fwd resolution hook with empty materialize maps
