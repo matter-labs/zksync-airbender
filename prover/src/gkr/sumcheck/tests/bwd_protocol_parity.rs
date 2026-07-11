@@ -112,7 +112,15 @@ use crate::gkr::sumcheck::eq_poly::{
     evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext, make_eq_poly_in_full,
 };
 use crate::gkr::sumcheck::{evaluate_eq_poly, evaluate_small_univariate_poly};
-use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
+use crate::gkr::virtual_polys::init_and_teardown_base::{
+    evaluate_virtual_inits_and_teardowns_base_address_setup_polys,
+    materialize_virtual_inits_and_teardowns_base_address_setup_poly,
+};
+use crate::gkr::virtual_polys::range_check::{
+    evaluate_virtual_range_check_setup_poly, materialize_virtual_range_check_setup_poly,
+};
+use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
+use cs::gkr_compiler::dag_ir::fold_vs_from_originals;
 use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::tests::gkr::orchestration::common::{
@@ -963,6 +971,127 @@ fn rev_bits(x: usize, n: usize) -> usize {
     r
 }
 
+/// Build the production evaluation point (MSB-first, `x_1 = MSB`) for a depth-`d`
+/// instrument fold at position `y` over a `k`-variable domain: the first `d`
+/// coordinates are bound to the fold challenges (round `r` binds production
+/// coordinate `x_{r+1}` — `point[i] = ch[i]` for `i < d`), and the remaining
+/// `k-d` carry the low bits of `y` (`point[i] = bit_{i-d}(y)`). This is the
+/// Task-10 bit-order derivation: it inverts the instrument view `O(j) = P(rev_k(j))`
+/// so that a depth-0 point equals `P(rev_k(y))` and folding binds the MSB side.
+fn vs_eval_point(y: usize, d: usize, k: usize, ch: &[Ext]) -> Vec<Ext> {
+    (0..k)
+        .map(|i| {
+            if i < d {
+                ch[i]
+            } else {
+                lift(Bf::from_u32_with_reduction(((y >> (i - d)) & 1) as u32))
+            }
+        })
+        .collect()
+}
+
+/// The O(k) multilinear closed form of a VirtualSetup poly's depth-`ch.len()`
+/// fold at position `y`: the production evaluator applied to [`vs_eval_point`].
+/// This is what the device computes; it is value-identical to the default
+/// recompute-from-originals path (proven by `vs_closed_form_matches_recompute`).
+/// `k` is the trace log2 (the production point length). RangeCheck uses BITS 16 /
+/// timestamp; inits-teardowns use WORD_BITS 2 (mirrors `GKRSetup::construct`).
+fn vs_closed_form_fold(kind: &VirtualSetupKind, y: usize, ch: &[Ext], k: usize) -> Ext {
+    let point = vs_eval_point(y, ch.len(), k, ch);
+    let n = k as u32;
+    match kind {
+        VirtualSetupKind::RangeCheck16Bits => {
+            evaluate_virtual_range_check_setup_poly::<Bf, Ext, 16>(&point, n)
+        }
+        VirtualSetupKind::RangeCheckTimestamp => {
+            evaluate_virtual_range_check_setup_poly::<Bf, Ext, TIMESTAMP_COLUMNS_NUM_BITS>(&point, n)
+        }
+        VirtualSetupKind::InitsAndTeardownsLow => {
+            evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<Bf, Ext, 2>(&point, n).0
+        }
+        VirtualSetupKind::InitsAndTeardownsHigh => {
+            evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<Bf, Ext, 2>(&point, n).1
+        }
+    }
+}
+
+/// Bit-order proof (Task 7 mandatory self-check): for every `VirtualSetupKind`,
+/// the closed-form fold (point construction of [`vs_closed_form_fold`]) equals
+/// the default recompute-from-originals fold ([`fold_vs_from_originals`] over the
+/// bit-reversed instrument view `O(j) = P(rev_k(j))`) at every depth `d` and
+/// position `y`. Run at a small `BITS`/`WORD_BITS` legal for `k ∈ {4, 6}` (16 is
+/// illegal below `k=16`): the point→coordinate mapping is independent of the
+/// poly's magnitude constant, and the 16-bit / timestamp / word-bit magnitudes
+/// are cross-checked against their materialized forms by the `virtual_polys`
+/// unit tests. Challenges are genuine 4-coefficient Ext values, so the
+/// multilinear extension is actually exercised. NOTE: at `k ≤ 6` the
+/// inits/teardowns HIGH poly is identically zero (its `>> (16 - WORD_BITS)` split
+/// only lights up above `k = 14`), so that arm is a consistency (0 == 0) check;
+/// the LOW and range-check arms are the load-bearing, non-trivial proof and share
+/// the exact same MSB-first `.rev()` coordinate convention.
+#[test]
+fn vs_closed_form_matches_recompute() {
+    let worker = Worker::new_with_num_threads(2);
+    const TEST_BITS: u32 = 2;
+    let kinds = [
+        VirtualSetupKind::RangeCheck16Bits,
+        VirtualSetupKind::RangeCheckTimestamp,
+        VirtualSetupKind::InitsAndTeardownsLow,
+        VirtualSetupKind::InitsAndTeardownsHigh,
+    ];
+    for k in [4usize, 6] {
+        let rc = materialize_virtual_range_check_setup_poly::<Bf, Global, TEST_BITS>(k as u32);
+        let (it_low, it_high) =
+            materialize_virtual_inits_and_teardowns_base_address_setup_poly::<Bf, Global, TEST_BITS>(
+                k as u32,
+                &worker,
+            );
+
+        // Originals in production index space, read through the instrument view.
+        let orig = |kind: &VirtualSetupKind, z: usize| -> Bf {
+            let j = rev_bits(z, k);
+            match kind {
+                VirtualSetupKind::RangeCheck16Bits | VirtualSetupKind::RangeCheckTimestamp => rc[j],
+                VirtualSetupKind::InitsAndTeardownsLow => it_low[j],
+                VirtualSetupKind::InitsAndTeardownsHigh => it_high[j],
+            }
+        };
+        // Closed form at the SAME TEST_BITS as the originals (the fixture override
+        // uses 16 / timestamp / 2; this proves the shared point construction).
+        let closed = |kind: &VirtualSetupKind, y: usize, ch: &[Ext]| -> Ext {
+            let point = vs_eval_point(y, ch.len(), k, ch);
+            let n = k as u32;
+            match kind {
+                VirtualSetupKind::RangeCheck16Bits | VirtualSetupKind::RangeCheckTimestamp => {
+                    evaluate_virtual_range_check_setup_poly::<Bf, Ext, TEST_BITS>(&point, n)
+                }
+                VirtualSetupKind::InitsAndTeardownsLow => {
+                    evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<Bf, Ext, TEST_BITS>(&point, n).0
+                }
+                VirtualSetupKind::InitsAndTeardownsHigh => {
+                    evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<Bf, Ext, TEST_BITS>(&point, n).1
+                }
+            }
+        };
+
+        for kind in &kinds {
+            for d in 0..=k {
+                let ch: Vec<Ext> = (0..d)
+                    .map(|i| ext_scalar(0x5500_0000 ^ ((k as u32) << 8) ^ i as u32))
+                    .collect();
+                for y in 0..(1usize << (k - d)) {
+                    let recompute = fold_vs_from_originals(&|z| lift(orig(kind, z)), y, &ch);
+                    let cf = closed(kind, y, &ch);
+                    assert_eq!(
+                        recompute, cf,
+                        "closed form != recompute: kind {kind:?} k={k} d={d} y={y}"
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// The instrument's ORIGINALS: the bit-reversed view `O(j) = P(rev_k(j))` of
 /// every production column (see the module docs for why this is the mapping).
 struct Cols {
@@ -1756,6 +1885,12 @@ impl VirtualSetupResolver for FixtureCols {
             .unwrap_or_else(|| panic!("unknown virtual setup {kind:?}"));
         col[rev_bits(row, self.k)]
     }
+    /// Closed-form VS fold (Task 7): the O(k) multilinear evaluator the device
+    /// uses, replacing the O(2^d) recompute-from-originals default. Value-
+    /// identical to that default (see `vs_closed_form_matches_recompute`).
+    fn virtual_setup_fold(&self, kind: &VirtualSetupKind, y: usize, ch: &[Ext]) -> Ext {
+        vs_closed_form_fold(kind, y, ch, self.k)
+    }
 }
 impl ChallengeResolver for FixtureCols {
     fn challenge(&self, r: &ChallengeRef) -> Ext {
@@ -1789,6 +1924,11 @@ impl ReadResolver for FoldedView<'_> {
 impl VirtualSetupResolver for FoldedView<'_> {
     fn virtual_setup(&self, kind: &VirtualSetupKind, row: usize) -> Bf {
         self.origs.virtual_setup(kind, row)
+    }
+    fn virtual_setup_fold(&self, kind: &VirtualSetupKind, y: usize, ch: &[Ext]) -> Ext {
+        // VS-origin folds stay lazy (VS-ABI); delegate to the closed form on the
+        // originals resolver — no folded VS buffer exists.
+        self.origs.virtual_setup_fold(kind, y, ch)
     }
 }
 impl ChallengeResolver for FoldedView<'_> {
