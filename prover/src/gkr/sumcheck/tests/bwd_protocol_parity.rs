@@ -78,9 +78,10 @@ use cs::gkr_compiler::dag_ir::{
     RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
     VirtualSetupKind, VirtualSetupResolver,
 };
+use cs::definitions::gkr::{NoFieldLinearRelation, NoFieldSingleColumnLookupRelation};
 use cs::gkr_compiler::{
-    GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, NoFieldGKRRelation,
-    NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression,
+    GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, NoFieldGKRCacheRelation,
+    NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression,
 };
 use cs::tables::TableDriver;
 use field::{Field, FieldExtension, FixedArrayConvertible, PrimeField};
@@ -257,6 +258,13 @@ struct Family {
     /// Batching slots in kernel-registration order: `Some(addr)` = output claim
     /// consuming that beta power; `None` = claim-only constraint slot.
     slot_claim_addrs: Vec<Option<GKRAddress>>,
+    /// `Some((cache_addr, relation))` for the cached-input family: the
+    /// `cached_relations` entry production opens post-loop. `None` otherwise.
+    cache_relation: Option<(GKRAddress, NoFieldGKRCacheRelation)>,
+    /// The cache relation's dependency columns (address, values) — the base
+    /// witness columns behind the fence that production evaluates at the folding
+    /// point as EXTRA opened claims (never folded into the round polynomial).
+    cache_deps: Vec<(GKRAddress, Vec<Bf>)>,
 }
 
 fn build_storage(fam: &Family) -> GKRStorage<Bf, Ext> {
@@ -423,6 +431,8 @@ fn family_ext_product() -> Family {
         base_outputs: vec![],
         ext_outputs: vec![(addr_out, out)],
         slot_claim_addrs: vec![Some(addr_out)],
+        cache_relation: None,
+        cache_deps: vec![],
     }
 }
 
@@ -489,6 +499,8 @@ fn family_base_product() -> Family {
         base_outputs: vec![(addr_out, out)],
         ext_outputs: vec![],
         slot_claim_addrs: vec![Some(addr_out)],
+        cache_relation: None,
+        cache_deps: vec![],
     }
 }
 
@@ -559,6 +571,8 @@ fn family_mixed_mask_identity() -> Family {
         base_outputs: vec![],
         ext_outputs: vec![(addr_out, out)],
         slot_claim_addrs: vec![Some(addr_out)],
+        cache_relation: None,
+        cache_deps: vec![],
     }
 }
 
@@ -692,6 +706,8 @@ fn family_constraint_between_gates() -> Family {
         base_outputs: vec![],
         ext_outputs: vec![(addr_out0, out0), (addr_out1, out1)],
         slot_claim_addrs: vec![Some(addr_out0), None, Some(addr_out1)],
+        cache_relation: None,
+        cache_deps: vec![],
     }
 }
 
@@ -769,6 +785,171 @@ fn family_lookup_base_pair() -> Family {
         base_outputs: vec![],
         ext_outputs: vec![(addr_num, num), (addr_den, den)],
         slot_claim_addrs: vec![Some(addr_num), Some(addr_den)],
+        cache_relation: None,
+        cache_deps: vec![],
+    }
+}
+
+/// Cached-input product: a production gate folds a materialized cache column
+/// `GKRAddress::Cached{0, 0}` (a `SingleColumnLookup` over two base witness
+/// columns) times a base witness input; a `cached_relations` entry defines the
+/// cache. The backward distill FENCES the cache into a `Read(CacheOutput{0, 0})`
+/// fold leaf (production folds `Cached` columns as gate inputs), so `a0`/`a1`
+/// sit behind the fence and never become distilled leaves. Production opens the
+/// cache relation's dependencies (`a0`, `a1`) at the folding point post-loop as
+/// EXTRA claims; `check_family` cross-checks those against a direct fold.
+///
+/// `SingleColumnLookup` is the simplest constructible `NoFieldGKRCacheRelation`:
+/// its forward materialization stores the linear query value
+/// `Σ coeff_i·col_i + const` as a BASE column (`single_column_lookup.rs`), and
+/// `dependencies()` is exactly the `input.linear_terms` positions — so the cache
+/// column can be computed directly (`c = a0 + a1`) with a valid witness and no
+/// lookup-table plumbing. The `range_check_16` self-check (skipped by the
+/// `run_sumcheck_loop`-scoped harness) would want `c < 2^16`, so `a0`/`a1` are
+/// masked to 15 bits.
+fn family_cached_product() -> Family {
+    // Cache dependencies (base witness columns behind the fence — NOT folded).
+    let addr_a0 = GKRAddress::BaseLayerWitness(0);
+    let addr_a1 = GKRAddress::BaseLayerWitness(1);
+    // Materialized cache column + the consumer gate's second (base) input.
+    let addr_c = GKRAddress::Cached {
+        layer: 0,
+        offset: 0,
+    };
+    let addr_b = GKRAddress::BaseLayerWitness(2);
+    let addr_out = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 0,
+    };
+    let p_c = ReadPlace::CacheOutput {
+        layer: 0,
+        offset: 0,
+    };
+    let p_b = ReadPlace::BaseLayerWitness { column: 2 };
+
+    // 15-bit dependency columns; the cache stores the relation's linear form
+    // `c = a0 + a1` (the value the SingleColumnLookup forward materializes),
+    // kept < 2^16 so the range-check-16 witness invariant would hold.
+    let a0: Vec<Bf> = (0..POLY_SIZE)
+        .map(|row| Bf::from_u32_with_reduction(mix(0x0CA0, row as u32) & 0x7FFF))
+        .collect();
+    let a1: Vec<Bf> = (0..POLY_SIZE)
+        .map(|row| Bf::from_u32_with_reduction(mix(0x0CA1, row as u32) & 0x7FFF))
+        .collect();
+    let c: Vec<Bf> = a0
+        .iter()
+        .zip(&a1)
+        .map(|(x, y)| {
+            let mut t = *x;
+            t.add_assign(y);
+            t
+        })
+        .collect();
+    let b = base_col(0x0CB0, POLY_SIZE);
+    let out: Vec<Bf> = c
+        .iter()
+        .zip(&b)
+        .map(|(x, y)| {
+            let mut t = *x;
+            t.mul_assign(y);
+            t
+        })
+        .collect();
+
+    // The cache relation whose dependencies production opens post-loop. Its
+    // defining expression is the linear form over `a0`, `a1` — exactly what `c`
+    // holds by construction (witness invariant).
+    let relation = NoFieldGKRCacheRelation::SingleColumnLookup {
+        relation: NoFieldSingleColumnLookupRelation {
+            input: NoFieldLinearRelation {
+                linear_terms: vec![(1u32, addr_a0), (1u32, addr_a1)].into_boxed_slice(),
+                constant: 0,
+            },
+            lookup_set_index: 0,
+        },
+        range_check_width: 16,
+    };
+
+    // Production layer: one consumer gate folding the cache column `c` times the
+    // base input `b`, plus the cache relation in `cached_relations` (inert for
+    // `KernelCollector::from_layer`, which only registers `gates`; opened by
+    // `evaluate_sumcheck_for_layer` post-loop).
+    let consumer = NoFieldMaxQuadraticGKRRelation {
+        quadratic_terms: vec![(addr_c, vec![(1u32, addr_b)].into_boxed_slice())].into_boxed_slice(),
+        linear_terms: vec![].into_boxed_slice(),
+        constant: 0,
+    };
+    let expression = NoFieldStructuredExpression::Product(vec![
+        NoFieldStructuredExpression::Place(addr_c),
+        NoFieldStructuredExpression::Place(addr_b),
+    ]);
+    let mut layer = micro_layer(vec![GateArtifacts {
+        output_layer: 1,
+        enforced_relation: NoFieldGKRRelation::MaxQuadratic {
+            input: consumer,
+            expression,
+            output: addr_out,
+        },
+    }]);
+    layer.cached_relations.insert(addr_c, relation.clone());
+
+    // DagLayer: cache root `c = a0 + a1` (materialize `Cache{0, 0}`, base field)
+    // consumed by the output root `Mul(c, b)`. The output root references the
+    // cache root's ExprId, so the fence stops descent there and emits the
+    // `Read(CacheOutput{0, 0})` leaf; `a0`/`a1` are never reintern'd.
+    let dag = DagLayer {
+        sources: vec![
+            SourceInfo {
+                kind: rd(ReadPlace::BaseLayerWitness { column: 0 }),
+            },
+            SourceInfo {
+                kind: rd(ReadPlace::BaseLayerWitness { column: 1 }),
+            },
+            SourceInfo {
+                kind: rd(p_b.clone()),
+            },
+        ],
+        exprs: vec![
+            Expr::Source(SourceId(0)),             // 0 = a0
+            Expr::Source(SourceId(1)),             // 1 = a1
+            Expr::Source(SourceId(2)),             // 2 = b
+            Expr::Add(vec![ExprId(0), ExprId(1)]), // 3 = c = a0 + a1 (cache root)
+            Expr::Mul(vec![ExprId(3), ExprId(2)]), // 4 = c·b (output root)
+        ],
+        roots: vec![
+            // Cache root: materialize-only (claim None) — NOT in the batch.
+            Root {
+                expr: ExprId(3),
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Cache {
+                        layer: 0,
+                        offset: 0,
+                    },
+                    field: FieldKind::Base,
+                }),
+                claim: None,
+            },
+            // Claim-bearing output root.
+            out_root(4, 0, 0, FieldKind::Base, 0),
+        ],
+        batching: BatchingOrder {
+            roots: vec![RootId(1)],
+        },
+        resolutions: BTreeMap::new(),
+    };
+
+    Family {
+        name: "cached_product",
+        layer,
+        dag,
+        cross: HashMap::new(),
+        base_inputs: vec![(addr_c, p_c, c), (addr_b, p_b, b)],
+        ext_inputs: vec![],
+        base_outputs: vec![(addr_out, out)],
+        ext_outputs: vec![],
+        slot_claim_addrs: vec![Some(addr_out)],
+        cache_relation: Some((addr_c, relation)),
+        cache_deps: vec![(addr_a0, a0), (addr_a1, a1)],
     }
 }
 
@@ -1162,6 +1343,55 @@ fn check_family(fam: Family) {
             ),
         }
     }
+
+    // ── Post-loop `cached_relations` dependency opening ──
+    //
+    // Production folds `GKRAddress::Cached` columns as gate inputs (covered by
+    // the (a)-(e) chain and the (e) last-fold above) and then, in
+    // `evaluate_sumcheck_for_layer`, OPENS each cache relation post-loop:
+    // every `relation.dependencies()` column is evaluated at the folding point
+    // and committed as an EXTRA claim (`sumcheck_loop/mod.rs`). The
+    // `run_sumcheck_loop`-scoped oracle harness does not model that step, so we
+    // reproduce production's exact opening (`evaluate_with_precomputed_eq` at
+    // the folding challenges) and assert (i) the deps are genuinely extra — NOT
+    // among the batched `last_evaluations` — and (ii) each opened claim matches
+    // an independent instrument-style full fold of the same column.
+    if let Some((_cache_addr, relation)) = &fam.cache_relation {
+        let drawn = &run.folding_challenges;
+        assert_eq!(drawn.len(), k, "[{}] folding challenge count", fam.name);
+        let eq_at_z = make_eq_poly_in_full::<Ext>(drawn, &worker);
+        let eq_z = eq_at_z.last().unwrap();
+        let dep_cols: HashMap<GKRAddress, &Vec<Bf>> =
+            fam.cache_deps.iter().map(|(a, v)| (*a, v)).collect();
+        let deps = relation.dependencies();
+        assert!(
+            !deps.is_empty(),
+            "[{}] cache relation must have dependencies to open",
+            fam.name
+        );
+        for dep in deps {
+            assert!(
+                !run.last_evaluations.contains_key(&dep),
+                "[{}] cache dependency {dep:?} must be an EXTRA opened claim, \
+                 not a batched last_evaluation",
+                fam.name
+            );
+            let col = dep_cols
+                .get(&dep)
+                .unwrap_or_else(|| panic!("[{}] no column for cache dep {dep:?}", fam.name));
+            // Production's opening: multilinear evaluation at the folding point.
+            let opened = evaluate_with_precomputed_eq::<Bf, Ext>(col, eq_z);
+            // Independent cross-check: the instrument's LSB-first full fold of the
+            // bit-reversed column with the drawn challenges is the SAME MLE value.
+            let folded = sumcheck_fold_point(&|z| lift(col[rev_bits(z, k)]), 0, k as u8, drawn)
+                .expect("full-depth cache-dependency fold");
+            assert_eq!(
+                opened, folded,
+                "[{}] cache dependency {dep:?} opening != direct fold",
+                fam.name
+            );
+        }
+    }
 }
 
 // ── The matrix ───────────────────────────────────────────────────────────────
@@ -1189,6 +1419,11 @@ fn protocol_parity_constraint_between_gates() {
 #[test]
 fn protocol_parity_lookup_base_pair() {
     check_family(family_lookup_base_pair());
+}
+
+#[test]
+fn protocol_parity_cached() {
+    check_family(family_cached_product());
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1469,17 +1704,24 @@ impl FixtureChallenges {
 struct FixtureCols {
     k: usize,
     base: HashMap<ReadPlace, Arc<Box<[Bf]>>>,
+    /// Ext-valued cache-column originals: fenced `Read(CacheOutput)` leaves whose
+    /// production `GKRAddress::Cached` column is extension-valued (e.g. the
+    /// bigint `MemoryTuple` / `VectorizedLookup` caches) resolve here.
+    ext: HashMap<ReadPlace, Arc<Box<[Ext]>>>,
     vs: HashMap<VirtualSetupKind, Arc<Box<[Bf]>>>,
     chal: FixtureChallenges,
 }
 
 impl ReadResolver for FixtureCols {
     fn read(&self, place: &ReadPlace, row: usize) -> Ext {
-        let col = self
-            .base
-            .get(place)
-            .unwrap_or_else(|| panic!("unknown read place {place:?}"));
-        lift(col[rev_bits(row, self.k)])
+        let j = rev_bits(row, self.k);
+        if let Some(col) = self.ext.get(place) {
+            col[j]
+        } else if let Some(col) = self.base.get(place) {
+            lift(col[j])
+        } else {
+            panic!("unknown read place {place:?}")
+        }
     }
 }
 impl VirtualSetupResolver for FixtureCols {
@@ -1719,15 +1961,39 @@ fn protocol_parity_bigint_l0() {
         .collect();
 
     // Instrument originals: every Read place of the distilled programs must
-    // resolve to a REAL production base column.
+    // resolve to a REAL production column. Base-valued columns resolve to
+    // `snap_base` (lifted on read); Ext-valued cache columns to `snap_ext`.
     let mut base_cols: HashMap<ReadPlace, Arc<Box<[Bf]>>> = HashMap::new();
+    let mut ext_cols: HashMap<ReadPlace, Arc<Box<[Ext]>>> = HashMap::new();
+    let mut want_col = |place: ReadPlace| {
+        let addr = crate::tests::gkr::dag_ir_reference::read_place_to_address(&place);
+        if let Some(col) = snap_base.get(&addr) {
+            base_cols.insert(place, col.clone());
+        } else if let Some(col) = snap_ext.get(&addr) {
+            ext_cols.insert(place, col.clone());
+        } else {
+            panic!("no production column for {place:?} ({addr:?})");
+        }
+    };
     for src in &layer0.sources {
         if let SourceKind::Read { place } = &src.kind {
-            let addr = crate::tests::gkr::dag_ir_reference::read_place_to_address(place);
-            let col = snap_base
-                .get(&addr)
-                .unwrap_or_else(|| panic!("no production base column for {place:?} ({addr:?})"));
-            base_cols.insert(place.clone(), col.clone());
+            want_col(place.clone());
+        }
+    }
+    // Same-layer cache roots are DAG-shared (no Read source): the fence
+    // synthesizes their `Read(CacheOutput)` leaves in the distilled programs, so
+    // resolve those columns explicitly. bigint L0 is the first layer, so every
+    // cache is same-layer (no cross-layer cache Read sources).
+    for root in &layer0.roots {
+        if let Some(SinkInfo {
+            kind: SinkKind::Cache { layer, offset },
+            ..
+        }) = &root.materialize
+        {
+            want_col(ReadPlace::CacheOutput {
+                layer: *layer,
+                offset: *offset,
+            });
         }
     }
     let vs_cols: HashMap<VirtualSetupKind, Arc<Box<[Bf]>>> = [
@@ -1752,6 +2018,7 @@ fn protocol_parity_bigint_l0() {
     let cols = FixtureCols {
         k,
         base: base_cols,
+        ext: ext_cols,
         vs: vs_cols,
         chal,
     };
@@ -1971,12 +2238,14 @@ fn protocol_parity_bigint_l0() {
             let folded_next: Vec<(ReadPlace, Vec<Ext>)> =
                 par_map(&fold_places, threads, |place| {
                     let next = if r == 0 {
+                        // Depth-1 fold over the ORIGINALS via the read resolver
+                        // (bit-reversed, base lifted / ext direct), so Ext-valued
+                        // fenced cache columns fold without a spurious lift.
                         let half = 1usize << (k - 1);
-                        let col = &cols.base[place];
                         (0..half)
                             .map(|y| {
-                                let a = lift(col[rev_bits(2 * y, k)]);
-                                let b = lift(col[rev_bits(2 * y + 1, k)]);
+                                let a = cols.read(place, 2 * y);
+                                let b = cols.read(place, 2 * y + 1);
                                 add(mul(sub(b, &a), &ch), &a)
                             })
                             .collect()
