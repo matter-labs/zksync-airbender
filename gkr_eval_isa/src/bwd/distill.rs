@@ -33,10 +33,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use cs::gkr_compiler::dag_ir::{
-    bwd_relation_units, bwd_roots, enumerate_bwd_site_domain, ArenaBuilder, BatchingOrder,
-    BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagLayer, Expr, ExprId,
-    FieldKind, ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, RootSlot,
-    SiteKey, SourceKind,
+    bwd_cache_fences, bwd_relation_units, bwd_roots, enumerate_bwd_site_domain, ArenaBuilder,
+    BatchingOrder, BwdRegime, CacheFence, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
+    DagLayer, Expr, ExprId, FieldKind, ReadPlace, ResolutionStrategy, Root, RootGroup, RootId,
+    RootOrigin, RootSlot, SiteKey, SourceKind,
 };
 
 use super::source::{BwdSpecial, BwdSpecialTable, FoldState, MaterializationPolicy, OriginLeaf};
@@ -106,6 +106,12 @@ pub fn distill(
 
     let skipped_decoder = claim_cone_has_decoder(layer);
 
+    // Same-layer cache fence: cache-root exprs become `Read(CacheOutput)` fold
+    // leaves during the rebuild (mirrors production folding `GKRAddress::Cached`
+    // columns), replacing the inlined defining cone. Subsumes cached lookups
+    // (their shared expr id IS the fence key).
+    let fences = bwd_cache_fences(layer);
+
     let mut cx = Reintern {
         layer,
         regime,
@@ -113,6 +119,8 @@ pub fn distill(
         specials: BwdSpecialTable::default(),
         leaf_descs: BTreeMap::new(),
         field_overrides: BTreeMap::new(),
+        fences: &fences,
+        cross_fields: HashMap::new(),
         memo: HashMap::new(),
     };
 
@@ -167,6 +175,23 @@ pub fn distill(
         resolutions: BTreeMap::new(),
     };
 
+    // Merge the fenced same-layer cache fields into the cross-layer field map so
+    // R0 lowering / floor see the right width for the CacheOutput fold leaves.
+    // Same-layer places are absent from `cross`, so a conflicting pre-existing
+    // entry (same place, different field) is a contract violation.
+    let mut cross_fields = cross.clone();
+    for (place, field) in cx.cross_fields {
+        match cross_fields.get(&place) {
+            Some(prev) => assert_eq!(
+                *prev, field,
+                "cache fence field {field:?} conflicts with cross-layer field {prev:?} for {place:?}"
+            ),
+            None => {
+                cross_fields.insert(place, field);
+            }
+        }
+    }
+
     DistilledLayer {
         layer: rebuilt,
         root: RootId(0),
@@ -174,7 +199,7 @@ pub fn distill(
         regime,
         leaf_descs: cx.leaf_descs,
         field_overrides: cx.field_overrides,
-        cross_fields: cross.clone(),
+        cross_fields,
         unit_order: units,
         skipped_decoder,
     }
@@ -190,6 +215,11 @@ struct Reintern<'a> {
     specials: BwdSpecialTable,
     leaf_descs: BTreeMap<ExprId, u16>,
     field_overrides: BTreeMap<ExprId, FieldKind>,
+    /// Same-layer cache boundaries (`ExprId -> CacheFence`): descent stops here
+    /// and emits a `Read(CacheOutput)` fold leaf.
+    fences: &'a HashMap<ExprId, CacheFence>,
+    /// Fenced places' fields, merged into `DistilledLayer::cross_fields`.
+    cross_fields: HashMap<ReadPlace, FieldKind>,
     /// canonical ExprId -> distilled ExprId (a rewritten `LookupValue` maps to
     /// its re-interned query expr).
     memo: HashMap<ExprId, ExprId>,
@@ -199,6 +229,28 @@ impl Reintern<'_> {
     fn reintern(&mut self, e: ExprId) -> ExprId {
         if let Some(&n) = self.memo.get(&e) {
             return n;
+        }
+        // Fence: a same-layer cache root becomes a `Read(CacheOutput)` fold leaf
+        // instead of its inlined defining cone. This fires before the `Expr`
+        // match, so it also subsumes cached `LookupValue` leaves (their shared
+        // expr id IS the fence key) — the `:LookupValue` rewrite below stays as
+        // the fallback for genuinely uncached lookups.
+        if let Some(f) = self.fences.get(&e) {
+            let place = f.place.clone();
+            let s = self.arena.intern_source(SourceKind::Read { place: place.clone() });
+            let ne = self.arena.source_expr(s);
+            if self.regime == BwdRegime::Ext {
+                let d = self.specials.intern(BwdSpecial::FoldSource {
+                    origin: OriginLeaf::Read(place.clone()),
+                });
+                self.leaf_descs.insert(ne, d);
+                self.field_overrides.insert(ne, FieldKind::Ext);
+            }
+            // Record the sink's field so R0 lowering / floor see the right width;
+            // same-layer fenced places are absent from the cross-layer field map.
+            self.cross_fields.insert(place, f.field);
+            self.memo.insert(e, ne);
+            return ne;
         }
         let n = match &self.layer.exprs[e.0 as usize] {
             Expr::Source(sid) => {
@@ -277,6 +329,10 @@ fn claim_cone_has_decoder(layer: &DagLayer) -> bool {
     if decoder_keys.is_empty() {
         return false;
     }
+    // Fence: descent stops at same-layer cache roots (the backward pass folds the
+    // materialized cache column), so a decoder reachable ONLY through a cache no
+    // longer poisons the layer — matching the fenced re-intern.
+    let fences = bwd_cache_fences(layer);
     let mut seen: HashSet<ExprId> = HashSet::new();
     let mut stack: Vec<ExprId> = layer
         .roots
@@ -286,6 +342,9 @@ fn claim_cone_has_decoder(layer: &DagLayer) -> bool {
         .collect();
     while let Some(e) = stack.pop() {
         if !seen.insert(e) {
+            continue;
+        }
+        if fences.contains_key(&e) {
             continue;
         }
         if decoder_keys.contains(&e) {
@@ -378,6 +437,8 @@ pub fn distilled_site_domain(d: &DistilledLayer) -> BTreeSet<SiteKey> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bwd::compile::compile_distilled;
+    use crate::fwd::binding::BackingKey;
     use cs::gkr_compiler::dag_ir::{
         eval_layer_root, Bf, ChallengeResolver, Ext, FillSource, LookupResolver, LookupValueKind,
         ReadResolver, Resolvers, SinkInfo, SinkKind, SourceId, SourceInfo, VirtualSetupKind,
@@ -734,6 +795,96 @@ mod tests {
             }
         }
         assert_eq!(d.specials.len(), 1, "only the VirtualSetup desc in R0");
+    }
+
+    // (c2) ── Same-layer cache fence ───────────────────────────────────────────
+
+    /// Cache root `c = w0 + w1` (sink `Cache{layer:0, offset:2}`, field Ext,
+    /// claim None) consumed by a claim root `Mul(c, w1)`. `w0` is reachable ONLY
+    /// through the cache cone.
+    fn cache_layer() -> DagLayer {
+        DagLayer {
+            sources: vec![read_src(0), read_src(1)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0 = w0
+                Expr::Source(SourceId(1)),             // 1 = w1
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 2 = c (cache root)
+                Expr::Mul(vec![ExprId(2), ExprId(1)]), // 3 = c * w1 (claim root)
+            ],
+            roots: vec![
+                Root {
+                    expr: ExprId(2),
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache { layer: 0, offset: 2 },
+                        field: FieldKind::Ext,
+                    }),
+                    claim: None,
+                },
+                claim_root(ExprId(3), 0),
+            ],
+            batching: BatchingOrder { roots: vec![RootId(1)] },
+            resolutions: BTreeMap::new(),
+        }
+    }
+
+    /// All `Read` places surviving the rebuild.
+    fn distilled_reads(d: &DistilledLayer) -> Vec<ReadPlace> {
+        d.layer
+            .sources
+            .iter()
+            .filter_map(|s| match &s.kind {
+                SourceKind::Read { place } => Some(place.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn distill_fences_same_layer_cache_to_cacheoutput_leaf() {
+        let layer = cache_layer();
+        let d = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let cache_place = ReadPlace::CacheOutput { layer: 0, offset: 2 };
+        let a_place = ReadPlace::BaseLayerWitness { column: 0 };
+
+        // A Read(CacheOutput{0,2}) leaf with a FoldSource desc exists.
+        let has_cache_leaf = (0..d.specials.len() as u16).any(|i| {
+            matches!(
+                d.specials.get(i),
+                Some(BwdSpecial::FoldSource {
+                    origin: OriginLeaf::Read(ReadPlace::CacheOutput { layer: 0, offset: 2 })
+                })
+            )
+        });
+        assert!(has_cache_leaf, "no CacheOutput FoldSource leaf: {:?}", d.specials);
+
+        // The cache column is a surviving Read; the defining cone's `w0` leaf is
+        // NOT (it was reachable only through the fenced cache).
+        let reads = distilled_reads(&d);
+        assert!(reads.contains(&cache_place), "cache column missing: {reads:?}");
+        assert!(!reads.contains(&a_place), "cone leaked through fence: {reads:?}");
+
+        // Field plumbing: the fenced place's field rides cross_fields.
+        assert_eq!(d.cross_fields.get(&cache_place), Some(&FieldKind::Ext));
+    }
+
+    #[test]
+    fn distill_r0_fenced_cache_is_plain_read_leaf() {
+        let layer = cache_layer();
+        let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let cache_place = ReadPlace::CacheOutput { layer: 0, offset: 2 };
+
+        // R0: no FoldSource desc — the CacheOutput leaf is an ordinary Read.
+        assert!(d.leaf_descs.is_empty(), "R0 fenced cache carries no desc: {:?}", d.leaf_descs);
+        assert!(distilled_reads(&d).contains(&cache_place), "cache column missing");
+        // The sink's field still rides cross_fields (drives R0 backing width).
+        assert_eq!(d.cross_fields.get(&cache_place), Some(&FieldKind::Ext));
+
+        // Compile lowers the leaf to a Global backing keyed BackingKey::CacheOutput.
+        let c = compile_distilled(&d, 16, None).expect("compiles");
+        let has_cache_backing = (0..c.backings.n_slots()).any(|s| {
+            matches!(c.backings.backing(s as u8), Some(BackingKey::CacheOutput { .. }))
+        });
+        assert!(has_cache_backing, "no CacheOutput backing in R0 compile");
     }
 
     // (d) ── Canonical layer never mutated ─────────────────────────────────────
