@@ -32,7 +32,7 @@ use cs::gkr_compiler::dag_ir::{
 };
 use field::Field;
 use gkr_eval_isa::bwd::compile::{compile_distilled, spine_terms, BwdCompiledLayer};
-use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
+use gkr_eval_isa::bwd::source::BwdSpecial;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine, Program};
 
@@ -44,11 +44,10 @@ fn count_vs_fold_uses(c: &BwdCompiledLayer) -> usize {
     let mut n = 0usize;
     let mut visit = |op: &OperandLine| {
         if let OperandLine::Special { desc } = op {
-            if let Some(BwdSpecial::FoldSource {
-                origin: OriginLeaf::VirtualSetup { .. },
-            }) = c.specials.get(*desc)
-            {
-                n += 1;
+            if let Some(BwdSpecial::FoldSource { origin }) = c.specials.get(*desc) {
+                if origin.is_vs() {
+                    n += 1;
+                }
             }
         }
     };

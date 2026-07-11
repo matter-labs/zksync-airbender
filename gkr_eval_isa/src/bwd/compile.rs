@@ -37,7 +37,7 @@ use crate::fwd::source::{ChallengeBanks, ConstBank};
 use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 
 use super::distill::{distilled_site_domain, DistilledLayer};
-use super::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
+use super::source::{BwdSpecial, BwdSpecialTable};
 
 // ── BwdTrafficStats ───────────────────────────────────────────────────────────
 
@@ -46,14 +46,22 @@ use super::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 /// `Special`) would be invisible to the Task-8 objective. `fold_traffic` is the
 /// ROLE-NEUTRAL tally at 4 cells (Ext width) per use — exact per-role/depth
 /// byte costs stay in Task 12's census model.
+///
+/// `fold_traffic` counts 4 cells per READ-ORIGIN fold use ONLY: a VS-origin
+/// fold (`origin.is_vs()`) uses the O(k) multilinear closed form — compute-only,
+/// zero DRAM — so it contributes to `fold_uses` but adds NO `fold_traffic`.
+/// Invariant: `fold_traffic == 4 * (fold_uses - vs_fold_uses)`, where
+/// `vs_fold_uses` is the VS-origin subset of `fold_uses`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BwdTrafficStats {
     /// Width-weighted `Global` (real DRAM backing) operand traffic, in cells —
     /// mirrors `CompileStats::dram_traffic` (R0-regime Reads and cross-layer reads).
     pub global: usize,
-    /// `Special { desc }` operand uses whose desc is a `BwdSpecial::FoldSource`.
+    /// `Special { desc }` operand uses whose desc is a `BwdSpecial::FoldSource`
+    /// — BOTH Read-origin and VS-origin uses count here.
     pub fold_uses: usize,
-    /// Role-neutral fold operand traffic: `4 * fold_uses` (Ext width per use).
+    /// Role-neutral fold operand traffic: `4 * (fold_uses - vs_fold_uses)`
+    /// (Ext width per READ-origin use only — VS-origin uses add no traffic).
     pub fold_traffic: usize,
 }
 
@@ -243,7 +251,7 @@ fn tally_bwd_program(
                     // (Task 7): compute-only, zero DRAM, so it is NOT tallied
                     // into the search-facing fold traffic (fold_uses is still
                     // counted — it is a real Special operand occurrence).
-                    if matches!(origin, OriginLeaf::Read(_)) {
+                    if !origin.is_vs() {
                         ext.fold_traffic += 4;
                     }
                 }

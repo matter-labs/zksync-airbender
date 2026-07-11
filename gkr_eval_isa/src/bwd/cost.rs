@@ -138,20 +138,6 @@ pub fn read_fold_state(policy: MaterializationPolicy, round: u8) -> FoldState {
     }
 }
 
-/// The effective [`FoldState`] the cost model accounts a fold source's origin
-/// under. This MIRRORS [`super::distill::bind`] exactly — both apply the VS
-/// forced-lazy convention (VS origins are always lazy, Task 11); the local copy
-/// exists so the census can map an origin → state without a `BwdBindings` vector.
-#[inline]
-fn effective_fold_state(origin: &OriginLeaf, policy: MaterializationPolicy, round: u8) -> FoldState {
-    match origin {
-        // VS-ABI (Task 11): VS-origin folds cannot materialize — always lazy.
-        // Same rule the runtime binder `distill::bind` enforces.
-        OriginLeaf::VirtualSetup { .. } => FoldState::LazyFromOriginals { depth: round },
-        OriginLeaf::Read(_) => read_fold_state(policy, round),
-    }
-}
-
 /// Per-round DRAM byte breakdown of one compiled backward layer, in bytes moved
 /// **per logical row** at this `(policy, round)`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -231,11 +217,16 @@ pub fn round_cost(
                     // (Task 7): the device evaluates them from a handful of
                     // challenges, moving ZERO DRAM — no read bytes, no store.
                     // Every other (Read) origin gathers originals / a folded
-                    // buffer at its own field width, exactly as before.
-                    if let OriginLeaf::VirtualSetup { .. } = origin {
+                    // buffer at its own field width, exactly as before. This
+                    // short-circuit IS the cost model's side of the VS-ABI
+                    // forced-lazy convention (Task 11) — it MIRRORS the
+                    // runtime binder `distill::bind` exactly (a VS origin
+                    // never reaches `read_fold_state`, so there is no
+                    // separate "effective fold state" to compute).
+                    if origin.is_vs() {
                         // compute-only closed form: contributes nothing to DRAM.
                     } else {
-                        let state = effective_fold_state(origin, policy, round);
+                        let state = read_fold_state(policy, round);
                         let width = origin_width_cells(origin, cross_fields);
                         cost.t0_read_bytes += fold_read_bytes(Role::T0, state, width);
                         cost.t2_read_bytes += fold_read_bytes(Role::T2, state, width);

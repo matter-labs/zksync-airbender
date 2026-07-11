@@ -177,8 +177,12 @@ pub fn distill(
 
     // Merge the fenced same-layer cache fields into the cross-layer field map so
     // R0 lowering / floor see the right width for the CacheOutput fold leaves.
-    // Same-layer places are absent from `cross`, so a conflicting pre-existing
-    // entry (same place, different field) is a contract violation.
+    // `cross` is usually built per-layer (same-layer places absent, so the merge
+    // is a plain insert), but a WHOLE-CIRCUIT map may already carry the same
+    // place (e.g. it is also read cross-layer elsewhere) — that is not a
+    // conflict as long as the field agrees, so the `assert_eq` below is a
+    // double-entry check (same place, same field), not a same-layer-absence
+    // invariant.
     let mut cross_fields = cross.clone();
     for (place, field) in cx.cross_fields {
         match cross_fields.get(&place) {
@@ -390,9 +394,9 @@ pub struct BwdBindings {
 /// the interpreter read a raw unfolded `Bf` VS value where a depth-`round` Ext
 /// fold is required — silently wrong under real Ext challenges. The lazy refold
 /// from the originals is value-identical. The runtime binder and the Task-12
-/// cost model (`bwd/cost.rs::effective_fold_state`) MIRROR this mapping — a
-/// materialized VS binding cannot exist until the device port grows an
-/// Ext-typed VS buffer read.
+/// cost model (`bwd/cost.rs::round_cost`'s VS short-circuit,
+/// `origin.is_vs()`) MIRROR this mapping — a materialized VS binding cannot
+/// exist until the device port grows an Ext-typed VS buffer read.
 pub fn bind(d: &DistilledLayer, policy: MaterializationPolicy, round: u8) -> BwdBindings {
     let states = (0..d.specials.len())
         .map(|i| match d.specials.get(i as u16).expect("dense desc index") {

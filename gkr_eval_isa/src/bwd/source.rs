@@ -27,6 +27,21 @@ pub enum OriginLeaf {
     // REV2: LookupColumn placeholder DELETED — decoder binding is deferred design.
 }
 
+impl OriginLeaf {
+    /// Whether this origin is a `VirtualSetup` leaf — the single predicate
+    /// backing the VS zero-DRAM convention (VS-ABI, Task 11): VS-origin folds
+    /// use the O(k) multilinear closed form (compute-only, zero DRAM, always
+    /// lazy), never the ordinary Read-origin materialize/lazy machinery. Used
+    /// at every site that encodes this convention: `cost::round_cost`'s
+    /// short-circuit, `compile::tally_bwd_program`'s traffic gate, and the
+    /// `bwd_distill_fixtures` VS-use counter. `pub` (not `pub(crate)`): the
+    /// last of those is an external integration test (`tests/`), which only
+    /// sees the crate's public surface.
+    pub fn is_vs(&self) -> bool {
+        matches!(self, OriginLeaf::VirtualSetup { .. })
+    }
+}
+
 /// A backward-VM special-descriptor payload. STRUCTURAL only — `FoldState`
 /// moved to per-run `BwdBindings` (Task 4).
 #[derive(Debug, Clone, PartialEq, Eq)]
