@@ -20,6 +20,32 @@
 //! transform itself is never self-oracled; the DIFFERENTIAL is the compiled
 //! program versus the canonical expression tree.
 //!
+//! # The cache fence (why this stays a SEMANTIC gate)
+//!
+//! Post Task-2, the distilled instrument replaces each same-layer cache cone with
+//! a `Read(ReadPlace::CacheOutput{..})` fold leaf (production folds
+//! `GKRAddress::Cached` columns instead of recomputing the defining relation). The
+//! oracle here still recomputes the ORIGINAL cone — it is the independent
+//! reference and is NEVER fenced. The two therefore read DIFFERENT leaf sets: the
+//! instrument folds a single cache column; the oracle folds that column's cone of
+//! originals. They agree because (a) the read side is made witness-consistent —
+//! [`common::CacheConsistentResolvers`] defines the synthetic value of a fenced
+//! cache column at row `z` as the plain per-row value of its defining cone (the
+//! witness the forward pass would have written), and (b) the shared leaf transform
+//! (`sumcheck_fold_point` then `role_combine`) is LINEAR and the corpus cache
+//! cones are lowered from production's LINEAR cache relations
+//! (`NoFieldGKRCacheRelation`), so fold-of-column == column-of-folds. This gate
+//! thus verifies the fence SEMANTICALLY: it passes iff every fenced leaf's folded
+//! value equals its defining cone's folded value. `total_fenced > 0` guards that
+//! the corpus actually exercises the fence (else the check is vacuous). A
+//! nonlinear or non-fold-commuting cache cone would break the identity and fail
+//! loudly — that is the contract, not a masked case.
+//!
+//! Because the fence also stops `claim_cone_has_decoder` at cache roots, every
+//! former `PeekDecoder` layer (decoders live behind caches) is now distillable;
+//! `PINNED_SKIPPED_DECODER` is consequently empty and those `[L0]` layers appear
+//! in `PINNED_B16_INFEASIBLE` at their fenced floors.
+//!
 //! # Round / policy coverage and the materialized-buffer resolver
 //!
 //! A `FoldSource` at round `r` reads either the depth-`r` fold of the originals
@@ -40,7 +66,10 @@ mod common;
 
 use std::collections::{BTreeSet, HashMap};
 
-use common::{lift, load_fixture, resolvers, schedule_stem, SyntheticResolvers};
+use common::{
+    cache_consistent_resolvers, lift, load_fixture, resolvers, schedule_stem,
+    CacheConsistentResolvers, SyntheticResolvers,
+};
 use cs::gkr_compiler::dag_ir::{
     bwd_roots, eval_layer_expr, lower_dag, validate, Bf, BwdRegime, ChallengeKey, ChallengePower,
     ChallengeRef, ChallengeResolver, DagLayer, Expr, ExprId, Ext, LookupResolver, LookupValueKind,
@@ -73,26 +102,32 @@ const FIXTURES: &[&str] = &[
     "unified_reduced_machine_layout_gkr.json",
 ];
 
-/// Decoder-bearing layers, skipped in BOTH regimes (out of v1). Pinned so a
-/// coverage change is loud — identical to `bwd_distill_fixtures.rs`.
-const PINNED_SKIPPED_DECODER: &[&str] = &[
-    "add_sub_lui_auipc_mop[L0]",
-    "jump_branch_slt[L0]",
-    "mem_subword_only[L0]",
-    "mem_word_only[L0]",
-    "shift_binop[L0]",
-    "unified_reduced_machine[L0]",
-    "unsigned_mul_div[L0]",
-];
+/// Decoder-bearing layers skipped in BOTH regimes (out of v1). EMPTY since the
+/// Task-2 backward cache fence: every corpus `PeekDecoder` cone is reachable only
+/// through a same-layer cache, so it is now fenced to a `Read(CacheOutput)` fold
+/// leaf and the layer becomes distillable (production folds those cache columns
+/// rather than recomputing the decoder). `claim_cone_has_decoder` stops descent
+/// at cache roots, so no layer is decoder-skipped. Pinned so a coverage change is
+/// loud — identical to `bwd_distill_fixtures.rs`.
+const PINNED_SKIPPED_DECODER: &[&str] = &[];
 
 /// Distillable layers whose placement floor exceeds b16 — the value gate still
 /// covers them by retrying `compile_distilled` at the reported floor. Pinned
-/// (with floor) so drift is loud; identical to `bwd_distill_fixtures.rs`.
+/// (with floor) so drift is loud; identical to `bwd_distill_fixtures.rs`. The
+/// seven `[L0]` decoder layers unblocked by the fence (above) enter here at
+/// their fenced Ext/R0 floors.
 const PINNED_B16_INFEASIBLE: &[&str] = &[
+    "add_sub_lui_auipc_mop[L0][Ext] floor=48",
     "bigint_with_extended_control[L0][R0] floor=83",
     "bigint_with_extended_control[L0][Ext] floor=320",
+    "jump_branch_slt[L0][Ext] floor=28",
     "keccak_special5[L0][R0] floor=46",
     "keccak_special5[L0][Ext] floor=172",
+    "mem_subword_only[L0][Ext] floor=20",
+    "mem_word_only[L0][Ext] floor=20",
+    "shift_binop[L0][Ext] floor=24",
+    "unified_reduced_machine[L0][R0] floor=20",
+    "unified_reduced_machine[L0][Ext] floor=68",
     "unsigned_mul_div[L1][Ext] floor=40",
 ];
 
@@ -120,8 +155,12 @@ fn beta_i(r: &Resolvers<'_>, i: usize) -> Ext {
 // folded with `ch` via the shared `sumcheck_fold_point`. Feeding this to a
 // `Materialized` binding reproduces exactly what a `LazyFromOriginals { depth:
 // round }` binding computes from `orig` — so all policies agree bit-for-bit.
+//
+// `orig` is the WITNESS-CONSISTENT read side (`CacheConsistentResolvers`), so a
+// fenced `CacheOutput` fold leaf materializes as the fold of its defining cone's
+// per-row column — exactly what the oracle recomputes from that cone's originals.
 struct BufferAt<'a> {
-    orig: &'a SyntheticResolvers,
+    orig: &'a CacheConsistentResolvers<'a>,
     round: u8,
     ch: &'a [Ext],
 }
@@ -291,6 +330,7 @@ fn bwd_value_parity_all_fixtures() {
     let mut interpreted_r0 = 0usize;
     let mut interpreted_ext = 0usize;
     let mut comparisons = 0usize;
+    let mut total_fenced = 0usize;
 
     for name in FIXTURES {
         let stem = schedule_stem(name);
@@ -303,6 +343,13 @@ fn bwd_value_parity_all_fixtures() {
             if bwd_roots(layer).is_empty() {
                 continue; // nothing to prove backward
             }
+            // Witness-consistent read side: fenced same-layer `CacheOutput` fold
+            // leaves read as the per-row value of their defining cone, so the
+            // instrument (folding cache columns) agrees with the oracle (folding
+            // the cone's originals). Cross-layer caches and base columns delegate.
+            let cc = CacheConsistentResolvers::new(layer);
+            total_fenced += cc.n_fences();
+            let cc_r = cache_consistent_resolvers(&cc);
             for &regime in &[BwdRegime::R0, BwdRegime::Ext] {
                 let d = distill(layer, regime, &cross, None);
                 if d.skipped_decoder {
@@ -370,9 +417,9 @@ fn bwd_value_parity_all_fixtures() {
                                     .states
                                     .iter()
                                     .any(|s| matches!(s, gkr_eval_isa::bwd::source::FoldState::Materialized));
-                                let buf = BufferAt { orig: &syn, round, ch: &round_challenges };
+                                let buf = BufferAt { orig: &cc, round, ch: &round_challenges };
                                 let buf_r = buffer_resolvers(&buf);
-                                let run_r = if materialized { &buf_r } else { &plain };
+                                let run_r = if materialized { &buf_r } else { &cc_r };
 
                                 let got = interpret_bwd_row(
                                     &c, &d, &bindings, run_r, role, row, &round_challenges,
@@ -405,7 +452,7 @@ fn bwd_value_parity_all_fixtures() {
 
     println!(
         "bwd G1: interpreted {interpreted_r0} R0 + {interpreted_ext} Ext layer instances; \
-         {comparisons} interp==oracle comparisons"
+         {comparisons} interp==oracle comparisons; {total_fenced} fenced cache columns"
     );
     println!("floor-retries ({}):", floor_retries.len());
     for s in &floor_retries {
@@ -418,6 +465,13 @@ fn bwd_value_parity_all_fixtures() {
 
     assert!(comparisons > 0, "vacuous — no value-parity comparisons made");
     assert!(interpreted_r0 > 0 && interpreted_ext > 0, "both regimes must be exercised");
+    // The whole point of this gate post-fence: the corpus MUST exercise fenced
+    // cache columns, otherwise the witness-consistent read side is never engaged
+    // and the gate silently degrades to the cache-free case.
+    assert!(
+        total_fenced > 0,
+        "no fenced cache columns across the corpus — the fence is not being exercised"
+    );
 
     let pinned_skip: BTreeSet<String> =
         PINNED_SKIPPED_DECODER.iter().map(|s| s.to_string()).collect();

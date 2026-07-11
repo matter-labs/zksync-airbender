@@ -5,11 +5,14 @@
 //! loading + `SyntheticResolvers` used by `fwd_parity.rs`. Lib items are reached via
 //! `gkr_eval_isa::`, never `crate::`.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use cs::gkr_compiler::dag_ir::{
-    lower_dag, validate, validate_circuit_schedule, Bf, ChallengeRef, CircuitSchedule, DagCircuit,
-    Ext, LookupValueKind, ReadPlace, Resolvers, VirtualSetupKind,
+    bwd_cache_fences, eval_layer_expr, lower_dag, validate, validate_circuit_schedule, Bf,
+    ChallengeRef, ChallengeResolver, CircuitSchedule, DagCircuit, DagLayer, Expr, ExprId, Ext,
+    LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, SourceKind,
+    VirtualSetupKind, VirtualSetupResolver,
 };
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
@@ -94,6 +97,129 @@ pub fn resolvers(s: &SyntheticResolvers) -> Resolvers<'_> {
         virtual_setup: s,
         challenge: s,
     }
+}
+
+// ── Witness-consistent synthetic caches (backward cache fence) ────────────────
+//
+// After the Task-2 fence, the backward distill replaces each same-layer cache
+// cone with a `Read(ReadPlace::CacheOutput{..})` fold leaf (mirroring production,
+// which folds `GKRAddress::Cached` columns instead of recomputing the defining
+// relation). The G1 oracle keeps recomputing the ORIGINAL cone; the instrument
+// reads the fenced cache column. For the two to agree BIT-EXACTLY, the synthetic
+// value of a fenced cache column at row `z` must equal the plain per-row value of
+// its defining cone at `z` — the WITNESS the forward pass would have written.
+//
+// `read` for a fenced `CacheOutput` place therefore returns `eval_pointwise` of
+// the defining expr over the inner synthetic leaves; every other read (base
+// columns, CROSS-layer caches) delegates to the plain synthetic hash. The
+// interpreter then applies the shared linear leaf transform (`sumcheck_fold_point`
+// then `role_combine`) to this whole column, while the oracle applies it to each
+// base leaf of the same cone. Because production cache relations are LINEAR
+// (`NoFieldGKRCacheRelation`, all `linear_terms`) and the corpus cache cones are
+// lowered from exactly those relations, fold-of-column == column-of-folds and the
+// two sides coincide. A nonlinear (or otherwise non-fold-commuting, e.g. a
+// VirtualSetup-bearing) cache cone would break this identity and the gate would
+// legitimately fail — that is the intended contract, not something to mask.
+
+/// Plain per-row (depth-0, no fold, no role) evaluation of `e` over the inner
+/// resolver `r`, with the BACKWARD `LookupValue → query` rewrite. This is the
+/// per-row cache-column value the forward pass materializes; unlike the value
+/// oracle's leaf path it applies NEITHER the sumcheck fold NOR the T0/T2 role
+/// pairing — the interpreter/oracle apply those (linearly) on top. `Constant` /
+/// `Challenge` are childless and row/role-invariant, so they delegate to the
+/// authoritative `eval_layer_expr` verbatim.
+fn eval_pointwise(layer: &DagLayer, e: ExprId, row: usize, r: &Resolvers<'_>) -> Ext {
+    match &layer.exprs[e.0 as usize] {
+        Expr::Source(sid) => match &layer.sources[sid.0 as usize].kind {
+            SourceKind::LookupValue { query, .. } => eval_pointwise(layer, *query, row, r),
+            SourceKind::Read { place } => r.read.read(place, row),
+            SourceKind::VirtualSetup { kind } => lift(r.virtual_setup.virtual_setup(kind, row)),
+            SourceKind::Constant { .. } | SourceKind::Challenge { .. } => {
+                eval_layer_expr(layer, e, row, r)
+            }
+        },
+        Expr::Add(children) => {
+            let mut acc = Ext::ZERO;
+            for &c in children {
+                acc.add_assign(&eval_pointwise(layer, c, row, r));
+            }
+            acc
+        }
+        Expr::Mul(children) => {
+            let mut acc = Ext::ONE;
+            for &c in children {
+                acc.mul_assign(&eval_pointwise(layer, c, row, r));
+            }
+            acc
+        }
+    }
+}
+
+/// A `read`-resolver wrapper that makes fenced same-layer cache columns
+/// witness-consistent with their defining cones (see the module comment above).
+/// Every other resolver method delegates to the inner [`SyntheticResolvers`], so
+/// this is a drop-in replacement for the plain read side.
+pub struct CacheConsistentResolvers<'a> {
+    layer: &'a DagLayer,
+    /// `ReadPlace::CacheOutput{..} → defining ExprId`, inverted from
+    /// `bwd_cache_fences(layer)` (first defining expr wins on a shared place).
+    fences_by_place: HashMap<ReadPlace, ExprId>,
+    inner: SyntheticResolvers,
+}
+
+impl<'a> CacheConsistentResolvers<'a> {
+    pub fn new(layer: &'a DagLayer) -> Self {
+        let mut fences_by_place = HashMap::new();
+        for (expr, fence) in bwd_cache_fences(layer) {
+            fences_by_place.entry(fence.place).or_insert(expr);
+        }
+        Self { layer, fences_by_place, inner: SyntheticResolvers }
+    }
+
+    /// Number of distinct fenced cache columns exercised by this layer.
+    pub fn n_fences(&self) -> usize {
+        self.fences_by_place.len()
+    }
+}
+
+impl ReadResolver for CacheConsistentResolvers<'_> {
+    fn read(&self, place: &ReadPlace, row: usize) -> Ext {
+        match self.fences_by_place.get(place) {
+            Some(&expr) => eval_pointwise(self.layer, expr, row, &resolvers(&self.inner)),
+            None => self.inner.read(place, row),
+        }
+    }
+}
+
+impl LookupResolver for CacheConsistentResolvers<'_> {
+    fn lookup(
+        &self,
+        kind: &LookupValueKind,
+        set_index: usize,
+        evaluated_query: Ext,
+        row: usize,
+    ) -> Bf {
+        self.inner.lookup(kind, set_index, evaluated_query, row)
+    }
+}
+
+impl VirtualSetupResolver for CacheConsistentResolvers<'_> {
+    fn virtual_setup(&self, kind: &VirtualSetupKind, row: usize) -> Bf {
+        self.inner.virtual_setup(kind, row)
+    }
+}
+
+impl ChallengeResolver for CacheConsistentResolvers<'_> {
+    fn challenge(&self, r: &ChallengeRef) -> Ext {
+        self.inner.challenge(r)
+    }
+}
+
+/// Bundle a `CacheConsistentResolvers` into a `Resolvers` (all four sides).
+pub fn cache_consistent_resolvers<'a>(
+    c: &'a CacheConsistentResolvers<'a>,
+) -> Resolvers<'a> {
+    Resolvers { read: c, lookup: c, virtual_setup: c, challenge: c }
 }
 
 // ── Fixture / schedule loading ────────────────────────────────────────────────
