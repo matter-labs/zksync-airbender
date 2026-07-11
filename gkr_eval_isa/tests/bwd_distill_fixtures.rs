@@ -6,12 +6,26 @@
 //! claim roots under a rewrite-aware reference evaluation (`LookupValue` leaf
 //! ↦ its query expr — the backward semantics), and (iii) the pinned
 //! `skipped_decoder` set, asserted exactly so coverage changes are loud.
+//!
+//! # The cache fence
+//!
+//! Post Task-2, the distilled `d.layer` replaces each same-layer cache cone
+//! with a `Read(ReadPlace::CacheOutput{..})` fold leaf; the oracle here still
+//! recomputes the ORIGINAL cone. The two agree only if the read side used to
+//! evaluate the distilled root is WITNESS-CONSISTENT for those fenced places
+//! (`common::CacheConsistentResolvers` — see its module doc and
+//! `bwd_value_parity.rs`), so `got` is evaluated with the cache-consistent
+//! resolver bundle while `expected` (the plain rewritten-cone oracle) stays on
+//! the plain synthetic resolvers, matching the sibling G1 gate.
 
 mod common;
 
 use std::collections::{BTreeSet, HashMap};
 
-use common::{load_fixture, resolvers, SyntheticResolvers};
+use common::{
+    cache_consistent_resolvers, load_fixture, resolvers, CacheConsistentResolvers,
+    SyntheticResolvers,
+};
 use cs::gkr_compiler::dag_ir::{
     bwd_roots, eval_layer_root, lower_dag, validate, BwdRegime, ChallengeKey, ChallengePower,
     ChallengeRef, DagLayer, Expr, ExprId, Ext, Resolvers, SourceKind,
@@ -41,18 +55,12 @@ const FIXTURES: &[&str] = &[
 /// The pinned decoder-bearing set: `"{fixture_stem}[L{layer}]"` for every layer
 /// whose claim cone reaches a `PeekDecoder` resolution key (skipped in BOTH
 /// regimes). Update deliberately when decoder coverage changes.
-/// Observed 2026-07-10: exactly the machine circuits' base layers — the three
-/// delegation circuits (bigint, blake2_with_extended_control, keccak_special5)
-/// and blake2_g_function/inits_and_teardowns carry no reachable decoder cone.
-const PINNED_SKIPPED_DECODER: &[&str] = &[
-    "add_sub_lui_auipc_mop[L0]",
-    "jump_branch_slt[L0]",
-    "mem_subword_only[L0]",
-    "mem_word_only[L0]",
-    "shift_binop[L0]",
-    "unified_reduced_machine[L0]",
-    "unsigned_mul_div[L0]",
-];
+/// EMPTY since the backward cache fence (commits 165ec73f..7fdc644e): every
+/// corpus `PeekDecoder` cone is reachable only through a same-layer cache, so
+/// `claim_cone_has_decoder` now stops descent at the cache root and every
+/// former decoder-skipped `[L0]` layer is distillable (its fenced floor shows
+/// up in `PINNED_B16_INFEASIBLE` instead) — identical to `bwd_value_parity.rs`.
+const PINNED_SKIPPED_DECODER: &[&str] = &[];
 
 /// Rewrite-aware reference evaluation of a canonical expr: identical to
 /// `eval_layer_expr` except a `LookupValue` leaf evaluates to its QUERY expr
@@ -121,6 +129,11 @@ fn distill_all_fixtures_both_regimes() {
 
         let cross = build_cross_layer_field_map(&dag);
         for (li, layer) in dag.layers.iter().enumerate() {
+            // Witness-consistent read side for the DISTILLED root: a fenced
+            // `CacheOutput` fold leaf reads as the per-row value of its
+            // defining cone (see the module doc / `bwd_value_parity.rs`).
+            let cc = CacheConsistentResolvers::new(layer);
+            let cc_r = cache_consistent_resolvers(&cc);
             for regime in [BwdRegime::R0, BwdRegime::Ext] {
                 let d = gkr_eval_isa::bwd::distill::distill(layer, regime, &cross, None);
                 if d.skipped_decoder {
@@ -146,7 +159,7 @@ fn distill_all_fixtures_both_regimes() {
                         }
                         expected.add_assign(&t);
                     }
-                    let got = eval_layer_root(&d.layer, d.root, row, &r);
+                    let got = eval_layer_root(&d.layer, d.root, row, &cc_r);
                     assert_eq!(
                         got, expected,
                         "[{stem} L{li} {regime:?}] distilled root value mismatch at row {row}"
@@ -208,11 +221,21 @@ fn assert_result_in_acc(p: &Program, ctx: &str) {
 /// Compiling these at b16 requires a bwd-side accumulation strategy inside the
 /// shared reduction lowering (NOT part of Task 5's behavior-inert hook seam) —
 /// tracked as an open follow-up; they compile fine at their floors.
+/// Grew 5→12 with the backward cache fence: the seven `[L0]` decoder layers
+/// unblocked by the fence (formerly in `PINNED_SKIPPED_DECODER`) enter here at
+/// their fenced Ext/R0 floors — identical set to `bwd_value_parity.rs`.
 const PINNED_B16_INFEASIBLE: &[&str] = &[
+    "add_sub_lui_auipc_mop[L0][Ext] floor=48",
     "bigint_with_extended_control[L0][R0] floor=83",
     "bigint_with_extended_control[L0][Ext] floor=320",
+    "jump_branch_slt[L0][Ext] floor=28",
     "keccak_special5[L0][R0] floor=46",
     "keccak_special5[L0][Ext] floor=172",
+    "mem_subword_only[L0][Ext] floor=20",
+    "mem_word_only[L0][Ext] floor=20",
+    "shift_binop[L0][Ext] floor=24",
+    "unified_reduced_machine[L0][R0] floor=20",
+    "unified_reduced_machine[L0][Ext] floor=68",
     "unsigned_mul_div[L1][Ext] floor=40",
 ];
 
