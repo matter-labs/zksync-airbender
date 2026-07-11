@@ -52,6 +52,16 @@ pub struct CacheFence {
 pub fn bwd_cache_fences(layer: &DagLayer) -> HashMap<ExprId, CacheFence> {
     let mut m = HashMap::new();
     for root in layer.roots.iter() {
+        // Only fence CLAIM-LESS cache roots. A claim-bearing root with a Cache sink
+        // would otherwise have its entire spine term replaced by a
+        // `Read(CacheOutput)` leaf — folding the output column instead of the gate
+        // cone, diverging from production. Cache relations are linear but gate
+        // cones need not be. Production lowering permits the combination
+        // (`emit_output` attaches both materialize and claim), even though today
+        // only `emit_cache` (claim: None) produces Cache sinks.
+        if root.claim.is_some() {
+            continue;
+        }
         if let Some(sink) = &root.materialize {
             if let SinkKind::Cache { layer: l, offset } = sink.kind {
                 m.entry(root.expr).or_insert(CacheFence {
@@ -687,6 +697,76 @@ mod tests {
             batching: BatchingOrder { roots: vec![RootId(1)] },
             resolutions: BTreeMap::new(),
         }
+    }
+
+    /// A layer with TWO Cache-sink roots: `c = a + b` is claim-less (the ordinary
+    /// `emit_cache` shape) and `d = a * b` is claim-BEARING (the `emit_output`
+    /// shape, which attaches both `materialize` and `claim` to the same root).
+    /// Only the claim-less root should be fenced.
+    fn mixed_claim_cache_layer() -> DagLayer {
+        DagLayer {
+            sources: vec![
+                SourceInfo {
+                    kind: SourceKind::Read {
+                        place: crate::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 0 },
+                    },
+                },
+                SourceInfo {
+                    kind: SourceKind::Read {
+                        place: crate::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 1 },
+                    },
+                },
+            ],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0 = a (Read)
+                Expr::Source(SourceId(1)),             // 1 = b (Read)
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 2 = c = a + b (claim-less cache root)
+                Expr::Mul(vec![ExprId(0), ExprId(1)]), // 3 = d = a * b (claim-bearing cache root)
+            ],
+            roots: vec![
+                // Claim-less cache root: MUST be fenced.
+                Root {
+                    expr: ExprId(2),
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache { layer: 3, offset: 7 },
+                        field: FieldKind::Ext,
+                    }),
+                    claim: None,
+                },
+                // Claim-bearing cache root (`emit_output` shape): must NOT be
+                // fenced — its gate cone must still be walked, not folded.
+                Root {
+                    expr: ExprId(3),
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache { layer: 3, offset: 8 },
+                        field: FieldKind::Ext,
+                    }),
+                    claim: Some(ClaimInfo {
+                        origin: RootOrigin {
+                            group: RootGroup::Gates,
+                            relation_index: 0,
+                            slot: RootSlot::Output(0),
+                        },
+                    }),
+                },
+            ],
+            batching: BatchingOrder { roots: vec![RootId(1)] },
+            resolutions: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn bwd_cache_fences_only_claim_less_roots() {
+        let layer = mixed_claim_cache_layer();
+        let fences = bwd_cache_fences(&layer);
+        assert!(
+            fences.contains_key(&ExprId(2)),
+            "claim-less cache root must be fenced: {fences:?}"
+        );
+        assert!(
+            !fences.contains_key(&ExprId(3)),
+            "claim-bearing cache root must NOT be fenced (gate cone, not output column): {fences:?}"
+        );
     }
 
     #[test]
