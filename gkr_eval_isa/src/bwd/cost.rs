@@ -29,15 +29,22 @@
 //! Fold STORES (writing a round's folded Ext buffer for the next round to read)
 //! are tallied separately at `EXT_BYTES` per distinct materialized fold buffer.
 //!
-//! # VS-ABI constraint (Task 11)
+//! # VS-ABI constraint (Task 11) + closed-form fold (Task 7)
 //!
 //! In the `Ext` regime a `VirtualSetup` origin leaf is rewritten to a
-//! `FoldSource`, but its folded buffer cannot currently be materialized (the `Bf`
-//! virtual-setup resolver cannot carry an Ext folded buffer). So VS-origin fold
-//! costs are accounted under `LazyFromOriginals { depth: round }` for ALL
-//! policies here. This MIRRORS the runtime binder [`super::distill::bind`], which
-//! enforces the same VS forced-lazy convention: the cost model and the binder
-//! agree, so this accounting is honest, not a divergent estimate.
+//! `FoldSource`, but its folded buffer cannot be materialized (the `Bf`
+//! virtual-setup resolver cannot carry an Ext folded buffer). So VS-origin folds
+//! always bind `LazyFromOriginals { depth: round }` for ALL policies — the same
+//! forced-lazy convention the runtime binder [`super::distill::bind`] enforces.
+//!
+//! Task 7 makes that lazy state *cheap*: VS polys are multilinear by
+//! construction, so a depth-`d` fold is the same `O(k)` multilinear closed form
+//! with the bound coordinates replaced by challenges
+//! ([`cs::gkr_compiler::dag_ir::VirtualSetupResolver::virtual_setup_fold`]).
+//! The device implements that closed form, so a VS-origin fold moves **zero
+//! DRAM** — it is compute-only. This model therefore charges VS-origin folds 0
+//! read bytes and 0 store bytes at every round, superseding the old
+//! `origin_width·4·2^d` recompute-from-originals estimate.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -88,8 +95,9 @@ pub fn fold_read_bytes(role: Role, state: FoldState, origin_width_cells: usize) 
 /// The origin's own field width in cells: a `Read` origin is Ext-width (4)
 /// iff `cross_fields` records its place as `FieldKind::Ext` (fenced same-layer
 /// cache leaves, Task 1-2, and cross-layer cache reads); otherwise it is an
-/// ordinary base column (1). A `VirtualSetup` origin is base-width (1) —
-/// unchanged this task (Task 7 revisits VS bytes separately).
+/// ordinary base column (1). A `VirtualSetup` origin returns 1 for shape, but
+/// `round_cost` no longer consults it: VS folds are the zero-DRAM closed form
+/// (Task 7) and short-circuit before any width is applied.
 #[inline]
 pub fn origin_width_cells(origin: &OriginLeaf, cross_fields: &HashMap<ReadPlace, FieldKind>) -> usize {
     match origin {
@@ -219,12 +227,21 @@ pub fn round_cost(
             }
             OperandLine::Special { desc } => match c.specials.get(*desc) {
                 Some(BwdSpecial::FoldSource { origin }) => {
-                    let state = effective_fold_state(origin, policy, round);
-                    let width = origin_width_cells(origin, cross_fields);
-                    cost.t0_read_bytes += fold_read_bytes(Role::T0, state, width);
-                    cost.t2_read_bytes += fold_read_bytes(Role::T2, state, width);
-                    if state == FoldState::Materialized {
-                        materialized_descs.insert(*desc);
+                    // VS-origin folds use the O(k) multilinear closed form
+                    // (Task 7): the device evaluates them from a handful of
+                    // challenges, moving ZERO DRAM — no read bytes, no store.
+                    // Every other (Read) origin gathers originals / a folded
+                    // buffer at its own field width, exactly as before.
+                    if let OriginLeaf::VirtualSetup { .. } = origin {
+                        // compute-only closed form: contributes nothing to DRAM.
+                    } else {
+                        let state = effective_fold_state(origin, policy, round);
+                        let width = origin_width_cells(origin, cross_fields);
+                        cost.t0_read_bytes += fold_read_bytes(Role::T0, state, width);
+                        cost.t2_read_bytes += fold_read_bytes(Role::T2, state, width);
+                        if state == FoldState::Materialized {
+                            materialized_descs.insert(*desc);
+                        }
                     }
                 }
                 // R0 VirtualSetup specials are procedurally generated (no DRAM);
@@ -441,10 +458,11 @@ mod tests {
 
     #[test]
     fn round_cost_vs_origin_is_always_lazy() {
-        // One VirtualSetup leaf → Ext FoldSource with a VS origin. Under
-        // AlwaysMaterialize it must STILL be accounted lazy (VS-ABI) — the same
-        // forced-lazy state `distill::bind` binds it to — never a materialized
-        // buffer, so no store bytes at any round.
+        // One VirtualSetup leaf → Ext FoldSource with a VS origin. It always
+        // binds the forced-lazy state (`distill::bind`, VS-ABI) — never a
+        // materialized buffer. Task 7: the lazy fold is the O(k) multilinear
+        // closed form the device computes on-chip, so it moves ZERO DRAM at
+        // every round/policy — no read bytes and no store bytes.
         let l = one_root_layer(
             vec![SourceInfo {
                 kind: SourceKind::VirtualSetup { kind: VirtualSetupKind::RangeCheck16Bits },
@@ -456,14 +474,19 @@ mod tests {
         let c = compile_distilled_expect(&d);
         assert_eq!(c.stats_ext.fold_uses, 1);
 
-        // Round 3 AlwaysMaterialize: VS override keeps it lazy depth 3 (base
-        // width — VS origins are unaffected by this task, Task 7 revisits them).
-        let r = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 3, &d.cross_fields);
-        assert_eq!(
-            r.t0_read_bytes,
-            fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 3 }, 1)
-        );
-        assert_eq!(r.fold_store_bytes, 0, "VS origins never materialize (no store)");
+        for policy in [
+            MaterializationPolicy::AlwaysMaterialize,
+            MaterializationPolicy::LazyUpTo(2),
+        ] {
+            for round in [0u8, 1, 3, 5] {
+                let r = round_cost(&c, policy, round, &d.cross_fields);
+                assert_eq!(
+                    r,
+                    RoundCost::default(),
+                    "VS-origin fold is compute-only (closed form): 0 DRAM at {policy:?} round {round}"
+                );
+            }
+        }
     }
 
     /// A fenced same-layer Ext cache leaf (`c = w0 + w1`, sink `Cache{layer:0,

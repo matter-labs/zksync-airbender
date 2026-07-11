@@ -147,7 +147,21 @@ fn fold_element(
 ) -> Result<Ext, InterpError> {
     match state {
         FoldState::Materialized => Ok(read_prim(p, y, r)),
-        FoldState::LazyFromOriginals { depth } => fold_prim(p, y, depth, ch, r),
+        FoldState::LazyFromOriginals { depth } => match p {
+            // VS origins route through the resolver's `virtual_setup_fold`: the
+            // default recomputes from `2^depth` originals (identical recurrence
+            // to `fold_prim`), but a real harness / the device overrides it with
+            // the O(k) multilinear closed form. Depth 0 (`ch` empty) is exactly
+            // `virtual_setup(kind, y)` lifted. `bind()` forces VS lazy, so a
+            // `Materialized` VS state never reaches here.
+            ReadPrim::Vs(kind) => {
+                let sub = ch.get(..depth as usize).ok_or_else(|| {
+                    InterpError::MalformedInstr("round_challenges shorter than fold depth".into())
+                })?;
+                Ok(r.virtual_setup.virtual_setup_fold(kind, y, sub))
+            }
+            ReadPrim::Read(_) => fold_prim(p, y, depth, ch, r),
+        },
     }
 }
 
@@ -665,6 +679,79 @@ mod tests {
     }
 
     // ── unknown-descriptor / short-challenge error surfaces ─────────────────────
+
+    // ── VS lazy fold routes through the resolver's virtual_setup_fold ───────────
+
+    fn vs_src(kind: VirtualSetupKind) -> SourceInfo {
+        SourceInfo { kind: SourceKind::VirtualSetup { kind } }
+    }
+
+    /// Single VS-leaf claim-only root (an Ext-regime FoldSource with a VS origin).
+    fn vs_leaf_layer() -> DagLayer {
+        layer(
+            vec![vs_src(VirtualSetupKind::RangeCheck16Bits)],
+            vec![Expr::Source(SourceId(0))],
+            vec![claim_only_root(ExprId(0), 0)],
+        )
+    }
+
+    /// A VS resolver whose `virtual_setup_fold` override returns a WRONG constant
+    /// for any non-empty challenge slice (depth ≥ 1) and the plain lifted
+    /// `virtual_setup` value at depth 0. Proves the interpreter dispatches VS
+    /// lazy folds through the trait method, not the recompute-from-originals path.
+    struct OverrideVsFold {
+        vs: Bf,
+        wrong: Ext,
+    }
+    impl VirtualSetupResolver for OverrideVsFold {
+        fn virtual_setup(&self, _: &VirtualSetupKind, _: usize) -> Bf {
+            self.vs
+        }
+        fn virtual_setup_fold(&self, kind: &VirtualSetupKind, y: usize, ch: &[Ext]) -> Ext {
+            if ch.is_empty() {
+                lift(self.virtual_setup(kind, y))
+            } else {
+                self.wrong
+            }
+        }
+    }
+
+    #[test]
+    fn lazy_vs_fold_routes_through_resolver_override() {
+        let l = vs_leaf_layer();
+        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let c = compile_distilled(&d, 16, None).expect("Ext compile");
+
+        let kind = VirtualSetupKind::RangeCheck16Bits;
+        let wrong = lift(Bf::from_u32_with_reduction(123_456));
+        let vs = OverrideVsFold { vs: Bf::from_u32_with_reduction(9), wrong };
+        let read = WitnessRead;
+        let lk = ZeroLookup;
+        let ch = BetaChallenge(Ext::ZERO);
+        let r = Resolvers { read: &read, lookup: &lk, virtual_setup: &vs, challenge: &ch };
+
+        // Round 0: depth-0 fold (empty ch) → plain virtual_setup lifted. VS is
+        // row-constant, so the role combine collapses to that single value.
+        let b0 = bind(&d, MaterializationPolicy::LazyUpTo(2), 0);
+        assert!(b0.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 0 }));
+        let plain = lift(vs.virtual_setup(&kind, 0));
+        for x in 0..4 {
+            let t0 = interpret_bwd_row(&c, &d, &b0, &r, Role::T0, x, &[]).unwrap();
+            assert_eq!(t0, plain, "depth-0 VS must equal plain virtual_setup at row {x}");
+        }
+
+        // Round 2: depth-2 fold (non-empty ch) → the override's WRONG constant
+        // for both pair elements; role_combine(T0)=w, (T2)=2w−w=w.
+        let rr = [lift(Bf::from_u32_with_reduction(3)), lift(Bf::from_u32_with_reduction(5))];
+        let b2 = bind(&d, MaterializationPolicy::LazyUpTo(2), 2);
+        assert!(b2.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 2 }));
+        for role in [Role::T0, Role::T2] {
+            for x in 0..4 {
+                let got = interpret_bwd_row(&c, &d, &b2, &r, role, x, &rr).unwrap();
+                assert_eq!(got, wrong, "depth-2 VS must route through the override, role {role:?} row {x}");
+            }
+        }
+    }
 
     #[test]
     fn short_round_challenges_is_malformed() {

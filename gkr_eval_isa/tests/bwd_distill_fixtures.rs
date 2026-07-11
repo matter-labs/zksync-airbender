@@ -31,9 +31,44 @@ use cs::gkr_compiler::dag_ir::{
     ChallengeRef, DagLayer, Expr, ExprId, Ext, Resolvers, SourceKind,
 };
 use field::Field;
-use gkr_eval_isa::bwd::compile::{compile_distilled, spine_terms};
+use gkr_eval_isa::bwd::compile::{compile_distilled, spine_terms, BwdCompiledLayer};
+use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine, Program};
+
+/// Count VS-origin `FoldSource` operand USES in a compiled bwd program. These
+/// use the O(k) multilinear closed form (Task 7): compute-only, zero DRAM, so
+/// they add `fold_uses` but no `fold_traffic`. Read-origin folds gather 4
+/// cells/use as before.
+fn count_vs_fold_uses(c: &BwdCompiledLayer) -> usize {
+    let mut n = 0usize;
+    let mut visit = |op: &OperandLine| {
+        if let OperandLine::Special { desc } = op {
+            if let Some(BwdSpecial::FoldSource {
+                origin: OriginLeaf::VirtualSetup { .. },
+            }) = c.specials.get(*desc)
+            {
+                n += 1;
+            }
+        }
+    };
+    for instr in &c.program.instrs {
+        match instr {
+            Instr::Mov { src: Some(op), .. } => visit(op),
+            Instr::Mov { src: None, .. } => {}
+            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                operands.iter().for_each(&mut visit)
+            }
+            Instr::Fma { pairs, .. } => {
+                for (l, r) in pairs {
+                    visit(l);
+                    visit(r);
+                }
+            }
+        }
+    }
+    n
+}
 
 /// The 12 pinned Global Constraints fixtures: the 11 classic with-caches
 /// layouts (same list as `fwd_vm_desc_census.rs`) + the unified machine.
@@ -300,11 +335,15 @@ fn compile_distilled_all_fixtures_b16() {
                 if spine_terms(&d).len() >= 2 {
                     assert!(c.stats.max_live_cells > 0, "[{ctx}] compound layer used no cells");
                 }
-                // Traffic-tally consistency (search-facing extension).
+                // Traffic-tally consistency (search-facing extension): every
+                // Read-origin FoldSource use tallies 4 cells; VS-origin folds use
+                // the O(k) closed form (Task 7) — 0 DRAM, so they add fold_uses
+                // but NOT fold_traffic.
+                let vs_fold_uses = count_vs_fold_uses(&c);
                 assert_eq!(
                     c.stats_ext.fold_traffic,
-                    4 * c.stats_ext.fold_uses,
-                    "[{ctx}] role-neutral fold traffic is 4 cells/use"
+                    4 * (c.stats_ext.fold_uses - vs_fold_uses),
+                    "[{ctx}] Read-origin fold traffic is 4 cells/use ({vs_fold_uses} VS closed-form uses excluded)"
                 );
                 assert_eq!(
                     c.stats_ext.global, c.stats.dram_traffic,

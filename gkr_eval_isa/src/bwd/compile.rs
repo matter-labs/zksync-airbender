@@ -37,7 +37,7 @@ use crate::fwd::source::{ChallengeBanks, ConstBank};
 use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 
 use super::distill::{distilled_site_domain, DistilledLayer};
-use super::source::{BwdSpecial, BwdSpecialTable};
+use super::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 
 // ── BwdTrafficStats ───────────────────────────────────────────────────────────
 
@@ -209,8 +209,10 @@ fn width_of(field: OperandField) -> usize {
 /// Tally the concrete bwd program. Mirrors fwd's per-operand accounting, except
 /// `Special { desc }` resolves against the BWD table: a `VirtualSetup` desc is
 /// resolver-computed (0 traffic, uncounted, like fwd's VirtualSetup strategy); a
-/// `FoldSource` desc is a real fold-side gather — counted in `special_reads` AND
-/// in the search-facing `BwdTrafficStats` (4 cells/use, role-neutral).
+/// Read-origin `FoldSource` desc is a real fold-side gather — counted in
+/// `special_reads` AND in the search-facing `BwdTrafficStats` (4 cells/use,
+/// role-neutral). A VS-origin `FoldSource` uses the O(k) multilinear closed form
+/// (Task 7): compute-only, zero DRAM, so it adds `fold_uses` but no `fold_traffic`.
 fn tally_bwd_program(
     program: &Program,
     specials: &BwdSpecialTable,
@@ -231,15 +233,19 @@ fn tally_bwd_program(
             OperandLine::Ldc { .. } => stats.ldc_reads += 1,
             OperandLine::Special { desc } => match specials.get(*desc) {
                 Some(BwdSpecial::VirtualSetup { .. }) => {} // resolver-computed, 0 traffic
-                Some(BwdSpecial::FoldSource { .. }) => {
+                Some(BwdSpecial::FoldSource { origin }) => {
                     stats.special_reads += 1;
                     ext.fold_uses += 1;
-                    // Role-neutral tally of the FOLDED VALUE (always Ext, 4
-                    // cells) per use — NOT the origin's own field width (Task
-                    // 3's origin-width split lives only in cost.rs's per-round
-                    // byte model; this coarser search-facing tally is
-                    // deliberately origin-width-blind, see module doc).
-                    ext.fold_traffic += 4;
+                    // A Read-origin fold gathers the FOLDED VALUE (always Ext, 4
+                    // cells) per use — role-neutral, NOT the origin's own field
+                    // width (Task 3's origin-width split lives only in cost.rs).
+                    // A VS-origin fold uses the O(k) multilinear closed form
+                    // (Task 7): compute-only, zero DRAM, so it is NOT tallied
+                    // into the search-facing fold traffic (fold_uses is still
+                    // counted — it is a real Special operand occurrence).
+                    if matches!(origin, OriginLeaf::Read(_)) {
+                        ext.fold_traffic += 4;
+                    }
                 }
                 // A dense bwd table has a desc for every index a Special operand
                 // can name; None means the program referenced an out-of-range desc.
