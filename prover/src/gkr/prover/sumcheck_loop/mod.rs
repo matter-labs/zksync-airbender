@@ -31,6 +31,8 @@ mod batch_evaluation;
 mod distribution_analysis;
 mod evaluator_sumcheck_loop;
 mod kernel_collector;
+#[cfg(test)]
+pub(crate) mod test_harness;
 
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing from storage.
@@ -85,6 +87,7 @@ where
             folding_steps,
             worker,
             seed,
+            None,
         );
 
     assert_eq!(folding_challenges.len(), folding_steps);
@@ -304,6 +307,7 @@ where
                 folding_steps,
                 worker,
                 seed,
+                None,
             );
 
         #[cfg(feature = "gkr_self_checks")]
@@ -514,6 +518,23 @@ where
     }
 }
 
+/// Per-round observables captured out of [`run_sumcheck_loop`] for the test-only
+/// layer-oracle harness (see [`test_harness`]).
+///
+/// Recording into these vectors never touches the Fiat-Shamir `Seed`, so passing
+/// `Some(..)` is transcript-inert relative to the `None` production path: the same
+/// `commit_field_els` / `draw_random_field_els` calls happen in the same order.
+#[derive(Default)]
+pub(crate) struct SumcheckLoopCapture<E> {
+    /// `[c0, c2]` (constant + quadratic monomial coefficients) BEFORE claim
+    /// normalization, captured immediately after they are computed each round.
+    pub(crate) per_round_reduced: Vec<[E; 2]>,
+    /// Claim entering each round (pre-normalization).
+    pub(crate) per_round_claims: Vec<E>,
+    /// `eq` prefactor entering each round.
+    pub(crate) per_round_eq_prefactor: Vec<E>,
+}
+
 fn run_sumcheck_loop<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -529,6 +550,7 @@ fn run_sumcheck_loop<
     folding_steps: usize,
     worker: &Worker,
     seed: &mut Seed,
+    mut capture: Option<&mut SumcheckLoopCapture<E>>,
 ) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, E)
 where
     [(); E::DEGREE]: Sized,
@@ -561,6 +583,12 @@ where
     // folding all input polys down to their line and recording `last_evaluations`, which the
     // callers use to fix the last coordinate at the freshly drawn challenge.
     for step in 0..folding_steps {
+        // Capture the round-entry observables (transcript-inert: no `seed` access).
+        if let Some(cap) = capture.as_deref_mut() {
+            cap.per_round_claims.push(claim);
+            cap.per_round_eq_prefactor.push(eq_prefactor);
+        }
+
         let acc_size = 1 << (folding_steps - step - 1);
         let accumulator = &mut accumulator_buffer[..acc_size];
         if step > 0 {
@@ -600,6 +628,11 @@ where
             eq,
             worker,
         );
+
+        // Capture `[c0, c2]` BEFORE normalization (transcript-inert: no `seed` access).
+        if let Some(cap) = capture.as_deref_mut() {
+            cap.per_round_reduced.push([c0, c2]);
+        }
 
         // dbg!((c0, c2));
 
