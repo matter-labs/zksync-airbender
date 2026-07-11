@@ -16,9 +16,14 @@
 //!   * `T2 -> 2·v(2x+1) − v(2x)` — **2** element reads.
 //!
 //! Per element:
-//!   * a `Materialized` fold reads one Ext buffer value = `EXT_BYTES` (16 B);
-//!   * a `LazyFromOriginals { depth: d }` fold recomputes from `2^d` originals at
-//!     base width = `4·2^d` B;
+//!   * a `Materialized` fold reads one Ext buffer value = `EXT_BYTES` (16 B)
+//!     regardless of the origin's field (the folded buffer is always Ext);
+//!   * a `LazyFromOriginals { depth: d }` fold recomputes from `2^d` originals
+//!     at the ORIGIN's own width: `origin_width_cells·4·2^d` B. Most origins
+//!     are base columns (`origin_width_cells == 1`), but a same-layer cache
+//!     fence (Task 1-2) can fold a `Read(CacheOutput)` leaf whose place is
+//!     Ext-valued (`DistilledLayer.cross_fields`), so `origin_width_cells ==
+//!     4` for those — a fenced Ext cache leaf costs `16·2^d`, not `4·2^d`;
 //!   * an `R0` `Global` backing reads one native-width value = `width·4` B.
 //!
 //! Fold STORES (writing a round's folded Ext buffer for the next round to read)
@@ -34,12 +39,13 @@
 //! enforces the same VS forced-lazy convention: the cost model and the binder
 //! agree, so this accounting is honest, not a divergent estimate.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use super::compile::BwdCompiledLayer;
 use super::interp::Role;
 use super::source::{BwdSpecial, FoldState, MaterializationPolicy, OriginLeaf};
 use crate::fwd::isa::{Instr, OperandField, OperandLine};
+use cs::gkr_compiler::dag_ir::{FieldKind, ReadPlace};
 
 /// Bytes per field cell (a `Bf` limb).
 pub const CELL_BYTES: usize = 4;
@@ -59,18 +65,40 @@ pub fn role_read_count(role: Role) -> usize {
 }
 
 /// DRAM bytes of ONE fold-source pair element under its bound [`FoldState`].
+/// `origin_width_cells` is the ORIGIN's own field width (1 = base, 4 = Ext —
+/// e.g. a fenced `Read(CacheOutput)` leaf); it only affects the lazy branch —
+/// a materialized fold buffer is always Ext-width regardless of its origin.
 #[inline]
-pub fn fold_element_bytes(state: FoldState) -> usize {
+pub fn fold_element_bytes(state: FoldState, origin_width_cells: usize) -> usize {
     match state {
         FoldState::Materialized => EXT_BYTES,
-        FoldState::LazyFromOriginals { depth } => CELL_BYTES * (1usize << depth),
+        FoldState::LazyFromOriginals { depth } => {
+            origin_width_cells * CELL_BYTES * (1usize << depth)
+        }
     }
 }
 
-/// DRAM read bytes for one fold-source operand occurrence at `role`/`state`.
+/// DRAM read bytes for one fold-source operand occurrence at `role`/`state`,
+/// for an origin of `origin_width_cells` (see [`fold_element_bytes`]).
 #[inline]
-pub fn fold_read_bytes(role: Role, state: FoldState) -> usize {
-    role_read_count(role) * fold_element_bytes(state)
+pub fn fold_read_bytes(role: Role, state: FoldState, origin_width_cells: usize) -> usize {
+    role_read_count(role) * fold_element_bytes(state, origin_width_cells)
+}
+
+/// The origin's own field width in cells: a `Read` origin is Ext-width (4)
+/// iff `cross_fields` records its place as `FieldKind::Ext` (fenced same-layer
+/// cache leaves, Task 1-2, and cross-layer cache reads); otherwise it is an
+/// ordinary base column (1). A `VirtualSetup` origin is base-width (1) —
+/// unchanged this task (Task 7 revisits VS bytes separately).
+#[inline]
+pub fn origin_width_cells(origin: &OriginLeaf, cross_fields: &HashMap<ReadPlace, FieldKind>) -> usize {
+    match origin {
+        OriginLeaf::VirtualSetup { .. } => 1,
+        OriginLeaf::Read(place) => match cross_fields.get(place) {
+            Some(FieldKind::Ext) => EXT_CELLS,
+            _ => 1,
+        },
+    }
 }
 
 /// DRAM read bytes for one R0 `Global` backing occurrence: native width
@@ -159,13 +187,23 @@ fn for_each_operand(instr: &Instr, mut f: impl FnMut(&OperandLine, OperandField)
     }
 }
 
-/// Tally the per-row DRAM byte cost of `c` at `(policy, round)`.
+/// Tally the per-row DRAM byte cost of `c` at `(policy, round)`. `cross_fields`
+/// is the distilled layer's `DistilledLayer::cross_fields` — it resolves a
+/// `Read`-origin fold source's own field width (Task 3): most origins are base
+/// columns, but a fenced same-layer cache leaf (`Read(CacheOutput)`) is
+/// Ext-valued and must cost lazy rounds at Ext width, not base width.
 ///
 /// Reads are tallied per FoldSource/Global **operand occurrence** (an uncached
 /// value used N times folds N times — the interpreter re-resolves each use;
 /// admitted sites read a smem cell instead and drop out of this tally). Stores
-/// are tallied per **distinct** materialized Read-origin fold buffer.
-pub fn round_cost(c: &BwdCompiledLayer, policy: MaterializationPolicy, round: u8) -> RoundCost {
+/// are tallied per **distinct** materialized Read-origin fold buffer (always
+/// Ext-width — a materialized buffer's width doesn't depend on its origin).
+pub fn round_cost(
+    c: &BwdCompiledLayer,
+    policy: MaterializationPolicy,
+    round: u8,
+    cross_fields: &HashMap<ReadPlace, FieldKind>,
+) -> RoundCost {
     let mut cost = RoundCost::default();
     let mut materialized_descs: BTreeSet<u16> = BTreeSet::new();
 
@@ -182,8 +220,9 @@ pub fn round_cost(c: &BwdCompiledLayer, policy: MaterializationPolicy, round: u8
             OperandLine::Special { desc } => match c.specials.get(*desc) {
                 Some(BwdSpecial::FoldSource { origin }) => {
                     let state = effective_fold_state(origin, policy, round);
-                    cost.t0_read_bytes += fold_read_bytes(Role::T0, state);
-                    cost.t2_read_bytes += fold_read_bytes(Role::T2, state);
+                    let width = origin_width_cells(origin, cross_fields);
+                    cost.t0_read_bytes += fold_read_bytes(Role::T0, state, width);
+                    cost.t2_read_bytes += fold_read_bytes(Role::T2, state, width);
                     if state == FoldState::Materialized {
                         materialized_descs.insert(*desc);
                     }
@@ -228,11 +267,12 @@ pub fn geometric_total(
     c: &BwdCompiledLayer,
     policy: MaterializationPolicy,
     max_round: u8,
+    cross_fields: &HashMap<ReadPlace, FieldKind>,
 ) -> GeoCost {
     let mut g = GeoCost::default();
     for r in 0..=max_round {
         let w = 1.0f64 / (1u64 << r) as f64;
-        let rc = round_cost(c, policy, r);
+        let rc = round_cost(c, policy, r, cross_fields);
         g.t0_read_bytes += rc.t0_read_bytes as f64 * w;
         g.t2_read_bytes += rc.t2_read_bytes as f64 * w;
         g.fold_store_bytes += rc.fold_store_bytes as f64 * w;
@@ -248,8 +288,9 @@ mod tests {
     use crate::bwd::distill::distill;
     use crate::fwd::isa::{Instr, OperandLine};
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, Root, RootGroup, RootId,
-        RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
+        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, Root, RootGroup,
+        RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+        VirtualSetupKind,
     };
     use std::collections::{BTreeMap, HashMap};
 
@@ -257,34 +298,48 @@ mod tests {
 
     #[test]
     fn fold_element_bytes_by_state() {
-        // Materialized: one Ext buffer element = 16 B.
-        assert_eq!(fold_element_bytes(FoldState::Materialized), 16);
-        // Lazy depth d: 2^d originals at base width (4 B).
-        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 0 }), 4);
-        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 1 }), 8);
-        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 2 }), 16);
-        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 3 }), 32);
-        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 4 }), 64);
+        // Materialized: one Ext buffer element = 16 B, regardless of origin width.
+        assert_eq!(fold_element_bytes(FoldState::Materialized, 1), 16);
+        assert_eq!(fold_element_bytes(FoldState::Materialized, 4), 16);
+        // Lazy depth d, base-width origin (1 cell): 2^d originals at 4 B.
+        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 0 }, 1), 4);
+        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 1 }, 1), 8);
+        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 2 }, 1), 16);
+        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 3 }, 1), 32);
+        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 4 }, 1), 64);
+        // Lazy depth d, Ext-width origin (4 cells, e.g. a fenced cache leaf):
+        // 2^d originals at 16 B (4x the base-width cost at every depth).
+        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 0 }, 4), 16);
+        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 1 }, 4), 32);
+        assert_eq!(fold_element_bytes(FoldState::LazyFromOriginals { depth: 2 }, 4), 64);
     }
 
     #[test]
     fn fold_read_bytes_by_role_and_state() {
-        // T0 = 1 element, T2 = 2 elements.
-        assert_eq!(fold_read_bytes(Role::T0, FoldState::Materialized), 16);
-        assert_eq!(fold_read_bytes(Role::T2, FoldState::Materialized), 32);
-        assert_eq!(fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 0 }), 4);
-        assert_eq!(fold_read_bytes(Role::T2, FoldState::LazyFromOriginals { depth: 0 }), 8);
-        assert_eq!(fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 1 }), 8);
-        assert_eq!(fold_read_bytes(Role::T2, FoldState::LazyFromOriginals { depth: 1 }), 16);
-        // Crossover: lazy depth 2 costs exactly a materialized read.
+        // T0 = 1 element, T2 = 2 elements (base-width origin).
+        assert_eq!(fold_read_bytes(Role::T0, FoldState::Materialized, 1), 16);
+        assert_eq!(fold_read_bytes(Role::T2, FoldState::Materialized, 1), 32);
+        assert_eq!(fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 0 }, 1), 4);
+        assert_eq!(fold_read_bytes(Role::T2, FoldState::LazyFromOriginals { depth: 0 }, 1), 8);
+        assert_eq!(fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 1 }, 1), 8);
+        assert_eq!(fold_read_bytes(Role::T2, FoldState::LazyFromOriginals { depth: 1 }, 1), 16);
+        // Crossover: lazy depth 2 costs exactly a materialized read (base width).
         assert_eq!(
-            fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 2 }),
-            fold_read_bytes(Role::T0, FoldState::Materialized)
+            fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 2 }, 1),
+            fold_read_bytes(Role::T0, FoldState::Materialized, 1)
         );
-        // depth 3 lazy is strictly worse than materialized.
+        // depth 3 lazy is strictly worse than materialized (base width).
         assert!(
-            fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 3 })
-                > fold_read_bytes(Role::T0, FoldState::Materialized)
+            fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 3 }, 1)
+                > fold_read_bytes(Role::T0, FoldState::Materialized, 1)
+        );
+        // Ext-width origin (fenced cache leaf): 4x the base-width read cost at
+        // every depth, and the crossover point shifts (already worse at depth 0).
+        assert_eq!(fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 0 }, 4), 16);
+        assert_eq!(fold_read_bytes(Role::T2, FoldState::LazyFromOriginals { depth: 0 }, 4), 32);
+        assert!(
+            fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 0 }, 4)
+                >= fold_read_bytes(Role::T0, FoldState::Materialized, 4)
         );
     }
 
@@ -368,19 +423,19 @@ mod tests {
         assert_eq!(c.stats_ext.fold_uses, 1, "exactly one fold occurrence");
 
         // Round 0: Lazy{0} → T0 = 4, T2 = 8, no store.
-        let r0 = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 0);
+        let r0 = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 0, &d.cross_fields);
         assert_eq!(r0, RoundCost { t0_read_bytes: 4, t2_read_bytes: 8, fold_store_bytes: 0 });
 
         // Round 2 AlwaysMaterialize → Materialized: T0 = 16, T2 = 32, one store 16.
-        let r2 = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 2);
+        let r2 = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 2, &d.cross_fields);
         assert_eq!(r2, RoundCost { t0_read_bytes: 16, t2_read_bytes: 32, fold_store_bytes: 16 });
 
         // Round 2 LazyUpTo(2) → Lazy{2}: T0 = 16, T2 = 32, no store.
-        let l2 = round_cost(&c, MaterializationPolicy::LazyUpTo(2), 2);
+        let l2 = round_cost(&c, MaterializationPolicy::LazyUpTo(2), 2, &d.cross_fields);
         assert_eq!(l2, RoundCost { t0_read_bytes: 16, t2_read_bytes: 32, fold_store_bytes: 0 });
 
         // Round 3 LazyUpTo(2) → Materialized (past k): store reappears.
-        let l3 = round_cost(&c, MaterializationPolicy::LazyUpTo(2), 3);
+        let l3 = round_cost(&c, MaterializationPolicy::LazyUpTo(2), 3, &d.cross_fields);
         assert_eq!(l3.fold_store_bytes, 16);
     }
 
@@ -401,10 +456,68 @@ mod tests {
         let c = compile_distilled_expect(&d);
         assert_eq!(c.stats_ext.fold_uses, 1);
 
-        // Round 3 AlwaysMaterialize: VS override keeps it lazy depth 3.
-        let r = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 3);
-        assert_eq!(r.t0_read_bytes, fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 3 }));
+        // Round 3 AlwaysMaterialize: VS override keeps it lazy depth 3 (base
+        // width — VS origins are unaffected by this task, Task 7 revisits them).
+        let r = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 3, &d.cross_fields);
+        assert_eq!(
+            r.t0_read_bytes,
+            fold_read_bytes(Role::T0, FoldState::LazyFromOriginals { depth: 3 }, 1)
+        );
         assert_eq!(r.fold_store_bytes, 0, "VS origins never materialize (no store)");
+    }
+
+    /// A fenced same-layer Ext cache leaf (`c = w0 + w1`, sink `Cache{layer:0,
+    /// offset:2}`, field Ext) consumed alongside a plain base Read leaf (`w1`)
+    /// by one claim root `Mul(c, w1)`. After distillation `w0` is gone (only
+    /// reachable through the fenced cache cone); `c` survives as a
+    /// `Read(CacheOutput)` fold leaf and `w1` survives as a plain base leaf —
+    /// exactly the origin-width split this task must cost correctly.
+    fn cache_and_base_layer() -> DagLayer {
+        DagLayer {
+            sources: vec![read_src(0), read_src(1)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0 = w0
+                Expr::Source(SourceId(1)),             // 1 = w1
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 2 = c (cache root)
+                Expr::Mul(vec![ExprId(2), ExprId(1)]), // 3 = c * w1 (claim root)
+            ],
+            roots: vec![
+                Root {
+                    expr: ExprId(2),
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache { layer: 0, offset: 2 },
+                        field: FieldKind::Ext,
+                    }),
+                    claim: None,
+                },
+                claim_only_root(ExprId(3)),
+            ],
+            batching: BatchingOrder { roots: vec![RootId(1)] },
+            resolutions: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn round_cost_charges_cache_origin_at_ext_width() {
+        // Fenced Ext cache leaf must cost 16*2^d per T0 element (Ext-width
+        // origin), while the plain base Read leaf alongside it still costs
+        // 4*2^d (base-width origin) — the cost model must be origin-width-
+        // aware, not blanket base-width.
+        let l = cache_and_base_layer();
+        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let c = compile_distilled_expect(&d);
+        assert_eq!(c.stats_ext.fold_uses, 2, "cache leaf + base leaf, one use each");
+
+        for depth in [0u8, 1, 2, 3] {
+            let r = round_cost(&c, MaterializationPolicy::LazyUpTo(255), depth, &d.cross_fields);
+            // T0 = 1 element per leaf: cache leaf 16*2^d + base leaf 4*2^d.
+            let expected_t0 = 16usize * (1usize << depth) + 4usize * (1usize << depth);
+            assert_eq!(
+                r.t0_read_bytes, expected_t0,
+                "depth {depth}: expected cache(16*2^d) + base(4*2^d) = {expected_t0}, got {}",
+                r.t0_read_bytes
+            );
+        }
     }
 
     #[test]
@@ -417,8 +530,8 @@ mod tests {
         assert_eq!(c.stats_ext.fold_uses, 0, "R0 has no fold sources");
         assert!(matches!(&c.program.instrs[0], Instr::Mov { src: Some(OperandLine::Global { .. }), .. }));
 
-        let a = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 1);
-        let b = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 4);
+        let a = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 1, &d.cross_fields);
+        let b = round_cost(&c, MaterializationPolicy::AlwaysMaterialize, 4, &d.cross_fields);
         assert_eq!(a, b, "R0 traffic must be round-invariant");
         // base width 1: T0 = 4, T2 = 8, no fold store.
         assert_eq!(a, RoundCost { t0_read_bytes: 4, t2_read_bytes: 8, fold_store_bytes: 0 });
@@ -432,7 +545,7 @@ mod tests {
         let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled_expect(&d);
         // Force lazy at every round with a high LazyUpTo cap.
-        let g = geometric_total(&c, MaterializationPolicy::LazyUpTo(255), 4);
+        let g = geometric_total(&c, MaterializationPolicy::LazyUpTo(255), 4, &d.cross_fields);
         // T0: Σ_{r=0}^{4} (4·2^r)·2^{-r} = 4·5 = 20.
         assert!((g.t0_read_bytes - 20.0).abs() < 1e-9, "got {}", g.t0_read_bytes);
         // T2 is exactly double T0.

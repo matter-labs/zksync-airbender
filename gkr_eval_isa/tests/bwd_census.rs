@@ -173,8 +173,8 @@ fn bwd_census() {
                 // on budget. Compare the representative's round-1 AlwaysMat cost
                 // against the largest feasible budget's.
                 if let Ok(hi) = try_compile(&d, *BUDGETS.last().unwrap()) {
-                    let a = round_cost(&rep, MaterializationPolicy::AlwaysMaterialize, 1);
-                    let b = round_cost(&hi, MaterializationPolicy::AlwaysMaterialize, 1);
+                    let a = round_cost(&rep, MaterializationPolicy::AlwaysMaterialize, 1, &d.cross_fields);
+                    let b = round_cost(&hi, MaterializationPolicy::AlwaysMaterialize, 1, &d.cross_fields);
                     assert_eq!(
                         a, b,
                         "[{rk}] no-decisions traffic must be budget-invariant (b{rep_budget} vs b{})",
@@ -187,11 +187,11 @@ fn bwd_census() {
                     let mut per_round = String::new();
                     let mut store_round = String::new();
                     for r in 1..=MAX_ROUND {
-                        let rc = round_cost(&rep, *policy, r);
+                        let rc = round_cost(&rep, *policy, r, &d.cross_fields);
                         per_round.push_str(&format!(" {} |", rc.read_bytes()));
                         store_round.push_str(&format!("{}/", rc.fold_store_bytes));
                     }
-                    let g = geometric_total(&rep, *policy, MAX_ROUND);
+                    let g = geometric_total(&rep, *policy, MAX_ROUND, &d.cross_fields);
                     traffic.push(format!(
                         "| {rk} @b{rep_budget} | {pname} |{per_round} {} | {:.1} |{skip_mark}",
                         store_round.trim_end_matches('/'),

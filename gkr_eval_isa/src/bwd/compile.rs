@@ -234,7 +234,12 @@ fn tally_bwd_program(
                 Some(BwdSpecial::FoldSource { .. }) => {
                     stats.special_reads += 1;
                     ext.fold_uses += 1;
-                    ext.fold_traffic += 4; // role-neutral Ext width per use (REV2)
+                    // Role-neutral tally of the FOLDED VALUE (always Ext, 4
+                    // cells) per use — NOT the origin's own field width (Task
+                    // 3's origin-width split lives only in cost.rs's per-round
+                    // byte model; this coarser search-facing tally is
+                    // deliberately origin-width-blind, see module doc).
+                    ext.fold_traffic += 4;
                 }
                 // A dense bwd table has a desc for every index a Special operand
                 // can name; None means the program referenced an out-of-range desc.
