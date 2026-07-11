@@ -9,7 +9,6 @@
 //!    committed `[E; 4]` and the production linear coefficient `d`.
 
 use std::collections::BTreeMap;
-use std::mem::MaybeUninit;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
@@ -114,7 +113,7 @@ fn layer_oracle_twin_run_matches_production_transcript() {
         &mut prod_claims_storage,
         &mut prod_storage,
         &mut prod_batching,
-        unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused compiled circuit
+        &super::empty_circuit_artifact::<F>(), // unused compiled circuit (non-evaluator route)
         POLY_SIZE,
         lookup_multiplicative_part,
         lookup_additive_part,

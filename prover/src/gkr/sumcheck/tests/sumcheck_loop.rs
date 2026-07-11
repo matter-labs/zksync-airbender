@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::mem::MaybeUninit;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
@@ -86,7 +85,7 @@ fn test_sumcheck_loop_product() {
         &mut claims_storage,
         &mut storage,
         &mut batching_challenge,
-        unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
+        &super::empty_circuit_artifact::<F>(), // unused compiled circuit (non-evaluator route)
         POLY_SIZE,
         lookup_multiplicative_part,
         lookup_additive_part,
@@ -243,7 +242,7 @@ fn test_sumcheck_loop_multiple_gates() {
         &mut claims_storage,
         &mut storage,
         &mut batching_challenge,
-        unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
+        &super::empty_circuit_artifact::<F>(), // unused compiled circuit (non-evaluator route)
         POLY_SIZE,
         lookup_multiplicative_part,
         lookup_additive_part,
