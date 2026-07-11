@@ -30,8 +30,39 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::gkr_compiler::dag_ir::{
     source_field, DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootGroup, RootId, SiteConsumer,
-    SiteKey, SourceKind,
+    SiteKey, SinkKind, SourceKind,
 };
+
+/// A same-layer cache boundary: the backward pass folds the forward-materialized
+/// cache column instead of descending into the defining cone (mirrors production,
+/// where gates fold `GKRAddress::Cached` inputs and cache relations are opened
+/// post-loop — `prover/src/gkr/prover/sumcheck_loop/mod.rs:391-502`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct CacheFence {
+    /// Always `ReadPlace::CacheOutput { layer, offset }`.
+    pub place: ReadPlace,
+    /// The cache sink's field (`SinkInfo.field`).
+    pub field: FieldKind,
+}
+
+/// `ExprId -> fence` for every same-layer cache root of `layer`. Same-layer cache
+/// consumption is plain DAG sharing (`lower/util.rs` `read_expr` returns the cache
+/// value's ExprId, no edge marker), so the fence key is the cache root's own expr
+/// id. First sink wins on shared exprs.
+pub fn bwd_cache_fences(layer: &DagLayer) -> HashMap<ExprId, CacheFence> {
+    let mut m = HashMap::new();
+    for root in layer.roots.iter() {
+        if let Some(sink) = &root.materialize {
+            if let SinkKind::Cache { layer: l, offset } = sink.kind {
+                m.entry(root.expr).or_insert(CacheFence {
+                    place: ReadPlace::CacheOutput { layer: l, offset },
+                    field: sink.field,
+                });
+            }
+        }
+    }
+    m
+}
 
 /// Which backward regime the domain/floor is computed for.
 ///
@@ -119,8 +150,9 @@ pub fn bwd_relation_units(layer: &DagLayer) -> Vec<Vec<RootId>> {
 /// when its (cone-restricted) consumer count is >= 2 AND it is backward-cacheable
 /// for `regime` (see [`is_cacheable_bwd`]).
 pub fn enumerate_bwd_site_domain(layer: &DagLayer, regime: BwdRegime) -> BTreeSet<SiteKey> {
+    let fences = bwd_cache_fences(layer);
     let reachable = reachable_exprs_bwd(layer);
-    let consumers = consumer_counts_bwd(layer, &reachable);
+    let consumers = consumer_counts_bwd(layer, &reachable, &fences);
 
     let mut out: BTreeSet<SiteKey> = BTreeSet::new();
     let mut visited: HashSet<(RootId, ExprId)> = HashSet::new();
@@ -129,17 +161,21 @@ pub fn enumerate_bwd_site_domain(layer: &DagLayer, regime: BwdRegime) -> BTreeSe
             continue;
         }
         let rid = RootId(i as u32);
-        if is_site(layer, regime, &consumers, root.expr) {
+        if is_site(layer, regime, &consumers, &fences, root.expr) {
             out.insert(SiteKey { root: rid, consumer: SiteConsumer::RootOutput, value: root.expr });
         }
-        walk_demand(layer, regime, &consumers, rid, root.expr, /* descend_query */ true, &mut visited, &mut out);
+        walk_demand(layer, regime, &consumers, &fences, rid, root.expr, /* descend_query */ true, &mut visited, &mut out);
     }
     out
 }
 
 /// The set of exprs reachable from the claim-bearing roots over Add/Mul operand
-/// edges and `LookupValue.query` edges. NO resolution fence (mechanic (ii)).
+/// edges and `LookupValue.query` edges. NO resolution fence (mechanic (ii)), but
+/// a same-layer CACHE fence: a cache-root expr stays in the set as a folded leaf,
+/// its defining cone is never descended (mirrors production folding a
+/// `GKRAddress::Cached` input instead of the cache relation).
 fn reachable_exprs_bwd(layer: &DagLayer) -> HashSet<ExprId> {
+    let fences = bwd_cache_fences(layer);
     let mut seen: HashSet<ExprId> = HashSet::new();
     let mut stack: Vec<ExprId> = layer
         .roots
@@ -149,6 +185,11 @@ fn reachable_exprs_bwd(layer: &DagLayer) -> HashSet<ExprId> {
         .collect();
     while let Some(e) = stack.pop() {
         if !seen.insert(e) {
+            continue;
+        }
+        // Cache fence: keep `e` in the reachable set (it is a folded leaf) but do
+        // not descend its defining cone.
+        if fences.contains_key(&e) {
             continue;
         }
         match &layer.exprs[e.0 as usize] {
@@ -168,9 +209,18 @@ fn reachable_exprs_bwd(layer: &DagLayer) -> HashSet<ExprId> {
 /// each Add/Mul operand edge of a reachable expr, each `LookupValue.query` edge of
 /// a reachable `LookupValue` source, and each claim-bearing root's demand of its
 /// own output. Edges outside the reachable cones do not contribute.
-fn consumer_counts_bwd(layer: &DagLayer, reachable: &HashSet<ExprId>) -> Vec<u32> {
+fn consumer_counts_bwd(
+    layer: &DagLayer,
+    reachable: &HashSet<ExprId>,
+    fences: &HashMap<ExprId, CacheFence>,
+) -> Vec<u32> {
     let mut consumers = vec![0u32; layer.exprs.len()];
     for &e in reachable {
+        // Fenced cache leaf: its defining cone is folded, not walked — do not count
+        // its child/query edges as backward demands.
+        if fences.contains_key(&e) {
+            continue;
+        }
         match &layer.exprs[e.0 as usize] {
             Expr::Source(src_id) => {
                 // Count a query edge only when its LookupValue source is reachable
@@ -207,6 +257,7 @@ fn walk_demand(
     layer: &DagLayer,
     regime: BwdRegime,
     consumers: &[u32],
+    fences: &HashMap<ExprId, CacheFence>,
     root: RootId,
     value: ExprId,
     descend_query: bool,
@@ -216,20 +267,25 @@ fn walk_demand(
     if !visited.insert((root, value)) {
         return;
     }
+    // Fenced cache leaf: the folded cache column terminates the walk — its defining
+    // cone is never a backward demand (mirrors the forward resolution fence).
+    if fences.contains_key(&value) {
+        return;
+    }
     match &layer.exprs[value.0 as usize] {
         Expr::Source(src_id) => {
             if let SourceKind::LookupValue { query, .. } = &layer.sources[src_id.0 as usize].kind {
                 if descend_query {
                     let q = *query;
-                    push_if_site(layer, regime, consumers, root, value, 0, q, out);
-                    walk_demand(layer, regime, consumers, root, q, descend_query, visited, out);
+                    push_if_site(layer, regime, consumers, fences, root, value, 0, q, out);
+                    walk_demand(layer, regime, consumers, fences, root, q, descend_query, visited, out);
                 }
             }
         }
         Expr::Add(children) | Expr::Mul(children) => {
             for (idx, &c) in children.iter().enumerate() {
-                push_if_site(layer, regime, consumers, root, value, idx as u32, c, out);
-                walk_demand(layer, regime, consumers, root, c, descend_query, visited, out);
+                push_if_site(layer, regime, consumers, fences, root, value, idx as u32, c, out);
+                walk_demand(layer, regime, consumers, fences, root, c, descend_query, visited, out);
             }
         }
     }
@@ -240,13 +296,14 @@ fn push_if_site(
     layer: &DagLayer,
     regime: BwdRegime,
     consumers: &[u32],
+    fences: &HashMap<ExprId, CacheFence>,
     root: RootId,
     consumer_expr: ExprId,
     input_index: u32,
     value: ExprId,
     out: &mut BTreeSet<SiteKey>,
 ) {
-    if is_site(layer, regime, consumers, value) {
+    if is_site(layer, regime, consumers, fences, value) {
         out.insert(SiteKey {
             root,
             consumer: SiteConsumer::Expr { expr: consumer_expr, input_index },
@@ -257,15 +314,32 @@ fn push_if_site(
 
 /// A demanded value is a backward site iff its (cone-restricted) consumer count is
 /// >= 2 AND it is backward-cacheable for `regime`.
-fn is_site(layer: &DagLayer, regime: BwdRegime, consumers: &[u32], value: ExprId) -> bool {
-    consumers[value.0 as usize] >= 2 && is_cacheable_bwd(layer, regime, value)
+fn is_site(
+    layer: &DagLayer,
+    regime: BwdRegime,
+    consumers: &[u32],
+    fences: &HashMap<ExprId, CacheFence>,
+    value: ExprId,
+) -> bool {
+    consumers[value.0 as usize] >= 2 && is_cacheable_bwd(layer, regime, fences, value)
 }
 
 /// Backward-cacheable value classes (mechanic (iii)): any root's output expr, any
 /// compound intermediate (`Add`/`Mul`), a `Read` source leaf (BOTH regimes), and a
 /// `VirtualSetup` source leaf in the `Ext` regime ONLY. `Constant`, `Challenge`,
-/// and `LookupValue` source leaves are never backward-cacheable.
-fn is_cacheable_bwd(layer: &DagLayer, regime: BwdRegime, value: ExprId) -> bool {
+/// and `LookupValue` source leaves are never backward-cacheable. A fenced cache
+/// root is a folded `Read(CacheOutput)` LEAF, not a recompute site: it is never
+/// admitted as a compound site (checked first, before the root-output class, since
+/// a cache root's expr is itself a `Root`).
+fn is_cacheable_bwd(
+    layer: &DagLayer,
+    regime: BwdRegime,
+    fences: &HashMap<ExprId, CacheFence>,
+    value: ExprId,
+) -> bool {
+    if fences.contains_key(&value) {
+        return false;
+    }
     if layer.roots.iter().any(|r| r.expr == value) {
         return true;
     }
@@ -303,10 +377,26 @@ pub fn bwd_traffic_floor(
     regime: BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
 ) -> usize {
+    let fences = bwd_cache_fences(layer);
     let reachable = reachable_exprs_bwd(layer);
     let mut distinct_reads: HashSet<u32> = HashSet::new();
     let mut total = 0usize;
     for &e in &reachable {
+        // A fenced cache root is a folded `Read(CacheOutput)` leaf: count it at the
+        // cache field's width (Ext regime flattens every leaf to 4). Its own
+        // defining cone is behind the fence and never reachable, so no base leaf it
+        // depends on is tallied. Keyed by ExprId, so it is naturally distinct from
+        // the `Read`-source leaves below.
+        if let Some(fence) = fences.get(&e) {
+            total += match regime {
+                BwdRegime::Ext => 4,
+                BwdRegime::R0 => match fence.field {
+                    FieldKind::Ext => 4,
+                    FieldKind::Base => 1,
+                },
+            };
+            continue;
+        }
         if let Expr::Source(src_id) = &layer.exprs[e.0 as usize] {
             let kind = &layer.sources[src_id.0 as usize].kind;
             if let SourceKind::Read { .. } = kind {
@@ -547,6 +637,89 @@ mod tests {
         assert!(r0.iter().any(|k| k.value == ExprId(1)), "Read leaf is a site in R0");
     }
 
+    /// A minimal layer with a same-layer cache root `c = a + b` (Ext-field Cache
+    /// sink at layer 3 / offset 7, claim `None`) consumed by a claim-bearing output
+    /// root `Mul(c, b)`. `a` is reachable ONLY through the cache cone, `b` is also a
+    /// direct operand of the output root.
+    fn cache_fence_layer() -> DagLayer {
+        DagLayer {
+            sources: vec![
+                SourceInfo {
+                    kind: SourceKind::Read {
+                        place: crate::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 0 },
+                    },
+                },
+                SourceInfo {
+                    kind: SourceKind::Read {
+                        place: crate::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 1 },
+                    },
+                },
+            ],
+            exprs: vec![
+                Expr::Source(SourceId(0)),             // 0 = a (Read)
+                Expr::Source(SourceId(1)),             // 1 = b (Read)
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 2 = c = a + b (cache root)
+                Expr::Mul(vec![ExprId(2), ExprId(1)]), // 3 = c * b (output root)
+            ],
+            roots: vec![
+                // Cache root: materialize-only (claim None).
+                Root {
+                    expr: ExprId(2),
+                    materialize: Some(SinkInfo {
+                        kind: SinkKind::Cache { layer: 3, offset: 7 },
+                        field: FieldKind::Ext,
+                    }),
+                    claim: None,
+                },
+                // Claim-bearing output root.
+                Root {
+                    expr: ExprId(3),
+                    materialize: None,
+                    claim: Some(ClaimInfo {
+                        origin: RootOrigin {
+                            group: RootGroup::Gates,
+                            relation_index: 0,
+                            slot: RootSlot::Output(0),
+                        },
+                    }),
+                },
+            ],
+            batching: BatchingOrder { roots: vec![RootId(1)] },
+            resolutions: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn cache_fence_map_classifies_cache_roots() {
+        let layer = cache_fence_layer();
+        let c_expr = ExprId(2);
+        let fences = bwd_cache_fences(&layer);
+        assert_eq!(fences.len(), 1);
+        let f = fences.get(&c_expr).expect("cache expr fenced");
+        assert_eq!(f.place, ReadPlace::CacheOutput { layer: 3, offset: 7 });
+        assert_eq!(f.field, FieldKind::Ext);
+    }
+
+    #[test]
+    fn bwd_walk_stops_at_cache_fence() {
+        let layer = cache_fence_layer();
+        let a_expr = ExprId(0);
+        let c_expr = ExprId(2);
+        let reach = reachable_exprs_bwd(&layer);
+        assert!(!reach.contains(&a_expr), "descended through a cache fence");
+        assert!(reach.contains(&c_expr), "cache expr must stay in the reachable set as a leaf");
+    }
+
+    #[test]
+    fn bwd_floor_counts_fenced_cache_leaf_ext_width() {
+        let layer = cache_fence_layer();
+        let cross = HashMap::new();
+        let floor = bwd_traffic_floor(&layer, BwdRegime::Ext, &cross);
+        // Reachable leaves: the direct Read `b` (4) + the fenced Ext cache leaf `c`
+        // (4). The base leaf `a` sits behind the fence and is unreachable (0).
+        assert_eq!(floor, 8);
+    }
+
     // (e) ───────────────────────────────────────────────────────────────────────
     #[test]
     fn bwd_floor_ext_ge_4x_distinct_leaves() {
@@ -554,32 +727,41 @@ mod tests {
         for (li, layer) in dag.layers.iter().enumerate() {
             let cross = cross_layer_field_map_upto(&dag, li);
 
-            // Independently count the distinct Read source leaves reachable from the
-            // claim-bearing roots (query-descending, fence-free), mirroring the walk.
+            // Independently count the backward floor leaves reachable from the
+            // claim-bearing roots, mirroring the (cache-fenced) walk: distinct Read
+            // source leaves PLUS folded cache leaves (a fenced cache root is a
+            // `Read(CacheOutput)` leaf, not a Read source in the arena).
+            let fences = super::bwd_cache_fences(layer);
             let reachable = super::reachable_exprs_bwd(layer);
             let mut distinct: BTreeSet<u32> = BTreeSet::new();
+            let mut fenced_leaves = 0usize;
             for &e in &reachable {
+                if fences.contains_key(&e) {
+                    fenced_leaves += 1;
+                    continue;
+                }
                 if let Expr::Source(s) = &layer.exprs[e.0 as usize] {
                     if matches!(layer.sources[s.0 as usize].kind, SourceKind::Read { .. }) {
                         distinct.insert(s.0);
                     }
                 }
             }
+            let leaves = distinct.len() + fenced_leaves;
             let floor_ext = bwd_traffic_floor(layer, BwdRegime::Ext, &cross);
             let floor_r0 = bwd_traffic_floor(layer, BwdRegime::R0, &cross);
             assert_eq!(
                 floor_ext,
-                4 * distinct.len(),
-                "layer {li}: Ext floor weighs every distinct Read leaf as 4"
+                4 * leaves,
+                "layer {li}: Ext floor weighs every distinct Read/cache leaf as 4"
             );
             assert!(
-                floor_ext >= 4 * distinct.len(),
+                floor_ext >= 4 * leaves,
                 "layer {li}: Ext floor >= 4 * distinct leaves"
             );
             // Native R0 widths are 1 (Base) or 4 (Ext), so R0 floor is within
-            // [distinct, floor_ext].
+            // [leaves, floor_ext].
             assert!(floor_r0 <= floor_ext, "layer {li}: R0 floor <= Ext floor");
-            assert!(floor_r0 >= distinct.len(), "layer {li}: each R0 leaf weighs >= 1");
+            assert!(floor_r0 >= leaves, "layer {li}: each R0 leaf weighs >= 1");
         }
         // The fixture's base layer must actually have reachable Read leaves, so the
         // floor is a non-trivial positive bound (not vacuously satisfied).
