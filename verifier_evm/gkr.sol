@@ -15,12 +15,16 @@ contract GKRVerifier {
     //    GKR_INIT/CIRCUIT 2 (1)
     //    ..
     uint256 constant MINIMUM_FREE_HEAP_PTR = 7588;
-    uint256 constant P      = 0xffffffffffffffffffffffffffffff61; // 2^128 - 159
-    uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits
+    uint256 constant P      = 0x7000000000000000000000000000001; // Proth120: 7*2^120 + 1
+    uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits (one field lane)
     uint256 constant ROUNDS = 200;
 
     // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
     uint256 constant MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
+    // Proth120 packed-mode: keccak preimage = commit_initial_u32 bytes
+    // (inits_and_teardowns_top_bits as LE u32 || setup cap digests || merged mem cap digests).
+    // 520 for this proof (unified_reduced_machine, 2^22, pack_log2=4). See gkr_transcript_reference.md.
+    uint256 constant GKR_INIT_PREIMAGE_BYTES = 520;
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
     uint256 constant GKR_INIT_BYTES          = 2048; // 8 polys * 16 elems * 16 bytes
@@ -31,7 +35,17 @@ contract GKRVerifier {
     uint256 constant GKR_COMPRESSION_POINTCHECK_BYTES      = 512; // 8 * 64
 
     // ── GKR circuit ───────────────────────────────────────────────────────────
-    uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = 24;
+    uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = 22;
+
+    // ── Committed-state handoff to WHIR (via the shared registry) ──────────────
+    // After GKR verifies, it assembles the SAME committed-state preimage the WHIR
+    // verifier hashes — [seed:32][batching:16][opening:16][z_initial:nz*16]
+    // [witness_cap:CAP*32][setup_cap:CAP*32] — keccaks it, and marks it. WHIR
+    // recomputes the same bytes32 in its own tx; the registry events must match.
+    uint256 constant REGISTRY          = 0xCAFE0001;
+    uint256 constant MARK_GKR_SELECTOR = 0x611b9fbb; // mark_gkr_verified(bytes32)
+    uint256 constant WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
+    uint256 constant WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
 
     fallback() external {
         // uint256 variant = VARIANT;
@@ -121,38 +135,34 @@ contract GKRVerifier {
         }
 
         function transcript_init(ptr) -> next_ptr {
-            // TODO: we are missing FINAL regs val/ts + FINAL pc/ts
-            
-            // FIRST: absorb mem caps -> get 7 mem challs
-            calldatacopy(add(SEED_PTR(), 32), ptr, MERKLE_TREE_CAPS_BYTES)
-            let seed := keccak256(SEED_PTR(), add(32, MERKLE_TREE_CAPS_BYTES))
-            mstore(SEED_PTR(), seed)
-            mstore(MEMORY_CHALLS_PTR(), shr(128, seed))
-            mstore(add(MEMORY_CHALLS_PTR(), 32), and(seed, MASK))
+            // Proth120 packed-mode transcript (MergedAndPackedMemoryAndWitness), validated
+            // keccak-for-keccak in step1_test/GkrStep1.sol against the real proof.
+            //   seed = keccak256(preimage)                       // commit_initial_u32
+            //   seed = keccak256(seed || be8(nonce))             // PoW fold (nonce=0, pow_bits=0)
+            //   for i in 0..9: seed = keccak256(seed); ch = (seed>>128) % P
+            //   ch[0..7] -> MEMORY_CHALLS (6 perm-linearization + additive), ch[7..9] -> LOGUP (alpha, additive)
+            calldatacopy(SEED_PTR(), ptr, GKR_INIT_PREIMAGE_BYTES)
+            let seed := keccak256(SEED_PTR(), GKR_INIT_PREIMAGE_BYTES)
 
-            seed := keccak256(SEED_PTR(), 32)
+            // PoW fold: keccak(seed(32) || nonce_be8). nonce=0 here; pow_bits=0 so no zero-bits check.
             mstore(SEED_PTR(), seed)
-            mstore(add(MEMORY_CHALLS_PTR(), 64), shr(128, seed))
-            mstore(add(MEMORY_CHALLS_PTR(), 96), and(seed, MASK))
+            mstore(add(SEED_PTR(), 32), 0)
+            seed := keccak256(SEED_PTR(), 40)
 
-            seed := keccak256(SEED_PTR(), 32)
+            // draw 9 challenges (each: seed=keccak(seed); take top 128 bits mod P)
             mstore(SEED_PTR(), seed)
-            mstore(add(MEMORY_CHALLS_PTR(), 128), shr(128, seed))
-            mstore(add(MEMORY_CHALLS_PTR(), 160), and(seed, MASK))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(MEMORY_CHALLS_PTR(),               mod(shr(128, seed), P))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 32),       mod(shr(128, seed), P))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 64),       mod(shr(128, seed), P))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 96),       mod(shr(128, seed), P))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 128),      mod(shr(128, seed), P))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 160),      mod(shr(128, seed), P))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 192),      mod(shr(128, seed), P))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(LOGUP_CHALLS_PTR(),                 mod(shr(128, seed), P))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(LOGUP_CHALLS_PTR(), 32),        mod(shr(128, seed), P))
 
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(add(MEMORY_CHALLS_PTR(), 192), shr(128, seed))
-
-            // SECOND: absorb wit+setup caps -> get 2 logup challs
-            ptr := add(ptr, MERKLE_TREE_CAPS_BYTES)
-            calldatacopy(add(SEED_PTR(), 32), ptr, mul(2, MERKLE_TREE_CAPS_BYTES))
-            seed := keccak256(SEED_PTR(), add(32, mul(2, MERKLE_TREE_CAPS_BYTES)))
-            mstore(SEED_PTR(), seed)
-            mstore(LOGUP_CHALLS_PTR(), shr(128, seed))
-            mstore(add(LOGUP_CHALLS_PTR(), 32), and(seed, MASK))
-
-            next_ptr := add(ptr, mul(2, MERKLE_TREE_CAPS_BYTES))
+            // SEED_PTR now holds the post-STEP-1 seed; the GKR entry (gkr_init) absorbs output evals next.
+            next_ptr := add(ptr, GKR_INIT_PREIMAGE_BYTES)
         }
 
         function acceval_inlinefold_streamrevlooploop_evenodd(ptr, z1, z2, z3, z4, alpha) -> claim {
@@ -591,6 +601,29 @@ contract GKRVerifier {
             next_alpha := alpha
         }
 
+        // Assemble the committed-state preimage and mark_gkr_verified(bytes32) on the
+        // registry (own frame — keeps the fallback stack under the EVM limit). Layout
+        // mirrors whir.sol: [seed:32][batching:16][opening:16][z:WHIR_Z_COORDS*16]
+        // [witCap:CAP*32][setupCap:CAP*32]. NOTE: the packed claims-merge + WHIR batching
+        // (validated in the Rust mirror) must run first to populate the batching/opening/z
+        // regions (GKR_CIRCUIT_ALPHA2_PTR / claim / POINT_PTR).
+        function emit_gkr_mark(claim_v) {
+            let base := GKR_INIT_SCRATCH_PTR()
+            mstore(base, mload(SEED_PTR()))
+            mstore(add(base, 32), shl(128, and(mload(GKR_CIRCUIT_ALPHA2_PTR()), MASK)))
+            mstore(add(base, 48), shl(128, and(claim_v, MASK)))
+            let plen := 64
+            for { let i := 0 } lt(i, WHIR_Z_COORDS) { i := add(i, 1) } {
+                mstore(add(base, plen), shl(128, and(mload(add(POINT_PTR(), mul(i, 32))), MASK)))
+                plen := add(plen, 16)
+            }
+            calldatacopy(add(base, plen), 0, mul(mul(2, WHIR_CAP), 32))
+            plen := add(plen, mul(mul(2, WHIR_CAP), 32))
+            mstore(0, shl(224, MARK_GKR_SELECTOR))
+            mstore(4, keccak256(base, plen))
+            pop(call(gas(), REGISTRY, 0, 0, 36, 0, 0))
+        }
+
         // SPILL OVERWRITE PREVENTION
         if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR) {
             revert(0, 0)
@@ -625,6 +658,12 @@ contract GKRVerifier {
 
         // TODO: don't forget the recursion chain check
         // TODO: very, VERY, carefully review end-to-end fiat-shamir
+
+        // ── GKR→WHIR handoff commitment ────────────────────────────────────────
+        // Assemble the committed-state preimage the WHIR verifier will hash, keccak it,
+        // and mark_gkr_verified(bytes32). In its own function frame to keep the tight
+        // fallback stack under the EVM limit (see HEURISTICS.md).
+        emit_gkr_mark(claim)
 
         // anti-DCE
         mstore(0, claim)

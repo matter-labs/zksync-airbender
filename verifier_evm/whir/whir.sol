@@ -28,7 +28,7 @@ pragma solidity ^0.8.24;
 // Merkle path is CAP_LOG2 levels shorter. Caps shrink paths (saves
 // total_paths*CAP_LOG2 sibling words) but grow every commitment to CAP*32 bytes.
 //
-// ---- Layout: 8 witness polys + 1 setup poly --------------------------------
+// ---- Layout: 7 witness polys + 1 setup poly --------------------------------
 // The witness oracle batches 8 columns into one Merkle tree, the setup oracle 1
 // column into another; round 0 opens both (gamma-batched), later rounds fold the
 // single intermediate oracle. VARIANT selects the message size:
@@ -52,7 +52,7 @@ contract WhirVerifier {
     uint256 constant GEN_INV = 0x0290A0CB0CAD8AC9DAFCDC73EBD1A223;
 
     uint256 constant NUM_ROUNDS = 6;
-    // Message size selector (8 witness + 1 setup polys, both sizes):
+    // Message size selector (7 witness + 1 setup polys, both sizes):
     //   4 = production (message 2^26, RS codeword 2^31)
     //   5 = test       (message 2^8,  RS codeword 2^13)
     uint256 constant VARIANT  = 4;
@@ -64,6 +64,13 @@ contract WhirVerifier {
     // cap size knob: keep CAP == 2^CAP_LOG2 in sync (Yul needs literal constants).
     uint256 constant CAP_LOG2 = 3;
     uint256 constant CAP      = 8;
+
+    // Committed-state linking: WHIR recomputes the shared committed state (keccak of the
+    // preimage) itself and reports it to the registry (it does NOT check a passed preimage).
+    uint256 constant COMMIT_PTR = 96; // recomputed committed state, marked at the end
+    // GkrWhirRegistry address (test etches the deployed registry here).
+    uint256 constant REGISTRY   = 0xCAFE0001;
+    uint256 constant MARK_WHIR_SELECTOR = 0xbb716068; // mark_whir_verified(bytes32)
 
     // ── hand-placed memory ────────────────────────────────────────────────────
     uint256 constant SEED_PTR     = 128;
@@ -367,11 +374,12 @@ contract WhirVerifier {
 
             switch r
             case 0 {
-                // Round 0 queries the base oracles: 8 witness columns (BCAP0) then
+                // Round 0 queries the base oracles: 7 witness columns (BCAP0) then
                 // 1 setup column (BCAP1), gamma-batched into the folding buffer.
+                // (7 = merged memory+witness packed columns; setup at gamma-power 7.)
                 for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(FBUF_PTR, mul(j, 32)), 0) }
-                cp := batch_oracle(cp, 8, 0, vp, depth, BCAP0_PTR, qidx, cb)
-                cp := batch_oracle(cp, 1, 8, vp, depth, BCAP1_PTR, qidx, cb)
+                cp := batch_oracle(cp, 7, 0, vp, depth, BCAP0_PTR, qidx, cb)
+                cp := batch_oracle(cp, 1, 7, vp, depth, BCAP1_PTR, qidx, cb)
             }
             default {
                 cp := read_leaf(cp, vp, depth, QCAP_PTR, qidx, cb)
@@ -490,7 +498,7 @@ contract WhirVerifier {
         // =================================================================== MAIN
         let start_gas := gas()
 
-        // 8 witness + 1 setup poly -> 9 batched columns, 2 base caps (witness,setup).
+        // 7 witness + 1 setup poly -> 9 batched columns, 2 base caps (witness,setup).
         //   VARIANT 4 (prod):  message 2^26, final poly 2^4 monomials (rfin 4)
         //   VARIANT 5 (test):  message 2^8,  final poly 2^2 monomials (rfin 2)
         let nz := 26
@@ -517,9 +525,11 @@ contract WhirVerifier {
         calldatacopy(BCAP0_PTR, caps_off, mul(CAP, 32))
         calldatacopy(BCAP1_PTR, add(caps_off, mul(CAP, 32)), mul(CAP, 32))
         let plen := add(caps_off, mul(nbcaps, mul(CAP, 32)))
-        // hash preimage, check vs the single stored commitment (sink)
+        // Recompute the committed state (keccak of the preimage) — WHIR does NOT verify a
+        // passed preimage; it computes the commitment itself and reports it to the registry
+        // at the end. GKR independently computes the same commitment and marks it too.
         calldatacopy(LEAF_PTR, 0, plen)
-        sink2(keccak256(LEAF_PTR, plen), sload(0))
+        mstore(COMMIT_PTR, keccak256(LEAF_PTR, plen))
 
         // gamma powers
         mstore(GAMMA_PTR, 1)
@@ -603,8 +613,15 @@ contract WhirVerifier {
             default { do_final(fold, q, pow_bits, qib, vp, idx_mask, mload(REG_ZIOFF), rfin, cb) }
         }
 
-        // Every check passed (any failure would have reverted). Return the final
-        // claim, the gas used, and the number of proof bytes consumed.
+        // Every check passed (any failure would have reverted). Notify the registry with
+        // the recomputed committed state — GKR marks the same bytes32 from its own tx.
+        {
+            mstore(0, shl(224, MARK_WHIR_SELECTOR))
+            mstore(4, mload(COMMIT_PTR))
+            pop(call(gas(), REGISTRY, 0, 0, 36, 0, 0))
+        }
+
+        // Return the final claim, the gas used, and the number of proof bytes consumed.
         let verify_gas := sub(start_gas, gas())
         mstore(0, mload(REG_CLAIM))
         mstore(32, verify_gas)
@@ -633,19 +650,22 @@ contract WhirRealProofTest is WhirVerifier {
     uint256 constant PLEN = 992;
 
     function test() external {
-        string memory h = vm.readFile("whir/testdata/proth120_whir_calldata_prod.hex");
+        // WHIR calldata serialized from the REAL proof unified_circuit_proof_proth120.json
+        // (7 merged mem+wit cols + 1 setup col); preimage seed = the GKR verifier's handoff seed.
+        string memory h = vm.readFile("whir/testdata/proth120_whir_calldata_from_proof.hex");
         bytes memory data = vm.parseBytes(string.concat("0x", h));
-        // bind the preimage to storage slot 0 (stand-in for the on-chain commitment)
-        bytes32 ph;
-        assembly { ph := keccak256(add(data, 32), PLEN) }
-        assembly { sstore(0, ph) }
         emit log_named_uint("calldata_bytes", data.length);
+        // measure the verifier CALL gas (execution) precisely, like a tx receipt's gasUsed
+        // minus the intrinsic + calldata terms (which an internal call doesn't charge).
+        uint256 g0 = gasleft();
         (bool ok, bytes memory ret) = address(this).call(data);
+        uint256 callGas = g0 - gasleft();
         require(ok, "whir verify reverted");
         (uint256 claim, uint256 verify_gas, uint256 cd) =
             abi.decode(ret, (uint256, uint256, uint256));
         emit log_named_uint("proof_bytes_consumed", cd);
-        emit log_named_uint("verify_gas", verify_gas);
+        emit log_named_uint("verify_execution_gas", verify_gas); // fallback-internal counter
+        emit log_named_uint("verifier_call_gas", callGas);       // full CALL (exec + overhead)
         emit log_named_uint("final_claim", claim);
         require(cd == data.length, "stream not fully consumed");
     }

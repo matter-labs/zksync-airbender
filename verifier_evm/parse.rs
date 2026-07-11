@@ -13,6 +13,10 @@ use cs::{
 };
 // use cs::gkr_compiler::NoFieldStructuredExpression;
 use field::baby_bear::base::BabyBearField;
+use field::Proth120;
+
+/// Proth120 modulus P = 7*2^120 + 1 (same as gkr.sol / whir.sol once migrated).
+const PROTH120_P: u128 = 0x7000000000000000000000000000001;
 use field::PrimeField;
 
 trait EachRefRev<T, const N: usize> {
@@ -192,19 +196,55 @@ fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
     Dual(format!("-{input}"), yul_format!("sub(mul(2, P), {yul:x})"))
 }
 
+/// Proth120-aware constant emitter (replaces `const_to_evm` for the Proth120 target).
+/// Field elements are < P < 2^123 (one uint128). Emit small positives as literals,
+/// small negatives (near P) as `sub(P, n)`, and anything else as a full 128-bit literal.
+/// The Yul consumer must funnel every product through `mulmod` before adding to a
+/// reduced value (non-canonical arithmetic, per HEURISTICS.md).
+#[allow(dead_code)]
+fn proth120_const_to_evm(c: &Proth120) -> Dual {
+    let v = c.to_u128();
+    if v == 0 {
+        return Dual("0".to_string(), yul_format!("0"));
+    }
+    if v < (1u128 << 32) {
+        let normal = if v.is_power_of_two() && v > 2 {
+            format!("2^{}", v.trailing_zeros())
+        } else {
+            format!("{v}")
+        };
+        return Dual(normal, yul_format!("{v}"));
+    }
+    let neg = PROTH120_P - v;
+    if neg < (1u128 << 32) {
+        let normal = if neg.is_power_of_two() && neg > 2 {
+            format!("-2^{}", neg.trailing_zeros())
+        } else {
+            format!("-{neg}")
+        };
+        return Dual(normal, yul_format!("sub(P, {neg})"));
+    }
+    // Genuine mid-range coefficient: emit the full canonical value as a hex literal.
+    Dual(format!("0x{v:x}"), yul_format!("0x{v:x}"))
+}
+
+/// Emit a small non-negative integer constant (memory address / offset / timestamp offset)
+/// as a Proth120 field literal. These are genuine small integers (< 2^32), never field-negative.
+#[allow(dead_code)]
+fn u32_lit(c: u32) -> Dual {
+    Dual(format!("{c}"), yul_format!("{c}"))
+}
+
 fn main() {
     const DEBUG_ENABLE_DUMMY_CHECKS: bool = false;
     let json = std::fs::read_to_string(
-        // "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
-        // "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
-        "../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
-        // "../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json",
+        "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
     )
     .unwrap();
-    let circuit: GKRCircuitArtifact<BabyBearField> = serde_json::from_str(&json).unwrap();
+    let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(&json).unwrap();
     let circuit_rounds = {
         assert!(circuit.trace_len.is_power_of_two() && circuit.trace_len > 0);
-        assert_eq!(circuit.trace_len, 1<<24, "we need to keep sync with gkr.sol constant!");
+        assert_eq!(circuit.trace_len, 1<<22, "we need to keep sync with gkr.sol constant!");
         circuit.trace_len.trailing_zeros()
     };
     let gkr_sol_rounds = include_str!("gkr.sol")
@@ -240,46 +280,57 @@ fn main() {
         let mut running_cachedoutput_counter = 0;
         for (cached_address, cached_relation) in cached_relations {
             let output = gkraddress_to_outputvar(cached_address, i, &mut running_cachedoutput_counter);
-            let relation_name = serde_json::to_value(cached_relation).unwrap().as_object().unwrap().keys().next().unwrap().clone();
+            // Variant name for comments only. (serde_json::to_value overflows on Proth120 u128 field
+            // elements — "number out of range" — so match the variant directly.)
+            let relation_name = match cached_relation {
+                NoFieldGKRCacheRelation::SingleColumnLookup { .. } => "SingleColumnLookup",
+                NoFieldGKRCacheRelation::VectorizedLookup(..) => "VectorizedLookup",
+                NoFieldGKRCacheRelation::MemoryTuple(..) => "MemoryTuple",
+                NoFieldGKRCacheRelation::VectorizedLookupSetup(..) => "VectorizedLookupSetup",
+            };
 
             fn gkraddress_to_calldata(address: &GKRAddress, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
-                let (l0_memvars, l0_witvars, _l0_setupvars, _l0_cachevars) = layer0_group_widths;
-                let (_running_max_memvar, _running_max_witvar, running_max_setupvar, _running_max_cachevar) = running_max_group_offsets;
+                let (l0_memvars, l0_witvars, _l0_setupvars, l0_cachevars) = layer0_group_widths;
+                let (running_max_memvar, running_max_witvar, running_max_setupvar, running_max_cachevar) = running_max_group_offsets;
                 match address {
-                    // InnerLayer { layer, offset } if *layer==expected_layer && expected_layer > 0 => {
-                    //     Dual(format!("[{offset}]"), Yul::calldataload(offset))
-                    // },
-                    // GKRAddress::BaseLayerMemory(offset) if expected_layer == 0 => {
-                    //     *running_max_memvar = *offset.max(running_max_memvar);
-                    //     let calldata_offset = offset; // memory is first in calldata
-                    //     Dual(format!("[{calldata_offset}]"), Yul::calldataload(calldata_offset))
-                    // },
-                    // GKRAddress::BaseLayerWitness(offset) if expected_layer == 0 => {
-                    //     *running_max_witvar = *offset.max(running_max_witvar);
-                    //     let calldata_offset = l0_memvars + offset; // witness is second in calldata
-                    //     Dual(format!("[{calldata_offset}]"), Yul::calldataload(&calldata_offset))
-                    // },
+                    InnerLayer { layer, offset } if *layer==expected_layer && expected_layer > 0 => {
+                        Dual(format!("[{offset}]"), Yul::calldataload(offset))
+                    },
+                    GKRAddress::BaseLayerMemory(offset) if expected_layer == 0 => {
+                        *running_max_memvar = *offset.max(running_max_memvar);
+                        let calldata_offset = offset; // memory is first in calldata
+                        Dual(format!("[{calldata_offset}]"), Yul::calldataload(calldata_offset))
+                    },
+                    GKRAddress::BaseLayerWitness(offset) if expected_layer == 0 => {
+                        *running_max_witvar = *offset.max(running_max_witvar);
+                        let calldata_offset = l0_memvars + offset; // witness is second in calldata
+                        Dual(format!("[{calldata_offset}]"), Yul::calldataload(&calldata_offset))
+                    },
                     GKRAddress::Setup(offset) if expected_layer == 0 => {
                         *running_max_setupvar = *offset.max(running_max_setupvar);
                         let calldata_offset = l0_memvars + l0_witvars + offset; // setup is third in calldata
                         Dual(format!("[{calldata_offset}]"), Yul::calldataload(&calldata_offset))
                     },
-                    // GKRAddress::Cached { layer, offset } if *layer==expected_layer && expected_layer == 0 => {
-                    //     *running_max_cachevar = *offset.max(running_max_cachevar);
-                    //     Dual(format!("Cache({offset})"), Yul::mload(offset))
-                    // },
-                    // GKRAddress::VirtualSetup(virtual_poly) if expected_layer == 0 => {
-                    //     let cache_idx = l0_cachevars + *virtual_poly as usize;
-                    //     *running_max_cachevar = cache_idx.max(*running_max_cachevar);
-                    //     Dual(format!("Cache({cache_idx})"), Yul::mload(&cache_idx))
-                    // }
-                    // GKRAddress::VirtualSetup(virtual_poly) => format!("VirtualSetup{setup:?}(x)")
+                    // Cached (virtual) poly: computed from deps + mstore'd to a heap slot earlier
+                    // in this layer's processing; gates mload it. Slots are per-layer (reused).
+                    GKRAddress::Cached { layer, offset } if *layer==expected_layer => {
+                        *running_max_cachevar = *offset.max(running_max_cachevar);
+                        Dual(format!("Cache({offset})"), Yul::mload(offset))
+                    },
+                    GKRAddress::VirtualSetup(virtual_poly) if expected_layer == 0 => {
+                        let cache_idx = l0_cachevars + *virtual_poly as usize;
+                        *running_max_cachevar = cache_idx.max(*running_max_cachevar);
+                        Dual(format!("Cache({cache_idx})"), Yul::mload(&cache_idx))
+                    }
                     _ => todo!("unexpected address {address:?} for layer {expected_layer}")
                 }
             }
             fn gkraddress_to_outputvar(address: &GKRAddress, expected_layer: usize, running_cachedoutput_counter: &mut usize) -> Dual {
                 match address {
-                    GKRAddress::Cached { layer, offset } if *layer==expected_layer && expected_layer == 0 && *running_cachedoutput_counter == *offset => {
+                    // Cache output for ANY layer: store the computed cached value to its heap slot
+                    // (per-layer offset; slots reused across layers since caches are computed and
+                    // consumed within one layer's point-check before the next layer runs).
+                    GKRAddress::Cached { layer, offset } if *layer==expected_layer && *running_cachedoutput_counter == *offset => {
                         *running_cachedoutput_counter += 1;
                         Dual(format!("Cache({offset})"), Yul::mstore(offset))
                     },
@@ -321,6 +372,32 @@ fn main() {
                     yul_println!("
                     \t{{  // {relation_name}: {setup} = {output}
                     \t    let gate := {setup:x}
+                    \t    {output:x}
+                    \t}}");
+                }
+                NoFieldGKRCacheRelation::VectorizedLookup(NoFieldVectorLookupRelation { columns, lookup_set_index: _ }) => {
+                    // cached = Σ_col α^col · (col_constant + Σ coeff·read), α-compressed by
+                    // gkr_lookrel_compress_half (same nesting as VectorizedLookupSetup, but each
+                    // slot is a compressed linear relation instead of a raw read). No γ here.
+                    assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
+                    let cols: Vec<Dual> = columns.iter().map(|column| {
+                        let NoFieldLinearRelation { linear_terms, constant } = column;
+                        let linear = linear_terms.iter().map(|(c, addr)| {
+                            let input = gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets);
+                            let c = proth120_const_to_evm(c);
+                            Dual(format!("{c}{input}"), yul_format!("mulmod({c:x}, {input:x}, P)"))
+                        }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or_else(|| Dual("0".to_string(), yul_format!("0")));
+                        let constant = proth120_const_to_evm(constant);
+                        Dual(format!("({constant} + {linear})"), yul_format!("add({constant:x}, {linear:x})"))
+                    }).collect();
+                    let [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9]: [Dual; 10] = cols.try_into().ok().unwrap();
+                    let compressed = Dual(
+                        format!("{c0} + {c1} + {c2} + {c3} + {c4} + {c5} + {c6} + {c7} + {c8} + {c9}"),
+                        yul_format!("gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, {c5:x}, {c6:x}, {c7:x}, {c8:x}, {c9:x}), {c0:x}, {c1:x}, {c2:x}, {c3:x}, {c4:x})"),
+                    );
+                    yul_println!("
+                    \t{{  // {relation_name}: {compressed} = {output}
+                    \t    let gate := {compressed:x}
                     \t    {output:x}
                     \t}}");
                 }
@@ -434,7 +511,7 @@ fn main() {
                         let calldata_offset = l0_memvars + l0_witvars + offset; // setup is third in calldata
                         Dual(format!("[{calldata_offset}]"), Yul::calldataload(&calldata_offset))
                     },
-                    GKRAddress::Cached { layer, offset } if *layer==expected_layer && expected_layer == 0 => {
+                    GKRAddress::Cached { layer, offset } if *layer==expected_layer => {
                         *running_max_cachevar = *offset.max(running_max_cachevar);
                         Dual(format!("Cache({offset})"), Yul::mload(offset))
                     },
@@ -464,7 +541,7 @@ fn main() {
                 let (running_max_memvar, _running_max_witvar, _running_max_setupvar, _running_max_cachevar) = running_max_group_offsets;
                 let NoFieldSpecialMemoryContributionRelation { address_space, address, timestamp, value, timestamp_offset } = tuple;
                 let address_space = match address_space {
-                    CompiledAddressSpaceRelationStrict::Constant(c) => const_to_evm(c),
+                    CompiledAddressSpaceRelationStrict::Constant(c) => u32_lit(*c),
                     CompiledAddressSpaceRelationStrict::IsRam(idx) => {
                         *running_max_memvar = *idx.max(running_max_memvar);
                         Dual(format!("[{idx}]"), Yul::calldataload(idx))
@@ -479,12 +556,12 @@ fn main() {
                 let [addr_low, addr_high] = match address {
                     CompiledAddressStrict::Constant(c) => {
                         assert!(*c < (1<<16), "with {address:?} we expect c < 2^16");
-                        let c = const_to_evm(c);
+                        let c = u32_lit(*c);
                         let zero = Dual(format!("0"), yul_format!("0"));
                         [c, zero]
                     },
                     CompiledAddressStrict::ConstantU16(c) => {
-                        let c = const_to_evm(&(*c as u32));
+                        let c = u32_lit(*c as u32);
                         let zero = Dual(format!("0"), yul_format!("0"));
                         [c, zero]
                     },
@@ -513,7 +590,7 @@ fn main() {
                     CompiledMemoryTimestamp::Normal([low, high]) => {
                         *running_max_memvar = *low.max(running_max_memvar);
                         *running_max_memvar = *high.max(running_max_memvar);
-                        let timestamp_offset = const_to_evm(timestamp_offset);
+                        let timestamp_offset = u32_lit(*timestamp_offset);
                         let low = Dual(format!("[{low}]"), Yul::calldataload(low));
                         let high = Dual(format!("[{high}]"), Yul::calldataload(high));
                         [Dual(format!("({timestamp_offset} + {low})"), yul_format!("add({timestamp_offset:x}, {low:x})")), high]
@@ -597,7 +674,7 @@ fn main() {
                     }
                 }
             }
-            fn lookrelsingle_to_calldata(tuple: &NoFieldSingleColumnLookupRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn lookrelsingle_to_calldata(tuple: &NoFieldSingleColumnLookupRelation<Proth120>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldSingleColumnLookupRelation { input, lookup_set_index: _ } = tuple;
                 let compressed = linrel_to_calldata_inner(input, expected_layer, layer0_group_widths, running_max_group_offsets);
                 let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
@@ -606,7 +683,7 @@ fn main() {
                     yul_format!("add({logup_gamma:x}, {compressed:x})")
                 )
             }
-            fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+            fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation<Proth120>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldVectorLookupRelation { columns, lookup_set_index: _ } = tuple;
                 assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
                 let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
@@ -621,38 +698,45 @@ fn main() {
                     yul_format!("add({logup_gamma:x}, gkr_lookrel_compress_half(gkr_lookrel_compress_half(0, {col5:x}, {col6:x}, {col7:x}, {col8:x}, {col9:x}), {col0:x}, {col1:x}, {col2:x}, {col3:x}, {col4:x}))")
                 )
             }
-            fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+            fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation<Proth120>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldLinearRelation { linear_terms, constant } = inputs;
                 let linear = linear_terms.iter().map(|(c, addr)| {
                     let input = gkraddress_to_calldata(addr, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let c = const_to_evm(&c.as_u32_reduced());
+                    let c = proth120_const_to_evm(c);
                     Dual(format!("{c}{input}"), yul_format!("mulmod({c:x}, {input:x}, P)"))
                 }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual("0".to_string(), yul_format!("0")));
-                let constant = const_to_evm(&constant.as_u32_reduced());
+                let constant = proth120_const_to_evm(constant);
                 Dual(format!("{constant} + {linear}"), yul_format!("add({constant:x}, {linear:x})"))
             }
-            fn quadrel_to_calldata_inner(input: &NoFieldMaxQuadraticGKRRelation<BabyBearField>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> String {
+            fn quadrel_to_calldata_inner(input: &NoFieldMaxQuadraticGKRRelation<Proth120>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
+                // eval_max_quadratic: constant + Σ_a read_a·(Σ_b coeff·read_b) + Σ coeff·read.
+                // Products via mulmod (reduced); sums via add (non-canonical, funneled through
+                // the outer mulmod in pointcheck_update). Mirrors the validated Rust kernel.
                 let NoFieldMaxQuadraticGKRRelation { quadratic_terms, linear_terms, constant } = input;
-                let quadratic = quadratic_terms.iter().map(|(address, linear_terms)| {
+                let zero = || Dual("0".to_string(), yul_format!("0"));
+                let quadratic = quadratic_terms.iter().map(|(address, inner_terms)| {
                     let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let linear = linear_terms.iter().map(|(c, address)| {
+                    let inner = inner_terms.iter().map(|(c, address)| {
                         let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                        let c = const_to_evm(&c.as_u32_reduced());
-                        format!("{c}{read}")
-                    }).collect::<Vec<_>>().join(" + ");
-                    format!("{read}({linear})")
-                }).collect::<Vec<_>>().join(" + ");
+                        let c = proth120_const_to_evm(c);
+                        Dual(format!("{c}{read}"), yul_format!("mulmod({c:x}, {read:x}, P)"))
+                    }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or_else(zero);
+                    Dual(format!("{read}({inner})"), yul_format!("mulmod({read:x}, {inner:x}, P)"))
+                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or_else(zero);
                 let linear = linear_terms.iter().map(|(c, address)| {
                     let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
-                    let c = const_to_evm(&c.as_u32_reduced());
-                    format!("{c}{read}")
-                }).collect::<Vec<_>>().join(" + ");
-                let constant = const_to_evm(&constant.as_u32_reduced());
-                format!("{constant} + {linear} + {quadratic}")
+                    let c = proth120_const_to_evm(c);
+                    Dual(format!("{c}{read}"), yul_format!("mulmod({c:x}, {read:x}, P)"))
+                }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or_else(zero);
+                let constant = proth120_const_to_evm(constant);
+                Dual(
+                    format!("{constant} + {linear} + {quadratic}"),
+                    yul_format!("add(add({constant:x}, {linear:x}), {quadratic:x})"),
+                )
             }
             // fn expression_to_calldata(expression: &NoFieldStructuredExpression, expected_layer: usize, layer0_group_widths: (usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize)) -> String {
             //    match expression {
-            //         NoFieldStructuredExpression::Constant(c) => const_to_evm(&c.as_u32_reduced()),
+            //         NoFieldStructuredExpression::Constant(c) => proth120_const_to_evm(c),
             //         NoFieldStructuredExpression::Place(address) => gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets),
             //         NoFieldStructuredExpression::Sum(terms) => {
             //             let term = terms.iter().map(|expression| {
@@ -729,7 +813,8 @@ fn main() {
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
-                NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, output } => {
+                NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, output }
+                | NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs { input, remainder, output } => {
                     let [num, den] = input.each_ref().map(|addr| gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets));
                     let remainder = gkraddress_to_calldata(remainder, i, layer0_group_widths, &mut running_max_group_offsets);
                     let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
@@ -884,7 +969,7 @@ fn main() {
                 NoFieldGKRRelation::InitsOrTeardownsInitialPair { timestamp_and_value, setup, output, set_idxes } => {
                     let [setup_low, setup_high] = setup.each_ref().map(|address| gkraddress_to_calldata(address, i, layer0_group_widths, &mut running_max_group_offsets));
                     let [lhs_addr_high, rhs_addr_high] = {
-                        assert_eq!(circuit.trace_len, 1<<24, "currently we expect gkr_compress to go up to 2^24");
+                        assert_eq!(circuit.trace_len, 1<<22, "currently we expect gkr_compress to go up to 2^22");
                         assert_eq!(circuit.memory_layout.inits_and_teardowns_word_bits.unwrap(), 2, "we expect there to be just 2 empty low bits");
                         let high_bits_shift = prover::gkr::high_bits_offset_for_inits_and_teardowns::<2>(circuit.trace_len);
                         let top_bits = set_idxes.map(|c| c << high_bits_shift);
@@ -920,13 +1005,31 @@ fn main() {
                     \t}}");
                 }
 
+                NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output } => {
+                    // LookupInitialPair with direct-address inputs: den1=γ+in0, den2=γ+in1;
+                    // den_out = den1·den2, num_out = den1+den2.
+                    let [b, d] = input.each_ref().map(|addr| gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets));
+                    let [num_out, den_out] = output.each_ref_mayberevmap(|address| gkraddress_to_outputvar(address, i + 1, &mut running_output_counter));
+                    let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
+                    yul_println!("
+                    \t{{  // {relation_name}: 1/({logup_gamma}+{b}) + 1/({logup_gamma}+{d}) = {num_out}/{den_out}
+                    \t    let den1 := add({logup_gamma:x}, {b:x})
+                    \t    let den2 := add({logup_gamma:x}, {d:x})
+                    \t    let den_out := mulmod(den1, den2, P)
+                    \t    let gate := den_out
+                    \t    {pointcheck_update:x}
+                    \t    let num_out := add(den1, den2)
+                    \t    gate := num_out
+                    \t    {pointcheck_update:x}
+                    \t}}");
+                }
                 _ => todo!("could not match {enforced_relation:?} at layer {i}")
             }
         }
 
         assert_eq!(running_output_counter, if DEBUG_NATURAL_GATE_ORDER { previous_input_count } else { 0 });
         if i > 0 {
-            assert!(cached_relations.len() == 0);
+            // (with-caches: inner layers CAN have cached relations now — handled above.)
             previous_input_count = intermediate_layer_width.unwrap();
         } else {
             let (l0_memvars, l0_witvars, l0_setupvars, l0_cachevars) = layer0_group_widths;
