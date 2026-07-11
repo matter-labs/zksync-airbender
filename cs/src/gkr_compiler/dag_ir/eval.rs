@@ -53,6 +53,41 @@ pub trait LookupResolver {
 /// Returns a `Bf` value that the evaluator lifts to `Ext`.
 pub trait VirtualSetupResolver {
     fn virtual_setup(&self, kind: &VirtualSetupKind, row: usize) -> Bf;
+
+    /// Depth-`ch.len()` instrument fold of this VS poly at position `y`
+    /// (LSB-first adjacent-pair fold; `ch[0]` innermost — the same recurrence
+    /// as `gkr_eval_isa`'s `sumcheck_fold_point`). The default recomputes from
+    /// originals via [`fold_vs_from_originals`] — `O(2^d)` reads through
+    /// `virtual_setup`, value-authoritative. Real harnesses / the device
+    /// OVERRIDE this with the `O(k)` multilinear closed form: VS polys are
+    /// multilinear by construction, so a depth-`d` partial fold is the same
+    /// formula with the bound coordinates replaced by the challenges. Depth 0
+    /// (`ch` empty) is exactly `virtual_setup(kind, y)` lifted.
+    fn virtual_setup_fold(&self, kind: &VirtualSetupKind, y: usize, ch: &[Ext]) -> Ext {
+        fold_vs_from_originals(&|z| lift(self.virtual_setup(kind, z)), y, ch)
+    }
+}
+
+/// Depth-`ch.len()` sumcheck fold of the point function `base` at position `y`
+/// from originals: `f(y) = f0(2y) + c·(f0(2y+1) − f0(2y))`, folded bottom-up
+/// over `ch` (`ch[0]` innermost / leaf-adjacent, `ch[len-1]` outermost). This
+/// is the identical recurrence to `gkr_eval_isa::bwd::interp::sumcheck_fold_point`;
+/// it is the value-authoritative reference the closed-form VS override must match.
+pub fn fold_vs_from_originals(base: &dyn Fn(usize) -> Ext, y: usize, ch: &[Ext]) -> Ext {
+    match ch.split_last() {
+        None => base(y),
+        Some((c, rest)) => {
+            let a = fold_vs_from_originals(base, 2 * y, rest);
+            let b = fold_vs_from_originals(base, 2 * y + 1, rest);
+            // a + c·(b − a)
+            let mut d = b;
+            d.sub_assign(&a);
+            d.mul_assign(c);
+            let mut out = a;
+            out.add_assign(&d);
+            out
+        }
+    }
 }
 
 /// Resolves a challenge reference to an `Ext` value.
