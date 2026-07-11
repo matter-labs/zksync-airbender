@@ -2,6 +2,7 @@ use super::*;
 
 pub(crate) mod batched;
 pub(crate) mod boolean_constraint;
+pub(crate) mod bwd_protocol_parity;
 pub(crate) mod fixed_kernels;
 pub(crate) mod layer_oracle;
 pub(crate) mod logup_variants;
