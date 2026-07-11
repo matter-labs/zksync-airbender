@@ -1228,17 +1228,16 @@ fn protocol_parity_lookup_base_pair() {
 //
 // # VS-ABI FINDING (real signal, documented, not fudged around)
 //
-// `bind()` marks Ext-regime VirtualSetup-origin FoldSources `Materialized`
-// under `AlwaysMaterialize` (round >= 1), and the interpreter routes a
-// Materialized VS read through `VirtualSetupResolver::virtual_setup -> Bf`.
-// A depth-r folded buffer under REAL Ext challenges is a genuine Ext value,
-// which that ABI cannot represent — the corpus value gate only passed because
-// its synthetic challenges stayed in the base subfield (noted there as a
-// harness property). Until the resolver ABI grows an Ext-typed VS buffer
-// read, this gate binds VS-origin FoldSources `LazyFromOriginals { depth:
-// round }` in materialized rounds (`bind_vs_lazy`): value-identical by the
-// fold-recomputation semantics, and cheap (2 VS leaves; total extra reads
-// are O(k * 2^(k-1)) across the whole run).
+// A Materialized VS read would route through `VirtualSetupResolver::
+// virtual_setup -> Bf`, but a depth-r folded buffer under REAL Ext challenges
+// is a genuine Ext value that ABI cannot represent (the corpus value gate only
+// passed because its synthetic challenges stayed in the base subfield, noted
+// there as a harness property). `bind()` therefore enforces the VS forced-lazy
+// convention directly: VS-origin FoldSources always bind `LazyFromOriginals
+// { depth: round }` regardless of policy (value-identical by fold-recomputation
+// semantics, cheap — 2 VS leaves, O(k * 2^(k-1)) extra reads across the run).
+// This test calls `bind()` unmodified; until the resolver ABI grows an
+// Ext-typed VS buffer read, no Materialized VS binding can arise.
 //
 // # Policy legs + runtime
 //
@@ -1535,23 +1534,6 @@ impl LookupResolver for FoldedView<'_> {
     fn lookup(&self, kind: &LookupValueKind, _: usize, _: Ext, _: usize) -> Bf {
         panic!("bwd programs have no LookupValue sources ({kind:?})")
     }
-}
-
-/// `bind()` with VS-origin FoldSources overridden to `LazyFromOriginals`
-/// (VS-ABI finding: a Materialized VS read returns `Bf` and cannot carry an
-/// Ext folded buffer under real Ext challenges; the lazy refold from depth 0
-/// is value-identical).
-fn bind_vs_lazy(d: &DistilledLayer, policy: MaterializationPolicy, round: u8) -> BwdBindings {
-    let mut b = bind(d, policy, round);
-    for (i, st) in b.states.iter_mut().enumerate() {
-        if let Some(BwdSpecial::FoldSource {
-            origin: OriginLeaf::VirtualSetup { .. },
-        }) = d.specials.get(i as u16)
-        {
-            *st = FoldState::LazyFromOriginals { depth: round };
-        }
-    }
-    b
 }
 
 // ── Parallel helpers ─────────────────────────────────────────────────────────
@@ -1890,8 +1872,8 @@ fn protocol_parity_bigint_l0() {
         );
 
         let (c, d) = if r == 0 { (&c_r0, &d_r0) } else { (&c_ext, &d_ext) };
-        let bind_always = bind_vs_lazy(d, MaterializationPolicy::AlwaysMaterialize, r as u8);
-        let bind_lazy2 = bind_vs_lazy(d, MaterializationPolicy::LazyUpTo(2), r as u8);
+        let bind_always = bind(d, MaterializationPolicy::AlwaysMaterialize, r as u8);
+        let bind_lazy2 = bind(d, MaterializationPolicy::LazyUpTo(2), r as u8);
         let materialized = bind_always
             .states
             .iter()

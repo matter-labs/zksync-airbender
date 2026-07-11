@@ -173,6 +173,13 @@ fn compile_distilled_at(
         lower_budget,
     )?;
 
+    // The bwd lowering runs the fwd resolution hook with empty materialize maps
+    // and CLEARED resolutions, so it must never intern a fwd SpecialDescriptor:
+    // bwd Special operands index `d.specials` (the BWD table), a disjoint
+    // namespace. A non-empty fwd table here means a resolution fence leaked into
+    // the fwd descriptor namespace.
+    assert!(ctx.specials.is_empty(), "bwd compile leaked into the fwd descriptor namespace");
+
     let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials);
     stats.max_live_cells = max_live_cells;
 
@@ -229,7 +236,9 @@ fn tally_bwd_program(
                     ext.fold_uses += 1;
                     ext.fold_traffic += 4; // role-neutral Ext width per use (REV2)
                 }
-                None => {} // unreachable for a well-formed compile
+                // A dense bwd table has a desc for every index a Special operand
+                // can name; None means the program referenced an out-of-range desc.
+                None => debug_assert!(false, "bwd Special operand names an unknown desc {desc}"),
             },
         }
     };

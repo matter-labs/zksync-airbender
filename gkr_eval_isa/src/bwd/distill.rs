@@ -137,6 +137,7 @@ pub fn distill(
             terms.push(term);
         }
     }
+    assert!(!terms.is_empty(), "distill requires >= 1 claim-bearing root");
     let spine = match terms.len() {
         1 => terms[0],
         _ => cx.arena.add(terms),
@@ -321,10 +322,27 @@ pub struct BwdBindings {
 /// while `round <= k`, `Materialized` past it. `VirtualSetup` descs (R0-only —
 /// in Ext the leaf is a FoldSource) are procedurally generated, never a
 /// materialized fold buffer: always `LazyFromOriginals { depth: round }`.
+///
+/// VS forced-lazy convention (Task 11): a `FoldSource` whose ORIGIN is a
+/// `VirtualSetup` leaf (Ext regime — in R0 a VS leaf is a `VirtualSetup` desc,
+/// not a FoldSource) is ALSO always bound `LazyFromOriginals { depth: round }`,
+/// regardless of `policy`. WHY: the VirtualSetup resolver returns `Bf` and
+/// cannot carry an Ext folded buffer, so a `Materialized` VS binding would make
+/// the interpreter read a raw unfolded `Bf` VS value where a depth-`round` Ext
+/// fold is required — silently wrong under real Ext challenges. The lazy refold
+/// from the originals is value-identical. The runtime binder and the Task-12
+/// cost model (`bwd/cost.rs::effective_fold_state`) MIRROR this mapping — a
+/// materialized VS binding cannot exist until the device port grows an
+/// Ext-typed VS buffer read.
 pub fn bind(d: &DistilledLayer, policy: MaterializationPolicy, round: u8) -> BwdBindings {
     let states = (0..d.specials.len())
         .map(|i| match d.specials.get(i as u16).expect("dense desc index") {
             BwdSpecial::VirtualSetup { .. } => FoldState::LazyFromOriginals { depth: round },
+            // VS-origin FoldSource: forced lazy regardless of policy (Bf resolver
+            // cannot carry an Ext folded buffer — see the fn doc).
+            BwdSpecial::FoldSource { origin: OriginLeaf::VirtualSetup { .. } } => {
+                FoldState::LazyFromOriginals { depth: round }
+            }
             BwdSpecial::FoldSource { .. } => {
                 if round == 0 {
                     FoldState::LazyFromOriginals { depth: 0 }
@@ -729,25 +747,61 @@ mod tests {
     }
 
     // ── bind() ────────────────────────────────────────────────────────────────
+
+    /// Desc indices of the Read-origin vs VS-origin FoldSources in an Ext
+    /// distill of `ext_layer` (2 Read leaves + 1 VirtualSetup leaf).
+    fn read_and_vs_descs(d: &DistilledLayer) -> (Vec<u16>, Vec<u16>) {
+        let mut reads = Vec::new();
+        let mut vs = Vec::new();
+        for i in 0..d.specials.len() as u16 {
+            match d.specials.get(i) {
+                Some(BwdSpecial::FoldSource { origin: OriginLeaf::Read(_) }) => reads.push(i),
+                Some(BwdSpecial::FoldSource { origin: OriginLeaf::VirtualSetup { .. } }) => {
+                    vs.push(i)
+                }
+                other => panic!("unexpected Ext desc {other:?}"),
+            }
+        }
+        (reads, vs)
+    }
+
     #[test]
     fn bind_maps_policy_and_round_per_desc() {
         let layer = ext_layer();
         let d = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
         assert_eq!(d.specials.len(), 3);
+        let (reads, vs) = read_and_vs_descs(&d);
+        assert_eq!((reads.len(), vs.len()), (2, 1), "2 Read-origin + 1 VS-origin fold");
 
         // Round 0: no previous-round buffer exists — always lazy depth 0.
         let b0 = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
         assert!(b0.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 0 }));
 
-        // Round >= 1, AlwaysMaterialize: every FoldSource reads the buffer.
+        // Round >= 1, AlwaysMaterialize: Read-origin folds read the buffer, but a
+        // VS-origin fold stays forced-lazy (Bf resolver cannot carry an Ext fold).
         let b1 = bind(&d, MaterializationPolicy::AlwaysMaterialize, 3);
-        assert!(b1.states.iter().all(|s| *s == FoldState::Materialized));
+        for &i in &reads {
+            assert_eq!(b1.states[i as usize], FoldState::Materialized);
+        }
+        for &i in &vs {
+            assert_eq!(
+                b1.states[i as usize],
+                FoldState::LazyFromOriginals { depth: 3 },
+                "VS-origin fold is forced lazy under AlwaysMaterialize"
+            );
+        }
 
-        // LazyUpTo(2): round 2 recomputes at depth 2, round 3 is materialized.
+        // LazyUpTo(2): round 2 recomputes at depth 2 (VS agrees with Read here),
+        // round 3 materializes the Read folds but leaves VS forced-lazy.
         let b2 = bind(&d, MaterializationPolicy::LazyUpTo(2), 2);
         assert!(b2.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 2 }));
         let b3 = bind(&d, MaterializationPolicy::LazyUpTo(2), 3);
-        assert!(b3.states.iter().all(|s| *s == FoldState::Materialized));
+        for &i in &reads {
+            assert_eq!(b3.states[i as usize], FoldState::Materialized);
+        }
+        for &i in &vs {
+            assert_eq!(b3.states[i as usize], FoldState::LazyFromOriginals { depth: 3 });
+        }
 
         // R0: a VirtualSetup desc is never a materialized fold buffer.
         let dr0 = distill(&layer, BwdRegime::R0, &HashMap::new(), None);

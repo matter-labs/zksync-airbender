@@ -26,13 +26,15 @@
 //! (`LazyFromOriginals`) or a materialized previous-round buffer
 //! (`AlwaysMaterialize`, and `LazyUpTo(k)` once `r > k`). To keep all policies
 //! bit-identical at a round where the fold genuinely engages, the materialized
-//! runs are fed a `BufferAt` resolver that IS the depth-`r` fold of the same
-//! originals (folded via the shared `sumcheck_fold_point`) — the corpus analogue
-//! of `interp.rs`'s `BufferRead` unit-test trick. All synthetic resolver values
-//! and the round/alpha challenges live in the base subfield, so the fold stays
-//! in the base subfield and the `virtual_setup` buffer (a `Bf`) reproduces it
-//! exactly (a parity harness property shared with the forward gate, not a
-//! semantic restriction).
+//! runs are fed a `BufferAt` resolver whose `read` IS the depth-`r` fold of the
+//! same originals (folded via the shared `sumcheck_fold_point`) — the corpus
+//! analogue of `interp.rs`'s `BufferRead` unit-test trick. All synthetic resolver
+//! values and the round/alpha challenges live in the base subfield, so the fold
+//! stays in the base subfield (a parity harness property shared with the forward
+//! gate, not a semantic restriction). VS-origin FoldSources are exempt: `bind()`
+//! forces them `LazyFromOriginals` in every policy (the Bf resolver cannot carry
+//! an Ext folded buffer), so `BufferAt::virtual_setup` passes originals through
+//! unfolded and the interpreter folds them itself.
 
 mod common;
 
@@ -44,7 +46,7 @@ use cs::gkr_compiler::dag_ir::{
     ChallengeRef, ChallengeResolver, DagLayer, Expr, ExprId, Ext, LookupResolver, LookupValueKind,
     ReadPlace, ReadResolver, Resolvers, SourceKind, VirtualSetupKind, VirtualSetupResolver,
 };
-use field::{Field, FieldExtension, PrimeField};
+use field::{Field, PrimeField};
 use gkr_eval_isa::bwd::compile::compile_distilled;
 use gkr_eval_isa::bwd::distill::{bind, distill};
 use gkr_eval_isa::bwd::interp::{interpret_bwd_row, role_combine, sumcheck_fold_point, Role};
@@ -132,11 +134,12 @@ impl ReadResolver for BufferAt<'_> {
 }
 impl VirtualSetupResolver for BufferAt<'_> {
     fn virtual_setup(&self, kind: &VirtualSetupKind, y: usize) -> Bf {
-        let folded = sumcheck_fold_point(&|z| lift(self.orig.virtual_setup(kind, z)), y, self.round, self.ch)
-            .expect("buffer vs fold within round_challenges depth");
-        // Base subfield throughout (synthetic values + base round challenges),
-        // so coeff 0 reproduces the folded value exactly.
-        <Ext as FieldExtension<Bf>>::into_coeffs(folded)[0]
+        // VS-origin FoldSources are ALWAYS bound `LazyFromOriginals` by `bind()`
+        // (the Bf resolver cannot carry an Ext folded buffer — the VS forced-lazy
+        // convention), so even in a materialized run the interpreter reads VS
+        // ORIGINALS and folds them itself. Pass the original through unfolded;
+        // pre-folding here would double-fold the lazy VS read.
+        self.orig.virtual_setup(kind, y)
     }
 }
 impl LookupResolver for BufferAt<'_> {

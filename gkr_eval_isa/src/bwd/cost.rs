@@ -30,9 +30,9 @@
 //! `FoldSource`, but its folded buffer cannot currently be materialized (the `Bf`
 //! virtual-setup resolver cannot carry an Ext folded buffer). So VS-origin fold
 //! costs are accounted under `LazyFromOriginals { depth: round }` for ALL
-//! policies here — the census footnotes this. Note the runtime binder
-//! [`super::distill::bind`] does NOT apply this override (it is policy-uniform);
-//! the cost model applies it for honest accounting.
+//! policies here. This MIRRORS the runtime binder [`super::distill::bind`], which
+//! enforces the same VS forced-lazy convention: the cost model and the binder
+//! agree, so this accounting is honest, not a divergent estimate.
 
 use std::collections::BTreeSet;
 
@@ -103,11 +103,14 @@ pub fn read_fold_state(policy: MaterializationPolicy, round: u8) -> FoldState {
 }
 
 /// The effective [`FoldState`] the cost model accounts a fold source's origin
-/// under, applying the VS-ABI override (VS origins are always lazy).
+/// under. This MIRRORS [`super::distill::bind`] exactly — both apply the VS
+/// forced-lazy convention (VS origins are always lazy, Task 11); the local copy
+/// exists so the census can map an origin → state without a `BwdBindings` vector.
 #[inline]
 fn effective_fold_state(origin: &OriginLeaf, policy: MaterializationPolicy, round: u8) -> FoldState {
     match origin {
         // VS-ABI (Task 11): VS-origin folds cannot materialize — always lazy.
+        // Same rule the runtime binder `distill::bind` enforces.
         OriginLeaf::VirtualSetup { .. } => FoldState::LazyFromOriginals { depth: round },
         OriginLeaf::Read(_) => read_fold_state(policy, round),
     }
@@ -384,8 +387,9 @@ mod tests {
     #[test]
     fn round_cost_vs_origin_is_always_lazy() {
         // One VirtualSetup leaf → Ext FoldSource with a VS origin. Under
-        // AlwaysMaterialize it must STILL be accounted lazy (VS-ABI), never a
-        // materialized buffer, so no store bytes at any round.
+        // AlwaysMaterialize it must STILL be accounted lazy (VS-ABI) — the same
+        // forced-lazy state `distill::bind` binds it to — never a materialized
+        // buffer, so no store bytes at any round.
         let l = one_root_layer(
             vec![SourceInfo {
                 kind: SourceKind::VirtualSetup { kind: VirtualSetupKind::RangeCheck16Bits },
