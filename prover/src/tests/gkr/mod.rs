@@ -24,7 +24,7 @@ pub(crate) mod dag_ir_differential;
 pub(crate) mod dag_ir_oracle;
 pub(crate) mod dag_ir_reference;
 pub(crate) mod evaluators;
-mod orchestration;
+pub(crate) mod orchestration;
 
 mod family_circuits;
 mod malicious_proofs;
@@ -534,7 +534,7 @@ mod blake2_with_extended_control {
     }
 }
 
-mod bigint_with_extended_control {
+pub(crate) mod bigint_with_extended_control {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use crate::tracers::oracles::transpiler_oracles::delegation::BigintDelegationOracle;

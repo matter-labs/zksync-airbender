@@ -59,28 +59,46 @@
 //! accumulator implicitly treats a satisfied constraint's `g(0)` contribution
 //! as zero, and the combined claim gives it a zero output claim).
 
+use std::alloc::Global;
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
-use cs::definitions::GKRAddress;
+use cs::definitions::{
+    GKRAddress, VirtualSetupPoly, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+};
 use cs::gkr_compiler::dag_ir::{
-    BatchingOrder, Bf, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
-    ClaimInfo, DagLayer, Expr, ExprId, Ext, FieldKind, LookupResolver, LookupValueKind, ReadPlace,
-    ReadResolver, Resolvers, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind,
-    SourceId, SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver,
+    bwd_roots, lower_dag, validate, BatchingOrder, Bf, BwdRegime, ChallengeKey, ChallengePower,
+    ChallengeRef, ChallengeResolver, ClaimInfo, DagLayer, Expr, ExprId, Ext, FieldKind,
+    LookupResolver, LookupValueKind, PermutationSlot, ReadPlace, ReadResolver, Resolvers, Root,
+    RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+    VirtualSetupKind, VirtualSetupResolver,
 };
 use cs::gkr_compiler::{
-    GKRLayerDescription, GateArtifacts, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
-    NoFieldStructuredExpression,
+    GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, NoFieldGKRRelation,
+    NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression,
 };
+use cs::tables::TableDriver;
 use field::{Field, FieldExtension, FixedArrayConvertible, PrimeField};
 use gkr_eval_isa::bwd::compile::{compile_distilled, BwdCompiledLayer};
-use gkr_eval_isa::bwd::distill::{bind, distill, DistilledLayer};
+use gkr_eval_isa::bwd::distill::{bind, distill, BwdBindings, DistilledLayer};
 use gkr_eval_isa::bwd::interp::{interpret_bwd_row, sumcheck_fold_point, Role};
-use gkr_eval_isa::bwd::source::{FoldState, MaterializationPolicy};
+use gkr_eval_isa::bwd::source::{BwdSpecial, FoldState, MaterializationPolicy, OriginLeaf};
+use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::fwd::error::CompileError;
+use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
+use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
+use riscv_transpiler::vm::{DelegationsAndFamiliesCounters, ReplayBuffer};
+use riscv_transpiler::witness::{BigintDelegationDestinationHolder, DelegationWitness};
 use transcript::Seed;
 use worker::Worker;
 
+use crate::gkr::prover::forward_loop;
+use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::sumcheck_loop::test_harness::{
     recover_and_emit, run_layer_oracle, LayerOracleRun,
 };
@@ -93,6 +111,13 @@ use crate::gkr::sumcheck::eq_poly::{
     evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext, make_eq_poly_in_full,
 };
 use crate::gkr::sumcheck::{evaluate_eq_poly, evaluate_small_univariate_poly};
+use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
+use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
+use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
+use crate::tests::gkr::orchestration::common::{
+    hardcoded_external_challenges, run_vm_and_capture, ProgramConfig,
+};
+use crate::tracers::oracles::transpiler_oracles::delegation::BigintDelegationOracle;
 
 const FOLDING_STEPS: usize = 8;
 const POLY_SIZE: usize = 1 << FOLDING_STEPS;
@@ -805,7 +830,9 @@ impl ReadResolver for BufferAt<'_> {
 struct NoLookup;
 impl LookupResolver for NoLookup {
     fn lookup(&self, kind: &LookupValueKind, _: usize, _: Ext, _: usize) -> Bf {
-        panic!("micro families have no LookupValue sources ({kind:?})")
+        // Distilled backward programs erase LookupValue sources (rewritten to
+        // their query cones), so no leg of this gate may ever resolve one.
+        panic!("bwd programs have no LookupValue sources ({kind:?})")
     }
 }
 
@@ -1162,4 +1189,865 @@ fn protocol_parity_constraint_between_gates() {
 #[test]
 fn protocol_parity_lookup_base_pair() {
     check_family(family_lookup_base_pair());
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Task 11: G2 fixture layer — bigint L0 over a REAL witness
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Same protocol gate as the micro matrix above, at fixture scale: the FULL
+// bigint layer-0 relation set (216 gates — products, lookup pairs incl.
+// vector/base/with-setup, copies, and 115 enforced constraints — over 140
+// cache relations: MemoryTuple, SingleColumnLookup, VectorizedLookup(+Setup)).
+//
+// # Why a REAL witness (synthetic storage is structurally impossible here)
+//
+// 1. The production loop enforces global consistency (`run_sumcheck_loop`
+//    recomputes the final claim from the gate kernels and asserts) — storage
+//    must make every round polynomial reduce to the combined claim.
+// 2. The 115 constraints are real bigint carry/product relations; the only
+//    synthetic assignment vanishing all of them is all-zero (row-constant).
+// 3. The backward distill INLINES same-layer caches and rewrites LookupValue
+//    leaves to their query cones; production kernels read the PEEKED cache
+//    columns. `peek == query` is exactly the lookup-argument witness
+//    invariant — it holds only for a valid witness.
+//
+// The witness comes from replaying `examples/bigint_with_control` (one real
+// bigint delegation call) through the production witness generator, then the
+// production forward loop materializes every cache/output — ONE source of
+// column truth for both the oracle and the instrument (Task-10 discipline).
+//
+// # Trace size
+//
+// Target was 2^8; the generator's minimum is larger: bigint's concatenated
+// generic-lookup table is 1,390,592 rows and the `VectorizedLookupSetup`
+// cache materializes it into a trace-length column, so the smallest legal
+// trace is 2^21 (the artifact's committed 2^22 halved). The artifact's
+// `trace_len` is overridden accordingly; nothing else in the layout depends
+// on it (bigint has no inits/teardowns top-bits).
+//
+// # VS-ABI FINDING (real signal, documented, not fudged around)
+//
+// `bind()` marks Ext-regime VirtualSetup-origin FoldSources `Materialized`
+// under `AlwaysMaterialize` (round >= 1), and the interpreter routes a
+// Materialized VS read through `VirtualSetupResolver::virtual_setup -> Bf`.
+// A depth-r folded buffer under REAL Ext challenges is a genuine Ext value,
+// which that ABI cannot represent — the corpus value gate only passed because
+// its synthetic challenges stayed in the base subfield (noted there as a
+// harness property). Until the resolver ABI grows an Ext-typed VS buffer
+// read, this gate binds VS-origin FoldSources `LazyFromOriginals { depth:
+// round }` in materialized rounds (`bind_vs_lazy`): value-identical by the
+// fold-recomputation semantics, and cheap (2 VS leaves; total extra reads
+// are O(k * 2^(k-1)) across the whole run).
+//
+// # Policy legs + runtime
+//
+// Both dispatched policies run: `AlwaysMaterialize` fully; `LazyUpTo(2)`
+// re-evaluates rounds 1..=2 (where its bindings actually differ) and is
+// pinned to leg A by a binding-equality assertion for every later round
+// (equal `FoldState` vectors + a deterministic interpreter ⇒ equal values).
+// Row sums are parallelized over threads; materialized rounds read
+// progressively folded per-column buffers (exact instrument recurrence),
+// never a per-read recursive fold.
+
+const BIGINT_LAYOUT_PATH: &str =
+    "../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json";
+const BIGINT_TRACE_LOG2: usize = 21;
+
+// ── Real-witness construction ────────────────────────────────────────────────
+
+/// Replay `examples/bigint_with_control` and evaluate the production witness
+/// for the bigint delegation circuit at the 2^21 minimum trace.
+fn bigint_real_witness(
+    worker: &Worker,
+) -> (
+    GKRCircuitArtifact<Bf>,
+    GKRFullWitnessTrace<Bf, Global, Global>,
+    TableDriver<Bf>,
+) {
+    let mut artifact: GKRCircuitArtifact<Bf> =
+        crate::tests::gkr::deserialize_from_file(BIGINT_LAYOUT_PATH);
+    let trace_len = 1usize << BIGINT_TRACE_LOG2;
+    assert!(
+        artifact.total_tables_size <= trace_len,
+        "generic tables ({}) must fit the trace ({trace_len})",
+        artifact.total_tables_size
+    );
+    assert!(
+        artifact.memory_layout.teardown_sets.is_empty(),
+        "bigint is a delegation circuit: no inits/teardowns top bits"
+    );
+    artifact.trace_len = trace_len;
+
+    let config = ProgramConfig {
+        binary_path: "../examples/bigint_with_control/app.bin".to_string(),
+        text_section_path: "../examples/bigint_with_control/app.text".to_string(),
+        // the program takes no non-determinism input; unused padding
+        non_determinism_reads: vec![15, 1],
+        cycles_bound: 1 << 20,
+        ram_bound_bytes: 1 << 30,
+    };
+    let vm = run_vm_and_capture::<DelegationsAndFamiliesCounters, FullUnsignedMachineDecoderConfig>(
+        &config, worker,
+    );
+    let num_calls = vm.counters.bigint_calls;
+    assert!(
+        num_calls > 0,
+        "examples/bigint_with_control must issue at least one bigint delegation call"
+    );
+    let expected_final_state = vm.expected_final_state();
+
+    let mut state = vm.snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = vm
+        .snapshotter
+        .reads_buffer
+        .make_range(0..vm.snapshotter.reads_buffer.len());
+    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![DelegationWitness::empty(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = BigintDelegationDestinationHolder {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, Bf>(
+        &mut state,
+        &mut ram,
+        &vm.tape,
+        &mut (),
+        vm.cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(expected_final_state, state, "replay must reproduce the run");
+
+    let mut table_driver = TableDriver::<Bf>::new();
+    cs::gkr_circuits::delegation::bigint_with_control::bigint_with_extended_control_delegation_circuit_table_driver_fn(
+        &mut table_driver,
+    );
+
+    let oracle = BigintDelegationOracle {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    let full_trace = evaluate_gkr_witness_for_delegation_circuit(
+        &artifact,
+        crate::tests::gkr::bigint_with_extended_control::witness_eval_fn,
+        trace_len,
+        &oracle,
+        &table_driver,
+        worker,
+        Global,
+        Global,
+    );
+    (artifact, full_trace, table_driver)
+}
+
+/// Mirror `prove_configured_with_gkr`'s pre-sumcheck storage assembly: setup
+/// columns + preprocessed generic lookups, the virtual range-check setup
+/// polys, then the production forward loop over every layer (materializing
+/// all caches and layer outputs).
+fn build_bigint_storage(
+    artifact: &GKRCircuitArtifact<Bf>,
+    full_trace: GKRFullWitnessTrace<Bf, Global, Global>,
+    table_driver: &TableDriver<Bf>,
+    lookup_alpha: Ext,
+    lookup_gamma: Ext,
+    external: &GKRExternalChallenges<Bf, Ext>,
+    worker: &Worker,
+) -> GKRStorage<Bf, Ext> {
+    let trace_len = artifact.trace_len;
+    let setup = GKRSetup::construct(table_driver, &[], trace_len, artifact);
+    let mut storage = GKRStorage::<Bf, Ext>::default();
+    let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
+        .preprocess_generic_lookups(artifact, lookup_alpha, trace_len, &mut storage, worker);
+    storage.insert_base_field_at_layer(
+        0,
+        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+        BaseFieldPoly::new(materialize_virtual_range_check_setup_poly::<Bf, Global, 16>(
+            trace_len.trailing_zeros(),
+        )),
+    );
+    storage.insert_base_field_at_layer(
+        0,
+        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
+        BaseFieldPoly::new(materialize_virtual_range_check_setup_poly::<
+            Bf,
+            Global,
+            { common_constants::TIMESTAMP_COLUMNS_NUM_BITS },
+        >(trace_len.trailing_zeros())),
+    );
+
+    let mut witness_eval_data = full_trace;
+    for (layer_idx, layer) in artifact.layers.iter().enumerate() {
+        forward_loop::evaluate_layer(
+            layer_idx,
+            layer,
+            &mut storage,
+            artifact,
+            external,
+            &mut witness_eval_data,
+            &[],
+            trace_len,
+            &preprocessed_generic_lookup,
+            lookup_alpha,
+            lookup_gamma,
+            decoder_lookup_fill_value,
+            worker,
+        );
+    }
+    storage
+}
+
+// ── Instrument-side resolvers over the REAL columns ──────────────────────────
+
+/// The production challenge values, resolved by `ChallengeRef` for the
+/// instrument. Powers are precomputed (a `ClaimBatching` leaf exists per
+/// spine slot and is resolved per row-eval).
+struct FixtureChallenges {
+    beta_pows: Vec<Ext>,
+    alpha_pows: Vec<Ext>,
+    gamma: Ext,
+    external: GKRExternalChallenges<Bf, Ext>,
+}
+
+impl FixtureChallenges {
+    fn new(beta: Ext, alpha: Ext, gamma: Ext, external: &GKRExternalChallenges<Bf, Ext>, max_beta_pow: usize) -> Self {
+        let powers = |base: Ext, n: usize| -> Vec<Ext> {
+            let mut v = Vec::with_capacity(n + 1);
+            let mut acc = Ext::ONE;
+            for _ in 0..=n {
+                v.push(acc);
+                acc.mul_assign(&base);
+            }
+            v
+        };
+        Self {
+            beta_pows: powers(beta, max_beta_pow),
+            alpha_pows: powers(alpha, 64),
+            gamma,
+            external: *external,
+        }
+    }
+
+    fn perm_lin(&self, slot: &PermutationSlot) -> Ext {
+        let idx = match slot {
+            PermutationSlot::AddressLow => PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+            PermutationSlot::AddressHigh => PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+            PermutationSlot::TimestampLow => {
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX
+            }
+            PermutationSlot::TimestampHigh => {
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX
+            }
+            PermutationSlot::ValueLow => PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+            PermutationSlot::ValueHigh => PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+        };
+        self.external.permutation_argument_linearization_challenges[idx]
+    }
+
+    fn resolve(&self, r: &ChallengeRef) -> Ext {
+        match &r.key {
+            ChallengeKey::ClaimBatching => match r.power {
+                ChallengePower::One => self.beta_pows[1],
+                ChallengePower::Static(i) => self.beta_pows[i as usize],
+            },
+            ChallengeKey::LookupAdditive => self.gamma,
+            ChallengeKey::LookupMultiplicative => match r.power {
+                ChallengePower::One => self.alpha_pows[1],
+                ChallengePower::Static(j) => self.alpha_pows[j as usize],
+            },
+            ChallengeKey::PermutationAdditive => self.external.permutation_argument_additive_part,
+            ChallengeKey::PermutationLinearization(slot) => self.perm_lin(slot),
+            other => panic!("bigint L0 must not reference challenge key {other:?}"),
+        }
+    }
+}
+
+/// The instrument's ORIGINALS at fixture scale: the bit-reversed view
+/// `O(j) = P(rev_k(j))` of the REAL production columns (Arc'd, zero-copy from
+/// the pre-oracle storage snapshot), plus the two virtual-setup polys and the
+/// production challenge values. One struct serves all four resolver roles.
+struct FixtureCols {
+    k: usize,
+    base: HashMap<ReadPlace, Arc<Box<[Bf]>>>,
+    vs: HashMap<VirtualSetupKind, Arc<Box<[Bf]>>>,
+    chal: FixtureChallenges,
+}
+
+impl ReadResolver for FixtureCols {
+    fn read(&self, place: &ReadPlace, row: usize) -> Ext {
+        let col = self
+            .base
+            .get(place)
+            .unwrap_or_else(|| panic!("unknown read place {place:?}"));
+        lift(col[rev_bits(row, self.k)])
+    }
+}
+impl VirtualSetupResolver for FixtureCols {
+    fn virtual_setup(&self, kind: &VirtualSetupKind, row: usize) -> Bf {
+        let col = self
+            .vs
+            .get(kind)
+            .unwrap_or_else(|| panic!("unknown virtual setup {kind:?}"));
+        col[rev_bits(row, self.k)]
+    }
+}
+impl ChallengeResolver for FixtureCols {
+    fn challenge(&self, r: &ChallengeRef) -> Ext {
+        self.chal.resolve(r)
+    }
+}
+impl LookupResolver for FixtureCols {
+    fn lookup(&self, kind: &LookupValueKind, _: usize, _: Ext, _: usize) -> Bf {
+        panic!("bwd programs have no LookupValue sources ({kind:?})")
+    }
+}
+
+/// Materialized-round resolver: `read` serves the CURRENT depth-r folded
+/// buffers (instrument index space); `virtual_setup` serves ORIGINALS,
+/// because VS-origin FoldSources stay `LazyFromOriginals` (VS-ABI note in the
+/// section docs) and the lazy fold recomputes from depth 0.
+struct FoldedView<'a> {
+    folded: &'a HashMap<ReadPlace, Vec<Ext>>,
+    origs: &'a FixtureCols,
+}
+
+impl ReadResolver for FoldedView<'_> {
+    fn read(&self, place: &ReadPlace, y: usize) -> Ext {
+        let col = self
+            .folded
+            .get(place)
+            .unwrap_or_else(|| panic!("no folded buffer for {place:?}"));
+        col[y]
+    }
+}
+impl VirtualSetupResolver for FoldedView<'_> {
+    fn virtual_setup(&self, kind: &VirtualSetupKind, row: usize) -> Bf {
+        self.origs.virtual_setup(kind, row)
+    }
+}
+impl ChallengeResolver for FoldedView<'_> {
+    fn challenge(&self, r: &ChallengeRef) -> Ext {
+        self.origs.chal.resolve(r)
+    }
+}
+impl LookupResolver for FoldedView<'_> {
+    fn lookup(&self, kind: &LookupValueKind, _: usize, _: Ext, _: usize) -> Bf {
+        panic!("bwd programs have no LookupValue sources ({kind:?})")
+    }
+}
+
+/// `bind()` with VS-origin FoldSources overridden to `LazyFromOriginals`
+/// (VS-ABI finding: a Materialized VS read returns `Bf` and cannot carry an
+/// Ext folded buffer under real Ext challenges; the lazy refold from depth 0
+/// is value-identical).
+fn bind_vs_lazy(d: &DistilledLayer, policy: MaterializationPolicy, round: u8) -> BwdBindings {
+    let mut b = bind(d, policy, round);
+    for (i, st) in b.states.iter_mut().enumerate() {
+        if let Some(BwdSpecial::FoldSource {
+            origin: OriginLeaf::VirtualSetup { .. },
+        }) = d.specials.get(i as u16)
+        {
+            *st = FoldState::LazyFromOriginals { depth: round };
+        }
+    }
+    b
+}
+
+// ── Parallel helpers ─────────────────────────────────────────────────────────
+
+fn test_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(8)
+}
+
+/// Map `f` over `items` with `threads` scoped workers, preserving order.
+fn par_map<T: Sync, R: Send>(items: &[T], threads: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    if items.is_empty() {
+        return Vec::new();
+    }
+    let chunk = items.len().div_ceil(threads).max(1);
+    std::thread::scope(|s| {
+        let handles: Vec<_> = items
+            .chunks(chunk)
+            .map(|part| s.spawn(|| part.iter().map(&f).collect::<Vec<R>>()))
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().expect("par_map worker"))
+            .collect()
+    })
+}
+
+/// `[q0, q2] = [Σ_y eq[rev(y)]·v_T0(y), Σ_y eq[rev(y)]·v_T2(y)]` over the full
+/// surviving row range, parallelized (field addition is associative-exact, so
+/// chunked reduction is bit-identical to a serial sum).
+#[allow(clippy::too_many_arguments)]
+fn par_q_sums(
+    threads: usize,
+    acc_size: usize,
+    eq_bits: usize,
+    eq: &[Ext],
+    c: &BwdCompiledLayer,
+    d: &DistilledLayer,
+    bindings: &BwdBindings,
+    cols: &FixtureCols,
+    folded: Option<&HashMap<ReadPlace, Vec<Ext>>>,
+    drawn: &[Ext],
+    ctx: &str,
+) -> [Ext; 2] {
+    let chunk = acc_size.div_ceil(threads).max(1);
+    let partials: Vec<[Ext; 2]> = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..acc_size)
+            .step_by(chunk)
+            .map(|start| {
+                let end = (start + chunk).min(acc_size);
+                s.spawn(move || {
+                    // Per-thread resolver views over the shared column data.
+                    let folded_view = folded.map(|f| FoldedView { folded: f, origs: cols });
+                    let rr = match &folded_view {
+                        Some(v) => Resolvers {
+                            read: v,
+                            lookup: v,
+                            virtual_setup: v,
+                            challenge: v,
+                        },
+                        None => Resolvers {
+                            read: cols,
+                            lookup: cols,
+                            virtual_setup: cols,
+                            challenge: cols,
+                        },
+                    };
+                    let mut q0 = Ext::ZERO;
+                    let mut q2 = Ext::ZERO;
+                    for y in start..end {
+                        let w = eq[rev_bits(y, eq_bits)];
+                        let v0 = interpret_bwd_row(c, d, bindings, &rr, Role::T0, y, drawn)
+                            .unwrap_or_else(|e| panic!("{ctx} interp T0 row {y}: {e:?}"));
+                        let v2 = interpret_bwd_row(c, d, bindings, &rr, Role::T2, y, drawn)
+                            .unwrap_or_else(|e| panic!("{ctx} interp T2 row {y}: {e:?}"));
+                        q0.add_assign(&mul(w, &v0));
+                        q2.add_assign(&mul(w, &v2));
+                    }
+                    [q0, q2]
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| h.join().expect("par_q_sums worker"))
+            .collect()
+    });
+    let mut q0 = Ext::ZERO;
+    let mut q2 = Ext::ZERO;
+    for [a, b] in partials {
+        q0.add_assign(&a);
+        q2.add_assign(&b);
+    }
+    [q0, q2]
+}
+
+/// One fold step of the instrument recurrence over a column:
+/// `f_{d+1}(y) = f_d(2y) + ch·(f_d(2y+1) − f_d(2y))`.
+fn fold_step(cur: &[Ext], ch: &Ext) -> Vec<Ext> {
+    let half = cur.len() / 2;
+    (0..half)
+        .map(|y| {
+            let a = cur[2 * y];
+            let b = cur[2 * y + 1];
+            add(mul(sub(b, &a), ch), &a)
+        })
+        .collect()
+}
+
+/// Full-depth fold of one ORIGINAL column (bit-reversed view) with `drawn`.
+fn full_fold_col(read: &dyn Fn(usize) -> Ext, k: usize, drawn: &[Ext]) -> Ext {
+    assert_eq!(drawn.len(), k);
+    let mut cur: Vec<Ext> = {
+        let half = 1usize << (k - 1);
+        let ch = &drawn[0];
+        (0..half)
+            .map(|y| {
+                let a = read(2 * y);
+                let b = read(2 * y + 1);
+                add(mul(sub(b, &a), ch), &a)
+            })
+            .collect()
+    };
+    for ch in &drawn[1..] {
+        cur = fold_step(&cur, ch);
+    }
+    cur[0]
+}
+
+// ── The fixture gate ─────────────────────────────────────────────────────────
+
+#[test]
+fn protocol_parity_bigint_l0() {
+    let threads = test_threads();
+    let worker = Worker::new_with_num_threads(threads);
+    let k = BIGINT_TRACE_LOG2;
+
+    // One source of challenge truth for the oracle AND the instrument.
+    let beta = beta();
+    let gamma = gamma();
+    let alpha = lookup_mult();
+    let external = hardcoded_external_challenges();
+    let prev: Vec<Ext> = (0..k).map(|j| ext_scalar(0x7A11_0000 + j as u32)).collect();
+
+    // Real witness → production storage (setup + caches + all layer outputs).
+    let (artifact, full_trace, table_driver) = bigint_real_witness(&worker);
+    let mut storage = build_bigint_storage(
+        &artifact,
+        full_trace,
+        &table_driver,
+        alpha,
+        gamma,
+        &external,
+        &worker,
+    );
+
+    // Instrument programs over the lowered DAG (same artifact, same trace_len).
+    let dag = lower_dag(&artifact).expect("lower_dag");
+    validate(&dag).expect("validate(dag)");
+    let cross = build_cross_layer_field_map(&dag);
+    let layer0 = &dag.layers[0];
+    let spine = bwd_roots(layer0);
+    assert!(spine.len() > 200, "bigint L0 must batch its full root set");
+    let d_r0 = distill(layer0, BwdRegime::R0, &cross, None);
+    assert!(!d_r0.skipped_decoder, "bigint L0 is decoder-free (R0)");
+    let c_r0 = compile_prog(&d_r0);
+    let d_ext = distill(layer0, BwdRegime::Ext, &cross, None);
+    assert!(!d_ext.skipped_decoder, "bigint L0 is decoder-free (Ext)");
+    let c_ext = compile_prog(&d_ext);
+
+    // Snapshot every layer-0 column (Arc bumps, zero copy) BEFORE the oracle
+    // folds storage — the instrument and the (e) check read these.
+    let snap_base: HashMap<GKRAddress, Arc<Box<[Bf]>>> = storage.layers[0]
+        .base_field_inputs
+        .iter()
+        .map(|(a, p)| (*a, p.values.clone()))
+        .collect();
+    let snap_ext: HashMap<GKRAddress, Arc<Box<[Ext]>>> = storage.layers[0]
+        .extension_field_inputs
+        .iter()
+        .map(|(a, p)| (*a, p.values.clone()))
+        .collect();
+
+    // Instrument originals: every Read place of the distilled programs must
+    // resolve to a REAL production base column.
+    let mut base_cols: HashMap<ReadPlace, Arc<Box<[Bf]>>> = HashMap::new();
+    for src in &layer0.sources {
+        if let SourceKind::Read { place } = &src.kind {
+            let addr = crate::tests::gkr::dag_ir_reference::read_place_to_address(place);
+            let col = snap_base
+                .get(&addr)
+                .unwrap_or_else(|| panic!("no production base column for {place:?} ({addr:?})"));
+            base_cols.insert(place.clone(), col.clone());
+        }
+    }
+    let vs_cols: HashMap<VirtualSetupKind, Arc<Box<[Bf]>>> = [
+        (
+            VirtualSetupKind::RangeCheck16Bits,
+            VirtualSetupPoly::RangeCheck16Bits,
+        ),
+        (
+            VirtualSetupKind::RangeCheckTimestamp,
+            VirtualSetupPoly::RangeCheckTimestamp,
+        ),
+    ]
+    .into_iter()
+    .map(|(kind, poly)| {
+        let col = snap_base
+            .get(&GKRAddress::VirtualSetup(poly))
+            .expect("virtual setup poly in storage");
+        (kind, col.clone())
+    })
+    .collect();
+    let chal = FixtureChallenges::new(beta, alpha, gamma, &external, spine.len() + 1);
+    let cols = FixtureCols {
+        k,
+        base: base_cols,
+        vs: vs_cols,
+        chal,
+    };
+
+    // The places that need progressively folded buffers in materialized
+    // rounds: every Read-origin FoldSource of the Ext program.
+    let fold_places: Vec<ReadPlace> = (0..d_ext.specials.len())
+        .filter_map(|i| match d_ext.specials.get(i as u16) {
+            Some(BwdSpecial::FoldSource {
+                origin: OriginLeaf::Read(place),
+            }) => Some(place.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(!fold_places.is_empty());
+
+    // Output claims at the previous layer's point (storage layer 1 holds
+    // exactly the L0 outputs after the forward loop).
+    let eq_full = make_eq_poly_in_full::<Ext>(&prev, &worker);
+    let eq_last = &eq_full.last().unwrap()[..];
+    let base_outs: Vec<(GKRAddress, Arc<Box<[Bf]>>)> = storage.layers[1]
+        .base_field_inputs
+        .iter()
+        .map(|(a, p)| (*a, p.values.clone()))
+        .collect();
+    let ext_outs: Vec<(GKRAddress, Arc<Box<[Ext]>>)> = storage.layers[1]
+        .extension_field_inputs
+        .iter()
+        .map(|(a, p)| (*a, p.values.clone()))
+        .collect();
+    let mut output_claims: BTreeMap<GKRAddress, Ext> = BTreeMap::new();
+    for (addr, claim) in par_map(&base_outs, threads, |(addr, vals)| {
+        (*addr, evaluate_with_precomputed_eq::<Bf, Ext>(vals, eq_last))
+    }) {
+        output_claims.insert(addr, claim);
+    }
+    for (addr, claim) in par_map(&ext_outs, threads, |(addr, vals)| {
+        (*addr, evaluate_with_precomputed_eq_ext::<Ext>(vals, eq_last))
+    }) {
+        output_claims.insert(addr, claim);
+    }
+    assert!(!output_claims.is_empty());
+
+    // Production oracle run (the transcript authority).
+    let mut seed = Seed::default();
+    let run = run_layer_oracle::<Bf, Ext>(
+        0,
+        &artifact.layers[0],
+        &output_claims,
+        &prev,
+        &mut storage,
+        beta,
+        1 << k,
+        alpha,
+        gamma,
+        &[],
+        0,
+        &external,
+        &mut seed,
+        &worker,
+    );
+
+    // Alpha-slot pin at scale: the collector's flattened batch weights are
+    // consecutive beta powers IN `bwd_roots` ORDER, constraint slots consume a
+    // power with zero claim, and the combined claim is the weighted sum.
+    assert_eq!(
+        run.per_relation_weights.len(),
+        spine.len(),
+        "collector slot count == bwd spine length"
+    );
+    let mut expected_claim = Ext::ZERO;
+    let mut n_constraint_slots = 0usize;
+    for (i, rid) in spine.iter().enumerate() {
+        assert_eq!(
+            run.per_relation_weights[i],
+            cols.chal.beta_pows[i],
+            "slot {i} weight must be beta^{i}"
+        );
+        let root = &layer0.roots[rid.0 as usize];
+        match &root.materialize {
+            Some(SinkInfo {
+                kind: SinkKind::Inner { layer, offset },
+                ..
+            }) => {
+                assert_eq!(*layer, 1);
+                let addr = GKRAddress::InnerLayer {
+                    layer: 1,
+                    offset: *offset,
+                };
+                expected_claim.add_assign(&mul(cols.chal.beta_pows[i], &output_claims[&addr]));
+            }
+            None => n_constraint_slots += 1,
+            other => panic!("unexpected L0 claim-root sink {other:?}"),
+        }
+    }
+    assert!(n_constraint_slots > 100, "the constraint set must be in the batch");
+    assert_eq!(
+        run.initial_combined_claim, expected_claim,
+        "combined claim over weighted slots"
+    );
+    assert_eq!(run.per_round_claims[0], run.initial_combined_claim);
+
+    // ── The instrument loop: both policies, full (a)-(e) chain ──
+    let mut inst_seed = Seed::default();
+    let mut claim = run.initial_combined_claim;
+    let mut eq_prefactor = Ext::ONE;
+    let mut drawn: Vec<Ext> = Vec::new();
+    let mut folded: HashMap<ReadPlace, Vec<Ext>> = HashMap::new();
+
+    for r in 0..k {
+        let ctx = format!("[bigint_l0 round {r}]");
+
+        // (d) chain: round-entry claim and eq prefactor match the capture.
+        assert_eq!(claim, run.per_round_claims[r], "{ctx} claim chain");
+        assert_eq!(
+            eq_prefactor, run.per_round_eq_prefactor[r],
+            "{ctx} eq-prefactor chain"
+        );
+
+        let (c, d) = if r == 0 { (&c_r0, &d_r0) } else { (&c_ext, &d_ext) };
+        let bind_always = bind_vs_lazy(d, MaterializationPolicy::AlwaysMaterialize, r as u8);
+        let bind_lazy2 = bind_vs_lazy(d, MaterializationPolicy::LazyUpTo(2), r as u8);
+        let materialized = bind_always
+            .states
+            .iter()
+            .any(|s| matches!(s, FoldState::Materialized));
+
+        let acc_size = 1usize << (k - r - 1);
+        let eq = &eq_full[k - r - 1];
+        assert_eq!(eq.len(), acc_size);
+
+        // Leg A: AlwaysMaterialize (folded buffers once r >= 1).
+        let [q0, q2] = par_q_sums(
+            threads,
+            acc_size,
+            k - r - 1,
+            eq,
+            c,
+            d,
+            &bind_always,
+            &cols,
+            if materialized { Some(&folded) } else { None },
+            &drawn,
+            &format!("{ctx} AlwaysMaterialize"),
+        );
+
+        // Leg B: LazyUpTo(2). Its bindings differ from leg A only in rounds
+        // 1..=2 — re-evaluate there and pin equality; everywhere else the
+        // binding vectors are asserted identical (deterministic interpreter ⇒
+        // identical values), so re-evaluation would be a no-op.
+        if bind_lazy2.states != bind_always.states {
+            assert!(
+                (1..=2).contains(&r),
+                "{ctx} LazyUpTo(2) may only diverge from AlwaysMaterialize in rounds 1..=2"
+            );
+            let [l0, l2] = par_q_sums(
+                threads,
+                acc_size,
+                k - r - 1,
+                eq,
+                c,
+                d,
+                &bind_lazy2,
+                &cols,
+                None,
+                &drawn,
+                &format!("{ctx} LazyUpTo(2)"),
+            );
+            assert_eq!([l0, l2], [q0, q2], "{ctx} policy legs must agree");
+        }
+
+        // Derive d_oracle from (z, C, c0, c2) via the production identity
+        // FIRST — never from the candidate q's.
+        let [c0, c2] = run.per_round_reduced[r];
+        let z = prev[r];
+        let big_c = mul(claim, &inv(&eq_prefactor));
+        let b1 = sub(Ext::ONE, &z);
+        let q1 = mul(sub(big_c, &mul(b1, &c0)), &inv(&z));
+        let d_oracle = sub(sub(q1, &c2), &c0);
+        let mut g2_oracle = c2;
+        g2_oracle.double();
+        g2_oracle.double();
+        let mut two_d = d_oracle;
+        two_d.double();
+        g2_oracle.add_assign(&two_d);
+        g2_oracle.add_assign(&c0);
+
+        // (a) the reduced evaluations match the oracle coefficients.
+        assert_eq!(q0, c0, "{ctx} (a) q0 != c0");
+        assert_eq!(q2, g2_oracle, "{ctx} (a) q2 != g(2)");
+
+        // (b) recovered monomials.
+        let q1_from_q = mul(sub(big_c, &mul(b1, &q0)), &inv(&z));
+        let mut two_q1 = q1_from_q;
+        two_q1.double();
+        let mut c_rec = sub(add(q2, &q0), &two_q1);
+        let two = add(Ext::ONE, &Ext::ONE);
+        c_rec.mul_assign(&inv(&two));
+        assert_eq!(q0, c0, "{ctx} (b) recovered e != c0");
+        assert_eq!(c_rec, c2, "{ctx} (b) recovered c != c2");
+
+        // (c) emission reproduces the committed [E; 4]; (b) d == d_oracle.
+        let (coeffs, d_rec) = recover_and_emit::<Bf, Ext>(z, claim, eq_prefactor, q0, q2);
+        assert_eq!(d_rec, d_oracle, "{ctx} (b) recovered d");
+        assert_eq!(coeffs, run.round_coeffs[r], "{ctx} (c) committed univariate");
+
+        // (d) transcript replay.
+        commit_field_els::<Bf, Ext>(&mut inst_seed, &coeffs);
+        let ch = draw_random_field_els::<Bf, Ext>(&mut inst_seed, 1)[0];
+        assert_eq!(ch, run.folding_challenges[r], "{ctx} (d) folding challenge");
+        claim = evaluate_small_univariate_poly::<Bf, Ext, 4>(&coeffs, &ch);
+        eq_prefactor = evaluate_eq_poly::<Bf, Ext>(&ch, &prev[r]);
+        drawn.push(ch);
+
+        // Advance the folded buffers to depth r+1 for the next round.
+        if r + 1 < k {
+            let folded_next: Vec<(ReadPlace, Vec<Ext>)> =
+                par_map(&fold_places, threads, |place| {
+                    let next = if r == 0 {
+                        let half = 1usize << (k - 1);
+                        let col = &cols.base[place];
+                        (0..half)
+                            .map(|y| {
+                                let a = lift(col[rev_bits(2 * y, k)]);
+                                let b = lift(col[rev_bits(2 * y + 1, k)]);
+                                add(mul(sub(b, &a), &ch), &a)
+                            })
+                            .collect()
+                    } else {
+                        fold_step(&folded[place], &ch)
+                    };
+                    (place.clone(), next)
+                });
+            folded = folded_next.into_iter().collect();
+        }
+    }
+
+    // Chain closes on the loop's normalized final claim.
+    let final_norm = mul(claim, &inv(&eq_prefactor));
+    assert_eq!(
+        final_norm, run.final_normalized_claim,
+        "[bigint_l0] final normalized claim"
+    );
+
+    // (e) final folded source evaluations: full-depth instrument fold of every
+    // production input column (base AND cached-ext) == the production
+    // last-evaluations line at r_last.
+    assert!(!run.last_evaluations.is_empty());
+    let r_last = drawn[k - 1];
+    let last_entries: Vec<(GKRAddress, [Ext; 2])> = run
+        .last_evaluations
+        .iter()
+        .map(|(a, v)| (*a, *v))
+        .collect();
+    assert!(
+        last_entries
+            .iter()
+            .any(|(a, _)| matches!(a, GKRAddress::Cached { .. })),
+        "L0 inputs must include cached columns"
+    );
+    assert!(
+        last_entries
+            .iter()
+            .any(|(a, _)| matches!(a, GKRAddress::BaseLayerWitness(_))),
+        "L0 inputs must include base witness columns"
+    );
+    let e_checks = par_map(&last_entries, threads, |(addr, line)| {
+        let expected = interpolate(line[0], line[1], &r_last);
+        let full = if let Some(col) = snap_base.get(addr) {
+            full_fold_col(&|j| lift(col[rev_bits(j, k)]), k, &drawn)
+        } else if let Some(col) = snap_ext.get(addr) {
+            full_fold_col(&|j| col[rev_bits(j, k)], k, &drawn)
+        } else {
+            panic!("last_evaluations address {addr:?} has no layer-0 snapshot column")
+        };
+        (*addr, full == expected)
+    });
+    for (addr, ok) in e_checks {
+        assert!(ok, "[bigint_l0] (e) final fold mismatch for {addr:?}");
+    }
 }
