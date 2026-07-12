@@ -17,6 +17,18 @@ contract GKRVerifier {
     uint256 constant MINIMUM_FREE_HEAP_PTR = 7588;
     uint256 constant P      = 0x7000000000000000000000000000001; // Proth120: 7*2^120 + 1
     uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits (one field lane)
+    // Stack-pressure fix: the ~123-bit modulus P as a literal is a PUSH16 rematerialized at
+    // every addmod/mulmod, and the Yul scheduler keeps it live across the deep gate sequences
+    // (→ "stack too deep"). Store P once at a small heap offset and `mload(P_PTR)` it instead
+    // (PUSH1 offset + MLOAD, consumed immediately, not kept live). The generated circuit.yul
+    // and the hand-written ops both use `mload(P_PTR)`; `mstore(P_PTR, mload(P_PTR))` runs first in the
+    // fallback. P_PTR is below the hand-placed heap (MINIMUM_FREE_HEAP_PTR) and above the
+    // 0..128 return/scratch region.
+    uint256 constant P_PTR  = 160;
+    // Fixed heap slot holding the circuit-layer calldata cursor, so gate/cache sub-functions
+    // read it via mload instead of a `ptr` parameter (that param was the single deepest stack
+    // slot pushing each of them 1 over the EVM limit). Sits just above P_PTR (160..191).
+    uint256 constant CIRCUIT_PTR = 192;
     uint256 constant ROUNDS = 200;
 
     // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
@@ -27,7 +39,7 @@ contract GKRVerifier {
     uint256 constant GKR_INIT_PREIMAGE_BYTES = 520;
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
-    uint256 constant GKR_INIT_BYTES          = 2048; // 8 polys * 16 elems * 16 bytes
+    uint256 constant GKR_INIT_BYTES          = 2560; // 10 output polys * 16 elems * 16 bytes (Proth120)
     uint256 constant GKR_INIT_POLY_BYTES     = 256;  // 16 elems * 16 bytes (literal; Yul rejects const exprs)
 
     // ── GKR compression ───────────────────────────────────────────────────────
@@ -46,10 +58,23 @@ contract GKRVerifier {
     uint256 constant MARK_GKR_SELECTOR = 0x611b9fbb; // mark_gkr_verified(bytes32)
     uint256 constant WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
     uint256 constant WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
+    // GKR->WHIR handoff (MergedAndPackedMemoryAndWitness, pack_log2=4). Base-layer at-point
+    // claims (dense in layer0's calldata eval block): mem++wit = 106 cols, setup = 10 cols.
+    // Merge folds each 2^pack_log2=16-chunk by the 4 packing coords: 106->7, 10->1.
+    uint256 constant WHIR_PACK_LOG2    = 4;
+    uint256 constant WHIR_NUM_MEMWIT   = 106;        // memory_layout + witness_layout total widths
+    uint256 constant WHIR_NUM_SETUP    = 10;         // generic_lookup_tables_width
+    uint256 constant WHIR_MERGED_MW    = 7;          // ceil(106/16)
+    uint256 constant WHIR_BASE_Z_COORDS = 22;        // layer-0 folding point length
 
     fallback() external {
         // uint256 variant = VARIANT;
-        assembly {
+        // NOTE: "memory-safe" is TRANSIENT — it lets solc spill the 1 leftover stack slot in the
+        // OLD sumcheck_compress_2pass (dim-reducing, pending replacement by the validated
+        // GkrDimReduce logic). The hand-placed memory is disjoint from spill slots, but
+        // re-audit memory-safety once the dim-reducing port lands.
+        assembly ("memory-safe") {
+        mstore(P_PTR, 0x7000000000000000000000000000001)
         // assembly ("memory-safe") {
         // Proof/transcript bytes preserve logical stream order. Rust must append
         // fixed-width BE integer bytes: u32::to_be_bytes(), u64::to_be_bytes(),
@@ -89,50 +114,37 @@ contract GKRVerifier {
         function GKR_CIRCUIT_CACHE_PTR() -> ptr {
             ptr := add(SEED_PTR(), mul(32, 2))
         }
+        // Dim-reducing / entry regions (used before the circuit layers; placed well above the
+        // transcript scratch that the sumcheck rounds clobber at SEED±96).
+        function GKR_BATCHING_PTR() -> ptr { ptr := add(SEED_PTR(), mul(32, 40)) }      // running batching
+        function GKR_CLAIMS_PTR()   -> ptr { ptr := add(SEED_PTR(), mul(32, 41)) }      // 10 dim-reduce claims
+        function GKR_EQ_PTR()       -> ptr { ptr := add(SEED_PTR(), mul(32, 52)) }      // eq[16] for entry claims
+        function GKR_ABS_PTR()      -> ptr { ptr := add(SEED_PTR(), mul(32, 70)) }      // absorb scratch (32+2560)
+        // Circuit-layer claims array (STEP 3): the previous circuit layer's at-point evals,
+        // offset-indexed, that this layer's `compute_claim` batches into its initial claim.
+        // Threaded across layers: each layer writes its input evals here for the next one.
+        // Placed above GKR_ABS_PTR's 32+2560 scratch. Sized for the widest layer (<128).
+        function GKR_CIRCUIT_CLAIMS_PTR() -> ptr { ptr := add(SEED_PTR(), mul(32, 160)) }
 
         function transcript_4to1_dual(w0, w1) -> r {
-            // put to memory 4 coeffs from w0, w1, after SEED (prev hash, FS chain)
+            // Proth120 recipe (validated in step1_test/GkrCompressYul): ABSORB the 4 coeffs
+            // (seed = keccak(seed || w0 || w1)) THEN DRAW (seed = keccak(seed); r = top128 mod P).
+            // The prior code drew straight from the absorb result (missing the draw keccak) — a
+            // leftover of the old field's convention; it corrupts every round after the first.
             mstore(add(SEED_PTR(), 64), w1)
             mstore(add(SEED_PTR(), 32), w0)
-            let seed := keccak256(SEED_PTR(), 96) // hash SEED + 4 coeffs to stack word
-            mstore(SEED_PTR(), seed) // immediately dump SEED
-            r := shr(128, seed)
+            let seed := keccak256(SEED_PTR(), 96) // absorb 4 coeffs
+            mstore(SEED_PTR(), seed)
+            seed := keccak256(SEED_PTR(), 32)     // draw
+            mstore(SEED_PTR(), seed)
+            r := mod(shr(128, seed), mload(P_PTR))
         }
 
         // alpha is the batching challenge needed right after checking outputs
-        function transcript128to5_once(ptr) -> z1, z2, z3, z4, alpha {
-            calldatacopy(add(SEED_PTR(), 32), ptr, GKR_INIT_BYTES)
-
-            let seed := keccak256(SEED_PTR(), add(32, GKR_INIT_BYTES))
-            mstore(SEED_PTR(), seed)
-            z1 := shr(128, seed)
-            z2 := and(seed, MASK)
-
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            z3 := shr(128, seed)
-            z4 := and(seed, MASK)
-
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            alpha := shr(128, seed)
-        }
 
 
 
         // alpha is the batching challenge needed right folding point claims
-        function transcript32to3(ptr) -> z1, z2, alpha {
-            calldatacopy(add(SEED_PTR(), 32), ptr, GKR_COMPRESSION_POINTCHECK_BYTES)
-
-            let seed := keccak256(SEED_PTR(), add(32, GKR_COMPRESSION_POINTCHECK_BYTES))
-            mstore(SEED_PTR(), seed)
-            z1 := shr(128, seed)
-            z2 := and(seed, MASK)
-
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            alpha := shr(128, seed)
-        }
 
         function transcript_init(ptr) -> next_ptr {
             // Proth120 packed-mode transcript (MergedAndPackedMemoryAndWitness), validated
@@ -151,308 +163,69 @@ contract GKRVerifier {
 
             // draw 9 challenges (each: seed=keccak(seed); take top 128 bits mod P)
             mstore(SEED_PTR(), seed)
-            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(MEMORY_CHALLS_PTR(),               mod(shr(128, seed), P))
-            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 32),       mod(shr(128, seed), P))
-            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 64),       mod(shr(128, seed), P))
-            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 96),       mod(shr(128, seed), P))
-            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 128),      mod(shr(128, seed), P))
-            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 160),      mod(shr(128, seed), P))
-            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 192),      mod(shr(128, seed), P))
-            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(LOGUP_CHALLS_PTR(),                 mod(shr(128, seed), P))
-            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(LOGUP_CHALLS_PTR(), 32),        mod(shr(128, seed), P))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(MEMORY_CHALLS_PTR(),               mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 32),       mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 64),       mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 96),       mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 128),      mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 160),      mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 192),      mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(LOGUP_CHALLS_PTR(),                 mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(LOGUP_CHALLS_PTR(), 32),        mod(shr(128, seed), mload(P_PTR)))
 
             // SEED_PTR now holds the post-STEP-1 seed; the GKR entry (gkr_init) absorbs output evals next.
             next_ptr := add(ptr, GKR_INIT_PREIMAGE_BYTES)
         }
 
-        function acceval_inlinefold_streamrevlooploop_evenodd(ptr, z1, z2, z3, z4, alpha) -> claim {
-            // TODO: inject final values (regs, pc)
-            // NB: some stack values are explicitly spilled (fold0 and claim updates):
-            //     - when written to, it is after stored
-            //     - when read, it is first loaded
-            // Same current READ+WRITE work as the open-coded even/odd path, but
-            // factored into four quarter chunks under a loop.
 
-            mstore(GKR_INIT_CLAIM_PTR(), claim)
-            for { let poly := 6 } gt(poly, 0) { poly := sub(poly, 2) } {
-                let num_acc
-                let den_acc := 1
-                let numfold0, numfold1, numfold2, numfold3
-                let denfold0, denfold1, denfold2, denfold3
-                for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
-                    let numbase := add(add(ptr, mul(poly, GKR_INIT_POLY_BYTES)), mul(i, 64))
-                    let denbase := add(add(ptr, mul(add(poly, 1), GKR_INIT_POLY_BYTES)), mul(i, 64))
-
-                    // fold i+0/1
-                    let numword0 := calldataload(numbase)
-                    let num0 := shr(128, numword0)
-                    let num1 := and(MASK, numword0)
-                    let denword0 := calldataload(denbase)
-                    let den0 := shr(128, denword0)
-                    let den1 := and(MASK, denword0)
-                    num_acc := add(mulmod(num_acc, den0, P), mulmod(den_acc, num0, P))
-                    den_acc := mulmod(den_acc, den0, P)
-                    num_acc := add(mulmod(num_acc, den1, P), mulmod(den_acc, num1, P))
-                    den_acc := mulmod(den_acc, den1, P)
-                    let numfolda := add(num0, mulmod(z4, sub(add(num1, mul(2, P)), num0), P))
-                    let denfolda := add(den0, mulmod(z4, sub(add(den1, mul(2, P)), den0), P))
-
-                    // fold i+2/3
-                    let numword1 := calldataload(add(numbase, 32))
-                    let num2 := shr(128, numword1)
-                    let num3 := and(MASK, numword1)
-                    let denword1 := calldataload(add(denbase, 32))
-                    let den2 := shr(128, denword1)
-                    let den3 := and(MASK, denword1)
-                    num_acc := add(mulmod(num_acc, den2, P), mulmod(den_acc, num2, P))
-                    den_acc := mulmod(den_acc, den2, P)
-                    num_acc := add(mulmod(num_acc, den3, P), mulmod(den_acc, num3, P))
-                    den_acc := mulmod(den_acc, den3, P)
-                    let numfoldb := add(num2, mulmod(z4, sub(add(num3, mul(2, P)), num2), P))
-                    let denfoldb := add(den2, mulmod(z4, sub(add(den3, mul(2, P)), den2), P))
-
-                    // fold i+0/1/2/3
-                    let numfoldc := add(numfolda, mulmod(z3, sub(add(numfoldb, mul(3, P)), numfolda), P))
-                    let denfoldc := add(denfolda, mulmod(z3, sub(add(denfoldb, mul(3, P)), denfolda), P))
-                    switch i
-                    case 0 {
-                        numfold0 := numfoldc
-                        mstore(GKR_INIT_SCRATCH_PTR(), numfold0)
-                        denfold0 := denfoldc
-                    }
-                    case 1 {
-                        numfold1 := numfoldc
-                        denfold1 := denfoldc
-                    }
-                    case 2 {
-                        numfold2 := numfoldc
-                        denfold2 := denfoldc
-                    }
-                    default {
-                        numfold3 := numfoldc
-                        denfold3 := denfoldc
-                    }
-                }
-                // check
-                if mod(num_acc, P) { revert(0, 0) }
-                if iszero(den_acc) { revert(0, 0) }
-                // fold 0/1/2/3/4/5/6/7
-                numfold0 := mload(GKR_INIT_SCRATCH_PTR())
-                numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P)), numfold0), P))
-                denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P)), denfold0), P))
-                // fold 8/9/10/11/12/13/14/15
-                numfold1 := add(numfold2, mulmod(z2, sub(add(numfold3, mul(4, P)), numfold2), P))
-                denfold1 := add(denfold2, mulmod(z2, sub(add(denfold3, mul(4, P)), denfold2), P))
-                // fold 0/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15
-                let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P)), numfold0), P))
-                let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P)), denfold0), P))
-                // batch
-                claim := mload(GKR_INIT_CLAIM_PTR())
-                claim := add(mulmod(claim, alpha, P), den_claim)
-                claim := add(mulmod(claim, alpha, P), num_claim)
-                mstore(GKR_INIT_CLAIM_PTR(), claim)
-            }
-
-            let write_acc
-            for { let poly := 1 } lt(poly, 2) { poly := sub(poly, 1) } {
-                let prod_acc := 1
-                let fold0, fold1, fold2, fold3
-                for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
-                    let base := add(add(ptr, mul(poly, GKR_INIT_POLY_BYTES)), mul(i, 64))
-                    // fold i+0/1
-                    let word0 := calldataload(base)
-                    let prod0 := shr(128, word0)
-                    let prod1 := and(MASK, word0)
-                    prod_acc := mulmod(prod_acc, prod0, P)
-                    prod_acc := mulmod(prod_acc, prod1, P)
-                    let folda := add(prod0, mulmod(z4, sub(add(prod1, mul(2, P)), prod0), P))
-                    // fold i+2/3
-                    let word1 := calldataload(add(base, 32))
-                    let prod2 := shr(128, word1)
-                    let prod3 := and(MASK, word1)
-                    prod_acc := mulmod(prod_acc, prod2, P)
-                    prod_acc := mulmod(prod_acc, prod3, P)
-                    let foldb := add(prod2, mulmod(z4, sub(add(prod3, mul(2, P)), prod2), P))
-                    // fold i+0/1/2/3
-                    let foldc := add(folda, mulmod(z3, sub(add(foldb, mul(3, P)), folda), P))
-                    switch i
-                    case 0 {
-                        fold0 := foldc
-                        mstore(GKR_INIT_SCRATCH_PTR(), fold0)
-                    }
-                    case 1 { fold1 := foldc }
-                    case 2 { fold2 := foldc }
-                    default { fold3 := foldc }
-                }
-                // check
-                if iszero(poly) {
-                    let read_acc := prod_acc
-                    if iszero(eq(read_acc, write_acc)) { revert(0, 0) }
-                }
-                write_acc := prod_acc
-                // fold 0/1/2/3/4/5/6/7
-                fold0 := mload(GKR_INIT_SCRATCH_PTR())
-                fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P)), fold0), P))
-                // fold 8/9/10/11/12/13/14/15
-                fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P)), fold2), P))
-                // fold 0/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15
-                let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P)), fold0), P))
-                // batch
-                claim := mload(GKR_INIT_CLAIM_PTR())
-                claim := add(mulmod(claim, alpha, P), prod_claim)
-                mstore(GKR_INIT_CLAIM_PTR(), claim)
-            }
-            claim := mload(GKR_INIT_CLAIM_PTR())
-        }
-
-        function acceval_inlinefold_streamrevlooploop_evenodd_newunchecked(ptr, z1, z2, z3, z4, alpha) -> claim {
-            // TODO: inject final values (regs, pc)
-            // TODO: this was made by AI, needs to be reviewed
-            // NB: some stack values are explicitly spilled (fold0 and claim updates):
-            //     - when written to, it is after stored
-            //     - when read, it is first loaded
-            // Same current READ+WRITE work as the open-coded even/odd path, but
-            // factored into four quarter chunks under a loop.
-
-            for { let poly := 6 } gt(poly, 0) { poly := sub(poly, 2) } {
-                {
-                    let num_acc
-                    let den_acc := 1
-                    for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
-                        let numbase := add(add(ptr, mul(poly, GKR_INIT_POLY_BYTES)), mul(i, 64))
-                        let denbase := add(add(ptr, mul(add(poly, 1), GKR_INIT_POLY_BYTES)), mul(i, 64))
-                        let numword0 := calldataload(numbase)
-                        let num0 := shr(128, numword0)
-                        let num1 := and(MASK, numword0)
-                        let denword0 := calldataload(denbase)
-                        let den0 := shr(128, denword0)
-                        let den1 := and(MASK, denword0)
-                        num_acc := add(mulmod(num_acc, den0, P), mulmod(den_acc, num0, P))
-                        den_acc := mulmod(den_acc, den0, P)
-                        num_acc := add(mulmod(num_acc, den1, P), mulmod(den_acc, num1, P))
-                        den_acc := mulmod(den_acc, den1, P)
-                        let numword1 := calldataload(add(numbase, 32))
-                        let num2 := shr(128, numword1)
-                        let num3 := and(MASK, numword1)
-                        let denword1 := calldataload(add(denbase, 32))
-                        let den2 := shr(128, denword1)
-                        let den3 := and(MASK, denword1)
-                        num_acc := add(mulmod(num_acc, den2, P), mulmod(den_acc, num2, P))
-                        den_acc := mulmod(den_acc, den2, P)
-                        num_acc := add(mulmod(num_acc, den3, P), mulmod(den_acc, num3, P))
-                        den_acc := mulmod(den_acc, den3, P)
-                    }
-                    if mod(num_acc, P) { revert(0, 0) }
-                    if iszero(den_acc) { revert(0, 0) }
-                }
-                {
-                    let numfold0, numfold1, numfold2, numfold3
-                    let denfold0, denfold1, denfold2, denfold3
-                    for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
-                        let numbase := add(add(ptr, mul(poly, GKR_INIT_POLY_BYTES)), mul(i, 64))
-                        let denbase := add(add(ptr, mul(add(poly, 1), GKR_INIT_POLY_BYTES)), mul(i, 64))
-                        let numword0 := calldataload(numbase)
-                        let num0 := shr(128, numword0)
-                        let num1 := and(MASK, numword0)
-                        let denword0 := calldataload(denbase)
-                        let den0 := shr(128, denword0)
-                        let den1 := and(MASK, denword0)
-                        let numfolda := add(num0, mulmod(z4, sub(add(num1, mul(2, P)), num0), P))
-                        let denfolda := add(den0, mulmod(z4, sub(add(den1, mul(2, P)), den0), P))
-                        let numword1 := calldataload(add(numbase, 32))
-                        let num2 := shr(128, numword1)
-                        let num3 := and(MASK, numword1)
-                        let denword1 := calldataload(add(denbase, 32))
-                        let den2 := shr(128, denword1)
-                        let den3 := and(MASK, denword1)
-                        let numfoldb := add(num2, mulmod(z4, sub(add(num3, mul(2, P)), num2), P))
-                        let denfoldb := add(den2, mulmod(z4, sub(add(den3, mul(2, P)), den2), P))
-                        let numfoldc := add(numfolda, mulmod(z3, sub(add(numfoldb, mul(3, P)), numfolda), P))
-                        let denfoldc := add(denfolda, mulmod(z3, sub(add(denfoldb, mul(3, P)), denfolda), P))
-                        switch i
-                        case 0 { numfold0 := numfoldc mstore(GKR_INIT_SCRATCH_PTR(), numfold0) denfold0 := denfoldc }
-                        case 1 { numfold1 := numfoldc denfold1 := denfoldc }
-                        case 2 { numfold2 := numfoldc denfold2 := denfoldc }
-                        default { numfold3 := numfoldc denfold3 := denfoldc }
-                    }
-                    numfold0 := mload(GKR_INIT_SCRATCH_PTR())
-                    numfold0 := add(numfold0, mulmod(z2, sub(add(numfold1, mul(4, P)), numfold0), P))
-                    denfold0 := add(denfold0, mulmod(z2, sub(add(denfold1, mul(4, P)), denfold0), P))
-                    numfold1 := add(numfold2, mulmod(z2, sub(add(numfold3, mul(4, P)), numfold2), P))
-                    denfold1 := add(denfold2, mulmod(z2, sub(add(denfold3, mul(4, P)), denfold2), P))
-                    let num_claim := add(numfold0, mulmod(z1, sub(add(numfold1, mul(5, P)), numfold0), P))
-                    let den_claim := add(denfold0, mulmod(z1, sub(add(denfold1, mul(5, P)), denfold0), P))
-                    let term_ptr := add(GKR_INIT_CLAIM_PTR(), mul(sub(6, poly), 32))
-                    mstore(term_ptr, den_claim)
-                    mstore(add(term_ptr, 32), num_claim)
-                }
-            }
-
-            let write_acc
-            for { let poly := 1 } lt(poly, 2) { poly := sub(poly, 1) } {
-                {
-                    let prod_acc := 1
-                    for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
-                        let base := add(add(ptr, mul(poly, GKR_INIT_POLY_BYTES)), mul(i, 64))
-                        let word0 := calldataload(base)
-                        prod_acc := mulmod(prod_acc, shr(128, word0), P)
-                        prod_acc := mulmod(prod_acc, and(MASK, word0), P)
-                        let word1 := calldataload(add(base, 32))
-                        prod_acc := mulmod(prod_acc, shr(128, word1), P)
-                        prod_acc := mulmod(prod_acc, and(MASK, word1), P)
-                    }
-                    if iszero(poly) {
-                        let read_acc := prod_acc
-                        if iszero(eq(read_acc, write_acc)) { revert(0, 0) }
-                    }
-                    write_acc := prod_acc
-                }
-                {
-                    let fold0, fold1, fold2, fold3
-                    for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
-                        let base := add(add(ptr, mul(poly, GKR_INIT_POLY_BYTES)), mul(i, 64))
-                        let word0 := calldataload(base)
-                        let prod0 := shr(128, word0)
-                        let prod1 := and(MASK, word0)
-                        let folda := add(prod0, mulmod(z4, sub(add(prod1, mul(2, P)), prod0), P))
-                        let word1 := calldataload(add(base, 32))
-                        let prod2 := shr(128, word1)
-                        let prod3 := and(MASK, word1)
-                        let foldb := add(prod2, mulmod(z4, sub(add(prod3, mul(2, P)), prod2), P))
-                        let foldc := add(folda, mulmod(z3, sub(add(foldb, mul(3, P)), folda), P))
-                        switch i
-                        case 0 { fold0 := foldc mstore(GKR_INIT_SCRATCH_PTR(), fold0) }
-                        case 1 { fold1 := foldc }
-                        case 2 { fold2 := foldc }
-                        default { fold3 := foldc }
-                    }
-                    fold0 := mload(GKR_INIT_SCRATCH_PTR())
-                    fold0 := add(fold0, mulmod(z2, sub(add(fold1, mul(4, P)), fold0), P))
-                    fold1 := add(fold2, mulmod(z2, sub(add(fold3, mul(4, P)), fold2), P))
-                    let prod_claim := add(fold0, mulmod(z1, sub(add(fold1, mul(5, P)), fold0), P))
-                    mstore(add(GKR_INIT_CLAIM_PTR(), sub(224, mul(poly, 32))), prod_claim)
-                }
-            }
-            claim := 0
-            for { let off := 0 } lt(off, 256) { off := add(off, 32) } {
-                claim := add(mulmod(claim, alpha, P), mload(add(GKR_INIT_CLAIM_PTR(), off)))
-            }
-        }
 
         // Strategy 2: absorb the init block and draw z1..z4 and alpha, but do not
         // store full eq[16]. Instead, generate eq factors inline while streaming
         // over calldata so folding and accumulator updates happen in one pass.
-        function gkr_init_inlinefold(ptr) -> next_ptr, claim, alpha {
-            let z1, z2, z3, z4
-            z1, z2, z3, z4, alpha := transcript128to5_once(ptr)
-            mstore(POINT_PTR(), z1)
-            mstore(add(POINT_PTR(), 32), z2)
-            mstore(add(POINT_PTR(), 64), z3)
-            mstore(add(POINT_PTR(), 96), z4)
+        // GKR entry (STEP 2a). Validated keccak-for-keccak against GkrStep1.gkrEntry
+        // (step1_test/GkrInitYul.t.sol): continue from the post-STEP-1 seed, absorb the 2560 B
+        // of output evals, draw eval_point[4] (→ POINT_PTR) + batching (→ GKR_BATCHING_PTR).
+        // Then compute the 10 dim-reducing claims: eq[16] over eval_point, dotted with each of
+        // the 10 output columns (matches the validated Rust mirror). claim/alpha are legacy
+        // returns kept 0 — gkr_compress reads GKR_CLAIMS_PTR / GKR_BATCHING_PTR.
+        function gkr_init(ptr) -> next_ptr, claim, alpha {
+            let sp := SEED_PTR()
+            // absorb output evals: seed = keccak(seed || outputEvals)
+            mstore(GKR_ABS_PTR(), mload(sp))
+            calldatacopy(add(GKR_ABS_PTR(), 32), ptr, GKR_INIT_BYTES)
+            let seed := keccak256(GKR_ABS_PTR(), add(32, GKR_INIT_BYTES))
+            mstore(sp, seed)
+            // draw eval_point[4] -> POINT_PTR, then batching -> GKR_BATCHING_PTR
+            for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
+                seed := keccak256(sp, 32) mstore(sp, seed)
+                mstore(add(POINT_PTR(), mul(i, 32)), mod(shr(128, seed), mload(P_PTR)))
+            }
+            seed := keccak256(sp, 32) mstore(sp, seed)
+            mstore(GKR_BATCHING_PTR(), mod(shr(128, seed), mload(P_PTR)))
 
-            // claim := acceval_inlinefold_streamrevlooploop_evenodd(ptr, z1, z2, z3, z4, alpha)
-            claim := acceval_inlinefold_streamrevlooploop_evenodd_newunchecked(ptr, z1, z2, z3, z4, alpha)
-
+            // eq[16] over eval_point[4] (MSB-first: eq[j] = Π_v (bit_{3-v}(j)? z[v] : 1-z[v]))
+            for { let j := 0 } lt(j, 16) { j := add(j, 1) } {
+                let e := 1
+                for { let v := 0 } lt(v, 4) { v := add(v, 1) } {
+                    let zv := mload(add(POINT_PTR(), mul(v, 32)))
+                    let bit := and(shr(sub(3, v), j), 1)
+                    // f = bit ? zv : (1 - zv)   (non-canonical 1-zv = 1 + (P - zv))
+                    let f := zv
+                    if iszero(bit) { f := add(1, sub(mload(P_PTR), zv)) }
+                    e := mulmod(e, f, mload(P_PTR))
+                }
+                mstore(add(GKR_EQ_PTR(), mul(j, 32)), e)
+            }
+            // 10 claims: claim_c = Σ_j outputEval[c*16+j] * eq[j]  (column c, 16 evals)
+            for { let c := 0 } lt(c, 10) { c := add(c, 1) } {
+                let acc := 0
+                for { let j := 0 } lt(j, 16) { j := add(j, 1) } {
+                    let k := add(mul(c, 16), j)
+                    let val := shr(128, calldataload(add(ptr, mul(k, 16))))
+                    acc := add(mulmod(val, mload(add(GKR_EQ_PTR(), mul(j, 32))), mload(P_PTR)), acc)
+                }
+                mstore(add(GKR_CLAIMS_PTR(), mul(c, 32)), mod(acc, mload(P_PTR)))
+            }
             next_ptr := add(ptr, GKR_INIT_BYTES)
         }
 
@@ -465,14 +238,14 @@ contract GKRVerifier {
                 let c1 := and(w0, MASK)
                 let c2 := shr(128, w1)
                 let c3 := and(w1, MASK)
-                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
+                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, mload(P_PTR))
                 let r := transcript_4to1_dual(w0, w1) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-                if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
-                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
+                if mod(add(claim, sub(mload(P_PTR), g0g1_scaled)), mload(P_PTR)) { revert(0, 0) }
+                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, mload(P_PTR)), c2), r, mload(P_PTR)), c1), r, mload(P_PTR)), c0)
                 let z := mload(add(POINT_PTR(), mul(i, 32)))
-                let zr := mulmod(z, r, P)
-                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
+                let zr := mulmod(z, r, mload(P_PTR))
+                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, mload(P_PTR)), add(z, r)))
                 mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }
@@ -480,113 +253,85 @@ contract GKRVerifier {
             next_claim := claim
         }
 
-        function sumcheck_compress_2pass(ptr, claim, alpha, rounds_skiplast) -> next_ptr, next_claim, next_alpha {
-            // START WITH LAYER: 2^4 poly -> 2^5 polys (last var skip)
-            // let rounds_skiplast := 3 // keep this const for now
-            // TODO: can offload alpha to memory bc it's used only in the end
-            let eq_scale
-            ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, rounds_skiplast)
 
-            // POINT CHECK
-            // TODO: this might need to be permuted in the last compression before circuit, due to prover shenanigans
-            // ie. calldata slots are permuted vs batching order (real output addrs sort differently than group order):
-            // walk [2,3,4,5,0,1,6,7] instead of [0..7] — circuit-specific, see DIM_REDUCE_INDICES_4.
-            // The next-claim fold below is NOT affected (stays calldata order for all layers).
-            let acc0 // RLC for x4 == 0
-            for { let poly := 6 } gt(poly, 0) { poly := sub(poly, 2) } {
-                // TODO: collect den0 and combine den_acc*alpha + num_acc as
-                // d0 * (d1 * alpha + n1) + n0 * d1; revisit other logup paths too.
-                let numbase := add(ptr, mul(poly, GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
-                let denbase := add(ptr, mul(add(poly, 1), GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
-                let denword := calldataload(denbase)
 
-                let den0 := shr(128, denword)
-                let den1 := and(MASK, denword)
-                let den_acc := mulmod(den0, den1, P)
-                acc0 := add(mulmod(acc0, alpha, P), den_acc)
-
-                let numword := calldataload(numbase)
-                let num0 := shr(128, numword)
-                let num1 := and(MASK, numword)
-                let num_acc := add(mulmod(num0, den1, P), mulmod(num1, den0, P))
-                acc0 := add(mulmod(acc0, alpha, P), num_acc)
+        // Dim-reducing final step for one layer (own frame -> shallow caller stack). Validated
+        // in step1_test/GkrCompressYul. `cp` points at the 10 [E;2] LSB lines (sorted). Compute
+        // g (products slots 0,1,8,9; lookup num/den pairs (2,3)(4,5)(6,7); running batching powers;
+        // boundary permutation on the last layer), check g*eq_scale==claim, absorb the LSB lines,
+        // draw r_last + next_batching, interpolate the next claims (sorted order), grow the point.
+        function gkr_dr_final(cp, fs, batching, boundary, eq_scale, claim) -> ncp, nbatch {
+            let SI := GKR_EQ_PTR() // reuse eq scratch as the sorted-index array (10 slots)
+            for { let li := 0 } lt(li, 10) { li := add(li, 1) } { mstore(add(SI, mul(li, 32)), li) }
+            if boundary {
+                mstore(add(SI, 0), 6) mstore(add(SI, 32), 7)
+                mstore(add(SI, 64), 0) mstore(add(SI, 96), 1) mstore(add(SI, 128), 2)
+                mstore(add(SI, 160), 3) mstore(add(SI, 192), 4) mstore(add(SI, 224), 5)
+                mstore(add(SI, 256), 8) mstore(add(SI, 288), 9)
             }
-            for { let poly := 1 } lt(poly, 2) { poly := sub(poly, 1) } {
-                let base := add(ptr, mul(poly, GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
-                let word := calldataload(base)
-                let prod0 := shr(128, word)
-                let prod1 := and(MASK, word)
-                let contribution := mulmod(prod0, prod1, P)
-                acc0 := add(mulmod(acc0, alpha, P), contribution)
+            let g := 0
+            let gb := 1
+            for { let step := 0 } lt(step, 2) { step := add(step, 1) } {
+                let word := calldataload(add(cp, mul(mload(add(SI, mul(step, 32))), 32)))
+                g := add(mulmod(gb, mulmod(shr(128, word), and(word, MASK), mload(P_PTR)), mload(P_PTR)), g)
+                gb := mulmod(gb, batching, mload(P_PTR))
             }
-            let acc1 // compute RLC for x4 == 1
-            for { let poly := 6 } gt(poly, 0) { poly := sub(poly, 2) } {
-                // TODO: collect den0 and combine den_acc*alpha + num_acc as
-                // d0 * (d1 * alpha + n1) + n0 * d1; revisit other logup paths too.
-                let numbase := add(ptr, mul(poly, GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
-                let denbase := add(ptr, mul(add(poly, 1), GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
-                let denword := calldataload(add(denbase, 32))
-
-                let den0 := shr(128, denword)
-                let den1 := and(MASK, denword)
-                let den_acc := mulmod(den0, den1, P)
-                acc1 := add(mulmod(acc1, alpha, P), den_acc)
-
-                let numword := calldataload(add(numbase, 32))
-                let num0 := shr(128, numword)
-                let num1 := and(MASK, numword)
-                let num_acc := add(mulmod(num0, den1, P), mulmod(num1, den0, P))
-                acc1 := add(mulmod(acc1, alpha, P), num_acc)
+            for { let pr := 0 } lt(pr, 3) { pr := add(pr, 1) } {
+                let wN := calldataload(add(cp, mul(mload(add(SI, mul(add(2, mul(pr, 2)), 32))), 32)))
+                let wD := calldataload(add(cp, mul(mload(add(SI, mul(add(3, mul(pr, 2)), 32))), 32)))
+                let num := add(mulmod(shr(128, wN), and(wD, MASK), mload(P_PTR)), mulmod(and(wN, MASK), shr(128, wD), mload(P_PTR)))
+                let den := mulmod(shr(128, wD), and(wD, MASK), mload(P_PTR))
+                g := add(mulmod(gb, num, mload(P_PTR)), g) gb := mulmod(gb, batching, mload(P_PTR))
+                g := add(mulmod(gb, den, mload(P_PTR)), g) gb := mulmod(gb, batching, mload(P_PTR))
             }
-            for { let poly := 1 } lt(poly, 2) { poly := sub(poly, 1) } {
-                let base := add(ptr, mul(poly, GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
-                let word := calldataload(add(base, 32))
-                let prod0 := shr(128, word)
-                let prod1 := and(MASK, word)
-                let contribution := mulmod(prod0, prod1, P)
-                acc1 := add(mulmod(acc1, alpha, P), contribution)
+            for { let step := 8 } lt(step, 10) { step := add(step, 1) } {
+                let word := calldataload(add(cp, mul(mload(add(SI, mul(step, 32))), 32)))
+                g := add(mulmod(gb, mulmod(shr(128, word), and(word, MASK), mload(P_PTR)), mload(P_PTR)), g)
+                gb := mulmod(gb, batching, mload(P_PTR))
             }
-            let diff := add(acc1, sub(mul(2, P), acc0))
-            let z_last := mload(add(POINT_PTR(), mul(rounds_skiplast, 32)))
-            let rhs_scaled := mulmod(add(acc0, mulmod(z_last, diff, P)), eq_scale, P)
-            // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-            if mod(add(claim, sub(P, rhs_scaled)), P) { revert(0, 0) }
-
-            // POINT CLAIMS INTERPOLATE + BATCH
-            // TODO: if compilation is good, try to merge this with POINTCHECK
-            // remember to reset ptr back..
-            let r_last, r_pair // ie. new (zN, zN+1) points
-            r_last, r_pair, next_alpha := transcript32to3(ptr)
-            mstore(add(POINT_PTR(), mul(rounds_skiplast, 32)), r_last)
-            mstore(add(POINT_PTR(), mul(add(rounds_skiplast, 1), 32)), r_pair)
-            for { let poly := 7 } lt(poly, 8) { poly := sub(poly, 1) } {
-                let base := add(ptr, mul(poly, GKR_COMPRESSION_POINTCHECK_POLY_BYTES))
-
-                let word0 := calldataload(base)
-                let el0 := shr(128, word0)
-                let el1 := and(MASK, word0)
-                let claim0 := add(el0, mulmod(r_pair, add(el1, sub(mul(2, P), el0)), P))
-
-                let word1 := calldataload(add(base, 32))
-                let el2 := shr(128, word1)
-                let el3 := and(MASK, word1)
-                let claim1 := add(el2, mulmod(r_pair, add(el3, sub(mul(2, P), el2)), P))
-
-                let poly_claim := add(claim0, mulmod(r_last, add(claim1, sub(mul(3, P), claim0)), P))
-                next_claim := add(mulmod(next_claim, next_alpha, P), poly_claim)
+            if mod(add(mulmod(mod(g, mload(P_PTR)), eq_scale, mload(P_PTR)), sub(mload(P_PTR), claim)), mload(P_PTR)) { revert(0, 0) }
+            // absorb the 320 B of LSB lines (sorted transcript order), draw r_last + next_batching
+            mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
+            calldatacopy(add(GKR_ABS_PTR(), 32), cp, 320)
+            let seed := keccak256(GKR_ABS_PTR(), 352)
+            mstore(SEED_PTR(), seed)
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed)
+            let r_last := mod(shr(128, seed), mload(P_PTR))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed)
+            nbatch := mod(shr(128, seed), mload(P_PTR))
+            mstore(add(POINT_PTR(), mul(fs, 32)), r_last)
+            // next claims = interpolate lsb_sorted at r_last (no perm): a + (b-a)*r_last
+            for { let li := 0 } lt(li, 10) { li := add(li, 1) } {
+                let word := calldataload(add(cp, mul(li, 32)))
+                let a := shr(128, word)
+                mstore(add(GKR_CLAIMS_PTR(), mul(li, 32)), add(a, mulmod(add(and(word, MASK), sub(mload(P_PTR), a)), r_last, mload(P_PTR))))
             }
-
-            next_ptr := add(ptr, GKR_COMPRESSION_POINTCHECK_BYTES)
+            ncp := add(cp, 320)
         }
 
-
-        function gkr_compress(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
-            for { let layer_vars_skiplast := 3 } lt(layer_vars_skiplast, 23) { layer_vars_skiplast := add(layer_vars_skiplast, 1) } {
-                ptr, claim, alpha := sumcheck_compress_2pass(ptr, claim, alpha, layer_vars_skiplast)
+        // 18 dim-reducing layers (folding_steps 4..21). Reads the 10 claims + batching from
+        // gkr_init (GKR_CLAIMS_PTR / GKR_BATCHING_PTR); reuses sumcheck_rounds for the monomial
+        // rounds. Validated end-to-end in step1_test/GkrCompressYul (post-state 0xc3616d7d…).
+        function gkr_compress(ptr, claim0, alpha0) -> next_ptr, next_claim, next_alpha {
+            let batching := mload(GKR_BATCHING_PTR())
+            for { let k := 0 } lt(k, 18) { k := add(k, 1) } {
+                let fs := add(4, k)
+                // initial claim = RLC(claims, batching)
+                let claim := 0
+                let cb := 1
+                for { let c := 0 } lt(c, 10) { c := add(c, 1) } {
+                    claim := add(mulmod(cb, mload(add(GKR_CLAIMS_PTR(), mul(c, 32))), mload(P_PTR)), claim)
+                    cb := mulmod(cb, batching, mload(P_PTR))
+                }
+                claim := mod(claim, mload(P_PTR))
+                let eq_scale
+                ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, fs)
+                ptr, batching := gkr_dr_final(ptr, fs, batching, eq(k, 17), eq_scale, claim)
             }
+            mstore(GKR_BATCHING_PTR(), batching)
             next_ptr := ptr
-            next_claim := claim
-            next_alpha := alpha
+            next_claim := 0
+            next_alpha := batching
         }
 
         // __INLINE_CIRCUIT_YUL__
@@ -607,17 +352,105 @@ contract GKRVerifier {
         // [witCap:CAP*32][setupCap:CAP*32]. NOTE: the packed claims-merge + WHIR batching
         // (validated in the Rust mirror) must run first to populate the batching/opening/z
         // regions (GKR_CIRCUIT_ALPHA2_PTR / claim / POINT_PTR).
+        // Assert the remaining proof stream is fully consumed (all-zero tail). In its own
+        // frame so the loop counter doesn't add to the tight fallback root stack, which
+        // otherwise runs exactly 1 slot too deep on `ptr` (see HEURISTICS.md).
+        function assert_proof_empty(ptr) {
+            for { let i := 0 } lt(i, 10) { i := add(i, 1) } {
+                if calldataload(add(ptr, mul(i, 32))) { revert(0, 0) }
+            }
+        }
+
+        // Copy `count` little-endian u32s from calldata[cdpos] to memory[wpos] as big-endian.
+        // The GKR preimage stores the merkle caps as LE u32; the committed state (and whir.sol)
+        // want BE u32 digests, so each 4-byte word is byte-reversed.
+        function write_cap_be(wpos, cdpos, count) {
+            for { let j := 0 } lt(j, count) { j := add(j, 1) } {
+                let le := shr(224, calldataload(add(cdpos, mul(4, j))))
+                let be := or(or(shl(24, and(le, 0xff)), shl(16, and(shr(8, le), 0xff))),
+                             or(shl(8, and(shr(16, le), 0xff)), shr(24, le)))
+                mstore(add(wpos, mul(4, j)), shl(224, be))
+            }
+        }
+        // Interpolate-halve n elements at sc: sc[j] = sc[2j] + (sc[2j+1]-sc[2j])·r.
+        function whir_foldhalf(sc, n, r) {
+            for { let j := 0 } lt(j, div(n, 2)) { j := add(j, 1) } {
+                let a := mload(add(sc, mul(64, j)))
+                let b := mload(add(sc, add(mul(64, j), 32)))
+                mstore(add(sc, mul(32, j)), add(a, mulmod(add(b, sub(mul(2, mload(P_PTR)), a)), r, mload(P_PTR))))
+            }
+        }
+        // Fold one 2^4=16-chunk (count real evals from calldata, rest zero) by the 4 packing
+        // coords in reversed order (e3,e2,e1,e0) — a 4-var multilinear eval → single claim.
+        function whir_fold16(cdbase, count, e0, e1, e2, e3) -> v {
+            let sc := add(GKR_ABS_PTR(), 384)
+            for { let i := 0 } lt(i, 16) { i := add(i, 1) } {
+                let val := 0
+                if lt(i, count) { val := shr(128, calldataload(add(cdbase, mul(16, i)))) }
+                mstore(add(sc, mul(32, i)), val)
+            }
+            whir_foldhalf(sc, 16, e3)
+            whir_foldhalf(sc, 8, e2)
+            whir_foldhalf(sc, 4, e1)
+            whir_foldhalf(sc, 2, e0)
+            v := mload(sc)
+        }
+
+        // GKR→WHIR handoff: draw the 4 packing coords, merge the base-layer claims (mem++wit
+        // 106→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
+        // opening, and mark_gkr_verified(keccak(preimage)) with preimage
+        //   [seed:32][batching:16][opening:16][z = extra(4) ++ base_z(22) : 26·16][caps:2·CAP·32].
         function emit_gkr_mark(claim_v) {
+            let sp := SEED_PTR()
+            let ex := GKR_ABS_PTR()            // 4 packing coords
+            let mg := add(GKR_ABS_PTR(), 128)  // 8 merged claims (7 mem_wit ++ 1 setup)
+            // draw 4 packing coords
+            let seed := mload(sp)
+            for { let i := 0 } lt(i, WHIR_PACK_LOG2) { i := add(i, 1) } {
+                seed := keccak256(sp, 32) mstore(sp, seed)
+                mstore(add(ex, mul(32, i)), mod(shr(128, seed), mload(P_PTR)))
+            }
+            let e0 := mload(ex) let e1 := mload(add(ex, 32)) let e2 := mload(add(ex, 64)) let e3 := mload(add(ex, 96))
+            // merge base-layer claims (dense in layer0's eval block at CIRCUIT_PTR)
+            let cdbase := mload(CIRCUIT_PTR)
+            for { let c := 0 } lt(c, WHIR_MERGED_MW) { c := add(c, 1) } {
+                let off := mul(c, 16)
+                let count := 16
+                if gt(add(off, 16), WHIR_NUM_MEMWIT) { count := sub(WHIR_NUM_MEMWIT, off) }
+                mstore(add(mg, mul(32, c)), whir_fold16(add(cdbase, mul(16, off)), count, e0, e1, e2, e3))
+            }
+            mstore(add(mg, mul(32, WHIR_MERGED_MW)), whir_fold16(add(cdbase, mul(16, WHIR_NUM_MEMWIT)), WHIR_NUM_SETUP, e0, e1, e2, e3))
+            // draw WHIR batching (PoW fold nonce=0, then draw)
+            mstore(sp, seed) mstore(add(sp, 32), 0)
+            seed := keccak256(sp, 40) mstore(sp, seed)
+            seed := keccak256(sp, 32) mstore(sp, seed)
+            let batching := mod(shr(128, seed), mload(P_PTR))
+            // batched opening = Σ merged_i · batching^i
+            let opening := 0
+            let bexp := 1
+            for { let i := 0 } lt(i, add(WHIR_MERGED_MW, 1)) { i := add(i, 1) } {
+                opening := addmod(opening, mulmod(mload(add(mg, mul(32, i))), bexp, mload(P_PTR)), mload(P_PTR))
+                bexp := mulmod(bexp, batching, mload(P_PTR))
+            }
+            // preimage
             let base := GKR_INIT_SCRATCH_PTR()
-            mstore(base, mload(SEED_PTR()))
-            mstore(add(base, 32), shl(128, and(mload(GKR_CIRCUIT_ALPHA2_PTR()), MASK)))
-            mstore(add(base, 48), shl(128, and(claim_v, MASK)))
+            mstore(base, seed)
+            mstore(add(base, 32), shl(128, and(batching, MASK)))
+            mstore(add(base, 48), shl(128, and(opening, MASK)))
             let plen := 64
-            for { let i := 0 } lt(i, WHIR_Z_COORDS) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, WHIR_PACK_LOG2) { i := add(i, 1) } {
+                mstore(add(base, plen), shl(128, and(mload(add(ex, mul(32, i))), MASK)))
+                plen := add(plen, 16)
+            }
+            for { let i := 0 } lt(i, WHIR_BASE_Z_COORDS) { i := add(i, 1) } {
                 mstore(add(base, plen), shl(128, and(mload(add(POINT_PTR(), mul(i, 32))), MASK)))
                 plen := add(plen, 16)
             }
-            calldatacopy(add(base, plen), 0, mul(mul(2, WHIR_CAP), 32))
+            // caps: committed state wants [memory_cap][setup_cap] as BE u32. The GKR preimage
+            // holds them as LE u32 at [top_bits:8][setup_cap:256][memory_cap:264], so re-encode
+            // and reorder. count = WHIR_CAP*8 u32s per cap (WHIR_CAP digests × 8 u32).
+            write_cap_be(add(base, plen), 264, mul(WHIR_CAP, 8))                               // memory
+            write_cap_be(add(add(base, plen), mul(mul(WHIR_CAP, 8), 4)), 8, mul(WHIR_CAP, 8))  // setup
             plen := add(plen, mul(mul(2, WHIR_CAP), 32))
             mstore(0, shl(224, MARK_GKR_SELECTOR))
             mstore(4, keccak256(base, plen))
@@ -629,32 +462,27 @@ contract GKRVerifier {
             revert(0, 0)
         }
 
-        // INIT MAIN
-        // Stash starting gas to memory across the gkr_init_* call so that
-        // Yul stack spills can't corrupt it under high register pressure.
-        let ptr, claim, alpha
+        // INIT + MAIN. `alpha`, `init_gas`, `compress_gas` are confined to this block so
+        // their stack slots free before the tail (assert/emit/return) — the legacy backend
+        // does not spill, and keeping them live to the end runs the root `ptr` 1 slot too deep.
+        // Gas deltas are stashed to heap (read back in the anti-DCE return), so scoping is safe.
+        let ptr, claim
         {
+            let alpha
             mstore(GKR_INIT_GAS_PTR(), gas())
             mstore(SEED_PTR(), 0) // SEED Transcript, FINE as long as we don't draw without absorb!
             ptr := transcript_init(0)
-            ptr, claim, alpha := gkr_init_inlinefold(ptr)
-            let init_gas := sub(mload(GKR_INIT_GAS_PTR()), gas())
-            mstore(GKR_INIT_GAS_PTR(), init_gas)
-        }
+            ptr, claim, alpha := gkr_init(ptr)
+            mstore(GKR_INIT_GAS_PTR(), sub(mload(GKR_INIT_GAS_PTR()), gas()))
 
-        // MAIN
-        {
             mstore(GKR_MAIN_GAS_PTR(), gas())
             ptr, claim, alpha := gkr_compress(ptr, claim, alpha)
             ptr, claim, alpha := gkr_circuit(ptr, claim, alpha)
-            let compress_gas := sub(mload(GKR_MAIN_GAS_PTR()), gas())
-            mstore(GKR_MAIN_GAS_PTR(), compress_gas)
+            mstore(GKR_MAIN_GAS_PTR(), sub(mload(GKR_MAIN_GAS_PTR()), gas()))
         }
 
-        // DONE: Proof empty now
-        for { let i := 0 } lt(i, 10) { i := add(i, 1) } {
-            if calldataload(add(ptr, mul(i, 32))) { revert(0, 0) }
-        }
+        // DONE: Proof empty now (own frame — see assert_proof_empty)
+        assert_proof_empty(ptr)
 
         // TODO: don't forget the recursion chain check
         // TODO: very, VERY, carefully review end-to-end fiat-shamir

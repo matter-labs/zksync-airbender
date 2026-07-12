@@ -1020,6 +1020,15 @@ fn verify_dim_reduce_layers() {
                     by_idx.insert(idx, val[0]);
                 }
             }
+            // Also serialize the caching-relation extra evals: they are InnerLayer inputs the
+            // caches depend on but that live outside final_step_evaluations, and previously left
+            // 0-fill gaps in the calldata (offsets 8..47 for layer1). The verifier reads them by
+            // group offset just like any other InnerLayer input.
+            for (addr, val) in siv.extra_evaluations_from_caching_relations.iter() {
+                if let Some(idx) = group_idx(addr) {
+                    by_idx.insert(idx, *val);
+                }
+            }
             let n = by_idx.keys().max().map(|m| m + 1).unwrap_or(0);
             for i in 0..n {
                 let v = by_idx.get(&i).copied().unwrap_or(E::ZERO);
