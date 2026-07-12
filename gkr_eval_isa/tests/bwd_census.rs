@@ -6,10 +6,16 @@
 //! Run: `cargo test -p gkr_eval_isa --release bwd_census -- --ignored --nocapture`.
 //!
 //! Three tables:
-//!   * **A. Structural** — per (circuit, layer, regime, budget): feasibility
-//!     (INFEASIBLE(floor=N) below floor), max_live_cells (Ext: bucket demand =
-//!     cells/4), n_instr + encoded lanes, floor, realized÷floor, cell spill,
-//!     skipped-decoder mark. The budget knee lives here.
+//!   * **A. Structural** — per (circuit, layer, regime, budget), BOTH the
+//!     `compile_distilled_legacy_only` (`stream_reductions = false`) and the
+//!     explicit `compile_distilled_streamed(.., true)` variant, each labeled and
+//!     one row: feasibility (INFEASIBLE(floor=N) below floor), max_live_cells
+//!     (Ext: bucket demand = cells/4), n_instr + encoded lanes, floor,
+//!     realized÷floor, cell spill, skipped-decoder mark. A `<- selected`
+//!     marker on the row `compile_distilled` (legacy-first-fallback-to-streamed)
+//!     actually picks at that budget. The budget knee AND the SP1 Task 1-4
+//!     streamed-collapse (wide-L0 `max_live` dropping vs the legacy floor)
+//!     live here.
 //!   * **B. Traffic** — per (circuit, layer, regime, policy) at a representative
 //!     feasible budget (no-decisions traffic is budget-invariant — asserted):
 //!     per-round r1..r4 read bytes (T0+T2) + fold-store + geometric total. The
@@ -23,7 +29,10 @@ use std::collections::HashMap;
 
 use common::{load_fixture, schedule_stem};
 use cs::gkr_compiler::dag_ir::{bwd_roots, bwd_traffic_floor, lower_dag, validate, BwdRegime};
-use gkr_eval_isa::bwd::compile::{compile_distilled, BwdCompiledLayer};
+use gkr_eval_isa::bwd::compile::{
+    compile_distilled, compile_distilled_legacy_only, compile_distilled_streamed,
+    BwdCompiledLayer,
+};
 use gkr_eval_isa::bwd::cost::{geometric_total, round_cost};
 use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
 use gkr_eval_isa::bwd::search::{search_bwd_layer, BwdSearchConfig};
@@ -65,6 +74,71 @@ fn try_compile(d: &DistilledLayer, budget: usize) -> Result<BwdCompiledLayer, us
         Ok(c) => Ok(c),
         Err(CompileError::BudgetBelowFloor { floor, .. }) => Err(floor),
         Err(e) => panic!("unexpected compile error: {e:?}"),
+    }
+}
+
+/// The SP1 Task-5 explicit variant used only for Table A: the pre-materialize
+/// baseline (`stream_reductions = false`), NEVER falling back to streaming.
+/// Distinct from `try_compile` (which is `compile_distilled` — legacy-first,
+/// falls back to streamed on `BudgetBelowFloor`).
+fn try_compile_legacy(d: &DistilledLayer, budget: usize) -> Result<BwdCompiledLayer, usize> {
+    match compile_distilled_legacy_only(d, budget, None) {
+        Ok(c) => Ok(c),
+        Err(CompileError::BudgetBelowFloor { floor, .. }) => Err(floor),
+        Err(e) => panic!("unexpected compile error: {e:?}"),
+    }
+}
+
+/// The SP1 Task-5 explicit streamed variant used only for Table A: the
+/// one-Ext-cell reduction-streaming lowering (`stream_reductions = true`),
+/// unconditionally (not the legacy-first fallback `compile_distilled` applies).
+fn try_compile_streamed(d: &DistilledLayer, budget: usize) -> Result<BwdCompiledLayer, usize> {
+    match compile_distilled_streamed(d, budget, None, true) {
+        Ok(c) => Ok(c),
+        Err(CompileError::BudgetBelowFloor { floor, .. }) => Err(floor),
+        Err(e) => panic!("unexpected compile error: {e:?}"),
+    }
+}
+
+/// One Table-A row for a single (budget, variant) compile attempt.
+/// `selected` marks the row matching what `compile_distilled` (legacy-first,
+/// falls back to streamed) actually picks at this budget.
+#[allow(clippy::too_many_arguments)]
+fn fmt_structural_row(
+    rk: &str,
+    budget: usize,
+    variant: &str,
+    result: &Result<BwdCompiledLayer, usize>,
+    regime: BwdRegime,
+    tfloor: usize,
+    skip_mark: &str,
+    selected: bool,
+) -> String {
+    let sel_mark = if selected { " <- selected" } else { "" };
+    match result {
+        Ok(c) => {
+            let enc = encode(&c.program).map(|v| v.len()).unwrap_or(0);
+            let mlc = c.stats.max_live_cells;
+            let buckets = if regime == BwdRegime::Ext {
+                format!("{} (b{})", mlc, mlc / 4)
+            } else {
+                format!("{mlc}")
+            };
+            let realized = c.stats_ext.global + c.stats_ext.fold_traffic;
+            let ratio = if tfloor > 0 {
+                format!("{:.1}", realized as f64 / tfloor as f64)
+            } else {
+                "-".to_string()
+            };
+            let spill = c.stats.cell_stores;
+            format!(
+                "| {rk} | b{budget} | {variant} | {buckets} | {} | {enc} | {realized} | {tfloor} | {ratio} | {spill} |{skip_mark}{sel_mark}",
+                c.stats.program_lanes,
+            )
+        }
+        Err(f) => format!(
+            "| {rk} | b{budget} | {variant} | INFEASIBLE(place-floor={f} lanes) | - | - | - | {tfloor} | - | - |{skip_mark}{sel_mark}"
+        ),
     }
 }
 
@@ -117,39 +191,46 @@ fn bwd_census() {
                 let tfloor = bwd_traffic_floor(layer, regime, &cross);
                 let rk = format!("{stem} L{li} {regime:?}");
 
-                // ── Table A: structural, per budget ──────────────────────────
+                // ── Table A: structural, per budget, BOTH variants explicit ──
+                // `compile_distilled` is legacy-first-selected (tries
+                // `stream_reductions = false`, falls back to `true` only on
+                // `BudgetBelowFloor`), so its pick at this budget is inferred
+                // directly from the two explicit results below — legacy if it
+                // fits, else streamed if IT fits, else neither (infeasible).
                 let mut representative: Option<(usize, BwdCompiledLayer)> = None;
                 for &budget in BUDGETS {
-                    match try_compile(&d, budget) {
-                        Ok(c) => {
-                            let enc = encode(&c.program).map(|v| v.len()).unwrap_or(0);
-                            let mlc = c.stats.max_live_cells;
-                            let buckets = if regime == BwdRegime::Ext {
-                                format!("{} (b{})", mlc, mlc / 4)
-                            } else {
-                                format!("{mlc}")
-                            };
-                            // Realized role-neutral DRAM traffic (cells) vs floor:
-                            // the uncached re-read multiplicity (fwd-comparable).
-                            let realized = c.stats_ext.global + c.stats_ext.fold_traffic;
-                            let ratio = if tfloor > 0 {
-                                format!("{:.1}", realized as f64 / tfloor as f64)
-                            } else {
-                                "-".to_string()
-                            };
-                            let spill = c.stats.cell_stores;
-                            structural.push(format!(
-                                "| {rk} | b{budget} | {buckets} | {} | {} | {realized} | {tfloor} | {ratio} | {} |{skip_mark}",
-                                c.stats.program_lanes, enc, spill,
-                            ));
-                            if representative.is_none() {
-                                representative = Some((budget, c));
-                            }
-                        }
-                        Err(f) => {
-                            structural.push(format!(
-                                "| {rk} | b{budget} | INFEASIBLE(place-floor={f} lanes) | - | - | - | {tfloor} | - | - |{skip_mark}"
-                            ));
+                    let legacy = try_compile_legacy(&d, budget);
+                    let streamed = try_compile_streamed(&d, budget);
+                    let selects_legacy = legacy.is_ok();
+                    let selects_streamed = !selects_legacy && streamed.is_ok();
+                    structural.push(fmt_structural_row(
+                        &rk,
+                        budget,
+                        "legacy",
+                        &legacy,
+                        regime,
+                        tfloor,
+                        skip_mark,
+                        selects_legacy,
+                    ));
+                    structural.push(fmt_structural_row(
+                        &rk,
+                        budget,
+                        "streamed",
+                        &streamed,
+                        regime,
+                        tfloor,
+                        skip_mark,
+                        selects_streamed,
+                    ));
+
+                    // `representative`/downstream Tables B+C stay on the actual
+                    // `compile_distilled` selection (not re-derived from the two
+                    // rows above, so a future selector change can't silently
+                    // desync this from what production calls).
+                    if representative.is_none() {
+                        if let Ok(c) = try_compile(&d, budget) {
+                            representative = Some((budget, c));
                         }
                     }
                 }
@@ -222,10 +303,10 @@ fn bwd_census() {
     println!("# Backward-VM Census\n");
     println!("Budgets: {BUDGETS:?} (bf lanes; Ext buckets = lanes/4). Rounds 1..={MAX_ROUND} + geometric total over rounds 0..={MAX_ROUND} (weight 2^-r).\n");
 
-    println!("## Table A — Structural (per circuit × layer × regime × budget)\n");
-    println!("`max_live` is smem occupancy in lanes (Ext buckets = lanes/4); INFEASIBLE rows give the PLACEMENT floor (min feasible lanes). `realized` / `traffic_floor` are role-neutral DRAM cells (uncached, budget-invariant); `real÷floor` is the uncached per-leaf re-read multiplicity.\n");
-    println!("| layer | budget | max_live (Ext: buckets) | n_instr | enc_lanes | realized | traffic_floor | real÷floor | cell_stores |");
-    println!("|---|---|---|---|---|---|---|---|---|");
+    println!("## Table A — Structural (per circuit × layer × regime × budget × variant)\n");
+    println!("Two rows per budget: `legacy` = `compile_distilled_legacy_only` (`stream_reductions = false`); `streamed` = `compile_distilled_streamed(.., true)`. `<- selected` marks the row `compile_distilled` (legacy-first, falls back to streamed on `BudgetBelowFloor`) actually returns at that budget. `max_live` is smem occupancy in lanes (Ext buckets = lanes/4); INFEASIBLE rows give the PLACEMENT floor (min feasible lanes). `realized` / `traffic_floor` are role-neutral DRAM cells (uncached, budget-invariant); `real÷floor` is the uncached per-leaf re-read multiplicity.\n");
+    println!("| layer | budget | variant | max_live (Ext: buckets) | n_instr | enc_lanes | realized | traffic_floor | real÷floor | cell_stores |");
+    println!("|---|---|---|---|---|---|---|---|---|---|");
     for r in &structural {
         println!("{r}");
     }

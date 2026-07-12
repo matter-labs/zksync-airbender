@@ -248,30 +248,19 @@ fn assert_result_in_acc(p: &Program, ctx: &str) {
 
 /// Distilled layer x regime instances whose placement FLOOR exceeds b16 —
 /// `"{stem}[L{layer}][{regime}] floor={floor}"`, pinned exactly so drift is
-/// loud. These are the wide delegation-circuit cones: the backward rebuild
+/// loud. These WERE the wide delegation-circuit cones: the backward rebuild
 /// INLINES every `LookupValue` query cone (fwd fences them behind terminal
 /// resolution Specials), so `compile_reduction_virtual`/FMA pre-materialization
-/// needs far more concurrent temps than the same layer's forward atoms.
-/// Compiling these at b16 requires a bwd-side accumulation strategy inside the
-/// shared reduction lowering (NOT part of Task 5's behavior-inert hook seam) —
-/// tracked as an open follow-up; they compile fine at their floors.
-/// Grew 5→12 with the backward cache fence: the seven `[L0]` decoder layers
-/// unblocked by the fence (formerly in `PINNED_SKIPPED_DECODER`) enter here at
-/// their fenced Ext/R0 floors — identical set to `bwd_value_parity.rs`.
-const PINNED_B16_INFEASIBLE: &[&str] = &[
-    "add_sub_lui_auipc_mop[L0][Ext] floor=48",
-    "bigint_with_extended_control[L0][R0] floor=83",
-    "bigint_with_extended_control[L0][Ext] floor=320",
-    "jump_branch_slt[L0][Ext] floor=28",
-    "keccak_special5[L0][R0] floor=46",
-    "keccak_special5[L0][Ext] floor=172",
-    "mem_subword_only[L0][Ext] floor=20",
-    "mem_word_only[L0][Ext] floor=20",
-    "shift_binop[L0][Ext] floor=24",
-    "unified_reduced_machine[L0][R0] floor=20",
-    "unified_reduced_machine[L0][Ext] floor=68",
-    "unsigned_mul_div[L1][Ext] floor=40",
-];
+/// needed far more concurrent temps than the same layer's forward atoms.
+///
+/// SP1 (Task 5): EMPTY. `compile_distilled`'s legacy-first-fallback-to-streamed
+/// retry (Task 2's one-Ext-cell reduction streaming, `stream_reductions = true`)
+/// brings every one of the former 12 wide `[L0]`/`[L1]` cones under the b16
+/// placement floor, so the measured residual collapsed to empty — identical set
+/// to `bwd_value_parity.rs`. Kept as a pinned (rather than deleted) constant +
+/// the floor-retry branch below stays live — a future circuit could reintroduce
+/// a residual.
+const PINNED_B16_INFEASIBLE: &[&str] = &[];
 
 /// Task-5 smoke: `compile_distilled` at the committed b16 budget over EVERY
 /// distillable (non-decoder) fixture layer, BOTH regimes, uncached (no bwd

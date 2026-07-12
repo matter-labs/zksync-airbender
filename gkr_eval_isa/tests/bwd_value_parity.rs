@@ -28,8 +28,10 @@
 //!
 //! Because the fence also stops `claim_cone_has_decoder` at cache roots, every
 //! former `PeekDecoder` layer is now distillable; `PINNED_SKIPPED_DECODER` is
-//! consequently empty and those `[L0]` layers appear in `PINNED_B16_INFEASIBLE` at
-//! their fenced floors.
+//! consequently empty. Those former decoder `[L0]` layers land among the wide
+//! cones that Task 1-4's streamed backward reduction lowering brought under the
+//! b16 placement floor via `compile_distilled`'s legacy-first-fallback-to-
+//! streamed retry, so `PINNED_B16_INFEASIBLE` is ALSO empty (SP1 Task 5).
 
 mod common;
 
@@ -67,26 +69,17 @@ const PINNED_SKIPPED_DECODER: &[&str] = &[];
 
 /// Distillable layers whose placement floor exceeds b16 — the value gate still
 /// covers them by retrying `compile_distilled` at the reported floor. Pinned
-/// (with floor) so drift is loud; identical to `bwd_distill_fixtures.rs`.
+/// (empty) so a regression is loud; identical to `bwd_distill_fixtures.rs`.
 ///
-/// SP1 note: these 12 overflow through the FMA path (`try_compile_fma_virtual`),
-/// NOT the pure `compile_reduction_virtual` reduction path that Task 1 streams, so
-/// Task-1 reduction streaming leaves this set (and its floors) unchanged. Shrinking
-/// it is the streamed-FMA work in the later SP1 tasks.
-const PINNED_B16_INFEASIBLE: &[&str] = &[
-    "add_sub_lui_auipc_mop[L0][Ext] floor=48",
-    "bigint_with_extended_control[L0][R0] floor=83",
-    "bigint_with_extended_control[L0][Ext] floor=320",
-    "jump_branch_slt[L0][Ext] floor=28",
-    "keccak_special5[L0][R0] floor=46",
-    "keccak_special5[L0][Ext] floor=172",
-    "mem_subword_only[L0][Ext] floor=20",
-    "mem_word_only[L0][Ext] floor=20",
-    "shift_binop[L0][Ext] floor=24",
-    "unified_reduced_machine[L0][R0] floor=20",
-    "unified_reduced_machine[L0][Ext] floor=68",
-    "unsigned_mul_div[L1][Ext] floor=40",
-];
+/// SP1 (Task 5): EMPTY. The former 12-entry set overflowed through the FMA path
+/// (`try_compile_fma_virtual`), NOT the pure `compile_reduction_virtual`
+/// reduction path Task 1 streams; `compile_distilled`'s legacy-first-fallback-
+/// to-streamed (Task 2's `stream_reductions = true` retry) turned out to also
+/// bring every one of those 12 wide `[L0]` cones under the b16 placement floor,
+/// so the residual measured by this gate collapsed to empty. Kept as a pinned
+/// (rather than deleted) constant + the floor-retry branch below stays live —
+/// a future circuit could reintroduce a residual.
+const PINNED_B16_INFEASIBLE: &[&str] = &[];
 
 const BUDGET: usize = 16;
 
