@@ -229,6 +229,14 @@ fn bwd_batching_headroom() {
 /// used. Keyed by origin (merges descs sharing an origin — caching the value serves all).
 /// VS-origin folds are compute-only (zero DRAM gather) and excluded from the DRAM prize.
 fn read_origin_positions(c: &BwdCompiledLayer) -> Vec<Vec<usize>> {
+    read_origin_positions_keyed(c).into_iter().map(|(_, p)| p).collect()
+}
+
+/// Same walk as `read_origin_positions`, but keyed by the origin's Debug string (its
+/// `OriginLeaf`/`ReadPlace` identity) — the ledger must carry real identity, not a
+/// transient index (codex). VS-origin folds are compute-only (zero DRAM gather) and
+/// excluded from the DRAM prize.
+fn read_origin_positions_keyed(c: &BwdCompiledLayer) -> Vec<(String, Vec<usize>)> {
     let mut map: BTreeMap<String, (Vec<usize>, bool)> = BTreeMap::new();
     for (idx, instr) in c.program.instrs.iter().enumerate() {
         let ops: Vec<&OperandLine> = match instr {
@@ -248,7 +256,7 @@ fn read_origin_positions(c: &BwdCompiledLayer) -> Vec<Vec<usize>> {
             }
         }
     }
-    map.into_values().filter(|(_, vs)| !*vs).map(|(p, _)| p).collect()
+    map.into_iter().filter(|(_, (_, vs))| !*vs).map(|(k, (p, _))| (k, p)).collect()
 }
 
 /// Reuse working-set peak (cells): max concurrent 4-cell residency over all reused origins'
@@ -611,5 +619,133 @@ fn fc0_live_profile_matches_placement_peak() {
                 "{name} {regime:?}: live_profile peak != placement max_live_cells"
             );
         }
+    }
+}
+
+/// FC0 (design §4): exact fixed-order ceiling per Ext L0 — ALL fixtures, with a
+/// `sel` column marking the streaming-selected rows (where the FC prize lives) — under
+/// (a) the per-site envelope free[t] = B_tot − work_live[t] at B_tot ∈ {16,24,32,48,64}
+/// (48 = b16 + 8 Ext buckets: the G0 budget), and (b) one flat-cap run free[t] = +B
+/// for Table-3 comparability. Emits the per-origin ledger (the repricing contract).
+#[test]
+#[ignore = "diagnostic: run explicitly with --ignored --nocapture"]
+fn bwd_exact_ceiling() {
+    const B_TOT: &[usize] = &[16, 24, 32, 48, 64];
+    const FLAT_EXTRA: &[usize] = &[4, 8, 16, 32, 52];
+    const HEAVY: &[&str] = &["bigint_with_extended_control", "keccak_special5", "unified_reduced_machine"];
+    let ledger_dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("fc0_ledger");
+    std::fs::create_dir_all(&ledger_dir).unwrap();
+    let mut rows: Vec<String> = Vec::new();
+    let mut g0: Vec<(String, usize, usize)> = Vec::new(); // (stem, reclaimed@48, waste)
+
+    for name in FIXTURES {
+        let stem = name.trim_end_matches("_layout_gkr.json");
+        let (layer, cross) = common::load_layer(name, 0);
+        let d = distill(&layer, BwdRegime::Ext, &cross, None);
+        if d.skipped_decoder {
+            continue;
+        }
+        let c = streamed(&d, 16);
+        let n = c.program.instrs.len();
+        let work = live_profile(&c.program);
+        let sel = if legacy_fits_b16(&d) { "legacy" } else { "STREAM" };
+
+        // Per-origin use positions WITH origin identity: new local helper
+        // `read_origin_positions_keyed(&c) -> Vec<(String, Vec<usize>)>` — the same
+        // walk as `read_origin_positions`, but keyed by the origin's Debug string
+        // (its OriginLeaf/ReadPlace identity). The ledger must carry real identity,
+        // not a transient index (codex); `read_origin_positions` can delegate to it.
+        let keyed = read_origin_positions_keyed(&c);
+        let mut gaps: Vec<Gap> = Vec::new();
+        for (o, (_, pos)) in keyed.iter().enumerate() {
+            for w in pos.windows(2) {
+                gaps.push(Gap { origin: o, start: w[0], end: w[1] });
+            }
+        }
+
+        // Premise guards (codex): this Ext-slice prize must be PURE read-origin fold
+        // reuse. Checked arithmetic, not saturating — if an assert fires, the
+        // reclaim% denominator mixes a non-leaf prize: re-scope before trusting it.
+        let floor = bwd_traffic_floor(&layer, BwdRegime::Ext, &cross);
+        let realized = c.stats_ext.global + c.stats_ext.fold_traffic;
+        assert!(realized >= floor, "{stem}: realized {realized} < floor {floor}");
+        let reread_waste = realized - floor;
+        assert_eq!(c.stats_ext.global, 0, "{stem}: Ext slice has Global traffic");
+        let excess: usize = keyed.iter().map(|(_, p)| p.len().saturating_sub(1)).sum();
+        assert_eq!(4 * excess, reread_waste, "{stem}: fold-reuse excess != reread_waste");
+
+        // (a) per-site envelope sweep; (b) flat-cap sweep.
+        let env_saved: Vec<usize> = B_TOT
+            .iter()
+            .map(|&b| {
+                let free: Vec<usize> = work.iter().map(|&w| b.saturating_sub(w)).collect();
+                fif_select(&gaps, &free).len()
+            })
+            .collect();
+        let flat_saved: Vec<usize> = FLAT_EXTRA
+            .iter()
+            .map(|&extra| fif_select(&gaps, &vec![extra; n]).len())
+            .collect();
+
+        // Ledger: per origin — uses + per-B_TOT retained-gap count (hand-rolled JSON).
+        let mut per_b_sel: Vec<Vec<usize>> = Vec::new();
+        for &b in B_TOT {
+            let free: Vec<usize> = work.iter().map(|&w| b.saturating_sub(w)).collect();
+            per_b_sel.push(fif_select(&gaps, &free));
+        }
+        let origins_json: Vec<String> = keyed
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, pos))| pos.len() >= 2)
+            .map(|(o, (origin, pos))| {
+                let per_b: Vec<String> = per_b_sel
+                    .iter()
+                    .map(|s| {
+                        let hits = s.iter().filter(|&&gi| gaps[gi].origin == o).count();
+                        let misses = pos.len() - hits; // every non-hit use is a gather
+                        let bypasses = (pos.len() - 1) - hits; // unretained gaps
+                        format!("{{\"hits\":{hits},\"misses\":{misses},\"bypasses\":{bypasses}}}")
+                    })
+                    .collect();
+                let span = pos.last().unwrap() - pos[0];
+                format!(
+                    "{{\"origin\":{origin:?},\"uses\":{pos:?},\"span\":{span},\"per_b\":[{}]}}",
+                    per_b.join(",")
+                )
+            })
+            .collect();
+        std::fs::write(
+            ledger_dir.join(format!("{stem}.json")),
+            format!(
+                "{{\"b_tot\":{B_TOT:?},\"n_instr\":{n},\"reread_waste\":{reread_waste},\"origins\":[{}]}}",
+                origins_json.join(",")
+            ),
+        )
+        .unwrap();
+
+        let pct = |saved: usize| if reread_waste > 0 { 100 * 4 * saved / reread_waste } else { 100 };
+        rows.push(format!(
+            "| {stem} L0 Ext | {sel} | {reread_waste} | {} | {} |",
+            env_saved.iter().map(|&s| format!("{}%", pct(s))).collect::<Vec<_>>().join(" / "),
+            flat_saved.iter().map(|&s| format!("{}%", pct(s))).collect::<Vec<_>>().join(" / "),
+        ));
+        if HEAVY.contains(&stem) {
+            g0.push((stem.to_string(), 4 * env_saved[3], reread_waste)); // index 3 = B_tot 48
+        }
+    }
+
+    println!("# FC0 — exact fixed-order ceiling (leaves-only FiF, Ext L0)\n");
+    println!("Envelope mode: free[t] = B_tot − work_live[t]. Flat mode: free[t] = +B (Table-3 comparable).");
+    println!("Reclaim% = 100·4·saved ÷ reread_waste. Ledger JSONs: {}\n", ledger_dir.display());
+    println!("| L0 layer | sel | reread_waste | ceiling% @B_tot 16/24/32/48/64 | ceiling% flat +4/+8/+16/+32/+52 |");
+    println!("| --- | --- | --- | --- | --- |");
+    for r in &rows {
+        println!("{r}");
+    }
+    println!("\n## G0 verdict (heavy trio, per-site envelope @ B_tot=48 = b16 + 8 buckets)\n");
+    for (stem, reclaimed, waste) in &g0 {
+        let pct = if *waste > 0 { 100 * reclaimed / waste } else { 100 };
+        let verdict = if pct >= 60 { "FUND FC1/FC2" } else if pct < 25 { "PIVOT (FC3/FC4)" } else { "GREY — RR call" };
+        println!("- {stem}: {pct}% of reread_waste ({reclaimed}/{waste} cells) → {verdict}");
     }
 }
