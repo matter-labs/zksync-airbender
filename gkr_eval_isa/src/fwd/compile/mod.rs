@@ -12,7 +12,7 @@ pub use self::arith::build_cross_layer_field_map;
 pub use self::decisions::SiteDecisions;
 pub use self::place::MoveCtx;
 use self::lower::lower_layer_virtual;
-use self::place::{plan_placement, PlacementInput, RelocStep, ResidencyStep, ValueId, VInstrKind, VirtualOp};
+use self::place::{plan_placement, plan_placement_with_peak, PlacementInput, RelocStep, ResidencyStep, ValueId, VInstrKind, VirtualOp};
 use super::binding::BackingKey;
 use super::context::{
     build_forward_actions, CompileTrace, CompiledLayer, DagForwardContext, ForwardAction,
@@ -599,6 +599,81 @@ pub(crate) fn compile_bwd_program(
     apply_promote(&mut program);
 
     Ok((program, placement.max_live_cells))
+}
+
+/// Task 6 (LIGHT diagnostic) sibling of [`compile_bwd_program`]: identical bwd compile,
+/// but placement runs through [`plan_placement_with_peak`] so the caller also receives the
+/// PEAK instruction index and the peak-live `(ValueId, width)` set (the values occupying the
+/// b16 placement peak). Additive — `compile_bwd_program` is untouched. The returned
+/// `Program`/`max_live` are byte-identical to `compile_bwd_program` for the same inputs
+/// (only the extra peak readout differs). Intended purely for the peak-composition test;
+/// production compiles use `compile_bwd_program`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compile_bwd_program_peak(
+    layer: &DagLayer,
+    root_expr: ExprId,
+    terms: &[ExprId],
+    ctx: &mut DagForwardContext,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+    field_overrides: &BTreeMap<ExprId, FieldKind>,
+    streams: Option<self::decisions::OccurrenceStreams>,
+    place_budget: usize,
+    lower_budget: usize,
+    stream_reductions: bool,
+) -> Result<(Program, usize, usize, Vec<(ValueId, usize)>), CompileError> {
+    // Phase 1 — the bwd one-root driver (result-in-acc terminal convention).
+    let (vinstrs, step_of) = self::lower::lower_bwd_root_virtual(
+        layer, root_expr, terms, ctx, leaf_descs, field_overrides, streams, lower_budget,
+        stream_reductions,
+    )?;
+
+    // Phase 1.5 — the shared value-preserving peephole (identical to `compile_bwd_program`).
+    let (vinstrs, step_of) = self::optimize::optimize_vinstrs(vinstrs, step_of);
+
+    let mut widths: HashMap<ValueId, OperandField> = HashMap::new();
+    for vi in &vinstrs {
+        if let Some(v) = vi.defines() {
+            widths.insert(v, vi.field());
+        }
+    }
+
+    // Phase 2 — lifetime-overlap placement, peak-instrumented.
+    let n_steps = terms.len().max(1);
+    let free_steps: Vec<ResidencyStep> = (0..n_steps).map(|_| ResidencyStep::default()).collect();
+    let place_instrs: Vec<self::place::VirtualInstr> =
+        vinstrs.iter().map(|vi| vi.to_place()).collect();
+    let (placement, peak_instr, peak_live) = plan_placement_with_peak(&PlacementInput {
+        instrs: &place_instrs,
+        steps: &free_steps,
+        step_of_instr: &step_of,
+        widths: &widths,
+        budget: place_budget,
+    })?;
+
+    // Phase 3 — materialize to ISA instructions (+ any relocation MOVs).
+    let mut moves_at: HashMap<usize, Vec<RelocStep>> = HashMap::new();
+    for (i, r) in &placement.moves {
+        moves_at.entry(*i).or_default().push(*r);
+    }
+    let mut program = Program::default();
+    for (i, vi) in vinstrs.iter().enumerate() {
+        if let Some(ms) = moves_at.get(&i) {
+            for r in ms {
+                program.instrs.push(Instr::Mov {
+                    dir: MovDir::DstFromSrc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::Smem { cell: r.to }),
+                    src: Some(OperandLine::Smem { cell: r.from }),
+                });
+            }
+        }
+        program.instrs.push(materialize_vinstr(vi, i, &placement.cell_of)?);
+    }
+
+    // Phase 3.5 — v2 promote annotation (value-inert), same machine as fwd.
+    apply_promote(&mut program);
+
+    Ok((program, placement.max_live_cells, peak_instr, peak_live))
 }
 
 /// v2 promote emission (spec §1.2): replay the strict acc-domain tracker over the final

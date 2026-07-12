@@ -29,7 +29,7 @@ use cs::gkr_compiler::dag_ir::{Expr, ExprId};
 
 use crate::fwd::binding::BackingTable;
 use crate::fwd::compile::decisions::OccurrenceStreams;
-use crate::fwd::compile::{compile_bwd_program, SiteDecisions};
+use crate::fwd::compile::{compile_bwd_program, compile_bwd_program_peak, SiteDecisions};
 use crate::fwd::context::DagForwardContext;
 use crate::fwd::error::CompileError;
 use crate::fwd::isa::{DstLine, Instr, LdcSub, OperandField, OperandLine, Program};
@@ -235,6 +235,122 @@ fn compile_distilled_at(
         stats,
         stats_ext,
     })
+}
+
+// ── Task 6 (LIGHT) peak-composition diagnostic seam ───────────────────────────
+
+/// Diagnostic sibling of [`compile_distilled`]: compile `d` at `budget` (streamed on the
+/// same legacy-first-then-streamed fallback as `compile_distilled`) and ALSO return the
+/// PEAK instruction index and the peak-live `(ExprId, width)` set — the values occupying the
+/// placement peak that `max_live_cells` measures. Additive: `compile_distilled` and the
+/// production `compile_distilled_streamed`/`compile_distilled_at` paths are untouched; this
+/// mirrors their control flow through the peak-instrumented `compile_bwd_program_peak`.
+/// The returned `BwdCompiledLayer` is value-identical to `compile_distilled`'s for the same
+/// inputs; `sum(width for (_, width) in live) == layer.stats.max_live_cells` by construction.
+pub fn compile_distilled_peak(
+    d: &DistilledLayer,
+    budget: usize,
+    decisions: Option<&SiteDecisions>,
+) -> Result<(BwdCompiledLayer, usize, Vec<(ExprId, usize)>), CompileError> {
+    match compile_distilled_streamed_peak(d, budget, decisions, false) {
+        Err(CompileError::BudgetBelowFloor { .. }) => {
+            compile_distilled_streamed_peak(d, budget, decisions, true)
+        }
+        other => other,
+    }
+}
+
+/// Peak-instrumented sibling of [`compile_distilled_streamed`] — same fill-then-trim
+/// feasibility search, threading the winning compile's peak readout through `best`.
+fn compile_distilled_streamed_peak(
+    d: &DistilledLayer,
+    budget: usize,
+    decisions: Option<&SiteDecisions>,
+    stream_reductions: bool,
+) -> Result<(BwdCompiledLayer, usize, Vec<(ExprId, usize)>), CompileError> {
+    const FILL: usize = 1 << 20;
+    let at = |lb: usize| compile_distilled_at_peak(d, budget, lb, decisions, stream_reductions);
+    match at(FILL) {
+        Ok(c) => return Ok(c),
+        Err(CompileError::BudgetBelowFloor { .. }) => {}
+        Err(e) => return Err(e),
+    }
+    let mut best = at(budget)?; // baseline — never worse than this
+    let (mut lo, mut hi) = (budget, FILL); // lo fits, hi overflows
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        match at(mid) {
+            Ok(c) => {
+                best = c;
+                lo = mid;
+            }
+            Err(CompileError::BudgetBelowFloor { .. }) => hi = mid,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(best)
+}
+
+/// Peak-instrumented sibling of [`compile_distilled_at`] — lower at `lower_budget`, place
+/// at `place_budget` via `compile_bwd_program_peak`, returning the compiled layer plus its
+/// peak instruction index and peak-live `(ExprId, width)` set.
+fn compile_distilled_at_peak(
+    d: &DistilledLayer,
+    place_budget: usize,
+    lower_budget: usize,
+    decisions: Option<&SiteDecisions>,
+    stream_reductions: bool,
+) -> Result<(BwdCompiledLayer, usize, Vec<(ExprId, usize)>), CompileError> {
+    let layer = &d.layer;
+    let root_expr = layer.roots[d.root.0 as usize].expr;
+    let terms = spine_terms(d);
+
+    let mut ctx = DagForwardContext::default();
+    ctx.cross_layer_fields = d.cross_fields.clone();
+
+    let streams = decisions.map(|dec| {
+        OccurrenceStreams::build_bwd_root(
+            layer,
+            d.root,
+            root_expr,
+            &terms,
+            dec,
+            &distilled_site_domain(d),
+        )
+    });
+
+    let (program, max_live_cells, peak_instr, peak_live) = compile_bwd_program_peak(
+        layer,
+        root_expr,
+        &terms,
+        &mut ctx,
+        &d.leaf_descs,
+        &d.field_overrides,
+        streams,
+        place_budget,
+        lower_budget,
+        stream_reductions,
+    )?;
+
+    assert!(ctx.specials.is_empty(), "bwd compile leaked into the fwd descriptor namespace");
+
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials);
+    stats.max_live_cells = max_live_cells;
+
+    Ok((
+        BwdCompiledLayer {
+            program,
+            specials: d.specials.clone(),
+            backings: ctx.backings,
+            consts: ctx.consts,
+            challenges: ctx.challenges,
+            budget: place_budget,
+            stats,
+            stats_ext,
+        },
+        peak_instr,
+        peak_live,
+    ))
 }
 
 // ── stats tally (bwd descriptor namespace) ────────────────────────────────────

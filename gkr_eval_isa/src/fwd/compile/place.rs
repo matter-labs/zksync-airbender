@@ -478,6 +478,59 @@ pub fn plan_placement(input: &PlacementInput) -> Result<Placement, CompileError>
     Ok(Placement { cell_of, moves: Vec::new(), max_live_cells, move_ctx: Vec::new() })
 }
 
+/// Diagnostic sibling of [`plan_placement`] (Task 6 LIGHT peak-composition readout).
+/// Produces a BYTE-IDENTICAL [`Placement`] (same `compute_live_ranges` / `assign_cells`
+/// / width-weighted fill), and additionally returns the PEAK instruction index (the
+/// lowest-index argmax of the per-instr live occupancy `width_at`) and the values live
+/// there, each paired with its cell width (Ext = 4, Base = 1). Additive — `plan_placement`
+/// is untouched. Invariant (asserted by the Task-6 attribution test): `sum(width for
+/// (_, width) in live) == placement.max_live_cells`, since `peak` is exactly the argmax of
+/// `width_at` and `live` enumerates the same values that contribute to `width_at[peak]`.
+pub fn plan_placement_with_peak(
+    input: &PlacementInput,
+) -> Result<(Placement, usize, Vec<(ValueId, usize)>), CompileError> {
+    let n = input.instrs.len();
+    let ranges = compute_live_ranges(input);
+    let cell_of_value = assign_cells(&ranges, input.widths, input.budget)?;
+
+    // Same materialize/fill as `plan_placement` (kept in lockstep so the returned
+    // `Placement` matches it exactly).
+    let mut cell_of: HashMap<(usize, ValueId), u16> = HashMap::new();
+    let mut width_at: Vec<usize> = vec![0; n.max(1)];
+    for (&v, &c) in &cell_of_value {
+        let r = ranges[&v];
+        let w = width_of(input.widths, v);
+        for i in r.def..=r.last_use {
+            if i < n {
+                cell_of.insert((i, v), c);
+                width_at[i] += w;
+            }
+        }
+    }
+    let max_live_cells = width_at.iter().copied().max().unwrap_or(0);
+
+    // Peak = lowest-index argmax of `width_at`. Keying on `(w, Reverse(i))` with distinct
+    // indices makes the unique maximum the highest width and — among ties — the lowest index.
+    let peak = width_at
+        .iter()
+        .copied()
+        .enumerate()
+        .max_by_key(|&(i, w)| (w, std::cmp::Reverse(i)))
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+
+    // Values live at `peak`, each with its cell width. `def <= peak <= last_use` selects
+    // exactly the values that summed into `width_at[peak] == max_live_cells`.
+    let mut live: Vec<(ValueId, usize)> = ranges
+        .iter()
+        .filter(|(_, r)| r.def <= peak && peak <= r.last_use)
+        .map(|(&v, _)| (v, width_of(input.widths, v)))
+        .collect();
+    live.sort_by_key(|(v, _)| v.0);
+
+    Ok((Placement { cell_of, moves: Vec::new(), max_live_cells, move_ctx: Vec::new() }, peak, live))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*; // VInstrKind, VirtualOp, VirtualInstr, PlacementInput, Placement, plan_placement
