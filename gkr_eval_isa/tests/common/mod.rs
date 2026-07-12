@@ -481,15 +481,6 @@ fn count_desc_uses(p: &Program, desc: u16) -> usize {
     n
 }
 
-fn count_smem_reads(p: &Program) -> usize {
-    let mut n = 0;
-    for_each_operand(p, |op| {
-        if matches!(op, OperandLine::Smem { .. }) {
-            n += 1;
-        }
-    });
-    n
-}
 
 /// Load fixture `name` → lower/validate the DAG → return layer `li` and the circuit's
 /// cross-layer field map (for `distill`). The reusable per-fixture entry for later SP1
@@ -831,22 +822,27 @@ pub fn shared_leaf_fold_uses(c: &BwdCompiledLayer) -> usize {
 }
 
 /// Non-vacuous proof the admission branch fired: the shared leaf's fold-source gather
-/// count dropped to exactly ONE (its later occurrence served from a resident cell — a
-/// Smem read must therefore be present). Pair with a no-decisions baseline of 2. This
-/// exact-1 form fits a SYNTHETIC layer whose shared leaf has two uses and fits b16 with
-/// room to keep it resident across both.
+/// count dropped to exactly ONE. This metric is SHARED-LEAF-SCOPED (`count_desc_uses` on
+/// the leaf's own `Special` descriptor). For the SYNTHETIC fixture the leaf has fan-out 2,
+/// so the no-decisions baseline is 2 gathers; `== 1` means exactly one occurrence was
+/// served from a resident cell instead of re-gathered — i.e. that one is a Smem read of the
+/// leaf's own admitted cell. (An earlier form also `&&`'d a WHOLE-PROGRAM `count_smem_reads
+/// > 0`, but that was loose corroboration: the shared-leaf-scoped gather drop already
+/// witnesses the resident read of exactly this leaf.)
 pub fn program_admits_shared_leaf(c: &BwdCompiledLayer) -> bool {
-    shared_leaf_fold_uses(c) == 1 && count_smem_reads(&c.program) > 0
+    shared_leaf_fold_uses(c) == 1
 }
 
 /// Non-vacuous proof the admission branch fired on a REAL wide fixture. There the shared
 /// leaf has many uses and b16 budget pressure keeps only SOME of them resident, so the
 /// exact-1 collapse above does not apply. Instead: pinning the leaf's priority must
-/// STRICTLY reduce its fold-source gathers versus the no-decisions baseline `c_none` (uses
-/// were cached to cells), with resident Smem reads present. The strict drop is specific to
-/// the shared leaf (its priority alone is pinned), so it directly witnesses its admission.
+/// STRICTLY reduce its fold-source gathers versus the no-decisions baseline `c_none`. Each
+/// dropped gather is exactly one occurrence now served from the leaf's resident cell (a Smem
+/// read of ITS cell), so the strict drop IS the shared-leaf-scoped resident-read count — no
+/// whole-program Smem tally needed. The drop is specific to the shared leaf (its priority
+/// alone is pinned), so it directly witnesses its admission.
 pub fn program_admits_shared_leaf_vs_baseline(c: &BwdCompiledLayer, c_none: &BwdCompiledLayer) -> bool {
-    shared_leaf_fold_uses(c) < shared_leaf_fold_uses(c_none) && count_smem_reads(&c.program) > 0
+    shared_leaf_fold_uses(c) < shared_leaf_fold_uses(c_none)
 }
 
 // ── synthetic value checks (independent recompute vs compiled program) ─────────

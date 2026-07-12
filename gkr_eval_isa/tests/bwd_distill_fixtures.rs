@@ -253,10 +253,13 @@ fn assert_result_in_acc(p: &Program, ctx: &str) {
 /// resolution Specials), so `compile_reduction_virtual`/FMA pre-materialization
 /// needed far more concurrent temps than the same layer's forward atoms.
 ///
-/// SP1 (Task 5): EMPTY. `compile_distilled`'s legacy-first-fallback-to-streamed
-/// retry (Task 2's one-Ext-cell reduction streaming, `stream_reductions = true`)
-/// brings every one of the former 12 wide `[L0]`/`[L1]` cones under the b16
-/// placement floor, so the measured residual collapsed to empty — identical set
+/// SP1 (Task 5): EMPTY. These 12 overflow through the FMA path
+/// (`try_compile_fma_virtual`), NOT the pure `compile_reduction_virtual` path;
+/// `compile_distilled`'s legacy-first-fallback-to-streamed retry (Task 2's
+/// one-Ext-cell streamed lowering under `stream_reductions = true`, which streams
+/// BOTH reduction and FMA — these product-heavy cones collapse via the streamed
+/// FMA sibling) brings every one of the former 12 wide `[L0]`/`[L1]` cones under
+/// the b16 placement floor, so the measured residual collapsed to empty — identical set
 /// to `bwd_value_parity.rs`. Kept as a pinned (rather than deleted) constant +
 /// the floor-retry branch below stays live — a future circuit could reintroduce
 /// a residual.
