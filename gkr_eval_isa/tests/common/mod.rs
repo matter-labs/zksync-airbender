@@ -751,6 +751,43 @@ pub fn synthetic_wide_add_layer_with_shared_leaf() -> DistilledLayer {
     distill(&raw_layer(sources, exprs, roots), BwdRegime::Ext, &CrossFields::new(), None)
 }
 
+/// A wide FMA cone (Task 2) whose product children mix LEAF products (`Mul([read, read])`
+/// — both operands direct, stay fused through `emit_fma_products`) and COMPOUND×COMPOUND
+/// products (`Mul([Add(read,read), Add(read,read)])` — BOTH operands must stash, the nested
+/// per-operand `lower_operand_virtual` path). Nested one level below a 2-term alpha spine so
+/// the whole Add-of-products survives as ONE spine TERM routed through
+/// `try_compile_fma_virtual` (a binary `Mul` classifies as a `Product`; distill does NOT
+/// distribute Mul over Add). Legacy pre-materializes EVERY product operand concurrently
+/// (`2·n_cxc` Ext cells, floor ≫ 16); streaming holds only one product's operands + the
+/// running partial (`acc + P + lhs_cell + rhs_cell = 16` lanes at the cxc peak). Ext regime.
+pub fn synthetic_fma_compound_products_layer(n_cxc: usize, n_leaf: usize) -> DistilledLayer {
+    assert!(n_leaf >= 2, "need >=2 leaf products so a non-seed leaf product stays FMA-fused");
+    let mut sources = Vec::new();
+    let mut exprs = Vec::new();
+    let mut children: Vec<ExprId> = Vec::new();
+    // Leaf products: read * read (both operands direct → fused FMA).
+    for _ in 0..n_leaf {
+        let a = add_read(&mut sources, &mut exprs);
+        let b = add_read(&mut sources, &mut exprs);
+        children.push(add_expr(&mut exprs, Expr::Mul(vec![a, b])));
+    }
+    // Compound×compound products: (read+read) * (read+read) (both operands must stash).
+    for _ in 0..n_cxc {
+        let a = add_read(&mut sources, &mut exprs);
+        let b = add_read(&mut sources, &mut exprs);
+        let c = add_read(&mut sources, &mut exprs);
+        let e = add_read(&mut sources, &mut exprs);
+        let lhs = add_expr(&mut exprs, Expr::Add(vec![a, b]));
+        let rhs = add_expr(&mut exprs, Expr::Add(vec![c, e]));
+        children.push(add_expr(&mut exprs, Expr::Mul(vec![lhs, rhs])));
+    }
+    let root0 = add_expr(&mut exprs, Expr::Add(children));
+    // A small second claim root forces `distill` to wrap the roots in a spine `Add`.
+    let root1 = add_read(&mut sources, &mut exprs);
+    let roots = vec![claim_only_root(root0, 0), claim_only_root(root1, 1)];
+    distill(&raw_layer(sources, exprs, roots), BwdRegime::Ext, &CrossFields::new(), None)
+}
+
 // ── admission fixtures / probes ───────────────────────────────────────────────
 
 /// Locate the distilled `ExprId` of the `Read(column)` fold leaf, if present.

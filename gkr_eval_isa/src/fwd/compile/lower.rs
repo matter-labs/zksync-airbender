@@ -1214,6 +1214,36 @@ impl<'a> VirtualLower<'a> {
         Ok(())
     }
 
+    /// Fold one compound-operand PRODUCT `sign·(lhs*rhs)` into the running partial `P`
+    /// (held in `stash`), leaving `acc = ±(lhs*rhs) ⊕ P` (`⊕` = ADD — the FMA cone is an
+    /// Add). Each operand is lowered PER-OPERAND via `lower_operand_virtual` (the legacy
+    /// admission-preserving entry: a compound operand recomputes its cone into the acc and
+    /// finalizes into its OWN cell, so a shared operand can become resident; a direct-leaf
+    /// operand resolves to its source line), then `produce_product_into_acc` recombines the
+    /// two operand lines into the signed product. The streaming win over legacy is holding
+    /// only THIS product's operands + the one running partial concurrently, not every
+    /// product's operands at once. `acc_field` is `P`'s field (the acc field at stash time).
+    #[allow(clippy::too_many_arguments)]
+    fn fold_compound_product_into_partial(
+        &mut self,
+        layer: &DagLayer,
+        sign: Sign,
+        lf: OperandField,
+        lhs: ExprId,
+        rf: OperandField,
+        rhs: ExprId,
+        acc_field: OperandField,
+        stash: ValueId,
+        expected: OperandField,
+    ) -> Result<(), CompileError> {
+        let lhs_op = self.lower_operand_virtual(layer, lhs, expected)?;
+        let rhs_op = self.lower_operand_virtual(layer, rhs, expected)?;
+        self.produce_product_into_acc(sign, lf, &lhs_op, rf, &rhs_op); // acc = ±(lhs*rhs)
+        // acc = ±(lhs*rhs) ⊕ P  (ADD commutes; `stash` is `P` at `acc_field`).
+        self.push_fold(acc_field, vec![VirtualOp::Value(stash)], true, Sign::Plus);
+        Ok(())
+    }
+
     /// Fold every DIRECT (`!must_stash`) child of `kids` in field `phase` into the acc,
     /// grouped by sign so each homogeneous group is one (`MAX_ARITY`-split) fold. Serves
     /// each such child (via `direct_operand`) in `kids` order. Grouping ONLY — the
@@ -1409,6 +1439,13 @@ impl<'a> VirtualLower<'a> {
         if products.is_empty() {
             return Ok(None);
         }
+        // SP1 backward streaming fallback (Task 2): fold products/addends through the
+        // one-cell stash+refold engine — leaf×leaf products stay fused (`emit_fma_products`),
+        // compound operands/addends stream one at a time — instead of pre-materializing
+        // every product operand concurrently (the wide-L0 placement floor).
+        if self.stream_reductions {
+            return self.fma_streamed(layer, &products, &addends, expected).map(Some);
+        }
 
         let mut addend_ops: Vec<(OperandField, VirtualOp, Sign)> =
             Vec::with_capacity(addends.len());
@@ -1447,6 +1484,138 @@ impl<'a> VirtualLower<'a> {
 
         self.emit_fma_products(fma_lo);
         Ok(Some(()))
+    }
+
+    /// SP1 streamed FMA (Task 2): the streaming sibling of `try_compile_fma_virtual`,
+    /// engaged only under `stream_reductions`. Classifies each product/addend pre-lowering
+    /// and folds them bounding concurrent state to ONE running-partial stash plus each
+    /// item's own transient compute, instead of pre-materializing every product operand and
+    /// addend concurrently (the wide-L0 placement floor). Value-identical to the legacy body
+    /// by Add commutativity; read-side traffic identical (each leaf read once, tallied the
+    /// same whether it lands in an init / fold / FMA); feasibility ⊇ legacy.
+    ///
+    /// - **Direct addends** (`!must_stash`): grouped ADD-fold (base-first) — no cells.
+    /// - **Leaf×leaf products** (both operands direct): batched through `emit_fma_products`
+    ///   — FUSED, no cells (the existing fusion win is preserved).
+    /// - **Compound items** (a compound addend, or a product with ≥1 compound/may-admit
+    ///   operand): processed base-first, ONE AT A TIME wrapped by the running-partial stash;
+    ///   admission stays PER-OPERAND via `lower_operand_virtual` (never a synthetic product
+    ///   node), so a shared operand keeps its residency on the searched path.
+    fn fma_streamed(
+        &mut self,
+        layer: &DagLayer,
+        products: &[(Sign, ExprId, ExprId)],
+        addends: &[(Sign, ExprId)],
+        expected: OperandField,
+    ) -> Result<(), CompileError> {
+        // Classify addends (pre-lowering) into direct-fold vs stash-fold.
+        let mut direct_addends: Vec<(OperandField, ExprId, Sign)> = Vec::new();
+        let mut compound_addends: Vec<(OperandField, ExprId, Sign)> = Vec::new();
+        for &(sign, id) in addends {
+            let f = self.operand_field(layer, id, expected);
+            if self.is_compound_or_may_admit(layer, id) {
+                compound_addends.push((f, id, sign));
+            } else {
+                direct_addends.push((f, id, sign));
+            }
+        }
+        // Classify products: leaf (both operands direct → fused FMA, no cell) vs compound
+        // (≥1 operand compound/may-admit → one-at-a-time stash-fold).
+        let mut leaf_products: Vec<(Sign, OperandField, ExprId, OperandField, ExprId)> = Vec::new();
+        let mut compound_products: Vec<(Sign, OperandField, ExprId, OperandField, ExprId)> =
+            Vec::new();
+        for &(sign, lhs, rhs) in products {
+            let lf = self.operand_field(layer, lhs, expected);
+            let rf = self.operand_field(layer, rhs, expected);
+            let must_stash = self.is_compound_or_may_admit(layer, lhs)
+                || self.is_compound_or_may_admit(layer, rhs);
+            if must_stash {
+                compound_products.push((sign, lf, lhs, rf, rhs));
+            } else {
+                leaf_products.push((sign, lf, lhs, rf, rhs));
+            }
+        }
+
+        // ── Seed ── prefer a DIRECT addend (legacy seed heuristic over pre-lowering
+        // fields); else a leaf product; else a compound product. `try_compile_fma_virtual`
+        // only reaches here with ≥1 product, so a product seed always exists when no direct
+        // addend does — a compound ADDEND is therefore never the seed (always stash-folded).
+        let mut acc_field;
+        let mut leaf_seed: Option<usize> = None; // index into `leaf_products` used as seed
+        if !direct_addends.is_empty() {
+            let mut ops: Vec<(OperandField, VirtualOp, Sign)> =
+                Vec::with_capacity(direct_addends.len());
+            for &(f, id, s) in &direct_addends {
+                let op = self.direct_operand(layer, id, expected)?;
+                ops.push((f, op, s));
+            }
+            let seed = self.seed_from_addends(&ops); // emits the acc init (+ negate)
+            self.fold_addends_into_acc(&ops, Some(seed))?; // folds the rest, base-first
+            acc_field = join_field(ops.iter().map(|(f, _, _)| *f));
+        } else if !leaf_products.is_empty() {
+            // Seed from the first Plus leaf product (else the first) — matching legacy's
+            // no-addends product seed.
+            let seed = leaf_products.iter().position(|(s, ..)| *s == Sign::Plus).unwrap_or(0);
+            let (sign, lf, lhs, rf, rhs) = leaf_products[seed];
+            let lhs_op = self.direct_operand(layer, lhs, expected)?;
+            let rhs_op = self.direct_operand(layer, rhs, expected)?;
+            self.produce_product_into_acc(sign, lf, &lhs_op, rf, &rhs_op);
+            acc_field = product_field(lf, rf);
+            leaf_seed = Some(seed);
+        } else {
+            // Every product is compound: seed from the first Plus compound product (else the
+            // first), computed straight into the fresh acc (nothing to combine yet).
+            let seed = compound_products.iter().position(|(s, ..)| *s == Sign::Plus).unwrap_or(0);
+            let (sign, lf, lhs, rf, rhs) = compound_products.remove(seed);
+            let lhs_op = self.lower_operand_virtual(layer, lhs, expected)?;
+            let rhs_op = self.lower_operand_virtual(layer, rhs, expected)?;
+            self.produce_product_into_acc(sign, lf, &lhs_op, rf, &rhs_op);
+            acc_field = product_field(lf, rf);
+        }
+
+        // ── Leaf×leaf products: fused FMA into the seeded acc (seed skipped). ──
+        let mut fma_lo: Vec<(Sign, OperandField, VirtualOp, OperandField, VirtualOp)> =
+            Vec::with_capacity(leaf_products.len());
+        for (i, &(sign, lf, lhs, rf, rhs)) in leaf_products.iter().enumerate() {
+            if Some(i) == leaf_seed {
+                continue;
+            }
+            let lhs_op = self.direct_operand(layer, lhs, expected)?;
+            let rhs_op = self.direct_operand(layer, rhs, expected)?;
+            fma_lo.push((sign, lf, lhs_op, rf, rhs_op));
+            if product_field(lf, rf) == OperandField::Ext {
+                acc_field = OperandField::Ext;
+            }
+        }
+        self.emit_fma_products(fma_lo);
+
+        // ── Compound items: one-at-a-time stash+refold, base-first (so the acc lifts to
+        // Ext at most once and Base stashes stay 1-lane while the acc is still Base). ──
+        for phase in [OperandField::Base, OperandField::Ext] {
+            for &(f, id, sign) in &compound_addends {
+                if f != phase {
+                    continue;
+                }
+                let stash = self.alloc_temp_evicting(acc_field)?;
+                self.fold_compound_child_into_partial(layer, id, sign, f, true, acc_field, stash)?;
+                if f == OperandField::Ext {
+                    acc_field = OperandField::Ext;
+                }
+            }
+            for &(sign, lf, lhs, rf, rhs) in &compound_products {
+                if product_field(lf, rf) != phase {
+                    continue;
+                }
+                let stash = self.alloc_temp_evicting(acc_field)?;
+                self.fold_compound_product_into_partial(
+                    layer, sign, lf, lhs, rf, rhs, acc_field, stash, expected,
+                )?;
+                if product_field(lf, rf) == OperandField::Ext {
+                    acc_field = OperandField::Ext;
+                }
+            }
+        }
+        Ok(())
     }
 
     // ── materialize obligations (Compute/Cache roots) ────────────────────────────
@@ -1577,6 +1746,28 @@ fn pick_seed(kids: &[Kid]) -> usize {
 /// DRAM (cosmetic — `is_dram_read` is Task-5 metadata, unused by placement/interp).
 fn is_dram_op(op: &VirtualOp) -> bool {
     matches!(op, VirtualOp::Global { .. })
+}
+
+/// The field of a product `lhs*rhs`: `Ext` iff either operand is `Ext` (an Ext factor
+/// lifts the product), else `Base`. Used by the SP1 streamed FMA to track the running
+/// acc field (stash width + fold-back field).
+fn product_field(lf: OperandField, rf: OperandField) -> OperandField {
+    if lf == OperandField::Ext || rf == OperandField::Ext {
+        OperandField::Ext
+    } else {
+        OperandField::Base
+    }
+}
+
+/// `Ext` iff any field in `it` is `Ext`, else `Base` — the field the acc holds after a
+/// homogeneous-grouped reduction over operands of the given fields (any Ext member lifts
+/// the acc to Ext).
+fn join_field(it: impl Iterator<Item = OperandField>) -> OperandField {
+    if it.into_iter().any(|f| f == OperandField::Ext) {
+        OperandField::Ext
+    } else {
+        OperandField::Base
+    }
 }
 
 /// Canonicalize a commutative FMA pair so mixed products are `(Base, Ext)` (H5).

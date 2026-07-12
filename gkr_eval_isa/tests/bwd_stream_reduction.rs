@@ -9,9 +9,11 @@
 
 mod common;
 
+use cs::gkr_compiler::dag_ir::BwdRegime;
 use gkr_eval_isa::bwd::compile::{
     compile_distilled, compile_distilled_legacy_only, compile_distilled_streamed,
 };
+use gkr_eval_isa::bwd::distill::distill;
 
 /// A wide pure-ADD reduction overflows the legacy pre-materialize floor at b16, fits via
 /// streaming, and stays value-exact on the uncached path.
@@ -63,6 +65,57 @@ fn streamed_mixed_field_micro_is_value_exact() {
         assert_eq!(c.stats.ldc_reads, legacy.stats.ldc_reads, "ldc_reads moved");
         assert_eq!(c.stats_ext, legacy.stats_ext, "BwdTrafficStats moved");
     }
+}
+
+/// Task 2 green gate: bigint L0 in the Ext regime overflows the legacy FMA pre-materialize
+/// floor (320 lanes / 80 concurrent Ext operand cells) but STREAMS to `max_live <= 16`
+/// through `fma_streamed`, stays value-exact on the uncached path, and keeps its leaf
+/// products FUSED (`program_has_fma`). This is the fixture where the wide base-layer L0s
+/// finally collapse to fit b16 — the pure-reduction streaming of Task 1 did not move it
+/// (bigint overflows through the FMA path, not the reduction path).
+#[test]
+fn streamed_fma_collapses_bigint_l0() {
+    let (layer, cross) = common::load_layer("bigint_with_extended_control_layout_gkr.json", 0);
+    let d = distill(&layer, BwdRegime::Ext, &cross, None);
+    // The legacy pre-materialize FMA path cannot fit b16 (else streaming is never
+    // exercised) — the retry-to-streaming fallback is what makes b16 feasible.
+    assert!(
+        common::is_budget_below_floor(&compile_distilled_legacy_only(&d, 16, None).unwrap_err()),
+        "bigint L0 Ext must overflow the legacy FMA floor"
+    );
+    let c = compile_distilled(&d, 16, None).expect("streamed FMA fits b16");
+    assert!(c.stats.max_live_cells <= 16, "max_live {}", c.stats.max_live_cells);
+    common::assert_bwd_value_parity(&c, &d, &layer);
+    assert!(common::program_has_fma(&c.program), "leaf products must stay fused");
+}
+
+/// The compound×compound FMA path (both product operands stash — the nested per-operand
+/// `lower_operand_virtual` case bigint does NOT exercise): a wide Add mixing leaf products
+/// (fused) with `(read+read)*(read+read)` products overflows the legacy FMA floor, streams
+/// to `max_live <= 16`, stays value-exact, keeps leaf products fused, and — the A3 Global
+/// Constraint — has read-side traffic BIT-IDENTICAL to legacy (only cell/op/lane counts may
+/// move; read-side is budget-invariant on the uncached path).
+#[test]
+fn streamed_fma_compound_products_is_value_exact() {
+    let d = common::synthetic_fma_compound_products_layer(8, 6);
+    assert!(
+        common::is_budget_below_floor(&compile_distilled_legacy_only(&d, 16, None).unwrap_err()),
+        "the compound×compound fixture must overflow the legacy FMA floor"
+    );
+    let c = compile_distilled(&d, 16, None).expect("streamed FMA fits b16");
+    assert!(c.stats.max_live_cells <= 16, "max_live {}", c.stats.max_live_cells);
+    assert!(common::program_has_fma(&c.program), "leaf products must stay fused");
+    common::assert_synthetic_value_exact(&c, &d);
+
+    // A3 read-side traffic invariant: streamed (b16) vs legacy (at a feasible budget) are
+    // bit-identical on the whole read-side stats vector — reordering folds and adding stash
+    // Movs/cell-reads must not move any DRAM/fold/special/ldc read (each leaf read once).
+    let legacy = compile_distilled_legacy_only(&d, 1 << 12, None).expect("legacy fits at 4096");
+    assert_eq!(c.stats.dram_reads, legacy.stats.dram_reads, "dram_reads moved");
+    assert_eq!(c.stats.dram_traffic, legacy.stats.dram_traffic, "dram_traffic moved");
+    assert_eq!(c.stats.special_reads, legacy.stats.special_reads, "special_reads moved");
+    assert_eq!(c.stats.ldc_reads, legacy.stats.ldc_reads, "ldc_reads moved");
+    assert_eq!(c.stats_ext, legacy.stats_ext, "BwdTrafficStats moved");
 }
 
 /// The searched path: at low budget the wide reduction streams AND a prioritized shared

@@ -4,13 +4,13 @@
 //! from the rewritten stream. Rules: F1 leaf-fuse, F4/redundant-reload, F2 commute,
 //! F5 dead-admission (added in later tasks). This task is the scaffold + acc model.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use cs::gkr_compiler::dag_ir::ExprId;
 
 use super::lower::{VDst, VInstr};
 use super::place::{ValueId, VirtualOp};
-use crate::fwd::isa::{MovDir, Sign};
+use crate::fwd::isa::{MovDir, OperandField, Sign};
 
 /// Abstract accumulator contents at a program point. `Value(v)` means acc currently
 /// holds the same value the cell for `v` holds (established either by loading `v` or by
@@ -389,11 +389,34 @@ fn retarget_value_operand(vi: &mut VInstr, from: ValueId, to: ValueId) -> bool {
     }
 }
 
+/// The field each value is DEFINED at (the width placement assigns it): the `field()` of
+/// the instruction that `defines()` it. Mirrors the `widths` scan in `compile_bwd_program`
+/// / `compile_layer` (mod.rs), so an F2 commute's field check matches placement exactly.
+fn value_widths(vinstrs: &[VInstr]) -> HashMap<ValueId, OperandField> {
+    let mut m = HashMap::new();
+    for vi in vinstrs {
+        if let Some(v) = vi.defines() {
+            m.insert(v, vi.field());
+        }
+    }
+    m
+}
+
 /// F2 (adjacent, sign-aware): `AccFromSrc Value(w); <commuting op reads Value(v)>` with
 /// `acc_before[reload] == Value(v)` → delete the reload and retarget the op's `Value(v)`
 /// operand to `Value(w)`. Acc keeps `v`; the op consumes `w` instead. No new ISA operand.
+///
+/// FIELD SAFETY: the op reads its `Value(v)` operand at the op's own field bit, which is
+/// valid because `v` is defined at that width. Retargeting to `w` only stays valid when
+/// `w` shares `v`'s field — otherwise the op would read a Base cell at Ext (a placement
+/// `ExtCellMisaligned`) or read an Ext value as one Base limb (silent corruption). So the
+/// commute is gated on `width(w) == width(v)`. Same-field commutes (the only ones a
+/// value-correct program can rely on) are unaffected; a cross-field pair — which arises
+/// when a streamed reduction/FMA reloads a running partial next to a mixed-field product
+/// (`init acc<-Value(P); Mul{Ext} acc*=Value(base)`) — is left un-fused (still correct).
 fn commute_keep_in_acc(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool {
     let ab = acc_before(vinstrs);
+    let widths = value_widths(vinstrs);
     let mut del: BTreeSet<usize> = BTreeSet::new();
     let mut i = 0usize;
     while i + 1 < vinstrs.len() {
@@ -430,6 +453,11 @@ fn commute_keep_in_acc(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> b
             || !op_commutes_with_seed(&vinstrs[i + 1])
             || !reads_value(&vinstrs[i + 1], v)
         {
+            i += 1;
+            continue;
+        }
+        // Field safety (see fn doc): only commute across values of the SAME width.
+        if widths.get(&w) != widths.get(&v) {
             i += 1;
             continue;
         }
@@ -860,8 +888,19 @@ mod tests {
     #[test]
     fn f2_commutes_mul_to_keep_acc() {
         let (v, w) = (ExprId(1), ExprId(2));
-        // acc aliases v (store), reload w, MUL *= v  ->  drop reload, MUL *= w (acc stays v)
+        // acc aliases v (store), reload w, MUL *= v  ->  drop reload, MUL *= w (acc stays v).
+        // `w` is DEFINED at Base (same field as `v`) so the field-safety guard permits the
+        // commute; a real program always defines a reloaded value upstream, so `value_widths`
+        // knows its field. (Before the guard, this test omitted w's definer.)
         let mut vinstrs = vec![
+            VInstr::Mov {
+                dir: MovDir::DstFromSrc,
+                field: OperandField::Base,
+                dst: Some(VDst::Cell(w)),
+                src: Some(VirtualOp::Global { slot: 0, col: 0 }),
+                defines: Some(w),
+                is_dram_read: false,
+            },
             mov_store(v), // acc = Value(v)
             mov_load(w),  // reload w
             VInstr::Mul {
@@ -871,11 +910,11 @@ mod tests {
                 is_dram_read: false,
             },
         ];
-        let mut step_of = vec![0, 0, 0];
+        let mut step_of = vec![0, 0, 0, 0];
         let changed = commute_keep_in_acc(&mut vinstrs, &mut step_of);
         assert!(changed);
-        assert_eq!(vinstrs.len(), 2);
-        match &vinstrs[1] {
+        assert_eq!(vinstrs.len(), 3);
+        match &vinstrs[2] {
             VInstr::Mul { reads, .. } => assert!(matches!(reads[0], VirtualOp::Value(x) if x == w)),
             other => panic!("expected Mul reads=[w], got {other:?}"),
         }
