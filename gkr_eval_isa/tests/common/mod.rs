@@ -25,12 +25,12 @@ use cs::gkr_compiler::dag_ir::{
     bwd_roots, BatchingOrder, BwdRegime, ChallengeKey, ChallengePower, ClaimInfo, FieldKind, Root,
     RootGroup, RootId, RootOrigin, RootSlot, SiteKey, SourceId, SourceInfo,
 };
-use gkr_eval_isa::bwd::compile::BwdCompiledLayer;
+use gkr_eval_isa::bwd::compile::{compile_distilled_legacy_only, BwdCompiledLayer};
 use gkr_eval_isa::bwd::distill::{bind, distill, distilled_site_domain, DistilledLayer};
 use gkr_eval_isa::bwd::interp::{interpret_bwd_row, role_combine, sumcheck_fold_point, Role};
 use gkr_eval_isa::bwd::source::{BwdSpecial, FoldState, MaterializationPolicy, OriginLeaf};
 use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, SiteDecisions};
-use gkr_eval_isa::fwd::encode::{decode, encode};
+use gkr_eval_isa::fwd::encode::{decode, encode as encode_result};
 use gkr_eval_isa::fwd::error::CompileError;
 use gkr_eval_isa::fwd::isa::{Instr, OperandLine, Program};
 
@@ -535,7 +535,7 @@ pub fn assert_bwd_value_parity(c: &BwdCompiledLayer, d: &DistilledLayer, oracle_
     let cc_r = cache_consistent_resolvers(&cc);
 
     // (i) encode/decode roundtrip reproduces the program exactly.
-    let lanes = encode(&c.program).expect("encode");
+    let lanes = encode_result(&c.program).expect("encode");
     let decoded = decode(&lanes).expect("decode");
     assert_eq!(decoded, c.program, "encode/decode roundtrip mismatch");
 
@@ -868,4 +868,117 @@ pub fn assert_synthetic_value_exact_with_decisions(
     _decisions: &SiteDecisions,
 ) {
     assert_bwd_value_parity(c, d, &d.layer);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SP1 Task 4 — A3 read-side traffic-invariance surface (streamed == legacy)
+//
+// The "free-fix" certificate: for every fixture/layer/regime on the UNCACHED path
+// (`decisions: None`), the streamed program's read-side stats must be bit-identical
+// to legacy's at a commonly-feasible budget. These helpers back
+// `tests/bwd_stream_traffic_parity.rs`.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// The 12 pinned Global-Constraints fixtures — same list (and order) as
+/// `bwd_value_parity.rs` / `bwd_distill_fixtures.rs` / `fwd_vm_desc_census.rs`.
+pub const FIXTURES: &[&str] = &[
+    "add_sub_lui_auipc_mop_layout_gkr.json",
+    "bigint_with_extended_control_layout_gkr.json",
+    "blake2_g_function_layout_gkr.json",
+    "blake2_with_extended_control_layout_gkr.json",
+    "inits_and_teardowns_preprocessed_layout_gkr.json",
+    "jump_branch_slt_layout_gkr.json",
+    "keccak_special5_layout_gkr.json",
+    "mem_subword_only_layout_gkr.json",
+    "mem_word_only_layout_gkr.json",
+    "shift_binop_layout_gkr.json",
+    "unsigned_mul_div_layout_gkr.json",
+    "unified_reduced_machine_layout_gkr.json",
+];
+
+/// Every layer of fixture `name` that has backward roots, as `(layer_index, layer,
+/// cross_field_map)`. The cross-layer field map is a whole-circuit property, so the
+/// same clone rides each tuple (matching `distill(&layer, regime, &cross, None)`).
+/// Returns an OWNED iterator (the DAG is dropped) so callers hold no borrow.
+pub fn layers_with_bwd_roots(name: &str) -> impl Iterator<Item = (usize, DagLayer, CrossFields)> {
+    let artifact = load_fixture(name);
+    let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
+    validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
+    let cross = build_cross_layer_field_map(&dag);
+    let mut out = Vec::new();
+    for (li, layer) in dag.layers.iter().enumerate() {
+        if bwd_roots(layer).is_empty() {
+            continue; // nothing to prove backward
+        }
+        out.push((li, layer.clone(), cross.clone()));
+    }
+    out.into_iter()
+}
+
+/// Legacy's smallest feasible budget for `d`, with the legacy program compiled there.
+///
+/// Scans the candidate budgets `[16, 24, 32, 48, 64, floor]` (spec A3) and returns the
+/// smallest at which the pure legacy pre-materialize lowering
+/// (`compile_distilled_legacy_only`) is `Ok`. Feasibility is monotone (feasible iff
+/// `b >= floor`), so:
+///   * the first fixed probe that compiles is the answer, UNLESS an earlier probe already
+///     revealed a `floor` strictly below it — then the floor itself is the smaller feasible
+///     budget (e.g. `mem_*` floor 20: b16 fails → floor=20, b24 Ok, but 20 < 24 wins);
+///   * if every fixed probe overflows (floor > 64: the wide L0s), compile at the reported
+///     floor (bigint Ext=320, keccak=172, ...).
+/// Budgets below 16 are never probed — 16 is the scan floor. Streaming's feasibility ⊇
+/// legacy's, so streamed is always feasible at the returned budget too.
+pub fn smallest_legacy_feasible(d: &DistilledLayer) -> (usize, BwdCompiledLayer) {
+    const FIXED: [usize; 5] = [16, 24, 32, 48, 64];
+    let mut floor: Option<usize> = None;
+    for &b in &FIXED {
+        match compile_distilled_legacy_only(d, b, None) {
+            Ok(c) => {
+                // A floor learned from a smaller failed probe is the true smallest feasible
+                // budget in the candidate set (`floor` is exactly the feasibility threshold).
+                if let Some(f) = floor {
+                    if f < b {
+                        let cf = compile_distilled_legacy_only(d, f, None)
+                            .expect("legacy is feasible at its own reported floor");
+                        return (f, cf);
+                    }
+                }
+                return (b, c);
+            }
+            Err(CompileError::BudgetBelowFloor { floor: fl, .. }) => floor = Some(fl),
+            Err(e) => panic!("unexpected legacy compile error at b{b}: {e:?}"),
+        }
+    }
+    // No fixed probe fit → floor > 64; compile legacy at the reported floor.
+    let f = floor.expect("all fixed probes overflowed, so a BudgetBelowFloor floor was observed");
+    let cf = compile_distilled_legacy_only(d, f, None).expect("legacy is feasible at its floor");
+    (f, cf)
+}
+
+/// Per-`FoldSource`-descriptor use histogram: `origin → number of `Special{desc}`
+/// operand occurrences whose desc resolves to a `FoldSource{origin}` in `c.specials`.
+///
+/// Keying by the ORIGIN (its `Debug` form — `Read(place-with-column)` vs
+/// `VirtualSetup{kind}`) makes the comparison width/origin-sensitive: a VS-origin fold
+/// (zero DRAM, closed form) and a Read-origin fold (4 cells) land in different buckets,
+/// so a same-count substitution that would net out in the scalar `fold_uses`/`special_
+/// reads`/`fold_traffic` sums still shows up as a histogram drift. `VirtualSetup`
+/// descriptors are not `FoldSource`s and are excluded (they carry no fold traffic).
+pub fn foldsource_use_histogram(c: &BwdCompiledLayer) -> BTreeMap<String, usize> {
+    let mut hist: BTreeMap<String, usize> = BTreeMap::new();
+    for_each_operand(&c.program, |op| {
+        if let OperandLine::Special { desc } = op {
+            if let Some(BwdSpecial::FoldSource { origin }) = c.specials.get(*desc) {
+                *hist.entry(format!("{origin:?}")).or_insert(0) += 1;
+            }
+        }
+    });
+    hist
+}
+
+/// Deterministic byte serialization of a program (the encoded lane stream) for the
+/// legacy-program byte-identity check. Panics if the program is not encodable (it always
+/// is for a well-formed compiled layer — the roundtrip is exercised in every value gate).
+pub fn encode(p: &Program) -> Vec<u16> {
+    encode_result(p).expect("program encodes")
 }
