@@ -146,3 +146,34 @@ fn streamed_searched_admission_is_value_exact() {
         "admission branch must have fired (shared-leaf gathers 2 → 1)"
     );
 }
+
+/// The adversarial REAL-fixture equivalent of `streamed_searched_admission_is_value_exact`:
+/// bigint's wide L0 (Ext regime) under decisions that pin a shared read leaf (column
+/// `SHARED_COL` = 0) to a dominating priority, so `try_admit` keeps it resident mid-reduction.
+/// Task 1 already proved the searched-admission path value-exact on a SYNTHETIC fixture and
+/// landed the classifier fix (`may_attempt_admit` / `is_compound_or_may_admit`) that makes it
+/// safe; this is the coverage proof on a real, cache-bearing, wide circuit layer — the
+/// admission must both preserve the value (no acc clobber) AND non-vacuously fire.
+#[test]
+fn streamed_searched_path_real_fixture_value_exact() {
+    let (layer, cross) = common::load_layer("bigint_with_extended_control_layout_gkr.json", 0);
+    let d = distill(&layer, BwdRegime::Ext, &cross, None);
+    let dec = common::decisions_admitting_a_shared_leaf(&d);
+    let c = compile_distilled(&d, 16, Some(&dec)).expect("feasible");
+    // Searched-path value parity: the streamed lowering under admitting decisions must match
+    // the oracle exactly — the may-admit source leaf takes the stash path, never clobbering acc.
+    common::assert_bwd_value_parity(&c, &d, &layer);
+    // Non-vacuous: pinning the shared read leaf's priority makes admission cache it to cells,
+    // strictly reducing its fold-source gathers vs the no-decisions baseline (95 -> 60 on
+    // bigint L0 Ext) with resident Smem reads present. The synthetic exact-1 collapse
+    // (`program_admits_shared_leaf`) does not apply here: b16 budget pressure keeps only some
+    // of the leaf's ~60 uses resident.
+    let c_none = compile_distilled(&d, 16, None).expect("feasible (baseline)");
+    assert!(
+        common::program_admits_shared_leaf_vs_baseline(&c, &c_none),
+        "searched-path admission must fire non-vacuously on bigint: gathers must drop vs baseline \
+         (with-dec={}, no-dec={}) and Smem reads be present",
+        common::shared_leaf_fold_uses(&c),
+        common::shared_leaf_fold_uses(&c_none),
+    );
+}

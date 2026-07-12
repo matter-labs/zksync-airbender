@@ -832,9 +832,21 @@ pub fn shared_leaf_fold_uses(c: &BwdCompiledLayer) -> usize {
 
 /// Non-vacuous proof the admission branch fired: the shared leaf's fold-source gather
 /// count dropped to exactly ONE (its later occurrence served from a resident cell — a
-/// Smem read must therefore be present). Pair with a no-decisions baseline of 2.
+/// Smem read must therefore be present). Pair with a no-decisions baseline of 2. This
+/// exact-1 form fits a SYNTHETIC layer whose shared leaf has two uses and fits b16 with
+/// room to keep it resident across both.
 pub fn program_admits_shared_leaf(c: &BwdCompiledLayer) -> bool {
     shared_leaf_fold_uses(c) == 1 && count_smem_reads(&c.program) > 0
+}
+
+/// Non-vacuous proof the admission branch fired on a REAL wide fixture. There the shared
+/// leaf has many uses and b16 budget pressure keeps only SOME of them resident, so the
+/// exact-1 collapse above does not apply. Instead: pinning the leaf's priority must
+/// STRICTLY reduce its fold-source gathers versus the no-decisions baseline `c_none` (uses
+/// were cached to cells), with resident Smem reads present. The strict drop is specific to
+/// the shared leaf (its priority alone is pinned), so it directly witnesses its admission.
+pub fn program_admits_shared_leaf_vs_baseline(c: &BwdCompiledLayer, c_none: &BwdCompiledLayer) -> bool {
+    shared_leaf_fold_uses(c) < shared_leaf_fold_uses(c_none) && count_smem_reads(&c.program) > 0
 }
 
 // ── synthetic value checks (independent recompute vs compiled program) ─────────
