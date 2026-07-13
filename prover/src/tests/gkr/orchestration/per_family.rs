@@ -16,7 +16,6 @@ use crate::gkr::witness_gen::oracles::{MemoryCircuitOracle, NonMemoryCircuitOrac
 use crate::merkle_trees::DefaultTreeConstructor;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
-use cs::oracle::Oracle;
 use fft::Twiddles;
 use field::Field;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
@@ -43,89 +42,22 @@ pub struct FamilyProveOutput {
     pub proof: Option<GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>>,
 }
 
-/// Shared prove-side logic for the 4 non-mem + 2 mem family helpers.
-/// Loads circuit, computes memory + full witness via the supplied
-/// `eval_fn` against the supplied oracle, optionally proves and
-/// serializes.
-fn prove_family_inner<O: Oracle<BabyBearField> + IsEmptyExt>(
-    circuit: &GKRCircuitArtifact<BabyBearField>,
-    table_driver: &TableDriver<BabyBearField>,
-    decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
-    oracle: &O,
-    eval_fn: fn(&mut ColumnMajorWitnessProxy<'_, O, BabyBearField>),
-    trace_len: usize,
-    num_cycles_per_chunk: usize,
-    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
-    level: SecurityLevel,
-    should_prove: bool,
-    proof_path: &str,
-    worker: &Worker,
-) -> (
-    GKRMemoryOnlyWitnessTrace<BabyBearField, Global, Global>,
-    Option<GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>>,
-) {
-    println!("Computing memory trace");
-    let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BabyBearField, _, _, _>(
-        circuit,
-        num_cycles_per_chunk,
-        oracle,
-        worker,
-        None,
-        Global,
-        Global,
-    );
-
-    println!("Computing full trace");
-    let full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
-        circuit,
-        eval_fn,
-        num_cycles_per_chunk,
-        oracle,
-        table_driver,
-        worker,
-        None,
-        Global,
-        Global,
-    );
-
-    ensure_memory_trace_consistency(&memory_trace, &full_trace);
-
-    if !should_prove {
-        return (memory_trace, None);
-    }
-
-    #[cfg(all(feature = "gkr_check_satisfied", any(test, feature = "test")))]
-    {
-        println!("Checking constraint satisfiability");
-        assert!(
-            crate::tests::gkr::check_satisfied(circuit, &full_trace),
-            "family circuit constraint not satisfied"
-        );
-    }
-
-    let proof = prove_built_family_trace(
-        circuit,
-        table_driver,
-        decoder_table_data,
-        full_trace,
-        trace_len,
-        external_challenges,
-        level,
-        worker,
-    );
-
-    if oracle.is_empty() {
-        assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
-    }
-
-    serialize_to_file(&proof, proof_path);
-
-    (memory_trace, Some(proof))
+/// Output of [`build_nonmem_family_full_trace`] / [`build_mem_family_full_trace`]:
+/// the full witness trace (always populated), the memory-only trace (populated
+/// only when the caller requested the memory-consistency check), and whether the
+/// built oracle was empty (no calls to this family). The honest
+/// `prove_*_family` helpers thread `memory_trace` into the state/shuffle-ram
+/// permutation parsers and derive their `should_prove` decision from
+/// `oracle_is_empty`; the malicious-proof generators take only `full_trace`.
+pub struct BuiltFamilyTrace {
+    pub full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    pub memory_trace: Option<GKRMemoryOnlyWitnessTrace<BabyBearField, Global, Global>>,
+    pub oracle_is_empty: bool,
 }
 
 /// Prove a *pre-built* family witness trace: build the prover config + twiddles,
-/// construct & commit the setup, and run the GKR prover. Split out of
-/// [`prove_family_inner`] so callers that build the trace another way — the
+/// construct & commit the setup, and run the GKR prover. Split out of the family
+/// helpers so callers that build the trace another way — the
 /// `add_sub_mop_real_program_check_satisfied` smoke test and the malicious-proof
 /// generator (which mutates the trace before proving) — share the exact same
 /// prove path. The caller owns `check_satisfied`, the empty grand-product
@@ -175,20 +107,6 @@ pub fn prove_built_family_trace(
     proof
 }
 
-trait IsEmptyExt {
-    fn is_empty(&self) -> bool;
-}
-impl<'a> IsEmptyExt for NonMemoryCircuitOracle<'a> {
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-}
-impl<'a> IsEmptyExt for MemoryCircuitOracle<'a> {
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-}
-
 /// Per-variant compiled-circuit JSON path
 pub fn circuit_path(stem: &str) -> String {
     if USE_GKR_WITH_CACHES {
@@ -233,56 +151,62 @@ where
     let mut table_driver = TableDriver::<BabyBearField>::new();
     table_driver_setup(&mut table_driver);
 
-    // Replay into the non-mem destination holder for this family.
-    let mut state = snapshotter.initial_snapshot.state;
-    let mut ram_log_buffers = snapshotter
-        .reads_buffer
-        .make_range(0..snapshotter.reads_buffer.len());
-    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
-        ram_log: &mut ram_log_buffers,
-    };
-    let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
-    let mut tracer = NonMemDestinationHolder::<CIRCUIT_TYPE> {
-        buffers: &mut buffers[..],
-    };
-    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
-        &mut state,
-        &mut ram,
+    let built = build_nonmem_family_full_trace::<CIRCUIT_TYPE, _>(
+        snapshotter,
         tape,
-        &mut (),
+        expected_final_state,
         cycles_bound,
-        &mut tracer,
-    );
-    assert_eq!(*expected_final_state, state);
-
-    let oracle = NonMemoryCircuitOracle {
-        inner: &buffer[..],
-        decoder_table: decoder_table_data,
-        default_pc_value_in_padding: 4,
-    };
-
-    let should_prove = !compute_only
-        && circuit_in_filter(circuits_filter, circuit_stem)
-        && (prove_empty || !oracle.is_empty());
-
-    let (memory_trace, proof) = prove_family_inner(
+        num_calls,
         &circuit,
         &table_driver,
         decoder_table_data,
-        &oracle,
         eval_fn,
-        trace_len,
         num_cycles_per_chunk,
-        external_challenges,
-        level,
-        should_prove,
-        &format!("test_proofs/{circuit_stem}_{proof_suffix}_gkr_proof.json"),
+        true,
         worker,
     );
 
+    let should_prove = !compute_only
+        && circuit_in_filter(circuits_filter, circuit_stem)
+        && (prove_empty || !built.oracle_is_empty);
+
+    let proof = if should_prove {
+        #[cfg(all(feature = "gkr_check_satisfied", any(test, feature = "test")))]
+        {
+            println!("Checking constraint satisfiability");
+            assert!(
+                crate::tests::gkr::check_satisfied(&circuit, &built.full_trace),
+                "family circuit constraint not satisfied"
+            );
+        }
+
+        let proof = prove_built_family_trace(
+            &circuit,
+            &table_driver,
+            decoder_table_data,
+            built.full_trace,
+            trace_len,
+            external_challenges,
+            level,
+            worker,
+        );
+
+        if built.oracle_is_empty {
+            assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
+        }
+
+        serialize_to_file(
+            &proof,
+            &format!("test_proofs/{circuit_stem}_{proof_suffix}_gkr_proof.json"),
+        );
+
+        Some(proof)
+    } else {
+        None
+    };
+
     FamilyProveOutput {
-        memory_trace,
+        memory_trace: built.memory_trace.expect("consistency check was requested"),
         compiled_circuit: circuit,
         proof,
     }
@@ -322,54 +246,62 @@ where
     let mut table_driver = TableDriver::<BabyBearField>::new();
     table_driver_setup(&mut table_driver);
 
-    let mut state = snapshotter.initial_snapshot.state;
-    let mut ram_log_buffers = snapshotter
-        .reads_buffer
-        .make_range(0..snapshotter.reads_buffer.len());
-    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
-        ram_log: &mut ram_log_buffers,
-    };
-    let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
-    let mut tracer = MemDestinationHolder::<CIRCUIT_TYPE> {
-        buffers: &mut buffers[..],
-    };
-    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
-        &mut state,
-        &mut ram,
+    let built = build_mem_family_full_trace::<CIRCUIT_TYPE, _>(
+        snapshotter,
         tape,
-        &mut (),
+        expected_final_state,
         cycles_bound,
-        &mut tracer,
-    );
-    assert_eq!(*expected_final_state, state);
-
-    let oracle = MemoryCircuitOracle {
-        inner: &buffer[..],
-        decoder_table: decoder_table_data,
-    };
-
-    let should_prove = !compute_only
-        && circuit_in_filter(circuits_filter, circuit_stem)
-        && (prove_empty || !oracle.is_empty());
-
-    let (memory_trace, proof) = prove_family_inner(
+        num_calls,
         &circuit,
         &table_driver,
         decoder_table_data,
-        &oracle,
         eval_fn,
-        trace_len,
         num_cycles_per_chunk,
-        external_challenges,
-        level,
-        should_prove,
-        &format!("test_proofs/{circuit_stem}_{proof_suffix}_gkr_proof.json"),
+        true,
         worker,
     );
 
+    let should_prove = !compute_only
+        && circuit_in_filter(circuits_filter, circuit_stem)
+        && (prove_empty || !built.oracle_is_empty);
+
+    let proof = if should_prove {
+        #[cfg(all(feature = "gkr_check_satisfied", any(test, feature = "test")))]
+        {
+            println!("Checking constraint satisfiability");
+            assert!(
+                crate::tests::gkr::check_satisfied(&circuit, &built.full_trace),
+                "family circuit constraint not satisfied"
+            );
+        }
+
+        let proof = prove_built_family_trace(
+            &circuit,
+            &table_driver,
+            decoder_table_data,
+            built.full_trace,
+            trace_len,
+            external_challenges,
+            level,
+            worker,
+        );
+
+        if built.oracle_is_empty {
+            assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
+        }
+
+        serialize_to_file(
+            &proof,
+            &format!("test_proofs/{circuit_stem}_{proof_suffix}_gkr_proof.json"),
+        );
+
+        Some(proof)
+    } else {
+        None
+    };
+
     FamilyProveOutput {
-        memory_trace,
+        memory_trace: built.memory_trace.expect("consistency check was requested"),
         compiled_circuit: circuit,
         proof,
     }
@@ -501,7 +433,7 @@ pub fn build_nonmem_family_full_trace<const CIRCUIT_TYPE: u8, C>(
     num_cycles_per_chunk: usize,
     run_memory_consistency_check: bool,
     worker: &Worker,
-) -> GKRFullWitnessTrace<BabyBearField, Global, Global>
+) -> BuiltFamilyTrace
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
@@ -532,6 +464,7 @@ where
         decoder_table: decoder_table_data,
         default_pc_value_in_padding: 4,
     };
+    let oracle_is_empty = oracle.inner.is_empty();
 
     let memory_trace = if run_memory_consistency_check {
         println!("Computing memory trace");
@@ -570,5 +503,104 @@ where
         ensure_memory_trace_consistency(memory_trace, &full_trace);
     }
 
-    full_trace
+    BuiltFamilyTrace {
+        full_trace,
+        memory_trace,
+        oracle_is_empty,
+    }
+}
+
+/// Memory-family counterpart of [`build_nonmem_family_full_trace`]: replay into
+/// a `MemDestinationHolder`, build a `MemoryCircuitOracle`, compute the full
+/// witness trace, and (optionally) run the memory-trace consistency check.
+/// Used by the malicious-proof generator to obtain a mem-family trace it can
+/// mutate before proving.
+#[allow(clippy::too_many_arguments)]
+pub fn build_mem_family_full_trace<const CIRCUIT_TYPE: u8, C>(
+    snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
+    tape: &SimpleTape,
+    expected_final_state: &State<C>,
+    cycles_bound: usize,
+    num_calls: usize,
+    circuit: &GKRCircuitArtifact<BabyBearField>,
+    table_driver: &TableDriver<BabyBearField>,
+    decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
+    eval_fn: fn(&mut ColumnMajorWitnessProxy<'_, MemoryCircuitOracle<'_>, BabyBearField>),
+    num_cycles_per_chunk: usize,
+    run_memory_consistency_check: bool,
+    worker: &Worker,
+) -> BuiltFamilyTrace
+where
+    C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
+{
+    let mut state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = MemDestinationHolder::<CIRCUIT_TYPE> {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<C>::replay_basic_unrolled::<_, _, BabyBearField>(
+        &mut state,
+        &mut ram,
+        tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(*expected_final_state, state);
+
+    let oracle = MemoryCircuitOracle {
+        inner: &buffer[..],
+        decoder_table: decoder_table_data,
+    };
+    let oracle_is_empty = oracle.inner.is_empty();
+
+    let memory_trace = if run_memory_consistency_check {
+        println!("Computing memory trace");
+        Some(evaluate_gkr_memory_witness_for_executor_family::<
+            BabyBearField,
+            _,
+            _,
+            _,
+        >(
+            circuit,
+            num_cycles_per_chunk,
+            &oracle,
+            worker,
+            None,
+            Global,
+            Global,
+        ))
+    } else {
+        None
+    };
+
+    println!("Computing full trace");
+    let full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
+        circuit,
+        eval_fn,
+        num_cycles_per_chunk,
+        &oracle,
+        table_driver,
+        worker,
+        None,
+        Global,
+        Global,
+    );
+
+    if let Some(memory_trace) = &memory_trace {
+        ensure_memory_trace_consistency(memory_trace, &full_trace);
+    }
+
+    BuiltFamilyTrace {
+        full_trace,
+        memory_trace,
+        oracle_is_empty,
+    }
 }

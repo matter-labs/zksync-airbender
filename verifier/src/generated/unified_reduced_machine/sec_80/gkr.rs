@@ -6570,6 +6570,422 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     _vs += 1;
                 }
             }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(0u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                let mut t_addr: BabyBearExt4 =
+                    external_challenges.permutation_argument_linearization_challenges[0usize];
+                let addr_claim = *state.prev_claims.get_unchecked(4usize);
+                field_ops::mul_assign(&mut t_addr, &addr_claim);
+                field_ops::add_assign(&mut expected, &t_addr);
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(0usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(1usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(2usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(3usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(119usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 1usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let as_claim = *state.prev_claims.get_unchecked(9usize);
+                field_ops::add_assign(&mut expected, &as_claim);
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(10usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(11usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(7usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(8usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(120usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 2usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(0u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                let mut t_addr: BabyBearExt4 =
+                    external_challenges.permutation_argument_linearization_challenges[0usize];
+                let addr_claim = *state.prev_claims.get_unchecked(4usize);
+                field_ops::mul_assign(&mut t_addr, &addr_claim);
+                field_ops::add_assign(&mut expected, &t_addr);
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(24usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(25usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(2usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(3usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(121usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 3usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let as_claim = *state.prev_claims.get_unchecked(9usize);
+                field_ops::add_assign(&mut expected, &as_claim);
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(10usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(11usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(24usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(25usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(7usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(8usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(122usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 4usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let as_claim = *state.prev_claims.get_unchecked(16usize);
+                field_ops::add_assign(&mut expected, &as_claim);
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(17usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(18usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(12usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(13usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(14usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(15usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(123usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 5usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(536870908u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                let mut t_addr: BabyBearExt4 =
+                    external_challenges.permutation_argument_linearization_challenges[0usize];
+                field_ops::mul_assign_by_base(
+                    &mut t_addr,
+                    &BabyBearField::from_reduced_raw_repr(0u32),
+                );
+                field_ops::add_assign(&mut expected, &t_addr);
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(24usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(25usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(22usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(23usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(124usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 6usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let as_claim = *state.prev_claims.get_unchecked(16usize);
+                field_ops::add_assign(&mut expected, &as_claim);
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(17usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(18usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(24usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(536870908u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(25usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(19usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(20usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(125usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 7usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(536870908u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                let mut t_addr: BabyBearExt4 =
+                    external_challenges.permutation_argument_linearization_challenges[0usize];
+                field_ops::mul_assign_by_base(
+                    &mut t_addr,
+                    &BabyBearField::from_reduced_raw_repr(0u32),
+                );
+                field_ops::add_assign(&mut expected, &t_addr);
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(28usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(29usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(26usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(27usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(126usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 8usize));
+                }
+            }
             check_virtual_setup_range_check_16bits::<E>(&state)?;
             check_virtual_setup_range_check_timestamp::<E>(&state)?;
             check_virtual_setup_inits_and_teardowns::<E>(&state)?;

@@ -48,6 +48,63 @@ fn assert_rejects(variant: &str, expected: impl FnOnce(&VerificationError) -> bo
     );
 }
 
+fn assert_accepts(variant: &str) {
+    let proof = load_malicious_proof(variant);
+    let (nds, external_challenges) =
+        common::proof_to_nds(CIRCUIT_NAME, SecurityLevel::Sec80, &proof);
+    match common::verify_nds(
+        CIRCUIT_NAME,
+        SecurityLevel::Sec80,
+        &external_challenges,
+        nds,
+    ) {
+        Ok(()) => {}
+        Err(r) => panic!(
+            "{}: honest control proof unexpectedly REJECTED: {:?}",
+            variant, r
+        ),
+    }
+}
+
+// ---- MemoryTuple cache must be bound to base columns ----
+// Proofs produced by prover `generate_memtuple_regression_proofs` (run first, WITHOUT
+// gkr_self_checks). These pin the generator-side MemoryTuple cache-binding fix.
+
+/// Sanity: the honest control proof (no forge) is accepted
+#[test]
+#[ignore]
+fn memtuple_control_accepts() {
+    assert_accepts("memtuple_control");
+}
+
+/// forging the MemoryTuple cache poly (decoupling the memory-permutation grand
+/// product from the committed base columns) must be rejected by the generated
+/// MemoryTuple binding.
+#[test]
+#[ignore]
+fn rejects_malicious_memtuple_cacheforge() {
+    assert_rejects("memtuple_cacheforge", |e| {
+        matches!(
+            e,
+            VerificationError::GkrPermutationCacheRelationFailed { .. }
+        )
+    });
+}
+
+/// an analogous forge of a BOUND SingleColumnLookup cache
+#[test]
+#[ignore]
+fn rejects_malicious_lookup_cacheforge() {
+    assert_rejects("lookup_cacheforge", |e| {
+        matches!(
+            e,
+            VerificationError::GkrSingleLookupCacheRelationFailed { .. }
+                | VerificationError::GkrVectorLookupCacheRelationFailed { .. }
+                | VerificationError::GkrPermutationCacheRelationFailed { .. }
+        )
+    });
+}
+
 #[test]
 #[ignore]
 fn rejects_malicious_lookup_16bits() {
@@ -101,6 +158,34 @@ fn rejects_malicious_memory_value() {
                 | VerificationError::GkrPermutationCacheRelationFailed { .. }
         )
     });
+}
+
+// ---- subword address malleability ----
+// Proof produced by prover `gkr_run_basic_unrolled_test_sec_80` with SUBWORD_ALIAS_FORGE=1,
+// which trades the byte offset (b0,b1) against the word-cell address on an active byte-load
+// row while preserving the address equation (all pre-fix constraints hold). The word-
+// alignment constraint (cleanaddr_lo == 4*(cleanaddr_lo>>2), cleanaddr_lo>>2 range-checked)
+// must reject the resulting non-word-aligned cleanaddr_lo.
+
+const SUBWORD_CIRCUIT_NAME: &str = "mem_subword_only";
+
+#[test]
+#[ignore]
+fn rejects_malicious_subword_alias() {
+    let proof = load_malicious_proof("subword_alias");
+    common::assert_rejects_with_variant(
+        SUBWORD_CIRCUIT_NAME,
+        SecurityLevel::Sec80,
+        "subword_alias",
+        &proof,
+        |e| {
+            matches!(
+                e,
+                VerificationError::GkrFinalStepCheckFailed { .. }
+                    | VerificationError::GkrSumcheckRoundFailed { .. }
+            )
+        },
+    );
 }
 
 // ---- Unified reduced machine proof-level negative tests ----
