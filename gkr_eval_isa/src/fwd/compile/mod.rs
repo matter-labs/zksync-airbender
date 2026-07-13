@@ -11,6 +11,8 @@ pub mod schedule;
 pub use self::arith::build_cross_layer_field_map;
 pub use self::decisions::SiteDecisions;
 pub use self::place::MoveCtx;
+/// Task 4 (CS-M0): the plan-driven bwd lowering input, threaded by `bwd::compile`.
+pub(crate) use self::lower::PlanInput;
 use self::lower::lower_layer_virtual;
 use self::place::{plan_placement, plan_placement_with_peak, PlacementInput, RelocStep, ResidencyStep, ValueId, VInstrKind, VirtualOp};
 use super::binding::BackingKey;
@@ -548,11 +550,12 @@ pub(crate) fn compile_bwd_program(
     lower_budget: usize,
     stream_reductions: bool,
     trace: Option<BwdCompileTrace>,
+    plan: Option<self::lower::PlanInput>,
 ) -> Result<(Program, usize, Option<BwdCompileTrace>), CompileError> {
     // Phase 1 — the bwd one-root driver (result-in-acc terminal convention).
     let (vinstrs, step_of, trace) = self::lower::lower_bwd_root_virtual(
         layer, root_expr, terms, ctx, leaf_descs, field_overrides, streams, lower_budget,
-        stream_reductions, trace,
+        stream_reductions, trace, plan,
     )?;
 
     // Phase 1.5 — the shared value-preserving peephole. Safe for the terminal-acc
@@ -631,7 +634,7 @@ pub(crate) fn compile_bwd_program_peak(
     // Peak diagnostics never trace: pass `None` and discard the (empty) trace slot.
     let (vinstrs, step_of, _trace) = self::lower::lower_bwd_root_virtual(
         layer, root_expr, terms, ctx, leaf_descs, field_overrides, streams, lower_budget,
-        stream_reductions, None,
+        stream_reductions, None, None,
     )?;
 
     // Phase 1.5 — the shared value-preserving peephole (identical to `compile_bwd_program`).

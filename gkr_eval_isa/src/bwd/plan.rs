@@ -183,6 +183,58 @@ impl PlanRun {
     pub fn retention(&self, v: ExprId) -> Option<usize> {
         self.retained.get(&v).copied()
     }
+
+    /// Count of `v`'s plan entries not yet consumed by `on_serve` (its occurrence
+    /// cursor lag). `0` = DEAD (no future planned use) — the primary key of the
+    /// expired-victim eviction order (Task 4, spec §4 rule b: "dead first"). A value
+    /// absent from the plan returns `0`.
+    pub fn remaining(&self, v: ExprId) -> usize {
+        match (self.by_value.get(&v), self.value_cursor.get(&v)) {
+            (Some(occ), Some(&cursor)) => occ.len().saturating_sub(cursor),
+            _ => 0,
+        }
+    }
+}
+
+// ── plan entries fingerprint (Task 4 staleness guard) ───────────────────────────
+
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+#[inline]
+fn fnv_u64(h: &mut u64, v: u64) {
+    for &b in &v.to_le_bytes() {
+        *h ^= b as u64;
+        *h = h.wrapping_mul(FNV_PRIME);
+    }
+}
+
+/// FNV-1a fingerprint over the ordered plan entries — every field of every
+/// `PlanEntry` (`term`, serve kind, value, consumer, action), in order. Paired with
+/// [`plan_epoch`](super::trace::plan_epoch) as the two staleness guards
+/// [`compile_distilled_planned`](super::compile::compile_distilled_planned) checks at
+/// apply start: `epoch` pins the plan to a `(layer, budget, mode)` regime, this pins
+/// the plan's exact entry stream so a corrupted / re-ordered / wrong-length entries
+/// vector can never be replayed silently. Callers building a plan set
+/// `BwdOccurrencePlan::entries_fnv` to this over their `entries`.
+pub fn plan_entries_fnv(entries: &[PlanEntry]) -> u64 {
+    let mut h = FNV_OFFSET;
+    fnv_u64(&mut h, entries.len() as u64);
+    for e in entries {
+        fnv_u64(&mut h, e.fp.term as u64);
+        fnv_u64(&mut h, e.fp.kind as u64);
+        fnv_u64(&mut h, e.fp.value.0 as u64);
+        // `None` and any real `ExprId` are distinguished by the presence flag.
+        match e.fp.consumer {
+            Some(c) => {
+                fnv_u64(&mut h, 1);
+                fnv_u64(&mut h, c.0 as u64);
+            }
+            None => fnv_u64(&mut h, 0),
+        }
+        fnv_u64(&mut h, e.action as u64);
+    }
+    h
 }
 
 #[cfg(test)]

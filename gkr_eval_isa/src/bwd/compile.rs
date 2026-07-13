@@ -29,7 +29,7 @@ use cs::gkr_compiler::dag_ir::{Expr, ExprId};
 
 use crate::fwd::binding::BackingTable;
 use crate::fwd::compile::decisions::OccurrenceStreams;
-use crate::fwd::compile::{compile_bwd_program, compile_bwd_program_peak, SiteDecisions};
+use crate::fwd::compile::{compile_bwd_program, compile_bwd_program_peak, PlanInput, SiteDecisions};
 use crate::fwd::context::DagForwardContext;
 use crate::fwd::error::CompileError;
 use crate::fwd::isa::{DstLine, Instr, LdcSub, OperandField, OperandLine, Program};
@@ -37,6 +37,7 @@ use crate::fwd::source::{ChallengeBanks, ConstBank};
 use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 
 use super::distill::{distilled_site_domain, DistilledLayer};
+use super::plan::{plan_entries_fnv, BwdOccurrencePlan};
 use super::source::{BwdSpecial, BwdSpecialTable};
 use super::trace::{live_profile, plan_epoch, BwdCompileTrace};
 
@@ -214,7 +215,8 @@ fn compile_distilled_at(
         place_budget,
         lower_budget,
         stream_reductions,
-        None,
+        None, // trace
+        None, // plan (gene / uncached path)
     )?;
 
     // The bwd lowering runs the fwd resolution hook with empty materialize maps
@@ -342,6 +344,7 @@ fn compile_distilled_at_traced(
         lower_budget,
         stream_reductions,
         Some(seed),
+        None, // plan (gene / uncached traced path)
     )?;
 
     assert!(ctx.specials.is_empty(), "bwd compile leaked into the fwd descriptor namespace");
@@ -365,6 +368,117 @@ fn compile_distilled_at_traced(
             consts: ctx.consts,
             challenges: ctx.challenges,
             budget: place_budget,
+            stats,
+            stats_ext,
+        },
+        trace,
+    ))
+}
+
+// ── Task 4 (CS-M0) plan-driven compile driver ──────────────────────────────────
+
+/// Plan-driven backward compile (spec §4/§5). Replay `plan` against a SINGLE lowering
+/// of `d` at `budget` (place == lower == budget — the fill-then-trim eviction dial is
+/// bypassed; explicit plans lower once against the place budget so ONE compile = one
+/// trace authority), with `stream_reductions` pinned FROM the plan and tracing ON (the
+/// planned compile's trace is the next round's planner input). The plan's per-occurrence
+/// `Retain`/`Bypass` actions drive residency; capacity is re-checked live at each event
+/// (evict only EXPIRED residents, else `Refuse`; never preempt a live retention); the
+/// fingerprint matcher fails closed to a Bypass-tail on the first divergence and records
+/// it once.
+///
+/// HARD ERRORS (panics — a wrong/corrupted plan must never replay silently, spec §4):
+/// the plan's `epoch` must equal `plan_epoch(d, budget, plan.stream_reductions)` and its
+/// `entries_fnv` must equal a re-hash of `plan.entries` ([`plan_entries_fnv`]).
+///
+/// [`CompileError::BudgetBelowFloor`] propagates as `Err` — the engine's fallback is
+/// Task 9; this driver never masks it with a legacy retry (unlike `compile_distilled`).
+pub fn compile_distilled_planned(
+    d: &DistilledLayer,
+    budget: usize,
+    plan: &BwdOccurrencePlan,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    let expected_epoch = plan_epoch(d, budget, plan.stream_reductions);
+    assert_eq!(
+        plan.epoch, expected_epoch,
+        "plan epoch mismatch: plan carries {} but (layer, budget {budget}, stream_reductions \
+         {}) hashes to {expected_epoch} — wrong or stale plan",
+        plan.epoch, plan.stream_reductions,
+    );
+    let expected_fnv = plan_entries_fnv(&plan.entries);
+    assert_eq!(
+        plan.entries_fnv, expected_fnv,
+        "plan entries_fnv mismatch: plan carries {} but its {} entries re-hash to \
+         {expected_fnv} — corrupted plan",
+        plan.entries_fnv,
+        plan.entries.len(),
+    );
+    compile_distilled_at_planned(d, budget, plan)
+}
+
+/// The single plan-driven lowering (spec §5: place == lower == budget, no fill-then-trim,
+/// gene channel OFF, plan channel ON, trace ON). Bwd sibling of `compile_distilled_at`
+/// with the plan threaded in place of the `decisions` streams.
+fn compile_distilled_at_planned(
+    d: &DistilledLayer,
+    budget: usize,
+    plan: &BwdOccurrencePlan,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    let layer = &d.layer;
+    let root_expr = layer.roots[d.root.0 as usize].expr;
+    let terms = spine_terms(d);
+    let stream_reductions = plan.stream_reductions;
+
+    let mut ctx = DagForwardContext::default();
+    ctx.cross_layer_fields = d.cross_fields.clone();
+
+    // The distilled site-domain value set — only these serves drive the matcher
+    // (mirrors `OccurrenceStreams::admittable`; same set `freeze_demand` filters on).
+    let domain: std::collections::BTreeSet<ExprId> =
+        distilled_site_domain(d).into_iter().map(|s| s.value).collect();
+
+    let seed = BwdCompileTrace {
+        epoch: plan_epoch(d, budget, stream_reductions),
+        budget,
+        stream_reductions,
+        events: Vec::new(),
+        free: Vec::new(),
+    };
+
+    let (program, max_live_cells, trace) = compile_bwd_program(
+        layer,
+        root_expr,
+        &terms,
+        &mut ctx,
+        &d.leaf_descs,
+        &d.field_overrides,
+        None,   // gene channel OFF — plan mode is exclusive
+        budget, // place_budget
+        budget, // lower_budget == place_budget: no fill-then-trim
+        stream_reductions,
+        Some(seed),
+        Some(PlanInput { plan, domain }),
+    )?;
+
+    assert!(ctx.specials.is_empty(), "bwd compile leaked into the fwd descriptor namespace");
+
+    let mut trace = trace.expect("a Some-seeded planned compile returns its trace");
+    trace.free = live_profile(&program)
+        .into_iter()
+        .map(|occ| budget.saturating_sub(occ))
+        .collect();
+
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials);
+    stats.max_live_cells = max_live_cells;
+
+    Ok((
+        BwdCompiledLayer {
+            program,
+            specials: d.specials.clone(),
+            backings: ctx.backings,
+            consts: ctx.consts,
+            challenges: ctx.challenges,
+            budget,
             stats,
             stats_ext,
         },

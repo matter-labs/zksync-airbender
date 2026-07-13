@@ -30,7 +30,7 @@
 //! (`child_operand_field`, `classify_additive_child`, `split_reduction`,
 //! `field_from_u8`/`sign_from_u8`, `is_*` predicates). Only operand delivery differs.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, FieldKind, LayerSchedule, ReadPlace, RootId, SourceKind,
@@ -46,6 +46,7 @@ use super::arith::{
 use super::decisions::{OccurrenceStreams, SiteDecisions};
 use super::place::{ValueId, VInstrKind, VirtualInstr, VirtualOp};
 use super::schedule::split_reduction;
+use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanRun};
 use crate::bwd::trace::{
     BwdCompileTrace, BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom,
 };
@@ -136,6 +137,66 @@ struct DecisionsState {
     /// go through `current_value_id` to read the CURRENT generation, not the real
     /// `ExprId`, once a value has ever been re-admitted.
     generation: HashMap<ExprId, ValueId>,
+}
+
+// ── Task 4 (CS-M0): plan-driven residency ──────────────────────────────────────
+
+/// One plan-owned resident cell: its width-typing field plus the entry index at
+/// which its CURRENT retention closes (recorded at admit / refreshed on a Retain-hit
+/// re-arm). Once the retention closes (`PlanRun::retention` returns `None`) the value
+/// is EXPIRED — a rule-b eviction candidate — but keeps its `closes_at` for the
+/// victim tie-break ("smallest recorded `closes_at`").
+struct ResidentSlot {
+    field: OperandField,
+    closes_at: usize,
+}
+
+/// Task 4 plan-driven lowering input — mutually exclusive with the gene channel
+/// (`streams`). Carries the frozen [`BwdOccurrencePlan`] to replay plus the distilled
+/// site-domain value set (mirrors `OccurrenceStreams::admittable`): only serves whose
+/// value is in `domain` touch the plan matcher.
+pub(crate) struct PlanInput<'p> {
+    pub plan: &'p BwdOccurrencePlan,
+    pub domain: BTreeSet<ExprId>,
+}
+
+/// Task 4 (CS-M0) plan-driven residency state — present only when
+/// `VirtualLower::plan` is `Some`, and NEVER together with `decisions` (the gene
+/// channel). Wraps the fail-closed [`PlanRun`] matcher (Task 3) plus this replay's
+/// own residency/eviction bookkeeping. Unlike `DecisionsState`, admission is NOT
+/// priority-driven: the plan's per-occurrence `Retain`/`Bypass` action decides, and
+/// capacity is re-checked live (spec §5) — evicting only EXPIRED residents (§4 rule
+/// b), never a live retention.
+struct PlanRunState {
+    run: PlanRun,
+    /// Distilled site-domain values; only these serves drive the matcher.
+    domain: BTreeSet<ExprId>,
+    /// Width-typed resident cells. A `Bypass`-on-resident (rule a) releases its entry
+    /// EAGERLY (`plan_release_if_pending`), matching `plan_placement`'s true cell
+    /// lifetime (the cell dies at that last read), so this map normally holds only
+    /// values with a live (un-closed) retention. Expired entries survive here only
+    /// when a retention could not close normally (divergence / cone-suppressed closing
+    /// serve); those are the rule-b (`plan_evict_to_fit`) / `plan_finish` reclaim set.
+    resident: BTreeMap<ExprId, ResidentSlot>,
+    /// Width-weighted cells claimed by `resident` (Base = 1, Ext = 4).
+    live_width: usize,
+    budget: usize,
+    /// Action recorded at a DOMAIN serve for a NON-resident value, consumed once by
+    /// the matching admit site (`plan_try_admit`). Resident hits never record here
+    /// (the residency short-circuit serves them before any admit site is reached).
+    pending_action: BTreeMap<ExprId, PlanAction>,
+    /// A `Bypass`-on-resident value (rule a) awaiting slot release: set at the serve,
+    /// consumed by `plan_release_if_pending` right after the resident cell read is
+    /// captured (so the current serve is a free hit, later serves recompute).
+    pending_bypass_release: Option<ExprId>,
+    /// Re-admission generations (mirror of `DecisionsState::generation`): a value
+    /// re-admitted after an eviction serves through a fresh `ValueId` so its two
+    /// disjoint live intervals never collapse into one `defines`.
+    generation: HashMap<ExprId, ValueId>,
+    /// Values ever evicted this compile — gates fresh-generation minting on re-admit.
+    evicted_ever: HashSet<ExprId>,
+    /// Whether the single `Diverge` event has been recorded (fail-closed, once).
+    diverge_emitted: bool,
 }
 
 /// BabyBear field −1 (= P−1), the canonical additive-inverse-of-1 representative.
@@ -320,6 +381,11 @@ struct VirtualLower<'a> {
     /// consumer attributed to a serve fingerprint. Behavior-neutral: read ONLY by
     /// the trace hook, so it has no effect when `bwd_trace` is `None`.
     consumer_stack: Vec<ExprId>,
+    /// Task 4 (CS-M0) plan-driven residency. `Some` on a plan-replay backward
+    /// compile; MUTUALLY EXCLUSIVE with `decisions` (the gene channel) — a compile
+    /// sets at most one. `None` on every forward construction site and every
+    /// gene/uncached backward compile, so those stay byte-identical.
+    plan: Option<PlanRunState>,
 }
 
 /// The fwd identity hooks: empty maps (`const`-constructible), so every fwd call
@@ -436,6 +502,16 @@ impl<'a> VirtualLower<'a> {
         if let Some(ds) = &mut self.decisions {
             ds.streams.serve(v);
         }
+        let fp = BwdFingerprint {
+            term: self.cur_step as u32,
+            kind,
+            value: v,
+            consumer: self.consumer_stack.last().copied(),
+        };
+        // Task 4 (plan mode only): drive the fail-closed matcher on DOMAIN serves and
+        // stage the resulting Retain/Bypass action. No-op when `self.plan` is `None`
+        // (every fwd site and every gene/uncached backward compile).
+        self.plan_dispatch(&fp);
         // Task 1 (observation-only): record the serve BEFORE the hit/miss branch the
         // caller takes next, so `from` reflects whether `v` is resident AT serve time.
         // `bwd_trace` is `None` on every forward site and on untraced backward compiles,
@@ -446,15 +522,241 @@ impl<'a> VirtualLower<'a> {
             } else {
                 BwdServedFrom::Recomputed
             };
-            trace.events.push(BwdEvent::Serve {
-                fp: BwdFingerprint {
-                    term: self.cur_step as u32,
-                    kind,
-                    value: v,
-                    consumer: self.consumer_stack.last().copied(),
-                },
-                from,
-            });
+            trace.events.push(BwdEvent::Serve { fp, from });
+        }
+    }
+
+    // ── Task 4 (CS-M0): plan-driven residency (serve dispatch / admission / eviction) ──
+
+    /// Plan serve dispatch (spec §4). A no-op unless `self.plan` is `Some` and `fp.value`
+    /// is a DOMAIN serve. For a domain serve it advances the fail-closed matcher and:
+    /// (Retain, resident) re-arms the retention; (Retain, non-resident) stages an
+    /// admission for the matching admit site; (Bypass, resident) is rule a — the current
+    /// serve is a free hit, the slot is released right after the read
+    /// (`plan_release_if_pending`); (Bypass, non-resident) recomputes. Records the single
+    /// `Diverge` event the first time the matcher fails closed. Reads `self.defined` and
+    /// mutates only `self.plan` / `self.bwd_trace` (disjoint fields).
+    fn plan_dispatch(&mut self, fp: &BwdFingerprint) {
+        let resident = self.defined.contains(&fp.value);
+        let mut newly_diverged = None;
+        {
+            let Some(plan) = self.plan.as_mut() else { return };
+            if !plan.domain.contains(&fp.value) {
+                return;
+            }
+            let action = plan.run.on_serve(fp);
+            if !plan.diverge_emitted {
+                if let Some(at) = plan.run.diverged() {
+                    plan.diverge_emitted = true;
+                    newly_diverged = Some(at);
+                }
+            }
+            match (action, resident) {
+                (PlanAction::Retain, true) => {
+                    // Free hit; keep residency, re-arm this value's next gap.
+                    let ca = plan.run.retention(fp.value).unwrap_or(usize::MAX);
+                    if let Some(slot) = plan.resident.get_mut(&fp.value) {
+                        slot.closes_at = ca;
+                    }
+                }
+                (PlanAction::Retain, false) => {
+                    plan.pending_action.insert(fp.value, PlanAction::Retain);
+                }
+                (PlanAction::Bypass, true) => {
+                    // Rule a: serve from the resident cell now, release the slot after.
+                    plan.pending_bypass_release = Some(fp.value);
+                }
+                (PlanAction::Bypass, false) => {
+                    // Plain recompute — no admission staged.
+                }
+            }
+        }
+        if let Some(at) = newly_diverged {
+            if let Some(trace) = &mut self.bwd_trace {
+                trace.events.push(BwdEvent::Diverge { at_entry: at });
+            }
+        }
+    }
+
+    /// Rule a completion (spec §4a "serve then release the slot"): if the just-dispatched
+    /// serve of `v` was a `Bypass` on a resident value, release its slot NOW — after its
+    /// cell read has been captured by the caller. The `Bypass` already closed `v`'s
+    /// retention (matcher), so the value is EXPIRED: free its width, drop it from the
+    /// resident map and `self.defined` (later serves recompute), and record the
+    /// `Evict { expired: true }`. Eager release keeps the live-capacity model in lockstep
+    /// with `plan_placement`'s true cell lifetimes (`v`'s cell dies at this last read), so
+    /// a later admission's capacity check is neither over- nor under-reserved. No-op
+    /// outside plan mode / when nothing is pending. (The single-owner retention chains
+    /// make the spec's "unless another retention still owns the value" vacuous.)
+    fn plan_release_if_pending(&mut self, v: ExprId) {
+        let release = matches!(
+            self.plan.as_ref().map(|p| p.pending_bypass_release),
+            Some(Some(x)) if x == v
+        );
+        if !release {
+            return;
+        }
+        let expired = {
+            let plan = self.plan.as_mut().expect("checked Some above");
+            plan.pending_bypass_release = None;
+            let freed = plan.resident.remove(&v).map_or(0, |s| resident_width(s.field));
+            plan.live_width = plan.live_width.saturating_sub(freed);
+            // A rule-a release only fires when the Bypass just closed the retention.
+            plan.run.retention(v).is_none() || plan.run.diverged().is_some()
+        };
+        self.defined.remove(&v);
+        if let Some(trace) = &mut self.bwd_trace {
+            trace.events.push(BwdEvent::Evict { value: v, expired });
+        }
+    }
+
+    /// Unified admission choke for the leaf / compound / (fwd) root sites: the gene
+    /// channel routes through `try_admit`'s priority logic; plan mode routes through
+    /// `plan_try_admit` (the plan's own decision, no priority); neither → `None`
+    /// (uncached recompute, byte-identical to the pre-Task-4 `decisions.is_some()` gate).
+    fn admit_decision(&mut self, v: ExprId, field: OperandField) -> Option<ValueId> {
+        if self.decisions.is_some() {
+            self.try_admit(v, field)
+        } else if self.plan.is_some() {
+            self.plan_try_admit(v, field)
+        } else {
+            None
+        }
+    }
+
+    /// Plan-mode admission of a just-served / just-produced NON-resident value. Admits
+    /// iff the serve staged a `Retain` action (`pending_action`); otherwise `None`
+    /// (recompute). On a `Retain`, re-checks live capacity (spec §5): if short, evicts
+    /// only EXPIRED residents (§4 rule b); if still short, emits `Refuse` and declines
+    /// (never preempts a live retention). On admit, returns the `ValueId` the caller must
+    /// evict-to-cell — `v` on its first admission, or a fresh generation if re-admitted.
+    fn plan_try_admit(&mut self, v: ExprId, field: OperandField) -> Option<ValueId> {
+        match self.plan.as_mut()?.pending_action.remove(&v) {
+            Some(PlanAction::Retain) => {}
+            _ => return None,
+        }
+        let need = resident_width(field);
+        if !self.plan_evict_to_fit(need) {
+            if let Some(trace) = &mut self.bwd_trace {
+                trace.events.push(BwdEvent::Refuse { value: v, need: need as u32 });
+            }
+            return None;
+        }
+        let evicted_before = self.plan.as_ref().expect("plan Some").evicted_ever.contains(&v);
+        let gen_id = if evicted_before { self.fresh_internal() } else { v };
+        let closes_at =
+            self.plan.as_ref().expect("plan Some").run.retention(v).unwrap_or(usize::MAX);
+        {
+            let plan = self.plan.as_mut().expect("plan Some");
+            plan.resident.insert(v, ResidentSlot { field, closes_at });
+            if gen_id != v {
+                plan.generation.insert(v, gen_id);
+            }
+            plan.live_width += need;
+        }
+        self.defined.insert(v);
+        if let Some(trace) = &mut self.bwd_trace {
+            trace.events.push(BwdEvent::Admit { value: v, width: need as u8 });
+        }
+        Some(gen_id)
+    }
+
+    /// Free at least `need` width-weighted cells for a plan admission by evicting EXPIRED
+    /// residents (§4 rule b). Victim order: dead first (no unconsumed plan entries), then
+    /// smallest recorded `closes_at`, then `ExprId`. A live retention is NEVER a victim.
+    /// Returns `true` iff `need` now fits; `false` (admission refused) if evicting every
+    /// expired resident still leaves it short. Emits an `Evict { expired: true }` per
+    /// victim. No-op-true outside plan mode.
+    fn plan_evict_to_fit(&mut self, need: usize) -> bool {
+        let to_evict = {
+            let Some(plan) = self.plan.as_ref() else { return true };
+            if plan.live_width + need <= plan.budget {
+                return true;
+            }
+            let diverged = plan.run.diverged().is_some();
+            // (dead?, closes_at, value, field) — `dead = false` sorts first via `!dead`.
+            let mut victims: Vec<(bool, usize, ExprId, OperandField)> = plan
+                .resident
+                .iter()
+                .filter_map(|(&rv, slot)| {
+                    let expired = diverged || plan.run.retention(rv).is_none();
+                    if !expired {
+                        return None;
+                    }
+                    let dead = plan.run.remaining(rv) == 0;
+                    Some((!dead, slot.closes_at, rv, slot.field))
+                })
+                .collect();
+            victims.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+            let mut freed = 0usize;
+            let mut to_evict: Vec<(ExprId, OperandField)> = Vec::new();
+            for (_, _, rv, f) in victims {
+                if plan.live_width - freed + need <= plan.budget {
+                    break;
+                }
+                freed += resident_width(f);
+                to_evict.push((rv, f));
+            }
+            if plan.live_width - freed + need > plan.budget {
+                return false; // ran out of expired residents without freeing enough
+            }
+            to_evict
+        };
+        for (rv, f) in to_evict {
+            {
+                let plan = self.plan.as_mut().expect("plan Some");
+                plan.resident.remove(&rv);
+                plan.live_width -= resident_width(f);
+                plan.evicted_ever.insert(rv);
+            }
+            self.defined.remove(&rv);
+            if let Some(trace) = &mut self.bwd_trace {
+                trace.events.push(BwdEvent::Evict { value: rv, expired: true });
+            }
+        }
+        true
+    }
+
+    /// End-of-lowering plan wrap-up (spec §4): run the matcher's EOF-divergence check and
+    /// record the single `Diverge` event if it fires now; then reclaim every remaining
+    /// resident (they leave residency at EOF), emitting an `Evict` per value. No-op
+    /// outside plan mode.
+    fn plan_finish(&mut self) {
+        let mut newly_diverged = None;
+        if let Some(plan) = self.plan.as_mut() {
+            plan.run.finish();
+            if !plan.diverge_emitted {
+                if let Some(at) = plan.run.diverged() {
+                    plan.diverge_emitted = true;
+                    newly_diverged = Some(at);
+                }
+            }
+        }
+        if let Some(at) = newly_diverged {
+            if let Some(trace) = &mut self.bwd_trace {
+                trace.events.push(BwdEvent::Diverge { at_entry: at });
+            }
+        }
+        let residents: Vec<(ExprId, bool)> = match &self.plan {
+            Some(plan) => {
+                let diverged = plan.run.diverged().is_some();
+                plan.resident
+                    .keys()
+                    .map(|&rv| (rv, diverged || plan.run.retention(rv).is_none()))
+                    .collect()
+            }
+            None => return,
+        };
+        for (rv, expired) in residents {
+            if let Some(plan) = self.plan.as_mut() {
+                let slot = plan.resident.remove(&rv);
+                if let Some(slot) = slot {
+                    plan.live_width -= resident_width(slot.field);
+                }
+            }
+            if let Some(trace) = &mut self.bwd_trace {
+                trace.events.push(BwdEvent::Evict { value: rv, expired });
+            }
         }
     }
 
@@ -530,7 +832,14 @@ impl<'a> VirtualLower<'a> {
     /// directly), so it lands on the physical cell the CURRENT generation's
     /// `defines` instruction produced.
     fn current_value_id(&self, real: ExprId) -> ValueId {
-        self.decisions.as_ref().and_then(|ds| ds.generation.get(&real).copied()).unwrap_or(real)
+        if let Some(g) = self.decisions.as_ref().and_then(|ds| ds.generation.get(&real).copied()) {
+            return g;
+        }
+        // Task 4: plan mode carries its own re-admission generations.
+        if let Some(g) = self.plan.as_ref().and_then(|p| p.generation.get(&real).copied()) {
+            return g;
+        }
+        real
     }
 
     /// Demand-driven eviction (replaces the deleted static `resident_cap_for_order`
@@ -641,15 +950,17 @@ impl<'a> VirtualLower<'a> {
     /// then evict it out of the acc into a cell. Returns the operand naming whichever cell
     /// it landed in.
     ///
-    /// - `decisions = None`: never resident — schema v2 has no persisted per-step
-    ///   residency, so this is pure per-step recompute (unchanged Task-1 behavior).
+    /// - `decisions = None` and `plan = None`: never resident — schema v2 has no
+    ///   persisted per-step residency, so this is pure per-step recompute (unchanged
+    ///   Task-1 behavior).
     /// - `decisions = Some(..)`: `try_admit` (Task 3) decides.
+    /// - `plan = Some(..)`: `plan_try_admit` (Task 4) decides.
     fn finalize_produced(
         &mut self,
         expr_id: ExprId,
         field: OperandField,
     ) -> Result<VirtualOp, CompileError> {
-        let admitted = if self.decisions.is_some() { self.try_admit(expr_id, field) } else { None };
+        let admitted = self.admit_decision(expr_id, field);
         if let Some(gen_id) = admitted {
             self.widths.insert(gen_id, field);
             self.emit_evict_to_cell(gen_id, field);
@@ -831,19 +1142,24 @@ impl<'a> VirtualLower<'a> {
         //    (Task 8c: `expr_id` itself unless it was re-admitted after an eviction).
         if self.defined.contains(&expr_id) {
             let gen_id = self.current_value_id(expr_id);
-            return Ok(self.defer_read(gen_id));
+            let op = self.defer_read(gen_id);
+            // Task 4 rule a: a `Bypass` on this resident serves the cell (above) THIS
+            // time, then releases the slot so later serves recompute. No-op otherwise.
+            self.plan_release_if_pending(expr_id);
+            return Ok(op);
         }
         // 2. A source or resolution-pruned leaf resolves to one operand line. Under
         //    `Decisions`, a leaf can ALSO be admitted into residency (Task 3: caching
         //    isn't limited to compound recomputes — brief's `read_leaf_cacheable`) so a
-        //    repeatedly-read DRAM/const/etc. leaf can be served from a cell later.
+        //    repeatedly-read DRAM/const/etc. leaf can be served from a cell later. Task 4
+        //    plan mode admits leaves the same way via `admit_decision`.
         if layer.resolutions.contains_key(&expr_id)
             || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
         {
             let op = self.source_to_vop(layer, expr_id, expected)?;
-            if self.decisions.is_some() {
+            if self.decisions.is_some() || self.plan.is_some() {
                 let field = self.operand_field(layer, expr_id, expected);
-                if let Some(gen_id) = self.try_admit(expr_id, field) {
+                if let Some(gen_id) = self.admit_decision(expr_id, field) {
                     // HIGH-1: eager cache write from the SOURCE (F1-clean). Writing from acc
                     // here would wedge a `DstFromAcc(cache)` between the leaf load and the
                     // cell eviction (both read acc), which F1 cannot fuse; sourcing the
@@ -860,7 +1176,7 @@ impl<'a> VirtualLower<'a> {
             return Ok(op);
         }
         // 3. Compound: recompute the cone into the acc, then finalize residency (Task 3
-        //    `Decisions` admission; a no-op when `decisions` is `None`).
+        //    `Decisions` / Task 4 plan admission; a no-op when neither is active).
         let field = self.operand_field(layer, expr_id, expected);
         self.compile_expr_virtual(layer, expr_id, field)?;
         self.materialize_if_root(expr_id, true);
@@ -1204,20 +1520,22 @@ impl<'a> VirtualLower<'a> {
         true // compound cone → recompute clobbers the acc → stash
     }
 
-    /// Whether lowering `id` as an operand MAY reach `try_admit`'s eager `init;evict`
-    /// (which clobbers the acc). This is `try_admit`'s stateless admissibility prefix
-    /// (`is_admittable` ∧ (`reaches_dram` ∨ operand-read-count ≥ 2)) plus a
-    /// remaining-occurrence lookahead (`effective_priority` is `Some`), so a genuine
-    /// last-use source is NOT needlessly stashed. `false` under `decisions: None` — no
-    /// admission ever happens there, so every source folds directly (legacy read-side).
+    /// Whether lowering `id` as an operand MAY reach the eager `init;evict` admission
+    /// (which clobbers the acc), so the streamed reduction must route it through the
+    /// stash path rather than fold it directly. Gene channel: `try_admit`'s stateless
+    /// admissibility prefix (`is_admittable` ∧ (`reaches_dram` ∨ read-count ≥ 2)) plus a
+    /// remaining-occurrence lookahead. Plan mode (Task 4): any DOMAIN value may be
+    /// `Retain`ed at this serve, so it must be stash-routed to keep the admit site
+    /// reachable (a Bypassed one simply folds back through the `else` arm). `false` under
+    /// a pure `decisions: None` compile — no admission ever happens there.
     fn may_attempt_admit(&self, id: ExprId) -> bool {
         match &self.decisions {
-            None => false,
             Some(ds) => {
                 ds.streams.is_admittable(id)
                     && (ds.streams.reaches_dram(id) || ds.streams.operand_read_count(id) >= 2)
                     && ds.streams.effective_priority(id).is_some()
             }
+            None => self.plan.as_ref().is_some_and(|p| p.domain.contains(&id)),
         }
     }
 
@@ -1265,7 +1583,7 @@ impl<'a> VirtualLower<'a> {
         self.serve_occurrence(id, BwdServeKind::Operand);
         self.compile_expr_virtual(layer, id, field)?;
         self.materialize_if_root(id, true);
-        let admitted = if self.decisions.is_some() { self.try_admit(id, field) } else { None };
+        let admitted = self.admit_decision(id, field);
         if let Some(g) = admitted {
             self.widths.insert(g, field);
             self.emit_evict_to_cell(g, field);
@@ -1387,8 +1705,8 @@ impl<'a> VirtualLower<'a> {
             self.serve_occurrence(kids[seed].id, BwdServeKind::Operand);
             self.compile_expr_virtual(layer, kids[seed].id, kids[seed].field)?;
             self.materialize_if_root(kids[seed].id, true);
-            if self.decisions.is_some() {
-                if let Some(g) = self.try_admit(kids[seed].id, kids[seed].field) {
+            if self.decisions.is_some() || self.plan.is_some() {
+                if let Some(g) = self.admit_decision(kids[seed].id, kids[seed].field) {
                     self.widths.insert(g, kids[seed].field);
                     self.emit_evict_to_cell(g, kids[seed].field);
                     self.defined.insert(kids[seed].id);
@@ -1961,6 +2279,8 @@ pub(crate) fn lower_layer_virtual(
         // Forward paths never trace: `None` keeps the forward program byte-identical.
         bwd_trace: None,
         consumer_stack: Vec::new(),
+        // Forward paths never plan-drive (byte-identical fwd programs).
+        plan: None,
     };
 
     let mut resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)> =
@@ -2109,11 +2429,18 @@ pub(crate) fn lower_bwd_root_virtual(
     budget: usize,
     stream_reductions: bool,
     trace: Option<BwdCompileTrace>,
+    plan_input: Option<PlanInput>,
 ) -> Result<(Vec<VInstr>, Vec<usize>, Option<BwdCompileTrace>), CompileError> {
     assert!(
         (layer.exprs.len() as u64) < INTERNAL_BASE as u64,
         "layer has {} exprs; internal ValueId base {INTERNAL_BASE} would collide",
         layer.exprs.len()
+    );
+    // Plan mode and the gene channel are mutually exclusive (spec architecture): a
+    // compile drives residency from EITHER the plan OR the occurrence streams.
+    assert!(
+        !(streams.is_some() && plan_input.is_some()),
+        "plan-driven and gene-driven bwd lowering are mutually exclusive"
     );
     let decisions_state = streams.map(|s| DecisionsState {
         streams: s,
@@ -2124,6 +2451,18 @@ pub(crate) fn lower_bwd_root_virtual(
         pending_reads: std::collections::HashMap::new(),
         evicted_ever: HashSet::new(),
         generation: HashMap::new(),
+    });
+    let plan_state = plan_input.map(|pi| PlanRunState {
+        run: PlanRun::new(pi.plan),
+        domain: pi.domain,
+        resident: BTreeMap::new(),
+        live_width: 0,
+        budget,
+        pending_action: BTreeMap::new(),
+        pending_bypass_release: None,
+        generation: HashMap::new(),
+        evicted_ever: HashSet::new(),
+        diverge_emitted: false,
     });
     let cross = ctx.cross_layer_fields.clone();
     let mut st = VirtualLower {
@@ -2147,7 +2486,12 @@ pub(crate) fn lower_bwd_root_virtual(
         stream_reductions,
         bwd_trace: trace,
         consumer_stack: Vec::new(),
+        plan: plan_state,
     };
+    debug_assert!(
+        !(st.decisions.is_some() && st.plan.is_some()),
+        "plan-driven and gene-driven bwd lowering are mutually exclusive"
+    );
 
     // The root's own output demand — mirrors `build_bwd_root`'s RootOutput site
     // (exactly one serve, before any term lowering).
@@ -2166,6 +2510,8 @@ pub(crate) fn lower_bwd_root_virtual(
             st.push_fold(OperandField::Ext, vec![VirtualOp::Value(t)], /* is_add */ true, Sign::Plus);
         }
     }
+    // Task 4: EOF divergence check + residency reclaim, before the trace is sealed.
+    st.plan_finish();
     Ok((st.out, st.step_of_instr, st.bwd_trace))
 }
 

@@ -866,6 +866,14 @@ pub fn assert_synthetic_value_exact_with_decisions(
     assert_bwd_value_parity(c, d, &d.layer);
 }
 
+/// As [`assert_synthetic_value_exact`], for a program compiled UNDER a plan
+/// (`compile_distilled_planned`, Task 4). Value is residency-invariant (Retain/Bypass
+/// only move cells, never values — same as the decisions channel), so the distilled
+/// layer's own expression tree is still a valid oracle across the full sweep.
+pub fn assert_synthetic_value_exact_planned(c: &BwdCompiledLayer, d: &DistilledLayer) {
+    assert_bwd_value_parity(c, d, &d.layer);
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // SP1 Task 4 — A3 read-side traffic-invariance surface (streamed == legacy)
 //
