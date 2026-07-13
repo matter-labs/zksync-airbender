@@ -171,11 +171,14 @@ fn superscript(idx: usize) -> String {
 }
 fn const_to_evm(c: &u32) -> Dual {
     assert!(*c < BabyBearField::ORDER, "we don't expect circuits with unreduced constants");
+    assert!(*c < (1<<31));
     // first check if negative
     let (sign, modc, yul) = if *c > BabyBearField::ORDER / 2 {
         let modc = BabyBearField::ORDER - c;
+        assert!(modc < (1<<30));
         ("-", modc, yul_format!("sub(P, {modc})"))
     } else { 
+        assert!(*c < (1<<30));
         ("", *c, yul_format!("{c}"))
     };
     let normal = match modc {
@@ -721,20 +724,18 @@ fn main() {
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     // println!("{relation_name}: {input} = {output}");
                     yul_println!("
-                    \t{{  // {relation_name}: {input} = {output}
-                    \t    let gate := {input:x}
-                    \t    {pointcheck_update:x}
-                    \t}}");
+                    \t// {relation_name}: {input} = {output}
+                    \tacc := gate_copyinbasefield(ptr, alpha, acc, {input:o})
+                    \t");
                 }
                 NoFieldGKRRelation::TrivialProduct { input, output } => {
                     let [lhs, rhs] = input.each_ref().map(|addr| gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets));
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     // println!("{relation_name}: {lhs}*{rhs} = {output}");
                     yul_println!("
-                    \t{{  // {relation_name}: {lhs}*{rhs} = {output}
-                    \t    let gate := mulmod({lhs:x}, {rhs:x}, P)
-                    \t    {pointcheck_update:x}
-                    \t}}");
+                    \t// {relation_name}: {lhs}*{rhs} = {output}
+                    \tacc := gate_trivialproduct(ptr, alpha, acc, {lhs:o}, {rhs:o})
+                    \t");
                 }
                 NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, output } => {
                     let [num, den] = input.each_ref().map(|addr| gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets));
@@ -743,14 +744,9 @@ fn main() {
                     let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
                     // println!("{relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}");
                     yul_println!("
-                    \t{{  // {relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}
-                    \t    let den_out := mulmod({den:x}, add({logup_gamma:x}, {remainder:x}), P)
-                    \t    let gate := den_out
-                    \t    {pointcheck_update:x}
-                    \t    let num_out := add(mulmod({num:x}, add({logup_gamma:x}, {remainder:x}), P), {den:x})
-                    \t    gate := num_out
-                    \t    {pointcheck_update:x}
-                    \t}}");
+                    \t// {relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}
+                    \tacc := gate_lookupunbalancedpairwithmaterializedbaseinputs(ptr, alpha, acc, {num:o}, {den:o}, {remainder:o})
+                    \t");
                 }
                 // (unified)
                 NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
@@ -989,8 +985,17 @@ fn main() {
         if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
         ")
     };
-    let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
-    let gate_mload_inner = Yul::mload(&123).0.replace("123", "idx");
+    let gate_calldataload_inner = Yul::calldataload(&1234567890).0.replace("1234567890", "idx");
+    let gate_mload_inner = Yul::mload(&1234567890).0.replace("1234567890", "idx");
+    let memory_gamma = Yul::memory_gamma();
+    let memory_alpha1 = Yul::memory_alpha(0);
+    let memory_alpha2 = Yul::memory_alpha(1);
+    let memory_alpha3 = Yul::memory_alpha(2);
+    let memory_alpha4 = Yul::memory_alpha(3);
+    let memory_alpha5 = Yul::memory_alpha(4);
+    let memory_alpha6 = Yul::memory_alpha(5);
+    let logup_gamma = Yul::logup_gamma();
+    let logup_alpha = Yul::logup_alpha();
     yul_println!("
         function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {{
             // NB: need to inline GKR_CIRCUIT_LAYER_ROUNDS unfortunately
@@ -1115,6 +1120,33 @@ fn main() {
         function u128_neg(input) -> neg_input {{
             neg_input := sub(mul(2, P), input)
         }}
+        function memory_gamma() -> gamma {{
+            gamma := {memory_gamma:x}
+        }}
+        function memory_alpha1() -> alpha1 {{
+            alpha1 := {memory_alpha1:x}
+        }}
+        function memory_alpha2() -> alpha2 {{
+            alpha2 := {memory_alpha2:x}
+        }}
+        function memory_alpha3() -> alpha3 {{
+            alpha3 := {memory_alpha3:x}
+        }}
+        function memory_alpha4() -> alpha4 {{
+            alpha4 := {memory_alpha4:x}
+        }}
+        function memory_alpha5() -> alpha5 {{
+            alpha5 := {memory_alpha5:x}
+        }}
+        function memory_alpha6() -> alpha6 {{
+            alpha6 := {memory_alpha6:x}
+        }}
+        function logup_gamma() -> gamma {{
+            gamma := {logup_gamma:x}
+        }}
+        function logup_alpha() -> alpha {{
+            alpha := {logup_alpha:x}
+        }}
 
         // 3
         function gate_aggregatelookuprationalpair(ptr, alpha, acc, num1_idx, num2_idx, den1_idx, den2_idx) -> next_acc {{
@@ -1141,5 +1173,40 @@ fn main() {
             let gate := add(mulmod(mask, add(input, neg_one), P), 1)
             next_acc := pointcheck_update(acc, alpha, gate)
         }}
+
+        // 1
+        function gate_copyinbasefield(ptr, alpha, acc, input_idx) -> next_acc {{
+            let input := gate_calldataload(ptr, input_idx)
+            next_acc := pointcheck_update(acc, alpha, input)
+        }}
+        function gate_trivialproduct(ptr, alpha, acc, lhs_idx, rhs_idx) -> next_acc {{
+            let lhs := gate_calldataload(ptr, lhs_idx)
+            let rhs := gate_calldataload(ptr, rhs_idx)
+            let gate := mulmod(lhs, rhs, P)
+            next_acc := pointcheck_update(acc, alpha, gate)
+        }}
+        function gate_lookupunbalancedpairwithmaterializedbaseinputs(ptr, alpha, acc, num1_idx, den1_idx, den2_remainder_idx) -> next_acc {{
+            let num1 := gate_calldataload(ptr, num1_idx)
+            let den1 := gate_calldataload(ptr, den1_idx)
+            let den2_remainder := gate_calldataload(ptr, den2_remainder_idx)
+            let den2 := add(logup_gamma(), den2_remainder)
+            let den_out := mulmod(den1, den2, P)
+            let num_out := add(mulmod(num1, den2, P), den1)
+            next_acc := logup_pointcheck_update(acc, alpha, num_out, den_out)
+        }}
+        // (unified)
+        function gate_lookuppairfromvectorinputs(ptr, alpha, acc, den1, den2) -> next_acc {{
+            let den_out := mulmod(den1, den2, P)
+            let num_out := add(den2, den1)
+            next_acc := logup_pointcheck_update(acc, alpha, num_out, den_out)
+        }}
+        function gate_lookupunbalancedpairwithvectorinputs(ptr, alpha, acc, num1_idx, den1_idx, den2) -> next_acc {{
+            let num1 := gate_calldataload(ptr, num1_idx)
+            let den1 := gate_calldataload(ptr, den1_idx)
+            let den_out := mulmod(den1, den2, P)
+            let num_out := add(mulmod(num1, den2, P), den1)
+            next_acc := logup_pointcheck_update(acc, alpha, num_out, den_out)
+        }}
+
     ");
 }
