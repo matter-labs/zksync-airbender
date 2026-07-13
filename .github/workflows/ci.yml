@@ -168,7 +168,12 @@ jobs:
         run: |
           BIN="$PWD/examples/opcode_smoke/app.bin"
           TEXT="$PWD/examples/opcode_smoke/app.text"
-          ./target/release/cli combine --proofs output/recursion_unified.json output/recursion_unified.json --bin "$BIN" --text "$TEXT" --security-level ${{ matrix.security_level }} --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file recursion_combined.json
+          # The combined statement verifies both input proofs in one guest run: at
+          # security 100 that takes ~21M cycles (a single unified pass is ~16.6M), so
+          # the 2^24 bound used by the other steps cannot fit it. Use 2^26: ~3x
+          # headroom, and the cost of a larger bound is only the VM's preallocated
+          # reads buffer (4 bytes per cycle).
+          ./target/release/cli combine --proofs output/recursion_unified.json output/recursion_unified.json --bin "$BIN" --text "$TEXT" --security-level ${{ matrix.security_level }} --cpu-cycles-bound 67108864 --cpu-worker-threads 8 --output-dir output --output-file recursion_combined.json
       - name: Verify combined proof
         run: |
           BIN="$PWD/examples/opcode_smoke/app.bin"
