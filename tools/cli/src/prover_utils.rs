@@ -379,7 +379,7 @@ impl ProgramProver {
             self.config.backend,
             batch_id,
             cycles,
-            &loaded,
+            program_keccaks(&loaded),
             timings,
             proof,
         ))
@@ -426,7 +426,7 @@ impl ProgramProver {
                 self.config.backend,
                 batch_id,
                 cycles,
-                &loaded,
+                program_keccaks(&loaded),
                 timings,
                 proof,
             ));
@@ -454,7 +454,7 @@ impl ProgramProver {
                 self.config.backend,
                 batch_id,
                 cycles,
-                &loaded,
+                program_keccaks(&loaded),
                 timings,
                 proof,
             ));
@@ -481,7 +481,7 @@ impl ProgramProver {
             self.config.backend,
             batch_id,
             cycles,
-            &loaded,
+            program_keccaks(&loaded),
             timings,
             proof,
         ))
@@ -528,7 +528,7 @@ impl ProgramProver {
                 self.config.backend,
                 batch_id,
                 cycles,
-                &loaded,
+                program_keccaks(&loaded),
                 timings,
                 proof,
             ));
@@ -555,7 +555,7 @@ impl ProgramProver {
             self.config.backend,
             batch_id,
             cycles,
-            &loaded,
+            program_keccaks(&loaded),
             timings,
             proof,
         ))
@@ -695,7 +695,12 @@ pub fn combine_artifacts(
     security_level: SecurityLevel,
     cpu: &CpuConfig,
 ) -> Result<ProofArtifact, String> {
-    combine_artifacts_with_backend(artifacts, source, security_level, CombineBackend::Cpu(cpu))
+    combine_artifacts_with_backend(
+        artifacts,
+        ProgramBinding::Program(source),
+        security_level,
+        CombineBackend::Cpu(cpu),
+    )
 }
 
 /// GPU variant of [`combine_artifacts`]: input verification, witness building,
@@ -708,7 +713,57 @@ pub fn combine_artifacts_gpu(
     security_level: SecurityLevel,
     gpu: &GpuConfig,
 ) -> Result<ProofArtifact, String> {
-    combine_artifacts_with_backend(artifacts, source, security_level, CombineBackend::Gpu(gpu))
+    combine_artifacts_with_backend(
+        artifacts,
+        ProgramBinding::Program(source),
+        security_level,
+        CombineBackend::Gpu(gpu),
+    )
+}
+
+/// Variant of [`combine_artifacts`] that does not bind the inputs to a locally supplied
+/// program: every input proof must instead carry — and prove — the same recursion chain,
+/// which the combined proof then carries through unchanged. Use this when the combined
+/// proof is handed to a downstream verifier that authenticates the chain itself (e.g. a
+/// SNARK wrapper exposing it in the public input); that verifier is then responsible for
+/// binding the chain to the expected program.
+pub fn combine_artifacts_carried_chain(
+    artifacts: &[ProofArtifact],
+    security_level: SecurityLevel,
+    cpu: &CpuConfig,
+) -> Result<ProofArtifact, String> {
+    combine_artifacts_with_backend(
+        artifacts,
+        ProgramBinding::CarriedChain,
+        security_level,
+        CombineBackend::Cpu(cpu),
+    )
+}
+
+/// GPU variant of [`combine_artifacts_carried_chain`].
+#[cfg(feature = "gpu")]
+pub fn combine_artifacts_carried_chain_gpu(
+    artifacts: &[ProofArtifact],
+    security_level: SecurityLevel,
+    gpu: &GpuConfig,
+) -> Result<ProofArtifact, String> {
+    combine_artifacts_with_backend(
+        artifacts,
+        ProgramBinding::CarriedChain,
+        security_level,
+        CombineBackend::Gpu(gpu),
+    )
+}
+
+/// How a combine binds its input proofs to a program.
+enum ProgramBinding<'a> {
+    /// Verify every input against the recursion chain derived from a locally supplied
+    /// program (and validate the artifacts' program keccaks against its files).
+    Program(&'a ProgramSource),
+    /// Verify every input against the recursion chain the proofs themselves carry;
+    /// binding that chain to the expected program is deferred to the downstream
+    /// verifier of the combined proof.
+    CarriedChain,
 }
 
 enum CombineBackend<'a> {
@@ -813,7 +868,7 @@ impl<'a> CombinedUnifiedProver<'a> {
 
 fn combine_artifacts_with_backend(
     artifacts: &[ProofArtifact],
-    source: &ProgramSource,
+    binding: ProgramBinding,
     security_level: SecurityLevel,
     backend: CombineBackend,
 ) -> Result<ProofArtifact, String> {
@@ -826,14 +881,43 @@ fn combine_artifacts_with_backend(
 
     let security = security_level.model();
 
-    // Verify every input artifact (this also validates the security level, the
-    // convergence of each proof and that each proof binds to the supplied program),
+    let recursion_unified =
+        load_embedded_recursion_program(security_level, RecursionLayer::Unified);
+
+    // Unified-level verification data. The setup and layouts always come from the
+    // embedded unified recursion program; the binding only decides which recursion
+    // chain the inputs are expected to prove (and which program keccaks the artifacts
+    // must carry and the combined artifact is stamped with).
+    let (unified_level, expected_keccaks) = match binding {
+        ProgramBinding::Program(source) => {
+            let loaded = load_and_validate_program(source, &artifacts[0], Some(security_level))?;
+            let base_level = make_base_level_data(&loaded);
+            let recursion_unrolled =
+                load_embedded_recursion_program(security_level, RecursionLayer::Unrolled);
+            let unrolled_level =
+                make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
+            let unified_level =
+                make_unified_recursion_level_data(&unrolled_level, &recursion_unified);
+            (unified_level, program_keccaks(&loaded))
+        }
+        ProgramBinding::CarriedChain => (
+            make_carried_chain_unified_level_data(artifacts, &recursion_unified)?,
+            (
+                artifacts[0].program_bin_keccak,
+                artifacts[0].program_text_keccak,
+            ),
+        ),
+    };
+
+    // Verify every input artifact (security level, target, convergence of each proof,
+    // keccak consistency, and that each proof proves the expected recursion chain),
     // and collect the outputs to compute the expected combined output.
     let mut outputs = Vec::with_capacity(artifacts.len());
     for (idx, artifact) in artifacts.iter().enumerate() {
-        let output = verify_artifact(
+        let output = verify_combine_artifact_against_level(
             artifact,
-            source,
+            &unified_level,
+            expected_keccaks,
             security_level,
             ProofTarget::RecursionUnified,
         )
@@ -842,16 +926,6 @@ fn combine_artifacts_with_backend(
     }
     let expected_output =
         execution_utils::unified_circuit::compute_combined_recursion_layers_output(&outputs);
-
-    let loaded = load_and_validate_program(source, &artifacts[0], Some(security_level))?;
-
-    let base_level = make_base_level_data(&loaded);
-    let recursion_unrolled =
-        load_embedded_recursion_program(security_level, RecursionLayer::Unrolled);
-    let unrolled_level = make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
-    let recursion_unified =
-        load_embedded_recursion_program(security_level, RecursionLayer::Unified);
-    let unified_level = make_unified_recursion_level_data(&unrolled_level, &recursion_unified);
 
     // Constructed once and reused for every unified pass; for the GPU backend
     // this holds the GPU context with the unified recursion program loaded.
@@ -920,16 +994,17 @@ fn combine_artifacts_with_backend(
         backend.kind(),
         artifacts[0].batch_id,
         cycles,
-        &loaded,
+        expected_keccaks,
         timings,
         proof,
     );
 
     // Self-check: the combined proof must verify and produce exactly the expected
     // rolling hash of the input proofs' outputs.
-    let output = verify_artifact(
+    let output = verify_combine_artifact_against_level(
         &artifact,
-        source,
+        &unified_level,
+        expected_keccaks,
         security_level,
         ProofTarget::RecursionCombined,
     )
@@ -942,6 +1017,83 @@ fn combine_artifacts_with_backend(
     }
 
     Ok(artifact)
+}
+
+/// Unified-level data for a carried-chain combine: setup and layouts come from the
+/// embedded unified recursion program, while the expected chain (and its preimage
+/// witness) is taken from the input proofs, which must all carry the same, internally
+/// consistent chain.
+fn make_carried_chain_unified_level_data(
+    artifacts: &[ProofArtifact],
+    recursion_unified: &EmbeddedProgram,
+) -> Result<RecursionLevelData, String> {
+    let preimage = validate_recursion_chain(&artifacts[0].proof)
+        .map_err(|e| format!("input proof 0: {}", e))?;
+    let hash_chain = artifacts[0]
+        .proof
+        .recursion_chain_hash
+        .expect("chain validated above, so the hash is present");
+    for (idx, artifact) in artifacts.iter().enumerate().skip(1) {
+        if artifact.proof.recursion_chain_hash != Some(hash_chain) {
+            return Err(format!(
+                "input proof {} carries a different recursion chain than input proof 0",
+                idx
+            ));
+        }
+    }
+
+    let setup = compute_unified_setup_for_machine_configuration::<
+        IWithoutByteAccessIsaConfigWithDelegation,
+    >(
+        &recursion_unified.padded_bin_bytes,
+        &recursion_unified.padded_text_bytes,
+    );
+    let layouts = get_unified_circuit_artifact_for_machine_type::<
+        IWithoutByteAccessIsaConfigWithDelegation,
+    >(&recursion_unified.padded_bin_u32);
+
+    Ok(RecursionLevelData {
+        setup,
+        layouts,
+        hash_chain,
+        preimage,
+    })
+}
+
+/// Verify one proof artifact of a combine (an input, or the combined result) against
+/// already-built unified-level data. Mirrors the checks [`verify_artifact`] performs for
+/// the same targets, without re-deriving the level data per proof and with the program
+/// keccaks checked against the combine's binding instead of files on disk.
+fn verify_combine_artifact_against_level(
+    artifact: &ProofArtifact,
+    unified_level: &RecursionLevelData,
+    expected_keccaks: ([u8; 32], [u8; 32]),
+    expected_security_level: SecurityLevel,
+    expected_target: ProofTarget,
+) -> Result<[u32; 16], String> {
+    validate_trusted_verification_policy(artifact, expected_security_level, expected_target)?;
+    if (artifact.program_bin_keccak, artifact.program_text_keccak) != expected_keccaks {
+        return Err(
+            "proof artifact program keccaks do not match the combine's program binding".to_string(),
+        );
+    }
+    validate_recursion_chain(&artifact.proof)?;
+
+    let output = verify_proof_in_unified_layer(
+        &artifact.proof,
+        &unified_level.setup,
+        &unified_level.layouts,
+        false,
+        expected_security_level.model(),
+    )
+    .map_err(|_| match expected_target {
+        ProofTarget::RecursionCombined => "recursion(combined) verification failed".to_string(),
+        _ => "recursion(unified) verification failed".to_string(),
+    })?;
+    let (family_count, _, _) = artifact.proof.get_proof_counts();
+    ensure_unified_recursion_target_converged(expected_security_level, family_count)?;
+    ensure_recursion_chain_binds_program(&output, &unified_level.hash_chain)?;
+    Ok(output)
 }
 
 fn validate_trusted_verification_policy(
@@ -1041,13 +1193,17 @@ fn ensure_unified_recursion_target_converged(
     ))
 }
 
+fn program_keccaks(loaded: &LoadedProgram) -> ([u8; 32], [u8; 32]) {
+    (keccak256(&loaded.bin_bytes), keccak256(&loaded.text_bytes))
+}
+
 fn make_artifact(
     security_level: SecurityLevel,
     target: ProofTarget,
     backend: ProverBackend,
     batch_id: u64,
     cycles: u64,
-    loaded: &LoadedProgram,
+    (program_bin_keccak, program_text_keccak): ([u8; 32], [u8; 32]),
     timings: ProofTimingsMs,
     proof: UnrolledProgramProof,
 ) -> ProofArtifact {
@@ -1072,8 +1228,8 @@ fn make_artifact(
         backend,
         batch_id,
         cycles,
-        program_bin_keccak: keccak256(&loaded.bin_bytes),
-        program_text_keccak: keccak256(&loaded.text_bytes),
+        program_bin_keccak,
+        program_text_keccak,
         timings_ms: timings,
         proof_counts,
         proof,
@@ -1207,7 +1363,7 @@ fn finalize_artifact(
     backend: ProverBackend,
     batch_id: u64,
     cycles: u64,
-    loaded: &LoadedProgram,
+    keccaks: ([u8; 32], [u8; 32]),
     mut timings: ProofTimingsMs,
     proof: UnrolledProgramProof,
 ) -> ProofArtifact {
@@ -1218,7 +1374,7 @@ fn finalize_artifact(
         backend,
         batch_id,
         cycles,
-        loaded,
+        keccaks,
         timings,
         proof,
     )
@@ -1665,6 +1821,49 @@ mod recursion_binding_tests {
         );
     }
 
+    fn stamp_recursion_chain(artifact: &mut ProofArtifact, preimage: [u32; 16]) {
+        let mut hasher = Blake2sBufferingTranscript::new();
+        hasher.absorb(&preimage);
+        artifact.proof.recursion_chain_preimage = Some(preimage);
+        artifact.proof.recursion_chain_hash = Some(hasher.finalize().0);
+    }
+
+    #[test]
+    fn carried_chain_combine_rejects_inputs_without_chain() {
+        let artifact_1 = minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        let artifact_2 = minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        let err = combine_artifacts_carried_chain(
+            &[artifact_1, artifact_2],
+            SecurityLevel::Security80,
+            &CpuConfig::default(),
+        )
+        .expect_err("inputs without a carried recursion chain must be rejected");
+        assert!(
+            err.contains("recursion_chain"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn carried_chain_combine_rejects_mismatched_chains() {
+        let mut artifact_1 =
+            minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        let mut artifact_2 =
+            minimal_artifact(SecurityLevel::Security80, ProofTarget::RecursionUnified);
+        stamp_recursion_chain(&mut artifact_1, [1u32; 16]);
+        stamp_recursion_chain(&mut artifact_2, [2u32; 16]);
+        let err = combine_artifacts_carried_chain(
+            &[artifact_1, artifact_2],
+            SecurityLevel::Security80,
+            &CpuConfig::default(),
+        )
+        .expect_err("inputs carrying different recursion chains must be rejected");
+        assert!(
+            err.contains("different recursion chain"),
+            "unexpected error message: {err}"
+        );
+    }
+
     #[test]
     fn rejects_recursion_combined_as_proving_target() {
         let source = ProgramSource::from_paths("app.bin".to_string(), None);
@@ -1729,9 +1928,9 @@ mod recursion_binding_tests {
         )
         .expect("proof 2 verifies");
 
-        let combined_artifact =
-            combine_artifacts(&[artifact_1, artifact_2], &source, security_level, &cpu)
-                .expect("combining succeeds");
+        let artifacts = [artifact_1, artifact_2];
+        let combined_artifact = combine_artifacts(&artifacts, &source, security_level, &cpu)
+            .expect("combining succeeds");
 
         let combined_output = verify_artifact(
             &combined_artifact,
@@ -1746,5 +1945,18 @@ mod recursion_binding_tests {
                 output_1, output_2,
             ]);
         assert_eq!(combined_output, expected_output);
+
+        // The carried-chain variant must combine the same inputs without access to the
+        // program files and prove the same combined statement.
+        let combined_detached = combine_artifacts_carried_chain(&artifacts, security_level, &cpu)
+            .expect("carried-chain combining succeeds");
+        let detached_output = verify_artifact(
+            &combined_detached,
+            &source,
+            security_level,
+            ProofTarget::RecursionCombined,
+        )
+        .expect("carried-chain combined proof verifies");
+        assert_eq!(detached_output, expected_output);
     }
 }
