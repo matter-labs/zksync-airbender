@@ -7,3 +7,4 @@ pub mod compile;
 pub mod cost;
 pub mod interp;
 pub mod search;
+mod structure;

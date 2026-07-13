@@ -30,7 +30,9 @@ use field::{Field, PrimeField};
 use gkr_eval_isa::bwd::compile::compile_distilled;
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::interp::{role_combine, sumcheck_fold_point, Role};
-use gkr_eval_isa::bwd::search::{search_bwd_layer, BwdSearchConfig};
+use gkr_eval_isa::bwd::search::{
+    search_bwd_layer, BwdOrderMutation, BwdSearchConfig, BwdSeedStrategy,
+};
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::fwd::error::CompileError;
 
@@ -189,7 +191,14 @@ fn search_bwd_layer_smoke() {
         let baseline_traffic = baseline.stats_ext.global + baseline.stats_ext.fold_traffic;
 
         // Run the search (tiny smoke config).
-        let cfg = BwdSearchConfig { pop: 4, evals: 40, seed: 0, mutation_sigma: 0.2 };
+        let cfg = BwdSearchConfig {
+            pop: 4,
+            evals: 40,
+            seed: 0,
+            mutation_sigma: 0.2,
+            seed_strategy: BwdSeedStrategy::StructureAware,
+            order_mutation: BwdOrderMutation::ReuseEdgeRelocate,
+        };
         let outcome = search_bwd_layer(layer, pick.regime, &cross, pick.budget, &cfg);
         let out_traffic = outcome.stats.global + outcome.stats.fold_traffic;
 
@@ -293,7 +302,14 @@ fn search_bwd_layer_falls_back_to_none_baseline_at_floor_budget() {
     let baseline = compile_distilled(&d0, floor, None)
         .unwrap_or_else(|e| panic!("[{name}] baseline compile at floor {floor}: {e:?}"));
 
-    let cfg = BwdSearchConfig { pop: 4, evals: 12, seed: 0, mutation_sigma: 0.2 };
+    let cfg = BwdSearchConfig {
+        pop: 4,
+        evals: 12,
+        seed: 0,
+        mutation_sigma: 0.2,
+        seed_strategy: BwdSeedStrategy::StructureAware,
+        order_mutation: BwdOrderMutation::ReuseEdgeRelocate,
+    };
     let outcome = search_bwd_layer(layer, regime, &cross, floor, &cfg);
 
     assert!(
@@ -346,7 +362,14 @@ fn search_bwd_layer_is_deterministic() {
     let d0 = distill(layer, regime, &cross, None);
     assert!(!d0.skipped_decoder, "[{name}] pick must be decoder-free");
 
-    let cfg = BwdSearchConfig { pop: 4, evals: 12, seed: 0, mutation_sigma: 0.2 };
+    let cfg = BwdSearchConfig {
+        pop: 4,
+        evals: 12,
+        seed: 0,
+        mutation_sigma: 0.2,
+        seed_strategy: BwdSeedStrategy::StructureAware,
+        order_mutation: BwdOrderMutation::ReuseEdgeRelocate,
+    };
     let outcome1 = search_bwd_layer(layer, regime, &cross, budget, &cfg);
     let outcome2 = search_bwd_layer(layer, regime, &cross, budget, &cfg);
 
@@ -372,5 +395,62 @@ fn search_bwd_layer_is_deterministic() {
     println!(
         "[{name}] deterministic across 2 runs: traffic={} perm={:?}",
         outcome1.stats.global + outcome1.stats.fold_traffic, outcome1.unit_permutation,
+    );
+}
+
+/// Fast equal-compile-budget probe before spending evaluations on bigint or
+/// keccak. Both modes retain identical selection/crossover/mutation; with
+/// `evals == pop`, this isolates their four initial genomes exactly.
+#[test]
+fn structure_aware_seed_equal_eval_probe() {
+    let name = "mem_word_only_layout_gkr.json";
+    let regime = BwdRegime::Ext;
+    let budget = 16;
+    let artifact = load_fixture(name);
+    let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
+    validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
+    let cross = build_cross_layer_field_map(&dag);
+    let layer = &dag.layers[0];
+
+    let d0 = distill(layer, regime, &cross, None);
+    let baseline = compile_distilled(&d0, budget, None)
+        .unwrap_or_else(|e| panic!("[{name}] baseline compile: {e:?}"));
+    let baseline_traffic = baseline.stats_ext.global + baseline.stats_ext.fold_traffic;
+
+    let config = |seed_strategy| BwdSearchConfig {
+        pop: 4,
+        evals: 4,
+        seed: 0,
+        mutation_sigma: 0.2,
+        seed_strategy,
+        order_mutation: BwdOrderMutation::PerKey,
+    };
+    let legacy = search_bwd_layer(
+        layer,
+        regime,
+        &cross,
+        budget,
+        &config(BwdSeedStrategy::Legacy),
+    );
+    let structured = search_bwd_layer(
+        layer,
+        regime,
+        &cross,
+        budget,
+        &config(BwdSeedStrategy::StructureAware),
+    );
+    let legacy_traffic = legacy.stats.global + legacy.stats.fold_traffic;
+    let structured_traffic = structured.stats.global + structured.stats.fold_traffic;
+
+    assert!(legacy_traffic <= baseline_traffic);
+    assert!(structured_traffic <= baseline_traffic);
+    assert!(
+        structured_traffic <= legacy_traffic,
+        "structure-aware seeds must not lose the equal-evaluation probe: \
+         structured={structured_traffic}, legacy={legacy_traffic}"
+    );
+    println!(
+        "[{name}] equal 4-eval seed probe: baseline={baseline_traffic} legacy={legacy_traffic} \
+         structured={structured_traffic}"
     );
 }

@@ -20,9 +20,18 @@
 //!   canonical batching position), so any permutation is VALUE-identical by
 //!   commutativity and only schedule-relevant (it drives the re-interning order,
 //!   hence the distilled `ExprId` numbering that lowering keys off).
-//! * **cache-priority genes** map positionally to the candidate's
-//!   [`distilled_site_domain`] sites (sorted `BTreeSet` order) → a
+//! * **cache-priority genes** map to a canonical-provenance site ordering that
+//!   is invariant under re-distillation. Each candidate translates those stable
+//!   keys to its own distilled
+//!   [`SiteKey`](cs::gkr_compiler::dag_ir::SiteKey)s before producing the
 //!   [`SiteDecisions`] the bwd compiler consumes.
+//! * **initial genomes** include a deterministic structure-aware pair: a greedy
+//!   maximum-reuse-adjacency unit order and its reverse, with cache priorities
+//!   initialized from uncached DRAM benefit per width×lifetime lane. The exact
+//!   compile remains the scorer; these are warm starts, not trusted decisions.
+//! * **order mutation** can use that same weighted reuse graph to relocate one
+//!   endpoint of a currently non-adjacent reuse edge beside the other. It is a
+//!   coherent permutation edit; cache genes retain their independent mutation.
 //!
 //! Fitness ([`score_candidate`]) is the REAL compile: ordered
 //! `(infeasible, global + fold_traffic, program_lanes)` from
@@ -45,14 +54,16 @@ use std::collections::HashMap;
 
 use rayon::prelude::*;
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace, SiteKey};
+use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
 
 use crate::bwd::compile::{compile_distilled, BwdTrafficStats};
-use crate::bwd::distill::{distill, distilled_site_domain};
+use crate::bwd::distill::{distill, stable_distilled_site_domain, StableBwdSiteKey};
 use crate::fwd::compile::SiteDecisions;
 use crate::fwd::error::CompileError;
 use crate::schedule_search::decode::decode_unit_order;
 use crate::schedule_search::genome::{assert_normalized_genome, clamp_bias, Genome};
+
+use super::structure::ReuseStructure;
 
 // ── Config / outcome ────────────────────────────────────────────────────────────
 
@@ -71,11 +82,41 @@ pub struct BwdSearchConfig {
     pub seed: u64,
     /// Per-gene Gaussian mutation step.
     pub mutation_sigma: f64,
+    /// Initial-population strategy. Selection, crossover, and mutation are
+    /// otherwise identical between modes, making `Legacy` an equal-evaluation
+    /// A/B control when paired with the same `order_mutation`.
+    pub seed_strategy: BwdSeedStrategy,
+    /// Mutation operator for the unit permutation.
+    pub order_mutation: BwdOrderMutation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BwdSeedStrategy {
+    /// Stable reuse graph + interval-density cache priorities.
+    StructureAware,
+    /// Previous neutral + reversed-neutral + random-tail population.
+    Legacy,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BwdOrderMutation {
+    /// Relocate an endpoint of a weighted, currently non-adjacent reuse edge
+    /// directly beside its peer, preserving every other relative ordering.
+    ReuseEdgeRelocate,
+    /// Previous independent Gaussian mutation of each random key.
+    PerKey,
 }
 
 impl Default for BwdSearchConfig {
     fn default() -> Self {
-        Self { pop: 4, evals: 40, seed: 0, mutation_sigma: 0.2 }
+        Self {
+            pop: 4,
+            evals: 40,
+            seed: 0,
+            mutation_sigma: 0.2,
+            seed_strategy: BwdSeedStrategy::StructureAware,
+            order_mutation: BwdOrderMutation::ReuseEdgeRelocate,
+        }
     }
 }
 
@@ -115,12 +156,12 @@ fn objective_key(s: &BwdScore) -> (u8, usize, usize) {
 /// Decode a genome to `(unit_permutation, SiteDecisions)` and REAL-compile it.
 ///
 /// The permutation is decoded from the order-key genes; distillation with that
-/// permutation yields the candidate's own site domain, which the cache-priority
-/// genes map onto positionally (sorted-`SiteKey` order — `zip` tolerates a
-/// count mismatch, which cannot happen here since the domain size is
-/// permutation-invariant, but keeps the adapter panic-free either way).
+/// permutation yields the candidate's own site domain. Stable canonical
+/// provenance supplies a permutation-invariant gene order, whose entries are
+/// translated to the candidate's concrete distilled `SiteKey`s for compilation.
 fn score_candidate(
     genome: &Genome,
+    stable_site_keys: &[StableBwdSiteKey],
     layer: &DagLayer,
     regime: BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
@@ -128,9 +169,28 @@ fn score_candidate(
 ) -> (Vec<usize>, SiteDecisions, BwdScore) {
     let perm = decode_unit_order(&genome.root_order_key);
     let d = distill(layer, regime, cross, Some(&perm));
-    let sites: Vec<SiteKey> = distilled_site_domain(&d).into_iter().collect();
-    let decisions =
-        SiteDecisions::new(sites.into_iter().zip(genome.cache_priority.iter().copied()));
+    let stable_sites = stable_distilled_site_domain(&d);
+    assert_eq!(
+        stable_sites.len(),
+        stable_site_keys.len(),
+        "candidate and canonical stable site domains must have equal size"
+    );
+    assert_eq!(
+        stable_site_keys.len(),
+        genome.cache_priority.len(),
+        "canonical stable site domain must match the cache-priority genome"
+    );
+    let decisions = SiteDecisions::new(
+        stable_site_keys
+            .iter()
+            .zip(genome.cache_priority.iter().copied())
+            .map(|(stable_key, priority)| {
+                let site = *stable_sites.get(stable_key).unwrap_or_else(|| {
+                    panic!("candidate is missing canonical stable site {stable_key:?}")
+                });
+                (site, priority)
+            }),
+    );
 
     let score = match compile_distilled(&d, budget, Some(&decisions)) {
         Ok(c) => BwdScore {
@@ -241,12 +301,88 @@ fn blx(a: f64, b: f64, rng: &mut SeedRng) -> f64 {
     clamp_bias(low + rng.next_unit() * (high - low))
 }
 
-/// Per-gene Gaussian mutation, clamped to each gene's domain.
-fn mutate(g: &mut Genome, sigma: f64, rng: &mut SeedRng) {
-    for key in &mut g.root_order_key {
-        if rng.next_unit() < MUTATION_RATE {
-            *key = (*key + rng.next_gaussian() * sigma).clamp(0.0, 1.0);
+/// Relocate one endpoint of a weighted, currently non-adjacent reuse edge next
+/// to the other endpoint. The weighted choice prioritizes relations whose
+/// uncached shared cone has the largest estimated DRAM consequence.
+fn relocate_reuse_edge(
+    keys: &mut Vec<f64>,
+    structure: &ReuseStructure,
+    rng: &mut SeedRng,
+) -> bool {
+    let mut order = decode_unit_order(keys);
+    let mut position = vec![0usize; order.len()];
+    for (index, &unit) in order.iter().enumerate() {
+        position[unit] = index;
+    }
+
+    let total_weight = structure
+        .weighted_edges
+        .iter()
+        .filter(|edge| position[edge.left].abs_diff(position[edge.right]) > 1)
+        .fold(0u128, |total, edge| total + edge.weight as u128);
+    if total_weight == 0 {
+        return false;
+    }
+
+    let mut ticket = rng.next_u64() as u128 % total_weight;
+    let edge = structure
+        .weighted_edges
+        .iter()
+        .filter(|edge| position[edge.left].abs_diff(position[edge.right]) > 1)
+        .find(|edge| {
+            if ticket < edge.weight as u128 {
+                true
+            } else {
+                ticket -= edge.weight as u128;
+                false
+            }
+        })
+        .expect("positive total weight must select a reuse edge");
+
+    let (moving, anchor) = if rng.next_u64() & 1 == 0 {
+        (edge.left, edge.right)
+    } else {
+        (edge.right, edge.left)
+    };
+    let insert_after = rng.next_u64() & 1 != 0;
+    order.remove(position[moving]);
+    let anchor_position = order
+        .iter()
+        .position(|unit| *unit == anchor)
+        .expect("reuse-edge anchor must remain in the permutation");
+    let insertion = anchor_position + usize::from(insert_after);
+    order.insert(insertion, moving);
+    *keys = encode_order(&order);
+    true
+}
+
+/// Order mutation selected by the experiment config, followed by unchanged
+/// per-site Gaussian cache-priority mutation.
+fn mutate(
+    g: &mut Genome,
+    sigma: f64,
+    order_mutation: BwdOrderMutation,
+    structure: Option<&ReuseStructure>,
+    rng: &mut SeedRng,
+) {
+    match order_mutation {
+        BwdOrderMutation::ReuseEdgeRelocate => {
+            relocate_reuse_edge(
+                &mut g.root_order_key,
+                structure.expect("reuse-edge mutation requires a reuse model"),
+                rng,
+            );
         }
+        BwdOrderMutation::PerKey => {
+            for key in &mut g.root_order_key {
+                if rng.next_unit() < MUTATION_RATE {
+                    *key = (*key + rng.next_gaussian() * sigma).clamp(0.0, 1.0);
+                }
+            }
+        }
+    }
+    for key in &mut g.root_order_key {
+        debug_assert!((0.0..=1.0).contains(key));
     }
     for gene in &mut g.cache_priority {
         if rng.next_unit() < MUTATION_RATE {
@@ -257,22 +393,65 @@ fn mutate(g: &mut Genome, sigma: f64, rng: &mut SeedRng) {
 
 // ── Seed population ────────────────────────────────────────────────────────────
 
-/// Neutral (identity order, zero priorities) + reversed-neutral + a deterministic
-/// random tail — enough diversity for the smoke-scale GA.
-fn seed_population(n_units: usize, n_sites: usize, pop: usize, rng: &mut SeedRng) -> Vec<Genome> {
+fn encode_order(order: &[usize]) -> Vec<f64> {
+    let mut keys = vec![0.0; order.len()];
+    let denom = order.len().max(1) as f64;
+    for (position, &unit) in order.iter().enumerate() {
+        keys[unit] = (position as f64 + 0.5) / denom;
+    }
+    keys
+}
+
+fn structured_seed(structure: &ReuseStructure, reverse: bool) -> Genome {
+    let mut order = structure.order.clone();
+    if reverse {
+        order.reverse();
+    }
+    let genome = Genome {
+        root_order_key: encode_order(&order),
+        cache_priority: structure.cache_priorities.clone(),
+    };
+    assert_normalized_genome(&genome);
+    genome
+}
+
+/// Keep the neutral baseline, then add a graph-guided order and its reverse
+/// before the deterministic random tail. `Legacy` reproduces the previous
+/// neutral + reversed-neutral + random-tail initializer for equal-budget A/Bs.
+fn seed_population(
+    n_units: usize,
+    n_sites: usize,
+    pop: usize,
+    strategy: BwdSeedStrategy,
+    structure: Option<&ReuseStructure>,
+    rng: &mut SeedRng,
+) -> Vec<Genome> {
     let mut genomes = Vec::with_capacity(pop);
     if pop == 0 {
         return genomes;
     }
     genomes.push(Genome::neutral(n_units, n_sites));
+    if strategy == BwdSeedStrategy::StructureAware && genomes.len() < pop {
+        genomes.push(structured_seed(
+            structure.expect("structure-aware seeding requires a reuse model"),
+            false,
+        ));
+    }
     if genomes.len() < pop {
-        let mut reversed = Genome::neutral(n_units, n_sites);
-        let n = reversed.root_order_key.len();
-        let denom = n.max(1) as f64;
-        for (idx, key) in reversed.root_order_key.iter_mut().enumerate() {
-            *key = (n - 1 - idx) as f64 / denom;
+        if strategy == BwdSeedStrategy::StructureAware {
+            genomes.push(structured_seed(
+                structure.expect("structure-aware seeding requires a reuse model"),
+                true,
+            ));
+        } else {
+            let mut reversed = Genome::neutral(n_units, n_sites);
+            let n = reversed.root_order_key.len();
+            let denom = n.max(1) as f64;
+            for (idx, key) in reversed.root_order_key.iter_mut().enumerate() {
+                *key = (n - 1 - idx) as f64 / denom;
+            }
+            genomes.push(reversed);
         }
-        genomes.push(reversed);
     }
     while genomes.len() < pop {
         let mut g = Genome::neutral(n_units, n_sites);
@@ -321,12 +500,17 @@ pub fn search_bwd_layer(
     assert!(cfg.evals > 0, "BwdSearchConfig.evals must be positive");
 
     // Gene-vector sizing off the canonical (unpermuted) distillation. The unit
-    // count is the canonical relation-unit count; the site count is
-    // permutation-invariant (same cones, only re-numbered), so sizing here is
-    // stable across every candidate's own re-distilled domain.
+    // count is the canonical relation-unit count; the stable site count and
+    // ordering come from canonical provenance, so sizing here applies to every
+    // candidate's own re-distilled domain without changing gene semantics.
     let d0 = distill(layer, regime, cross, None);
     let n_units = d0.unit_order.len();
-    let n_sites = distilled_site_domain(&d0).len();
+    let stable_domain = stable_distilled_site_domain(&d0);
+    let stable_site_keys: Vec<StableBwdSiteKey> = stable_domain.keys().copied().collect();
+    let n_sites = stable_site_keys.len();
+    let structure = (cfg.seed_strategy == BwdSeedStrategy::StructureAware
+        || cfg.order_mutation == BwdOrderMutation::ReuseEdgeRelocate)
+        .then(|| ReuseStructure::build(layer, &d0, &stable_domain));
 
     // The `None`-decisions baseline: the non-regression floor AND the fallback
     // when every decision-candidate is infeasible. If even this is infeasible,
@@ -346,7 +530,14 @@ pub fn search_bwd_layer(
     };
 
     let mut rng = SeedRng::new(cfg.seed);
-    let seeds = seed_population(n_units, n_sites, cfg.pop.min(cfg.evals), &mut rng);
+    let seeds = seed_population(
+        n_units,
+        n_sites,
+        cfg.pop.min(cfg.evals),
+        cfg.seed_strategy,
+        structure.as_ref(),
+        &mut rng,
+    );
 
     let mut evals = 0usize;
     // `seeds` is already fully generated (sequential RNG, `seed_population`
@@ -357,7 +548,8 @@ pub fn search_bwd_layer(
     let mut pop: Vec<(Genome, BwdScore)> = seeds
         .into_par_iter()
         .map(|g| {
-            let (_, _, s) = score_candidate(&g, layer, regime, cross, budget);
+            let (_, _, s) =
+                score_candidate(&g, &stable_site_keys, layer, regime, cross, budget);
             (g, s)
         })
         .collect();
@@ -385,7 +577,13 @@ pub fn search_bwd_layer(
                     .map(|(&a, &b)| blx(a, b, &mut rng))
                     .collect();
                 let mut child = Genome { root_order_key: order_key, cache_priority };
-                mutate(&mut child, cfg.mutation_sigma, &mut rng);
+                mutate(
+                    &mut child,
+                    cfg.mutation_sigma,
+                    cfg.order_mutation,
+                    structure.as_ref(),
+                    &mut rng,
+                );
                 assert_normalized_genome(&child); // clamps guarantee this; loud if a NaN slips through
                 child
             })
@@ -396,7 +594,8 @@ pub fn search_bwd_layer(
         let offspring: Vec<(Genome, BwdScore)> = children
             .into_par_iter()
             .map(|child| {
-                let (_, _, s) = score_candidate(&child, layer, regime, cross, budget);
+                let (_, _, s) =
+                    score_candidate(&child, &stable_site_keys, layer, regime, cross, budget);
                 (child, s)
             })
             .collect();
@@ -410,8 +609,14 @@ pub fn search_bwd_layer(
         .into_iter()
         .min_by_key(|(_, s)| objective_key(s))
         .expect("non-empty population");
-    let (unit_permutation, decisions, score) =
-        score_candidate(&best.0, layer, regime, cross, budget);
+    let (unit_permutation, decisions, score) = score_candidate(
+        &best.0,
+        &stable_site_keys,
+        layer,
+        regime,
+        cross,
+        budget,
+    );
 
     // Post-hoc baseline floor: fall back to the `None`-decisions compile if the
     // GA's best is infeasible or not strictly better — non-regression BY
@@ -426,4 +631,61 @@ pub fn search_bwd_layer(
     }
 
     BwdSearchOutcome { decisions: Some(decisions), unit_permutation, stats: score.stats }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+    use crate::bwd::structure::ReuseEdge;
+
+    fn structure(edges: Vec<ReuseEdge>) -> ReuseStructure {
+        ReuseStructure {
+            order: vec![0, 1, 2, 3],
+            cache_priorities: Vec::new(),
+            weighted_edges: edges,
+        }
+    }
+
+    #[test]
+    fn reuse_edge_relocation_makes_selected_pair_adjacent() {
+        let structure = structure(vec![ReuseEdge {
+            left: 0,
+            right: 3,
+            weight: 100,
+        }]);
+        let mut keys = encode_order(&[0, 1, 2, 3]);
+        assert!(relocate_reuse_edge(
+            &mut keys,
+            &structure,
+            &mut SeedRng::new(7),
+        ));
+        let order = decode_unit_order(&keys);
+        let p0 = order.iter().position(|unit| *unit == 0).unwrap();
+        let p3 = order.iter().position(|unit| *unit == 3).unwrap();
+        assert_eq!(p0.abs_diff(p3), 1);
+        assert_eq!(
+            order.iter().copied().collect::<BTreeSet<_>>(),
+            BTreeSet::from([0, 1, 2, 3]),
+        );
+    }
+
+    #[test]
+    fn reuse_edge_relocation_is_noop_when_all_edges_are_adjacent() {
+        let structure = structure(vec![ReuseEdge {
+            left: 0,
+            right: 1,
+            weight: 100,
+        }]);
+        let original = encode_order(&[0, 1, 2, 3]);
+        let mut keys = original.clone();
+        assert!(!relocate_reuse_edge(
+            &mut keys,
+            &structure,
+            &mut SeedRng::new(7),
+        ));
+        assert_eq!(keys, original);
+    }
+
 }

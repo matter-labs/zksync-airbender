@@ -66,8 +66,46 @@ pub struct DistilledLayer {
     /// Canonical relation-unit metadata (alpha order/exponents) — kept for
     /// Task 8's order genes; NOT used for site identity.
     pub unit_order: Vec<Vec<RootId>>,
+    /// Stable provenance for every rebuilt expression that can participate in
+    /// the backward site domain. Unlike distilled `ExprId`s, these keys do not
+    /// depend on relation-unit execution order.
+    stable_exprs: BTreeMap<ExprId, StableBwdExprKey>,
     /// Decoder-bearing cone detected: layer is OUT of v1 in BOTH regimes.
     pub skipped_decoder: bool,
+}
+
+/// Order-independent identity of an expression in a distilled backward layer.
+///
+/// Canonical expressions retain their source-layer `ExprId`. The only new
+/// arithmetic introduced by distillation is identified by the canonical root
+/// whose batching term it forms, or by the final combined spine. If interning
+/// makes two origins share one rebuilt expression, the smallest key wins; this
+/// is deterministic and cannot alias two different rebuilt expressions because
+/// each canonical/root/spine origin is created at most once per distillation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StableBwdExprKey {
+    Canonical(ExprId),
+    BatchingTerm(RootId),
+    CombinedSpine,
+}
+
+/// Order-independent identity of a backward demand's consumer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StableBwdConsumer {
+    Expr {
+        expr: StableBwdExprKey,
+        /// Occurrence among operands with the same stable value identity.
+        /// This survives `ArenaBuilder`'s `ExprId`-based operand sorting.
+        duplicate_ordinal: u32,
+    },
+    RootOutput,
+}
+
+/// Stable cache-gene identity for one backward demand site.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StableBwdSiteKey {
+    pub consumer: StableBwdConsumer,
+    pub value: StableBwdExprKey,
 }
 
 // ── distill ───────────────────────────────────────────────────────────────────
@@ -122,6 +160,7 @@ pub fn distill(
         fences: &fences,
         cross_fields: HashMap::new(),
         memo: HashMap::new(),
+        stable_exprs: BTreeMap::new(),
     };
 
     // Alpha spine terms, built in the (possibly permuted) unit order. Exponents
@@ -142,6 +181,7 @@ pub fn distill(
                 let beta = cx.arena.source_expr(beta_src);
                 cx.arena.mul(vec![beta, cone])
             };
+            cx.record_stable(term, StableBwdExprKey::BatchingTerm(rid));
             terms.push(term);
         }
     }
@@ -150,6 +190,7 @@ pub fn distill(
         1 => terms[0],
         _ => cx.arena.add(terms),
     };
+    cx.record_stable(spine, StableBwdExprKey::CombinedSpine);
 
     // Claim-only synthetic root; the origin is a placeholder (the distilled
     // layer has exactly one backward root, batching is trivial).
@@ -205,6 +246,7 @@ pub fn distill(
         field_overrides: cx.field_overrides,
         cross_fields,
         unit_order: units,
+        stable_exprs: cx.stable_exprs,
         skipped_decoder,
     }
 }
@@ -227,9 +269,20 @@ struct Reintern<'a> {
     /// canonical ExprId -> distilled ExprId (a rewritten `LookupValue` maps to
     /// its re-interned query expr).
     memo: HashMap<ExprId, ExprId>,
+    /// rebuilt ExprId -> stable canonical/synthetic provenance.
+    stable_exprs: BTreeMap<ExprId, StableBwdExprKey>,
 }
 
 impl Reintern<'_> {
+    /// Record provenance without making the result traversal-order-dependent
+    /// when the fresh arena interns multiple origins to the same expression.
+    fn record_stable(&mut self, rebuilt: ExprId, key: StableBwdExprKey) {
+        self.stable_exprs
+            .entry(rebuilt)
+            .and_modify(|current| *current = (*current).min(key))
+            .or_insert(key);
+    }
+
     fn reintern(&mut self, e: ExprId) -> ExprId {
         if let Some(&n) = self.memo.get(&e) {
             return n;
@@ -254,6 +307,7 @@ impl Reintern<'_> {
             // same-layer fenced places are absent from the cross-layer field map.
             self.cross_fields.insert(place, f.field);
             self.memo.insert(e, ne);
+            self.record_stable(ne, StableBwdExprKey::Canonical(e));
             return ne;
         }
         let n = match &self.layer.exprs[e.0 as usize] {
@@ -262,7 +316,11 @@ impl Reintern<'_> {
                 match kind {
                     // Rule 2: the backward pass consumes the authoritative
                     // query expr; the LookupValue leaf itself is erased.
-                    SourceKind::LookupValue { query, .. } => self.reintern(query),
+                    SourceKind::LookupValue { query, .. } => {
+                        let n = self.reintern(query);
+                        self.memo.insert(e, n);
+                        return n;
+                    }
                     SourceKind::Read { place } => {
                         let s = self.arena.intern_source(SourceKind::Read { place: place.clone() });
                         let ne = self.arena.source_expr(s);
@@ -312,6 +370,7 @@ impl Reintern<'_> {
             }
         };
         self.memo.insert(e, n);
+        self.record_stable(n, StableBwdExprKey::Canonical(e));
         n
     }
 }
@@ -434,6 +493,52 @@ pub fn bind(d: &DistilledLayer, policy: MaterializationPolicy, round: u8) -> Bwd
 /// canonical-layer enumeration is tests/reporting only (its ExprIds differ).
 pub fn distilled_site_domain(d: &DistilledLayer) -> BTreeSet<SiteKey> {
     enumerate_bwd_site_domain(&d.layer, d.regime)
+}
+
+/// Map stable cache-gene identities to the current distillation's concrete
+/// [`SiteKey`]s. Iterating this `BTreeMap` gives the same gene ordering for every
+/// relation-unit permutation, while the values remain the candidate-local keys
+/// required by the compiler.
+pub fn stable_distilled_site_domain(d: &DistilledLayer) -> BTreeMap<StableBwdSiteKey, SiteKey> {
+    let mut stable = BTreeMap::new();
+    for site in distilled_site_domain(d) {
+        let value = *d.stable_exprs.get(&site.value).unwrap_or_else(|| {
+            panic!("missing stable provenance for site value {:?}", site.value)
+        });
+        let consumer = match site.consumer {
+            cs::gkr_compiler::dag_ir::SiteConsumer::RootOutput => StableBwdConsumer::RootOutput,
+            cs::gkr_compiler::dag_ir::SiteConsumer::Expr { expr, input_index } => {
+                let expr_key = *d.stable_exprs.get(&expr).unwrap_or_else(|| {
+                    panic!("missing stable provenance for site consumer {expr:?}")
+                });
+                let children = match &d.layer.exprs[expr.0 as usize] {
+                    Expr::Add(children) | Expr::Mul(children) => children,
+                    Expr::Source(_) => panic!("source expression {expr:?} cannot consume a site"),
+                };
+                let input_index = input_index as usize;
+                assert_eq!(
+                    children.get(input_index),
+                    Some(&site.value),
+                    "site input must name the demanded value"
+                );
+                let duplicate_ordinal = children[..=input_index]
+                    .iter()
+                    .filter(|child| d.stable_exprs.get(child) == Some(&value))
+                    .count()
+                    .checked_sub(1)
+                    .expect("the current site value must occur in the consumer prefix")
+                    as u32;
+                StableBwdConsumer::Expr { expr: expr_key, duplicate_ordinal }
+            }
+        };
+        let stable_key = StableBwdSiteKey { consumer, value };
+        if let Some(previous) = stable.insert(stable_key, site) {
+            panic!(
+                "stable backward site collision: {stable_key:?} maps to both {previous:?} and {site:?}"
+            );
+        }
+    }
+    stable
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
