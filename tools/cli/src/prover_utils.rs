@@ -695,6 +695,128 @@ pub fn combine_artifacts(
     security_level: SecurityLevel,
     cpu: &CpuConfig,
 ) -> Result<ProofArtifact, String> {
+    combine_artifacts_with_backend(artifacts, source, security_level, CombineBackend::Cpu(cpu))
+}
+
+/// GPU variant of [`combine_artifacts`]: input verification, witness building,
+/// recursion-chain stamping and the final self-check stay on the host; only the
+/// unified-layer proving passes run on the GPU.
+#[cfg(feature = "gpu")]
+pub fn combine_artifacts_gpu(
+    artifacts: &[ProofArtifact],
+    source: &ProgramSource,
+    security_level: SecurityLevel,
+    gpu: &GpuConfig,
+) -> Result<ProofArtifact, String> {
+    combine_artifacts_with_backend(artifacts, source, security_level, CombineBackend::Gpu(gpu))
+}
+
+enum CombineBackend<'a> {
+    Cpu(&'a CpuConfig),
+    #[cfg(feature = "gpu")]
+    Gpu(&'a GpuConfig),
+}
+
+impl CombineBackend<'_> {
+    fn kind(&self) -> ProverBackend {
+        match self {
+            Self::Cpu(_) => ProverBackend::Cpu,
+            #[cfg(feature = "gpu")]
+            Self::Gpu(_) => ProverBackend::Gpu,
+        }
+    }
+}
+
+/// The unified-layer prover used by the combine flow. Both backends prove the
+/// same embedded unified recursion program over host-built witness words.
+enum CombinedUnifiedProver<'a> {
+    Cpu {
+        cpu: &'a CpuConfig,
+        worker: worker::Worker,
+        recursion_unified: &'a EmbeddedProgram,
+    },
+    #[cfg(feature = "gpu")]
+    Gpu {
+        prover: execution_utils::unrolled_gpu::UnifiedRecursionProver,
+        // Distinct per-pass ids for the GPU prover, following the
+        // `UnrolledProver` convention of `batch_id * 10 + pass`.
+        next_batch_id: u64,
+    },
+}
+
+impl<'a> CombinedUnifiedProver<'a> {
+    #[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
+    fn new(
+        backend: &CombineBackend<'a>,
+        security: verifier_common::SecurityModel,
+        recursion_unified: &'a EmbeddedProgram,
+        batch_id: u64,
+    ) -> Self {
+        match backend {
+            CombineBackend::Cpu(cpu) => Self::Cpu {
+                cpu,
+                worker: make_cpu_worker(cpu),
+                recursion_unified,
+            },
+            #[cfg(feature = "gpu")]
+            CombineBackend::Gpu(gpu) => {
+                let mut prover_configuration =
+                    gpu_prover::execution::prover::ExecutionProverConfiguration::default();
+                prover_configuration.replay_worker_threads_count = gpu.replay_worker_threads_count;
+                Self::Gpu {
+                    prover: execution_utils::unrolled_gpu::UnifiedRecursionProver::new(
+                        security,
+                        prover_configuration,
+                    ),
+                    next_batch_id: batch_id * 10,
+                }
+            }
+        }
+    }
+
+    fn prove_unified_pass(
+        &mut self,
+        witness: Vec<u32>,
+        security: verifier_common::SecurityModel,
+    ) -> UnrolledProgramProof {
+        match self {
+            Self::Cpu {
+                cpu,
+                worker,
+                recursion_unified,
+            } => {
+                let source_witness = QuasiUARTSource::new_with_reads(witness);
+                prove_unified_for_machine_configuration_into_program_proof::<
+                    IWithoutByteAccessIsaConfigWithDelegation,
+                >(
+                    &recursion_unified.padded_bin_u32,
+                    &recursion_unified.padded_text_u32,
+                    cpu.cycles_bound,
+                    source_witness,
+                    cpu.ram_bound,
+                    worker,
+                    security,
+                )
+            }
+            #[cfg(feature = "gpu")]
+            Self::Gpu {
+                prover,
+                next_batch_id,
+            } => {
+                let batch_id = *next_batch_id;
+                *next_batch_id += 1;
+                prover.prove(batch_id, witness)
+            }
+        }
+    }
+}
+
+fn combine_artifacts_with_backend(
+    artifacts: &[ProofArtifact],
+    source: &ProgramSource,
+    security_level: SecurityLevel,
+    backend: CombineBackend,
+) -> Result<ProofArtifact, String> {
     if artifacts.len() < 2 {
         return Err(format!(
             "combining requires at least two proof artifacts, got {}",
@@ -722,7 +844,6 @@ pub fn combine_artifacts(
         execution_utils::unified_circuit::compute_combined_recursion_layers_output(&outputs);
 
     let loaded = load_and_validate_program(source, &artifacts[0], Some(security_level))?;
-    let worker = make_cpu_worker(cpu);
 
     let base_level = make_base_level_data(&loaded);
     let recursion_unrolled =
@@ -731,6 +852,15 @@ pub fn combine_artifacts(
     let recursion_unified =
         load_embedded_recursion_program(security_level, RecursionLayer::Unified);
     let unified_level = make_unified_recursion_level_data(&unrolled_level, &recursion_unified);
+
+    // Constructed once and reused for every unified pass; for the GPU backend
+    // this holds the GPU context with the unified recursion program loaded.
+    let mut prover = CombinedUnifiedProver::new(
+        &backend,
+        security,
+        &recursion_unified,
+        artifacts[0].batch_id,
+    );
 
     let mut timings = ProofTimingsMs::default();
 
@@ -750,20 +880,9 @@ pub fn combine_artifacts(
         execution_utils::unified_circuit::flatten_proofs_into_responses_for_combined_unified_recursion(
             &inputs,
         );
-    let source_witness = QuasiUARTSource::new_with_reads(witness);
 
     let start = Instant::now();
-    let mut proof = prove_unified_for_machine_configuration_into_program_proof::<
-        IWithoutByteAccessIsaConfigWithDelegation,
-    >(
-        &recursion_unified.padded_bin_u32,
-        &recursion_unified.padded_text_u32,
-        cpu.cycles_bound,
-        source_witness,
-        cpu.ram_bound,
-        &worker,
-        security,
-    );
+    let mut proof = prover.prove_unified_pass(witness, security);
     timings.unified_recursion_ms.push(elapsed_ms(start));
 
     // The combined statement carries the shared (converged) recursion chain of the
@@ -784,20 +903,9 @@ pub fn combine_artifacts(
             &unified_level.layouts,
             false,
         );
-        let source_witness = QuasiUARTSource::new_with_reads(witness);
 
         let start = Instant::now();
-        let mut new_proof = prove_unified_for_machine_configuration_into_program_proof::<
-            IWithoutByteAccessIsaConfigWithDelegation,
-        >(
-            &recursion_unified.padded_bin_u32,
-            &recursion_unified.padded_text_u32,
-            cpu.cycles_bound,
-            source_witness,
-            cpu.ram_bound,
-            &worker,
-            security,
-        );
+        let mut new_proof = prover.prove_unified_pass(witness, security);
         timings.unified_recursion_ms.push(elapsed_ms(start));
 
         new_proof.recursion_chain_hash = Some(unified_level.hash_chain);
@@ -809,7 +917,7 @@ pub fn combine_artifacts(
     let artifact = finalize_artifact(
         security_level,
         ProofTarget::RecursionCombined,
-        ProverBackend::Cpu,
+        backend.kind(),
         artifacts[0].batch_id,
         cycles,
         &loaded,

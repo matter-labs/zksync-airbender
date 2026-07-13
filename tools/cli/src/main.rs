@@ -172,12 +172,18 @@ enum Commands {
         output_dir: String,
         #[arg(long, default_value = "combined_proof.json")]
         output_file: String,
+        #[arg(long, value_enum)]
+        backend: Option<ProverBackend>,
+
         #[arg(long, default_value_t = 1 << 31)]
         cpu_cycles_bound: usize,
         #[arg(long, default_value_t = 1 << 30)]
         cpu_ram_bound: usize,
         #[arg(long)]
         cpu_worker_threads: Option<usize>,
+
+        #[arg(long, default_value_t = 8)]
+        gpu_replay_threads: usize,
     },
     /// Verify a single proof artifact.
     Verify {
@@ -462,24 +468,57 @@ fn main() {
             security_level,
             output_dir,
             output_file,
+            backend,
             cpu_cycles_bound,
             cpu_ram_bound,
             cpu_worker_threads,
+            gpu_replay_threads,
         } => {
             let artifacts: Vec<ProofArtifact> = proofs
                 .iter()
                 .map(|path| deserialize_from_file(path))
                 .collect();
             let source = ProgramSource::from_paths(bin, text);
-            let cpu = CpuConfig {
-                cycles_bound: cpu_cycles_bound,
-                ram_bound: cpu_ram_bound,
-                worker_threads: cpu_worker_threads,
-            };
 
-            let artifact =
-                cli_lib::prover_utils::combine_artifacts(&artifacts, &source, security_level, &cpu)
-                    .unwrap_or_else(|e| panic!("Combining failed: {}", e));
+            let backend = backend.unwrap_or_else(default_backend_for_build);
+            let artifact = match backend {
+                ProverBackend::Cpu => {
+                    let cpu = CpuConfig {
+                        cycles_bound: cpu_cycles_bound,
+                        ram_bound: cpu_ram_bound,
+                        worker_threads: cpu_worker_threads,
+                    };
+                    cli_lib::prover_utils::combine_artifacts(
+                        &artifacts,
+                        &source,
+                        security_level,
+                        &cpu,
+                    )
+                }
+                ProverBackend::Gpu => {
+                    #[cfg(feature = "gpu")]
+                    {
+                        let gpu = GpuConfig {
+                            replay_worker_threads_count: gpu_replay_threads,
+                        };
+                        cli_lib::prover_utils::combine_artifacts_gpu(
+                            &artifacts,
+                            &source,
+                            security_level,
+                            &gpu,
+                        )
+                    }
+                    #[cfg(not(feature = "gpu"))]
+                    {
+                        let _ = gpu_replay_threads;
+                        Err(
+                            "CLI was compiled without `gpu` feature, but `--backend gpu` was requested"
+                                .to_string(),
+                        )
+                    }
+                }
+            }
+            .unwrap_or_else(|e| panic!("Combining failed: {}", e));
 
             write_artifact(&artifact, &output_dir, &output_file);
         }

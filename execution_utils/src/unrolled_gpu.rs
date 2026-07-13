@@ -451,3 +451,60 @@ impl UnrolledProver {
         (proof, cycles)
     }
 }
+
+/// GPU prover for the unified recursion layer only: proves caller-supplied
+/// witness words with the embedded unified-layer recursion program.
+///
+/// The combined-recursion flow builds its witnesses on the host and only needs
+/// the GPU for the unified proving passes, so unlike [`UnrolledProver`] no base
+/// or unrolled level state is set up and no program files are read.
+pub struct UnifiedRecursionProver {
+    prover: RuntimeExecutionProver,
+}
+
+impl UnifiedRecursionProver {
+    const BINARY_KEY: usize = 0;
+
+    pub fn new(security: SecurityModel, prover_configuration: ExecutionProverConfiguration) -> Self {
+        let mut prover = match security {
+            SecurityModel::Security80 => RuntimeExecutionProver::Security80(ExecutionProver::<
+                Security80Marker,
+            >::with_configuration_80(
+                prover_configuration
+            )),
+            SecurityModel::Security100 => RuntimeExecutionProver::Security100(
+                ExecutionProver::<Security100Marker>::with_configuration_100(prover_configuration),
+            ),
+        };
+
+        let binary = verifier_binaries::recursion_artifact(
+            security,
+            RecursionLayer::Unified,
+            RecursionArtifact::Bin,
+        );
+        let text = verifier_binaries::recursion_artifact(
+            security,
+            RecursionLayer::Unified,
+            RecursionArtifact::Txt,
+        );
+        prover.add_binary(
+            Self::BINARY_KEY,
+            ExecutionKind::Unified,
+            MachineType::Reduced,
+            binary_u8_to_u32(binary),
+            binary_u8_to_u32(text),
+            None,
+        );
+
+        Self { prover }
+    }
+
+    /// Prove one unified-layer pass over the given witness words. The caller is
+    /// responsible for stamping the recursion chain onto the returned proof.
+    pub fn prove(&self, batch_id: u64, witness: Vec<u32>) -> UnrolledProgramProof {
+        let source = QuasiUARTSource::new_with_reads(witness);
+        self.prover
+            .commit_memory_and_prove(batch_id, Self::BINARY_KEY, source)
+            .into()
+    }
+}
