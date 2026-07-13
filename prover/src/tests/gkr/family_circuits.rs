@@ -799,7 +799,8 @@ fn add_sub_mop_real_program_check_satisfied() {
             NUM_CYCLES_PER_CHUNK,
             false,
             &worker,
-        );
+        )
+        .full_trace;
 
     assert!(check_satisfied(&circuit, &full_trace));
 

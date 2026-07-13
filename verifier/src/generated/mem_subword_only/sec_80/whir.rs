@@ -126,10 +126,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 q,
                 nd_source,
             )?;
-            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 32usize>(
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 34usize>(
                 &mut ts.hasher,
                 hash_buf,
-                16usize,
+                17usize,
                 tree_index,
                 20usize,
                 initial_transcript.witness_caps_slice(),
@@ -148,7 +148,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 20usize,
                 initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
-                45usize,
+                46usize,
                 &mut acc0,
                 &mut acc1,
                 q,

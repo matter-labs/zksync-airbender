@@ -257,6 +257,57 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
             next_layer_copied_of_hi.clone() * (Expr::<F>::one() - next_layer_copied_of_hi),
         ); // booleanity of overflow (high)
 
+        // Pin the (word-cell, byte-offset) decomposition so it is UNIQUE. Without this the
+        // single address equation
+        //   rs1_lo + imm_lo == cleanaddr_lo + b0 + 2*b1 + of_lo*2^16
+        // has three prover-chosen unknowns (cleanaddr_lo, b0, b1): the prover could trade the
+        // byte offset (b0,b1) against the cell address and aim a subword load at any of four
+        // physical word cells. Two committed range-checks make the decomposition unique and
+        // LOCAL — no reliance on the memory-argument induction (this circuit does not locally
+        // range-check the raw address limbs; a review flagged that leaning on the induction
+        // for `cleanaddr_lo < 2^16` is a non-local dependency, so we enforce it here):
+        //   (a) `cleanaddr_lo_canon` (a committed copy of cleanaddr_lo) range-checked to 16
+        //       bits  =>  cleanaddr_lo < 2^16, a canonical low limb. This alone rejects the
+        //       of_lo-carry-drop cell-jump (cleanaddr_lo += 2^16): with cleanaddr_lo < 2^16
+        //       and rs1_lo+imm_lo < 2^17, of_lo is forced to the true carry.
+        //   (b) cleanaddr_lo == 4 * `cleanaddr_lo_word`, with cleanaddr_lo_word range-checked
+        //       to 16 bits so 4*word < 2^18 < p (no field wraparound)  =>  the low two bits of
+        //       cleanaddr_lo are zero (word-aligned cell).
+        // With of_lo*2^16 and 4*(cleanaddr_lo>>2) both ≡ 0 mod 4, the equation pins
+        // b0 + 2*b1 ≡ (rs1_lo+imm_lo) mod 4 — i.e. (b0,b1) are exactly the true low two bits of
+        // rs1+imm. The honest VM supplies a word-aligned RAM address (`address & !3`,
+        // riscv_transpiler/src/vm/instructions/memory/mod.rs:56), so this is complete.
+        //
+        // (a) canonical 16-bit low limb: commit a copy of cleanaddr_lo (degree-2 selection, so
+        // it cannot be a range-check input directly) and range-check it to 16 bits.
+        let cleanaddr_lo_canon = cs.add_intermediate_named_variable_from_expr(
+            cleanaddr_lo.clone(),
+            "cleanaddr_lo (canonical 16-bit)",
+        );
+        cs.require_invariant_from_lookup_input(
+            LookupInput::from(cleanaddr_lo_canon),
+            Invariant::RangeChecked { width: 16 },
+        );
+        // (b) word-alignment: cleanaddr_lo == 4 * (cleanaddr_lo >> 2).
+        let cleanaddr_lo_word = cs.add_named_variable("cleanaddr_lo >> 2 (word cell index low)");
+        {
+            let cleanaddr_lo_constraint = cleanaddr_lo.clone().to_max_quadratic_constraint();
+            let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                let cleanaddr_lo = cleanaddr_lo_constraint.evaluate_with_placer(placer);
+                let shifted = cleanaddr_lo.as_integer().shr(2);
+                placer.assign_u16(cleanaddr_lo_word, &shifted.truncate());
+            };
+            cs.set_values(value_fn);
+        }
+        let four = F::from_u32_with_reduction(4);
+        let aligned = cleanaddr_lo.clone() - Expr::<F>::var(cleanaddr_lo_word) * four;
+        assert_eq!(aligned.degree(), 2);
+        cs.add_constraint_expr(aligned);
+        cs.require_invariant_from_lookup_input(
+            LookupInput::from(cleanaddr_lo_word),
+            Invariant::RangeChecked { width: 16 },
+        );
+
         // trap halfword*b0
         cs.add_constraint_expr(Expr::<F>::from(is_halfword) * Expr::from(is_bit0));
         ([cleanaddr_lo, cleanaddr_hi], [is_bit0, is_bit1])
