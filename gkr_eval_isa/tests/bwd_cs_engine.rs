@@ -2,7 +2,9 @@ mod common;
 use common::*;
 use gkr_eval_isa::bwd::compile::{compile_distilled, compile_distilled_traced};
 use gkr_eval_isa::bwd::distill::distill;
-use gkr_eval_isa::bwd::trace::{live_profile, BwdEvent, BwdServedFrom, BwdServeKind};
+use gkr_eval_isa::bwd::trace::{
+    freeze_demand, live_profile, BwdEvent, BwdServedFrom, BwdServeKind,
+};
 use cs::gkr_compiler::dag_ir::BwdRegime;
 
 /// Tracing is observation only: program byte-identical to the untraced compile.
@@ -45,5 +47,25 @@ fn trace_terms_are_monotone() {
                 last = fp.term;
             }
         }
+    }
+}
+
+/// Leaf demand instants (DOMAIN leaves only): k-th FoldSource use in the program
+/// == k-th Recomputed serve of that leaf in the trace (per-leaf counts must agree
+/// exactly). Non-domain gathers are accounted in nondomain_gather_cells instead.
+#[test]
+fn frozen_leaf_instants_align_with_serves() {
+    for (li, layer, cross) in layers_with_bwd_roots("add_sub_lui_auipc_mop_layout_gkr.json") {
+        let d = distill(&layer, BwdRegime::Ext, &cross, None);
+        let (c, trace) = compile_distilled_traced(&d, 16, None).unwrap();
+        let frozen = freeze_demand(&d, &trace, &c.program, &c.specials);
+        assert_eq!(frozen.epoch, trace.epoch);
+        for (v, instants) in &frozen.leaf_instants {
+            let serves = frozen.domain_serves.iter()
+                .filter(|(fp, from)| fp.value == *v && matches!(from, BwdServedFrom::Recomputed))
+                .count();
+            assert_eq!(instants.len(), serves, "L{li} leaf {v:?}");
+        }
+        assert!(frozen.free.iter().all(|&f| f <= 16), "L{li}");
     }
 }

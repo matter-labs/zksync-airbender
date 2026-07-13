@@ -9,13 +9,15 @@
 //! by construction, and an untraced backward compile is byte-identical to a traced
 //! one (only the recorded `events`/`free` differ).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
 
 use crate::fwd::isa::{DstLine, Instr, OperandField, OperandLine, Program};
 
-use super::distill::DistilledLayer;
+use super::compile::spine_terms;
+use super::distill::{distilled_site_domain, DistilledLayer};
+use super::source::{BwdSpecial, BwdSpecialTable};
 
 /// Plan ABI version — bumped whenever the plan/trace stream encoding changes so a
 /// stale-round plan compiled against an older layout can never be replayed silently
@@ -250,4 +252,171 @@ pub fn live_profile(p: &Program) -> Vec<usize> {
         }
     }
     occ
+}
+
+// ── frozen demand (Task 2) ──────────────────────────────────────────────────
+
+/// The frozen all-recompute demand stream D0. Built once from a traced
+/// all-recompute compile (`decisions: None`, so no residency ever fires and every
+/// `Serve` records the raw demand walk), this is what every later CS-M0 planner
+/// (the FiF leaf solver, priced rounds) consumes — plans are always built FROM a
+/// frozen snapshot, never re-derived by a fresh demand walk (see module docs).
+///
+/// `domain_serves` is `trace`'s `Serve` events filtered to values in
+/// [`distilled_site_domain`] — the matcher and every planner act ONLY on this
+/// filtered stream; non-domain serves carry no actions. `leaf_instants[v]` gives
+/// each DOMAIN leaf `v`'s final-program instruction indices at which a
+/// READ-origin `FoldSource` operand uses `v` — the FiF gap model's demand
+/// instants. `free` is `trace.free`, the per-instruction spare-lane envelope.
+///
+/// Fan-out-1 leaves and direct top-level read terms are real DRAM traffic with
+/// program gathers but NO domain serve (`distilled_site_domain` excludes them) —
+/// they must not enter the gap model. Their cells are folded into
+/// `nondomain_gather_cells` instead: the constant term of the modeled-traffic
+/// baseline Task 8's replay pricing reconciles against
+/// (`dram_traffic = stats_ext.global + stats_ext.fold_traffic`).
+#[derive(Clone, Debug)]
+pub struct FrozenDemand {
+    pub epoch: u64,
+    pub stream_reductions: bool,
+    pub budget: usize,
+    pub domain_serves: Vec<(BwdFingerprint, BwdServedFrom)>,
+    pub free: Vec<usize>,
+    pub leaf_instants: BTreeMap<ExprId, Vec<usize>>,
+    pub nondomain_gather_cells: usize,
+}
+
+/// Program-position scan of READ-origin `FoldSource` operand uses, keyed by the
+/// distilled leaf's `ExprId` (via `leaf_descs`) instead of the origin's Debug
+/// identity — the `ExprId` space `freeze_demand` and its callers already key
+/// everything else on (`BwdFingerprint::value`, `SiteKey::value`). Same operand
+/// walk and VS-origin exclusion as `read_origin_positions_keyed`
+/// (`tests/bwd_batching_headroom.rs:231`), just re-keyed to `ExprId`.
+fn read_origin_positions_by_leaf(
+    program: &Program,
+    specials: &BwdSpecialTable,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+) -> BTreeMap<ExprId, Vec<usize>> {
+    // `leaf_descs` is injective in practice (canonicalized rebuild: two distinct
+    // leaves never share one origin), so this reversal is unambiguous; a later
+    // entry overwriting an earlier one under the same desc would only mask a
+    // canonicalization break upstream, not something this scan can detect.
+    let desc_to_leaf: BTreeMap<u16, ExprId> =
+        leaf_descs.iter().map(|(&leaf, &desc)| (desc, leaf)).collect();
+
+    let mut out: BTreeMap<ExprId, Vec<usize>> = BTreeMap::new();
+    for (idx, instr) in program.instrs.iter().enumerate() {
+        let ops: Vec<&OperandLine> = match instr {
+            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => operands.iter().collect(),
+            Instr::Fma { pairs, .. } => pairs.iter().flat_map(|(l, r)| [l, r]).collect(),
+            Instr::Mov { src: Some(op), .. } => vec![op],
+            Instr::Mov { src: None, .. } => vec![],
+        };
+        for op in ops {
+            if let OperandLine::Special { desc } = op {
+                if let Some(BwdSpecial::FoldSource { origin }) = specials.get(*desc) {
+                    if !origin.is_vs() {
+                        if let Some(&leaf) = desc_to_leaf.get(desc) {
+                            out.entry(leaf).or_default().push(idx);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Task 2 (CS-M0): freeze the all-recompute demand stream D0 from a traced bwd
+/// compile — `d`'s site domain filters `trace`'s `Serve` events into
+/// `domain_serves` and gates `leaf_instants` (via a program scan of `program`
+/// keyed through `specials`), with everything outside the domain folded into
+/// `nondomain_gather_cells`.
+pub fn freeze_demand(
+    d: &DistilledLayer,
+    trace: &BwdCompileTrace,
+    program: &Program,
+    specials: &BwdSpecialTable,
+) -> FrozenDemand {
+    let domain_values: BTreeSet<ExprId> =
+        distilled_site_domain(d).into_iter().map(|site| site.value).collect();
+
+    let domain_serves: Vec<(BwdFingerprint, BwdServedFrom)> = trace
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            BwdEvent::Serve { fp, from } if domain_values.contains(&fp.value) => {
+                Some((*fp, *from))
+            }
+            _ => None,
+        })
+        .collect();
+
+    // Every `TrafficRead` is exactly a real DRAM read the objective counts (a
+    // READ-origin `FoldSource` gather or a bare `Global` read — VS-origin folds
+    // emit none, see `BwdEvent::TrafficRead`'s doc), so summing the non-domain
+    // ones here is precisely "non-domain READ-origin gathers + Global reads of
+    // non-domain values".
+    let mut nondomain_gather_cells: usize = trace
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            BwdEvent::TrafficRead { value, cells } if !domain_values.contains(value) => {
+                Some(*cells as usize)
+            }
+            _ => None,
+        })
+        .sum();
+
+    let mut leaf_instants = read_origin_positions_by_leaf(program, specials, &d.leaf_descs);
+
+    // DOCUMENTED OFFSET RULE: the driver's per-spine-term loop
+    // (`lower_bwd_root_virtual`, `fwd/compile/lower.rs` ~2156-2168) compiles EVERY
+    // spine term via a direct `compile_expr_virtual` call, bypassing
+    // `lower_operand_virtual`'s `serve_occurrence` wrapper entirely. A term that is
+    // itself a bare `Source` expr — a "direct top-level read term"; structurally
+    // this can only ever be `spine_terms(d)[0]` (the alpha spine's UNSCALED root_0
+    // child — every i>=1 term is `beta^i * expr(root_i)`, always a `Mul`, per
+    // `distill`'s alpha-spine doc) — therefore gathers via `source_to_vop` (a real
+    // `TrafficRead`) with NO accompanying `Serve` event.
+    //
+    // That term is also the very first thing the driver ever compiles (`cur_step`
+    // starts at 0 and nothing upstream of the term loop touches an individual leaf
+    // source — the one call before it, `serve_occurrence(root_expr, RootOutput)`,
+    // emits no instruction), so this untracked gather is provably the MINIMUM-index
+    // program occurrence of that leaf's desc: nothing else in the program can
+    // reference it before its own term starts. When such a leaf is ALSO a genuine
+    // (fan-out >= 2) domain leaf, this one occurrence is credited to
+    // `nondomain_gather_cells` instead of `leaf_instants`, restoring the alignment
+    // invariant. A leaf that is ONLY its own bare spine term has fan-out 1 and is
+    // already excluded from the site domain (`distilled_site_domain`), so this
+    // correction is a no-op for it — its lone gather is already counted above via
+    // the plain non-domain `TrafficRead` filter.
+    for term in spine_terms(d) {
+        if !domain_values.contains(&term) {
+            continue;
+        }
+        if !matches!(d.layer.exprs[term.0 as usize], Expr::Source(_)) {
+            continue;
+        }
+        if let Some(positions) = leaf_instants.get_mut(&term) {
+            if let Some((min_at, _)) = positions.iter().enumerate().min_by_key(|&(_, &p)| p) {
+                positions.remove(min_at);
+                nondomain_gather_cells += 4; // FoldSource gathers are always Ext (4 cells).
+            }
+        }
+    }
+
+    leaf_instants.retain(|_, positions| !positions.is_empty());
+    leaf_instants.retain(|v, _| domain_values.contains(v));
+
+    FrozenDemand {
+        epoch: trace.epoch,
+        stream_reductions: trace.stream_reductions,
+        budget: trace.budget,
+        domain_serves,
+        free: trace.free.clone(),
+        leaf_instants,
+        nondomain_gather_cells,
+    }
 }
