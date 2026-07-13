@@ -31,9 +31,19 @@
 //!
 //! Determinism: the breeding RNG is an explicit-seed LCG (mirrors the fwd
 //! `SeedRng`); no wall-clock seeding — repeated runs with the same
-//! `BwdSearchConfig` produce identical results.
+//! `BwdSearchConfig` produce identical results. Candidate SCORING (the real
+//! [`compile_distilled`] call inside [`score_candidate`]) runs in parallel via
+//! rayon `par_iter`, but this does not change the outcome: every RNG draw
+//! (`tournament`/`order_crossover`/`blx`/`mutate`) stays in a sequential
+//! breeding phase that runs to completion BEFORE any parallel scoring starts,
+//! `score_candidate` is a pure function of its inputs (no shared mutable
+//! state), and `collect()` preserves input order — so `pop`/`offspring`
+//! ordering, and therefore every subsequent `tournament` selection, is
+//! byte-identical to the fully-sequential version regardless of thread count.
 
 use std::collections::HashMap;
+
+use rayon::prelude::*;
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace, SiteKey};
 
@@ -339,11 +349,15 @@ pub fn search_bwd_layer(
     let seeds = seed_population(n_units, n_sites, cfg.pop.min(cfg.evals), &mut rng);
 
     let mut evals = 0usize;
+    // `seeds` is already fully generated (sequential RNG, `seed_population`
+    // above) — no RNG draws happen past this point for the seed cohort, so
+    // scoring it via `par_iter` is race-free and `collect()`'s order-preserving
+    // semantics keep `pop`'s index order identical to the sequential `map`.
+    evals += seeds.len();
     let mut pop: Vec<(Genome, BwdScore)> = seeds
-        .into_iter()
+        .into_par_iter()
         .map(|g| {
             let (_, _, s) = score_candidate(&g, layer, regime, cross, budget);
-            evals += 1;
             (g, s)
         })
         .collect();
@@ -355,25 +369,37 @@ pub fn search_bwd_layer(
         if cohort_cap == 0 {
             break;
         }
-        let mut offspring: Vec<(Genome, BwdScore)> = Vec::with_capacity(cohort_cap);
-        for _ in 0..cohort_cap {
-            let i1 = tournament(&pop, &mut rng);
-            let i2 = tournament(&pop, &mut rng);
-            let order_key = order_crossover(&pop[i1].0.root_order_key, &pop[i2].0.root_order_key, &mut rng);
-            let cache_priority: Vec<f64> = pop[i1]
-                .0
-                .cache_priority
-                .iter()
-                .zip(&pop[i2].0.cache_priority)
-                .map(|(&a, &b)| blx(a, b, &mut rng))
-                .collect();
-            let mut child = Genome { root_order_key: order_key, cache_priority };
-            mutate(&mut child, cfg.mutation_sigma, &mut rng);
-            assert_normalized_genome(&child); // clamps guarantee this; loud if a NaN slips through
-            let (_, _, s) = score_candidate(&child, layer, regime, cross, budget);
-            evals += 1;
-            offspring.push((child, s));
-        }
+        // Phase 1: breed the whole cohort sequentially — RNG draw order is IDENTICAL
+        // to the pre-parallelization loop (tournament/crossover/blx/mutate unchanged).
+        let children: Vec<Genome> = (0..cohort_cap)
+            .map(|_| {
+                let i1 = tournament(&pop, &mut rng);
+                let i2 = tournament(&pop, &mut rng);
+                let order_key =
+                    order_crossover(&pop[i1].0.root_order_key, &pop[i2].0.root_order_key, &mut rng);
+                let cache_priority: Vec<f64> = pop[i1]
+                    .0
+                    .cache_priority
+                    .iter()
+                    .zip(&pop[i2].0.cache_priority)
+                    .map(|(&a, &b)| blx(a, b, &mut rng))
+                    .collect();
+                let mut child = Genome { root_order_key: order_key, cache_priority };
+                mutate(&mut child, cfg.mutation_sigma, &mut rng);
+                assert_normalized_genome(&child); // clamps guarantee this; loud if a NaN slips through
+                child
+            })
+            .collect();
+        evals += children.len();
+        // Phase 2: score the cohort in parallel (score_candidate is pure; collect
+        // preserves index order, so `offspring` ordering matches the sequential loop).
+        let offspring: Vec<(Genome, BwdScore)> = children
+            .into_par_iter()
+            .map(|child| {
+                let (_, _, s) = score_candidate(&child, layer, regime, cross, budget);
+                (child, s)
+            })
+            .collect();
         pop.extend(offspring);
         pop.sort_by_key(|(_, s)| objective_key(s));
         pop.truncate(cfg.pop);

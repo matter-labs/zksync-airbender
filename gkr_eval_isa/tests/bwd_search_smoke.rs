@@ -315,3 +315,62 @@ fn search_bwd_layer_falls_back_to_none_baseline_at_floor_budget() {
         outcome.stats.global + outcome.stats.fold_traffic
     );
 }
+
+/// Task 2.5: candidate scoring inside `search_bwd_layer` now runs on rayon
+/// `par_iter` (seed cohort + each bred cohort). This proves the parallelization
+/// introduced no thread-order nondeterminism: two runs of the SAME seed on the
+/// SAME (layer, regime, budget, cfg) must agree on every observable field.
+/// `mem_word_only` L0 is the smallest fast fixture that still has caching
+/// headroom at b16 (feasible — `PINNED_B16_INFEASIBLE` is empty corpus-wide),
+/// so the GA actually explores distinct `Some(decisions)` candidates rather
+/// than degenerating to the trivial baseline-fallback path exercised above.
+/// `BwdSearchOutcome`/`SiteDecisions` have no `PartialEq`, so the determinism
+/// contract is checked on the three fields that fully characterize the search
+/// result: `unit_permutation`, `stats` (`BwdTrafficStats: PartialEq`), and
+/// `decisions.is_some()`. Byte-identical-to-SEQUENTIAL is a separate, by
+/// construction argument (RNG draws stay sequential; `score_candidate` is pure;
+/// `collect()` preserves index order) — this test only rules out cross-run
+/// (thread-schedule-dependent) nondeterminism.
+#[test]
+fn search_bwd_layer_is_deterministic() {
+    let name = "mem_word_only_layout_gkr.json";
+    let regime = BwdRegime::Ext;
+    let budget = 16;
+
+    let artifact = load_fixture(name);
+    let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
+    validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
+    let cross = build_cross_layer_field_map(&dag);
+    let layer = &dag.layers[0];
+
+    let d0 = distill(layer, regime, &cross, None);
+    assert!(!d0.skipped_decoder, "[{name}] pick must be decoder-free");
+
+    let cfg = BwdSearchConfig { pop: 4, evals: 12, seed: 0, mutation_sigma: 0.2 };
+    let outcome1 = search_bwd_layer(layer, regime, &cross, budget, &cfg);
+    let outcome2 = search_bwd_layer(layer, regime, &cross, budget, &cfg);
+
+    assert_eq!(
+        outcome1.unit_permutation, outcome2.unit_permutation,
+        "[{name}] parallel scoring must not change unit_permutation across runs"
+    );
+    assert_eq!(
+        outcome1.stats, outcome2.stats,
+        "[{name}] parallel scoring must not change outcome.stats across runs"
+    );
+    assert_eq!(
+        outcome1.decisions.is_some(),
+        outcome2.decisions.is_some(),
+        "[{name}] parallel scoring must not change whether decisions were found"
+    );
+    assert!(
+        outcome1.decisions.is_some(),
+        "[{name}] pick must exercise a real (non-fallback) Some(decisions) outcome \
+         so scoring runs across a genuinely diverse cohort"
+    );
+
+    println!(
+        "[{name}] deterministic across 2 runs: traffic={} perm={:?}",
+        outcome1.stats.global + outcome1.stats.fold_traffic, outcome1.unit_permutation,
+    );
+}
