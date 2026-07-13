@@ -411,3 +411,107 @@ fn hub_class_and_fragmentation_l0() {
         println!("| {stem} | {n} | {} |", cells.join(" | "));
     }
 }
+
+// ── working set under a linear arrangement (ordering angle) ───────────────────
+
+/// Reverse Cuthill-McKee ordering of `n` units over adjacency `adj` (bandwidth
+/// reduction heuristic): BFS from the min-degree unvisited node, visiting
+/// neighbours in ascending degree, then reverse. Returns position→unit.
+fn rcm_order(n: usize, adj: &[Vec<u32>]) -> Vec<u32> {
+    let deg: Vec<usize> = adj.iter().map(|a| a.len()).collect();
+    let mut visited = vec![false; n];
+    let mut order: Vec<u32> = Vec::with_capacity(n);
+    loop {
+        let Some(start) = (0..n).filter(|&u| !visited[u]).min_by_key(|&u| deg[u]) else {
+            break;
+        };
+        let mut q = std::collections::VecDeque::new();
+        visited[start] = true;
+        q.push_back(start as u32);
+        while let Some(u) = q.pop_front() {
+            order.push(u);
+            let mut nbrs: Vec<u32> =
+                adj[u as usize].iter().copied().filter(|&v| !visited[v as usize]).collect();
+            nbrs.sort_by_key(|&v| deg[v as usize]);
+            for v in nbrs {
+                if !visited[v as usize] {
+                    visited[v as usize] = true;
+                    q.push_back(v);
+                }
+            }
+        }
+    }
+    order.reverse();
+    order
+}
+
+/// Peak working set: max over unit positions of the number of values whose live
+/// interval [min consumer position, max consumer position] spans that position.
+/// `pos[unit]` = position of the unit in the order.
+fn peak_ws(n: usize, values: &[Vec<u32>], pos: &[usize]) -> usize {
+    let mut delta = vec![0i64; n + 1];
+    for cons in values {
+        let lo = cons.iter().map(|&u| pos[u as usize]).min().unwrap();
+        let hi = cons.iter().map(|&u| pos[u as usize]).max().unwrap();
+        delta[lo] += 1;
+        delta[hi + 1] -= 1;
+    }
+    let mut cur = 0i64;
+    let mut peak = 0i64;
+    for d in &delta {
+        cur += d;
+        peak = peak.max(cur);
+    }
+    peak as usize
+}
+
+#[test]
+#[ignore = "diagnostic: run with --ignored --nocapture"]
+fn working_set_under_ordering_l0() {
+    println!("\n# Distilled backward L0 — peak working set (min residents for ZERO recompute/re-gather)");
+    println!("# value = cacheable (Read/Intermediate) shared across >=2 units; live [first..last consuming unit].");
+    println!("# peak WS = max concurrently-live such values = cache size a given order needs for full reuse.");
+    println!("# natural = spine-term order as-is; RCM = bandwidth-reduced order (a good heuristic, not optimal).");
+    println!("# Compare peak WS to the FC extra-bucket budget (~8-12 Ext buckets).\n");
+    println!("| circuit | units | inter values | peak WS natural | peak WS RCM |");
+    println!("| --- | --- | --- | --- | --- |");
+
+    for name in FIXTURES {
+        let stem = name.trim_end_matches("_layout_gkr.json");
+        let Some((n, vals)) = cone_reuse(name) else {
+            println!("| {stem} | — | SKIPPED | | |");
+            continue;
+        };
+        let inter: Vec<Vec<u32>> = vals
+            .into_iter()
+            .filter(|(c, _g, cons)| is_cacheable(c) && cons.len() >= 2)
+            .map(|(_c, _g, cons)| cons)
+            .collect();
+
+        // natural order: unit i at position i.
+        let nat_pos: Vec<usize> = (0..n).collect();
+        let nat = peak_ws(n, &inter, &nat_pos);
+
+        // RCM order over the clique-expanded unit graph.
+        let mut adjset: Vec<HashSet<u32>> = vec![HashSet::new(); n];
+        for cons in &inter {
+            for i in 0..cons.len() {
+                for j in (i + 1)..cons.len() {
+                    adjset[cons[i] as usize].insert(cons[j]);
+                    adjset[cons[j] as usize].insert(cons[i]);
+                }
+            }
+        }
+        let adj: Vec<Vec<u32>> = adjset.into_iter().map(|s| s.into_iter().collect()).collect();
+        let ord = rcm_order(n, &adj);
+        let mut rcm_pos = vec![0usize; n];
+        for (p, &u) in ord.iter().enumerate() {
+            rcm_pos[u as usize] = p;
+        }
+        let rcm = peak_ws(n, &inter, &rcm_pos);
+
+        println!("| {stem} | {n} | {} | {nat} | {rcm} |", inter.len());
+    }
+    println!("\n# If peak WS (RCM) >> ~12 buckets, even a good order cannot avoid eviction => recompute is");
+    println!("# forced (the decision-dependent regime). If peak WS (RCM) <= budget, ordering alone gives full reuse.");
+}
