@@ -22,6 +22,7 @@ use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use super::error::CompileError;
 use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
 use self::lower::{VDst, VInstr, VirtualRootOutput};
+use crate::bwd::trace::BwdCompileTrace;
 use cs::gkr_compiler::dag_ir::{
     CircuitSchedule, DagCircuit, DagLayer, ExprId, FieldKind, LayerSchedule, ReadPlace, RootId,
     SinkInfo, SinkKind,
@@ -530,6 +531,10 @@ fn compile_layer_at(
 /// fwd `SpecialTable`, which bwd descriptors do not index). Kept here — not in
 /// `bwd::compile` — because it composes the crate-private `lower`/`optimize`/
 /// `place` internals; fwd behavior is untouched (`compile_layer_at` unchanged).
+///
+/// `trace` (Task 1, observation-only): `Some` collects serve/traffic events through the
+/// lowering and returns the event-filled trace as the third tuple element; every untraced
+/// caller passes `None` and gets `None` back (byte-identical program).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compile_bwd_program(
     layer: &DagLayer,
@@ -542,11 +547,12 @@ pub(crate) fn compile_bwd_program(
     place_budget: usize,
     lower_budget: usize,
     stream_reductions: bool,
-) -> Result<(Program, usize), CompileError> {
+    trace: Option<BwdCompileTrace>,
+) -> Result<(Program, usize, Option<BwdCompileTrace>), CompileError> {
     // Phase 1 — the bwd one-root driver (result-in-acc terminal convention).
-    let (vinstrs, step_of) = self::lower::lower_bwd_root_virtual(
+    let (vinstrs, step_of, trace) = self::lower::lower_bwd_root_virtual(
         layer, root_expr, terms, ctx, leaf_descs, field_overrides, streams, lower_budget,
-        stream_reductions,
+        stream_reductions, trace,
     )?;
 
     // Phase 1.5 — the shared value-preserving peephole. Safe for the terminal-acc
@@ -598,7 +604,7 @@ pub(crate) fn compile_bwd_program(
     // Phase 3.5 — v2 promote annotation (value-inert), same machine as fwd.
     apply_promote(&mut program);
 
-    Ok((program, placement.max_live_cells))
+    Ok((program, placement.max_live_cells, trace))
 }
 
 /// Task 6 (LIGHT diagnostic) sibling of [`compile_bwd_program`]: identical bwd compile,
@@ -622,9 +628,10 @@ pub(crate) fn compile_bwd_program_peak(
     stream_reductions: bool,
 ) -> Result<(Program, usize, usize, Vec<(ValueId, usize)>), CompileError> {
     // Phase 1 — the bwd one-root driver (result-in-acc terminal convention).
-    let (vinstrs, step_of) = self::lower::lower_bwd_root_virtual(
+    // Peak diagnostics never trace: pass `None` and discard the (empty) trace slot.
+    let (vinstrs, step_of, _trace) = self::lower::lower_bwd_root_virtual(
         layer, root_expr, terms, ctx, leaf_descs, field_overrides, streams, lower_budget,
-        stream_reductions,
+        stream_reductions, None,
     )?;
 
     // Phase 1.5 — the shared value-preserving peephole (identical to `compile_bwd_program`).

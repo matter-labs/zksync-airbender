@@ -46,6 +46,9 @@ use super::arith::{
 use super::decisions::{OccurrenceStreams, SiteDecisions};
 use super::place::{ValueId, VInstrKind, VirtualInstr, VirtualOp};
 use super::schedule::split_reduction;
+use crate::bwd::trace::{
+    BwdCompileTrace, BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom,
+};
 use crate::fwd::compile::CompileError;
 
 /// Width (in cells) of a value's residency footprint under the `Decisions` residency
@@ -307,6 +310,16 @@ struct VirtualLower<'a> {
     /// engaged when the pre-materialize lowering overflows the budget. Every fwd
     /// construction site sets `false`, so the forward program is byte-identical.
     stream_reductions: bool,
+    /// Task 1 (CS-M0) bwd event trace: `Some` on a traced backward compile,
+    /// collecting serve/traffic events as the lowering runs. `None` on every
+    /// forward construction site and every untraced backward compile — so the
+    /// program bytes are unaffected by construction (only this Vec grows).
+    bwd_trace: Option<BwdCompileTrace>,
+    /// Task 1 consumer chain: the stack of exprs whose cone is currently being
+    /// walked, pushed/popped around `compile_expr_virtual`. `last()` is the
+    /// consumer attributed to a serve fingerprint. Behavior-neutral: read ONLY by
+    /// the trace hook, so it has no effect when `bwd_trace` is `None`.
+    consumer_stack: Vec<ExprId>,
 }
 
 /// The fwd identity hooks: empty maps (`const`-constructible), so every fwd call
@@ -419,9 +432,29 @@ impl<'a> VirtualLower<'a> {
     /// lowering visits for `v` — every `lower_operand_virtual` call and every root's own
     /// top-level output demand (the driver loop) — so `effective_priority` keeps reading
     /// the CURRENT stream front. Call this BEFORE any hit/miss branching on `v`.
-    fn serve_occurrence(&mut self, v: ExprId) {
+    fn serve_occurrence(&mut self, v: ExprId, kind: BwdServeKind) {
         if let Some(ds) = &mut self.decisions {
             ds.streams.serve(v);
+        }
+        // Task 1 (observation-only): record the serve BEFORE the hit/miss branch the
+        // caller takes next, so `from` reflects whether `v` is resident AT serve time.
+        // `bwd_trace` is `None` on every forward site and on untraced backward compiles,
+        // so this records nothing there (program bytes unchanged).
+        if let Some(trace) = &mut self.bwd_trace {
+            let from = if self.defined.contains(&v) {
+                BwdServedFrom::Resident
+            } else {
+                BwdServedFrom::Recomputed
+            };
+            trace.events.push(BwdEvent::Serve {
+                fp: BwdFingerprint {
+                    term: self.cur_step as u32,
+                    kind,
+                    value: v,
+                    consumer: self.consumer_stack.last().copied(),
+                },
+                from,
+            });
         }
     }
 
@@ -712,6 +745,16 @@ impl<'a> VirtualLower<'a> {
         // to a Special operand in the BWD namespace, before any canonical handling.
         // fwd identity: the map is empty, so this never fires on a fwd compile.
         if let Some(&desc) = self.leaf_descs.get(&expr_id) {
+            // Task 1: a READ-origin fold leaf gathers the folded value (4 Ext cells) per
+            // use — mirrors the tally's `fold_traffic`. A VS-origin fold uses the O(k)
+            // multilinear closed form (zero DRAM), so it emits NO TrafficRead.
+            if let Some(trace) = &mut self.bwd_trace {
+                if let Expr::Source(sid) = &layer.exprs[expr_id.0 as usize] {
+                    if matches!(layer.sources[sid.0 as usize].kind, SourceKind::Read { .. }) {
+                        trace.events.push(BwdEvent::TrafficRead { value: expr_id, cells: 4 });
+                    }
+                }
+            }
             return Ok(VirtualOp::Special { desc });
         }
         if layer.resolutions.contains_key(&expr_id) {
@@ -737,6 +780,15 @@ impl<'a> VirtualLower<'a> {
                 // field bits in agreement.
                 let field = super::read_place_operand_field(place, &self.cross, expected);
                 let (slot, col) = self.ctx.backings.read_slot_col(place, field)?;
+                // Task 1: a bare Global read is real DRAM traffic at its field width
+                // (mirrors the tally's `global` accumulation).
+                if let Some(trace) = &mut self.bwd_trace {
+                    let cells = match field {
+                        OperandField::Base => 1,
+                        OperandField::Ext => 4,
+                    };
+                    trace.events.push(BwdEvent::TrafficRead { value: expr_id, cells });
+                }
                 Ok(VirtualOp::Global { slot, col })
             }
             SourceKind::VirtualSetup { kind } => {
@@ -773,7 +825,7 @@ impl<'a> VirtualLower<'a> {
         // occurrence off `expr_id`'s stream, consumed before any hit/miss branching so
         // `effective_priority` reflects the NEXT occurrence for any admission decision
         // taken below (`try_admit`'s precondition).
-        self.serve_occurrence(expr_id);
+        self.serve_occurrence(expr_id, BwdServeKind::Operand);
 
         // 1. Truly defined-resident → serve from its CURRENT generation's cell
         //    (Task 8c: `expr_id` itself unless it was re-admitted after an eviction).
@@ -817,7 +869,24 @@ impl<'a> VirtualLower<'a> {
 
     // ── expression lowering into the accumulator (mirrors arith::compile_expr) ────
 
+    /// Behavior-neutral wrapper around [`Self::compile_expr_virtual_inner`]: pushes
+    /// `expr_id` onto `consumer_stack` for the duration of its cone walk so the Task-1
+    /// trace can attribute operand serves to their consumer, then pops on every exit
+    /// (including the `?` error path). The push/pop is read ONLY by the trace hook, so
+    /// forward and untraced-backward compiles are unaffected.
     fn compile_expr_virtual(
+        &mut self,
+        layer: &DagLayer,
+        expr_id: ExprId,
+        expected: OperandField,
+    ) -> Result<(), CompileError> {
+        self.consumer_stack.push(expr_id);
+        let r = self.compile_expr_virtual_inner(layer, expr_id, expected);
+        self.consumer_stack.pop();
+        r
+    }
+
+    fn compile_expr_virtual_inner(
         &mut self,
         layer: &DagLayer,
         expr_id: ExprId,
@@ -1163,7 +1232,7 @@ impl<'a> VirtualLower<'a> {
         id: ExprId,
         expected: OperandField,
     ) -> Result<VirtualOp, CompileError> {
-        self.serve_occurrence(id);
+        self.serve_occurrence(id, BwdServeKind::Operand);
         if self.defined.contains(&id) {
             let g = self.current_value_id(id);
             return Ok(self.defer_read(g));
@@ -1193,7 +1262,7 @@ impl<'a> VirtualLower<'a> {
         acc_field: OperandField,
         stash: ValueId,
     ) -> Result<(), CompileError> {
-        self.serve_occurrence(id);
+        self.serve_occurrence(id, BwdServeKind::Operand);
         self.compile_expr_virtual(layer, id, field)?;
         self.materialize_if_root(id, true);
         let admitted = if self.decisions.is_some() { self.try_admit(id, field) } else { None };
@@ -1315,7 +1384,7 @@ impl<'a> VirtualLower<'a> {
         let seed = pick_seed(&kids);
         let mut acc_field = kids[seed].field;
         if kids[seed].must_stash {
-            self.serve_occurrence(kids[seed].id);
+            self.serve_occurrence(kids[seed].id, BwdServeKind::Operand);
             self.compile_expr_virtual(layer, kids[seed].id, kids[seed].field)?;
             self.materialize_if_root(kids[seed].id, true);
             if self.decisions.is_some() {
@@ -1889,6 +1958,9 @@ pub(crate) fn lower_layer_virtual(
         field_overrides: &EMPTY_FIELD_OVERRIDES,
         // Forward lowering never streams reductions (byte-identical fwd programs).
         stream_reductions: false,
+        // Forward paths never trace: `None` keeps the forward program byte-identical.
+        bwd_trace: None,
+        consumer_stack: Vec::new(),
     };
 
     let mut resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)> =
@@ -1923,7 +1995,7 @@ pub(crate) fn lower_layer_virtual(
                     // `decisions.rs::build`'s `SiteConsumer::RootOutput` push) — served
                     // exactly once here, hit or miss, before branching on residency.
                     if st.decisions.is_some() {
-                        st.serve_occurrence(expr);
+                        st.serve_occurrence(expr, BwdServeKind::RootOutput);
                     }
                     if st.defined.contains(&expr) {
                         st.materialize_if_root(expr, false);
@@ -2021,6 +2093,10 @@ pub(crate) fn lower_layer_virtual(
 ///
 /// `streams` must be the bwd occurrence replay built over the SAME `terms`
 /// (`OccurrenceStreams::build_bwd_root`), keyed to DISTILLED `ExprId`s.
+///
+/// `trace` (Task 1, observation-only): pass `Some` to collect serve/traffic events as
+/// the lowering runs; the (event-filled) trace is returned as the third tuple element.
+/// Passing `None` (every untraced caller) records nothing and is byte-identical.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lower_bwd_root_virtual(
     layer: &DagLayer,
@@ -2032,7 +2108,8 @@ pub(crate) fn lower_bwd_root_virtual(
     streams: Option<OccurrenceStreams>,
     budget: usize,
     stream_reductions: bool,
-) -> Result<(Vec<VInstr>, Vec<usize>), CompileError> {
+    trace: Option<BwdCompileTrace>,
+) -> Result<(Vec<VInstr>, Vec<usize>, Option<BwdCompileTrace>), CompileError> {
     assert!(
         (layer.exprs.len() as u64) < INTERNAL_BASE as u64,
         "layer has {} exprs; internal ValueId base {INTERNAL_BASE} would collide",
@@ -2068,11 +2145,13 @@ pub(crate) fn lower_bwd_root_virtual(
         leaf_descs,
         field_overrides,
         stream_reductions,
+        bwd_trace: trace,
+        consumer_stack: Vec::new(),
     };
 
     // The root's own output demand — mirrors `build_bwd_root`'s RootOutput site
     // (exactly one serve, before any term lowering).
-    st.serve_occurrence(root_expr);
+    st.serve_occurrence(root_expr, BwdServeKind::RootOutput);
 
     for (i, &term) in terms.iter().enumerate() {
         st.cur_step = i;
@@ -2087,7 +2166,7 @@ pub(crate) fn lower_bwd_root_virtual(
             st.push_fold(OperandField::Ext, vec![VirtualOp::Value(t)], /* is_add */ true, Sign::Plus);
         }
     }
-    Ok((st.out, st.step_of_instr))
+    Ok((st.out, st.step_of_instr, st.bwd_trace))
 }
 
 /// Sorted real (non-internal) `ExprId`s of a defined-resident set.

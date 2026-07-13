@@ -38,6 +38,7 @@ use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 
 use super::distill::{distilled_site_domain, DistilledLayer};
 use super::source::{BwdSpecial, BwdSpecialTable};
+use super::trace::{live_profile, plan_epoch, BwdCompileTrace};
 
 // ── BwdTrafficStats ───────────────────────────────────────────────────────────
 
@@ -202,7 +203,7 @@ fn compile_distilled_at(
         )
     });
 
-    let (program, max_live_cells) = compile_bwd_program(
+    let (program, max_live_cells, _trace) = compile_bwd_program(
         layer,
         root_expr,
         &terms,
@@ -213,6 +214,7 @@ fn compile_distilled_at(
         place_budget,
         lower_budget,
         stream_reductions,
+        None,
     )?;
 
     // The bwd lowering runs the fwd resolution hook with empty materialize maps
@@ -235,6 +237,139 @@ fn compile_distilled_at(
         stats,
         stats_ext,
     })
+}
+
+// ── Task 1 (CS-M0) traced compile driver (observation-only) ────────────────────
+
+/// Traced sibling of [`compile_distilled`]: compile `d` at `budget` on the SAME
+/// legacy-first-then-streamed fallback, AND return the [`BwdCompileTrace`] observed
+/// during the WINNING compile (the one whose program is returned). The returned
+/// `BwdCompiledLayer` is byte-identical to `compile_distilled`'s output for the same
+/// inputs — the trace only records what the lowering did; it never changes a value,
+/// an instruction, or feasibility (fwd/untraced parity is gated).
+pub fn compile_distilled_traced(
+    d: &DistilledLayer,
+    budget: usize,
+    decisions: Option<&SiteDecisions>,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    match compile_distilled_streamed_traced(d, budget, decisions, false) {
+        Err(CompileError::BudgetBelowFloor { .. }) => {
+            compile_distilled_streamed_traced(d, budget, decisions, true)
+        }
+        other => other,
+    }
+}
+
+/// Traced sibling of [`compile_distilled_streamed`] — the same fill-then-trim
+/// feasibility search, keeping the trace of the WINNING lowering budget (the `at`
+/// call that becomes `best`). The search decisions depend only on placement, never on
+/// the trace, so this picks the identical `lower_budget` as the untraced search.
+fn compile_distilled_streamed_traced(
+    d: &DistilledLayer,
+    budget: usize,
+    decisions: Option<&SiteDecisions>,
+    stream_reductions: bool,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    const FILL: usize = 1 << 20;
+    let at = |lb: usize| compile_distilled_at_traced(d, budget, lb, decisions, stream_reductions);
+    match at(FILL) {
+        Ok(c) => return Ok(c),
+        Err(CompileError::BudgetBelowFloor { .. }) => {}
+        Err(e) => return Err(e),
+    }
+    let mut best = at(budget)?; // baseline — never worse than this
+    let (mut lo, mut hi) = (budget, FILL); // lo fits, hi overflows
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        match at(mid) {
+            Ok(c) => {
+                best = c;
+                lo = mid;
+            }
+            Err(CompileError::BudgetBelowFloor { .. }) => hi = mid,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(best)
+}
+
+/// Traced sibling of [`compile_distilled_at`] — seeds a [`BwdCompileTrace`] with the
+/// plan epoch / budget / mode, threads it through `compile_bwd_program` (which fills
+/// its `events`), then fills the per-instruction `free[t] = place_budget -
+/// live_profile[t]` (saturating) spare-lane envelope from the materialized program.
+fn compile_distilled_at_traced(
+    d: &DistilledLayer,
+    place_budget: usize,
+    lower_budget: usize,
+    decisions: Option<&SiteDecisions>,
+    stream_reductions: bool,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    let layer = &d.layer;
+    let root_expr = layer.roots[d.root.0 as usize].expr;
+    let terms = spine_terms(d);
+
+    let mut ctx = DagForwardContext::default();
+    ctx.cross_layer_fields = d.cross_fields.clone();
+
+    let streams = decisions.map(|dec| {
+        OccurrenceStreams::build_bwd_root(
+            layer,
+            d.root,
+            root_expr,
+            &terms,
+            dec,
+            &distilled_site_domain(d),
+        )
+    });
+
+    let seed = BwdCompileTrace {
+        epoch: plan_epoch(d, place_budget, stream_reductions),
+        budget: place_budget,
+        stream_reductions,
+        events: Vec::new(),
+        free: Vec::new(),
+    };
+
+    let (program, max_live_cells, trace) = compile_bwd_program(
+        layer,
+        root_expr,
+        &terms,
+        &mut ctx,
+        &d.leaf_descs,
+        &d.field_overrides,
+        streams,
+        place_budget,
+        lower_budget,
+        stream_reductions,
+        Some(seed),
+    )?;
+
+    assert!(ctx.specials.is_empty(), "bwd compile leaked into the fwd descriptor namespace");
+
+    let mut trace = trace.expect("a Some-seeded traced compile returns its trace");
+    // free[t] = budget - live lanes at t (saturating): the spare-lane envelope a later
+    // occurrence planner can reclaim. `live_profile` is length == program.instrs.len().
+    trace.free = live_profile(&program)
+        .into_iter()
+        .map(|occ| place_budget.saturating_sub(occ))
+        .collect();
+
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials);
+    stats.max_live_cells = max_live_cells;
+
+    Ok((
+        BwdCompiledLayer {
+            program,
+            specials: d.specials.clone(),
+            backings: ctx.backings,
+            consts: ctx.consts,
+            challenges: ctx.challenges,
+            budget: place_budget,
+            stats,
+            stats_ext,
+        },
+        trace,
+    ))
 }
 
 // ── Task 6 (LIGHT) peak-composition diagnostic seam ───────────────────────────
