@@ -465,7 +465,10 @@ pub struct UnifiedRecursionProver {
 impl UnifiedRecursionProver {
     const BINARY_KEY: usize = 0;
 
-    pub fn new(security: SecurityModel, prover_configuration: ExecutionProverConfiguration) -> Self {
+    pub fn new(
+        security: SecurityModel,
+        prover_configuration: ExecutionProverConfiguration,
+    ) -> Self {
         let mut prover = match security {
             SecurityModel::Security80 => RuntimeExecutionProver::Security80(ExecutionProver::<
                 Security80Marker,
