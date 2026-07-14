@@ -139,6 +139,52 @@ fn leaf_plan_beats_baseline_on_shared_leaf() {
     assert_synthetic_value_exact_planned(&planned_c, &d);
 }
 
+/// (b2) Coverage of the WRAPPER's retaining (non-degenerate) return path. Test (b) proves
+/// the pricer (`plan_leaves`) retains, but drives it directly; this drives
+/// `feasible_leaf_plan` end-to-end on a headroom fixture whose single fan-out-2 leaf gap
+/// survives the coordinate-correct-freeze + discount (its working-set peak is small), so
+/// the wrapper's `kept_gaps > 0` path — the amendment's core deliverable, reused by Task 8
+/// — actually executes. If it degrades to all-`Bypass` here that is a real wrapper finding
+/// (the coordinate-correct freeze + discount would then be strictly stricter than the
+/// direct pricer, retaining nothing anywhere); reported honestly, not weakened.
+#[test]
+fn feasible_leaf_plan_retains_with_headroom() {
+    const BUDGET: usize = 16;
+    let d = synthetic_wide_add_layer_with_shared_leaf();
+
+    let (plan, planned_c, planned_trace) =
+        feasible_leaf_plan(&d, BUDGET).expect("feasible_leaf_plan must return Ok");
+    let kept_gaps = plan.entries.iter().filter(|e| e.action == PlanAction::Retain).count();
+
+    assert!(
+        kept_gaps > 0,
+        "wrapper degraded to all-Bypass on a headroom fixture (kept_gaps == 0) — the \
+         coordinate-correct freeze + discount retained nothing; report as a finding"
+    );
+
+    let diverge = planned_trace.events.iter().find(|e| matches!(e, BwdEvent::Diverge { .. }));
+    assert!(diverge.is_none(), "returned compile diverged: {diverge:?}");
+    let refusals =
+        planned_trace.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
+    assert_eq!(refusals, 0, "returned compile had {refusals} Refuse events");
+
+    assert_synthetic_value_exact_planned(&planned_c, &d);
+
+    // Retention actually saved traffic THROUGH the wrapper vs the coordinate-correct
+    // all-Bypass baseline (the same regime `feasible_leaf_plan` prices in).
+    let baseline_c = coordinate_correct_baseline(&d, BUDGET);
+    assert!(
+        planned_c.stats_ext.fold_uses < baseline_c.stats_ext.fold_uses,
+        "wrapper fold_uses {} !< coord-correct baseline fold_uses {} (kept_gaps={kept_gaps})",
+        planned_c.stats_ext.fold_uses,
+        baseline_c.stats_ext.fold_uses
+    );
+    eprintln!(
+        "feasible_leaf_plan_retains_with_headroom: kept_gaps={kept_gaps} baseline_fold={} planned_fold={}",
+        baseline_c.stats_ext.fold_uses, planned_c.stats_ext.fold_uses
+    );
+}
+
 /// (c) THE alignment + feasibility gate for the whole seam (feasibility now PRECEDES
 /// divergence — the point of the hybrid seed): `feasible_leaf_plan` on `add_sub` L0 @ b16
 /// must return `Ok`, and its returned compile must have NO `Diverge` event and ZERO
