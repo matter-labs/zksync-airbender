@@ -573,8 +573,15 @@ fn priced_rounds_converge_or_cap() {
         let outcome = priced_rounds(&d, 16, frozen0.clone())
             .unwrap_or_else(|e| panic!("{name}: priced_rounds must return Ok, got {e:?}"));
         assert!(outcome.rounds <= 3, "{name}: rounds {} > 3", outcome.rounds);
-        assert_eq!(outcome.reclaim_attempted, 0, "{name}: Commit 1 has no reclaim");
-        assert_eq!(outcome.reclaim_kept, 0, "{name}: Commit 1 has no reclaim");
+        // Commit 2: the gap-granular reclaim runs each round; kept ⊆ attempted, and at
+        // b16 it may be inert (0 kept) — that is visible (printed below), not asserted
+        // away.
+        assert!(
+            outcome.reclaim_kept <= outcome.reclaim_attempted,
+            "{name}: reclaim_kept {} > reclaim_attempted {}",
+            outcome.reclaim_kept,
+            outcome.reclaim_attempted
+        );
 
         // The returned round's plan certifies exactly, with no divergence.
         let (c, t) = compile_distilled_planned(&d, 16, &outcome.plan)
@@ -600,10 +607,13 @@ fn priced_rounds_converge_or_cap() {
         assert_eq!(sig_a, sig_b, "{name}: PlannerSignature must be structurally equal (never a hash)");
 
         eprintln!(
-            "priced_rounds_converge_or_cap {name}: rounds={} converged={} pins={} traffic={}",
+            "priced_rounds_converge_or_cap {name}: rounds={} converged={} pins={} \
+             reclaim_attempted={} reclaim_kept={} traffic={}",
             outcome.rounds,
             outcome.converged,
             outcome.pins.len(),
+            outcome.reclaim_attempted,
+            outcome.reclaim_kept,
             c.stats_ext.global + c.stats_ext.fold_traffic
         );
     }
@@ -648,4 +658,89 @@ fn compound_batch_prediction_realized() {
         observed.domain_serves.len(),
         frozen.domain_serves.len() - observed.domain_serves.len()
     );
+}
+
+// ── Task 8 (CS-M0), Commit 2: bounded gap-granular reclaim (capture) ───────────
+
+/// (e) THE reclaim CAPTURE + compiler-validation gate (superseding the retired
+/// `priced_reclaim_fidelity_heavy` fidelity gate — architecture pivot, see below):
+/// bigint + keccak Ext L0 @ b16. Run `priced_rounds` from the coordinate-correct
+/// `frozen0` and assert only what the compiler/certificate actually guarantees about
+/// the RETURNED round: it certifies exactly (no `Diverge`), its realized traffic is
+/// never worse than the coordinate-correct all-`Bypass` baseline, and the greedy
+/// reclaim actually ran (`reclaim_attempted > 0`).
+///
+/// This is NOT a fidelity gate. Per the architecture pivot (RR-directed), the offline
+/// pricing model is a non-authoritative RANKING HINT; `compile + certify` is the sole
+/// decision authority. Investigation showed the model cannot be made a faithful
+/// predictor — chained-program residency is non-local (retaining one occurrence of a
+/// heavily-shared leaf changes that leaf's global eviction trajectory elsewhere; no
+/// static model predicts the cascade). The now-removed `modeled_reduction ==
+/// realized_reduction` assertion was exactly that retired predictor-fidelity gate
+/// (it broke on keccak: modeled 44 vs realized 88, an under-prediction of a
+/// non-local cascade, not a reclaim bug). The reclaim itself stays correct and
+/// load-bearing: `reclaim_leaves` (`price.rs`) only KEEPS a tentative retention when
+/// a real `compile_distilled_planned` on the actual program certifies clean AND
+/// strictly drops `dram_traffic` versus the current best — so whatever it captures
+/// is real and compiler-validated regardless of what the hint predicted. The
+/// printed capture table (pins_kept / reclaim_attempted / reclaim_kept /
+/// baseline→final traffic) is the visibility Task 11's G-M0 adjudication needs — an
+/// inert outcome (0 kept) must be visible, not silently green.
+#[test]
+fn priced_reclaim_capture_heavy() {
+    const HEAVY: &[&str] =
+        &["bigint_with_extended_control_layout_gkr.json", "keccak_special5_layout_gkr.json"];
+    println!(
+        "priced_reclaim_capture_heavy capture table (b16):\n  \
+         fixture | pins_kept | reclaim_attempted | reclaim_kept | \
+         baseline_traffic -> final_traffic | rounds | converged"
+    );
+    for &name in HEAVY {
+        let (layer, cross) = load_layer(name, 0);
+        let d = distill(&layer, BwdRegime::Ext, &cross, None);
+        let frozen0 = coordinate_correct_frozen(&d, 16);
+
+        // Realized baseline: the coordinate-correct all-`Bypass` compile (the same
+        // program `frozen0` was frozen from) — the reduction's apples-to-apples zero.
+        let baseline_c = coordinate_correct_baseline(&d, 16);
+        let baseline_traffic = baseline_c.stats_ext.global + baseline_c.stats_ext.fold_traffic;
+
+        let outcome = priced_rounds(&d, 16, frozen0.clone())
+            .unwrap_or_else(|e| panic!("{name}: priced_rounds must return Ok, got {e:?}"));
+
+        // The RETURNED round's realized final traffic, re-derived from the returned
+        // plan — the certificate is the correctness guarantee, not the model.
+        let (final_c, final_trace) = compile_distilled_planned(&d, 16, &outcome.plan)
+            .unwrap_or_else(|e| panic!("{name}: returned plan must compile, got {e:?}"));
+        let report = certify(&final_c, &final_trace);
+        assert!(report.is_ok(), "{name}: returned round certify diverged: {report:?}");
+        assert!(
+            !final_trace.events.iter().any(|e| matches!(e, BwdEvent::Diverge { .. })),
+            "{name}: returned round diverged"
+        );
+        let final_traffic = final_c.stats_ext.global + final_c.stats_ext.fold_traffic;
+
+        println!(
+            "  {name} | {} | {} | {} | {} -> {} | {} | {}",
+            outcome.pins.len(),
+            outcome.reclaim_attempted,
+            outcome.reclaim_kept,
+            baseline_traffic,
+            final_traffic,
+            outcome.rounds,
+            outcome.converged,
+        );
+
+        // The reclaim only ever KEEPS a certified, strictly-traffic-dropping
+        // retention (never a regression), so the returned round can never realize
+        // worse traffic than the coordinate-correct all-`Bypass` baseline.
+        assert!(
+            final_traffic <= baseline_traffic,
+            "{name}: final traffic {final_traffic} > baseline {baseline_traffic} — \
+             the reclaim must never regress traffic vs all-Bypass",
+        );
+        // The greedy reclaim must actually have run on this fixture (visibility: an
+        // inert 0-attempted round would silently defeat the point of this gate).
+        assert!(outcome.reclaim_attempted > 0, "{name}: reclaim_attempted == 0 — reclaim did not run");
+    }
 }

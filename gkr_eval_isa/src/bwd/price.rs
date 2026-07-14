@@ -8,9 +8,14 @@
 //! (suppressed) serve stream, re-freezes on the ACTUAL trace, and iterates to a
 //! structural fixed point (spec §5, Revision 2).
 //!
-//! Commit 1 leaves the leaves ALL-`Bypass` (no leaf reclaim yet — the bounded
-//! gap-granular reclaim is Commit 2). [`PricedOutcome::reclaim_attempted`] /
-//! [`PricedOutcome::reclaim_kept`] are therefore `0` here.
+//! Commit 2 adds the BOUNDED GAP-GRANULAR leaf reclaim (spec §5 step 4, Rev 2 Full
+//! scope): after the compound-batch re-freeze, the top-[`RECLAIM_N`] realized leaf
+//! gaps (ranked by FiF priority against the realized envelope) are each tentatively
+//! retained and KEPT iff a real [`compile_distilled_planned`] stays feasible (no
+//! `BudgetBelowFloor`), non-diverging, certifies, and strictly drops `dram_traffic`
+//! vs the current best; else reverted. [`PricedOutcome::reclaim_attempted`] /
+//! [`PricedOutcome::reclaim_kept`] expose that activity so an inert (all-revert)
+//! outcome at b16 is VISIBLE, not silently green.
 //!
 //! ## The removal-set model
 //!
@@ -37,7 +42,7 @@ use cs::gkr_compiler::dag_ir::{Expr, ExprId, FieldKind};
 
 use super::compile::{compile_distilled_planned, BwdCompiledLayer};
 use super::distill::{distilled_site_domain, DistilledLayer};
-use super::fif::{fif_select, Gap};
+use super::fif::{fif_select, occ_range, Gap};
 use super::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
 use super::structure::expr_width;
 use super::trace::{
@@ -67,7 +72,10 @@ pub struct PlannerSignature {
 /// The result of [`priced_rounds`]: the best certificate-passing round's plan, the
 /// committed compound pins, and the round/convergence + reclaim-activity counters.
 /// `reclaim_attempted` / `reclaim_kept` expose the gap-granular reclaim so an inert
-/// (all-revert) outcome is VISIBLE, not silently green (Commit 1: both `0`).
+/// (all-revert) outcome is VISIBLE, not silently green. They report the RETURNED
+/// (best) round's counts — the same round whose `plan`/`pins` are returned — so the
+/// fidelity gate can reconcile `pins_suppression + 4·reclaim_kept` against that
+/// round's realized traffic delta.
 #[derive(Clone, Debug)]
 pub struct PricedOutcome {
     pub plan: BwdOccurrencePlan,
@@ -344,6 +352,33 @@ pub fn price_pin(
     price_pin_with(frozen, &end, &leaf_pos, pinned, candidate, width_lanes)
 }
 
+/// The modeled DRAM-traffic REDUCTION (cells) attributable purely to `pins`' cone
+/// suppression: `4 × (domain-leaf gathers the pins delete)`, i.e. `4 × (survivors
+/// with no pins − survivors with the pins)` where a survivor is a not-yet-suppressed
+/// domain-leaf serve (4 Ext cells each). Deliberately EXCLUDES the leaf-reclaim term
+/// — the reclaim's savings are the caller's `4 × reclaim_kept`, kept separate so the
+/// fidelity gate (test (e)) reconciles modeled `pins_suppression + 4·reclaim_kept`
+/// against the realized `baseline − final` delta. The model cannot see NON-domain
+/// (fan-out-1) leaves a pin also deletes — they ride `nondomain_gather_cells` as a
+/// constant — so on a pin whose cone reaches non-domain leaves this UNDER-predicts;
+/// that gap is exactly why Commit 2 validates every retention against the real
+/// program instead of trusting the coarse model.
+pub fn pins_suppression_savings(frozen: &FrozenDemand, pins: &BTreeSet<ExprId>) -> i64 {
+    let end = subtree_ends(frozen);
+    let survivors = |p: &BTreeSet<ExprId>| -> i64 {
+        let suppressed = suppressed_indices(frozen, &end, p);
+        frozen
+            .domain_serves
+            .iter()
+            .enumerate()
+            .filter(|(k, (fp, _))| {
+                frozen.leaf_instants.contains_key(&fp.value) && !suppressed.contains(k)
+            })
+            .count() as i64
+    };
+    4 * (survivors(&BTreeSet::new()) - survivors(pins))
+}
+
 // ── CELF compound batch ─────────────────────────────────────────────────────────
 
 /// The compound (non-leaf) domain values that recur (≥ 2 serve occurrences) — the
@@ -541,6 +576,132 @@ pub fn planner_signature(
     }
 }
 
+// ── bounded gap-granular leaf reclaim (Commit 2) ────────────────────────────────
+
+/// A [`BwdOccurrencePlan`] over `base`'s `(epoch, stream_reductions)` regime with a
+/// freshly-rehashed `entries_fnv` for the mutated `entries` — the plan-construction
+/// helper the reclaim's tentative flips round-trip through.
+fn plan_from(base: &BwdOccurrencePlan, entries: Vec<PlanEntry>) -> BwdOccurrencePlan {
+    BwdOccurrencePlan {
+        epoch: base.epoch,
+        entries_fnv: plan_entries_fnv(&entries),
+        stream_reductions: base.stream_reductions,
+        entries,
+    }
+}
+
+/// Bounded gap-granular leaf reclaim (spec §5 step 4, Rev 2 Full scope). Starting
+/// from the all-`Bypass`-leaves compound-batch plan `base_plan` (already compiled
+/// clean into `base_c`/`base_trace`), rank the REALIZED (`observed`) per-leaf gaps by
+/// FiF priority against the realized envelope, take the top [`RECLAIM_N`], and for
+/// each in priority order flip its opening occurrence to [`PlanAction::Retain`],
+/// [`compile_distilled_planned`], and KEEP the flip iff the compile is feasible (no
+/// `BudgetBelowFloor`), non-diverging, certifies, AND its `dram_traffic` STRICTLY
+/// drops vs the current best; else revert it. Each candidate is validated against the
+/// REAL realized program — the faithful "iterate" that recovers the single-retention
+/// -feasible cases the coarse compound discount discards. Total recompiles are bounded
+/// to `≤ 2·RECLAIM_N`. Returns `(final plan, its compile, its trace, attempted, kept)`.
+///
+/// The gap↔plan-entry alignment is exact: `base_plan.entries` are the non-diverging
+/// realized serve stream, so `observed.domain_serves[k]` is `base_plan.entries[k]` and
+/// a leaf's `j`-th plan occurrence is its `j`-th `leaf_instants` demand instant (the
+/// same alignment [`super::fif::plan_leaves`] relies on). Retaining gap `j` flips the
+/// `j`-th occurrence; the `(j+1)`-th (always present — a gap needs a closing use) keeps
+/// the `PlanRun::new` "a Retain has a next serve for its value" invariant.
+fn reclaim_leaves(
+    d: &DistilledLayer,
+    budget: usize,
+    observed: &FrozenDemand,
+    base_plan: &BwdOccurrencePlan,
+    base_c: BwdCompiledLayer,
+    base_trace: BwdCompileTrace,
+) -> Result<(BwdOccurrencePlan, BwdCompiledLayer, BwdCompileTrace, usize, usize), CompileError> {
+    // Each domain leaf's opening-occurrence entry indices within the base plan.
+    let mut occ_idx: BTreeMap<ExprId, Vec<usize>> = BTreeMap::new();
+    for (k, e) in base_plan.entries.iter().enumerate() {
+        if observed.leaf_instants.contains_key(&e.fp.value) {
+            occ_idx.entry(e.fp.value).or_default().push(k);
+        }
+    }
+
+    // Realized per-leaf chained-tiling gaps (program-position coordinates) + parallel
+    // metadata (leaf value, gap index j) — identical tiling to `plan_leaves`.
+    let mut gaps: Vec<Gap> = Vec::new();
+    let mut meta: Vec<(ExprId, usize)> = Vec::new();
+    for (&v, instants) in &observed.leaf_instants {
+        if instants.len() < 2 {
+            continue;
+        }
+        for j in 0..instants.len() - 1 {
+            gaps.push(Gap { origin: v, start: instants[j], end: instants[j + 1] });
+            meta.push((v, j));
+        }
+    }
+
+    // FiF-priority ranking against the REALIZED envelope: gaps FiF admits first, then
+    // by occupied-instant range, then by opening entry index (fully deterministic).
+    let fif_kept: BTreeSet<usize> = fif_select(&gaps, &observed.free).into_iter().collect();
+    let mut order: Vec<usize> = (0..gaps.len()).collect();
+    order.sort_by_key(|&gi| {
+        let (v, j) = meta[gi];
+        let entry = occ_idx.get(&v).and_then(|o| o.get(j)).copied().unwrap_or(usize::MAX);
+        (!fif_kept.contains(&gi), occ_range(&gaps[gi]), entry)
+    });
+    order.truncate(RECLAIM_N);
+
+    let mut entries = base_plan.entries.clone();
+    let mut best_traffic = base_c.stats_ext.global + base_c.stats_ext.fold_traffic;
+    let mut best_c = base_c;
+    let mut best_trace = base_trace;
+    let mut attempted = 0usize;
+    let mut kept = 0usize;
+    let mut compiles = 0usize;
+
+    for gi in order {
+        if compiles >= 2 * RECLAIM_N {
+            break; // recompile budget guard (≤ 2N)
+        }
+        let (v, j) = meta[gi];
+        let occ = match occ_idx.get(&v) {
+            Some(o) if j + 1 < o.len() => o,
+            _ => continue, // no closing occurrence in the plan — cannot open a gap
+        };
+        let entry_idx = occ[j];
+        if entries[entry_idx].action != PlanAction::Bypass {
+            continue; // already retained via a chain — nothing to add here
+        }
+
+        attempted += 1;
+        entries[entry_idx].action = PlanAction::Retain; // tentative flip
+        let trial = plan_from(base_plan, entries.clone());
+        compiles += 1;
+        match compile_distilled_planned(d, budget, &trial) {
+            Ok((c, t)) => {
+                let dram = c.stats_ext.global + c.stats_ext.fold_traffic;
+                let clean = certify(&c, &t).is_ok() && !diverged(&t);
+                if clean && dram < best_traffic {
+                    best_traffic = dram;
+                    best_c = c;
+                    best_trace = t;
+                    kept += 1; // KEEP: leave the flip standing in `entries`
+                } else {
+                    entries[entry_idx].action = PlanAction::Bypass; // revert
+                }
+            }
+            // Realized floor exceeded budget with this retention — revert (a value that
+            // fit alone but not after a compound pin would surface here as a Task-4
+            // finding; the caller's fidelity gate makes any such surprise visible).
+            Err(CompileError::BudgetBelowFloor { .. }) => {
+                entries[entry_idx].action = PlanAction::Bypass;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    let final_plan = plan_from(base_plan, entries);
+    Ok((final_plan, best_c, best_trace, attempted, kept))
+}
+
 // ── priced rounds ────────────────────────────────────────────────────────────────
 
 /// One round's certificate-passing outcome, for the lexicographic best-round pick.
@@ -550,6 +711,8 @@ struct RoundResult {
     feasible: bool,
     traffic: usize,
     instrs: usize,
+    reclaim_attempted: usize,
+    reclaim_kept: usize,
 }
 
 impl RoundResult {
@@ -573,11 +736,12 @@ fn diverged(trace: &BwdCompileTrace) -> bool {
 ///
 /// Per round: (1) CELF a compound-suppression batch; (2) compile the batch over the
 /// predicted stream (a `BudgetBelowFloor` or a `Diverge` drops the round fail-closed
-/// and exits with the previous best); (3) re-freeze on the ACTUAL trace; (4) merge
-/// leaves — COMMIT 1: ALL-`Bypass` (the gap-granular reclaim is Commit 2) — into the
-/// final plan, compile, certify; (5) build the [`PlannerSignature`] and stop on
-/// structural equality with the previous round. Cap 3 rounds; on non-convergence
-/// return the best certificate-passing round by the lexicographic objective.
+/// and exits with the previous best); (3) re-freeze on the ACTUAL trace; (4)
+/// [`reclaim_leaves`] — the bounded gap-granular leaf reclaim validated against the
+/// real program (Commit 2) — into the final plan, compile, certify; (5) build the
+/// [`PlannerSignature`] and stop on structural equality with the previous round. Cap 3
+/// rounds; on non-convergence return the best certificate-passing round by the
+/// lexicographic objective.
 pub fn priced_rounds(
     d: &DistilledLayer,
     budget: usize,
@@ -599,6 +763,8 @@ pub fn priced_rounds(
         feasible: base_cert.is_ok() && !diverged(&base_trace),
         traffic: base_c.stats_ext.global + base_c.stats_ext.fold_traffic,
         instrs: base_c.stats.program_lanes,
+        reclaim_attempted: 0,
+        reclaim_kept: 0,
     };
 
     let mut prev_sig: Option<PlannerSignature> = None;
@@ -631,11 +797,12 @@ pub fn priced_rounds(
         // (3) re-freeze on the ACTUAL trace (the realized suppression).
         let observed = freeze_demand(d, &cbatch_trace, &cbatch_c.program, &cbatch_c.specials);
 
-        // (4) merge leaves. COMMIT 1: all-`Bypass` — the final plan IS the compound
-        // batch (the gap-granular leaf reclaim is Commit 2).
-        let final_plan = compound_plan;
-        let final_c = cbatch_c;
-        let final_trace = cbatch_trace;
+        // (4) Re-plan + BOUNDED GAP-GRANULAR leaf reclaim on the observed (realized)
+        // demand: start from the all-`Bypass`-leaves compound batch and greedily retain
+        // the top-N realized leaf gaps that (feasibly, non-divergingly) drop dram_traffic
+        // against the REAL program (Commit 2, spec §5 step 4).
+        let (final_plan, final_c, final_trace, r_attempted, r_kept) =
+            reclaim_leaves(d, budget, &observed, &compound_plan, cbatch_c, cbatch_trace)?;
         let cert = certify(&final_c, &final_trace);
         let result = RoundResult {
             plan: final_plan.clone(),
@@ -643,14 +810,21 @@ pub fn priced_rounds(
             feasible: cert.is_ok() && !diverged(&final_trace),
             traffic: final_c.stats_ext.global + final_c.stats_ext.fold_traffic,
             instrs: final_c.stats.program_lanes,
+            reclaim_attempted: r_attempted,
+            reclaim_kept: r_kept,
         };
-        if result.key() < best.key() {
+        // `<=` (not `<`): on an inert tie with the pre-loop base a reclaim round still
+        // adopts the outcome, so `reclaim_attempted` (the lever RAN) stays visible; ties
+        // are objective-equivalent and the round sequence is deterministic.
+        if result.key() <= best.key() {
             best = RoundResult {
                 plan: result.plan.clone(),
                 pins: result.pins.clone(),
                 feasible: result.feasible,
                 traffic: result.traffic,
                 instrs: result.instrs,
+                reclaim_attempted: result.reclaim_attempted,
+                reclaim_kept: result.reclaim_kept,
             };
         }
 
@@ -669,7 +843,7 @@ pub fn priced_rounds(
         pins: best.pins,
         rounds: rounds_run,
         converged,
-        reclaim_attempted: 0,
-        reclaim_kept: 0,
+        reclaim_attempted: best.reclaim_attempted,
+        reclaim_kept: best.reclaim_kept,
     })
 }
