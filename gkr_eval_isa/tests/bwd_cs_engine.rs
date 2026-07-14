@@ -692,8 +692,9 @@ fn priced_reclaim_capture_heavy() {
         &["bigint_with_extended_control_layout_gkr.json", "keccak_special5_layout_gkr.json"];
     println!(
         "priced_reclaim_capture_heavy capture table (b16):\n  \
-         fixture | pins_kept | reclaim_attempted | reclaim_kept | \
-         baseline_traffic -> final_traffic | rounds | converged"
+         fixture | pins_kept | compound_attempted | compound_kept | \
+         reclaim_attempted | reclaim_kept | baseline_traffic -> final_traffic | \
+         rounds | converged"
     );
     for &name in HEAVY {
         let (layer, cross) = load_layer(name, 0);
@@ -721,8 +722,10 @@ fn priced_reclaim_capture_heavy() {
         let final_traffic = final_c.stats_ext.global + final_c.stats_ext.fold_traffic;
 
         println!(
-            "  {name} | {} | {} | {} | {} -> {} | {} | {}",
+            "  {name} | {} | {} | {} | {} | {} | {} -> {} | {} | {}",
             outcome.pins.len(),
+            outcome.compound_attempted,
+            outcome.compound_kept,
             outcome.reclaim_attempted,
             outcome.reclaim_kept,
             baseline_traffic,
@@ -742,5 +745,13 @@ fn priced_reclaim_capture_heavy() {
         // The greedy reclaim must actually have run on this fixture (visibility: an
         // inert 0-attempted round would silently defeat the point of this gate).
         assert!(outcome.reclaim_attempted > 0, "{name}: reclaim_attempted == 0 — reclaim did not run");
+        // Compounds must be genuinely COMPILER-tried (hint-ranked, compile+certify-validated),
+        // not model-dismissed at `i64::MIN`. `compound_kept` may be 0 at b16 (compounds
+        // inert — no compound span fits) and that is a correct, honest outcome; the point
+        // is `compound_attempted > 0` proves the compiler, not the model, made the call.
+        assert!(
+            outcome.compound_attempted > 0,
+            "{name}: compound_attempted == 0 — compounds were not compiler-tried",
+        );
     }
 }

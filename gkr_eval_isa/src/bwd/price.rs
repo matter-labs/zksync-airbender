@@ -17,6 +17,21 @@
 //! [`PricedOutcome::reclaim_kept`] expose that activity so an inert (all-revert)
 //! outcome at b16 is VISIBLE, not silently green.
 //!
+//! Commit 3 (Revision 4, Full scope) closes the COMPOUND analogue of that gap. The
+//! offline pricing model is a NON-AUTHORITATIVE RANKING HINT — `compile + certify` is
+//! the SOLE feasibility AND savings authority. The old CELF greedy made the model the
+//! SELECTION authority: `price_pin` returns `i64::MIN` for a model-infeasible span, so
+//! at b16 (saturated envelope) every compound priced `i64::MIN`, nothing was ever
+//! pushed to the heap, and ZERO compound `compile_distilled_planned` calls ran — every
+//! compound was dismissed by the MODEL, never TRIED by the compiler. [`reclaim_compounds`]
+//! replaces it with the same compiler-in-the-loop greedy as [`reclaim_leaves`]: the
+//! top-[`COMPOUND_N`] candidates are RANKED by the `price_pin` hint (ordering ONLY —
+//! `i64::MIN` spans are ranked, never filtered) and genuinely tried via a real
+//! `compile_distilled_planned`, KEEPING only compiler-feasible, non-diverging, certified,
+//! strictly-traffic-dropping pins. [`PricedOutcome::compound_attempted`] /
+//! [`PricedOutcome::compound_kept`] expose that a compound was compiler-TRIED (not
+//! model-dismissed) — a b16 outcome of "tried N, kept 0" is CORRECT and VISIBLE.
+//!
 //! ## The removal-set model
 //!
 //! The emitter serves a value then recurses into its cone PRE-ORDER
@@ -35,7 +50,7 @@
 //! leaves is invisible to the model (its Δ is 0), which is exactly why Commit 2's
 //! reclaim validates every retention against the REAL realized program instead.
 
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId, FieldKind};
@@ -54,6 +69,12 @@ use crate::fwd::error::CompileError;
 /// exported here so the whole knob lives in one place).
 pub const RECLAIM_N: usize = 32;
 
+/// Default cap on the compiler-tried COMPOUND greedy's candidate count (Commit 3).
+/// Reuses the leaf reclaim's [`RECLAIM_N`] so both compiler-in-the-loop greedies share
+/// one knob, and total compound recompiles are bounded to `≤ 2·COMPOUND_N` exactly as
+/// the leaf reclaim bounds itself to `≤ 2·RECLAIM_N`.
+pub const COMPOUND_N: usize = RECLAIM_N;
+
 // ── ABI types ──────────────────────────────────────────────────────────────────
 
 /// The full planner-input signature whose STRUCTURAL equality (spec §5, Rev 2)
@@ -71,11 +92,13 @@ pub struct PlannerSignature {
 
 /// The result of [`priced_rounds`]: the best certificate-passing round's plan, the
 /// committed compound pins, and the round/convergence + reclaim-activity counters.
-/// `reclaim_attempted` / `reclaim_kept` expose the gap-granular reclaim so an inert
-/// (all-revert) outcome is VISIBLE, not silently green. They report the RETURNED
-/// (best) round's counts — the same round whose `plan`/`pins` are returned — so the
-/// fidelity gate can reconcile `pins_suppression + 4·reclaim_kept` against that
-/// round's realized traffic delta.
+/// `reclaim_attempted` / `reclaim_kept` expose the gap-granular leaf reclaim and
+/// `compound_attempted` / `compound_kept` the compiler-tried compound greedy, so an
+/// inert (all-revert) outcome is VISIBLE, not silently green — in particular
+/// `compound_attempted > 0` proves compounds were genuinely COMPILER-tried (not
+/// model-dismissed at `i64::MIN`), even when `compound_kept == 0` at b16. All four
+/// report the RETURNED (best) round's counts — the same round whose `plan`/`pins`
+/// (`pins` = the kept compound set) are returned.
 #[derive(Clone, Debug)]
 pub struct PricedOutcome {
     pub plan: BwdOccurrencePlan,
@@ -84,6 +107,8 @@ pub struct PricedOutcome {
     pub converged: bool,
     pub reclaim_attempted: usize,
     pub reclaim_kept: usize,
+    pub compound_attempted: usize,
+    pub compound_kept: usize,
 }
 
 // ── stream reconstruction (pre-order DFS over the filtered domain serves) ───────
@@ -379,7 +404,7 @@ pub fn pins_suppression_savings(frozen: &FrozenDemand, pins: &BTreeSet<ExprId>) 
     4 * (survivors(&BTreeSet::new()) - survivors(pins))
 }
 
-// ── CELF compound batch ─────────────────────────────────────────────────────────
+// ── compound candidates, pricing model + compiler-tried compound greedy ─────────
 
 /// The compound (non-leaf) domain values that recur (≥ 2 serve occurrences) — the
 /// only values a cone-suppression pin can save anything on.
@@ -452,41 +477,101 @@ pub fn modeled_traffic_full(frozen: &FrozenDemand, pins: &BTreeMap<ExprId, usize
     Some(frozen.nondomain_gather_cells as i64 + 4 * survive as i64 - 4 * kept as i64)
 }
 
-/// CELF lazy-greedy over the compound candidates: a max-heap of stale upper bounds,
-/// re-evaluated at the top against the current committed set with [`price_pin_with`],
-/// committing while Δ > 0 and span-feasible.
-fn celf(
+/// Compiler-tried COMPOUND retention greedy (Commit 3, Revision 4 Full scope). Closes
+/// the gap where the CELF greedy made the offline model the SELECTION authority: at b16
+/// every compound spans an over-subscribed envelope so `price_pin_with` returns
+/// `i64::MIN`, nothing was pushed to the heap, and ZERO compound
+/// `compile_distilled_planned` calls ever ran — every compound was dismissed by the
+/// MODEL, never TRIED by the compiler. This mirrors [`reclaim_leaves`]: the offline
+/// `price_pin_with` marginal against the EMPTY set is a RANKING key ONLY (descending;
+/// `ExprId` ascending tie-break — deterministic, `i64::MIN` sorts LAST but is NEVER
+/// filtered), the top-[`COMPOUND_N`] are genuinely tried, and the COMPILER is the sole
+/// selection authority.
+///
+/// Starting from the feasible all-`Bypass` base compound plan `base_plan` (empty pins;
+/// already compiled clean into `base_c`/`base_trace`), for each ranked candidate in
+/// order tentatively add it to the kept pin set, rebuild the compound-batch plan
+/// (`Retain` at every SURVIVING occurrence but the last, `Bypass` at the last, suppressed
+/// cone re-expansions dropped) over the GROWING set, `compile_distilled_planned`, and
+/// KEEP iff the compile is feasible (no `BudgetBelowFloor`), non-diverging, certifies,
+/// AND its `dram_traffic` STRICTLY drops vs the current best; else revert. Total
+/// recompiles are bounded to `≤ 2·COMPOUND_N`. A single candidate's `BudgetBelowFloor`
+/// or `Diverge` only reverts THAT candidate (the greedy moves on) — the round-level
+/// fail-closed break stays with the base compile in [`priced_rounds`]. Returns
+/// `(kept pins, best plan, its compile, its trace, attempted, kept)`; `best_plan` always
+/// equals `compound_batch_plan_with(frozen, &kept_pins, end)`.
+#[allow(clippy::too_many_arguments)]
+fn reclaim_compounds(
     d: &DistilledLayer,
+    budget: usize,
     frozen: &FrozenDemand,
     end: &[usize],
     leaf_pos: &BTreeMap<usize, usize>,
     width_memo: &mut [Option<FieldKind>],
-) -> BTreeSet<ExprId> {
-    let mut pinned: BTreeSet<ExprId> = BTreeSet::new();
-    // Heap items: (Δ upper bound, candidate, epoch = pinned.len() at evaluation).
-    let mut heap: BinaryHeap<(i64, ExprId, usize)> = BinaryHeap::new();
-    for c in compound_candidates(d, frozen) {
-        let w = width_of(d, c, width_memo);
-        let b = price_pin_with(frozen, end, leaf_pos, &pinned, c, w);
-        if b > 0 {
-            heap.push((b, c, 0));
-        }
-    }
-    while let Some((bound, c, epoch)) = heap.pop() {
-        if bound <= 0 {
-            break;
-        }
-        if epoch == pinned.len() {
-            pinned.insert(c); // bound still valid against the current set → commit
-        } else {
+    base_plan: BwdOccurrencePlan,
+    base_c: BwdCompiledLayer,
+    base_trace: BwdCompileTrace,
+) -> Result<
+    (BTreeSet<ExprId>, BwdOccurrencePlan, BwdCompiledLayer, BwdCompileTrace, usize, usize),
+    CompileError,
+> {
+    // Hint-ranked candidates: the offline marginal price against the EMPTY set is an
+    // ORDERING key ONLY — infeasible (`i64::MIN`) spans are ranked (sorted last), never
+    // filtered; the compiler decides feasibility AND savings. Deterministic (ExprId
+    // tie-break, no hashmap-iteration order).
+    let mut ranked: Vec<(i64, ExprId)> = compound_candidates(d, frozen)
+        .into_iter()
+        .map(|c| {
             let w = width_of(d, c, width_memo);
-            let b = price_pin_with(frozen, end, leaf_pos, &pinned, c, w);
-            if b > 0 {
-                heap.push((b, c, pinned.len()));
+            (price_pin_with(frozen, end, leaf_pos, &BTreeSet::new(), c, w), c)
+        })
+        .collect();
+    ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    ranked.truncate(COMPOUND_N);
+
+    let mut pinned: BTreeSet<ExprId> = BTreeSet::new();
+    let mut best_traffic = base_c.stats_ext.global + base_c.stats_ext.fold_traffic;
+    let mut best_plan = base_plan;
+    let mut best_c = base_c;
+    let mut best_trace = base_trace;
+    let mut attempted = 0usize;
+    let mut kept = 0usize;
+    let mut compiles = 0usize;
+
+    for (_hint, c) in ranked {
+        if compiles >= 2 * COMPOUND_N {
+            break; // recompile budget guard (≤ 2N)
+        }
+        attempted += 1;
+        pinned.insert(c); // tentative add
+        let trial = compound_batch_plan_with(frozen, &pinned, end);
+        compiles += 1;
+        match compile_distilled_planned(d, budget, &trial) {
+            Ok((tc, tt)) => {
+                let dram = tc.stats_ext.global + tc.stats_ext.fold_traffic;
+                let clean = certify(&tc, &tt).is_ok() && !diverged(&tt);
+                if clean && dram < best_traffic {
+                    best_traffic = dram;
+                    best_plan = trial;
+                    best_c = tc;
+                    best_trace = tt;
+                    kept += 1; // KEEP: leave `c` in the pin set (chained into later trials)
+                } else {
+                    pinned.remove(&c); // revert (infeasible-by-model verdict NOT trusted;
+                                       // reverted only because the COMPILER declined it)
+                }
             }
+            // The compound chain's realized floor exceeded the budget → revert this
+            // candidate; the greedy moves on (the model-infeasible span the hint
+            // predicted, now compiler-confirmed for THIS candidate only).
+            Err(CompileError::BudgetBelowFloor { .. }) => {
+                pinned.remove(&c);
+            }
+            Err(e) => return Err(e),
         }
     }
-    pinned
+
+    Ok((pinned, best_plan, best_c, best_trace, attempted, kept))
 }
 
 // ── plan construction ───────────────────────────────────────────────────────────
@@ -713,6 +798,8 @@ struct RoundResult {
     instrs: usize,
     reclaim_attempted: usize,
     reclaim_kept: usize,
+    compound_attempted: usize,
+    compound_kept: usize,
 }
 
 impl RoundResult {
@@ -734,14 +821,18 @@ fn diverged(trace: &BwdCompileTrace) -> bool {
 /// `lower==place==budget` all-`Bypass` freeze (Task 5's `feasible_leaf_plan` step 1),
 /// NOT the fill-then-trim `compile_distilled_traced` freeze.
 ///
-/// Per round: (1) CELF a compound-suppression batch; (2) compile the batch over the
-/// predicted stream (a `BudgetBelowFloor` or a `Diverge` drops the round fail-closed
-/// and exits with the previous best); (3) re-freeze on the ACTUAL trace; (4)
-/// [`reclaim_leaves`] — the bounded gap-granular leaf reclaim validated against the
-/// real program (Commit 2) — into the final plan, compile, certify; (5) build the
-/// [`PlannerSignature`] and stop on structural equality with the previous round. Cap 3
-/// rounds; on non-convergence return the best certificate-passing round by the
-/// lexicographic objective.
+/// Per round: (1) compile the feasible all-`Bypass` base compound plan (empty pins) —
+/// the greedy's start AND the round's fail-closed fallback (a `BudgetBelowFloor` or a
+/// `Diverge` on the BASE drops the round fail-closed and exits with the previous best);
+/// (2) [`reclaim_compounds`] — the compiler-tried compound greedy (hint-ranked,
+/// compile+certify-validated; the model is NOT the selection authority); (3) re-freeze
+/// on the best compound compile's ACTUAL trace; (4) [`reclaim_leaves`] — the bounded
+/// gap-granular leaf reclaim validated against the real program (Commit 2); (5) build
+/// the [`PlannerSignature`] and stop on structural equality with the previous round.
+/// Cap 3 rounds; on non-convergence return the best certificate-passing round by the
+/// lexicographic objective. COMPOSITION ORDER: compounds FIRST (they reshape the serve
+/// stream by suppressing cone re-expansions), THEN leaves (fine-grained retention on the
+/// reshaped, re-frozen stream) — both greedies are compiler-validated per candidate.
 pub fn priced_rounds(
     d: &DistilledLayer,
     budget: usize,
@@ -765,6 +856,8 @@ pub fn priced_rounds(
         instrs: base_c.stats.program_lanes,
         reclaim_attempted: 0,
         reclaim_kept: 0,
+        compound_attempted: 0,
+        compound_kept: 0,
     };
 
     let mut prev_sig: Option<PlannerSignature> = None;
@@ -776,25 +869,37 @@ pub fn priced_rounds(
         let end = subtree_ends(&current_frozen);
         let leaf_pos = leaf_stream_positions(&current_frozen);
 
-        // (1) CELF compound batch.
-        let pinned = celf(d, &current_frozen, &end, &leaf_pos, &mut width_memo);
-
-        // (2) compile the compound batch over the predicted (suppressed) stream.
-        let compound_plan = compound_batch_plan_with(&current_frozen, &pinned, &end);
-        let (cbatch_c, cbatch_trace) = match compile_distilled_planned(d, budget, &compound_plan) {
+        // (1) compile the feasible all-`Bypass` compound base — the greedy's start AND
+        // the round's fail-closed fallback (a `BudgetBelowFloor`/`Diverge` on the base
+        // drops the round and exits with the previous best).
+        let round_base_plan = compound_batch_plan_with(&current_frozen, &BTreeSet::new(), &end);
+        let (rb_c, rb_trace) = match compile_distilled_planned(d, budget, &round_base_plan) {
             Ok(x) => x,
-            // The batch can't even place its compound chains → drop fail-closed,
-            // exit with the previous best (a finding, not a crash).
             Err(CompileError::BudgetBelowFloor { .. }) => break,
             Err(e) => return Err(e),
         };
-        // Prediction wrong (over-subscription / eviction reshaped the stream) → drop
-        // the batch fail-closed, exit with the previous best.
-        if diverged(&cbatch_trace) {
+        if diverged(&rb_trace) {
             break;
         }
 
-        // (3) re-freeze on the ACTUAL trace (the realized suppression).
+        // (2) compiler-TRIED compound greedy: hint-ranked candidates (`i64::MIN` spans
+        // ranked, never filtered), each KEPT only on a real compile that is feasible,
+        // non-diverging, and strictly-traffic-dropping — the model is the ranking hint,
+        // never the selection authority.
+        let (pinned, compound_plan, cbatch_c, cbatch_trace, c_attempted, c_kept) =
+            reclaim_compounds(
+                d,
+                budget,
+                &current_frozen,
+                &end,
+                &leaf_pos,
+                &mut width_memo,
+                round_base_plan,
+                rb_c,
+                rb_trace,
+            )?;
+
+        // (3) re-freeze on the best compound compile's ACTUAL trace (realized suppression).
         let observed = freeze_demand(d, &cbatch_trace, &cbatch_c.program, &cbatch_c.specials);
 
         // (4) Re-plan + BOUNDED GAP-GRANULAR leaf reclaim on the observed (realized)
@@ -812,6 +917,8 @@ pub fn priced_rounds(
             instrs: final_c.stats.program_lanes,
             reclaim_attempted: r_attempted,
             reclaim_kept: r_kept,
+            compound_attempted: c_attempted,
+            compound_kept: c_kept,
         };
         // `<=` (not `<`): on an inert tie with the pre-loop base a reclaim round still
         // adopts the outcome, so `reclaim_attempted` (the lever RAN) stays visible; ties
@@ -825,6 +932,8 @@ pub fn priced_rounds(
                 instrs: result.instrs,
                 reclaim_attempted: result.reclaim_attempted,
                 reclaim_kept: result.reclaim_kept,
+                compound_attempted: result.compound_attempted,
+                compound_kept: result.compound_kept,
             };
         }
 
@@ -845,5 +954,7 @@ pub fn priced_rounds(
         converged,
         reclaim_attempted: best.reclaim_attempted,
         reclaim_kept: best.reclaim_kept,
+        compound_attempted: best.compound_attempted,
+        compound_kept: best.compound_kept,
     })
 }
