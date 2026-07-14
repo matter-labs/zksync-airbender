@@ -730,9 +730,9 @@ fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
 mod helpers;
 
 pub(crate) use helpers::{
-    debug_apply_initial_fold_challenge_for_test,
-    debug_build_initial_fold_state_for_test, debug_build_initial_state_for_test,
-    debug_build_initial_state_snapshots_for_test, debug_initial_round_checkpoint_for_test,
+    debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,
+    debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
+    debug_initial_round_checkpoint_for_test,
 };
 
 use helpers::{

@@ -492,9 +492,9 @@ pub(super) fn schedule_accumulate_eq_samples_batched(
 
 #[cfg(test)]
 pub(crate) use tests::{
-    debug_apply_initial_fold_challenge_for_test,
-    debug_build_initial_fold_state_for_test, debug_build_initial_state_for_test,
-    debug_build_initial_state_snapshots_for_test, debug_initial_round_checkpoint_for_test,
+    debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,
+    debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
+    debug_initial_round_checkpoint_for_test,
 };
 
 #[cfg(test)]

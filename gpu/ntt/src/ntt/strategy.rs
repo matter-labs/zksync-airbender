@@ -755,8 +755,7 @@ mod tests {
     #[test]
     fn log_n_24_picks_three_pass_when_column_fits_l2() {
         // 64 MB column fits in RTX 5090's 96 MB L2 -> 3-pass.
-        let s =
-            select_ntt_strategy(NttDirection::Forward, 24, 1, 1, &rtx_5090_like()).unwrap();
+        let s = select_ntt_strategy(NttDirection::Forward, 24, 1, 1, &rtx_5090_like()).unwrap();
         assert_eq!(s.passes.len(), 3);
         assert!(matches!(
             s.passes[0].kernel,
@@ -777,8 +776,7 @@ mod tests {
 
     #[test]
     fn log_n_below_1_returns_below_supported() {
-        let err =
-            select_ntt_strategy(NttDirection::Forward, 0, 1, 1, &l4_like()).unwrap_err();
+        let err = select_ntt_strategy(NttDirection::Forward, 0, 1, 1, &l4_like()).unwrap_err();
         assert_eq!(
             err,
             NttStrategyError::LogNBelowSupported {
@@ -791,8 +789,7 @@ mod tests {
     #[test]
     fn two_pass_compact_range_emits_first_compact_plus_noninitial_8() {
         for log_n in TWO_PASS_COMPACT_MIN_LOG_N..=TWO_PASS_COMPACT_MAX_LOG_N {
-            let s =
-                select_ntt_strategy(NttDirection::Forward, log_n, 1, 1, &l4_like()).unwrap();
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, 1, &l4_like()).unwrap();
             assert_eq!(s.passes.len(), 2, "log_n={log_n}");
             let initial_stages = log_n - 8;
             assert_eq!(s.passes[0].start_stage, 0, "log_n={log_n}");
@@ -818,8 +815,7 @@ mod tests {
     #[test]
     fn compact_range_emits_single_pass_strategy() {
         for log_n in COMPACT_MIN_LOG_N..=COMPACT_MAX_LOG_N {
-            let s =
-                select_ntt_strategy(NttDirection::Forward, log_n, 1, 1, &l4_like()).unwrap();
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, 1, &l4_like()).unwrap();
             assert_eq!(s.passes.len(), 1, "log_n={log_n}");
             let pass = &s.passes[0];
             assert_eq!(pass.start_stage, 0, "log_n={log_n}");
@@ -916,8 +912,7 @@ mod tests {
             (7, 32),
         ];
         for (log_n, num_cosets) in cases {
-            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, &dev)
-                .unwrap();
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, &dev).unwrap();
             assert!(
                 matches!(
                     s.passes[0].kernel,
@@ -964,8 +959,7 @@ mod tests {
         for log_n in 8..=COMPACT_MAX_LOG_N {
             for num_cosets in [1usize, 4, 1 << 11] {
                 let s =
-                    select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, &dev)
-                        .unwrap();
+                    select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, &dev).unwrap();
                 assert!(
                     matches!(
                         s.passes[0].kernel,
@@ -994,14 +988,8 @@ mod tests {
         // Single-pass v8: cosets_per_block = 1024 >> (log_n - 3).
         let single_cases = [(3usize, 1024usize), (5, 256), (8, 32)];
         for (log_n, num_cosets) in single_cases {
-            let s = select_ntt_strategy(
-                NttDirection::Forward,
-                log_n,
-                1,
-                num_cosets,
-                &device_props,
-            )
-            .unwrap();
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, &device_props)
+                .unwrap();
             assert!(
                 matches!(
                     s.passes[0].kernel,
@@ -1013,8 +1001,7 @@ mod tests {
         }
         // Two-pass v8 (log_n in [9, 12]): any num_cosets >= 1.
         for log_n in 9..=COMPACT_MAX_LOG_N {
-            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, 1, &device_props)
-                .unwrap();
+            let s = select_ntt_strategy(NttDirection::Forward, log_n, 1, 1, &device_props).unwrap();
             assert!(
                 matches!(
                     s.passes[0].kernel,
@@ -1114,14 +1101,9 @@ mod tests {
         // follows num_cosets and feeds straight into gridDim.x.
         for num_cosets in [1usize, 2, 8, 128, 1 << 19] {
             for log_n in COMPACT_MIN_LOG_N..=COMPACT_MAX_LOG_N {
-                let s = select_ntt_strategy(
-                    NttDirection::Forward,
-                    log_n,
-                    1,
-                    num_cosets,
-                    &l4_like(),
-                )
-                .unwrap();
+                let s =
+                    select_ntt_strategy(NttDirection::Forward, log_n, 1, num_cosets, &l4_like())
+                        .unwrap();
                 assert_eq!(
                     s.cosets_per_launch, num_cosets,
                     "compact 1-pass: log_n={log_n}, num_cosets={num_cosets}",
@@ -1137,28 +1119,18 @@ mod tests {
         // num_columns` regardless of column count.
         for num_columns in [1usize, 2, 4] {
             for log_n in COMPACT_MIN_LOG_N..=COMPACT_MAX_LOG_N {
-                let s = select_ntt_strategy(
-                    NttDirection::Forward,
-                    log_n,
-                    num_columns,
-                    1,
-                    &l4_like(),
-                )
-                .unwrap();
+                let s =
+                    select_ntt_strategy(NttDirection::Forward, log_n, num_columns, 1, &l4_like())
+                        .unwrap();
                 assert_eq!(
                     s.columns_per_launch, num_columns,
                     "compact 1-pass: log_n={log_n}, num_columns={num_columns}",
                 );
             }
             for log_n in TWO_PASS_COMPACT_MIN_LOG_N..=TWO_PASS_COMPACT_MAX_LOG_N {
-                let s = select_ntt_strategy(
-                    NttDirection::Forward,
-                    log_n,
-                    num_columns,
-                    1,
-                    &l4_like(),
-                )
-                .unwrap();
+                let s =
+                    select_ntt_strategy(NttDirection::Forward, log_n, num_columns, 1, &l4_like())
+                        .unwrap();
                 assert_eq!(
                     s.columns_per_launch, num_columns,
                     "2-pass compact-initial: log_n={log_n}, num_columns={num_columns}",
@@ -1250,8 +1222,8 @@ mod tests {
         // Inverse only supports log_n >= 21 (the multistage range); callers
         // handle the per-stage fallback for smaller log_n.
         for log_n in 0..MULTIPASS_MIN_LOG_N {
-            let err = select_ntt_strategy(NttDirection::Inverse, log_n, 1, 1, &l4_like())
-                .unwrap_err();
+            let err =
+                select_ntt_strategy(NttDirection::Inverse, log_n, 1, 1, &l4_like()).unwrap_err();
             assert_eq!(
                 err,
                 NttStrategyError::LogNBelowSupported {
@@ -1285,8 +1257,7 @@ mod tests {
     #[test]
     fn inverse_log_n_24_picks_three_pass_when_column_fits_l2() {
         // 64 MB fits in RTX 5090's 96 MB L2 -> inverse 3-pass.
-        let s =
-            select_ntt_strategy(NttDirection::Inverse, 24, 1, 1, &rtx_5090_like()).unwrap();
+        let s = select_ntt_strategy(NttDirection::Inverse, 24, 1, 1, &rtx_5090_like()).unwrap();
         assert_eq!(s.passes.len(), 3);
         assert!(matches!(
             s.passes[0].kernel,

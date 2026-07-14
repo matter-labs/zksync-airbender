@@ -27,9 +27,7 @@ pub(crate) struct CompiledRecipeBuffers {
 }
 
 /// Compile `CoefficientRecipe` entries into the device-side format.
-pub(crate) fn compile_recipes_for_device(
-    recipes: &[CoefficientRecipe],
-) -> CompiledRecipeBuffers {
+pub(crate) fn compile_recipes_for_device(recipes: &[CoefficientRecipe]) -> CompiledRecipeBuffers {
     // Build the four tables as plain `Vec`s first. Whether they land in an
     // inline `__grid_constant__` descriptor or in device buffers is decided
     // afterwards from their sizes; the values are identical
