@@ -765,6 +765,16 @@ fn priced_reclaim_capture_heavy() {
 fn engine_runs_all_fixtures_b16() {
     const VALUE_PARITY: &[&str] =
         &["add_sub_lui_auipc_mop_layout_gkr.json", "keccak_special5_layout_gkr.json"];
+    // CS-M3 (CS-M0 follow-up M2) regression guard: the 4 G-M0-tracked fixtures' shipped
+    // CS traffic must never regress above the CS-M3 banked (G-M0-comparator-verified)
+    // values. `<=` so future improvements still pass; only a regression fails. Only the
+    // milestone-tracked metrics are pinned (not all 12) to avoid brittleness.
+    const CS_M3_TRAFFIC_CEILINGS: &[(&str, usize)] = &[
+        ("bigint_with_extended_control_layout_gkr.json", 18764),
+        ("keccak_special5_layout_gkr.json", 16240),
+        ("blake2_with_extended_control_layout_gkr.json", 9528),
+        ("unified_reduced_machine_layout_gkr.json", 3800),
+    ];
     let mut checked = 0usize;
     println!(
         "engine_runs_all_fixtures_b16 (Ext L0, b16):\n  \
@@ -799,6 +809,18 @@ fn engine_runs_all_fixtures_b16() {
             "{name}: CS traffic {cs_traffic} > baseline {baseline_traffic} — non-regression broke"
         );
         assert!(outcome.rounds <= 3, "{name}: rounds {} > 3", outcome.rounds);
+
+        // CS-M3 banked-value regression guard (present-fixture only; a fixture in the
+        // table that never runs here is simply not checked, not silently skipped).
+        if let Some(&(_, ceiling)) =
+            CS_M3_TRAFFIC_CEILINGS.iter().find(|&&(fixture, _)| fixture == name)
+        {
+            assert!(
+                cs_traffic <= ceiling,
+                "{name}: CS traffic {cs_traffic} > CS-M3 banked ceiling {ceiling} — regression \
+                 vs the G-M0-comparator-verified shipped value"
+            );
+        }
 
         // Value-parity spot gate on the shipped program (add_sub + keccak).
         if VALUE_PARITY.contains(&name) {
