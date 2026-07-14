@@ -108,11 +108,6 @@ DEVICE_FORCEINLINE e4 sub(const e2 x, const e4 y) { return e4::sub(x, y); }
 DEVICE_FORCEINLINE e4 sub(const e4 x, const bf y) { return e4::sub(x, y); }
 DEVICE_FORCEINLINE e4 sub(const e4 x, const e2 y) { return e4::sub(x, y); }
 DEVICE_FORCEINLINE e4 sub(const e4 x, const e4 y) { return e4::sub(x, y); }
-DEVICE_FORCEINLINE e6 sub(const bf x, const e6 y) { return e6::sub(x, y); }
-DEVICE_FORCEINLINE e6 sub(const e2 x, const e6 y) { return e6::sub(x, y); }
-DEVICE_FORCEINLINE e6 sub(const e6 x, const bf y) { return e6::sub(x, y); }
-DEVICE_FORCEINLINE e6 sub(const e6 x, const e2 y) { return e6::sub(x, y); }
-DEVICE_FORCEINLINE e6 sub(const e6 x, const e6 y) { return e6::sub(x, y); }
 
 template <class T0, class T1, class T2, class U> DEVICE_FORCEINLINE U mul_add(const T0 x, const T1 y, const T2 z) { return add(mul(x, y), z); }
 

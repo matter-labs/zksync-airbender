@@ -4,7 +4,6 @@ use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaError_t, cudaStream_t, cuda_fn_and_stub};
-use gpu_core::primitives::field::BF;
 
 cuda_fn_and_stub! {
     fn ab_sort_keys_a_u32(
@@ -108,41 +107,6 @@ impl SortKeys for u32 {
         } else {
             ab_sort_keys_a_u32
         }
-    }
-}
-
-impl SortKeys for BF {
-    fn get_function(descending: bool) -> SortKeysFunction<Self> {
-        let function = if descending {
-            ab_sort_keys_d_u32
-        } else {
-            ab_sort_keys_a_u32
-        };
-        // SAFETY: `BF` is a transparent `u32` newtype for this radix-sort path,
-        // so the ABI matches the `u32` kernel entrypoints.
-        unsafe { std::mem::transmute::<SortKeysFunction<u32>, SortKeysFunction<Self>>(function) }
-    }
-
-    fn sort_keys(
-        descending: bool,
-        d_temp_storage: &mut DeviceSlice<u8>,
-        d_keys_in: &DeviceSlice<Self>,
-        d_keys_out: &mut DeviceSlice<Self>,
-        begin_bit: i32,
-        end_bit: i32,
-        stream: &CudaStream,
-    ) -> CudaResult<()> {
-        let d_keys_in = unsafe { d_keys_in.transmute() };
-        let d_keys_out = unsafe { d_keys_out.transmute_mut() };
-        u32::sort_keys(
-            descending,
-            d_temp_storage,
-            d_keys_in,
-            d_keys_out,
-            begin_bit,
-            end_bit,
-            stream,
-        )
     }
 }
 

@@ -37,7 +37,6 @@ pub use prover::definitions::{
 pub use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub use prover::gkr::prover::GKRProof;
 pub use prover::gkr::witness_gen::family_circuits::build_unified_table_driver;
-pub use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub use prover::transcript::Seed;
 

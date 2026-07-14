@@ -87,7 +87,6 @@ fn test_merkle_tree(log_n: usize) {
         LOG_ROWS_PER_HASH,
         &stream,
         layers_count,
-        false,
     )
     .unwrap();
     memory_copy_async(&mut results_host, &results_device, &stream).unwrap();

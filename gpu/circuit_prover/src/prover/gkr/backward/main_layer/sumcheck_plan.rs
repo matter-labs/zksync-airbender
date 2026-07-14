@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -34,7 +34,7 @@ where
         &self,
         device_claim_point_in: &DeviceClaimPointAndBatching<E>,
         context: &ProverContext,
-    ) -> CudaResult<(ScheduledChallengeStorage<E>, ScheduledChallengeBuffer<E>)> {
+    ) -> CudaResult<ScheduledChallengeStorage<E>> {
         let len = packed_main_layer_batch_challenge_len(&self.kernel_plans);
         assert!(
             len > 0,
@@ -60,9 +60,9 @@ where
         let batching_slice = unsafe { device_claim_point_in.slice(self.folding_steps, 1) };
         // SAFETY: `storage.device` was just allocated with capacity `len` and
         // no other view into it exists yet; the `&mut DeviceSlice` is dropped
-        // before `storage.device_accessor()` is called below. The subsequent
-        // `get_powers_by_ref` launch is stream-ordered on `exec_stream`, so the
-        // buffer is populated before any downstream consumer reads it.
+        // at the end of this block. The subsequent `get_powers_by_ref` launch
+        // is stream-ordered on `exec_stream`, so the buffer is populated before
+        // any downstream consumer reads it.
         unsafe {
             // SAFETY: the freshly allocated challenge buffer is only re-viewed
             // at the concrete `E4` layout used by this scheduler.
@@ -81,12 +81,7 @@ where
                 context.get_exec_stream(),
             )?;
         }
-        let buffer = ScheduledChallengeBuffer {
-            device: storage.device_accessor(),
-            offset: 0,
-            len,
-        };
-        Ok((storage, buffer))
+        Ok(storage)
     }
 
     fn fold_eq_values_for_next_round(
@@ -159,7 +154,6 @@ where
             // Stage 3b device-terms path (terms/tiles + coeffs from device).
             compact::launch_main_round1_unified_devptr_terms(
                 devptr,
-                null(),
                 sizes.fold_stride,
                 sizes.next_layer_size,
                 self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
@@ -173,7 +167,6 @@ where
         } else if self.flat_cont_use_constant {
             compact::launch_main_round1_unified(
                 compact_desc,
-                null(),
                 sizes.fold_stride,
                 sizes.next_layer_size,
                 self.round_scratch.eq_low_group.as_ptr(),
@@ -185,7 +178,6 @@ where
         } else {
             compact::launch_main_round1_unified_devptr(
                 compact_desc,
-                null(),
                 sizes.fold_stride,
                 sizes.next_layer_size,
                 self.flat_cont_coeff_device_buf.as_ref().unwrap().as_ptr(),
@@ -290,7 +282,6 @@ where
             // Stage 3b device-terms path (terms/tiles + coeffs from device).
             return compact::launch_main_round3_unified_devptr_terms(
                 devptr,
-                null(),
                 sizes.fold_stride,
                 sizes.next_layer_size,
                 (step - 1) as u32,
@@ -307,7 +298,6 @@ where
         if self.flat_cont_use_constant {
             compact::launch_main_round3_unified(
                 compact_desc,
-                null(),
                 sizes.fold_stride,
                 sizes.next_layer_size,
                 (step - 1) as u32,
@@ -321,7 +311,6 @@ where
         } else {
             compact::launch_main_round3_unified_devptr(
                 compact_desc,
-                null(),
                 sizes.fold_stride,
                 sizes.next_layer_size,
                 (step - 1) as u32,
@@ -585,10 +574,8 @@ where
         acc_size: usize,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let challenge_offset = step + 1;
         let challenge_count = self.folding_steps - step - 1;
         assert_eq!(acc_size, 1usize << challenge_count);
-        let _ = (challenge_offset, challenge_count);
         let stream = context.get_exec_stream();
         // SAFETY: `reduction_temp_storage` owns a live device allocation sized
         // exactly to its backing buffer; this creates a temporary mutable view
@@ -628,9 +615,8 @@ where
     ///   - batch_base = `device_claim_point_in[folding_steps]` (last slot,
     ///     advanced on-device by the previous layer's end-of-round squeeze);
     ///   - lookup_mul = `device_lookup_and_constraint_ptr[0]`;
-    ///   - lookup_add = `device_lookup_and_constraint_ptr[1]`.
-    /// Replaces the prior per-layer 3-element scratch buffer + 2 D2Ds; the
-    /// kernel now reads each scalar through its own pointer.
+    ///   - lookup_add = `device_lookup_and_constraint_ptr[1]`;
+    ///   - external = `external_challenges_ptr`.
     fn schedule_flat_eval_recipes(
         &mut self,
         device_claim_point_in: &DeviceClaimPointAndBatching<E>,
@@ -811,7 +797,7 @@ where
         // Same pattern as the dim-reducing scheduler: per-round kernels write
         // coeffs directly into the slab's `internal_round_coefficients` range
         // and the per-address gather writes directly into
-        // `final_step_evaluations` (B1 + B2).
+        // `final_step_evaluations`.
         proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
         layer_slot: usize,
@@ -872,7 +858,7 @@ where
         // `folding_steps` entries. Matches the
         // `ProofLayout` allocation (`sumcheck_num_rounds * 4`).
         let coeffs_total_len = self.folding_steps * 4;
-        // B1: per-round kernels write coeffs straight into the slab's
+        // Per-round kernels write coeffs straight into the slab's
         // `internal_round_coefficients` range for this layer — no standalone
         // allocation, no post-loop slab D2D.
         let coeffs_buffer_ptr: *mut E = if coeffs_total_len > 0 {
@@ -951,7 +937,7 @@ where
             )?;
         }
 
-        let (batch_challenge_storage, batch_challenge_buffer) =
+        let batch_challenge_storage =
             self.schedule_batch_challenge_buffer_on_device(&device_claim_point_in, context)?;
         let flat_coeff_callbacks = self.schedule_flat_eval_recipes(
             &device_claim_point_in,
@@ -959,8 +945,8 @@ where
             device_external_challenges_ptr,
             context,
         )?;
-        // Continuation kernel reads the same 3 challenges via per-element
-        // pointers as the round-0 kernel above.
+        // Continuation kernel reads the same 4 challenges (batch-base, lookup
+        // mul/add, external) via per-element pointers as the round-0 kernel above.
         // SAFETY: the validated input length is `folding_steps + 1`, so the
         // last slot still exists for the continuation path.
         let cont_batch_base_ptr =
@@ -1057,11 +1043,9 @@ where
             // SAFETY: `step < last_step <= folding_steps`, so the single-element
             // read lies inside the immutable input claim-point buffer.
             let prev_coord_slice = unsafe { device_claim_point_in.slice(step, 1) };
-            // SAFETY: see the dim-reducing twin — the coeffs buffer is either
-            // a slab subslice (held alive by `_proof_slab` keepalive) or
-            // `fallback_device_coeffs` (dropped after every kernel that writes
-            // through this pointer is scheduled). The 4-element window is
-            // in-bounds (`coeffs_total_len = last_step * 4`).
+            // SAFETY: `coeffs_buffer_ptr` is a subslice of the proof slab (via
+            // `backward_internal_coeffs_device_mut`). The 4-element window is
+            // in-bounds (`coeffs_total_len = folding_steps * 4`).
             let coeffs_round_slice =
                 unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
             // SAFETY: `device_claim_point_out` was created with length
@@ -1097,7 +1081,7 @@ where
                 )?;
             }
         }
-        // #320 final round (step == last_step == folding_steps - 1, acc_size == 1).
+        // Final round (step == last_step == folding_steps - 1, acc_size == 1).
         // The factored eq is fully consumed (identity), so the round runs in
         // monomial form (`explicit_form = false`) — the CPU `evaluate::<_, false>`
         // last round — and emits the `last_step`-th monomial + draws `last_r`
@@ -1133,11 +1117,10 @@ where
             )?;
         }
 
-        // B1: coeffs already landed in the slab via the per-round kernels
-        // (or in `fallback_device_coeffs` for test paths). No post-loop slab
-        // D2D needed.
+        // Coeffs already landed in the slab via the per-round kernels; no
+        // post-loop slab D2D needed.
 
-        // Device-side inter-layer transcript (main-layer variant, #320). The
+        // Device-side inter-layer transcript (main-layer variant). The
         // last round now emits its monomial + draws `last_r` in-loop; the
         // `[E;2]` last-round line is gathered into a TEMP buffer and reduced at
         // `last_r` into the single at-point evaluation that is BOTH the
@@ -1190,7 +1173,7 @@ where
             null_mut()
         };
 
-        // #320: reduce the `[E;2]` line at `last_r` (drawn in-loop,
+        // Reduce the `[E;2]` line at `last_r` (drawn in-loop,
         // `claim_point_out[last_step]`) into the single at-point evaluation,
         // written directly into the slab final-step range.
         if num_addresses > 0 {
@@ -1269,7 +1252,7 @@ where
         }
         let total_new_claims_len = num_addresses + orphan_count;
 
-        // Device-side per-address `new_claims` (main-layer #320: the at-point
+        // Device-side per-address `new_claims` (main-layer: the at-point
         // evaluation is BOTH the next-layer claim and the degree-1
         // `final_step_evaluations`, already computed into the slab above).
         // Copy the slab at-point evals into the head of `device_new_claims`;
@@ -1300,8 +1283,7 @@ where
         // Returns a keepalive that holds eq_values, block_partials,
         // reduction_temp, and the orphan poly views (Arc-clones of the
         // consolidated backings) until exec_stream has finished every
-        // kernel reading them. Drop happens at end of scheduler — same
-        // pattern as `fallback_d_layer_transcript_inputs`.
+        // kernel reading them. Drop happens at end of scheduler.
         let extras_keepalive: Option<MainLayerExtrasKeepalive<BF, E>> = if orphan_count > 0 {
             // SAFETY: device_claim_point_out is `MAX_MAIN_LAYER_CLAIM_POINT_LEN`
             // long; `[0..folding_steps]` is in-bounds. The orphan eval
@@ -1382,10 +1364,10 @@ where
             // this point (d_layer_challenges via `transcript_squeeze_e4`, device_new_claims
             // via `backward_new_claims_linear`, device_seed/device_folding_challenges from
             // earlier work in this layer; coeffs and packed last-evals are now slab-direct
-            // via B1/B2 and not D2H'd here). The join lets exec wait for the per-layer D2Hs
+            // and not D2H'd here). The join lets exec wait for the per-layer D2Hs
             // before scheduling the final-readback callback and dropping the source
             // allocations at end of this function.
-            // #320: `last_r` is now drawn in-loop and lives among the folding
+            // `last_r` is now drawn in-loop and lives among the folding
             // challenges `claim_point_out[0..folding_steps]`; only
             // `[next_batching_challenge]` is squeezed post-loop.
             let folding_steps = self.folding_steps;
@@ -1439,7 +1421,7 @@ where
                     // D2H the on-device per-layer state that the final readback needs to
                     // advance the workflow (seed + folding challenges for WHIR host
                     // setup; coeffs and packed last-evaluations stay on device and flow
-                    // through the proof slab via B1/B2).
+                    // through the proof slab).
                     memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
                     // SAFETY: `[0..folding_steps]` were written in-place by the
                     // per-round update kernels — slots `[0..folding_steps - 1]` by
@@ -1530,7 +1512,6 @@ where
             tracing_ranges,
             start_callbacks: Callbacks::new(),
             batch_challenge_storage,
-            batch_challenge_buffer,
             final_readback: final_readback_callbacks,
             flat_coeff_callbacks,
             recipe_upload_callbacks: std::mem::replace(

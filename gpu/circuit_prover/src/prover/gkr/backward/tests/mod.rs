@@ -70,10 +70,9 @@ fn copy_device_values<T: Copy>(context: &ProverContext, values: &DeviceSlice<T>)
 fn eq_values_for_suffix(challenges: &[E4]) -> Vec<E4> {
     let acc_size = 1usize << challenges.len();
     let mut result = vec![E4::ZERO; acc_size];
-    // CPU reference for sumcheck tests: acc_size grows to 2^23 at the
-    // largest test sizes and each entry costs O(challenges.len()) E4
-    // multiplies, so this dominated the test wall time at ~3.4 s each.
-    // Each `gid` is independent — parallelize across the column slice.
+    // CPU reference for sumcheck tests: acc_size reaches 2^23 and each
+    // entry costs O(challenges.len()) E4 multiplies. Each `gid` is
+    // independent — parallelize across the column slice.
     let worker = Worker::new();
     worker.scope(acc_size, |scope, geometry| {
         result

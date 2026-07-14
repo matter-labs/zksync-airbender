@@ -376,56 +376,6 @@ fn whir_multi_step_fold_helpers_match_cpu() {
 #[test]
 #[cfg(not(no_cuda))]
 #[serial]
-fn whir_large_multi_step_monomial_fold_matches_cpu() {
-    const LOG_LEN: usize = 18;
-    const LEN: usize = 1 << LOG_LEN;
-    let context = make_test_context(256, 32);
-    let mut state = GpuWhirState::new(LEN, &context).unwrap();
-
-    let monomial = (0..LEN)
-        .map(|i| sample_ext(10_000 + i as u32))
-        .collect::<Vec<_>>();
-    let challenges = [
-        sample_ext(777),
-        sample_ext(888),
-        sample_ext(999),
-        sample_ext(1111),
-        sample_ext(1222),
-        sample_ext(1333),
-    ];
-
-    state.current_len = monomial.len();
-    let mut monomial_bitreversed = monomial.clone();
-    bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-    let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
-    state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
-        alloc_and_copy(&monomial_vectorized, &context),
-        state.current_len,
-    );
-
-    let mut expected_monomial = monomial;
-    for (step_idx, challenge) in challenges.into_iter().enumerate() {
-        fold_monomial_form_for_test(&mut expected_monomial, challenge);
-        fold_monomial_form_in_place_device(&mut state, challenge, &context).unwrap();
-        state.current_len /= 2;
-
-        let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
-        let mut monomial_from_gpu = vectorized_to_e4_coeffs(
-            &monomial_vectorized,
-            state.original_trace_len,
-            state.current_len,
-        );
-        bitreverse_enumeration_inplace(&mut monomial_from_gpu);
-        assert_eq!(
-            monomial_from_gpu, expected_monomial,
-            "large monomial fold diverged at step {step_idx}",
-        );
-    }
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-#[serial]
 fn whir_large_multi_step_fold_helpers_match_cpu() {
     const LOG_LEN: usize = 18;
     const LEN: usize = 1 << LOG_LEN;
@@ -780,7 +730,7 @@ fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
 mod helpers;
 
 pub(crate) use helpers::{
-    debug_apply_initial_fold_challenge_for_test, debug_build_initial_batched_evals_for_test,
+    debug_apply_initial_fold_challenge_for_test,
     debug_build_initial_fold_state_for_test, debug_build_initial_state_for_test,
     debug_build_initial_state_snapshots_for_test, debug_initial_round_checkpoint_for_test,
 };

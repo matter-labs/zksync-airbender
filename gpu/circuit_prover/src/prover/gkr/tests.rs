@@ -389,7 +389,6 @@ fn round_builders_allocate_and_reuse_scratch() {
         assert!(round0_ext_inputs[1].start.is_null());
     }
 
-    let _r1 = sample_ext(100);
     {
         let mut callbacks = Callbacks::new();
         let round1 = storage
@@ -417,7 +416,6 @@ fn round_builders_allocate_and_reuse_scratch() {
     let used_after_round1 = context.get_used_mem_current();
     assert!(used_after_round1 > baseline);
 
-    let _r2 = sample_ext(200);
     let (base_round2_cache_ptr, ext_round2_cache_ptr) = {
         let mut callbacks = Callbacks::new();
         let round2_first = storage
@@ -462,7 +460,6 @@ fn round_builders_allocate_and_reuse_scratch() {
         );
     }
 
-    let _r3 = sample_ext(300);
     let (round3_base_cache_ptr, round3_ext_cache_ptr) = {
         let mut callbacks = Callbacks::new();
         let round3_first = storage

@@ -10,6 +10,7 @@ use crate::primitives::static_host::{
 use fft::batch_inverse_inplace;
 
 use super::GpuScheduledBaseFieldQuery;
+use crate::primitives::callbacks::Callbacks;
 use crate::prover::whir::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
 use crate::upstream::PrimeField;
 
@@ -651,47 +652,6 @@ pub(crate) fn debug_build_initial_state_for_test(
     ))
 }
 
-pub(crate) fn debug_build_initial_batched_evals_for_test(
-    memory_trace_holder: &TraceHolder<BF>,
-    mem_polys_claims: &[E4],
-    witness_trace_holder: &TraceHolder<BF>,
-    wit_polys_claims: &[E4],
-    setup_trace_holder: &TraceHolder<BF>,
-    setup_polys_claims: &[E4],
-    batching_challenge: E4,
-    use_hypercube_evals: bool,
-    context: &ProverContext,
-) -> CudaResult<Vec<E4>> {
-    let trace_len = 1usize << memory_trace_holder.log_domain_size;
-    let mut state = GpuWhirState::new(trace_len, context)?;
-    let total_base_oracles = memory_trace_holder.columns_count
-        + witness_trace_holder.columns_count
-        + setup_trace_holder.columns_count;
-    let challenge_powers = materialize_powers_serial_starting_with_one::<E4, std::alloc::Global>(
-        batching_challenge,
-        total_base_oracles,
-    );
-    let (memory_weights, rest) = challenge_powers.split_at(mem_polys_claims.len());
-    let (witness_weights, setup_weights) = rest.split_at(wit_polys_claims.len());
-    debug_assert_eq!(setup_weights.len(), setup_polys_claims.len());
-
-    let _weight_buffers = build_initial_batched_evals_device(
-        memory_trace_holder,
-        memory_weights,
-        witness_trace_holder,
-        witness_weights,
-        setup_trace_holder,
-        setup_weights,
-        use_hypercube_evals,
-        &mut state.sumchecked_poly_evaluation_form,
-        context,
-    )?;
-    Ok(copy_back(
-        &state.sumchecked_poly_evaluation_form[..trace_len],
-        context,
-    ))
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn debug_build_initial_state_snapshots_for_test(
     memory_trace_holder: &TraceHolder<BF>,
@@ -750,7 +710,6 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
             batched_claim.add_assign(&term);
         }
     }
-    debug_assert!(!batched_claim.is_zero() || batched_claim == E4::ZERO);
 
     let post_eq = copy_back(&state.sumchecked_poly_evaluation_form[..trace_len], context);
     Ok((pre_eq, post_eq))

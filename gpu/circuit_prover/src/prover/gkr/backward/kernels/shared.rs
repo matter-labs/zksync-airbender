@@ -6,13 +6,13 @@ use era_cudart::slice::DeviceSlice;
 use super::dim_reducing::GpuGKRDimensionReducingScheduledLayerExecution;
 use super::main_layer::GpuGKRMainLayerScheduledLayerExecution;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, UnsafeAccessor, UnsafeMutAccessor};
+use crate::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
 
-/// Raised to 1024 for the blake2_with_compression delegation, whose largest
-/// main layer fuses 547 kernels (Stage 4). 1024 gives ~2x headroom and stays
+/// Sized for the blake2_with_compression delegation, whose largest
+/// main layer fuses 547 kernels. 1024 gives ~2x headroom and stays
 /// under the dim-reducing descriptor-size projection ceiling (~1712 before the
 /// projected struct would exceed the 32 KB kernel-arg limit; see
 /// `gkr_address_audit_helpers::compaction_sizes`).
@@ -95,13 +95,6 @@ impl<E> SharedChallengeDevice<E> {
     }
 }
 
-#[allow(dead_code)]
-pub(crate) struct ScheduledChallengeBuffer<E> {
-    pub(crate) device: UnsafeAccessor<SharedChallengeDevice<E>>,
-    pub(crate) offset: usize,
-    pub(crate) len: usize,
-}
-
 pub(crate) struct ScheduledChallengeStorage<E> {
     #[allow(dead_code)] // keepalive: callbacks must outlive the scheduled stream ops.
     pub(crate) callbacks: Callbacks<'static>,
@@ -116,19 +109,9 @@ impl<E> ScheduledChallengeStorage<E> {
         }
     }
 
-    pub(crate) fn device_accessor(&self) -> UnsafeAccessor<SharedChallengeDevice<E>> {
-        UnsafeAccessor::new(
-            self.device
-                .as_deref()
-                .expect("challenge storage device already released"),
-        )
-    }
-
     /// Release the per-layer batch-challenge device buffer. Its last scheduled
-    /// use is this main layer's backward sumcheck (the `device_accessor`
-    /// pointer is only dereferenced by those enqueued kernels), so the
-    /// reservation frees stream-ordered at prove-end like the other backward
-    /// handoff buffers.
+    /// use is this main layer's backward sumcheck, so the reservation frees
+    /// stream-ordered at prove-end like the other backward handoff buffers.
     pub(crate) fn release_device(&mut self) {
         self.device = None;
     }
@@ -189,7 +172,7 @@ impl<E> DeviceClaimPointAndBatching<E> {
 }
 
 /// SCHEDULING keepalive — keeps host callbacks alive until the stream
-/// consumes them. (Type alias documenting intent at the field site.)
+/// consumes them.
 pub(crate) type ScheduledDimensionReducingFinalReadback = Callbacks<'static>;
 
 pub(crate) type ScheduledBackwardWorkflowStateHandle<E> =

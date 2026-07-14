@@ -66,7 +66,6 @@ template <typename T, const bf *fine_powers> DEVICE_FORCEINLINE bf get_cmem_smem
   if (fine_idx == 0)
     return coarse;
   const bf fine = *(fine_powers + fine_idx);
-  // const bf fine = *(fine_powers + fine_idx);
   return bf::mul(fine, coarse);
 }
 

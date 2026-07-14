@@ -295,7 +295,7 @@ where
             .clone()
             .try_into()
             .expect("dimension reduction forward inputs must have arity 2");
-        // FS-safe merge (PR #305): both passes iterate `BTreeMap<OutputType>`
+        // FS-safe merge: both passes iterate `BTreeMap<OutputType>`
         // with the derived `Ord`; `InitsAndTeardownsProduct` is the last
         // discriminant (cs/src/definitions/gkr_layers.rs:5-10), so its 2
         // pairwise records / 2 challenges are always squeezed AFTER the

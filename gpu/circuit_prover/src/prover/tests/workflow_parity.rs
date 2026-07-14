@@ -594,9 +594,8 @@ fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
         mut gpu_backward_state,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge: _,
         ..
-    } = prepare_basic_unrolled_async_backward_fixture(8);
+    } = prepare_basic_unrolled_async_backward_fixture();
 
     while let Some(layer_plan) = gpu_backward_state
         .prepare_next_layer_static(&context)

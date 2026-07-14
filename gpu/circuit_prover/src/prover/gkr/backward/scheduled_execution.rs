@@ -102,13 +102,9 @@ where
         }
     }
 
-    /// Post-backward host-side handoff. The cfg(test) D2Hs that used to mirror
-    /// the final seed / claim point / batching challenge into `shared_state`
-    /// have been externalized into the `wait()` test helper itself, which now
-    /// owns its pinned host buffers and schedules its own D2Hs after the exec
-    /// stream synchronize. In production every consumer of the post-backward
-    /// handoff already reads the device-resident buffers directly, so this
-    /// entry point is now an unconditional no-op.
+    /// Post-backward host-side handoff. Production consumers read the
+    /// device-resident handoff buffers directly, so this is an unconditional
+    /// no-op; the test `wait()` helper owns its own pinned-host D2Hs.
     pub(crate) fn schedule_post_backward_handoff(
         &mut self,
         _context: &ProverContext,

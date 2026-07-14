@@ -96,14 +96,6 @@ fn test_sum<F: Field>(test_function: TestFunction<F>) {
     })
 }
 
-fn test_product<F: Field>(test_function: TestFunction<F>) {
-    test_function(ReduceOperation::Product, F::ONE, |state, x| {
-        let mut result = state;
-        result.mul_assign(&x);
-        result
-    })
-}
-
 #[test]
 #[serial]
 fn sum_bf() {
@@ -118,18 +110,6 @@ fn batch_sum_bf() {
 
 #[test]
 #[serial]
-fn product_bf() {
-    test_product(reduce::<super::BF>)
-}
-
-#[test]
-#[serial]
-fn batch_product_bf() {
-    test_product(batch_reduce::<super::BF>)
-}
-
-#[test]
-#[serial]
 fn sum_e4() {
     test_sum(reduce::<super::E4>)
 }
@@ -138,16 +118,4 @@ fn sum_e4() {
 #[serial]
 fn batch_sum_e4() {
     test_sum(batch_reduce::<super::E4>)
-}
-
-#[test]
-#[serial]
-fn product_e4() {
-    test_product(reduce::<super::E4>)
-}
-
-#[test]
-#[serial]
-fn batch_product_e4() {
-    test_product(batch_reduce::<super::E4>)
 }

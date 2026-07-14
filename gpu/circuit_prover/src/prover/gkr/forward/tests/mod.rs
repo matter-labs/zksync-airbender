@@ -320,7 +320,6 @@ fn forward_layer_dispatch_and_launch_match_expected_outputs() {
     attach_test_ext_output_layout(
         &mut storage,
         trace_len,
-        1,
         &[product_output, lookup_num_output, lookup_den_output],
     );
 
@@ -535,7 +534,6 @@ fn direct_no_cache_flat_forward_variants_match_expected_outputs() {
     attach_test_ext_output_layout(
         &mut storage,
         trace_len,
-        1,
         &[
             pair_num,
             pair_den,

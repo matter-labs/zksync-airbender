@@ -10,23 +10,8 @@ using namespace ::airbender::witness::trace::unrolled;
 
 namespace airbender::witness::memory::unrolled {
 
-// struct ShuffleRamAuxComparisonSets {
-//   const u32 count;
-//   const ShuffleRamAuxComparisonSet sets[MAX_INITS_AND_TEARDOWNS_SETS_COUNT];
-// };
-//
 #define MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT 4
-//
-// struct MemoryQueriesTimestampComparisonAuxVars {
-//   const u32 count;
-//   const ColumnAddress addresses[MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT];
-// };
-//
-// struct ShuffleRamAccessSets {
-//   const u32 count;
-//   const ShuffleRamQueryColumns sets[MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT];
-// };
-//
+
 struct InitsAndTeardownsTraceRaw {
   const u32 num_pages;
   const u32 *const __restrict__ page_indices;

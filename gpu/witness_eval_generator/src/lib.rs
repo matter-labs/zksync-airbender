@@ -127,10 +127,6 @@ impl Generator {
         }
     }
 
-    fn ident_for_idx(idx: usize) -> usize {
-        idx
-    }
-
     fn field_expr_into_var(&self, expr: &FieldNodeExpression<F>) -> usize {
         let FieldNodeExpression::SubExpression(idx) = expr else {
             unreachable!();
@@ -197,7 +193,7 @@ impl Generator {
                 let new_ident = self.create_var();
                 let num_inputs = input_subexpr_idxes.len();
                 let num_outputs = *num_outputs;
-                let table_id = Self::ident_for_idx(*table_id_subexpr_idx);
+                let table_id = *table_id_subexpr_idx;
                 if num_outputs > 0 {
                     self.push(&format!("LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {lookup_mapping_idx}"));
                 } else {
@@ -205,7 +201,7 @@ impl Generator {
                         "LOOKUP_ENFORCE({num_inputs}, {table_id}, {lookup_mapping_idx}"
                     ));
                 }
-                for input in input_subexpr_idxes.iter().copied().map(Self::ident_for_idx) {
+                for input in input_subexpr_idxes.iter().copied() {
                     self.push(&format!(", VAR({input})"));
                 }
                 self.push(")\n");
@@ -219,12 +215,12 @@ impl Generator {
                 let new_ident = self.create_var();
                 let num_inputs = input_subexpr_idxes.len();
                 let num_outputs = *num_outputs;
-                let table_id = Self::ident_for_idx(*table_id_subexpr_idx);
-                let mask_id = Self::ident_for_idx(*mask_id_subexpr_idx);
+                let table_id = *table_id_subexpr_idx;
+                let mask_id = *mask_id_subexpr_idx;
                 self.push(&format!(
                     "MAYBE_LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {mask_id}"
                 ));
-                for input in input_subexpr_idxes.iter().copied().map(Self::ident_for_idx) {
+                for input in input_subexpr_idxes.iter().copied() {
                     self.push(&format!(", VAR({input})"));
                 }
                 self.push(")\n");
@@ -233,7 +229,7 @@ impl Generator {
                 subindex,
                 output_index,
             } => {
-                let var_ident = Self::ident_for_idx(*subindex);
+                let var_ident = *subindex;
                 let new_ident = self.create_var();
                 self.push(&format!(
                     "ACCESS_LOOKUP({new_ident}, {var_ident}, {output_index})\n"
@@ -251,7 +247,7 @@ impl Generator {
                     ColumnAddress::WitnessSubtree(idx) => {
                         let source_ident = self.expression_into_var(source_subexpr);
                         if let Some(condition) = condition_subexpr_idx {
-                            let condition_ident = Self::ident_for_idx(*condition);
+                            let condition_ident = *condition;
                             // For a column that is ONLY ever written under a guard, fold the
                             // zero-default into its FIRST write (in evaluation order): emit a
                             // branchless `cond ? source : 0` store instead of an `IF`, so rows
@@ -276,7 +272,7 @@ impl Generator {
                     }
                     ColumnAddress::MemorySubtree(_idx) => {
                         if self.write_into_memory {
-                            todo!()
+                            unimplemented!("--write-memory: memory-subtree writes not implemented")
                         } else {
                             // do nothing and rely on the generic procedure. Hope that compiler optimizes out unused expressions
                         }
@@ -288,7 +284,7 @@ impl Generator {
                         let source_ident = self.expression_into_var(source_subexpr);
                         self.scratch_size = std::cmp::max(self.scratch_size, idx + 1);
                         if let Some(condition) = condition_subexpr_idx {
-                            let condition_ident = Self::ident_for_idx(*condition);
+                            let condition_ident = *condition;
                             self.push(&format!(
                                 "IF({condition_ident}, SET_SCRATCH_PLACE({idx}, {source_ident}))\n"
                             ));
@@ -466,7 +462,6 @@ mod tests {
             .unwrap();
     }
 
-    #[cfg(test)]
     #[test]
     fn generate_all() {
         skip_if_ci!();

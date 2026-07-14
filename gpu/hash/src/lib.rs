@@ -3,7 +3,7 @@
 //! (`transcript`: commit/squeeze/PoW).
 //!
 //! Built on `gpu_core` (allocator + primitives + base CUDA headers) and
-//! `gpu_ops` (the size-generic `bit_reverse_in_place` used on digest leaves).
+//! `gpu_ops`.
 //! Owns its own device-linked CUDA archive (`native/`: `hash.cu`, `gather.cu`)
 //! and exports `hash.cuh`'s include dir via `links = "gpu_hash_native"` so the
 //! blake2s-dependent GKR/WHIR protocol kernels that stay in `gpu_circuit_prover`

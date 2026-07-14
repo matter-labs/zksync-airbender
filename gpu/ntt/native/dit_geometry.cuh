@@ -1,4 +1,3 @@
-// Ported from ntt-experiments include/ntt/geometry.cuh.
 // Compile-time geometry for the unified kernels.
 #pragma once
 #include <primitives/field.cuh>
@@ -20,8 +19,7 @@ template <unsigned LOG_N_, unsigned LOG_VPT_> struct NttSingleGeom {
   static_assert(LOG_N <= LOG_VPT + 5u, "single-pass fits one warp");
 };
 
-// Two-pass: conflict-free split (larger half -> pass 1), mirrors
-// WarpNtt2PassDitGeom exactly.
+// Two-pass: conflict-free split (larger half -> pass 1).
 template <unsigned LOG_N_, unsigned LOG_VPT_> struct NttTwoPassGeom {
   static constexpr unsigned LOG_N = LOG_N_;
   static constexpr unsigned LOG_VPT = LOG_VPT_;

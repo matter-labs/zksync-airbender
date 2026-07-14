@@ -152,7 +152,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     // anchor_powers, per_query_pows). Kept alive for the duration of the
     // WHIR schedule.
     let mut delinearization_ephemerals: Vec<DeviceAllocation<E4>> = Vec::new();
-    let mut query_index_callbacks = Vec::new();
     let mut scheduled_sumcheck_poly_idx = 0usize;
 
     {
@@ -230,7 +229,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             trace_len_log2 + original_lde_factor.trailing_zeros() as usize - num_folding_steps;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let query_index_callbacks_for_round = schedule_pow_and_query_indexes_phase(
+        schedule_pow_and_query_indexes_phase(
             final_device_seed,
             num_queries,
             pow_bits,
@@ -239,7 +238,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             proof_slab,
             proof_layout,
             &mut pow_round_state,
-            stream,
             context,
         )?;
         pow_and_query_indexes_range.end(stream)?;
@@ -279,7 +277,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             .expect("pow_round_state pushed above for base round")
             .d_indexes[..];
         let log_lde_factor_base = memory_trace_holder.log_lde_factor;
-        let _lde_factor_base = 1usize << log_lde_factor_base;
         let coset_tree_size_log2 =
             (memory_trace_holder.log_domain_size - memory_trace_holder.log_rows_per_leaf) as u32;
         // The three base oracles (setup/memory/witness) sample the same
@@ -469,9 +466,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         )?;
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        // Retain the per-round callbacks so they outlive every scheduled
-        // stream op holding into them.
-        query_index_callbacks.push(query_index_callbacks_for_round);
         delinearization_ephemerals.push(delinearization_device);
         delinearization_ephemerals.push(per_query_pows);
         delinearization_ephemerals.push(eq_high_scratch);
@@ -550,7 +544,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             + oracle_to_query.lde_factor().trailing_zeros() as usize;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let query_index_callbacks_for_round = schedule_pow_and_query_indexes_phase(
+        schedule_pow_and_query_indexes_phase(
             final_device_seed,
             num_queries,
             pow_bits,
@@ -559,7 +553,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             proof_slab,
             proof_layout,
             &mut pow_round_state,
-            stream,
             context,
         )?;
         pow_and_query_indexes_range.end(stream)?;
@@ -661,7 +654,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
         recursive_caps_keepalive.push(oracle_to_query.into_host_keepalive());
-        query_index_callbacks.push(query_index_callbacks_for_round);
         delinearization_ephemerals.push(delinearization_device);
         delinearization_ephemerals.push(per_query_pows);
         delinearization_ephemerals.push(eq_high_scratch);
@@ -694,7 +686,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             context,
         )?;
 
-        // Mirror CPU `prover/src/gkr/whir/mod.rs` lines 1297 and 1391: after the final fold
+        // Mirror CPU `prover/src/gkr/whir/mod.rs`: after the final fold
         // and before drawing the final PoW/query bits, CPU commits the remaining
         // monomial-form coefficients into the transcript seed, and later stores them on the
         // proof as `final_monomials`. This is kept entirely on the
@@ -772,7 +764,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             + oracle_to_query.lde_factor().trailing_zeros() as usize;
         let pow_and_query_indexes_range = Range::new("gkr.whir.final_round.pow_and_query_indexes")?;
         pow_and_query_indexes_range.start(stream)?;
-        let query_index_callbacks_for_round = schedule_pow_and_query_indexes_phase(
+        schedule_pow_and_query_indexes_phase(
             final_device_seed,
             num_queries,
             pow_bits,
@@ -781,7 +773,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             proof_slab,
             proof_layout,
             &mut pow_round_state,
-            stream,
             context,
         )?;
         pow_and_query_indexes_range.end(stream)?;
@@ -842,7 +833,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
         recursive_caps_keepalive.push(oracle_to_query.into_host_keepalive());
-        query_index_callbacks.push(query_index_callbacks_for_round);
         round_range.end(stream)?;
         tracing_ranges.push(round_range);
     }
@@ -856,7 +846,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         _pow_round_state: pow_round_state,
         _ood_point_devices: ood_point_devices,
         _delinearization_ephemerals: delinearization_ephemerals,
-        _query_index_callbacks: query_index_callbacks,
         _recursive_caps_keepalive: recursive_caps_keepalive,
     })
 }

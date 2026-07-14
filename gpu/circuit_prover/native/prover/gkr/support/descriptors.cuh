@@ -29,15 +29,6 @@ template <typename B> struct gkr_base_initial_source {
   gkr_base_source_kind source_kind;
 };
 
-template <typename B, typename E> struct gkr_base_after_one_source {
-  size_t base_layer_half_size;
-  size_t next_layer_size;
-  const B *base_input_start;
-  E *this_layer_cache_start;
-  bool first_access;
-  gkr_base_source_kind source_kind;
-};
-
 template <typename E> struct gkr_ext_continuing_source {
   const E *previous_layer_start;
   E *this_layer_start;

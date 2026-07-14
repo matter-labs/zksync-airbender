@@ -14,20 +14,16 @@ use crate::upstream::Field;
 
 /// Compiled recipe buffer ready for device upload.
 ///
-/// Dual-path (Stage 3c): when every table fits its inline cap, `desc` is a
+/// Dual-path: when every table fits its inline cap, `desc` is a
 /// populated inline `GpuFlatRecipeEvalDesc` and `device_arrays` is `None`
 /// (the fast, byte-identical path passed by value as a `__grid_constant__`
 /// kernel arg). When any table overflows its cap (e.g. bigint's 3006 recipes
 /// vs the 2816-header cap), `desc` is left default-zero (unused) and
 /// `device_arrays` carries the host arrays for H2D upload into device buffers
 /// read by the `_devptr` eval-recipes kernels.
-#[allow(dead_code)]
 pub(crate) struct CompiledRecipeBuffers {
     pub(crate) desc: Box<GpuFlatRecipeEvalDesc>,
     pub(crate) num_recipes: usize,
-    pub(crate) num_terms: usize,
-    pub(crate) num_immediate_recipes: usize,
-    pub(crate) num_immediate_monomials: usize,
     /// `Some` iff any table overflows its inline cap → device-pointer path.
     pub(crate) device_arrays: Option<RecipeEvalHostArrays>,
 }
@@ -38,7 +34,7 @@ pub(crate) fn compile_recipes_for_device<E: Field + field::FieldExtension<BF>>(
 ) -> CompiledRecipeBuffers {
     // Build the four tables as plain `Vec`s first. Whether they land in an
     // inline `__grid_constant__` descriptor or in device buffers is decided
-    // afterwards from their sizes (Stage 3c dual path); the values are identical
+    // afterwards from their sizes; the values are identical
     // either way. The `terms_offset`/`immediate_idx` header fields are `u16`, so
     // those bounds are enforced regardless of path (they cap the device form too).
     let mut headers: Vec<GpuRecipeHeader> = Vec::with_capacity(recipes.len());
@@ -131,7 +127,6 @@ pub(crate) fn compile_recipes_for_device<E: Field + field::FieldExtension<BF>>(
         )
     } else {
         // Inline path: copy each table into the fixed-size descriptor arrays.
-        // Byte-identical to the pre-Stage-3c behaviour.
         let mut desc = Box::<GpuFlatRecipeEvalDesc>::default();
         desc.headers[..num_recipes].copy_from_slice(&headers);
         desc.terms[..num_terms].copy_from_slice(&terms);
@@ -143,9 +138,6 @@ pub(crate) fn compile_recipes_for_device<E: Field + field::FieldExtension<BF>>(
     CompiledRecipeBuffers {
         desc,
         num_recipes,
-        num_terms,
-        num_immediate_recipes,
-        num_immediate_monomials,
         device_arrays,
     }
 }

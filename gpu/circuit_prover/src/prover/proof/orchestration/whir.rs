@@ -167,7 +167,6 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
         batching_nonce_dst,
         context,
     )?;
-    let _ = _claim_point_for_squeeze;
     let whir_scheduled = {
         let setup_trace_holder = if let Some(setup_transfer) = setup_transfer.as_mut() {
             &mut setup_transfer.trace_holder

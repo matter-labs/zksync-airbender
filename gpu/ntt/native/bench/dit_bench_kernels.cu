@@ -6,7 +6,7 @@ namespace ntt {
 #define DIT_2P_FIXED(LOGN, LOGVPT, K)                                                                                                                          \
   EXTERN __launch_bounds__(NttTwoPassGeom<LOGN, LOGVPT>::THREADS, 1u) __global__ void ab_dit_two_pass_fixed_##LOGN##_##LOGVPT##_##K(                           \
       const bf *mono, const bf *tw_p1, const bf *tw_p2, const bf *d_tab, bf *out, u32 cfp0, u32 step, u32 cstride) {                                           \
-    ntt_two_pass_fixed<LOGN, LOGVPT, K, StoreMode::CS, 1u>(mono, tw_p1, tw_p2, d_tab, out, cfp0, step, cstride);                                               \
+    ntt_two_pass_fixed<LOGN, LOGVPT, K, StoreMode::CS>(mono, tw_p1, tw_p2, d_tab, out, cfp0, step, cstride);                                               \
   }
 DIT_2P_FIXED(9, 3, 1)
 DIT_2P_FIXED(9, 3, 2)
@@ -64,7 +64,7 @@ DIT_2P_FIXED(12, 2, 16)
 #define DIT_1P_FIXED(LOGN, LOGVPT, K)                                                                                                                          \
   EXTERN __launch_bounds__(4u * 32u)                                                                                                                           \
       __global__ void ab_dit_single_fixed_##LOGN##_##LOGVPT##_##K(const bf *mono, const bf *tw_clean, bf *out, u32 cfp0, u32 step, u32 cstride) {              \
-    ntt_single<LOGN, LOGVPT, 4u, K, StoreMode::CS, 0u>(mono, tw_clean, out, cfp0, step, cstride);                                                              \
+    ntt_single<LOGN, LOGVPT, 4u, K, StoreMode::CS>(mono, tw_clean, out, cfp0, step, cstride);                                                              \
   }
 DIT_1P_FIXED(3, 3, 1)
 DIT_1P_FIXED(3, 3, 2)

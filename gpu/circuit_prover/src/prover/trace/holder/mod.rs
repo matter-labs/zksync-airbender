@@ -231,25 +231,6 @@ impl<T> TraceHolder<T> {
         }
     }
 
-    /// Mutable shared-borrow of the full `CosetsHolder::Full` backing, intended
-    /// for callers that fill all cosets in one shot (multi-coset NTT writing
-    /// directly into the cosets backing). Asserts `!self.cosets_materialized`;
-    /// the caller is responsible for calling `mark_cosets_materialized` once the
-    /// fill completes.
-    #[allow(dead_code)]
-    pub(crate) fn get_uninit_consolidated_cosets_mut(&mut self) -> &mut DeviceSlice<T> {
-        assert!(
-            !self.cosets_materialized,
-            "get_uninit_consolidated_cosets_mut: cosets already materialized"
-        );
-        match &mut self.cosets {
-            CosetsHolder::Full(backing) => backing,
-            CosetsHolder::None(_) => {
-                panic!("cosets not allocated — call ensure_cosets_materialized first")
-            }
-        }
-    }
-
     pub(crate) fn get_evaluations(&self) -> &DeviceSlice<T> {
         self.get_coset_evaluations(0)
     }
@@ -432,7 +413,7 @@ impl TraceHolder<BF> {
     /// directly into a caller-supplied `dst_u32` device slice. No allocation
     /// of `self.unified_device_cap` is performed here — callers that still
     /// own a private cap buffer should use `commit_all`, which wraps this
-    /// function with the legacy allocation behavior.
+    /// function and allocates a private cap buffer.
     pub(crate) fn commit_all_into(
         &mut self,
         dst_u32: &mut DeviceSlice<u32>,
@@ -474,8 +455,7 @@ impl TraceHolder<BF> {
         };
 
         // Multi-coset commit: every coset's Merkle tree is built layer-by-layer
-        // across all cosets in one launch per layer (was `lde_factor * layers`
-        // launches in a per-coset loop). For `Partial`/`None` modes we
+        // across all cosets in one launch per layer. For `Partial`/`None` modes we
         // allocate one transient `tree_tops` slab covering all cosets;
         // `lde_factor * tree_top_per_coset` is bounded by ~`2^(OMEGA_LOG_ORDER
         // + 1) * sizeof(Digest)` ≈ 8 GB since `log_n + log_lde_factor <=
@@ -692,7 +672,6 @@ impl TraceHolder<BF> {
         let cap_words_per_coset =
             ((1usize << log_subtree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32;
 
-        let mut transient_tree_tops: Option<DeviceAllocation<Digest>> = None;
         match &mut self.trees {
             TreesHolder::Full(backing) => {
                 commit_trace_from_ntt_single_tree(
@@ -712,8 +691,7 @@ impl TraceHolder<BF> {
                 // Partial mode: the single flat tree's top
                 // (leaves + PARTIAL_TREE_REDUCTION_LAYERS-1 layers) lives in a
                 // transient slab; the bottom (the rest of the layers) lives in
-                // `backing`. Same shape as `commit_trace_with_partial_tree` but
-                // single-tree.
+                // `backing`.
                 let tree_top_len = per_coset_tree_full_len;
                 let mut tree_top =
                     context.alloc::<Digest>(tree_top_len, AllocationPlacement::BestFit)?;
@@ -736,7 +714,7 @@ impl TraceHolder<BF> {
                 )?;
                 // Bottom: read the "top layer" digests out of `tree_top` and
                 // continue the merkle tree into `backing` for the remaining
-                // layers. Mirrors `commit_trace_with_partial_tree`.
+                // layers.
                 let bottom_layers_count = total_leaf_count_log2 + 1
                     - PARTIAL_TREE_REDUCTION_LAYERS
                     - self.log_tree_cap_size;
@@ -749,8 +727,7 @@ impl TraceHolder<BF> {
                     bottom_layers_count,
                     stream,
                 )?;
-                let _ = tree_top; // dropped after cap gather completes via the snapshot below
-                transient_tree_tops = None; // partial path doesn't reuse via gather
+                let _ = tree_top;
             }
             TreesHolder::None => {
                 panic!("whir_lde_and_commit_all_into: TreesCacheMode::CacheNone is not supported; use CachePartial or CacheFull");
@@ -805,7 +782,6 @@ impl TraceHolder<BF> {
             TreesHolder::None => unreachable!(),
         }
 
-        let _ = transient_tree_tops;
         Ok(())
     }
 
@@ -1133,7 +1109,6 @@ impl TraceHolder<BF> {
                     self.log_rows_per_leaf,
                     stream,
                     layers_count,
-                    false,
                 )?;
                 gather_merkle_paths_device(
                     indexes,
@@ -1240,7 +1215,7 @@ pub(crate) fn allocate_trees(
     context.alloc(total, AllocationPlacement::Bottom)
 }
 
-/// Multi-coset variant of `commit_trace`: builds all `cosets_in_tile` per-
+/// Builds all `cosets_in_tile` per-
 /// coset Merkle trees in one launch per layer. `evals_backing` holds
 /// `[coset0_evals | coset1_evals | ...]` (each coset's evals span
 /// `columns_count << log_domain_size` BFs); `trees_backing` holds the same
@@ -1473,7 +1448,7 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
     crate::ops::blake2s::build_merkle_tree_nodes(leaves, nodes, layers_count - 1, exec_stream)
 }
 
-/// Multi-coset variant of `commit_trace_with_partial_tree`: takes one big
+/// Takes one big
 /// `tree_tops_backing` slab sized for all cosets' tops, plus the existing
 /// shared `tree_bottoms_backing`. Builds top layers (leaves +
 /// PARTIAL_TREE_REDUCTION_LAYERS-1 layers of nodes) into every coset's top

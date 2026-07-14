@@ -419,13 +419,7 @@ struct TwoPassGeom {
     log_n1: u32,
     log_n2: u32,
     n1: u32,
-    #[allow(dead_code)]
-    n2: u32,
     threads: u32,
-    #[allow(dead_code)]
-    lanes_p1: u32,
-    #[allow(dead_code)]
-    lanes_p2: u32,
 }
 
 impl TwoPassGeom {
@@ -435,10 +429,7 @@ impl TwoPassGeom {
         let log_n2 = (log_n / 2).min(log_vpt + 3);
         let log_n1 = log_n - log_n2;
         let n1 = 1u32 << log_n1;
-        let n2 = 1u32 << log_n2;
         let threads = n / vpt;
-        let lanes_p1 = 1u32 << (log_n1 - log_vpt);
-        let lanes_p2 = 1u32 << (log_n2 - log_vpt);
         Self {
             log_n,
             log_vpt,
@@ -447,10 +438,7 @@ impl TwoPassGeom {
             log_n1,
             log_n2,
             n1,
-            n2,
             threads,
-            lanes_p1,
-            lanes_p2,
         }
     }
 }
@@ -554,8 +542,8 @@ fn ntt_two_pass_smem_bytes(g: &TwoPassGeom) -> usize {
 //   writes coset `ci = bx + c·grid` to out[ci*N .. ci*N+N], with twist exponent
 //   cfp = cfp_0 + ci·coset_step.
 // `grid` MUST be a power-of-two divisor of `total` so `grid * cosets_per_block
-// == total` exactly and the grid-walk covers every coset with no ragged tail
-// (the kernel no longer supports `grid ∤ total`). With cfp_0=0 and
+// == total` exactly and the grid-walk covers every coset with no ragged tail.
+// With cfp_0=0 and
 // coset_step=2^(27 - LOG_N - log_lde_factor), global coset `ci` maps to the
 // coset index `ci` (identical to the single-pass harness). The d-table is built
 // with step_per_iter = grid * coset_step.

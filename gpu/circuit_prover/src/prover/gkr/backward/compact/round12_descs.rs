@@ -63,16 +63,15 @@ impl SlotTable {
 /// slot must be 0 (round 0/1/2 base inputs are full-poly reads). Returns
 /// `(backing_base, log2_stride, poly_idx)`.
 fn resolve_source_pointer(ranges: &[BackingRange], ptr: *const u8) -> (*const u8, u32, u16) {
-    let (base, log2_stride, poly_idx) = resolve_backing_for_pointer(ranges, ptr).unwrap_or_else(
+    resolve_backing_for_pointer(ranges, ptr).unwrap_or_else(
         || panic!("compact round 1/2: source pointer {ptr:?} does not fall within any consolidated source backing"),
-    );
-    (base, log2_stride, poly_idx)
+    )
 }
 
 /// Resolve a cache-write pointer at round 1: sub-offset within the per-poly
 /// cache buffer must be 0 (round 1 always writes to position 0 in the cache).
 /// Returns `(cache_base, cache_log2_stride, poly_idx)`.
-fn resolve_round1_cache_pointer<E: Field>(
+fn resolve_round1_cache_pointer(
     cache_ranges: &[ContinuationBackingRange],
     ptr: *const u8,
 ) -> (*const u8, u32, u16) {
@@ -86,7 +85,6 @@ fn resolve_round1_cache_pointer<E: Field>(
         sub_offset, 0,
         "compact round 1: cache pointer {ptr:?} has non-zero sub_offset {sub_offset}",
     );
-    let _ = std::marker::PhantomData::<E>;
     (base, log2_stride, poly_idx)
 }
 
@@ -152,7 +150,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
         }
         let cache_raw = entry.this_layer_cache_start as *const u8;
         let (cache_base, cache_log2, cache_poly_idx) =
-            resolve_round1_cache_pointer::<E>(&cache_ranges, cache_raw);
+            resolve_round1_cache_pointer(&cache_ranges, cache_raw);
         let cache_slot = slots.assign(&mut compact.tables, cache_base, cache_log2);
         let cache = pack_cache_u16(cache_slot, cache_poly_idx);
         match entry.source_kind {
@@ -189,7 +187,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
         let cache_raw = entry.this_layer_cache_start as *const u8;
         let first_access = !prev_raw.is_null();
         let (cache_base, cache_log2, cache_poly_idx) =
-            resolve_round1_cache_pointer::<E>(&cache_ranges, cache_raw);
+            resolve_round1_cache_pointer(&cache_ranges, cache_raw);
         let cache_slot = slots.assign(&mut compact.tables, cache_base, cache_log2);
         let cache = pack_cache_u16(cache_slot, cache_poly_idx);
         let (src_slot, src_poly_idx) = if first_access {
@@ -251,7 +249,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
         + td.num_unified_quadratic as usize
         + td.num_unified_linear as usize;
     // NOTE: `total_terms` may exceed FLAT_CONT_UNIFIED_MAX_TERMS on large
-    // delegations. When it does, the device-terms path (Stage 3b) is taken at
+    // delegations. When it does, the device-terms path is taken at
     // the end of this fn instead of the inline copy; no assert here.
 
     // Apply round1 idx_remap (continuation source_table_idx → tagged round1
@@ -331,7 +329,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
 
     let num_tiles = tile_boundaries.len();
     // NOTE: `num_tiles` may exceed FLAT_CONT_UNIFIED_MAX_TILES on large
-    // delegations → device-terms path (Stage 3b); no assert here.
+    // delegations → device-terms path; no assert here.
 
     let mut fold_sources: Vec<u16> = Vec::new();
     let mut tile_term_offsets: Vec<u16> = Vec::with_capacity(num_tiles + 1);
@@ -395,7 +393,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
         compact.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
         (compact, None)
     } else {
-        // Device path (Stage 3b): terms/tiles overflow the inline cap → keep
+        // Device path: terms/tiles overflow the inline cap → keep
         // them as host Vecs for H2D; the inline desc's term/tile arrays stay
         // unused (the `_devptr_terms_` kernel reads from device buffers).
         (
@@ -417,11 +415,10 @@ pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>
 /// `previous_layer_start` is at sub_offset=0; `this_layer_cache_start` is at
 /// sub_offset=`size_after_one_fold`. sub_offset is not validated here
 /// (caller-specific).
-fn resolve_round2_cache_pointer<E: Field>(
+fn resolve_round2_cache_pointer(
     cache_ranges: &[ContinuationBackingRange],
     ptr: *const u8,
 ) -> (*const u8, u32, u16, u32) {
-    let _ = std::marker::PhantomData::<E>;
     resolve_continuation_backing_for_pointer(cache_ranges, ptr).unwrap_or_else(|| {
         panic!(
             "compact round 2: cache pointer {ptr:?} does not fall within any consolidated cache backing"
@@ -498,7 +495,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round2_unified_desc<E: Field>
         }
         let cache_raw = entry.this_layer_cache_start as *const u8;
         let (cache_base, cache_log2, cache_poly_idx, cache_sub) =
-            resolve_round2_cache_pointer::<E>(&cache_ranges, cache_raw);
+            resolve_round2_cache_pointer(&cache_ranges, cache_raw);
         assert_eq!(
             cache_sub, 0,
             "compact round 2: base cache sub_offset must be 0, got {cache_sub} at base_source[{i}]",
@@ -539,12 +536,12 @@ pub(in crate::prover::gkr::backward) fn build_flat_round2_unified_desc<E: Field>
         let cache_raw = entry.this_layer_cache_start as *const u8;
         let first_access = !prev_raw.is_null();
         let (cache_base, cache_log2, cache_poly_idx, _cache_sub) =
-            resolve_round2_cache_pointer::<E>(&cache_ranges, cache_raw);
+            resolve_round2_cache_pointer(&cache_ranges, cache_raw);
         let cache_slot = slots.assign(&mut compact.tables, cache_base, cache_log2);
         let cache = pack_cache_u16(cache_slot, cache_poly_idx);
         if first_access {
             let (prev_base, prev_log2, prev_poly_idx, _prev_sub) =
-                resolve_round2_cache_pointer::<E>(&cache_ranges, prev_raw);
+                resolve_round2_cache_pointer(&cache_ranges, prev_raw);
             assert_eq!(
                 prev_base as usize, cache_base as usize,
                 "compact round 2: ext prev/cache resolve to different backings at ext_source[{i}]"
@@ -598,7 +595,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round2_unified_desc<E: Field>
         + td.num_unified_quadratic as usize
         + td.num_unified_linear as usize;
     // NOTE: `total_terms` may exceed FLAT_CONT_UNIFIED_MAX_TERMS on large
-    // delegations → device-terms path (Stage 3b); no assert here.
+    // delegations → device-terms path; no assert here.
 
     // Apply round2 idx_remap (continuation source_table_idx → tagged round2
     // index, with `FLAT_CONT_EXT_SOURCE_BIT` set for ext entries) inline as
@@ -677,7 +674,7 @@ pub(in crate::prover::gkr::backward) fn build_flat_round2_unified_desc<E: Field>
 
     let num_tiles = tile_boundaries.len();
     // NOTE: `num_tiles` may exceed FLAT_CONT_UNIFIED_MAX_TILES on large
-    // delegations → device-terms path (Stage 3b); no assert here.
+    // delegations → device-terms path; no assert here.
 
     let mut fold_sources: Vec<u16> = Vec::new();
     let mut tile_term_offsets: Vec<u16> = Vec::with_capacity(num_tiles + 1);

@@ -1,6 +1,5 @@
-// Ported from ntt-experiments include/ntt/swizzle.cuh.
-// V4SG slab-address swizzle for the unified two-pass transpose. Ported verbatim
-// from warp_ntt_2pass.cuh (v4sg_dit_mask/v4sg_dit_addr) — the conflict-free
+// V4SG slab-address swizzle for the unified two-pass transpose
+// (v4sg_dit_mask/v4sg_dit_addr) — the conflict-free
 // masks for the full-DIT split (LOG_N2 = min(floor(LOG_N/2), LOG_VPT+3), larger
 // half -> pass 1). swz(L) flips only
 // bits >= 2 (V4 alignment): the (L>>5)&1 term fixes the v8 V4-store 2-way, the

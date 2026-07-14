@@ -21,10 +21,6 @@ struct RegisterOrIndirectReadWriteData {
   const TimestampData timestamp;
 };
 
-struct RegisterOrIndirectVariableOffsetData {
-  const u16 variable_offset_value;
-};
-
 struct BigintWithControlAbiDescription {
   static constexpr unsigned REG_ACCESSES = 3;     // 3 x 16B = 48B
   static constexpr unsigned INDIRECT_READS = 8;   // 8 x 12B = 96B

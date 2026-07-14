@@ -287,7 +287,7 @@ pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
         + td.num_unified_quadratic as usize
         + td.num_unified_linear as usize;
     // NOTE: `total_terms` may exceed FLAT_CONT_UNIFIED_MAX_TERMS on large
-    // delegations → device-terms path (Stage 3b); no assert here.
+    // delegations → device-terms path; no assert here.
 
     let mut terms: Vec<GpuFlatUnifiedTerm> = Vec::with_capacity(total_terms);
     for i in 0..td.num_constants as u16 {
@@ -354,7 +354,7 @@ pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
 
     let num_tiles = tile_boundaries.len();
     // NOTE: `num_tiles` may exceed FLAT_CONT_UNIFIED_MAX_TILES on large
-    // delegations → device-terms path (Stage 3b); no assert here.
+    // delegations → device-terms path; no assert here.
 
     let mut fold_sources: Vec<u16> = Vec::new();
     let mut tile_term_offsets: Vec<u16> = Vec::with_capacity(num_tiles + 1);

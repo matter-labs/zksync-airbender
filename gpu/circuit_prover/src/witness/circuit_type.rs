@@ -30,11 +30,9 @@ const KECCAK_DOMAIN_SIZE: usize =
 
 const ADD_SUB_DOMAIN_SIZE: usize =
     1 << <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
-// The unified reduced-machine circuit is compiled at trace_len_log2 = 24
-// (cs/src/gkr_circuits/unified_reduced_machine/circuit.rs:604; layout JSON
-// trace_len = 16777216 = 2^24). There is no live upstream DOMAIN_SIZE_LOG2 trait
-// const to mirror here: the circuit_defs unified circuit type is commented out of
-// `setups` and is stale at TRACE_LEN_LOG2 = 23, while the PR #305 CPU truth is 24.
+// No live upstream DOMAIN_SIZE_LOG2 trait const exists for the unified
+// reduced-machine circuit, so hard-code to 2^24 to match the CPU trace_len_log2
+// (pinned by tests::unified_domain_size_is_two_pow_24).
 const UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE: usize = 1 << 24;
 const JUMP_BRANCH_DOMAIN_SIZE: usize =
     1 << <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;

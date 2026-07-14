@@ -182,11 +182,10 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
             CircuitType::Unrolled(UnrolledCircuitType::Unified),
             Some(TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))),
         ) => {
-            // Inline i/t paged sweep FIRST (page-based-reuse, per Global Constraints): it zeroes the
+            // Inline i/t paged sweep FIRST (page-based-reuse): it zeroes the
             // whole matrix (set_to_zero) then writes the teardown columns; the per-row unified
-            // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone i/t
-            // commit-memory arm at trace/memory.rs:169-180 (inits_and_teardowns + log_domain_size +
-            // PAGE_SIZE_LOG2 + the i/t launcher are already in scope/imported there).
+            // memory-values launch below fills machine_state + shuffle_ram. Mirrors the standalone
+            // InitsAndTeardowns arm above.
             //
             // `None` = a TRIVIAL (dummy) unified init/teardown chunk: the CPU reference
             // (prover_examples::unified) commits all-zero i&t columns for the leading

@@ -158,11 +158,7 @@ struct BaseLayerExtrasPlan<E> {
 }
 
 impl<E> BaseLayerExtrasPlan<E> {
-    fn new(
-        layer_desc: &GKRLayerDescription,
-        initial_addresses: &[GKRAddress],
-        _context: &ProverContext,
-    ) -> Self {
+    fn new(layer_desc: &GKRLayerDescription, initial_addresses: &[GKRAddress]) -> Self {
         let mut already_present: BTreeSet<GKRAddress> = initial_addresses.iter().copied().collect();
         already_present.extend(VIRTUAL_SETUP_ADDRESSES.iter().copied());
         let mut missing: BTreeSet<GKRAddress> = BTreeSet::new();
@@ -200,10 +196,6 @@ pub(crate) struct GpuGKRBaseLayerClaimsScheduledExecution<E> {
     // Schedule-time-built plan for layer-0 caching-relations extras. The plan
     // owns the metadata; addresses/sources accessors point into it.
     _extras_plan: BaseLayerExtrasPlan<E>,
-    // Schedule-time-known set of extras addresses; carried in the published
-    // tail output so the terminal parser can pair each address with the
-    // matching slab-resident eval read at parse time.
-    extras_addresses_accessor: UnsafeAccessor<[GKRAddress]>,
     shared_state: Box<ScheduledBaseLayerClaimsState<E>>,
     // Deferred metadata-publication closure built by
     // `schedule_prepare_base_layer_claims_with_sources`. The caller schedules
@@ -447,7 +439,7 @@ where
     // Build the schedule-time SoA plan for the caching-relations extras. Only
     // `addresses` / `sources` metadata is kept — the production path gathers
     // extras values from the slab on device.
-    let extras_plan = BaseLayerExtrasPlan::<E>::new(&layer_desc, initial_addresses, context);
+    let extras_plan = BaseLayerExtrasPlan::<E>::new(&layer_desc, initial_addresses);
     drop(layer_desc);
     let extras_addresses_accessor = crate::primitives::context::UnsafeAccessor::<[GKRAddress]>::new(
         extras_plan.addresses.as_ref(),
@@ -498,11 +490,7 @@ where
         _tracing_ranges: tracing_ranges,
         _extras_values_device: extras_values_device,
         _extras_plan: extras_plan,
-        extras_addresses_accessor,
         shared_state,
         pending_aggregation: Some(pending_aggregation),
     })
 }
-
-#[cfg(test)]
-mod tests;

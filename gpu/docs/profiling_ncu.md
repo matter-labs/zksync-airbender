@@ -10,7 +10,7 @@ only if that test is marked `#[ignore]`).
 
 > Concrete example (the prover): see
 > [`../circuit_prover/docs/profiling.md`](../circuit_prover/docs/profiling.md) —
-> `$NVTX_RANGE = test.gpu.prove.profiled_call@circuit_prover.tests`,
+> `$NVTX_RANGE = test.gpu.prove.profiled_call@gpu_circuit_prover.tests`,
 > `$SOURCE_FOLDERS = gpu/circuit_prover/native`, lineinfo env
 > `GPU_PROVER_ENABLE_LINEINFO`.
 
@@ -75,14 +75,11 @@ Then profile with source import enabled and the explicit full-section list:
 If the existing ranges are too coarse and cache or inter-kernel dependencies
 matter, add a temporary raw registered NVTX range near the host-side launch site
 of the dependent kernel group you want to study. Give the message a
-session-specific name; `start_registered_range` is `gpu_core`'s
+session-specific name; `scoped_range` is `gpu_core`'s
 `primitives::nvtx` helper (re-exported in-crate where used):
 
 ```rust
-let ncu_capture_domain = std::ffi::CStr::from_bytes_with_nul(b"<your.domain>\0").unwrap();
-let ncu_capture_message =
-    std::ffi::CStr::from_bytes_with_nul(b"profile.tmp.<kernel_group>\0").unwrap();
-let _range = start_registered_range(ncu_capture_domain, ncu_capture_message);
+let _range = scoped_range(Some("<your.domain>"), "profile.tmp.<kernel_group>");
 
 // enqueue the dependent kernel group here
 ```

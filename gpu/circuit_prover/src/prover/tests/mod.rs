@@ -30,7 +30,7 @@ use crate::prover::trace::tracing_data::{
     TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
 };
 use crate::prover::whir::fold::{
-    debug_apply_initial_fold_challenge_for_test, debug_build_initial_batched_evals_for_test,
+    debug_apply_initial_fold_challenge_for_test,
     debug_build_initial_fold_state_for_test, debug_build_initial_state_for_test,
     debug_build_initial_state_snapshots_for_test, debug_initial_round_checkpoint_for_test,
     schedule_gpu_whir_fold_with_sources,

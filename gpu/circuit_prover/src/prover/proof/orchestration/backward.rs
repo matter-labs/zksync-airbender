@@ -92,13 +92,10 @@ pub(in crate::prover::proof) fn prepare_backward_handoff(
     let mut initial_d_claims: DeviceAllocation<E4> =
         context.alloc(num_top_claims, AllocationPlacement::BestFit)?;
 
-    // GPU-side initial claim computation: the top-layer sumcheck claims were
-    // previously computed on host via `compute_initial_sumcheck_claims_from_explicit_evaluations`
-    // (build eq poly from evaluation_point, inner-product against each reduced
-    // output poly) inside the post-forward callback, then H2D'd into
-    // `initial_d_claims`. Both the eq build and the 8 inner products now run
-    // on device, writing `initial_d_claims` directly; the callback D2Hs the 8
-    // resulting scalars for the host-side workflow_state mirror.
+    // GPU-side initial claim computation: build the eq poly from the evaluation
+    // point and inner-product it against each reduced output poly on device,
+    // writing `initial_d_claims` directly; the callback D2Hs the resulting
+    // scalars for the host-side workflow_state mirror.
     let poly_len = 1usize << final_trace_size_log_2;
     let mut eq_group_tables_for_init: DeviceAllocation<E4> = context.alloc(
         eq_group_tables_len(final_trace_size_log_2).max(1),

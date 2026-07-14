@@ -9,8 +9,9 @@
 // no `__syncthreads`.
 //
 // Smem-packed (variant D2) covers LOG_N in [6, 8] where the NTT outgrows one
-// warp; sub-warp covers LOG_N in {4, 5} where the smaller working set lets us
-// avoid the smem trip entirely. At LOG_N=4 two NTTs share a warp (lanes 0..15
+// warp; sub-warp covers LOG_N in [1, 5] ({4, 5} being the primary
+// two-instances-per-warp case) where the smaller working set lets us avoid the
+// smem trip entirely. At LOG_N=4 two NTTs share a warp (lanes 0..15
 // and 16..31); the XOR partner masks (1, 2, 4, 8) never flip bit 4, so the
 // shfl stays within each sub-warp NTT.
 //
@@ -107,9 +108,9 @@ DEVICE_FORCEINLINE void monomials_to_evals_subwarp_impl(bf_matrix_getter<ld_modi
 //   LOG_N=3: THREADS_PER_INSTANCE=8,  IPB=32  -> 256 threads
 //   LOG_N=4: THREADS_PER_INSTANCE=16, IPB=16  -> 256 threads
 //   LOG_N=5: THREADS_PER_INSTANCE=32, IPB=8   -> 256 threads
-// Below LOG_N=4 the per-stage fallback (`bitreversed_coeffs_to_natural_coset`
-// in `mod.rs`) used to issue `log_n + 1` separate kernel launches per NTT;
-// the sub-warp variant collapses that to a single launch.
+// Below LOG_N=4 the sub-warp variant replaces the per-stage fallback's
+// (`bitreversed_coeffs_to_natural_coset` in `mod.rs`) `log_n + 1` separate
+// kernel launches per NTT with a single launch.
 DEFINE_SUBWARP_KERNEL(1, 7)
 DEFINE_SUBWARP_KERNEL(2, 6)
 DEFINE_SUBWARP_KERNEL(3, 5)

@@ -32,30 +32,6 @@ struct flat_c1_pair {
   u16 source_b;
 };
 
-// Static description for GKR backward round 0.
-// Sources are encoded as raw pointers. Virtual sources (range checks, etc.)
-// use the low 3 bits of a null pointer to encode the gkr_base_source_kind.
-// Real device pointers are always >= 256-byte aligned, so no collision.
-struct flat_round0_static_desc {
-  const void *sources[FLAT_ROUND0_MAX_SOURCES];
-  u32 num_sources;
-
-  flat_c0_ref c0_bf[FLAT_ROUND0_MAX_C0_BF];
-  u32 num_c0_bf;
-  flat_c0_ref c0_ext[FLAT_ROUND0_MAX_C0_EXT];
-  u32 num_c0_ext;
-
-  flat_c1_pair c1_bf_bf[FLAT_ROUND0_MAX_C1_BF_BF];
-  u32 num_c1_bf_bf;
-  flat_c1_pair c1_e4_e4[FLAT_ROUND0_MAX_C1_E4_E4];
-  u32 num_c1_e4_e4;
-  flat_c1_pair c1_bf_e4[FLAT_ROUND0_MAX_C1_BF_E4];
-  u32 num_c1_bf_e4;
-
-  flat_c0_ref c1_linear[FLAT_ROUND0_MAX_C1_LINEAR];
-  u32 num_c1_linear;
-};
-
 // Compact flat round-0 static descriptor. Source pointers are u16 packed
 // references (`is_virtual<<15 | ptr_idx<<11 | poly_idx`, 4-bit ptr_idx,
 // 11-bit poly_idx), resolved via the per-launch `tables` block
@@ -85,31 +61,6 @@ struct flat_round0_static_desc_compact {
 };
 
 static_assert(sizeof(flat_round0_static_desc_compact) <= 32 * 1024, "flat_round0_static_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
-
-// --- Load helpers ---
-
-// Source loads use ca (cache in L1 and L2) — sources are reused across terms
-// and L1 caching provides significant hit rate (~40%) from this reuse.
-DEVICE_FORCEINLINE bf flat_load_bf_value(const void *src, const unsigned gid) {
-  const uintptr_t p = reinterpret_cast<uintptr_t>(src);
-  if (p >= 8)
-    return load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(src), gid);
-  return gkr_virtual_base_value(static_cast<gkr_base_source_kind>(p), gid);
-}
-
-DEVICE_FORCEINLINE bf flat_load_bf_delta(const void *src, const unsigned gid, const unsigned acc_size) {
-  return bf::sub(flat_load_bf_value(src, gid + acc_size), flat_load_bf_value(src, gid));
-}
-
-template <typename E> DEVICE_FORCEINLINE E flat_load_ext_value(const void *src, const unsigned gid) {
-  return load<E, ld_modifier::ca>(reinterpret_cast<const E *>(src), gid);
-}
-
-template <typename E> DEVICE_FORCEINLINE E flat_load_ext_delta(const void *src, const unsigned gid, const unsigned acc_size) {
-  const E f0 = flat_load_ext_value<E>(src, gid);
-  const E f1 = flat_load_ext_value<E>(src, gid + acc_size);
-  return E::sub(f1, f0);
-}
 
 // --- Compact load helpers (u16 source encoding) ---
 //
@@ -178,69 +129,6 @@ template <typename E> struct coeff_loader_ptr {
 // Constant-symbol loaders are defined after each __constant__ declaration
 // so that they can name the symbol directly (required for LDC emission).
 
-template <typename E, typename CoeffLoader>
-DEVICE_FORCEINLINE void flat_round0_compute_impl(const flat_round0_static_desc &desc, CoeffLoader coeff_loader, const E *__restrict__ eq_values,
-                                                 E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
-  E c0 = E::ZERO();
-
-  // c0: base field output terms
-  for (unsigned i = 0; i < desc.num_c0_bf; i++) {
-    const bf val = flat_load_bf_value(desc.sources[desc.c0_bf[i].source_idx], gid);
-    c0 = E::fma(coeff_loader(), val, c0);
-  }
-
-  // c0: extension field output terms
-  for (unsigned i = 0; i < desc.num_c0_ext; i++) {
-    const E val = flat_load_ext_value<E>(desc.sources[desc.c0_ext[i].source_idx], gid);
-    c0 = E::fma(coeff_loader(), val, c0);
-  }
-
-  E c1 = E::ZERO();
-
-  // c1: bf*bf quadratic terms
-  for (unsigned i = 0; i < desc.num_c1_bf_bf; i++) {
-    const auto &t = desc.c1_bf_bf[i];
-    const bf a = flat_load_bf_delta(desc.sources[t.source_a], gid, acc_size);
-    const bf b = flat_load_bf_delta(desc.sources[t.source_b], gid, acc_size);
-    c1 = E::fma(coeff_loader(), bf::mul(a, b), c1);
-  }
-
-  // c1: E4*E4 quadratic terms
-  for (unsigned i = 0; i < desc.num_c1_e4_e4; i++) {
-    const auto &t = desc.c1_e4_e4[i];
-    const E a = flat_load_ext_delta<E>(desc.sources[t.source_a], gid, acc_size);
-    const E b = flat_load_ext_delta<E>(desc.sources[t.source_b], gid, acc_size);
-    c1 = E::fma(coeff_loader(), E::mul(a, b), c1);
-  }
-
-  // c1: bf*E4 mixed quadratic terms
-  for (unsigned i = 0; i < desc.num_c1_bf_e4; i++) {
-    const auto &t = desc.c1_bf_e4[i];
-    const bf a = flat_load_bf_delta(desc.sources[t.source_a], gid, acc_size);
-    const E b = flat_load_ext_delta<E>(desc.sources[t.source_b], gid, acc_size);
-    c1 = E::fma(coeff_loader(), E::mul(b, a), c1);
-  }
-
-  // c1: linear-in-delta terms
-  for (unsigned i = 0; i < desc.num_c1_linear; i++) {
-    const bf d = flat_load_bf_delta(desc.sources[desc.c1_linear[i].source_idx], gid, acc_size);
-    c1 = E::fma(coeff_loader(), d, c1);
-  }
-
-  // eq_values: cs (streaming, read once, large) — don't pollute L1 or L2.
-  const E eq = load<E, ld_modifier::cs>(eq_values, gid);
-  store<E, st_modifier::cs>(contributions, E::mul(c0, eq), gid);
-  store<E, st_modifier::cs>(contributions + acc_size, E::mul(c1, eq), gid);
-}
-
-// Public API: pointer-based (non-constant path).
-template <typename E>
-DEVICE_FORCEINLINE void flat_round0_compute(const flat_round0_static_desc &desc, const E *__restrict__ coefficients, const E *__restrict__ eq_values,
-                                            E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
-  coeff_loader_ptr<E> loader{coefficients};
-  flat_round0_compute_impl(desc, loader, eq_values, contributions, acc_size, gid);
-}
-
 } // namespace airbender::prover::gkr
 
 // __constant__ coefficient symbol — declared at global scope (NTT pattern).
@@ -256,21 +144,11 @@ struct coeff_loader_round0_constant {
   DEVICE_FORCEINLINE e4 operator()() { return ::ab_gkr_flat_coefficients[idx++]; }
 };
 
-// --- Constant-path round 0 kernel ---
-// Same as flat_round0_compute but reads coefficients from __constant__ symbol via LDC.
-
-template <typename E>
-DEVICE_FORCEINLINE void flat_round0_compute_constant(const flat_round0_static_desc &desc, const E *__restrict__ eq_values, E *__restrict__ contributions,
-                                                     const unsigned acc_size, const unsigned gid) {
-  coeff_loader_round0_constant loader{};
-  flat_round0_compute_impl<E>(desc, loader, eq_values, contributions, acc_size, gid);
-}
-
 // --- Compact compute path ---
 //
-// Same algebra as `flat_round0_compute_impl`, but every `desc.sources[idx]`
-// dereference goes through `desc.tables` via `flat_load_*_compact` instead
-// of directly dereferencing a raw pointer.
+// Every `desc.sources[idx]` dereference goes through `desc.tables` via
+// `flat_load_*_compact` (u16-encoded source resolution) instead of directly
+// dereferencing a raw pointer.
 
 template <typename E, typename CoeffLoader>
 DEVICE_FORCEINLINE void flat_round0_compute_compact_impl(const flat_round0_static_desc_compact &desc, CoeffLoader coeff_loader, const E *__restrict__ eq_low,

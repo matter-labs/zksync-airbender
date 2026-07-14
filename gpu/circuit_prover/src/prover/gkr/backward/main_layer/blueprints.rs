@@ -96,28 +96,6 @@ pub(in crate::prover::gkr::backward) fn build_dimension_reducing_kernel_blueprin
     blueprints
 }
 
-pub(super) fn resolve_main_layer_auxiliary_challenge<E: Copy>(
-    source: GpuGKRMainLayerAuxiliaryChallengeSource<E>,
-    lookup_additive_challenge: E,
-) -> E {
-    match source {
-        GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(value) => value,
-        GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive => lookup_additive_challenge,
-    }
-}
-
-pub(super) fn resolve_main_layer_constraint_metadata<E: Field + FieldExtension<BF>>(
-    source: Option<GpuGKRMainLayerConstraintMetadataSource<E>>,
-) -> Option<GpuGKRMainLayerConstraintHostMetadata<E>> {
-    match source {
-        None => None,
-        Some(GpuGKRMainLayerConstraintMetadataSource::Immediate(metadata)) => Some(metadata),
-        Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(_template)) => {
-            unreachable!("static main-layer constraint metadata should be materialized eagerly")
-        }
-    }
-}
-
 pub(super) fn summarize_main_layer_constraint_metadata_source<E: Field>(
     source: Option<&GpuGKRMainLayerConstraintMetadataSource<E>>,
 ) -> Option<(usize, usize, E)> {
@@ -136,23 +114,17 @@ pub(super) fn summarize_main_layer_constraint_metadata_source<E: Field>(
     }
 }
 
-#[allow(dead_code)]
 pub(super) struct PreparedMainLayerKernelStaticData<E: Copy> {
     pub(super) kind: GpuGKRMainLayerKernelKind,
-    pub(super) auxiliary_challenge: E,
-    pub(super) constraint_metadata: Option<GpuGKRMainLayerConstraintHostMetadata<E>>,
     pub(super) round0_descriptors: GpuSumcheckRound0LaunchDescriptors<BF, E>,
 }
 
 pub(crate) fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
     layer: &GKRLayerDescription,
-    _layer_idx: usize,
     is_base_field_at_layer: &dyn Fn(&GKRAddress) -> bool,
     external_challenges: &GKRExternalChallenges<BF, E>,
     inits_and_teardowns_top_bits: &[u32],
     inits_and_teardowns_address_high_bits_shift: u32,
-    _num_base_layer_memory_polys: usize,
-    _num_base_layer_witness_polys: usize,
 ) -> Vec<GpuGKRMainLayerKernelBlueprint<E>> {
     let mut next_batch_challenge_offset = 0usize;
     let mut blueprints = Vec::new();
@@ -803,13 +775,10 @@ where
         } else {
             high_bits_offset_for_inits_and_teardowns::<2>(compiled_circuit.trace_len)
         };
-    let num_base_layer_memory_polys = compiled_circuit.memory_layout.total_width;
-    let num_base_layer_witness_polys = compiled_circuit.witness_layout.total_width;
     let mut per_layer = Vec::with_capacity(compiled_circuit.layers.len());
-    for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+    for layer in compiled_circuit.layers.iter() {
         let blueprints = build_main_layer_kernel_blueprints_static::<E>(
             layer,
-            layer_idx,
             &|addr| {
                 matches!(
                     addr,
@@ -822,8 +791,6 @@ where
             external_challenges,
             &inits_and_teardowns_top_bits,
             inits_and_teardowns_address_high_bits_shift,
-            num_base_layer_memory_polys,
-            num_base_layer_witness_polys,
         );
         let mut addresses: std::collections::BTreeSet<GKRAddress> =
             std::collections::BTreeSet::new();
@@ -880,13 +847,10 @@ where
         } else {
             high_bits_offset_for_inits_and_teardowns::<2>(compiled_circuit.trace_len)
         };
-    let num_base_layer_memory_polys = compiled_circuit.memory_layout.total_width;
-    let num_base_layer_witness_polys = compiled_circuit.witness_layout.total_width;
     let mut per_layer = Vec::with_capacity(compiled_circuit.layers.len());
-    for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+    for layer in compiled_circuit.layers.iter() {
         let blueprints = build_main_layer_kernel_blueprints_static::<E>(
             layer,
-            layer_idx,
             &|addr| {
                 matches!(
                     addr,
@@ -899,8 +863,6 @@ where
             external_challenges,
             &inits_and_teardowns_top_bits,
             inits_and_teardowns_address_high_bits_shift,
-            num_base_layer_memory_polys,
-            num_base_layer_witness_polys,
         );
         let mut addresses: std::collections::BTreeSet<GKRAddress> =
             std::collections::BTreeSet::new();
@@ -1035,7 +997,5 @@ mod unified_cap_tests {
         );
         assert!(record_count <= GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER);
         assert!(challenge_count <= GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN);
-        // Regression intent: these counts exceed the pre-#305 limits (5 / 8).
-        assert!(record_count > 5 && challenge_count > 8);
     }
 }

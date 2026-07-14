@@ -16,7 +16,6 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 pub(crate) struct PowAndQueryIndexesState {
     #[allow(dead_code)]
     pub(crate) d_raw_bits: Option<DeviceAllocation<u32>>,
-    #[allow(dead_code)]
     pub(crate) d_indexes: DeviceAllocation<u32>,
 }
 
@@ -101,9 +100,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
         context.alloc(padded_words, AllocationPlacement::BestFit)?;
     transcript_squeeze(device_seed, &mut d_raw_bits, stream)?;
 
-    // Assemble query indexes on device. The caller decides whether to D2H
-    // them (current path) or route them directly into slab + gather kernels
-    // (Phase 3/4).
+    // Assemble query indexes on device; the caller D2Hs them.
     assemble_query_indexes(
         &d_raw_bits,
         &mut d_indexes,

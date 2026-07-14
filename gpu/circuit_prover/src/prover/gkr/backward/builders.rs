@@ -686,21 +686,13 @@ pub(super) fn build_linear_base_kernel_inputs_and_metadata<E: Field + FieldExten
 
 pub(super) const NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL: u32 = u32::MAX;
 
-fn remap_no_cache_base_input(
-    mapping: &mut BTreeMap<GKRAddress, usize>,
-    inputs: &mut Vec<GKRAddress>,
-    address: GKRAddress,
-) -> usize {
-    remap_constraint_input(mapping, inputs, address)
-}
-
 fn remap_no_cache_linear_form_inputs<E>(
     mapping: &mut BTreeMap<GKRAddress, usize>,
     inputs: &mut Vec<GKRAddress>,
     terms: &BTreeMap<GKRAddress, E>,
 ) {
     for address in terms.keys().copied() {
-        remap_no_cache_base_input(mapping, inputs, address);
+        remap_constraint_input(mapping, inputs, address);
     }
 }
 
@@ -721,7 +713,7 @@ fn remap_no_cache_linear_form_template_inputs(
     terms: &BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
 ) {
     for address in terms.keys().copied() {
-        remap_no_cache_base_input(mapping, inputs, address);
+        remap_constraint_input(mapping, inputs, address);
     }
 }
 

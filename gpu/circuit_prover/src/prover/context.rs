@@ -4,7 +4,6 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::ntt_twiddles::DeviceContext;
 use crate::primitives::context::{
     DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
-    SchedulerHostAllocator,
 };
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
@@ -22,8 +21,6 @@ pub struct ProverContextConfig {
     pub max_device_allocation_blocks_count: Option<usize>,
     pub host_allocator_block_log_size: u32,
     pub host_allocator_blocks_count: usize,
-    pub scheduler_host_allocator_block_log_size: u32,
-    pub scheduler_host_allocator_blocks_count: usize,
     pub small_allocator_log_chunk_size: Option<u32>,
     pub small_allocator_pool_blocks: usize,
 }
@@ -38,8 +35,6 @@ impl Default for ProverContextConfig {
             max_device_allocation_blocks_count: None,    // use all available memory
             host_allocator_block_log_size: 13, // 8 KB host blocks (small to avoid waste on tiny staging buffers)
             host_allocator_blocks_count: 163840, // 1.25 GB host allocator pool (163840 × 8 KB)
-            scheduler_host_allocator_block_log_size: 13, // 8 KB scheduler-host blocks
-            scheduler_host_allocator_blocks_count: 8192, // 64 MB scheduler-host allocator pool
             small_allocator_log_chunk_size: Some(8), // 256-byte granularity for small device allocations
             small_allocator_pool_blocks: 16, // 16 blocks × 1 MB = 16 MB small allocation pool
         }
@@ -51,8 +46,6 @@ pub struct ProverContext {
     _device_context: DeviceContext,
     device_allocator: DeviceAllocator,
     host_allocator: HostAllocator,
-    #[allow(dead_code)]
-    scheduler_host_allocator: SchedulerHostAllocator,
     exec_stream: CudaStream,
     side_stream: CudaStream,
     h2d_stream: CudaStream,
@@ -137,21 +130,11 @@ impl ProverContext {
         )?;
         let host_allocator =
             NonConcurrentStaticHostAllocator::new([host_allocation], host_block_log_size);
-        let scheduler_host_block_log_size = config.scheduler_host_allocator_block_log_size;
-        let scheduler_host_allocation_size =
-            config.scheduler_host_allocator_blocks_count << scheduler_host_block_log_size;
-        let scheduler_host_allocation = era_cudart::memory::HostAllocation::alloc(
-            scheduler_host_allocation_size,
-            CudaHostAllocFlags::DEFAULT,
-        )?;
-        let scheduler_host_allocator =
-            SchedulerHostAllocator::new([scheduler_host_allocation], scheduler_host_block_log_size);
         let device_properties = DeviceProperties::new()?;
         let context = Self {
             _device_context: device_context,
             device_allocator,
             host_allocator,
-            scheduler_host_allocator,
             exec_stream,
             side_stream,
             h2d_stream,

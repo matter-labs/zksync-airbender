@@ -24,8 +24,7 @@ fn test_artifact(relative_path: &str) -> std::path::PathBuf {
 /// Prove `hashed_fibonacci` (blake2_with_compression build — fires the
 /// Blake2WithCompression delegation) on the GPU, assemble the
 /// `ProgramProof` + setups map, build the unrolled ND stream, and run the
-/// real base-layer verifier natively. First GPU proof through the real
-/// verifier.
+/// real base-layer verifier natively.
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
@@ -140,9 +139,7 @@ fn test_program_prover_unified_base_layer_verify() {
 /// multi_family_smoke on the CPU reference
 /// (`prover_examples::unified::prove_unified_execution_with_replayer`, which
 /// asserts internal closure to ONE), verify it natively, then prove on GPU and
-/// diff the two `ProgramProof`s field by field. This is the instrument that
-/// localized the JIT M31-vs-BabyBear MOP-field divergence behind the closure
-/// failure `test_program_prover_unified_base_layer_verify` used to hit.
+/// diff the two `ProgramProof`s field by field.
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
@@ -469,9 +466,9 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 /// `fsv_unrolled_base_layer` verifier program (blake2_with_compression
 /// variant, reduced ISA) on the GPU, feeding it the base-layer
 /// `ProgramProof`'s ND stream as its witness, then verify the resulting
-/// recursion-layer proof natively. This is the first time an fsv binary
-/// (which uses pr-332's tri-add / xor-rot special opcodes) runs through the
-/// JIT simulator + GPU prover — a decode gap in the JIT would surface here.
+/// recursion-layer proof natively. Exercises fsv binaries (tri-add / xor-rot
+/// special opcodes) through the JIT simulator + GPU prover; a decode gap in the
+/// JIT would surface here.
 ///
 /// Mirrors one iteration of `prover_examples::recursion`'s unrolled-recursion
 /// loop: chain fields come from `begin_chain(compute_end_params(base))`, and

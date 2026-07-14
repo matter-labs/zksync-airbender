@@ -2,7 +2,7 @@
 
 This note captures a deferred optimization opportunity for the
 `CoefficientRecipe::immediate_factor` field in
-[`src/prover/gkr/backward/flat/mod.rs`](../src/prover/gkr/backward/flat/mod.rs).
+[`src/prover/gkr/backward/flat/types.rs`](../src/prover/gkr/backward/flat/types.rs).
 
 ## Current shape
 

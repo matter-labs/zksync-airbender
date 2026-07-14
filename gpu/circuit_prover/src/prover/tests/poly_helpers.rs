@@ -61,7 +61,7 @@ pub(super) fn build_cpu_recursive_whir_oracle_for_test(
 ) -> ColumnMajorExtensionOracleForLDE<BF, E4, DefaultTreeConstructor> {
     let cosets =
         compute_column_major_lde_from_monomial_form_for_test(monomial_coeffs, twiddles, lde_factor);
-    // #279: route through the canonical recursive-oracle commit so the test
+    // Route through the canonical recursive-oracle commit so the test
     // reference matches the production WHIR leaf encoding exactly (coefficient
     // form by default; the `eval_leaves` feature selects the eval-form variant).
     prover::gkr::whir::commit_single_ext_poly_for_test::<BF, E4, DefaultTreeConstructor>(
@@ -72,7 +72,7 @@ pub(super) fn build_cpu_recursive_whir_oracle_for_test(
     )
 }
 
-/// #279 coeff-form leaf fold: recursive WHIR oracles now store each leaf as
+/// Coeff-form leaf fold: recursive WHIR oracles store each leaf as
 /// multilinear coefficients, so a queried leaf is evaluated at the folding
 /// challenges directly (monomial-tensor dot product) instead of FRI-folding
 /// eval-form coset values via [`fold_coset_for_test`]. Mirrors the canonical
@@ -123,10 +123,6 @@ pub(super) fn fold_evaluation_form_for_test(input: &mut Vec<E4>, challenge: E4) 
         a.add_assign(&t);
     }
     input.truncate(half_len);
-}
-
-pub(super) fn fold_eq_poly_for_test(eq_poly: &mut Vec<E4>, challenge: E4) {
-    fold_evaluation_form_for_test(eq_poly, challenge);
 }
 
 pub(super) fn special_three_point_eval_for_test(a: &[E4], b: &[E4]) -> (E4, E4, E4) {

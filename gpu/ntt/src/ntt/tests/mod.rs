@@ -1523,11 +1523,11 @@ subwarp_parity_test!(subwarp_log_n_5_ipb_8_cosets_16_cols_4, 5, 3, 16, 4);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_5_cosets_8, 5, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_5_cosets_16, 5, 16);
 
-// Parity test for the sub-warp kernel at log_n in {1, 2, 3}: the existing
-// strategy path is gated at MIN_SUPPORTED_LOG_N=4, so the subwarp kernel is
-// only reachable here via a direct call. Reference is the per-stage fallback
-// `bitreversed_coeffs_to_natural_coset` (single-coset, single-column), looped
-// over the (coset, col) workload that subwarp packs into one launch.
+// Parity test for the sub-warp kernel at log_n in {1, 2, 3}: it is validated
+// here against the per-stage fallback via a direct call. Reference is the
+// per-stage fallback `bitreversed_coeffs_to_natural_coset` (single-coset,
+// single-column), looped over the (coset, col) workload that subwarp packs into
+// one launch.
 #[cfg(not(no_cuda))]
 #[allow(dead_code)]
 fn run_subwarp_vs_per_stage_parity(

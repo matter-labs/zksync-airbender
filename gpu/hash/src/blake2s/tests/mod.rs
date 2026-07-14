@@ -55,55 +55,6 @@ pub(crate) fn gather_rows(
     GatherRowsFunction::default().launch(&config, &args)
 }
 
-/// Runtime-pointer-table form: `src_ptrs` is read from a device-resident
-/// buffer. Prefer `gather_tree_caps_inline` for `prove()` paths so the
-/// pointer table rides inline as `__grid_constant__` kernel-arg data.
-pub(crate) fn gather_tree_caps(
-    src_ptrs: &DeviceSlice<u64>,
-    dst: &mut DeviceSlice<u32>,
-    cap_words_per_coset: u32,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let coset_count = src_ptrs.len();
-    assert!(coset_count > 0);
-    assert!(coset_count <= u32::MAX as usize);
-    assert!(cap_words_per_coset > 0);
-    assert_eq!(
-        dst.len(),
-        coset_count * cap_words_per_coset as usize,
-        "gather_tree_caps dst length must match coset_count * cap_words_per_coset",
-    );
-    let threads_per_block = std::cmp::min(cap_words_per_coset, 256u32);
-    let config = CudaLaunchConfig::basic(coset_count as u32, threads_per_block, stream);
-    let args = GatherTreeCapsArguments::new(
-        src_ptrs.as_ptr(),
-        dst.as_mut_ptr(),
-        cap_words_per_coset,
-        coset_count as u32,
-    );
-    GatherTreeCapsFunction::default().launch(&config, &args)
-}
-
-/// Device-side `Transcript::commit_initial`: computes `seed = Blake2s(input)`
-/// from the IV.
-///
-/// `seed` must be exactly `STATE_SIZE` u32 words. Written.
-/// `input` contains the field-element data to absorb (entire transcript prefix).
-pub(crate) fn transcript_commit_initial(
-    seed: &mut DeviceSlice<u32>,
-    input: &DeviceSlice<u32>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert_eq!(seed.len(), STATE_SIZE);
-    let seed_ptr = seed.as_mut_ptr();
-    let input_ptr = input.as_ptr();
-    let input_len = input.len();
-    assert!(input_len <= u32::MAX as usize);
-    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
-    let args = TranscriptCommitInitialArguments::new(seed_ptr, input_ptr, input_len as u32);
-    TranscriptCommitInitialFunction::default().launch(&config, &args)
-}
-
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
         0

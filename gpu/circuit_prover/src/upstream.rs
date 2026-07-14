@@ -91,15 +91,10 @@ pub(crate) use cs::tables::{TableDriver, TableType};
 // -----------------------------------------------------------------------
 // `field` — base field, extension towers
 // -----------------------------------------------------------------------
-//
-// E6 (`BabyBearExt6`) is included even though it has no current consumer;
-// the upstream surface keeps it for planned E6 work, and surfacing it here
-// makes that future-availability explicit.
 
 pub(crate) use field::baby_bear::base::BabyBearField;
 pub(crate) use field::baby_bear::ext2::BabyBearExt2;
 pub(crate) use field::baby_bear::ext4::BabyBearExt4;
-pub(crate) use field::baby_bear::ext6::BabyBearExt6;
 pub(crate) use field::{Field, FieldExtension, PrimeField};
 
 // -----------------------------------------------------------------------

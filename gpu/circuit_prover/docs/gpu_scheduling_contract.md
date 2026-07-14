@@ -159,7 +159,8 @@ overhead (an extra CPU hop, a serialization point on `exec_stream`, profile
 noise).
 
 **Construction invariant.** Fill the buffer with direct scheduling-thread
-writes during construction (e.g. `scheduler_host_from_slice`). Once any
+writes during construction (e.g. `alloc_static_pinned_box_uninit` +
+`copy_from_slice`). Once any
 `memory_copy_async` reading it has been **enqueued**, the buffer is frozen:
 no further scheduling-thread mutation, no callback writes, no use as a DMA
 destination, no kernel writes. The buffer stays owned by its handle until

@@ -462,8 +462,8 @@ impl GpuGKRStage1Output {
                     // Inline inits/teardowns: a paged RAM-word sweep into the SAME memory matrix
                     // (page-based-reuse, per Global Constraints). MUST run BEFORE the per-row launch:
                     // generate_memory_and_witness_values_unrolled_inits_and_teardowns zeroes the whole
-                    // matrix (set_to_zero, memory_unrolled.rs:632) before writing the teardown columns,
-                    // and derives pages_per_set_log2 itself. Mirrors the standalone i/t arm (stage1 :435-449).
+                    // matrix before writing the teardown columns, and derives pages_per_set_log2
+                    // itself. Mirrors the standalone inits-and-teardowns arm above.
                     // `None` = a TRIVIAL (dummy) unified init/teardown chunk (CPU reference
                     // commits all-zero i&t columns): the i/t launcher only zeroes the whole
                     // matrix and writes teardown timestamp/value columns at page-covered rows,

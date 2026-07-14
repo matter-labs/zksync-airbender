@@ -10,13 +10,13 @@ namespace ntt {
 #define DIT_SINGLE_WRAPPER(LOGN, LOGVPT)                                                                                                                       \
   EXTERN __launch_bounds__(4u * 32u)                                                                                                                           \
       __global__ void ab_dit_single_##LOGN##_##LOGVPT(const bf *mono, const bf *tw_clean, bf *out, u32 cfp0, u32 step, u32 cstride) {                          \
-    ntt_single<LOGN, LOGVPT, 4u, 8u, StoreMode::CS, 0u>(mono, tw_clean, out, cfp0, step, cstride);                                                             \
+    ntt_single<LOGN, LOGVPT, 4u, 8u, StoreMode::CS>(mono, tw_clean, out, cfp0, step, cstride);                                                             \
   }
 
 #define DIT_TWO_PASS_WRAPPER(LOGN, LOGVPT)                                                                                                                     \
   EXTERN __launch_bounds__(NttTwoPassGeom<LOGN, LOGVPT>::THREADS, 1u) __global__ void ab_dit_two_pass_##LOGN##_##LOGVPT(                                       \
       const bf *mono, const bf *tw_p1, const bf *tw_p2, const bf *d_tab, bf *out, u32 cfp0, u32 step, u32 num_cosets, u32 cstride) {                           \
-    ntt_two_pass<LOGN, LOGVPT, StoreMode::CS, 1u>(mono, tw_p1, tw_p2, d_tab, out, cfp0, step, num_cosets, cstride);                                            \
+    ntt_two_pass<LOGN, LOGVPT, StoreMode::CS>(mono, tw_p1, tw_p2, d_tab, out, cfp0, step, num_cosets, cstride);                                            \
   }
 
 // Streaming single-pass (guarded grid-stride + delta walk): the production

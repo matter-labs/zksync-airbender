@@ -72,7 +72,6 @@ pub(super) fn read_base_allocation(
 pub(super) fn attach_test_ext_output_layout(
     storage: &mut GpuGKRStorage<BF, E4>,
     trace_len: usize,
-    output_layer: usize,
     outputs: &[GKRAddress],
 ) {
     use crate::prover::gkr::gkr_address_audit::AddressClass;
@@ -80,6 +79,7 @@ pub(super) fn attach_test_ext_output_layout(
         FieldType, GpuGKRLayerLayout, GpuGKRStorageLayout, StorageSlot,
     };
 
+    let output_layer = 1;
     assert!(trace_len.is_power_of_two());
     let log2_stride = trace_len.trailing_zeros();
     let mut layers = vec![GpuGKRLayerLayout::default(); output_layer + 1];

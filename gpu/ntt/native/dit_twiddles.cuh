@@ -1,4 +1,3 @@
-// Ported from ntt-experiments include/ntt/twiddles.cuh.
 // Unified twiddle layout: the N-1 per-thread triangle. ONE read path for both
 // kernel families; only the baked VALUES and the caller's (tw_row, tw_base)
 // differ (clean: keyed on lane, no redundancy; coupled pass-1: keyed on tid,
@@ -11,7 +10,7 @@ using namespace ::airbender::primitives::field;
 namespace airbender {
 namespace ntt {
 
-// --- read primitives (ported from warp_ntt_2pass.cuh) ----------------------
+// --- read primitives -------------------------------------------------------
 // Stage-block offset within the per-thread triangle. BOTH the local THREADS and
 // the cross block scale with LOG_TBL (the table-sizing log), NOT LOG_M:
 //   CLEAN triangle (single-pass / pass-2): LOG_TBL = LOG_M  -> THREADS = LANES,

@@ -144,9 +144,7 @@ cuda_kernel_declaration!(
 );
 
 /// Launch the eval_recipes kernel. Each challenge is read from its own
-/// 1-element device pointer (`batch_base`, `lookup_mul`, `lookup_add`),
-/// eliminating the need for a packed 3-element challenges scratch buffer
-/// and the two D2D copies that populated it.
+/// 1-element device pointer (`batch_base`, `lookup_mul`, `lookup_add`).
 ///
 /// `coefficients` is the output buffer (can point to `__constant__` symbol
 /// address or a regular device allocation).

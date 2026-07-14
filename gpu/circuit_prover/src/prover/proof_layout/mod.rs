@@ -188,7 +188,6 @@ pub(crate) struct BackwardLayerLayout {
     pub(crate) final_step_eval_degree: usize,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct WhirBaseLayerByteLayout {
     pub(crate) num_columns: usize,
@@ -223,9 +222,8 @@ pub(crate) struct WhirIntermediateByteLayout {
 pub(crate) struct WhirLayout {
     /// Shared `query_indices` range used by all three base oracles. The three
     /// base oracles (setup/memory/witness) sample tree-space indices from the
-    /// same verifier-derived list; the previous per-oracle copies were
-    /// redundant. Allocated once at the start of `lay_whir`, before any
-    /// `lay_base` call.
+    /// same verifier-derived list. Allocated once at the start of `lay_whir`,
+    /// before any `lay_base` call.
     pub(crate) base_query_indices: Range<usize>,
     pub(crate) setup: WhirBaseLayerByteLayout,
     pub(crate) memory: WhirBaseLayerByteLayout,

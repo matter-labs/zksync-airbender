@@ -147,26 +147,8 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         }
     }
 
+    // Selects hypercube-eval batching in the GPU debug builders (always enabled).
     let use_hypercube_evals_for_batching = true;
-    // CPU initially creates batched evals from coset 0 evaluations rather than
-    // hypercube evaluations, so we only compare if the GPU also does the former.
-    // (Later on, we'll compare the monomial forms unconditionally,
-    // because they should always match.)
-    if !use_hypercube_evals_for_batching {
-        let gpu_batched_poly_on_main_domain = debug_build_initial_batched_evals_for_test(
-            gpu_mem_trace_holder,
-            mem_polys_claims,
-            gpu_wit_trace_holder,
-            wit_polys_claims,
-            gpu_setup_trace_holder,
-            setup_polys_claims,
-            batching_challenge,
-            use_hypercube_evals_for_batching,
-            context,
-        )
-        .unwrap();
-        assert_eq!(gpu_batched_poly_on_main_domain, batched_poly_on_main_domain);
-    }
     let mut sumchecked_poly_monomial_form =
         compute_column_major_monomial_form_from_main_domain_owned_for_test(
             batched_poly_on_main_domain,
@@ -244,14 +226,11 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     let mut whir_queries_schedule = whir_schedule.whir_queries_schedule.iter().copied();
     let mut whir_steps_lde_factors = whir_schedule.whir_steps_lde_factors.iter().copied();
     let mut whir_pow_schedule = whir_schedule.whir_pow_schedule.iter().copied();
-    let mut cpu_pre_pow_seeds = Vec::with_capacity(whir_schedule.whir_pow_schedule.len());
     let mut cpu_pow_nonces = Vec::with_capacity(whir_schedule.whir_pow_schedule.len());
     let mut cpu_sumcheck_polys =
         Vec::with_capacity(whir_schedule.whir_steps_schedule.iter().sum::<usize>());
     let mut cpu_recursive_caps = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
     let mut cpu_ood_samples = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
-    let mut cpu_recursive_query_indexes =
-        Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
     let transcript_seed_before_initial_rounds = transcript_seed.clone();
 
     let num_initial_folding_rounds = whir_steps_schedule.next().unwrap();
@@ -285,7 +264,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
         fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
         fold_evaluation_form_for_test(&mut sumchecked_poly_evaluation_form, folding_challenge);
-        fold_eq_poly_for_test(&mut eq_poly, folding_challenge);
+        fold_evaluation_form_for_test(&mut eq_poly, folding_challenge);
         let gpu_monomial_after_round = debug_apply_initial_fold_challenge_for_test(
             &mut gpu_initial_fold_state,
             folding_challenge,
@@ -322,7 +301,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         first_lde_factor,
         1 << next_folding_steps,
         whir_schedule.cap_size,
-        true, // #279: coeff-form recursive WHIR oracles (match production)
+        true, // coeff-form recursive WHIR oracles (match production)
         context,
     )
     .unwrap();
@@ -387,7 +366,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         first_lde_factor,
         1 << next_folding_steps,
         whir_schedule.cap_size,
-        true, // #279: coeff-form recursive WHIR oracles (match production)
+        true, // coeff-form recursive WHIR oracles (match production)
         context,
     )
     .unwrap();
@@ -440,7 +419,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     );
     bitreverse_enumeration_inplace(&mut high_powers_offsets);
     let query_index_bits = query_domain_size.trailing_zeros() as usize;
-    cpu_pre_pow_seeds.push(transcript_seed);
     let (initial_nonce, mut bit_source) = draw_query_bits(
         &mut transcript_seed,
         initial_queries * query_index_bits,
@@ -519,7 +497,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
             fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
             fold_evaluation_form_for_test(&mut sumchecked_poly_evaluation_form, folding_challenge);
-            fold_eq_poly_for_test(&mut eq_poly, folding_challenge);
+            fold_evaluation_form_for_test(&mut eq_poly, folding_challenge);
         }
         poly_size_log2 -= num_folding_steps;
 
@@ -538,7 +516,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             lde_factor,
             1 << next_folding_steps,
             whir_schedule.cap_size,
-            true, // #279: coeff-form recursive WHIR oracles (match production)
+            true, // coeff-form recursive WHIR oracles (match production)
             context,
         )
         .unwrap();
@@ -552,8 +530,8 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             BF,
         >>::get_cap(&next_cpu_oracle.tree);
         cpu_recursive_caps.push(next_cpu_oracle_cap.clone());
-        // Upstream now folds the recursive oracle cap into the transcript before drawing
-        // the next OOD point (see prover/src/gkr/whir/mod.rs ~line 1056).
+        // Upstream folds the recursive oracle cap into the transcript before drawing
+        // the next OOD point (see prover/src/gkr/whir/mod.rs).
         add_whir_commitment_to_transcript(
             &mut transcript_seed,
             &WhirCommitment::<BF, DefaultTreeConstructor> {
@@ -565,8 +543,8 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
         let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
         cpu_ood_samples.push(ood_value);
-        // Upstream also commits the OOD value to the transcript in the recursive round
-        // (see prover/src/gkr/whir/mod.rs ~line 1067).
+        // Upstream commits the OOD value to the transcript in the recursive round
+        // (see prover/src/gkr/whir/mod.rs).
         commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
@@ -579,7 +557,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         );
         bitreverse_enumeration_inplace(&mut high_powers_offsets);
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
-        cpu_pre_pow_seeds.push(transcript_seed);
         let (nonce, mut bit_source) = draw_query_bits(
             &mut transcript_seed,
             num_queries * query_index_bits,
@@ -614,7 +591,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             assert_eq!(gpu_query.path, cpu_query.path);
 
             let query_point = query_domain_generator.pow(query_index as u32);
-            // #279: recursive oracle leaves are multilinear coeffs — evaluate at
+            // recursive oracle leaves are multilinear coeffs — evaluate at
             // the folding challenges directly instead of FRI-folding eval form.
             let folded =
                 eval_multilinear_from_coeffs_for_test(&cpu_values, &folding_challenges_in_round);
@@ -629,7 +606,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             &[(ood_point, delinearization_challenge)],
             &in_domain_samples,
         );
-        cpu_recursive_query_indexes.push(recursive_round_query_indexes);
         claim.add_assign(&claim_correction);
 
         cpu_rs_oracle = next_cpu_oracle;
@@ -653,10 +629,10 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
         fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
         fold_evaluation_form_for_test(&mut sumchecked_poly_evaluation_form, folding_challenge);
-        fold_eq_poly_for_test(&mut eq_poly, folding_challenge);
+        fold_evaluation_form_for_test(&mut eq_poly, folding_challenge);
     }
     // Upstream commits the final monomial-form coefficients into the transcript before
-    // drawing the final query PoW (see prover/src/gkr/whir/mod.rs line ~1297).
+    // drawing the final query PoW (see prover/src/gkr/whir/mod.rs).
     commit_field_els::<BF, E4>(&mut transcript_seed, &sumchecked_poly_monomial_form);
     let query_domain_size = 1u64 << query_domain_log2;
     let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
@@ -669,7 +645,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     );
     bitreverse_enumeration_inplace(&mut high_powers_offsets);
     let query_index_bits = query_domain_size.trailing_zeros() as usize;
-    cpu_pre_pow_seeds.push(transcript_seed);
     let (final_nonce, mut bit_source) = draw_query_bits(
         &mut transcript_seed,
         final_queries * query_index_bits,
@@ -697,7 +672,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         assert_eq!(gpu_query.path, cpu_query.path);
 
         let query_point = query_domain_generator.pow(query_index as u32);
-        // #279: final recursive oracle leaf is multilinear coeffs — evaluate at
+        // final recursive oracle leaf is multilinear coeffs — evaluate at
         // the folding challenges directly instead of FRI-folding eval form.
         let folded =
             eval_multilinear_from_coeffs_for_test(&cpu_values, &folding_challenges_in_round);
@@ -709,9 +684,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             )
         );
     }
-    cpu_recursive_query_indexes.push(final_round_query_indexes);
-    // pre_pow_seeds parity dropped: end-to-end byte equality covers seed correctness.
-    let _ = cpu_pre_pow_seeds;
     let whir_proof_layout_inputs = build_whir_only_proof_layout_inputs(
         whir_schedule,
         trace_len_log2,
@@ -875,17 +847,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         .intermediate_whir_oracles
         .iter()
         .map(|oracle| oracle.commitment.cap.clone())
-        .collect::<Vec<_>>();
-    let _scheduled_recursive_query_indexes = scheduled_gpu_whir_proof
-        .intermediate_whir_oracles
-        .iter()
-        .map(|oracle| {
-            oracle
-                .queries
-                .iter()
-                .map(|query| query.index)
-                .collect::<Vec<_>>()
-        })
         .collect::<Vec<_>>();
     // Per-round assertions in workflow order to find first divergence.
     // Sumcheck polys: one per folding step. whir_steps_schedule = [1, 4, 4, 4, 4, 4]

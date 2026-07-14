@@ -478,16 +478,6 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
     GatherMerklePathsPartialForQueriesFromNttFunction::default().launch(&config, &args)
 }
 
-cuda_kernel!(
-    pub(crate) GatherTreeCaps,
-    ab_gather_tree_caps_kernel(
-        src_ptrs: *const u64,
-        dst: *mut u32,
-        cap_words_per_coset: u32,
-        coset_count: u32
-    )
-);
-
 /// Maximum coset count the inline `gather_tree_caps_inline` kernel-arg
 /// descriptor can hold. Sized for headroom — production lde_factor is
 /// typically ≤ 4.
@@ -598,8 +588,8 @@ pub fn gather_tree_caps_inline(
     assert!(
         (coset_count as usize) <= GKR_GATHER_TREE_CAPS_MAX_COSETS,
         "gather_tree_caps descriptor has {} cosets; exceeds GKR_GATHER_TREE_CAPS_MAX_COSETS = {}. \
-         Raise the constant in ops/blake2s.rs (and the matching native constant) if a \
-         future workload needs more.",
+         Raise the constant in gpu/hash/src/blake2s/gather.rs (and the matching native constant) \
+         if a future workload needs more.",
         coset_count,
         GKR_GATHER_TREE_CAPS_MAX_COSETS,
     );

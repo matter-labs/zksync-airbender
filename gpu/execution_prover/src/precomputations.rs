@@ -67,8 +67,6 @@ impl LazyGpuGKRSetupHost {
 
     /// First call: builds the host on `context` (one-shot stream sync inside
     /// `precompute_from_cpu_setup`); subsequent calls return the cached Arc.
-    /// `OnceLock::get_or_try_init` is atomic: concurrent workers race once and
-    /// the loser drops its Arc instead of installing a duplicate.
     ///
     /// Returns `None` when the CPU setup has no columns (e.g.
     /// InitsAndTeardowns has `generic_lookup_tables_width == 0` and no

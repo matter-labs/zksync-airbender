@@ -55,10 +55,9 @@ pub(in crate::prover::gkr::backward::tests) fn build_dimension_reducing_kernel_b
 
     let mut blueprints = Vec::new();
     for (output_type, reduced_io) in layer.iter() {
-        // FS-safe merge (PR #305): both passes iterate `BTreeMap<OutputType>`
-        // with the derived `Ord`; `InitsAndTeardownsProduct` is the last
-        // discriminant (cs/src/definitions/gkr_layers.rs:5-10), so its 2
-        // pairwise records / 2 challenges are always squeezed AFTER the
+        // Both passes iterate `BTreeMap<OutputType>` by the derived `Ord`, so
+        // `InitsAndTeardownsProduct` (the last discriminant in cs's OutputType enum)
+        // always squeezes its 2 pairwise records / 2 challenges after the
         // PermutationProduct + lookup records — identical to the CPU order.
         match *output_type {
             OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
@@ -123,8 +122,6 @@ pub(in crate::prover::gkr::backward) fn build_main_layer_kernel_blueprints<
     batch_challenge_base: E,
     lookup_multiplicative_challenge: E,
     lookup_additive_challenge: E,
-    _num_base_layer_memory_polys: usize,
-    _num_base_layer_witness_polys: usize,
 ) -> Vec<GpuGKRMainLayerKernelBlueprint<E>> {
     let mut current_batch_challenge = E::ONE;
     let mut next_batch_challenge_offset = 0usize;

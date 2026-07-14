@@ -33,15 +33,13 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     pub(super) _stage1: GpuGKRStage1Keepalive,
     /// Holds every per-piece transfer wrapper (setup, decoder, inits_and_teardowns,
     /// tracing_data, memory caps, canonical_top_bits, external_challenges) plus the
-    /// shared `Transfer`'s accumulated `Callbacks`. Replaces the prior per-piece
-    /// keepalive fields (`_setup`, `_memory`, `_external_challenges_*`,
-    /// `_initial_transcript_canonical_top_bits_host`).
+    /// shared `Transfer`'s accumulated `Callbacks`.
     pub(super) _inputs: GpuGKRProofTransferKeepalive<'a, A>,
     pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
     pub(super) _backward: GpuGKRBackwardScheduledExecution<BF, E4>,
     pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     pub(super) _whir: GpuWhirFoldScheduledExecution,
-    /// Pinned host mirror of the device-resident proof slab (Phase 4). Populated
+    /// Pinned host mirror of the device-resident proof slab. Populated
     /// by the terminal D2H; read by the single assembly callback. This is the
     /// only buffer (host, pinned) the keepalive still owns past prove-end — the
     /// device reservations (proof slab, WHIR caps/ephemerals, batching
@@ -110,7 +108,7 @@ pub(crate) fn top_layer_claim_layout(
         addresses.insert(output.output[0]);
         addresses.insert(output.output[1]);
     }
-    // Unified circuit (PR #305): the inline inits/teardowns grand product adds a
+    // Unified circuit: the inline inits/teardowns grand product adds a
     // second top-layer product channel. Mirror the CPU top_layer_claims insert
     // at prover/src/gkr/prover/mod.rs:556-559 (claim_initset @ output[0],
     // claim_teardownset @ output[1]) so every output_layer_for_sumcheck entry
@@ -143,7 +141,7 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
             .expect("read-set accumulator must not be zero"),
     );
 
-    // Unified circuit (PR #305): fold the inline inits/teardowns product into the
+    // Unified circuit: fold the inline inits/teardowns product into the
     // accumulator so the caller's `initial_contribution * accumulator == ONE`
     // closure holds as a single check. Exact mirror of the CPU prover at
     // prover/src/gkr/prover/mod.rs:813-823 — it_evals[0] = init_set,

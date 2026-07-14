@@ -1,4 +1,3 @@
-// Ported from ntt-experiments include/ntt/coset.cuh.
 // Shared coset glue. Initial per-slot twist mono[r] *= w^(bitrev(slot)*cfp);
 // single-pass holds the per-step delta in registers (multi-coset walk).
 // Coset omega is sourced from get_forward_twiddle_power (context.cuh),

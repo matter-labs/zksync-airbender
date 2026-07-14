@@ -27,7 +27,7 @@ EXTERN __launch_bounds__(512, 2) __global__
   bf vals[VALS_PER_THREAD];
 
   // "ct" = consecutive tile layout
-  // "it" = interleaved tile layout
+  // "il" = interleaved tile layout
   const int thread_il_gmem_start = lane_in_tile + tile_id * tile_gmem_stride;
   const int thread_ct_gmem_start = lane_in_tile + tile_id * interleaved_gmem_stride;
   const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;

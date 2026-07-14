@@ -191,8 +191,6 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             },
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
-            num_base_layer_memory_polys: compiled_circuit.memory_layout.total_width,
-            num_base_layer_witness_polys: compiled_circuit.witness_layout.total_width,
             is_delegation,
         }
     }
@@ -416,7 +414,6 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
         }
         FlatContinuationSizeCheck {
             sizes,
-            has_sources,
             consistent: consistent && (!has_sources || sizes.is_some()),
         }
     }
@@ -446,7 +443,6 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
         }
         FlatContinuationSizeCheck {
             sizes,
-            has_sources,
             consistent: consistent && (!has_sources || sizes.is_some()),
         }
     }
@@ -482,7 +478,6 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
         }
         FlatContinuationSizeCheck {
             sizes,
-            has_sources,
             consistent: consistent && (!has_sources || sizes.is_some()),
         }
     }

@@ -87,7 +87,7 @@ fn sample_inputs() -> ProofLayoutInputs {
 }
 
 #[test]
-fn layout_is_16_byte_aligned_and_nonoverlapping() {
+fn layout_is_32_byte_aligned_and_nonoverlapping() {
     let inputs = sample_inputs();
     let layout = ProofLayout::new(&inputs);
 

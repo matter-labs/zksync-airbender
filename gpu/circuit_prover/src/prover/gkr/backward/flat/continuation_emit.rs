@@ -386,7 +386,7 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
     }
 }
 
-/// Emit unified_linear terms for materialize gates.
+/// Emit c0-only linear terms (plus constants) for materialize gates.
 pub(super) fn emit_continuation_materialize_gate<E: Field>(
     b: &mut FlatContinuationDescriptionBuilder<E>,
     gate: &PreparedGateForFlatContinuationPlan<'_, E>,

@@ -364,10 +364,10 @@ impl DitTriangles {
 // Production launcher `monomials_to_evals_dit`.
 //
 // Runs the vendored DIT engine hot kernels (`ntt_single` / `ntt_two_pass`,
-// see `gpu/ntt/native/dit_kernels.cuh`, launched via the `ab_dit_single_*` /
+// see `gpu/ntt/native/dit_kernels.cuh`, launched via the `ab_dit_single_stream_*` /
 // `ab_dit_two_pass_*` wrappers in `dit_kernels_extern.cu`) for the streaming range
-// (log_n in [2, 13]). It uses the coset-major param model: same coset-major
-// param model + column loop + strided output, borrowing the precomputed
+// (log_n in [2, 13]). It uses the coset-major param model: column loop +
+// strided output, borrowing the precomputed
 // `DitTriangles` from the `DeviceContext` and filling the two-pass d-table at
 // runtime into a caller-provided pooled scratch buffer.
 //

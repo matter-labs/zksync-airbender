@@ -27,8 +27,7 @@ const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 /// trees are committed.
 ///
 /// - `OwnAllocation` — the trace holder allocates a private `DeviceAllocation<Digest>`
-///   and stores it on `unified_device_cap` (legacy path used by tests and by
-///   the base/initial WHIR oracle construction).
+///   and stores it on `unified_device_cap` (legacy path used only by tests).
 /// - `Slab(...)` — the cap is gathered directly into a caller-supplied device
 ///   slice (typically a `whir.intermediate[round].cap` slab subrange), and
 ///   `unified_device_cap` stays `None`. Downstream readers must source the
@@ -43,13 +42,8 @@ enum CapTarget<'a> {
 
 pub(crate) struct GpuWhirExtensionOracle {
     trace_holder: TraceHolder<BF>,
-    /// Read only by cfg(test) query helpers and the cfg(test) recursive-decode
-    /// path. Production code never reads this field, but its construction is
-    /// shared with the test helpers, so the field remains.
-    #[allow(dead_code)]
     values_per_leaf: usize,
     lde_factor: usize,
-    #[allow(dead_code)]
     trace_len_log2: usize,
     packed_leaf_count: usize,
 }
@@ -176,10 +170,8 @@ impl GpuWhirExtensionOracle {
             trees_cache_mode,
             context,
         )?;
-        // Multi-coset NTT writes the natural multi-coset evaluations directly
-        // into the WHIR oracle's cosets backing. The previous pipeline used a
-        // separate `natural_coset_values` temp and then `pack_rows_for_whir_leaves`
-        // — both gone. The new blake-leaves-from-NTT kernel (invoked via
+        // Multi-coset NTT writes the natural multi-coset evaluations directly into
+        // the WHIR oracle's cosets backing; the blake-leaves-from-NTT kernel (via
         // `commit_all_into_from_ntt`) reads the natural layout in place.
         let monomial_coeffs_slice = monomial_coeffs.slice();
         let monomial_coeffs_stride = monomial_coeffs.stride();
@@ -237,7 +229,7 @@ impl GpuWhirExtensionOracle {
         }
     }
 
-    /// Phase 4 (WHIR-on-device): batch-gather all `device_query_indexes` of one
+    /// batch-gather all `device_query_indexes` of one
     /// round directly into the slab's intermediate `query_indices` /
     /// `query_leaves` / `query_paths` ranges. The tree-index kernel writes
     /// straight into the slab `query_indices` range — no temp buffer, no D2D.

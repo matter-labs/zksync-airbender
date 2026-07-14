@@ -234,8 +234,6 @@ EXTERN __global__ void ab_gather_tree_caps_kernel(const unsigned long long *src_
 // kernel gather all per-coset cap regions from one contiguous tree backing.
 // The kernel folds the natural→bit-reversed coset reindex inline so the
 // unified-cap destination layout matches the legacy stage1 ordering.
-[[maybe_unused]] constexpr unsigned GKR_GATHER_TREE_CAPS_MAX_COSETS = 32;
-
 struct gpu_gather_tree_caps_desc {
   u32 coset_count;
   u32 cap_words_per_coset;
@@ -325,7 +323,7 @@ EXTERN __global__ void ab_query_index_to_tree_index_kernel(const u32 *d_query_in
 // for each active oracle: coset `c` lives at
 //   base + c * (desc.columns_count << log_domain_size)
 // elements (column-major within each coset, stride = 1 << log_domain_size).
-// Thread mapping mirrors the legacy kernel: threadIdx.x = v ∈ [0, rows_per_leaf),
+// Thread mapping: threadIdx.x = v ∈ [0, rows_per_leaf),
 // (threadIdx.y, blockIdx.x) tile the queries, blockIdx.y = column, and
 // blockIdx.z = oracle index (0..num_oracles). The per-oracle grid.y bound is
 // the max columns_count across active oracles, so each oracle guards

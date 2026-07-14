@@ -1,10 +1,6 @@
-// Ported from ntt-experiments include/ntt/dit_core.cuh.
-// Unified within-warp radix-2 DIT engine. Ported from dit_phase
-// (warp_ntt_2pass_dit.cuh), math-identical, with two simplifications:
-//   * SINGLE_ROUND restore only (DitRestore enum + STAGED branch + RESTORE
-//     param dropped).
-//   * ONE twiddle read path (the N-1 per-thread triangle). The caller chooses
-//     "clean" vs "coupled" purely via (LOG_TBL, tw_base, tw_row):
+// Unified within-warp radix-2 DIT engine. ONE twiddle read path (the N-1
+// per-thread triangle); the caller chooses "clean" vs "coupled" purely via
+// (LOG_TBL, tw_base, tw_row):
 //       clean   (single-pass full NTT, two-pass pass-2): LOG_TBL=LOG_M,
 //               tw_row=lane,  tw_base=lane*VPT      -> n2 absent, M-1 values.
 //       coupled (two-pass pass-1):                  LOG_TBL=LOG_N,

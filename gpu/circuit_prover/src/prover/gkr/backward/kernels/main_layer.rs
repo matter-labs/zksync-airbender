@@ -6,8 +6,8 @@ use super::super::super::{
 };
 use super::launchers::GkrEqSizes;
 use super::shared::{
-    ClaimBufferLayout, DeviceClaimPointAndBatching, ScheduledChallengeBuffer,
-    ScheduledChallengeStorage, ScheduledDimensionReducingFinalReadback,
+    ClaimBufferLayout, DeviceClaimPointAndBatching, ScheduledChallengeStorage,
+    ScheduledDimensionReducingFinalReadback,
 };
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::DeviceAllocation;
@@ -162,7 +162,7 @@ pub(crate) struct GpuGKRMainLayerKernelPlan<E> {
 }
 
 /// Device-resident term/tile tables for one unified descriptor whose term/tile
-/// count overflows the inline `__grid_constant__` cap (Stage 3b). The three
+/// count overflows the inline `__grid_constant__` cap. The three
 /// `DeviceAllocation`s are plan-owned (stream-ordered drop, like the coeff
 /// device buffer); `tables` holds raw device pointers into them, passed by value
 /// to the `_devptr_terms_` kernels. The pinned host H2D sources are kept alive
@@ -185,7 +185,7 @@ unsafe impl Sync for FlatTermDeviceBuffers {}
 
 /// Device buffers backing the device-pointer eval-recipes descriptor
 /// (`GpuFlatRecipeEvalDescDevptr`), used when a layer's recipe/term/immediate
-/// tables overflow the inline `GpuFlatRecipeEvalDesc` caps (Stage 3c). The four
+/// tables overflow the inline `GpuFlatRecipeEvalDesc` caps. The four
 /// `DeviceAllocation`s are plan-owned (stream-ordered drop, like the coeff device
 /// buffer); `desc` holds raw device pointers into them, passed by value to the
 /// `_devptr` eval-recipes kernels. The pinned host H2D sources are kept alive
@@ -234,7 +234,7 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// when `flat_recipe_count > 0` (or both `None` when there are no recipes).
     pub(crate) flat_recipe_desc:
         Option<Box<crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDesc>>,
-    /// Stage 3c device-recipes path for round 0. `Some` iff the recipe/term/
+    /// Device-recipes path for round 0. `Some` iff the recipe/term/
     /// immediate tables overflow the inline caps; carries the device buffers +
     /// the device-pointer companion desc read by the `_devptr` eval-recipes
     /// kernel. Independent of the coefficient `__constant__` decision.
@@ -260,7 +260,7 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// Mutually exclusive with `flat_cont_recipe_desc_device` (see round-0 pair).
     pub(crate) flat_cont_recipe_desc:
         Option<Box<crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDesc>>,
-    /// Stage 3c device-recipes path for the continuation phase. Mirror of
+    /// Device-recipes path for the continuation phase. Mirror of
     /// `flat_recipe_desc_device` for rounds 3+.
     pub(crate) flat_cont_recipe_desc_device: Option<RecipeEvalDeviceBuffers>,
     pub(crate) flat_cont_recipe_count: usize,
@@ -277,7 +277,7 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// Round 2 compact descriptor.
     pub(crate) flat_round2_unified_desc_compact:
         Option<Box<super::super::compact::GpuFlatRound2UnifiedDesc>>,
-    /// Stage 3b device-terms path. `Some` iff the descriptor's term/tile count
+    /// Device-terms path. `Some` iff the descriptor's term/tile count
     /// overflows the inline cap; carries the device-pointer companion desc +
     /// the device term/tile buffers. When present the `_devptr_terms_` kernel is
     /// dispatched (which reads coefficients from the device buffer too, so
@@ -333,8 +333,6 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(crate) inits_and_teardowns_address_high_bits_shift: u32,
     pub(crate) lookup_multiplicative_challenge: E,
     pub(crate) lookup_additive_challenge: E,
-    pub(crate) num_base_layer_memory_polys: usize,
-    pub(crate) num_base_layer_witness_polys: usize,
     pub(crate) is_delegation: bool,
 }
 
@@ -350,8 +348,6 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(crate) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(crate) batch_challenge_storage: ScheduledChallengeStorage<E>,
-    #[allow(dead_code)]
-    pub(crate) batch_challenge_buffer: ScheduledChallengeBuffer<E>,
     #[allow(dead_code)]
     pub(crate) final_readback: ScheduledDimensionReducingFinalReadback,
     #[allow(dead_code)]

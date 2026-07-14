@@ -204,7 +204,6 @@ cuda_kernel_declaration!(pub(crate)
 
 pub(crate) fn launch_main_round3_unified<E: crate::prover::gkr::BackwardKernels>(
     desc: &GpuFlatContinuationUnifiedDesc,
-    _folding_challenge: *const E,
     fold_stride: u32,
     next_layer_size: u32,
     folding_challenge_slot: u32,
@@ -287,7 +286,6 @@ cuda_kernel_declaration!(pub(crate)
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch_main_round3_unified_devptr<E: crate::prover::gkr::BackwardKernels>(
     desc: &GpuFlatContinuationUnifiedDesc,
-    _folding_challenge: *const E,
     fold_stride: u32,
     next_layer_size: u32,
     folding_challenge_slot: u32,
@@ -352,7 +350,6 @@ cuda_kernel_declaration!(pub(crate)
 
 pub(crate) fn launch_main_round1_unified<E: crate::prover::gkr::BackwardKernels>(
     desc: &GpuFlatRound1UnifiedDesc,
-    _folding_challenge: *const E,
     fold_stride: u32,
     next_layer_size: u32,
     eq_low: *const E,
@@ -413,7 +410,6 @@ cuda_kernel_declaration!(pub(crate)
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch_main_round1_unified_devptr<E: crate::prover::gkr::BackwardKernels>(
     desc: &GpuFlatRound1UnifiedDesc,
-    _folding_challenge: *const E,
     fold_stride: u32,
     next_layer_size: u32,
     coefficients: *const E,
@@ -645,7 +641,6 @@ cuda_kernel_declaration!(pub(crate)
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch_main_round1_unified_devptr_terms<E: crate::prover::gkr::BackwardKernels>(
     desc: &GpuFlatRound1UnifiedDescDevptr,
-    _folding_challenge: *const E,
     fold_stride: u32,
     next_layer_size: u32,
     coefficients: *const E,
@@ -790,7 +785,6 @@ cuda_kernel_declaration!(pub(crate)
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch_main_round3_unified_devptr_terms<E: crate::prover::gkr::BackwardKernels>(
     desc: &GpuFlatContinuationUnifiedDescDevptr,
-    _folding_challenge: *const E,
     fold_stride: u32,
     next_layer_size: u32,
     folding_challenge_slot: u32,
