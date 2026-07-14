@@ -84,6 +84,14 @@ fn sequential() -> DistilledLayer {
     layer(2, &[Expr::Mul(vec![ExprId(0), ExprId(1), ExprId(0), ExprId(1)])], &[(2, 0)])
 }
 
+/// `root = Mul(w0, w0, w0)` + a second claim root `= w0`: `w0` is a fan-out-4 domain leaf
+/// (three uses in `w0³`, one in the `beta*w0` spine term) — enough serves for a
+/// `Retain, Bypass, Retain, Bypass` GAPPED retention chain that RE-ADMITS `w0` after a
+/// rule-a release.
+fn cube() -> DistilledLayer {
+    layer(1, &[Expr::Mul(vec![ExprId(0), ExprId(0), ExprId(0)])], &[(1, 0), (0, 1)])
+}
+
 // ── plan helpers (build FROM a frozen trace) ────────────────────────────────────
 
 /// Trace a `decisions: None` compile of `d` at `budget` and return the frozen
@@ -388,5 +396,56 @@ fn fma_reparent_fingerprints_match() {
     // All-Bypass admits nothing, so the program matches the uncached baseline byte-for-byte.
     let baseline = compile_distilled(&d, budget, None).expect("baseline");
     assert_eq!(encode(&c.program), encode(&baseline.program));
+    assert_synthetic_value_exact_planned(&c, &d);
+}
+
+// (9) Re-admission after a rule-a release mints a FRESH generation. A `Retain, Bypass,
+// Retain, Bypass` GAPPED chain on a fan-out-4 leaf: the Bypass at serve 2 releases the
+// slot (rule a), which MUST record `evicted_ever` so the Retain at serve 3 re-admits
+// through a fresh `ValueId` — otherwise a second `emit_evict_to_cell` reuses the
+// original id and `compute_live_ranges` (first-define-wins) collapses the value's range
+// across the released gap. Here we assert the re-admission is real (TWO Admit events for
+// the leaf) and value-exact + non-diverging.
+//
+// NOTE on test strength: the STRONGEST form — a discriminating tight budget where the
+// buggy collapsed range forces a spurious `BudgetBelowFloor` while the fix compiles —
+// requires an interloper value packed into the freed gap. At spine granularity that is
+// structurally infeasible: the Ext floor-8 collision (documented in the task report:
+// an Ext resident (4) plus the reduction's forced Ext spill/combine temp (4) always
+// coincide at 8) leaves no budget window, and a pre-materialized operand's cell stays
+// live from its serve to its (late) fold read, so a synthetic "gap" is not a real
+// cell-free window. The full discriminating exercise defers to Task 8's real gapped
+// chains (leaf serves that coincide with genuine fold-read instants). The two-Admit +
+// value-exact form here guards that re-admission executes, mints a distinct generation,
+// and preserves value/feasibility.
+#[test]
+fn readmit_after_release_fresh_generation() {
+    let d = cube();
+    let budget = 16;
+    let (serves, sr) = frozen_domain_serves(&d, budget);
+    assert_eq!(serves.len(), 4, "w0 is served four times (fan-out 4)");
+    let leaf = serves[0].0.value;
+
+    // Retain@0 (admit), Bypass@1 (rule-a release → evicted_ever), Retain@2 (RE-admit),
+    // Bypass@3 (release). The two Retains open distinct intervals for the same leaf.
+    let plan = mk_plan(
+        &d,
+        budget,
+        sr,
+        attach(
+            &serves,
+            &[PlanAction::Retain, PlanAction::Bypass, PlanAction::Retain, PlanAction::Bypass],
+        ),
+    );
+    let (c, t) = compile_distilled_planned(&d, budget, &plan).expect("gapped re-admission compiles");
+    assert_eq!(diverge_at(&t), None, "the gapped chain replays cleanly");
+    assert_eq!(
+        admits(&t, leaf),
+        2,
+        "the leaf is admitted twice — a genuine re-admission after the rule-a release",
+    );
+    assert_eq!(expired_evicts(&t, leaf), 2, "both retentions release their slot (rule a)");
+    // Value must be preserved despite the fresh-generation re-admission (the fix must not
+    // corrupt which cell the leaf's later uses read).
     assert_synthetic_value_exact_planned(&c, &d);
 }

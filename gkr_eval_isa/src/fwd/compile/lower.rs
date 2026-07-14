@@ -601,6 +601,14 @@ impl<'a> VirtualLower<'a> {
             plan.pending_bypass_release = None;
             let freed = plan.resident.remove(&v).map_or(0, |s| resident_width(s.field));
             plan.live_width = plan.live_width.saturating_sub(freed);
+            // Record the eviction so a LATER re-admission of `v` (a `Retain, Bypass,
+            // Retain` gapped chain) mints a FRESH generation id (`plan_try_admit` reads
+            // `evicted_ever`), instead of re-using `v` and emitting a second
+            // `emit_evict_to_cell(v)` — which `compute_live_ranges` (first-define-wins)
+            // would collapse into one `[first_def, last_use]` span across the released
+            // gap, holding `v` live in `plan_placement` after `live_width` freed it.
+            // Every other eviction path records this; the rule-a release must too.
+            plan.evicted_ever.insert(v);
             // A rule-a release only fires when the Bypass just closed the retention.
             plan.run.retention(v).is_none() || plan.run.diverged().is_some()
         };
