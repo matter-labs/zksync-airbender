@@ -209,6 +209,16 @@ impl AllocationsTracker {
         self.used_mem_current
     }
 
+    /// Largest contiguous free range, i.e. the biggest allocation that can currently
+    /// succeed. `capacity - used` bigger than a failing request means fragmentation.
+    pub fn get_largest_free_range(&self) -> usize {
+        self.free_ptrs_by_len
+            .keys()
+            .next_back()
+            .copied()
+            .unwrap_or(0)
+    }
+
     pub fn get_used_mem_peak(&self) -> usize {
         self.used_mem_peak
     }
