@@ -6,6 +6,7 @@ pub mod distill;
 pub mod compile;
 pub mod construct;
 pub mod cost;
+pub mod engine;
 pub mod fif;
 pub mod interp;
 pub mod plan;

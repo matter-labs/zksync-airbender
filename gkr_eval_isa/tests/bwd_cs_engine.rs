@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use common::*;
 use gkr_eval_isa::bwd::compile::{compile_distilled, compile_distilled_planned, compile_distilled_traced};
 use gkr_eval_isa::bwd::construct::construct_unit_order;
+use gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer;
 use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain, DistilledLayer};
 use gkr_eval_isa::bwd::fif::{feasible_leaf_plan, fif_select, oracle_saved, plan_leaves, Gap};
 use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
@@ -429,27 +430,14 @@ fn construct_order_is_deterministic() {
 
 // ── Task 8 (CS-M0), Commit 1: removal-set pricing + CELF priced rounds ─────────
 
-/// The coordinate-correct `lower==place==budget` all-`Bypass` freeze (Task 5's
-/// `feasible_leaf_plan` step 1): harvest budget-independent domain-serve
-/// fingerprints from a `decisions:None` traced compile, build an all-`Bypass` plan,
-/// replay it at `lower==place==budget`, and re-freeze on THAT trace. This is the
-/// `frozen0` Task-8 pricing MUST use (never the fill-then-trim traced freeze).
+/// The coordinate-correct `lower==place==budget` all-`Bypass` freeze (Task 5 step 1):
+/// the `frozen0` Task-8 pricing and the CS engine MUST seed from (never the fill-then-
+/// trim traced freeze). Now a thin wrapper over the SRC `fif::coordinate_correct_frozen`
+/// (extracted in Task 9, deduped here) — called fully-qualified so it does not collide
+/// with this local helper's name.
 fn coordinate_correct_frozen(d: &DistilledLayer, budget: usize) -> FrozenDemand {
-    let (ft_c, ft_trace) = compile_distilled_traced(d, budget, None).expect("baseline traced");
-    let frozen_ft = freeze_demand(d, &ft_trace, &ft_c.program, &ft_c.specials);
-    let entries: Vec<PlanEntry> = frozen_ft
-        .domain_serves
-        .iter()
-        .map(|&(fp, _)| PlanEntry { fp, action: PlanAction::Bypass })
-        .collect();
-    let bypass = BwdOccurrencePlan {
-        epoch: frozen_ft.epoch,
-        entries_fnv: plan_entries_fnv(&entries),
-        stream_reductions: frozen_ft.stream_reductions,
-        entries,
-    };
-    let (c, t) = compile_distilled_planned(d, budget, &bypass).expect("all-Bypass compile feasible");
-    freeze_demand(d, &t, &c.program, &c.specials)
+    gkr_eval_isa::bwd::fif::coordinate_correct_frozen(d, budget)
+        .expect("coordinate-correct frozen: all-Bypass compile feasible @ budget")
 }
 
 /// (a) Removal sets over the controlled shared-compound layer: `V ⊃ W ⊃ U` with
@@ -753,5 +741,112 @@ fn priced_reclaim_capture_heavy() {
             outcome.compound_attempted > 0,
             "{name}: compound_attempted == 0 — compounds were not compiler-tried",
         );
+    }
+}
+
+// ── Task 9 (CS-M0): engine driver (`cs_schedule_bwd_layer`) ────────────────────
+
+/// (a) THE cross-circuit engine gate + G-M0 preview: for all 12 `FIXTURES`, Ext L0
+/// (skipping fixtures whose L0 has no bwd roots), `cs_schedule_bwd_layer` returns a
+/// SHIPPED program that certifies exactly (no divergence), whose `(traffic, instrs)`
+/// stats key is NEVER worse than the canonical `decisions:None` baseline (guaranteed by
+/// the non-regression fallback), with `rounds <= 3`. Prints the per-fixture improved-vs-
+/// fell-back table (baseline traffic vs CS traffic) — the Task-11 G-M0 story of which
+/// fixtures CS actually helps on.
+///
+/// Also the value-parity spot gate on the SHIPPED program: for add_sub + keccak, the
+/// engine's `outcome.compiled` must be field-bit exact against the independent oracle
+/// over the RAW canonical layer, using the DISTILLED layer the engine actually shipped
+/// (the constructed-order `d` when it improved, the canonical `bl_d` when it fell back).
+#[test]
+fn engine_runs_all_fixtures_b16() {
+    const VALUE_PARITY: &[&str] =
+        &["add_sub_lui_auipc_mop_layout_gkr.json", "keccak_special5_layout_gkr.json"];
+    let mut checked = 0usize;
+    println!(
+        "engine_runs_all_fixtures_b16 (Ext L0, b16):\n  \
+         fixture | result | baseline_traffic -> cs_traffic | pins | rounds | converged"
+    );
+    for &name in FIXTURES {
+        let (layer, cross) = load_layer(name, 0);
+        if bwd_roots(&layer).is_empty() {
+            continue; // L0 has no backward roots for this fixture
+        }
+
+        // Canonical baseline traffic (byte-identical program to the engine's internal
+        // baseline) for the never-worse comparison + the printed delta.
+        let bl_d = distill(&layer, BwdRegime::Ext, &cross, None);
+        let bl_c = compile_distilled(&bl_d, 16, None)
+            .unwrap_or_else(|e| panic!("{name}: canonical baseline compile @ b16 failed: {e:?}"));
+        let baseline_traffic = bl_c.stats_ext.global + bl_c.stats_ext.fold_traffic;
+
+        let outcome = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+
+        // The SHIPPED program certifies exactly, with no divergence.
+        assert_eq!(
+            outcome.certificate.counted_traffic, outcome.certificate.reported_traffic,
+            "{name}: shipped program certificate must be Ok (counted == reported)"
+        );
+        assert!(outcome.certificate.diverged.is_none(), "{name}: shipped program diverged");
+
+        // Never worse than the canonical baseline (fallback guarantees this), rounds capped.
+        let cs_traffic = outcome.stats.global + outcome.stats.fold_traffic;
+        assert!(
+            cs_traffic <= baseline_traffic,
+            "{name}: CS traffic {cs_traffic} > baseline {baseline_traffic} — non-regression broke"
+        );
+        assert!(outcome.rounds <= 3, "{name}: rounds {} > 3", outcome.rounds);
+
+        // Value-parity spot gate on the shipped program (add_sub + keccak).
+        if VALUE_PARITY.contains(&name) {
+            let d_used = (!outcome.fell_back_to_baseline)
+                .then(|| distill(&layer, BwdRegime::Ext, &cross, Some(&outcome.unit_permutation)));
+            let d_ref = d_used.as_ref().unwrap_or(&bl_d);
+            assert_bwd_value_parity(&outcome.compiled, d_ref, &layer);
+        }
+
+        println!(
+            "  {name} | {} | {baseline_traffic} -> {cs_traffic} | {} | {} | {}",
+            if outcome.fell_back_to_baseline { "FELL_BACK" } else { "IMPROVED " },
+            outcome.pins.len(),
+            outcome.rounds,
+            outcome.converged,
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "no fixture's L0 had bwd roots — enumeration broke");
+    println!(
+        "engine_runs_all_fixtures_b16: {checked}/{} fixtures held (Ext L0)",
+        FIXTURES.len()
+    );
+}
+
+/// (b) Determinism: two `cs_schedule_bwd_layer` runs on keccak L0 @ b16 produce
+/// byte-equal outcomes — same permutation, same plan (entries + epoch + fnv), same
+/// stats, same pins, same fallback verdict. No wall-clock / hashmap-iteration-order
+/// dependence anywhere in the assembled pipeline.
+#[test]
+fn engine_deterministic() {
+    let (layer, cross) = load_layer("keccak_special5_layout_gkr.json", 0);
+    let a = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+    let b = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+
+    assert_eq!(a.unit_permutation, b.unit_permutation, "permutation not deterministic");
+    assert_eq!(a.fell_back_to_baseline, b.fell_back_to_baseline, "fallback verdict not deterministic");
+    assert_eq!(a.pins, b.pins, "pins not deterministic");
+    assert_eq!(a.stats, b.stats, "stats not deterministic");
+    assert_eq!(a.instrs, b.instrs, "instrs not deterministic");
+    assert_eq!(a.rounds, b.rounds, "rounds not deterministic");
+    assert_eq!(a.converged, b.converged, "converged not deterministic");
+    // `BwdOccurrencePlan` is not `PartialEq`; compare its ABI fields explicitly.
+    match (&a.plan, &b.plan) {
+        (Some(pa), Some(pb)) => {
+            assert_eq!(pa.entries, pb.entries, "plan entries not deterministic");
+            assert_eq!(pa.epoch, pb.epoch, "plan epoch not deterministic");
+            assert_eq!(pa.entries_fnv, pb.entries_fnv, "plan entries_fnv not deterministic");
+            assert_eq!(pa.stream_reductions, pb.stream_reductions, "plan regime not deterministic");
+        }
+        (None, None) => {}
+        _ => panic!("plan Option mismatch between identical runs"),
     }
 }

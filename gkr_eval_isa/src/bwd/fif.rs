@@ -214,6 +214,32 @@ fn all_bypass_plan(frozen: &FrozenDemand) -> BwdOccurrencePlan {
     }
 }
 
+/// The coordinate-correct `lower==place==budget` all-`Bypass` freeze (Task 5 step 1),
+/// shared by [`feasible_leaf_plan`], [`priced_rounds`](super::price::priced_rounds), and
+/// the CS engine ([`cs_schedule_bwd_layer`](super::engine::cs_schedule_bwd_layer)).
+/// Harvest the budget-independent domain-serve fingerprints from a `decisions:None`
+/// traced compile, build an all-`Bypass` plan, replay it at `lower==place==budget`
+/// (feasible — the zero-retention program in the planned regime), and re-freeze on THAT
+/// trace. This is the `frozen0` every priced planner MUST seed from — NEVER the
+/// fill-then-trim `compile_distilled_traced` freeze, whose structurally different,
+/// ~1.5x-smaller program is the WRONG coordinate system to price a `lower==place==
+/// budget` replay against (see the module docs). Feasible by construction: the returned
+/// `Err` can only be an upstream compile error, never a schedule/plan mismatch.
+pub fn coordinate_correct_frozen(
+    d: &DistilledLayer,
+    budget: usize,
+) -> Result<FrozenDemand, CompileError> {
+    // Step 1a: harvest budget-independent domain-serve fingerprints (any regime).
+    let (ft_c, ft_trace) = compile_distilled_traced(d, budget, None)?;
+    let frozen_ft = freeze_demand(d, &ft_trace, &ft_c.program, &ft_c.specials);
+
+    // Step 1b: re-freeze in the coordinate system the planned replay actually uses —
+    // the zero-retention `lower==place==budget` program.
+    let bootstrap = all_bypass_plan(&frozen_ft);
+    let (bypass_c, bypass_trace) = compile_distilled_planned(d, budget, &bootstrap)?;
+    Ok(freeze_demand(d, &bypass_trace, &bypass_c.program, &bypass_c.specials))
+}
+
 /// A copy of `frozen` with its per-instant free envelope capped at `cap` cells
 /// (`free[t] = min(free[t], cap)`). Everything else — `domain_serves`,
 /// `leaf_instants`, `epoch`, `stream_reductions` — is preserved, so the pricer prices
@@ -271,15 +297,10 @@ pub fn feasible_leaf_plan(
     d: &DistilledLayer,
     budget: usize,
 ) -> Result<(BwdOccurrencePlan, BwdCompiledLayer, BwdCompileTrace), CompileError> {
-    // Step 1a: harvest budget-independent domain-serve fingerprints (any regime).
-    let (ft_c, ft_trace) = compile_distilled_traced(d, budget, None)?;
-    let frozen_ft = freeze_demand(d, &ft_trace, &ft_c.program, &ft_c.specials);
-
-    // Step 1b: re-freeze in the coordinate system the planned replay actually uses —
-    // the zero-retention `lower==place==budget` program.
-    let bootstrap = all_bypass_plan(&frozen_ft);
-    let (bypass_c, bypass_trace) = compile_distilled_planned(d, budget, &bootstrap)?;
-    let frozen0 = freeze_demand(d, &bypass_trace, &bypass_c.program, &bypass_c.specials);
+    // Step 1: the coordinate-correct `lower==place==budget` all-`Bypass` freeze — the
+    // shared `frozen0` (extracted to `coordinate_correct_frozen` so the engine, priced
+    // rounds, and the test surface all seed from one implementation).
+    let frozen0 = coordinate_correct_frozen(d, budget)?;
 
     // Step 2: the reduction-margin discount cap (= min(free) = budget - baseline_peak).
     let min_free = frozen0.free.iter().copied().min().unwrap_or(0);
