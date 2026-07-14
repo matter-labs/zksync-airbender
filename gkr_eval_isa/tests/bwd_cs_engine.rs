@@ -850,3 +850,68 @@ fn engine_deterministic() {
         _ => panic!("plan Option mismatch between identical runs"),
     }
 }
+
+// ── Task 11 (CS-M0): full-corpus value-correctness gate on the shipped program ─
+
+/// THE full-corpus value-correctness gate on the CS engine's SHIPPED program
+/// (closes the CS-M0 coverage gap Task 9's spot-gate left open — that gate only
+/// covered add_sub + keccak): for ALL 12 `FIXTURES`, Ext L0 (skipping fixtures
+/// whose L0 has no bwd roots), reconstruct the distilled layer `d` the engine
+/// actually compiled against — the constructed-order `d` when
+/// `cs_schedule_bwd_layer` improved on the baseline, the canonical (unpermuted,
+/// unplanned) `d` when it fell back — and assert the SHIPPED `outcome.compiled`
+/// program is field-bit exact against the independent expression oracle over the
+/// RAW layer (`assert_bwd_value_parity`), plus the certificate is `Ok` (counted ==
+/// reported traffic) as a belt-and-suspenders.
+///
+/// `bwd_search_smoke` (unchanged, pre-existing) shows the GA's PERMUTED distill can
+/// diverge from the oracle on bigint ("permuted distilled root value mismatch").
+/// This test is the direct check of whether the CS engine's own CONSTRUCTED
+/// permutation ever ships that same value-wrong program. A failure here —
+/// especially on bigint — is a real CS-M0 correctness bug, not a flake to paper
+/// over.
+#[test]
+fn engine_value_parity_all_fixtures() {
+    let mut checked = 0usize;
+    println!("engine_value_parity_all_fixtures (Ext L0, b16):\n  fixture | fell_back | value_parity");
+    for &name in FIXTURES {
+        let (layer, cross) = load_layer(name, 0);
+        if bwd_roots(&layer).is_empty() {
+            continue; // L0 has no backward roots for this fixture
+        }
+
+        let outcome = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+
+        // Reconstruct the distilled layer the engine actually shipped against —
+        // same reconstruction Task 9's spot gate uses (`engine_runs_all_fixtures_b16`).
+        let d_used = (!outcome.fell_back_to_baseline)
+            .then(|| distill(&layer, BwdRegime::Ext, &cross, Some(&outcome.unit_permutation)));
+        let bl_d;
+        let d_ref = match &d_used {
+            Some(d) => d,
+            None => {
+                bl_d = distill(&layer, BwdRegime::Ext, &cross, None);
+                &bl_d
+            }
+        };
+
+        assert_bwd_value_parity(&outcome.compiled, d_ref, &layer);
+
+        // Belt-and-suspenders: the shipped program's own certificate must be Ok.
+        assert_eq!(
+            outcome.certificate.counted_traffic, outcome.certificate.reported_traffic,
+            "{name}: shipped program certificate must be Ok (counted == reported)"
+        );
+
+        println!(
+            "  {name} | {} | value_parity OK",
+            if outcome.fell_back_to_baseline { "FELL_BACK" } else { "IMPROVED " },
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "no fixture's L0 had bwd roots — enumeration broke");
+    println!(
+        "engine_value_parity_all_fixtures: {checked}/{} fixtures held (Ext L0)",
+        FIXTURES.len()
+    );
+}
