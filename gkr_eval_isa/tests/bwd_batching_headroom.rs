@@ -32,13 +32,15 @@ mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cs::gkr_compiler::dag_ir::{bwd_traffic_floor, BwdRegime};
+use cs::gkr_compiler::dag_ir::{bwd_traffic_floor, BwdRegime, ExprId};
 use gkr_eval_isa::bwd::compile::{
     compile_distilled_legacy_only, compile_distilled_streamed, BwdCompiledLayer,
 };
 use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
+use gkr_eval_isa::bwd::fif::{fif_select, oracle_saved, Gap};
 use gkr_eval_isa::bwd::source::BwdSpecial;
-use gkr_eval_isa::fwd::isa::{DstLine, Instr, OperandField, OperandLine, Program};
+use gkr_eval_isa::bwd::trace::live_profile;
+use gkr_eval_isa::fwd::isa::{Instr, OperandLine, Program};
 
 /// Budgets swept for the idle-resource / invariance columns (bf lanes; Ext buckets = /4).
 const BUDGETS: &[usize] = &[16, 24, 32, 48, 64];
@@ -389,170 +391,11 @@ fn bwd_reuse_lifetimes() {
 }
 
 // ── FC0: exact fixed-order ceiling (per-site envelope FiF) ────────────────────
-
-/// A retention candidate: hold `origin`'s value from its use at instruction `start`
-/// to its next use at `end`. Occupancy is `(start, end]` — the cell is stored AFTER
-/// the start use's miss is serviced (lower.rs:791-804) and stays live THROUGH the
-/// closing read (placement is inclusive [def, last_use], place.rs:138-154). Chained
-/// gaps of one origin tile without double-count: [u1+1,u2], [u2+1,u3]. A ZERO-LENGTH
-/// gap (same-instruction double use, e.g. x*x) occupies just its own instant
-/// [end, end] — the cell is borrowed within the instruction; FC2 must verify the
-/// machinery realizes that instant-borrow (FC0 ceiling impact is tiny either way).
-#[derive(Clone, Copy, Debug)]
-struct Gap {
-    origin: usize,
-    start: usize,
-    end: usize,
-}
-
-/// Occupied instants of a retained gap (closed `(first, last)`; see `Gap`). The
-/// SINGLE shared phase definition — solver and oracle both use it, so the fuzz
-/// actually exercises the real phase model (codex H5b: revision 1's oracle copied
-/// the solver's wrong phase, making the fuzz blind to it).
-fn occ_range(g: &Gap) -> (usize, usize) {
-    if g.start == g.end {
-        (g.end, g.end)
-    } else {
-        (g.start + 1, g.end)
-    }
-}
-
-/// Per-instruction occupied smem lanes of a placed program: a lane is occupied from
-/// the instruction that writes it (`Mov` with `dst = Smem`) through its last read
-/// before the lane's next write (write-segmented lifetimes, lane granularity). A
-/// read of a never-written lane counts as occupied from t=0 (pre-initialized).
-fn live_profile(p: &Program) -> Vec<usize> {
-    #[derive(Clone, Copy)]
-    enum Ev {
-        Write,
-        Read,
-    }
-    let n = p.instrs.len();
-    // WIRE DECODE (v2, `smem_lane` src/fwd/interp.rs:132-142): a Base `Smem` index is
-    // a LANE; an Ext `Smem` index is a BUCKET whose lanes are cell*4 .. cell*4+4.
-    // (codex H5a: revision 1 treated Ext cells as lane-addressed and corrupted the
-    // profile.)
-    let span = |cell: u16, f: OperandField| match f {
-        OperandField::Base => (cell as u32, 1u32),
-        OperandField::Ext => (cell as u32 * 4, 4u32),
-    };
-    let mut lanes: BTreeMap<u32, Vec<(usize, Ev)>> = BTreeMap::new();
-    let mut push = |lanes: &mut BTreeMap<u32, Vec<(usize, Ev)>>, cell: u16, f: OperandField, t, ev| {
-        let (base, width) = span(cell, f);
-        for l in base..base + width {
-            lanes.entry(l).or_default().push((t, ev));
-        }
-    };
-    for (t, i) in p.instrs.iter().enumerate() {
-        match i {
-            Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
-                for op in operands {
-                    if let OperandLine::Smem { cell } = op {
-                        push(&mut lanes, *cell, *field, t, Ev::Read);
-                    }
-                }
-            }
-            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
-                for (l, r) in pairs {
-                    if let OperandLine::Smem { cell } = l {
-                        push(&mut lanes, *cell, *field_lhs, t, Ev::Read);
-                    }
-                    if let OperandLine::Smem { cell } = r {
-                        push(&mut lanes, *cell, *field_rhs, t, Ev::Read);
-                    }
-                }
-            }
-            Instr::Mov { field, dst, src, .. } => {
-                if let Some(OperandLine::Smem { cell }) = src {
-                    push(&mut lanes, *cell, *field, t, Ev::Read);
-                }
-                if let Some(DstLine::Smem { cell }) = dst {
-                    push(&mut lanes, *cell, *field, t, Ev::Write);
-                }
-            }
-        }
-    }
-    let mut occ = vec![0usize; n];
-    for (_, evs) in lanes {
-        let mut i = 0;
-        while i < evs.len() {
-            let seg_start = match evs[i].1 {
-                Ev::Write => evs[i].0,
-                Ev::Read => 0,
-            };
-            let mut seg_end = evs[i].0;
-            let mut j = i + 1;
-            while j < evs.len() && matches!(evs[j].1, Ev::Read) {
-                seg_end = evs[j].0;
-                j += 1;
-            }
-            for t in seg_start..=seg_end {
-                occ[t] += 1;
-            }
-            i = j;
-        }
-    }
-    occ
-}
-
-/// Exact fixed-order reclaim under a time-varying free-lane envelope: retain a
-/// maximum number of gaps s.t. at every t, `4 · |selected occupying t| <= free[t]`
-/// (occupancy per `occ_range`). Sweep: admit each gap at its first occupied
-/// instant, drop the farthest-LAST active gap on overflow (offline
-/// farthest-in-future with bypass, variable capacity — codex exhaustively
-/// validated the abstract sweep on 82,944 small cases). This implementation is
-/// still fuzzed against the oracle below (same `occ_range`, so the fuzz exercises
-/// the real phase model); if the fuzz ever finds a gap, escalate to min-cost-flow
-/// (design doc §4) instead of shipping a wrong ceiling.
-fn fif_select(gaps: &[Gap], free: &[usize]) -> Vec<usize> {
-    let mut order: Vec<usize> = (0..gaps.len()).collect();
-    order.sort_by_key(|&i| occ_range(&gaps[i]));
-    let mut active: BTreeSet<(usize, usize)> = BTreeSet::new(); // (occ last, gap idx)
-    let mut kept: Vec<usize> = Vec::new();
-    let mut gi = 0usize;
-    for t in 0..free.len() {
-        while let Some(&(last, idx)) = active.iter().next() {
-            if last < t {
-                active.remove(&(last, idx));
-                kept.push(idx); // survived its whole occupied range: a realized saving
-            } else {
-                break;
-            }
-        }
-        while gi < order.len() && occ_range(&gaps[order[gi]]).0 == t {
-            active.insert((occ_range(&gaps[order[gi]]).1, order[gi]));
-            gi += 1;
-        }
-        while 4 * active.len() > free[t] {
-            let &(last, idx) = active.iter().next_back().unwrap(); // farthest last: bypass it
-            active.remove(&(last, idx));
-        }
-    }
-    kept.extend(active.into_iter().map(|(_, idx)| idx));
-    kept.sort_unstable();
-    kept
-}
-
-/// Brute-force oracle: max retainable gap count over ALL subsets (≤ 12 gaps).
-fn oracle_saved(gaps: &[Gap], free: &[usize]) -> usize {
-    let mut best = 0usize;
-    'outer: for mask in 0u32..(1u32 << gaps.len()) {
-        let mut occ = vec![0usize; free.len()];
-        for (i, g) in gaps.iter().enumerate() {
-            if mask & (1 << i) != 0 {
-                let (s, e) = occ_range(g);
-                for t in s..=e {
-                    occ[t] += 4;
-                    if occ[t] > free[t] {
-                        continue 'outer;
-                    }
-                }
-            }
-        }
-        best = best.max(mask.count_ones() as usize);
-    }
-    best
-}
+// `Gap`/`occ_range`/`live_profile`/`fif_select`/`oracle_saved` are now lifted verbatim
+// into `src` (Task 5, CS-M0): `gkr_eval_isa::bwd::fif::{Gap, occ_range, fif_select,
+// oracle_saved}` and `gkr_eval_isa::bwd::trace::live_profile` (Task 1) — imported above.
+// `Gap::origin` is `ExprId` in the src version (was a transient ledger `usize` index
+// here); the two FC0 tests below and `bwd_exact_ceiling` construct it accordingly.
 
 fn lcg(state: &mut u64, m: u64) -> u64 {
     *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
@@ -581,7 +424,7 @@ fn fc0_fif_solver_matches_oracle() {
             }
             pos.sort_unstable();
             for w in pos.windows(2) {
-                gaps.push(Gap { origin: o, start: w[0], end: w[1] });
+                gaps.push(Gap { origin: ExprId(o as u32), start: w[0], end: w[1] });
             }
         }
         gaps.truncate(12); // oracle is 2^|gaps|
@@ -659,7 +502,7 @@ fn bwd_exact_ceiling() {
         let mut gaps: Vec<Gap> = Vec::new();
         for (o, (_, pos)) in keyed.iter().enumerate() {
             for w in pos.windows(2) {
-                gaps.push(Gap { origin: o, start: w[0], end: w[1] });
+                gaps.push(Gap { origin: ExprId(o as u32), start: w[0], end: w[1] });
             }
         }
 
@@ -701,7 +544,7 @@ fn bwd_exact_ceiling() {
                 let per_b: Vec<String> = per_b_sel
                     .iter()
                     .map(|s| {
-                        let hits = s.iter().filter(|&&gi| gaps[gi].origin == o).count();
+                        let hits = s.iter().filter(|&&gi| gaps[gi].origin.0 as usize == o).count();
                         let misses = pos.len() - hits; // every non-hit use is a gather
                         let bypasses = (pos.len() - 1) - hits; // unretained gaps
                         format!("{{\"hits\":{hits},\"misses\":{misses},\"bypasses\":{bypasses}}}")

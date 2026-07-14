@@ -5,6 +5,7 @@ pub mod source;
 pub mod distill;
 pub mod compile;
 pub mod cost;
+pub mod fif;
 pub mod interp;
 pub mod plan;
 pub mod search;
