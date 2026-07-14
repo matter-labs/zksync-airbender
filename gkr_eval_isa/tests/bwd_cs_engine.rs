@@ -2,7 +2,10 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 
 use common::*;
-use gkr_eval_isa::bwd::compile::{compile_distilled, compile_distilled_planned, compile_distilled_traced};
+use gkr_eval_isa::bwd::compile::{
+    compile_distilled, compile_distilled_at_planned_lb, compile_distilled_planned,
+    compile_distilled_traced,
+};
 use gkr_eval_isa::bwd::construct::construct_unit_order;
 use gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer;
 use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain, DistilledLayer};
@@ -914,4 +917,83 @@ fn engine_value_parity_all_fixtures() {
         "engine_value_parity_all_fixtures: {checked}/{} fixtures held (Ext L0)",
         FIXTURES.len()
     );
+}
+
+// ── Task 4 (CS-M3): fill-then-trim realizer for the plan-driven compile ────────
+
+/// The STRUCTURAL-CORE gate for CS-M3 Stage 2: the plan-driven compile
+/// (`compile_distilled_planned`) now fill-then-trims — lower with eviction effectively
+/// disabled (`lower_budget = FILL`) so every planned `Retain` lands, then let
+/// `plan_placement` at the real `budget` be the 2-D feasibility oracle, binary-searching
+/// the largest `lower_budget` that place-fits. The pre-Stage-2 behavior lowered at
+/// `lower == place == budget`, whose 1-D admission gate over-reserves cells vs the 2-D
+/// placement oracle and starves residency at saturation (keccak, blake2).
+///
+/// The `baseline` arm reproduces that pre-Stage-2 behavior byte-for-byte via the now-`pub`
+/// inner `compile_distilled_at_planned_lb(d, budget, budget, plan)` (the old
+/// `compile_distilled_at_planned` called `compile_bwd_program` at exactly `(budget,
+/// budget)`), so this single run captures the pre-refactor vs post-refactor relationship on
+/// a FIXED CS plan. Asserts the DURABLE guard: both certify exactly (counted == reported),
+/// the realized (winning) trace never diverges, and the fill-then-trim traffic is MONOTONE
+/// `<=` the `lower == budget` baseline (`plan_placement` never spuriously overflows where the
+/// baseline compiled). The observed `baseline -> realized` traffic drop is printed as the
+/// structural-improvement evidence (reported, not asserted as a hardcoded constant).
+#[test]
+fn planned_fill_then_trim_monotone() {
+    const HEAVY: &[&str] =
+        &["keccak_special5_layout_gkr.json", "blake2_with_extended_control_layout_gkr.json"];
+    const BUDGET: usize = 16;
+    for &name in HEAVY {
+        let (layer, cross) = load_layer(name, 0);
+        let d = distill(&layer, BwdRegime::Ext, &cross, None);
+        let frozen0 = coordinate_correct_frozen(&d, BUDGET);
+
+        // The CS plan (same construction as `priced_rounds_converge_or_cap`).
+        let outcome = priced_rounds(&d, BUDGET, frozen0)
+            .unwrap_or_else(|e| panic!("{name}: priced_rounds must return Ok, got {e:?}"));
+        let plan = &outcome.plan;
+        let retains = plan.entries.iter().filter(|e| e.action == PlanAction::Retain).count();
+
+        // baseline = the pre-Stage-2 `lower == place == budget` single lowering (inner).
+        let (baseline_c, baseline_t) = compile_distilled_at_planned_lb(&d, BUDGET, BUDGET, plan)
+            .unwrap_or_else(|e| panic!("{name}: baseline lower==budget compile failed: {e:?}"));
+        // realized = the fill-then-trim wrapper (with the epoch/fnv asserts on the way in).
+        let (realized_c, realized_t) = compile_distilled_planned(&d, BUDGET, plan)
+            .unwrap_or_else(|e| panic!("{name}: fill-then-trim compile failed: {e:?}"));
+
+        // (a) Both certify exactly (counted == reported).
+        assert!(certify(&baseline_c, &baseline_t).is_ok(), "{name}: baseline certificate must be Ok");
+        assert!(certify(&realized_c, &realized_t).is_ok(), "{name}: realized certificate must be Ok");
+
+        // (b) The realized (winning) trace never diverges.
+        let diverge = realized_t.events.iter().find(|e| matches!(e, BwdEvent::Diverge { .. }));
+        assert!(diverge.is_none(), "{name}: realized trace diverged: {diverge:?}");
+
+        // (c) Monotone: fill-then-trim is never worse than the lower==budget baseline.
+        let baseline_traffic = baseline_c.stats_ext.global + baseline_c.stats_ext.fold_traffic;
+        let realized_traffic = realized_c.stats_ext.global + realized_c.stats_ext.fold_traffic;
+        assert!(
+            realized_traffic <= baseline_traffic,
+            "{name}: fill-then-trim traffic {realized_traffic} > lower==budget baseline {baseline_traffic}"
+        );
+
+        // Diagnostics: traffic can be pinned at a `global`-DRAM floor (keccak) even when
+        // the structural fix bites — so also surface refusals eliminated / fold_uses.
+        let baseline_refusals =
+            baseline_t.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
+        let realized_refusals =
+            realized_t.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
+        eprintln!(
+            "planned_fill_then_trim_monotone {name}: retains={retains} \
+             traffic {baseline_traffic}->{realized_traffic} (drop={}) \
+             fold_uses {}->{} refusals {}->{} max_live {}->{}",
+            baseline_traffic - realized_traffic,
+            baseline_c.stats_ext.fold_uses,
+            realized_c.stats_ext.fold_uses,
+            baseline_refusals,
+            realized_refusals,
+            baseline_c.stats.max_live_cells,
+            realized_c.stats.max_live_cells,
+        );
+    }
 }

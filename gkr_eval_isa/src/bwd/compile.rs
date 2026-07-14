@@ -377,15 +377,15 @@ fn compile_distilled_at_traced(
 
 // ── Task 4 (CS-M0) plan-driven compile driver ──────────────────────────────────
 
-/// Plan-driven backward compile (spec §4/§5). Replay `plan` against a SINGLE lowering
-/// of `d` at `budget` (place == lower == budget — the fill-then-trim eviction dial is
-/// bypassed; explicit plans lower once against the place budget so ONE compile = one
-/// trace authority), with `stream_reductions` pinned FROM the plan and tracing ON (the
-/// planned compile's trace is the next round's planner input). The plan's per-occurrence
-/// `Retain`/`Bypass` actions drive residency; capacity is re-checked live at each event
-/// (evict only EXPIRED residents, else `Refuse`; never preempt a live retention); the
-/// fingerprint matcher fails closed to a Bypass-tail on the first divergence and records
-/// it once.
+/// Plan-driven backward compile (spec §4/§5, CS-M3 Stage 2). Replay `plan` against `d` via
+/// the fill-then-trim realizer [`compile_distilled_at_planned`]: lower with eviction
+/// effectively disabled and let `plan_placement` at the real `budget` be the 2-D feasibility
+/// oracle (`lower_budget == budget` is the guaranteed baseline). The WINNING lowering's trace
+/// is returned as the next round's planner input, with `stream_reductions` pinned FROM the
+/// plan and tracing ON. The plan's per-occurrence `Retain`/`Bypass` actions drive residency;
+/// capacity is re-checked live at each event (evict only EXPIRED residents, else `Refuse`;
+/// never preempt a live retention); the fingerprint matcher fails closed to a Bypass-tail on
+/// the first divergence and records it once.
 ///
 /// HARD ERRORS (panics — a wrong/corrupted plan must never replay silently, spec §4):
 /// the plan's `epoch` must equal `plan_epoch(d, budget, plan.stream_reductions)` and its
@@ -416,12 +416,57 @@ pub fn compile_distilled_planned(
     compile_distilled_at_planned(d, budget, plan)
 }
 
-/// The single plan-driven lowering (spec §5: place == lower == budget, no fill-then-trim,
-/// gene channel OFF, plan channel ON, trace ON). Bwd sibling of `compile_distilled_at`
-/// with the plan threaded in place of the `decisions` streams.
+/// The fill-then-trim realizer for the plan-driven compile (spec §4/§5, CS-M3 Stage 2) —
+/// the bwd sibling of the GA driver's [`compile_distilled_streamed`] fill-then-trim. Lower
+/// with eviction effectively disabled (`lower_budget = FILL`) so every planned `Retain`
+/// lands, let `plan_placement` at the real `budget` (== `place_budget`) be the 2-D
+/// feasibility oracle, and on placement overflow (`BudgetBelowFloor`) binary-search the
+/// largest `lower_budget` that place-fits. `lower_budget == budget` is the guaranteed
+/// baseline (`lo` seed) — never worse than the pre-Stage-2 single lowering. The winning
+/// `(layer, trace)` is threaded out (the trace of the WINNING `lower_budget`, kept keyed on
+/// `place_budget` throughout so the plan's `place_budget` epoch rides it regardless of which
+/// `lower_budget` won). Non-`BudgetBelowFloor` errors propagate unchanged.
 fn compile_distilled_at_planned(
     d: &DistilledLayer,
     budget: usize,
+    plan: &BwdOccurrencePlan,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    const FILL: usize = 1 << 20;
+    let at = |lb: usize| compile_distilled_at_planned_lb(d, budget, lb, plan);
+    match at(FILL) {
+        Ok(c) => return Ok(c),
+        Err(CompileError::BudgetBelowFloor { .. }) => {}
+        Err(e) => return Err(e),
+    }
+    let mut best = at(budget)?; // baseline — never worse than this
+    let (mut lo, mut hi) = (budget, FILL); // lo fits, hi overflows
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        match at(mid) {
+            Ok(c) => {
+                best = c;
+                lo = mid;
+            }
+            Err(CompileError::BudgetBelowFloor { .. }) => hi = mid,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(best)
+}
+
+/// The single plan-driven lowering at an explicit `lower_budget` (the eviction dial),
+/// placing at `place_budget` (the real cell budget) — the inner of the fill-then-trim
+/// wrapper [`compile_distilled_at_planned`], and the plan sibling of `compile_distilled_at`
+/// (gene channel OFF, plan channel ON, trace ON). The trace's epoch / budget / `free`
+/// envelope stay keyed on `place_budget` (NEVER `lower_budget`), so the winning trace
+/// carries the plan's `place_budget` epoch — consistent with the `compile_distilled_planned`
+/// epoch assert and the downstream `freeze_demand` re-key — regardless of which
+/// `lower_budget` won the search. `pub` for the fill-then-trim monotonicity test, which
+/// drives the `lower_budget == budget` baseline directly.
+pub fn compile_distilled_at_planned_lb(
+    d: &DistilledLayer,
+    place_budget: usize,
+    lower_budget: usize,
     plan: &BwdOccurrencePlan,
 ) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
     let layer = &d.layer;
@@ -438,8 +483,8 @@ fn compile_distilled_at_planned(
         distilled_site_domain(d).into_iter().map(|s| s.value).collect();
 
     let seed = BwdCompileTrace {
-        epoch: plan_epoch(d, budget, stream_reductions),
-        budget,
+        epoch: plan_epoch(d, place_budget, stream_reductions),
+        budget: place_budget,
         stream_reductions,
         events: Vec::new(),
         free: Vec::new(),
@@ -452,9 +497,9 @@ fn compile_distilled_at_planned(
         &mut ctx,
         &d.leaf_descs,
         &d.field_overrides,
-        None,   // gene channel OFF — plan mode is exclusive
-        budget, // place_budget
-        budget, // lower_budget == place_budget: no fill-then-trim
+        None,         // gene channel OFF — plan mode is exclusive
+        place_budget, // place_budget: the real cell budget (2-D placement oracle)
+        lower_budget, // lower_budget: the eviction dial (FILL disables eviction)
         stream_reductions,
         Some(seed),
         Some(PlanInput { plan, domain }),
@@ -465,7 +510,7 @@ fn compile_distilled_at_planned(
     let mut trace = trace.expect("a Some-seeded planned compile returns its trace");
     trace.free = live_profile(&program)
         .into_iter()
-        .map(|occ| budget.saturating_sub(occ))
+        .map(|occ| place_budget.saturating_sub(occ))
         .collect();
 
     let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials);
@@ -478,7 +523,7 @@ fn compile_distilled_at_planned(
             backings: ctx.backings,
             consts: ctx.consts,
             challenges: ctx.challenges,
-            budget,
+            budget: place_budget,
             stats,
             stats_ext,
         },
