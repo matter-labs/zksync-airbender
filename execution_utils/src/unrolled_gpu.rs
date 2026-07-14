@@ -452,6 +452,54 @@ impl UnrolledProver {
     }
 }
 
+/// The host-side state of a [`UnifiedRecursionProver`]: pinned host memory pools and
+/// circuit precomputations, with the embedded unified-layer recursion program of the
+/// given security model already registered.
+///
+/// Building this is the expensive part of constructing a [`UnifiedRecursionProver`]
+/// (it page-locks tens of gigabytes of host memory and computes the unified circuit's
+/// setup trace on the CPU) but holds no GPU resources. Build it once and derive a
+/// prover per proving session via [`UnifiedRecursionProver::from_host_state`]: the
+/// derived prover only creates the CUDA contexts and device memory pool, and dropping
+/// it releases all device memory while this state stays warm.
+pub struct UnifiedRecursionProverHostState {
+    security: SecurityModel,
+    state: gpu_prover::execution::prover::ExecutionProverHostState,
+}
+
+impl UnifiedRecursionProverHostState {
+    pub fn new(
+        security: SecurityModel,
+        prover_configuration: ExecutionProverConfiguration,
+    ) -> Self {
+        let mut state =
+            gpu_prover::execution::prover::ExecutionProverHostState::new(prover_configuration);
+        let binary = verifier_binaries::recursion_artifact(
+            security,
+            RecursionLayer::Unified,
+            RecursionArtifact::Bin,
+        );
+        let text = verifier_binaries::recursion_artifact(
+            security,
+            RecursionLayer::Unified,
+            RecursionArtifact::Txt,
+        );
+        state.add_binary(
+            UnifiedRecursionProver::BINARY_KEY,
+            ExecutionKind::Unified,
+            MachineType::Reduced,
+            binary_u8_to_u32(binary),
+            binary_u8_to_u32(text),
+            None,
+        );
+        Self { security, state }
+    }
+
+    pub fn security(&self) -> SecurityModel {
+        self.security
+    }
+}
+
 /// GPU prover for the unified recursion layer only: proves caller-supplied
 /// witness words with the embedded unified-layer recursion program.
 ///
@@ -469,36 +517,28 @@ impl UnifiedRecursionProver {
         security: SecurityModel,
         prover_configuration: ExecutionProverConfiguration,
     ) -> Self {
-        let mut prover = match security {
-            SecurityModel::Security80 => RuntimeExecutionProver::Security80(ExecutionProver::<
-                Security80Marker,
-            >::with_configuration_80(
-                prover_configuration
-            )),
-            SecurityModel::Security100 => RuntimeExecutionProver::Security100(
-                ExecutionProver::<Security100Marker>::with_configuration_100(prover_configuration),
-            ),
-        };
-
-        let binary = verifier_binaries::recursion_artifact(
+        Self::from_host_state(&UnifiedRecursionProverHostState::new(
             security,
-            RecursionLayer::Unified,
-            RecursionArtifact::Bin,
-        );
-        let text = verifier_binaries::recursion_artifact(
-            security,
-            RecursionLayer::Unified,
-            RecursionArtifact::Txt,
-        );
-        prover.add_binary(
-            Self::BINARY_KEY,
-            ExecutionKind::Unified,
-            MachineType::Reduced,
-            binary_u8_to_u32(binary),
-            binary_u8_to_u32(text),
-            None,
-        );
+            prover_configuration,
+        ))
+    }
 
+    /// Derives a prover from prebuilt host state, creating only the GPU-side
+    /// resources (CUDA contexts and the device memory pool). Dropping the prover
+    /// releases all of its device memory; the host state can be reused for the
+    /// next proving session.
+    pub fn from_host_state(host_state: &UnifiedRecursionProverHostState) -> Self {
+        let prover =
+            match host_state.security {
+                SecurityModel::Security80 => {
+                    RuntimeExecutionProver::Security80(
+                        ExecutionProver::<Security80Marker>::with_host_state(&host_state.state),
+                    )
+                }
+                SecurityModel::Security100 => RuntimeExecutionProver::Security100(
+                    ExecutionProver::<Security100Marker>::with_host_state(&host_state.state),
+                ),
+            };
         Self { prover }
     }
 

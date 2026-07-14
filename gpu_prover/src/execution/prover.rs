@@ -63,6 +63,9 @@ pub enum ExecutionKind {
     Unified,
 }
 
+// Cloning shares all heavy state (binaries, JIT cache, precomputations) via `Arc`,
+// so binary holders can be reused across `ExecutionProver` instances.
+#[derive(Clone)]
 struct BinaryHolder {
     execution_kind: ExecutionKind,
     machine_type: MachineType,
@@ -72,6 +75,80 @@ struct BinaryHolder {
     jit_cache: Arc<Mutex<TypeMap>>,
     instruction_tape: Arc<SimpleTape>,
     precomputations: HashMap<UnrolledCircuitType, CircuitPrecomputations>,
+}
+
+fn make_binary_holder(
+    worker: &Worker,
+    key: usize,
+    execution_kind: ExecutionKind,
+    machine_type: MachineType,
+    binary_image: Vec<u32>,
+    text_section: Vec<u32>,
+    cycles_bound: Option<u32>,
+) -> BinaryHolder {
+    info!("PROVER inserting binary with key {key:?}");
+    // setups::pad_bytecode_for_proving(&mut binary_image);
+    let preprocess_bytecode_fn = match machine_type {
+        MachineType::Full => preprocess_bytecode::<FullMachineDecoderConfig>,
+        MachineType::FullUnsigned => preprocess_bytecode::<FullUnsignedMachineDecoderConfig>,
+        MachineType::Reduced => preprocess_bytecode::<ReducedMachineDecoderConfig>,
+    };
+    let preprocessed_bytecode = preprocess_bytecode_fn(&text_section);
+    // setups::pad_bytecode_for_proving(&mut text_section);
+    let instruction_tape = Arc::new(SimpleTape::new(&preprocessed_bytecode));
+    let circuit_types = match execution_kind {
+        ExecutionKind::Unrolled => {
+            let memory =
+                UnrolledMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
+                    .into_iter()
+                    .copied()
+                    .map(|ct| UnrolledCircuitType::Memory(ct));
+            let non_memory =
+                UnrolledNonMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
+                    .into_iter()
+                    .copied()
+                    .map(|ct| UnrolledCircuitType::NonMemory(ct));
+            memory.chain(non_memory).collect_vec()
+        }
+        ExecutionKind::Unified => {
+            assert_eq!(
+                machine_type,
+                MachineType::Reduced,
+                "Unified execution kind is only supported for Reduced machine type"
+            );
+            vec![UnrolledCircuitType::Unified]
+        }
+    };
+    let precomputations = circuit_types
+        .into_iter()
+        .map(|circuit_type| {
+            debug!("PROVER producing precomputations for circuit {circuit_type:?} and binary with key {key:?}");
+            let mut binary_image = binary_image.clone();
+            setups::pad_bytecode_for_proving(&mut binary_image);
+            let mut text_section = text_section.clone();
+            setups::pad_bytecode_for_proving(&mut text_section);
+            let precomputations = CircuitPrecomputations::new(
+                CircuitType::Unrolled(circuit_type),
+                &binary_image,
+                &text_section,
+                worker,
+            );
+            (circuit_type, precomputations)
+        })
+        .collect();
+    let binary_image = Arc::new(binary_image.into_boxed_slice());
+    let text_section = Arc::new(text_section.into_boxed_slice());
+    let jit_cache = Arc::new(Mutex::new(TypeMap::new()));
+    BinaryHolder {
+        execution_kind,
+        machine_type,
+        binary_image,
+        text_section,
+        cycles_bound,
+        instruction_tape,
+        jit_cache,
+        precomputations,
+    }
 }
 
 /// Configuration for the `ExecutionProver`.
@@ -207,44 +284,36 @@ pub struct ExecutionProver<S: SecurityMarker> {
     marker: PhantomData<S>,
 }
 
-impl ExecutionProver<Security80Marker> {
-    /// Creates a new 80-bit execution prover with the default configuration.
-    pub fn new_80() -> Self {
-        Self::new()
-    }
-
-    /// Creates a new 80-bit execution prover with the supplied configuration.
-    pub fn with_configuration_80(configuration: ExecutionProverConfiguration) -> Self {
-        Self::with_configuration(configuration)
-    }
+/// The host-side (CUDA-context-free) state of an [`ExecutionProver`]: the CPU worker
+/// pool, the pinned host memory pools (simulator memory holders, trace chunks, tracing
+/// allocators) and the circuit precomputations for the common circuits and any binaries
+/// registered with [`Self::add_binary`].
+///
+/// Building this state is expensive — it page-locks tens of gigabytes of host memory
+/// and computes setup traces on the CPU — while it holds no GPU resources at all. Build
+/// it once and construct short-lived [`ExecutionProver`]s from it via
+/// [`ExecutionProver::with_host_state`]: each construction then only spins up the GPU
+/// manager (CUDA contexts and the device memory pool), so all device memory is released
+/// when the prover is dropped while the host state stays warm for the next one.
+///
+/// The state is meant to back one `ExecutionProver` at a time; provers built from the
+/// same state share the underlying pools and would contend for them if used
+/// concurrently.
+pub struct ExecutionProverHostState {
+    configuration: ExecutionProverConfiguration,
+    worker: Arc<Worker>,
+    memory_holders_cache: Arc<Mutex<Vec<LockedBoxedMemoryHolder>>>,
+    trace_chunks_cache: Arc<Mutex<Vec<Vec<LockedBoxedTraceChunk>>>>,
+    binary_holders: BTreeMap<usize, BinaryHolder>,
+    common_precomputations: BTreeMap<CircuitType, CircuitPrecomputations>,
+    free_allocators_sender: Sender<A>,
+    free_allocators_receiver: Receiver<A>,
 }
 
-impl ExecutionProver<Security100Marker> {
-    /// Creates a new 100-bit execution prover with the default configuration.
-    pub fn new_100() -> Self {
-        Self::new()
-    }
-
-    /// Creates a new 100-bit execution prover with the supplied configuration.
-    pub fn with_configuration_100(configuration: ExecutionProverConfiguration) -> Self {
-        Self::with_configuration(configuration)
-    }
-}
-
-impl<S: SecurityMarker> ExecutionProver<S> {
-    /// Creates a new execution prover with the default configuration.
-    pub fn new() -> Self {
-        Self::with_configuration(ExecutionProverConfiguration::default())
-    }
-
-    /// Creates a new execution prover with the supplied configuration.
-    pub fn with_configuration(configuration: ExecutionProverConfiguration) -> Self {
-        Self::build(configuration)
-    }
-
-    fn build(configuration: ExecutionProverConfiguration) -> Self {
+impl ExecutionProverHostState {
+    pub fn new(configuration: ExecutionProverConfiguration) -> Self {
         let ExecutionProverConfiguration {
-            prover_context_config,
+            prover_context_config: _,
             max_thread_pool_threads,
             expected_concurrent_jobs,
             replay_worker_threads_count,
@@ -255,8 +324,6 @@ impl<S: SecurityMarker> ExecutionProver<S> {
         } = configuration.clone();
         let device_count = get_device_count().unwrap() as usize;
         assert_ne!(device_count, 0, "no CUDA capable devices found");
-        let gpu_wait_group = WaitGroup::new();
-        let gpu_manager = GpuManager::<S>::new(gpu_wait_group.clone(), prover_context_config);
         let worker = if let Some(thread_pool_threads_count) = max_thread_pool_threads {
             Worker::new_with_num_threads(thread_pool_threads_count)
         } else {
@@ -306,11 +373,9 @@ impl<S: SecurityMarker> ExecutionProver<S> {
             let allocator = A::new([allocation], host_allocation_log_chunk_size);
             free_allocators_sender_ref.send(allocator).unwrap();
         });
-        gpu_wait_group.wait();
-        info!("PROVER initialized");
+        info!("PROVER host state initialized");
         Self {
             configuration,
-            gpu_manager,
             worker,
             memory_holders_cache,
             trace_chunks_cache,
@@ -318,11 +383,113 @@ impl<S: SecurityMarker> ExecutionProver<S> {
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,
+        }
+    }
+
+    /// Registers a binary, computing its circuit precomputations on the host. See
+    /// [`ExecutionProver::add_binary`]; registered binaries are shared by every prover
+    /// constructed from this state.
+    pub fn add_binary(
+        &mut self,
+        key: usize,
+        execution_kind: ExecutionKind,
+        machine_type: MachineType,
+        binary_image: Vec<u32>,
+        text_section: Vec<u32>,
+        cycles_bound: Option<u32>,
+    ) {
+        let holder = make_binary_holder(
+            &self.worker,
+            key,
+            execution_kind,
+            machine_type,
+            binary_image,
+            text_section,
+            cycles_bound,
+        );
+        assert!(self.binary_holders.insert(key, holder).is_none());
+    }
+}
+
+impl ExecutionProver<Security80Marker> {
+    /// Creates a new 80-bit execution prover with the default configuration.
+    pub fn new_80() -> Self {
+        Self::new()
+    }
+
+    /// Creates a new 80-bit execution prover with the supplied configuration.
+    pub fn with_configuration_80(configuration: ExecutionProverConfiguration) -> Self {
+        Self::with_configuration(configuration)
+    }
+}
+
+impl ExecutionProver<Security100Marker> {
+    /// Creates a new 100-bit execution prover with the default configuration.
+    pub fn new_100() -> Self {
+        Self::new()
+    }
+
+    /// Creates a new 100-bit execution prover with the supplied configuration.
+    pub fn with_configuration_100(configuration: ExecutionProverConfiguration) -> Self {
+        Self::with_configuration(configuration)
+    }
+}
+
+impl<S: SecurityMarker> ExecutionProver<S> {
+    /// Creates a new execution prover with the default configuration.
+    pub fn new() -> Self {
+        Self::with_configuration(ExecutionProverConfiguration::default())
+    }
+
+    /// Creates a new execution prover with the supplied configuration.
+    pub fn with_configuration(configuration: ExecutionProverConfiguration) -> Self {
+        let device_count = get_device_count().unwrap() as usize;
+        assert_ne!(device_count, 0, "no CUDA capable devices found");
+        // Spawn the GPU manager first so CUDA context creation overlaps with the
+        // host-state construction.
+        let gpu_wait_group = WaitGroup::new();
+        let gpu_manager =
+            GpuManager::<S>::new(gpu_wait_group.clone(), configuration.prover_context_config);
+        let host_state = ExecutionProverHostState::new(configuration);
+        gpu_wait_group.wait();
+        info!("PROVER initialized");
+        Self::from_parts(gpu_manager, &host_state)
+    }
+
+    /// Creates a new execution prover backed by an existing [`ExecutionProverHostState`].
+    ///
+    /// Only the GPU manager (CUDA contexts and the device memory pool) is created here;
+    /// the worker pool, pinned host memory pools, precomputations and registered
+    /// binaries are shared with the host state, so this is cheap relative to
+    /// [`Self::with_configuration`] and dropping the prover releases all of its device
+    /// memory while the host state stays warm.
+    pub fn with_host_state(host_state: &ExecutionProverHostState) -> Self {
+        let gpu_wait_group = WaitGroup::new();
+        let gpu_manager = GpuManager::<S>::new(
+            gpu_wait_group.clone(),
+            host_state.configuration.prover_context_config,
+        );
+        gpu_wait_group.wait();
+        info!("PROVER initialized from host state");
+        Self::from_parts(gpu_manager, host_state)
+    }
+
+    fn from_parts(gpu_manager: GpuManager<S>, host_state: &ExecutionProverHostState) -> Self {
+        Self {
+            configuration: host_state.configuration.clone(),
+            gpu_manager,
+            worker: host_state.worker.clone(),
+            memory_holders_cache: host_state.memory_holders_cache.clone(),
+            trace_chunks_cache: host_state.trace_chunks_cache.clone(),
+            binary_holders: host_state.binary_holders.clone(),
+            common_precomputations: host_state.common_precomputations.clone(),
+            free_allocators_sender: host_state.free_allocators_sender.clone(),
+            free_allocators_receiver: host_state.free_allocators_receiver.clone(),
             marker: PhantomData,
         }
     }
 
-    pub fn security(&self) -> verifier_common::SecurityModel {
+    pub fn security(&self) -> SecurityModel {
         S::MODEL
     }
 
@@ -345,61 +512,15 @@ impl<S: SecurityMarker> ExecutionProver<S> {
         text_section: Vec<u32>,
         cycles_bound: Option<u32>,
     ) {
-        info!("PROVER inserting binary with key {key:?}");
-        // setups::pad_bytecode_for_proving(&mut binary_image);
-        let preprocess_bytecode_fn = match machine_type {
-            MachineType::Full => preprocess_bytecode::<FullMachineDecoderConfig>,
-            MachineType::FullUnsigned => preprocess_bytecode::<FullUnsignedMachineDecoderConfig>,
-            MachineType::Reduced => preprocess_bytecode::<ReducedMachineDecoderConfig>,
-        };
-        let preprocessed_bytecode = preprocess_bytecode_fn(&text_section);
-        // setups::pad_bytecode_for_proving(&mut text_section);
-        let instruction_tape = Arc::new(SimpleTape::new(&preprocessed_bytecode));
-        let circuit_types = match execution_kind {
-            ExecutionKind::Unrolled => {
-                let memory =
-                    UnrolledMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
-                        .into_iter()
-                        .copied()
-                        .map(|ct| UnrolledCircuitType::Memory(ct));
-                let non_memory =
-                    UnrolledNonMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
-                        .into_iter()
-                        .copied()
-                        .map(|ct| UnrolledCircuitType::NonMemory(ct));
-                memory.chain(non_memory).collect_vec()
-            }
-            ExecutionKind::Unified => {
-                assert_eq!(
-                    machine_type,
-                    MachineType::Reduced,
-                    "Unified execution kind is only supported for Reduced machine type"
-                );
-                vec![UnrolledCircuitType::Unified]
-            }
-        };
-        let precomputations = circuit_types.into_iter().map(|circuit_type| {
-            debug!("PROVER producing precomputations for circuit {circuit_type:?} and binary with key {key:?}");
-            let mut binary_image = binary_image.clone();
-            setups::pad_bytecode_for_proving(&mut binary_image);
-            let mut text_section = text_section.clone();
-            setups::pad_bytecode_for_proving(&mut text_section);
-            let precomputations = CircuitPrecomputations::new(CircuitType::Unrolled(circuit_type), &binary_image, &text_section, &self.worker);
-            (circuit_type, precomputations)
-        }).collect();
-        let binary_image = Arc::new(binary_image.into_boxed_slice());
-        let text_section = Arc::new(text_section.into_boxed_slice());
-        let jit_cache = Arc::new(Mutex::new(TypeMap::new()));
-        let holder = BinaryHolder {
+        let holder = make_binary_holder(
+            &self.worker,
+            key,
             execution_kind,
             machine_type,
             binary_image,
             text_section,
             cycles_bound,
-            instruction_tape,
-            jit_cache,
-            precomputations,
-        };
+        );
         assert!(self.binary_holders.insert(key, holder).is_none());
     }
 
