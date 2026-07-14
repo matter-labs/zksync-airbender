@@ -645,6 +645,7 @@ mod tests {
             order: vec![0, 1, 2, 3],
             cache_priorities: Vec::new(),
             weighted_edges: edges,
+            value_units: Vec::new(),
         }
     }
 

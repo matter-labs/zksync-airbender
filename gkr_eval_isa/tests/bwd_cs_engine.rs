@@ -1,7 +1,10 @@
 mod common;
+use std::collections::BTreeSet;
+
 use common::*;
 use gkr_eval_isa::bwd::compile::{compile_distilled, compile_distilled_planned, compile_distilled_traced};
-use gkr_eval_isa::bwd::distill::distill;
+use gkr_eval_isa::bwd::construct::construct_unit_order;
+use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain};
 use gkr_eval_isa::bwd::fif::{feasible_leaf_plan, fif_select, oracle_saved, plan_leaves, Gap};
 use gkr_eval_isa::bwd::plan::PlanAction;
 use gkr_eval_isa::bwd::trace::{
@@ -358,4 +361,64 @@ fn certificate_rejects_doctored_trace() {
     let err = report.expect_err("doctored trace must fail certification");
     assert_eq!(err.counted_traffic, reported + 1);
     assert_eq!(err.reported_traffic, reported);
+}
+
+// ── Task 7 (CS-M0): constructive backward unit order (`construct_unit_order`) ─
+
+/// (b) For all 12 `FIXTURES`, Ext L0 (skipping fixtures whose L0 has no bwd
+/// roots): `construct_unit_order` returns a valid permutation of
+/// `0..unit_count`, and re-distilling under that permutation still compiles
+/// at b16 — feasibility unchanged by reordering (the streaming fallback stays
+/// intact). If some permutation ever made a fixture infeasible at b16 that
+/// would be a genuine finding, reported via the panic message, not hidden.
+#[test]
+fn construct_order_is_permutation_all_fixtures() {
+    let mut checked = 0usize;
+    for &name in FIXTURES {
+        let (layer, cross) = load_layer(name, 0);
+        if bwd_roots(&layer).is_empty() {
+            continue; // L0 has no backward roots for this fixture
+        }
+        let d0 = distill(&layer, BwdRegime::Ext, &cross, None);
+        let n_units = d0.unit_order.len();
+        let stable_domain = stable_distilled_site_domain(&d0);
+
+        let order = construct_unit_order(&layer, &d0, &stable_domain);
+
+        assert_eq!(order.len(), n_units, "{name}: permutation length");
+        let mut seen: BTreeSet<usize> = BTreeSet::new();
+        for &unit in &order {
+            assert!(
+                unit < n_units,
+                "{name}: unit {unit} out of range (n_units={n_units})"
+            );
+            assert!(seen.insert(unit), "{name}: unit {unit} repeated in permutation");
+        }
+        assert_eq!(seen.len(), n_units, "{name}: permutation must cover every unit");
+
+        let reordered = distill(&layer, BwdRegime::Ext, &cross, Some(&order));
+        compile_distilled(&reordered, 16, None).unwrap_or_else(|e| {
+            panic!("{name}: constructed-order compile @ b16 failed (feasibility regression): {e:?}")
+        });
+
+        checked += 1;
+    }
+    assert!(checked > 0, "no fixture's L0 had bwd roots — enumeration broke");
+    println!(
+        "construct_order_is_permutation_all_fixtures: {checked}/{} fixtures held (Ext L0)",
+        FIXTURES.len()
+    );
+}
+
+/// (c) Determinism: two `construct_unit_order` calls over the same inputs are
+/// byte-equal (no wall-clock or hashmap-iteration-order dependence).
+#[test]
+fn construct_order_is_deterministic() {
+    let (layer, cross) = load_layer("add_sub_lui_auipc_mop_layout_gkr.json", 0);
+    let d0 = distill(&layer, BwdRegime::Ext, &cross, None);
+    let stable_domain = stable_distilled_site_domain(&d0);
+
+    let a = construct_unit_order(&layer, &d0, &stable_domain);
+    let b = construct_unit_order(&layer, &d0, &stable_domain);
+    assert_eq!(a, b, "construct_unit_order must be deterministic");
 }

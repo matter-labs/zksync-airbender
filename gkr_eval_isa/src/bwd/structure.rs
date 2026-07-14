@@ -21,6 +21,14 @@ pub(super) struct ReuseStructure {
     pub order: Vec<usize>,
     pub cache_priorities: Vec<f64>,
     pub weighted_edges: Vec<ReuseEdge>,
+    /// Value↔unit incidence for every canonical value reached by at least one
+    /// relation unit: `(width lanes, uncached DRAM cost, consuming unit
+    /// indices, ascending)`. Populated by the SAME `attach_canonical_unit_uses`
+    /// walk that fills `ValueReuse.units` above — pure exposure (no new
+    /// analysis), added for Task 7's constructive order
+    /// (`construct::construct_unit_order`'s projected greedy needs the raw
+    /// incidence; `weighted_edges` alone only carries pairwise unit sums).
+    pub value_units: Vec<(usize, usize, Vec<usize>)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,10 +91,16 @@ impl ReuseStructure {
             .collect();
         let order = guided_order(distilled.unit_order.len(), &edges);
         let cache_priorities = interval_priorities(stable_domain.len(), &values, &order);
+        let value_units = values
+            .values()
+            .filter(|value| !value.units.is_empty())
+            .map(|value| (value.width, value.dram_cells, value.units.clone()))
+            .collect();
         Self {
             order,
             cache_priorities,
             weighted_edges,
+            value_units,
         }
     }
 }
