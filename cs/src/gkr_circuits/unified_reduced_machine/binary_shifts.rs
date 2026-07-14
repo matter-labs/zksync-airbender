@@ -4,6 +4,7 @@ use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
 use crate::gkr_circuits::binary_shifts_family::ShiftBinaryFamilyCircuitMask;
+use crate::structured_expr::Expr;
 use crate::types::Boolean;
 use crate::witness_placer::*;
 use field::PrimeField;
@@ -99,9 +100,9 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
 
     {
         // At most one Family-3 sub-opcode fires per row (binary-op / shift / xor-rotate).
-        let f3_sum: Constraint<F> =
-            Term::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot);
-        cs.add_constraint(f3_sum.clone() * (f3_sum - Term::from(1u32)));
+        let f3_sum: Expr<F> =
+            Expr::from(is_binary_op) + Expr::from(is_shift) + Expr::from(is_xor_rot);
+        cs.add_constraint_expr(f3_sum.clone() * (f3_sum - Expr::from(1u32)));
     }
 
     let shift_amount_constraint =
@@ -350,44 +351,52 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // rd-write constraint, gated on Family 3 firing so non-Family-3 cycles in the
     // unified circuit aren't forced to rd_write = 0. is_binary_op + is_shift is
     // the family-firing indicator (mutually exclusive ⇒ sum is 0 or 1).
-    let mut low_constraint = Constraint::empty();
-    low_constraint += Term::from(is_binary_op)
-        * (Term::from(1 << 8) * Term::from(binary_ops_outputs[1])
-            + Term::from(binary_ops_outputs[0]));
+    let mut low_constraint: Expr<F> = Expr::from(is_binary_op)
+        * (Expr::constant(F::from_u32_with_reduction(1 << 8)) * Expr::var(binary_ops_outputs[1])
+            + Expr::var(binary_ops_outputs[0]));
     for i in 0..4 {
         let shift_outputs = shift_output_chunks[i];
-        low_constraint += Term::from(is_shift)
-            * (Term::from(1 << 8) * Term::from(shift_outputs[1]) + Term::from(shift_outputs[0]));
+        low_constraint = low_constraint
+            + Expr::from(is_shift)
+                * (Expr::constant(F::from_u32_with_reduction(1 << 8))
+                    * Expr::var(shift_outputs[1])
+                    + Expr::var(shift_outputs[0]));
         // xor-rotate: cyclic reconstruction out_byte[k] = Σ_i chunk[i][(k - i) mod 4].
         // low limb = out_byte[0] + out_byte[1]<<8.
         let b0 = shift_outputs[(4 - i) % 4]; // (0 - i) mod 4
         let b1 = shift_outputs[(1 + 4 - i) % 4]; // (1 - i) mod 4
-        low_constraint +=
-            Term::from(is_xor_rot) * (Term::from(1 << 8) * Term::from(b1) + Term::from(b0));
+        low_constraint = low_constraint
+            + Expr::from(is_xor_rot)
+                * (Expr::constant(F::from_u32_with_reduction(1 << 8)) * Expr::var(b1)
+                    + Expr::var(b0));
     }
-    low_constraint -=
-        (Constraint::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot))
-            * Term::from(rd_write_limbs[0]);
-    cs.add_constraint(low_constraint);
+    low_constraint = low_constraint
+        - (Expr::from(is_binary_op) + Expr::from(is_shift) + Expr::from(is_xor_rot))
+            * Expr::var(rd_write_limbs[0]);
+    cs.add_constraint_expr(low_constraint);
 
-    let mut high_constraint = Constraint::empty();
-    high_constraint += Term::from(is_binary_op)
-        * (Term::from(1 << 8) * Term::from(binary_ops_outputs[3])
-            + Term::from(binary_ops_outputs[2]));
+    let mut high_constraint: Expr<F> = Expr::from(is_binary_op)
+        * (Expr::constant(F::from_u32_with_reduction(1 << 8)) * Expr::var(binary_ops_outputs[3])
+            + Expr::var(binary_ops_outputs[2]));
     for i in 0..4 {
         let shift_outputs = shift_output_chunks[i];
-        high_constraint += Term::from(is_shift)
-            * (Term::from(1 << 8) * Term::from(shift_outputs[3]) + Term::from(shift_outputs[2]));
+        high_constraint = high_constraint
+            + Expr::from(is_shift)
+                * (Expr::constant(F::from_u32_with_reduction(1 << 8))
+                    * Expr::var(shift_outputs[3])
+                    + Expr::var(shift_outputs[2]));
         // xor-rotate high limb = out_byte[2] + out_byte[3]<<8.
         let b2 = shift_outputs[(2 + 4 - i) % 4]; // (2 - i) mod 4
         let b3 = shift_outputs[(3 + 4 - i) % 4]; // (3 - i) mod 4
-        high_constraint +=
-            Term::from(is_xor_rot) * (Term::from(1 << 8) * Term::from(b3) + Term::from(b2));
+        high_constraint = high_constraint
+            + Expr::from(is_xor_rot)
+                * (Expr::constant(F::from_u32_with_reduction(1 << 8)) * Expr::var(b3)
+                    + Expr::var(b2));
     }
-    high_constraint -=
-        (Constraint::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot))
-            * Term::from(rd_write_limbs[1]);
-    cs.add_constraint(high_constraint);
+    high_constraint = high_constraint
+        - (Expr::from(is_binary_op) + Expr::from(is_shift) + Expr::from(is_xor_rot))
+            * Expr::var(rd_write_limbs[1]);
+    cs.add_constraint_expr(high_constraint);
 
     let mut lookups = vec![combined_request];
     lookups.extend(per_byte_requests);

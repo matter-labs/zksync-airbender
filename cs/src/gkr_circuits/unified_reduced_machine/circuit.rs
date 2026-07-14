@@ -6,7 +6,7 @@ use super::jump_branch_slt::{
 };
 use super::mem_word_only::apply_unified_mem_word_only_inner;
 use super::*;
-use crate::constraint::{Constraint, Term};
+use crate::constraint::Constraint;
 use crate::cs::circuit_trait::*;
 use crate::gkr_circuits::add_sub_family::{
     add_sub_lui_auipc_mop_table_addition_fn, add_sub_lui_auipc_mop_table_driver_fn,
@@ -18,6 +18,7 @@ use crate::gkr_circuits::mem_word_only::{
     mem_word_only_table_addition_fn, mem_word_only_table_driver_fn,
 };
 use crate::oracle::Placeholder;
+use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
 use crate::types::{Boolean, Register, LIMB_WIDTH};
 use crate::witness_placer::*;
@@ -470,27 +471,28 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
     // Setup constraint: pc_bump_gate = execute - sum(execute * family_2_subop_bits)
     //   ⇒ pc_bump_gate - execute + sum(execute * family_2_subop_bits) = 0  (deg 2)
     {
-        let mut setup = Constraint::from(pc_bump_gate) - Term::from(execute);
+        let mut setup = Expr::from(pc_bump_gate) - Expr::var(execute);
         for &b in family_2_bits[..4].iter() {
-            setup = setup + Constraint::from(execute) * Constraint::from(b);
+            setup = setup + Expr::var(execute) * Expr::from(b);
         }
-        cs.add_constraint(setup);
+        cs.add_constraint_expr(setup);
     }
 
-    let pc_step: Term<F> = Term::from(common_constants::PC_STEP as u32);
-    let shift16: Term<F> = Term::from(1 << 16);
+    let pc_step: Expr<F> =
+        Expr::constant(F::from_u32_with_reduction(common_constants::PC_STEP as u32));
+    let shift16: Expr<F> = Expr::constant(F::from_u32_with_reduction(1 << 16));
 
     // pc_bump_gate * (pc_in[0] + 4 - pc_out[0] - 2^16 * pc_inc_carry) = 0  (deg 2)
-    cs.add_constraint(
-        Constraint::from(pc_bump_gate)
-            * (Constraint::from(pc_in[0]) + pc_step
-                - Term::from(pc_out[0])
-                - shift16 * Term::from(pc_inc_carry)),
+    cs.add_constraint_expr(
+        Expr::from(pc_bump_gate)
+            * (Expr::var(pc_in[0]) + pc_step
+                - Expr::var(pc_out[0])
+                - shift16 * Expr::from(pc_inc_carry)),
     );
     // pc_bump_gate * (pc_inc_carry + pc_in[1] - pc_out[1]) = 0  (deg 2)
-    cs.add_constraint(
-        Constraint::from(pc_bump_gate)
-            * (Constraint::from(pc_inc_carry) + Term::from(pc_in[1]) - Term::from(pc_out[1])),
+    cs.add_constraint_expr(
+        Expr::from(pc_bump_gate)
+            * (Expr::from(pc_inc_carry) + Expr::var(pc_in[1]) - Expr::var(pc_out[1])),
     );
 }
 
@@ -538,19 +540,19 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     // Setup constraint (deg 2):
     //   is_any_family_active - execute * (sum of dispatch bits) = 0
     // sum = family_1_bits[..] + family_2_bits[..4] + family_3_bits[..] + is_lw + is_sw
-    let mut setup = Constraint::from(is_any_family_active);
+    let mut setup = Expr::from(is_any_family_active);
     for &b in family_1_bits.iter() {
-        setup = setup - Constraint::from(execute) * Constraint::from(b);
+        setup = setup - Expr::var(execute) * Expr::from(b);
     }
     for &b in family_2_bits[..4].iter() {
-        setup = setup - Constraint::from(execute) * Constraint::from(b);
+        setup = setup - Expr::var(execute) * Expr::from(b);
     }
     for &b in family_3_bits.iter() {
-        setup = setup - Constraint::from(execute) * Constraint::from(b);
+        setup = setup - Expr::var(execute) * Expr::from(b);
     }
-    setup = setup - Constraint::from(execute) * Constraint::from(is_lw);
-    setup = setup - Constraint::from(execute) * Constraint::from(is_sw);
-    cs.add_constraint(setup);
+    setup = setup - Expr::var(execute) * Expr::from(is_lw);
+    setup = setup - Expr::var(execute) * Expr::from(is_sw);
+    cs.add_constraint_expr(setup);
 
     // Padding-row zeroing: on execute=0 rows, the decoder lookup is gated by
     // `execute` and so doesn't bind the bitmask — without this constraint a
@@ -560,19 +562,19 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     //   (1 - execute) * (sum of all family bits) = 0
     // forces the sum to 0 in the field, which forces each bit to 0 (since each
     // is in {0,1}). One degree-2 constraint covers all 17 bits.
-    let mut padding_zero_sum = Constraint::empty();
+    let mut padding_zero_sum: Expr<F> = Expr::zero();
     for &b in family_1_bits.iter() {
-        padding_zero_sum = padding_zero_sum + Constraint::from(b);
+        padding_zero_sum = padding_zero_sum + Expr::from(b);
     }
     for &b in family_2_bits.iter() {
-        padding_zero_sum = padding_zero_sum + Constraint::from(b);
+        padding_zero_sum = padding_zero_sum + Expr::from(b);
     }
     for &b in family_3_bits.iter() {
-        padding_zero_sum = padding_zero_sum + Constraint::from(b);
+        padding_zero_sum = padding_zero_sum + Expr::from(b);
     }
-    padding_zero_sum = padding_zero_sum + Constraint::from(is_lw);
-    padding_zero_sum = padding_zero_sum + Constraint::from(is_sw);
-    cs.add_constraint((Term::from(1u32) - Term::from(execute)) * padding_zero_sum);
+    padding_zero_sum = padding_zero_sum + Expr::from(is_lw);
+    padding_zero_sum = padding_zero_sum + Expr::from(is_sw);
+    cs.add_constraint_expr((Expr::<F>::one() - Expr::var(execute)) * padding_zero_sum);
 }
 
 /// Register all tables the unified circuit body looks up against. Shared by both
@@ -623,6 +625,7 @@ pub fn build_unified_artifact<F: ::field::PrimeField>(
 
 #[cfg(test)]
 mod test {
+    use crate::constraint::Term;
     use test_utils::skip_if_ci;
 
     const UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 24;
@@ -695,7 +698,8 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let artifact = build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
+        let artifact =
+            build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
 
         assert!(artifact
             .global_output_map
@@ -722,7 +726,8 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let artifact = build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
+        let artifact =
+            build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_gkr.json",
@@ -735,7 +740,8 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let artifact = build_unified_artifact::<BabyBearField>(false, UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
+        let artifact =
+            build_unified_artifact::<BabyBearField>(false, UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
@@ -766,7 +772,8 @@ mod test {
         skip_if_ci!();
         use ::field::proth120::Proth120;
 
-        let artifact = build_unified_artifact::<Proth120>(true, LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
+        let artifact =
+            build_unified_artifact::<Proth120>(true, LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
