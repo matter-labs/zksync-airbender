@@ -619,7 +619,7 @@ fn run_unified_stagewise_parity_test() {
             crate::allocator::tracker::AllocationPlacement::Bottom,
         )
         .unwrap();
-    let mut gpu_backward_execution = {
+    let gpu_backward_execution = {
         let _range = scoped_range(None, "test.gpu.sumcheck.backward_workflow");
         gpu_backward_state
             .schedule_execute_backward_workflow(

@@ -47,6 +47,10 @@ use crate::upstream::{
     LookupRationalPairWithUnbalancedExtensionGKRRelation, MaskIntoIdentityProductGKRRelation,
     SameSizeProductGKRRelation,
 };
+// `mod builders` is private, so sibling modules reach its builders via this
+// re-export as `backward::*`. rustc's `unused_imports` lint mis-flags a
+// path-consumed `pub use *`, and the consumed set varies by cfg, so allow it.
+#[allow(unused_imports)]
 pub(crate) use builders::*;
 #[cfg(test)]
 use builders::{

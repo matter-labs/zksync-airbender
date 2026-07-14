@@ -548,7 +548,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
+        let _extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
         let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<BF, Global>(
             domain_generator_for_size::<BF>(1u64 << num_folding_steps)
                 .inverse()
@@ -636,7 +636,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     commit_field_els::<BF, E4>(&mut transcript_seed, &sumchecked_poly_monomial_form);
     let query_domain_size = 1u64 << query_domain_log2;
     let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-    let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
+    let _extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
     let mut high_powers_offsets = materialize_powers_serial_starting_with_one::<BF, Global>(
         domain_generator_for_size::<BF>(1u64 << final_folding_steps)
             .inverse()

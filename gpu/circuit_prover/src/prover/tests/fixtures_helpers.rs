@@ -31,7 +31,6 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
 ) -> ExtractedFamily {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
     let cycles_bound = 1 << 20;
 
     let binary = std::fs::read(test_artifact_path(binary_path)).unwrap();

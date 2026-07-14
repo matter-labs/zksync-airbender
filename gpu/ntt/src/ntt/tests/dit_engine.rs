@@ -27,7 +27,7 @@ use serial_test::serial;
 
 use super::make_context;
 use crate::ntt_twiddles::OMEGA_LOG_ORDER;
-use crate::upstream::{Field, PrimeField};
+use crate::upstream::Field;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut,
 };
@@ -414,11 +414,9 @@ dit_two_pass!(ab_dit_two_pass_12_2);
 struct TwoPassGeom {
     log_n: u32,
     log_vpt: u32,
-    vpt: u32,
     n: u32,
     log_n1: u32,
     log_n2: u32,
-    n1: u32,
     threads: u32,
 }
 
@@ -428,16 +426,13 @@ impl TwoPassGeom {
         let n = 1u32 << log_n;
         let log_n2 = (log_n / 2).min(log_vpt + 3);
         let log_n1 = log_n - log_n2;
-        let n1 = 1u32 << log_n1;
         let threads = n / vpt;
         Self {
             log_n,
             log_vpt,
-            vpt,
             n,
             log_n1,
             log_n2,
-            n1,
             threads,
         }
     }
