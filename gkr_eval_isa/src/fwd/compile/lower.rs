@@ -329,6 +329,18 @@ struct VirtualLower<'a> {
     cur_step: usize,
     /// Real `ExprId`s currently defined-resident (physically in a cell). Never internal.
     defined: HashSet<ExprId>,
+    /// SP1 streamed-fold eviction pin (Fix A): resident COMPOUND `ExprId`s that a
+    /// streamed reduction/FMA classified `!must_stash` (fold-direct) up front and has
+    /// not yet served. A mid-reduction `alloc_temp_evicting` / admission eviction must
+    /// NOT drop these — a dropped resident compound would fail `direct_operand`'s
+    /// `defined` guard and fall through to `source_to_vop`, which errors on a compound
+    /// (the `source_to_vop on non-source expr` crash). Both eviction victim filters
+    /// (`evict_to_fit`, `plan_evict_to_fit`) skip any candidate in this set. Populated
+    /// per streamed-fold entry (only ids not already pinned by an ancestor reduction —
+    /// nesting-safe) and cleared on that entry's return, so it is empty outside a
+    /// streamed fold. `decisions: None` never admits, so nothing is ever resident and
+    /// this stays empty — the forward program is byte-identical.
+    pinned_direct: HashSet<ExprId>,
     widths: HashMap<ValueId, OperandField>,
     next_internal: u32,
     /// Compute roots by their shared `ExprId`: `(RootId, slot, col, sink field)`.
@@ -682,11 +694,17 @@ impl<'a> VirtualLower<'a> {
                 return true;
             }
             let diverged = plan.run.diverged().is_some();
+            let pinned = &self.pinned_direct;
             // (dead?, closes_at, value, field) — `dead = false` sorts first via `!dead`.
             let mut victims: Vec<(bool, usize, ExprId, OperandField)> = plan
                 .resident
                 .iter()
                 .filter_map(|(&rv, slot)| {
+                    // Fix A: never evict a resident compound a streamed fold classified
+                    // fold-direct and has not yet served (same crash guard as `evict_to_fit`).
+                    if pinned.contains(&rv) {
+                        return None;
+                    }
                     let expired = diverged || plan.run.retention(rv).is_none();
                     if !expired {
                         return None;
@@ -882,10 +900,17 @@ impl<'a> VirtualLower<'a> {
         // possibly-suboptimal victim choice; it is never a correctness gap. The
         // pending-reads lookup is keyed by the CURRENT generation id (`generation`),
         // not the real `ExprId`, since that is what `defer_read` incremented against.
+        let pinned = &self.pinned_direct;
         let mut candidates: Vec<(f64, ExprId, OperandField)> = ds
             .resident
             .iter()
             .filter(|&(&id, _)| {
+                // Fix A: a streamed fold classified this resident compound fold-direct
+                // and has not served it yet — evicting it would crash its later
+                // `direct_operand` serve. Never a victim while pinned.
+                if pinned.contains(&id) {
+                    return false;
+                }
                 let gen_id = ds.generation.get(&id).copied().unwrap_or(id);
                 ds.pending_reads.get(&gen_id).copied().unwrap_or(0) == 0
             })
@@ -1704,10 +1729,49 @@ impl<'a> VirtualLower<'a> {
             kids.push(Kid { id, sign, field, must_stash });
         }
 
+        // Fix A: pin resident-compound fold-direct children against eviction until served.
+        // `is_compound_or_may_admit` returns false for a resident compound (a `defined`
+        // hit), so it is classified `!must_stash` and served LATER via `direct_operand` —
+        // but a per-phase `alloc_temp_evicting` or a seed admission between here and that
+        // serve can evict it, turning the serve's `source_to_vop` fallthrough into the
+        // `non-source expr` crash. Pin only ids not already pinned by an ancestor reduction
+        // (`HashSet::insert` reports newness → nesting-safe), run the fold, then unpin
+        // exactly those — the unpin runs on every `?` path because the fallible body is a
+        // separate call.
+        let candidates: Vec<ExprId> = kids
+            .iter()
+            .filter(|k| !k.must_stash)
+            .map(|k| k.id)
+            .filter(|&id| {
+                matches!(layer.exprs[id.0 as usize], Expr::Add(_) | Expr::Mul(_))
+                    && !layer.resolutions.contains_key(&id)
+                    && self.defined.contains(&id)
+            })
+            .collect();
+        let pinned: Vec<ExprId> =
+            candidates.into_iter().filter(|&id| self.pinned_direct.insert(id)).collect();
+        let result = self.fold_reduction_streamed_folding(layer, &kids, is_add, negate, expected);
+        for id in pinned {
+            self.pinned_direct.remove(&id);
+        }
+        result
+    }
+
+    /// Streamed-reduction fold body: seed + field-phased direct/stash folds over the
+    /// pre-classified `kids`. Split from `fold_reduction_streamed` so the eviction pins
+    /// that function installs are always removed on return, including every `?` path.
+    fn fold_reduction_streamed_folding(
+        &mut self,
+        layer: &DagLayer,
+        kids: &[Kid],
+        is_add: bool,
+        negate: bool,
+        expected: OperandField,
+    ) -> Result<(), CompileError> {
         // Seed by the LEGACY field/sign policy over ALL kids (Base-Plus, else Plus, else
         // Base, else 0); `!must_stash` is only a tie-break. A compound/may-admit seed is
         // computed into the acc directly (nothing to combine yet — no outer stash).
-        let seed = pick_seed(&kids);
+        let seed = pick_seed(kids);
         let mut acc_field = kids[seed].field;
         if kids[seed].must_stash {
             self.serve_occurrence(kids[seed].id, BwdServeKind::Operand);
@@ -1741,7 +1805,7 @@ impl<'a> VirtualLower<'a> {
         // to Ext at most once. Within a phase: direct children (grouped) first, then
         // stash each compound/may-admit child through the one-cell stash+refold.
         for phase in [OperandField::Base, OperandField::Ext] {
-            self.fold_direct_group(layer, &kids, seed, phase, is_add, expected)?;
+            self.fold_direct_group(layer, kids, seed, phase, is_add, expected)?;
             if phase == OperandField::Ext
                 && kids
                     .iter()
@@ -1931,6 +1995,54 @@ impl<'a> VirtualLower<'a> {
             }
         }
 
+        // Fix A: pin resident-compound fold-direct operands against eviction until served
+        // (same guard as `fold_reduction_streamed` — see its comment). A direct addend or a
+        // leaf-product operand can be a resident compound (classified `!must_stash` via a
+        // `defined` hit); a later `alloc_temp_evicting`/admission must not evict it before
+        // its `direct_operand` serve. Pin only ids not already pinned by an ancestor
+        // reduction, run the fold, then unpin exactly those (cleanup covers every `?` path).
+        let mut candidates: Vec<ExprId> = Vec::new();
+        for &(_, id, _) in &direct_addends {
+            candidates.push(id);
+        }
+        for &(_, _, lhs, _, rhs) in &leaf_products {
+            candidates.push(lhs);
+            candidates.push(rhs);
+        }
+        candidates.retain(|&id| {
+            matches!(layer.exprs[id.0 as usize], Expr::Add(_) | Expr::Mul(_))
+                && !layer.resolutions.contains_key(&id)
+                && self.defined.contains(&id)
+        });
+        let pinned: Vec<ExprId> =
+            candidates.into_iter().filter(|&id| self.pinned_direct.insert(id)).collect();
+        let result = self.fma_streamed_folding(
+            layer,
+            direct_addends,
+            compound_addends,
+            leaf_products,
+            compound_products,
+            expected,
+        );
+        for id in pinned {
+            self.pinned_direct.remove(&id);
+        }
+        result
+    }
+
+    /// Streamed-FMA fold body: seed + leaf-product FMA + field-phased compound stash folds
+    /// over the pre-classified item lists. Split from `fma_streamed` so the eviction pins
+    /// that function installs are always removed on return, including every `?` path.
+    #[allow(clippy::too_many_arguments)]
+    fn fma_streamed_folding(
+        &mut self,
+        layer: &DagLayer,
+        direct_addends: Vec<(OperandField, ExprId, Sign)>,
+        compound_addends: Vec<(OperandField, ExprId, Sign)>,
+        leaf_products: Vec<(Sign, OperandField, ExprId, OperandField, ExprId)>,
+        mut compound_products: Vec<(Sign, OperandField, ExprId, OperandField, ExprId)>,
+        expected: OperandField,
+    ) -> Result<(), CompileError> {
         // ── Seed ── prefer a DIRECT addend (legacy seed heuristic over pre-lowering
         // fields); else a leaf product; else a compound product. `try_compile_fma_virtual`
         // only reaches here with ≥1 product, so a product seed always exists when no direct
@@ -2270,6 +2382,7 @@ pub(crate) fn lower_layer_virtual(
         step_of_instr: Vec::new(),
         cur_step: 0,
         defined: HashSet::new(),
+        pinned_direct: HashSet::new(),
         widths: HashMap::new(),
         next_internal: INTERNAL_BASE,
         expr_to_compute,
@@ -2480,6 +2593,7 @@ pub(crate) fn lower_bwd_root_virtual(
         step_of_instr: Vec::new(),
         cur_step: 0,
         defined: HashSet::new(),
+        pinned_direct: HashSet::new(),
         widths: HashMap::new(),
         next_internal: INTERNAL_BASE,
         expr_to_compute: HashMap::new(),   // no materialize sinks: GlobalMaterialize unemittable
