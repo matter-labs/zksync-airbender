@@ -15,7 +15,7 @@ use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
 
 use crate::fwd::isa::{DstLine, Instr, OperandField, OperandLine, Program};
 
-use super::compile::spine_terms;
+use super::compile::{spine_terms, BwdCompiledLayer};
 use super::distill::{distilled_site_domain, DistilledLayer};
 use super::source::{BwdSpecial, BwdSpecialTable};
 
@@ -418,5 +418,59 @@ pub fn freeze_demand(
         free: trace.free.clone(),
         leaf_instants,
         nondomain_gather_cells,
+    }
+}
+
+// ── certificate (Task 6) ────────────────────────────────────────────────────
+
+/// Task 6 (CS-M0): the bwd schedule certificate. An exact, tolerance-free
+/// re-scoring of a trace's realized `TrafficRead` traffic against the compile's
+/// own tally (`dram_traffic = stats_ext.global + stats_ext.fold_traffic`).
+///
+/// `diverged` / `refusals` / `evictions` are plan-compliance DIAGNOSTICS only
+/// (spec §5) — they ride the report for triage but never affect the `Ok`/`Err`
+/// decision, which is purely `counted_traffic == reported_traffic`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CertificateReport {
+    /// `Σ` over `trace.events` of `TrafficRead.cells` — the traffic the replay
+    /// actually realized.
+    pub counted_traffic: usize,
+    /// `c.stats_ext.global + c.stats_ext.fold_traffic` — the compile's own tally.
+    pub reported_traffic: usize,
+    /// The `Diverge` event's `at_entry`, if the replay ever diverged from a plan.
+    pub diverged: Option<usize>,
+    /// Count of `Refuse` events (admissions refused for want of free cells).
+    pub refusals: usize,
+    /// Count of `Evict` events (includes rule-a releases, a Task-4 design call —
+    /// diagnostic only, never gates the certificate).
+    pub evictions: usize,
+}
+
+/// Certify `trace` against `c`: `Ok(report)` iff the realized `TrafficRead` traffic
+/// EXACTLY equals the compile's reported traffic tally (no tolerance); `Err(report)`
+/// otherwise, carrying the same fields for diagnosis. Plan-compliance fields
+/// (`diverged`, `refusals`, `evictions`) never affect which variant is returned.
+pub fn certify(c: &BwdCompiledLayer, trace: &BwdCompileTrace) -> Result<CertificateReport, CertificateReport> {
+    let counted_traffic: usize = trace
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            BwdEvent::TrafficRead { cells, .. } => Some(*cells as usize),
+            _ => None,
+        })
+        .sum();
+    let reported_traffic = c.stats_ext.global + c.stats_ext.fold_traffic;
+    let diverged = trace.events.iter().find_map(|e| match e {
+        BwdEvent::Diverge { at_entry } => Some(*at_entry),
+        _ => None,
+    });
+    let refusals = trace.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
+    let evictions = trace.events.iter().filter(|e| matches!(e, BwdEvent::Evict { .. })).count();
+
+    let report = CertificateReport { counted_traffic, reported_traffic, diverged, refusals, evictions };
+    if counted_traffic == reported_traffic {
+        Ok(report)
+    } else {
+        Err(report)
     }
 }

@@ -5,9 +5,9 @@ use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::fif::{feasible_leaf_plan, fif_select, oracle_saved, plan_leaves, Gap};
 use gkr_eval_isa::bwd::plan::PlanAction;
 use gkr_eval_isa::bwd::trace::{
-    freeze_demand, live_profile, BwdEvent, BwdServedFrom, BwdServeKind,
+    certify, freeze_demand, live_profile, BwdEvent, BwdServedFrom, BwdServeKind,
 };
-use cs::gkr_compiler::dag_ir::{BwdRegime, ExprId};
+use cs::gkr_compiler::dag_ir::{bwd_roots, BwdRegime, ExprId};
 
 /// Tracing is observation only: program byte-identical to the untraced compile.
 #[test]
@@ -283,4 +283,79 @@ fn coordinate_correct_baseline(
         entries,
     };
     compile_distilled_planned(d, budget, &all_bypass).expect("all-Bypass compile feasible").0
+}
+
+// ── Task 6 (CS-M0): schedule certificate (`certify`) ──────────────────────────
+
+/// (a) THE cross-circuit certificate gate: for all 12 `FIXTURES`, Ext L0 (skipping
+/// fixtures whose L0 has no bwd roots), `certify` must return `Ok` on BOTH the
+/// all-recompute baseline traced compile (`compile_distilled_traced`) and the
+/// leaf-planned compile (`feasible_leaf_plan`, which always returns feasible — at
+/// b16 on heavy fixtures it degrades to all-Bypass, which is fine, the
+/// certificate still applies).
+///
+/// This also closes a Task-1 open question: Task 1's `TrafficRead` hook classifies
+/// a `FoldSource` leaf as read-origin via `layer.sources[sid].kind == Read`, while
+/// `stats_ext.fold_traffic` classifies by the `BwdSpecial` desc-origin. The two
+/// classifications were validated equal only on `add_sub` at Task 1 — if they
+/// diverge on some other circuit, `certify` returns `Err` there and this test
+/// reports the per-fixture counted/reported numbers rather than weakening the
+/// equality.
+#[test]
+fn certificate_exact_on_baseline_and_planned() {
+    let mut checked = 0usize;
+    for &name in FIXTURES {
+        let (layer, cross) = load_layer(name, 0);
+        if bwd_roots(&layer).is_empty() {
+            continue; // L0 has no backward roots for this fixture
+        }
+        let d = distill(&layer, BwdRegime::Ext, &cross, None);
+
+        let (baseline_c, baseline_trace) = compile_distilled_traced(&d, 16, None)
+            .unwrap_or_else(|e| panic!("{name}: baseline traced compile @ b16 failed: {e:?}"));
+        let baseline_report = certify(&baseline_c, &baseline_trace);
+        assert!(
+            baseline_report.is_ok(),
+            "{name}: baseline certify diverged: {baseline_report:?}"
+        );
+
+        let (_plan, planned_c, planned_trace) = feasible_leaf_plan(&d, 16)
+            .unwrap_or_else(|e| panic!("{name}: feasible_leaf_plan must return Ok, got {e:?}"));
+        let planned_report = certify(&planned_c, &planned_trace);
+        assert!(
+            planned_report.is_ok(),
+            "{name}: planned certify diverged: {planned_report:?}"
+        );
+
+        checked += 1;
+    }
+    assert!(checked > 0, "no fixture's L0 had bwd roots — enumeration broke");
+    println!(
+        "certificate_exact_on_baseline_and_planned: {checked}/{} fixtures held (Ext L0)",
+        FIXTURES.len()
+    );
+}
+
+/// (b) `certify` must reject a doctored trace: a bogus extra `TrafficRead` pushed
+/// onto an otherwise-genuine trace inflates `counted_traffic` past `reported_traffic`
+/// (the tally never moves — it is read straight off the compile), so `certify` must
+/// return `Err`, and the returned report's counted/reported fields must reflect
+/// exactly the injected discrepancy.
+#[test]
+fn certificate_rejects_doctored_trace() {
+    let (layer, cross) = load_layer("add_sub_lui_auipc_mop_layout_gkr.json", 0);
+    let d = distill(&layer, BwdRegime::Ext, &cross, None);
+    let (c, mut trace) =
+        compile_distilled_traced(&d, 16, None).expect("baseline traced compile @ b16");
+
+    // Sanity: the untouched trace certifies clean.
+    assert!(certify(&c, &trace).is_ok(), "untouched trace must certify");
+
+    let reported = c.stats_ext.global + c.stats_ext.fold_traffic;
+    trace.events.push(BwdEvent::TrafficRead { value: ExprId(0), cells: 1 });
+
+    let report = certify(&c, &trace);
+    let err = report.expect_err("doctored trace must fail certification");
+    assert_eq!(err.counted_traffic, reported + 1);
+    assert_eq!(err.reported_traffic, reported);
 }
