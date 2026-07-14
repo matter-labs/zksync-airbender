@@ -22,12 +22,12 @@ use crate::upstream::Field;
 pub(crate) struct FlatDescriptionBuilder<'s, E: Field> {
     desc: Box<GpuFlatRound0StaticDesc>,
     // Per-tier recipe Vecs — concatenated in tier order in finish().
-    recipes_c0_bf: Vec<CoefficientRecipe<E>>,
-    recipes_c0_ext: Vec<CoefficientRecipe<E>>,
-    recipes_c1_bf_bf: Vec<CoefficientRecipe<E>>,
-    recipes_c1_e4_e4: Vec<CoefficientRecipe<E>>,
-    recipes_c1_bf_e4: Vec<CoefficientRecipe<E>>,
-    recipes_c1_linear: Vec<CoefficientRecipe<E>>,
+    recipes_c0_bf: Vec<CoefficientRecipe>,
+    recipes_c0_ext: Vec<CoefficientRecipe>,
+    recipes_c1_bf_bf: Vec<CoefficientRecipe>,
+    recipes_c1_e4_e4: Vec<CoefficientRecipe>,
+    recipes_c1_bf_e4: Vec<CoefficientRecipe>,
+    recipes_c1_linear: Vec<CoefficientRecipe>,
     /// Dedup: maps the packed `u16` source representation to the index in
     /// `desc.sources[]` where it was first emitted. Identical references
     /// (same virtual kind, or same `(slot, poly_idx)`) collapse to one entry.
@@ -42,7 +42,7 @@ pub(crate) struct FlatDescriptionBuilder<'s, E: Field> {
     /// backing in `storage`. `add_*_source` looks each raw poly pointer
     /// up here to recover `(base, log2_stride, poly_idx)`.
     ranges: Vec<BackingRange>,
-    _storage: std::marker::PhantomData<&'s ()>,
+    _storage: std::marker::PhantomData<(&'s (), E)>,
 }
 
 impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
@@ -139,7 +139,7 @@ impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
 
     // --- Term pushers ---
 
-    pub(crate) fn push_c0_bf(&mut self, source_idx: u32, recipe: CoefficientRecipe<E>) {
+    pub(crate) fn push_c0_bf(&mut self, source_idx: u32, recipe: CoefficientRecipe) {
         let i = self.desc.num_c0_bf as usize;
         assert!(i < FLAT_ROUND0_MAX_C0_BF, "flat round0: c0_bf overflow");
         self.desc.c0_bf[i] = GpuFlatC0Ref {
@@ -149,7 +149,7 @@ impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
         self.recipes_c0_bf.push(recipe);
     }
 
-    pub(crate) fn push_c0_ext(&mut self, source_idx: u32, recipe: CoefficientRecipe<E>) {
+    pub(crate) fn push_c0_ext(&mut self, source_idx: u32, recipe: CoefficientRecipe) {
         let i = self.desc.num_c0_ext as usize;
         assert!(i < FLAT_ROUND0_MAX_C0_EXT, "flat round0: c0_ext overflow");
         self.desc.c0_ext[i] = GpuFlatC0Ref {
@@ -163,7 +163,7 @@ impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
         &mut self,
         source_a: u32,
         source_b: u32,
-        recipe: CoefficientRecipe<E>,
+        recipe: CoefficientRecipe,
     ) {
         let i = self.desc.num_c1_bf_bf as usize;
         assert!(
@@ -182,7 +182,7 @@ impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
         &mut self,
         source_a: u32,
         source_b: u32,
-        recipe: CoefficientRecipe<E>,
+        recipe: CoefficientRecipe,
     ) {
         let i = self.desc.num_c1_e4_e4 as usize;
         assert!(
@@ -201,7 +201,7 @@ impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
         &mut self,
         source_bf: u32,
         source_e4: u32,
-        recipe: CoefficientRecipe<E>,
+        recipe: CoefficientRecipe,
     ) {
         let i = self.desc.num_c1_bf_e4 as usize;
         assert!(
@@ -222,7 +222,7 @@ impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
     // its device descriptor are retained (kept in Rust↔CUDA lockstep) for
     // potential future gates and to avoid a descriptor-layout churn.
     #[allow(dead_code)]
-    pub(crate) fn push_c1_linear(&mut self, source_idx: u32, recipe: CoefficientRecipe<E>) {
+    pub(crate) fn push_c1_linear(&mut self, source_idx: u32, recipe: CoefficientRecipe) {
         let i = self.desc.num_c1_linear as usize;
         assert!(
             i < FLAT_ROUND0_MAX_C1_LINEAR,
@@ -235,7 +235,7 @@ impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
         self.recipes_c1_linear.push(recipe);
     }
 
-    pub(crate) fn finish(self) -> FlatRound0BuildPlan<E> {
+    pub(crate) fn finish(self) -> FlatRound0BuildPlan {
         // Concatenate recipes in tier order to match kernel's *coeff++ traversal.
         let mut recipes = self.recipes_c0_bf;
         recipes.extend(self.recipes_c0_ext);

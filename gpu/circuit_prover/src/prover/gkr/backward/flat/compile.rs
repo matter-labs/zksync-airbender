@@ -1,16 +1,14 @@
-//! Compile host-side `CoefficientRecipe<E>` entries into the device-side
+//! Compile host-side `CoefficientRecipe` entries into the device-side
 //! `GpuFlatRecipeEvalDesc` layout consumed by `evaluate_constraint_prefactor`.
 
 use super::super::kernels::GpuGKRMainLayerDeferredChallengeSource;
 use super::types::CoefficientRecipe;
-use crate::primitives::field::BF;
 use crate::prover::gkr::eval_recipes::{
     GpuFlatRecipeEvalDesc, GpuPrefactorTerm, GpuRecipeHeader, RecipeEvalHostArrays,
     FLAT_IMMEDIATE_MAX_MONOMIALS, FLAT_IMMEDIATE_MAX_RECIPES, FLAT_RECIPE_MAX_HEADERS,
     FLAT_RECIPE_MAX_TERMS,
 };
 use crate::prover::gkr::immediate_factors::ImmediateFactorInterner;
-use crate::upstream::Field;
 
 /// Compiled recipe buffer ready for device upload.
 ///
@@ -29,8 +27,8 @@ pub(crate) struct CompiledRecipeBuffers {
 }
 
 /// Compile `CoefficientRecipe` entries into the device-side format.
-pub(crate) fn compile_recipes_for_device<E: Field + field::FieldExtension<BF>>(
-    recipes: &[CoefficientRecipe<E>],
+pub(crate) fn compile_recipes_for_device(
+    recipes: &[CoefficientRecipe],
 ) -> CompiledRecipeBuffers {
     // Build the four tables as plain `Vec`s first. Whether they land in an
     // inline `__grid_constant__` descriptor or in device buffers is decided

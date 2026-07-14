@@ -228,7 +228,7 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
     /// Compact flat round-0 descriptor. Consumed by
     /// `launch_main_round0_constant`.
-    pub(crate) flat_round0_template_compact: Option<super::super::compact::FlatRound0BuildPlan<E>>,
+    pub(crate) flat_round0_template_compact: Option<super::super::compact::FlatRound0BuildPlan>,
     /// Inline eval-recipes descriptor passed by value to each round-0 launch.
     /// Mutually exclusive with `flat_recipe_desc_device`: exactly one is `Some`
     /// when `flat_recipe_count > 0` (or both `None` when there are no recipes).
@@ -255,7 +255,7 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// (true when the count fits `FLAT_CONST_MAX`).
     pub(crate) flat_cont_use_constant: bool,
     /// Flat continuation plan for rounds 1+ (shared term arrays + per-step source tables).
-    pub(crate) flat_continuation_plan: Option<super::super::flat::FlatContinuationBuildPlan<E>>,
+    pub(crate) flat_continuation_plan: Option<super::super::flat::FlatContinuationBuildPlan>,
     /// Inline eval-recipes descriptor passed by value to each continuation launch.
     /// Mutually exclusive with `flat_cont_recipe_desc_device` (see round-0 pair).
     pub(crate) flat_cont_recipe_desc:

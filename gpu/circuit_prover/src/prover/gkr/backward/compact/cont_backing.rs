@@ -146,7 +146,7 @@ pub(crate) fn resolve_continuation_backing_for_pointer(
 // pointers per step), and the term arrays in `plan.term_desc` are shared.
 pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
     sources: &[GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_SOURCES],
-    plan: &FlatContinuationBuildPlan<E>,
+    plan: &FlatContinuationBuildPlan,
     storage: &GpuGKRStorage<BF, E>,
 ) -> (
     Box<GpuFlatContinuationUnifiedDesc>,

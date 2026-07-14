@@ -15,7 +15,7 @@ fn cont_source(cache_ptr: *mut E4) -> GpuExtensionFieldPolyContinuingSourcePlan<
 }
 
 fn build_round1_desc_from_plan(
-    plan: &FlatContinuationBuildPlan<E4>,
+    plan: &FlatContinuationBuildPlan,
     base_sources: &[Vec<GpuFlatBaseAfterOneSourceEntry>],
     ext_sources: &[Vec<GpuFlatContinuingSourceEntry>],
 ) -> Round1FusedSources {
@@ -51,7 +51,7 @@ fn build_round1_desc_from_plan(
 }
 
 fn build_round2_desc_from_plan(
-    plan: &FlatContinuationBuildPlan<E4>,
+    plan: &FlatContinuationBuildPlan,
     base_sources: &[Vec<GpuFlatBaseAfterTwoSourceEntry>],
     ext_sources: &[Vec<GpuFlatContinuingSourceEntry>],
 ) -> Round2FusedSources {

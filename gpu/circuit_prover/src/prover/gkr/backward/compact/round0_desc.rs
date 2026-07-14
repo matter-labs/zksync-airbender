@@ -84,9 +84,9 @@ const _: () = {
 // ---------------------------------------------------------------------------
 
 /// Owns the compact round-0 static descriptor plus its coefficient recipes.
-pub(crate) struct FlatRound0BuildPlan<E> {
+pub(crate) struct FlatRound0BuildPlan {
     pub(crate) static_desc: Box<GpuFlatRound0StaticDesc>,
-    pub(crate) recipes: Vec<CoefficientRecipe<E>>,
+    pub(crate) recipes: Vec<CoefficientRecipe>,
 }
 
 // ---------------------------------------------------------------------------

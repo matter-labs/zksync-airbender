@@ -98,7 +98,7 @@ fn resolve_round1_cache_pointer(
 /// slot/poly_idx explicitly.
 pub(in crate::prover::gkr::backward) fn build_flat_round1_unified_desc<E: Field>(
     round1_fused: &super::super::flat::Round1FusedSources,
-    plan: &super::super::flat::FlatContinuationBuildPlan<E>,
+    plan: &super::super::flat::FlatContinuationBuildPlan,
     storage: &GpuGKRStorage<BF, E>,
 ) -> (Box<GpuFlatRound1UnifiedDesc>, Option<FlatTermTablesHost>) {
     use super::super::flat::{
@@ -441,7 +441,7 @@ fn resolve_round2_cache_pointer(
 ///    per-step arithmetic, mirroring the continuation path.
 pub(in crate::prover::gkr::backward) fn build_flat_round2_unified_desc<E: Field>(
     round2_fused: &super::super::flat::Round2FusedSources,
-    plan: &super::super::flat::FlatContinuationBuildPlan<E>,
+    plan: &super::super::flat::FlatContinuationBuildPlan,
     storage: &GpuGKRStorage<BF, E>,
 ) -> (Box<GpuFlatRound2UnifiedDesc>, Option<FlatTermTablesHost>) {
     use super::super::flat::{

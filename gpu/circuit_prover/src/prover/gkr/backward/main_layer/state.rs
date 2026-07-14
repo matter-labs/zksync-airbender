@@ -346,7 +346,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // resolves each gate's source pointers against the per-(layer, class)
         // consolidated storage backings and emits packed `u16` source
         // descriptors as it walks the gates.
-        let flat_round0_template_compact: Option<compact::FlatRound0BuildPlan<E>> = {
+        let flat_round0_template_compact: Option<compact::FlatRound0BuildPlan> = {
             let gates: Vec<_> = static_data
                 .iter()
                 .zip(kernel_plans.iter())
@@ -636,7 +636,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
     /// Build round-1 fused-source data from the continuation plan and round 1 prepared storage.
     fn build_flat_round1_desc(
-        plan: Option<&flat::FlatContinuationBuildPlan<E>>,
+        plan: Option<&flat::FlatContinuationBuildPlan>,
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
     ) -> Option<Box<flat::Round1FusedSources>> {
         use flat::{
@@ -773,7 +773,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
     /// Build round-2 fused-source data from the continuation plan and round 2 prepared storage.
     fn build_flat_round2_desc(
-        plan: Option<&flat::FlatContinuationBuildPlan<E>>,
+        plan: Option<&flat::FlatContinuationBuildPlan>,
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
     ) -> Option<Box<flat::Round2FusedSources>> {
         use flat::{
@@ -912,7 +912,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         _layer_idx: usize,
         context: &ProverContext,
     ) -> CudaResult<(
-        Option<flat::FlatContinuationBuildPlan<E>>,
+        Option<flat::FlatContinuationBuildPlan>,
         Vec<(
             usize,
             Box<[flat::GpuFlatContinuingSourceEntry; flat::FLAT_CONT_MAX_SOURCES]>,

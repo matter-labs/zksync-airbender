@@ -1,6 +1,4 @@
 use super::super::{CoefficientRecipe, GpuFlatC0Ref, GpuFlatC1Pair};
-use crate::primitives::field::BF;
-use crate::upstream::Field;
 
 // Continuation (round 3+) unique-source table size. Sizes the inline `sources`
 // array in the compact `GpuFlatContinuationUnifiedDesc` (+ its devptr companion)
@@ -106,9 +104,9 @@ impl Default for FlatContinuationTermDesc {
 /// Complete build plan for the flat continuation kernel.
 /// `term_desc` holds the shared term arrays (same for all steps).
 /// Source entries are populated per step from prepared storage.
-pub(crate) struct FlatContinuationBuildPlan<E> {
+pub(crate) struct FlatContinuationBuildPlan {
     pub(crate) term_desc: FlatContinuationTermDesc,
-    pub(crate) recipes: Vec<CoefficientRecipe<E>>,
+    pub(crate) recipes: Vec<CoefficientRecipe>,
     /// One entry per unique source: records the first (gate_idx, is_ext, input_idx)
     /// that mapped to a source table index. Used to populate per-step source entries.
     pub(crate) source_assignments: Vec<ContinuationSourceAssignment>,
@@ -123,7 +121,7 @@ pub(crate) struct ContinuationSourceAssignment {
     pub(crate) source_table_idx: u32,
 }
 
-impl<E: Field + field::FieldExtension<BF>> FlatContinuationBuildPlan<E> {
+impl FlatContinuationBuildPlan {
     pub(crate) fn total_coefficients(&self) -> usize {
         self.recipes.len()
     }

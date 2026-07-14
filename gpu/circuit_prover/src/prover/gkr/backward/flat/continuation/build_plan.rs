@@ -30,36 +30,33 @@ pub(crate) struct PreparedGateForFlatContinuationPlan<'a, E> {
 /// Build the flat continuation plan from prepared gates.
 pub(crate) fn build_flat_continuation_plan<E: Field>(
     gates: &[PreparedGateForFlatContinuationPlan<'_, E>],
-) -> FlatContinuationBuildPlan<E> {
-    let mut b = FlatContinuationDescriptionBuilder::<E>::new();
+) -> FlatContinuationBuildPlan {
+    let mut b = FlatContinuationDescriptionBuilder::new();
 
     for gate in gates {
         let p0 = gate.batch_challenge_power_offset;
         let p1 = p0 + 1;
 
-        let bc0 = || -> CoefficientRecipe<E> {
+        let bc0 = || -> CoefficientRecipe {
             CoefficientRecipe {
                 batch_power: p0,
                 negate: false,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
-        let bc1 = || -> CoefficientRecipe<E> {
+        let bc1 = || -> CoefficientRecipe {
             CoefficientRecipe {
                 batch_power: p1,
                 negate: false,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
-        let neg_bc0 = || -> CoefficientRecipe<E> {
+        let neg_bc0 = || -> CoefficientRecipe {
             CoefficientRecipe {
                 batch_power: p0,
                 negate: true,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
@@ -71,42 +68,39 @@ pub(crate) fn build_flat_continuation_plan<E: Field>(
                 power,
             }]
         };
-        let bc0_gamma = |coeff: BF, power: u32| -> CoefficientRecipe<E> {
+        let bc0_gamma = |coeff: BF, power: u32| -> CoefficientRecipe {
             CoefficientRecipe {
                 batch_power: p0,
                 negate: false,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![gamma_term(coeff, power)],
             }
         };
-        let bc1_gamma = |coeff: BF, power: u32| -> CoefficientRecipe<E> {
+        let bc1_gamma = |coeff: BF, power: u32| -> CoefficientRecipe {
             CoefficientRecipe {
                 batch_power: p1,
                 negate: false,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![gamma_term(coeff, power)],
             }
         };
-        let neg_bc0_gamma = |coeff: BF, power: u32| -> CoefficientRecipe<E> {
+        let neg_bc0_gamma = |coeff: BF, power: u32| -> CoefficientRecipe {
             CoefficientRecipe {
                 batch_power: p0,
                 negate: true,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![gamma_term(coeff, power)],
             }
         };
 
         // Helper to add a base input source.
-        let add_base = |b: &mut FlatContinuationDescriptionBuilder<E>, idx: usize| -> u32 {
+        let add_base = |b: &mut FlatContinuationDescriptionBuilder, idx: usize| -> u32 {
             let src = &gate.base_inputs[idx];
             b.add_source(src.this_layer_start as usize, gate.gate_idx, false, idx)
         };
 
         // Helper to add an ext input source.
-        let add_ext = |b: &mut FlatContinuationDescriptionBuilder<E>, idx: usize| -> u32 {
+        let add_ext = |b: &mut FlatContinuationDescriptionBuilder, idx: usize| -> u32 {
             let src = &gate.ext_inputs[idx];
             b.add_source(src.this_layer_start as usize, gate.gate_idx, true, idx)
         };
