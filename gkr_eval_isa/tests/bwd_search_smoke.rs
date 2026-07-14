@@ -21,7 +21,7 @@ mod common;
 
 use std::collections::HashMap;
 
-use common::{lift, load_fixture, resolvers, SyntheticResolvers};
+use common::{lift, load_fixture, resolvers, CacheConsistentResolvers, SyntheticResolvers};
 use cs::gkr_compiler::dag_ir::{
     bwd_roots, eval_layer_expr, lower_dag, validate, BwdRegime, ChallengeKey, ChallengePower,
     ChallengeRef, DagLayer, Expr, ExprId, Ext, Resolvers, SourceKind,
@@ -47,6 +47,15 @@ fn beta_i(r: &Resolvers<'_>, i: usize) -> Ext {
 /// Evaluate canonical (or distilled) expr `e` at (`regime`, `role`, `row`,
 /// `round`), applying the SHARED role+fold transform at every `Read`/
 /// `VirtualSetup` leaf — identical to `bwd_value_parity::eval_oracle`.
+///
+/// `orig` is a [`CacheConsistentResolvers`] (built over the RAW canonical layer):
+/// a `Read(CacheOutput{..})` fold leaf — which `distill` substitutes for each
+/// same-layer cache cone on the `got` side — resolves to the per-row value of its
+/// defining cone (`read == eval_pointwise(cone)`), so the `got` distilled root and
+/// the `expected` recompute-the-cone oracle agree by cache-relation linearity. On
+/// the canonical layer (the `expected` side) there are NO `CacheOutput` leaves, so
+/// every read delegates to the inner synthetic resolver unchanged. The
+/// `VirtualSetup` leaf likewise delegates to the inner synthetic.
 #[allow(clippy::too_many_arguments)]
 fn eval_oracle(
     layer: &DagLayer,
@@ -56,7 +65,7 @@ fn eval_oracle(
     row: usize,
     round: u8,
     ch: &[Ext],
-    orig: &SyntheticResolvers,
+    orig: &CacheConsistentResolvers<'_>,
     plain: &Resolvers<'_>,
     memo: &mut HashMap<ExprId, Ext>,
 ) -> Ext {
@@ -122,7 +131,7 @@ fn oracle_root(
     row: usize,
     round: u8,
     ch: &[Ext],
-    orig: &SyntheticResolvers,
+    orig: &CacheConsistentResolvers<'_>,
     plain: &Resolvers<'_>,
 ) -> Ext {
     let mut memo: HashMap<ExprId, Ext> = HashMap::new();
@@ -246,15 +255,22 @@ fn search_bwd_layer_smoke() {
 
         // (iii) unit_permutation round-trips through re-distillation with identical
         //       G1-style row values on 8 sampled rows (reusing `d_perm` above).
+        // The read side is cache-consistent over the RAW canonical `layer`: bigint L0
+        // carries 140 cache fences, so the `got` distilled root reads `CacheOutput`
+        // fold leaves that must resolve to their defining cones (fenced over the raw
+        // layer, NOT the distilled `d_perm.layer` — distill collapses to one
+        // claim-bearing spine root, which `bwd_cache_fences` skips). The `expected`
+        // side recomputes those cones over `layer` and agrees by fence linearity.
+        let cc = CacheConsistentResolvers::new(layer);
         let d_perm_root_expr = d_perm.layer.roots[d_perm.root.0 as usize].expr;
         for row in 0..8usize {
             let mut memo: HashMap<ExprId, Ext> = HashMap::new();
             let got = eval_oracle(
                 &d_perm.layer, d_perm_root_expr, pick.regime, role, row, round, &round_challenges,
-                &syn, &plain, &mut memo,
+                &cc, &plain, &mut memo,
             );
             let expected =
-                oracle_root(layer, pick.regime, role, row, round, &round_challenges, &syn, &plain);
+                oracle_root(layer, pick.regime, role, row, round, &round_challenges, &cc, &plain);
             assert_eq!(
                 got, expected,
                 "[{}] permuted distilled root value mismatch at row {row}",
