@@ -887,7 +887,6 @@ fn eval_fn_19<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     );
 }
 #[allow(unused_variables)]
-#[inline(always)]
 fn eval_fn_20<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
@@ -898,34 +897,38 @@ fn eval_fn_20<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_boolean(16usize);
-    let v_1 = witness_proxy.get_memory_place_u16(17usize);
-    let v_2 = v_1.get_lowest_bits(1u32);
-    let v_3 = W::U16::constant(1u16);
-    let v_4 = W::U16::equal(&v_2, &v_3);
+    let v_0 = witness_proxy.get_memory_place_boolean(9usize);
+    let v_1 = witness_proxy.get_memory_place_boolean(16usize);
+    let v_2 = witness_proxy.get_memory_place_u16(10usize);
+    let v_3 = witness_proxy.get_memory_place_u16(17usize);
+    let v_4 = W::Mask::or(&v_0, &v_1);
+    let v_5 = WitnessComputationCore::select(&v_0, &v_2, &v_3);
+    let v_6 = v_5.get_lowest_bits(1u32);
+    let v_7 = W::U16::constant(1u16);
+    let v_8 = W::U16::equal(&v_6, &v_7);
     witness_proxy.set_witness_place_boolean(
         26usize,
         W::Mask::select(
-            &v_0,
             &v_4,
+            &v_8,
             &witness_proxy.get_witness_place_boolean(26usize),
         ),
     );
-    let v_6 = v_1.shr(1u32);
-    let v_7 = v_6.get_lowest_bits(1u32);
-    let v_8 = W::U16::equal(&v_7, &v_3);
+    let v_10 = v_5.shr(1u32);
+    let v_11 = v_10.get_lowest_bits(1u32);
+    let v_12 = W::U16::equal(&v_11, &v_7);
     witness_proxy.set_witness_place_boolean(
         27usize,
         W::Mask::select(
-            &v_0,
-            &v_8,
+            &v_4,
+            &v_12,
             &witness_proxy.get_witness_place_boolean(27usize),
         ),
     );
-    let v_10 = v_1.shr(2u32);
+    let v_14 = v_5.shr(2u32);
     witness_proxy.set_witness_place_u16(
         49usize,
-        W::U16::select(&v_0, &v_10, &witness_proxy.get_witness_place_u16(49usize)),
+        W::U16::select(&v_4, &v_14, &witness_proxy.get_witness_place_u16(49usize)),
     );
 }
 #[allow(unused_variables)]
@@ -1129,7 +1132,7 @@ fn eval_fn_26<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     let v_0 = witness_proxy.get_memory_place_u16(22usize);
     let v_1 = W::U16::constant(4u16);
     let v_2 = W::U16::overflowing_add(&v_0, &v_1).1;
-    witness_proxy.set_witness_place_boolean(59usize, v_2);
+    witness_proxy.set_witness_place_boolean(58usize, v_2);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -1153,7 +1156,7 @@ fn eval_fn_27<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     let v_7 = W::Mask::or(&v_6, &v_4);
     let v_8 = W::Mask::negate(&v_7);
     let v_9 = W::Mask::and(&v_0, &v_8);
-    witness_proxy.set_witness_place_boolean(60usize, v_9);
+    witness_proxy.set_witness_place_boolean(59usize, v_9);
 }
 #[allow(unused_variables)]
 fn eval_fn_28<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120, W> + 'b>(
@@ -1205,7 +1208,7 @@ fn eval_fn_28<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     let v_36 = W::Mask::or(&v_35, &v_18);
     let v_37 = W::Mask::or(&v_36, &v_19);
     let v_38 = W::Mask::and(&v_0, &v_37);
-    witness_proxy.set_witness_place_boolean(61usize, v_38);
+    witness_proxy.set_witness_place_boolean(60usize, v_38);
 }
 #[allow(unused_variables)]
 fn eval_fn_29<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120, W> + 'b>(
@@ -2403,12 +2406,11 @@ fn eval_fn_63<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     W::I32: Copy,
 {
     let v_0 = witness_proxy.get_memory_place_boolean(9usize);
-    let v_1 = witness_proxy.get_witness_place_boolean(25usize);
-    let v_2 = W::Mask::and(&v_0, &v_1);
-    witness_proxy.set_witness_place_boolean(57usize, v_2);
-    let v_4 = W::Mask::negate(&v_1);
-    let v_5 = W::Mask::and(&v_0, &v_4);
-    witness_proxy.set_witness_place_boolean(58usize, v_5);
+    let v_1 = witness_proxy.get_memory_place_boolean(16usize);
+    let v_2 = witness_proxy.get_witness_place_boolean(25usize);
+    let v_3 = W::Mask::or(&v_0, &v_1);
+    let v_4 = W::Mask::and(&v_3, &v_2);
+    witness_proxy.set_witness_place_boolean(57usize, v_4);
 }
 #[allow(unused_variables)]
 fn eval_fn_64<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120, W> + 'b>(
@@ -2522,38 +2524,51 @@ fn eval_fn_66<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     let v_3 = witness_proxy.get_witness_place(18usize);
     let v_4 = witness_proxy.get_witness_place(20usize);
     let v_5 = witness_proxy.get_witness_place(21usize);
-    let v_6 = witness_proxy.get_memory_place(7usize);
-    let v_7 = witness_proxy.get_memory_place(19usize);
-    let v_8 = witness_proxy.get_witness_place(28usize);
-    let v_9 = witness_proxy.get_witness_place(47usize);
-    let v_10 = witness_proxy.get_witness_place(57usize);
-    let v_11 = W::Field::constant(Proth120(0u128));
-    let mut v_12 = v_11;
-    W::Field::add_assign_product(&mut v_12, &v_0, &v_8);
-    let mut v_13 = v_12;
-    W::Field::add_assign_product(&mut v_13, &v_1, &v_8);
+    let v_6 = witness_proxy.get_memory_place(9usize);
+    let v_7 = witness_proxy.get_memory_place(16usize);
+    let v_8 = witness_proxy.get_memory_place(7usize);
+    let v_9 = witness_proxy.get_memory_place(19usize);
+    let v_10 = witness_proxy.get_witness_place(28usize);
+    let v_11 = witness_proxy.get_witness_place(47usize);
+    let v_12 = witness_proxy.get_witness_place(57usize);
+    let v_13 = W::Field::constant(Proth120(0u128));
     let mut v_14 = v_13;
-    W::Field::add_assign_product(&mut v_14, &v_2, &v_8);
+    W::Field::add_assign_product(&mut v_14, &v_0, &v_10);
     let mut v_15 = v_14;
-    W::Field::add_assign_product(&mut v_15, &v_3, &v_8);
+    W::Field::add_assign_product(&mut v_15, &v_1, &v_10);
     let mut v_16 = v_15;
-    W::Field::add_assign_product(&mut v_16, &v_5, &v_8);
+    W::Field::add_assign_product(&mut v_16, &v_2, &v_10);
     let mut v_17 = v_16;
-    W::Field::add_assign_product(&mut v_17, &v_7, &v_10);
-    let v_18 = W::Field::constant(Proth120(1329227995784915872903807060280344576u128));
-    let mut v_19 = v_4;
-    W::Field::mul_assign(&mut v_19, &v_18);
-    let mut v_20 = v_17;
-    W::Field::add_assign_product(&mut v_20, &v_19, &v_6);
-    let v_21 = W::Field::constant(Proth120(7975367974709495237422842361682067457u128));
-    let mut v_22 = v_4;
-    W::Field::mul_assign(&mut v_22, &v_21);
-    let mut v_23 = v_20;
-    W::Field::add_assign_product(&mut v_23, &v_22, &v_9);
-    witness_proxy.set_scratch_place(3usize, v_23);
+    W::Field::add_assign_product(&mut v_17, &v_3, &v_10);
+    let mut v_18 = v_17;
+    W::Field::add_assign_product(&mut v_18, &v_5, &v_10);
+    let mut v_19 = v_18;
+    W::Field::add_assign_product(&mut v_19, &v_6, &v_9);
+    let mut v_20 = v_19;
+    W::Field::add_assign_product(&mut v_20, &v_7, &v_9);
+    let mut v_21 = v_20;
+    W::Field::add_assign_product(&mut v_21, &v_8, &v_12);
+    let mut v_22 = v_6;
+    W::Field::mul_assign(&mut v_22, &v_8);
+    let mut v_23 = v_21;
+    W::Field::sub_assign(&mut v_23, &v_22);
+    let mut v_24 = v_7;
+    W::Field::mul_assign(&mut v_24, &v_8);
+    let mut v_25 = v_23;
+    W::Field::sub_assign(&mut v_25, &v_24);
+    let v_26 = W::Field::constant(Proth120(1329227995784915872903807060280344576u128));
+    let mut v_27 = v_4;
+    W::Field::mul_assign(&mut v_27, &v_26);
+    let mut v_28 = v_25;
+    W::Field::add_assign_product(&mut v_28, &v_27, &v_8);
+    let v_29 = W::Field::constant(Proth120(7975367974709495237422842361682067457u128));
+    let mut v_30 = v_4;
+    W::Field::mul_assign(&mut v_30, &v_29);
+    let mut v_31 = v_28;
+    W::Field::add_assign_product(&mut v_31, &v_30, &v_11);
+    witness_proxy.set_scratch_place(3usize, v_31);
 }
 #[allow(unused_variables)]
-#[inline(always)]
 fn eval_fn_67<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
@@ -2565,15 +2580,30 @@ fn eval_fn_67<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     W::I32: Copy,
 {
     let v_0 = witness_proxy.get_witness_place(20usize);
-    let v_1 = witness_proxy.get_memory_place(20usize);
-    let v_2 = witness_proxy.get_witness_place(28usize);
-    let v_3 = witness_proxy.get_witness_place(57usize);
-    let v_4 = W::Field::constant(Proth120(0u128));
-    let mut v_5 = v_4;
-    W::Field::add_assign_product(&mut v_5, &v_0, &v_2);
-    let mut v_6 = v_5;
-    W::Field::add_assign_product(&mut v_6, &v_1, &v_3);
-    witness_proxy.set_scratch_place(4usize, v_6);
+    let v_1 = witness_proxy.get_memory_place(9usize);
+    let v_2 = witness_proxy.get_memory_place(16usize);
+    let v_3 = witness_proxy.get_memory_place(8usize);
+    let v_4 = witness_proxy.get_memory_place(20usize);
+    let v_5 = witness_proxy.get_witness_place(28usize);
+    let v_6 = witness_proxy.get_witness_place(57usize);
+    let v_7 = W::Field::constant(Proth120(0u128));
+    let mut v_8 = v_7;
+    W::Field::add_assign_product(&mut v_8, &v_0, &v_5);
+    let mut v_9 = v_8;
+    W::Field::add_assign_product(&mut v_9, &v_1, &v_4);
+    let mut v_10 = v_9;
+    W::Field::add_assign_product(&mut v_10, &v_2, &v_4);
+    let mut v_11 = v_10;
+    W::Field::add_assign_product(&mut v_11, &v_3, &v_6);
+    let mut v_12 = v_1;
+    W::Field::mul_assign(&mut v_12, &v_3);
+    let mut v_13 = v_11;
+    W::Field::sub_assign(&mut v_13, &v_12);
+    let mut v_14 = v_2;
+    W::Field::mul_assign(&mut v_14, &v_3);
+    let mut v_15 = v_13;
+    W::Field::sub_assign(&mut v_15, &v_14);
+    witness_proxy.set_scratch_place(4usize, v_15);
 }
 #[allow(unused_variables)]
 #[inline(always)]

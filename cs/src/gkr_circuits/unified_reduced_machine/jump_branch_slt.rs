@@ -889,13 +889,52 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                 * Term::from(rd_is_zero),
     );
 
-    // const {
-    //     assert!(
-    //         CS::ASSUME_MEMORY_VALUES_ASSIGNED,
-    //         "Family 2 rd-write witness path requires CS::ASSUME_MEMORY_VALUES_ASSIGNED = true; \
-    //          the no-ASSUME path is not implemented"
-    //     );
-    // }
+    // Self-generating witness contract (`ASSUME_MEMORY_VALUES_ASSIGNED ==
+    // false`): the oracle is trusted only for INPUTS (instruction, register /
+    // memory READ values, timestamps). Every family DERIVES its outputs — the
+    // shared rd/mem write-value columns — in its own value_fn, gated on that
+    // family's activity mask. The generic access resolver assigns
+    // the oracle's write value first only as a fallback; the family writers
+    // below overwrite it on their rows. The contract is pinned by
+    // `test_unified_witness_self_generates_write_values` (poisoned oracle).
+    //
+    // Family 2's derivation mirrors the constraints below: jal/jalr →
+    // saved_pc, slt → slt result (high limb 0), rd == x0 (incl. branches:
+    // B-type has no rd field, decode forces rd_index = 0) → (0, 0).
+    if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
+        let is_slt_var = is_slt.expect_variable();
+        let is_branch_var = is_branch.expect_variable();
+        let jj_writes_var = is_jal_or_jalr_writes_rd.expect_variable();
+        let slt_writes_var = is_slt_writes_rd.expect_variable();
+        let saved_pc_low_var = comparison_rel_or_jump_saved_pc_low;
+        let saved_pc_high_var = comparison_rel_or_jump_saved_pc_high;
+        let slt_value_var = should_jump_or_slt_value;
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let is_jal_m = placer.get_boolean(is_jal_var);
+            let is_jalr_m = placer.get_boolean(is_jalr_var);
+            let is_slt_m = placer.get_boolean(is_slt_var);
+            let is_branch_m = placer.get_boolean(is_branch_var);
+            let any_f2 = is_jal_m.or(&is_jalr_m).or(&is_slt_m).or(&is_branch_m);
+            let jj_writes = placer.get_boolean(jj_writes_var);
+            let slt_writes = placer.get_boolean(slt_writes_var);
+
+            let saved_pc_low = placer.get_u16(saved_pc_low_var);
+            let saved_pc_high = placer.get_u16(saved_pc_high_var);
+            let slt_value = placer.get_u16(slt_value_var);
+
+            let mut low = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0u16);
+            low.assign_masked(&jj_writes, &saved_pc_low);
+            low.assign_masked(&slt_writes, &slt_value);
+            let mut high = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0u16);
+            high.assign_masked(&jj_writes, &saved_pc_high);
+
+            placer.conditionally_assign_u16(rd_write_limbs[0], &any_f2, &low);
+            placer.conditionally_assign_u16(rd_write_limbs[1], &any_f2, &high);
+        };
+        cs.set_values(value_fn);
+    }
 
     // Per-opcode rd-write constraints. Low limb: jal/jalr → saved_pc_low; slt → slt_value.
     cs.add_constraint(

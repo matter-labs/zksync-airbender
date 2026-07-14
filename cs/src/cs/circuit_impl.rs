@@ -655,9 +655,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 split_as_u8,
             } => {
                 let read_timestamp = {
-                    let vars = std::array::from_fn(|i| {
-                        self.add_named_variable(&format!("ts: {} read_timestamp[{}]", name, i))
-                    });
+                    let vars: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
+                        std::array::from_fn(|i| {
+                            self.add_named_variable(&format!("ts: {} read_timestamp[{}]", name, i))
+                        });
 
                     if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
@@ -667,15 +668,20 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         };
                         self.set_values(value_fn);
                     } else {
-                        // let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                        //     let value =
-                        //         placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
-                        //             local_timestamp_in_cycle as usize,
-                        //         ));
-
-                        //     placer.assign_u32_from_u16_parts(vars, &value);
-                        // };
-                        // self.set_values(value_fn);
+                        // Timestamps are 19-bit columns (wider than u16) — use the
+                        // typed timestamp query + per-column field assignment, NOT
+                        // get_oracle_u32/assign_u32_from_u16_parts (16-bit split).
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            let columns = placer.get_oracle_timestamp_columns(
+                                Placeholder::ShuffleRamReadTimestamp(
+                                    local_timestamp_in_cycle as usize,
+                                ),
+                            );
+                            for (var, col) in vars.iter().zip(columns.iter()) {
+                                placer.assign_field(*var, col);
+                            }
+                        };
+                        self.set_values(value_fn);
                     }
 
                     vars
@@ -728,9 +734,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 split_write_as_u8,
             } => {
                 let read_timestamp = {
-                    let vars = std::array::from_fn(|i| {
-                        self.add_named_variable(&format!("{name} read_timestamp[{i}]"))
-                    });
+                    let vars: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
+                        std::array::from_fn(|i| {
+                            self.add_named_variable(&format!("{name} read_timestamp[{i}]"))
+                        });
 
                     if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
@@ -740,15 +747,20 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         };
                         self.set_values(value_fn);
                     } else {
-                        // let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                        //     let value =
-                        //         placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
-                        //             local_timestamp_in_cycle as usize,
-                        //         ));
-
-                        //     placer.assign_u32_from_u16_parts(vars, &value);
-                        // };
-                        // self.set_values(value_fn);
+                        // Timestamps are 19-bit columns (wider than u16) — use the
+                        // typed timestamp query + per-column field assignment, NOT
+                        // get_oracle_u32/assign_u32_from_u16_parts (16-bit split).
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            let columns = placer.get_oracle_timestamp_columns(
+                                Placeholder::ShuffleRamReadTimestamp(
+                                    local_timestamp_in_cycle as usize,
+                                ),
+                            );
+                            for (var, col) in vars.iter().zip(columns.iter()) {
+                                placer.assign_field(*var, col);
+                            }
+                        };
+                        self.set_values(value_fn);
                     }
 
                     vars

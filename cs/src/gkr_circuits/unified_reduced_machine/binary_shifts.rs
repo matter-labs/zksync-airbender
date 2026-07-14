@@ -283,6 +283,70 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         per_byte_requests.push(LookupRequest::new(table_id, constraints.to_vec()));
     }
 
+    // Self-generating witness (no-ASSUME contract, see jump_branch_slt.rs):
+    // derive the rd-write limbs from the byte-level outputs, mirroring the
+    // constraints below exactly — binary: out[0..4] pairs; shift: sum of the
+    // four chunk contributions; xor-rot: cyclic reconstruction. Computed in
+    // field space (honest per-lane sums stay < 2^16). Gated on Family 3.
+    if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+        let is_binary_var = is_binary_op.expect_variable();
+        let is_shift_var = is_shift.expect_variable();
+        let is_xor_rot_var = is_xor_rot.expect_variable();
+        let outs = binary_ops_outputs;
+        let chunks: [[Variable; 4]; 4] = core::array::from_fn(|i| shift_output_chunks[i]);
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            type Fld<CS, F> = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field;
+            let c256 = Fld::<CS, F>::constant(F::from_u32_with_reduction(1 << 8));
+            let byte_pair = |placer: &mut CS::WitnessPlacer, b0: Variable, b1: Variable| {
+                let mut v = placer.get_field(b1);
+                v.mul_assign(&c256);
+                v.add_assign(&placer.get_field(b0));
+                v
+            };
+
+            let is_binary_m = placer.get_boolean(is_binary_var);
+            let is_shift_m = placer.get_boolean(is_shift_var);
+            let is_xor_rot_m = placer.get_boolean(is_xor_rot_var);
+            let any_f3 = is_binary_m.or(&is_shift_m).or(&is_xor_rot_m);
+
+            let mut low = Fld::<CS, F>::constant(F::ZERO);
+            let mut high = Fld::<CS, F>::constant(F::ZERO);
+
+            let v = byte_pair(placer, outs[0], outs[1]);
+            low.add_assign_masked(&is_binary_m, &v);
+            let v = byte_pair(placer, outs[2], outs[3]);
+            high.add_assign_masked(&is_binary_m, &v);
+
+            let mut shift_low = Fld::<CS, F>::constant(F::ZERO);
+            let mut shift_high = Fld::<CS, F>::constant(F::ZERO);
+            let mut rot_low = Fld::<CS, F>::constant(F::ZERO);
+            let mut rot_high = Fld::<CS, F>::constant(F::ZERO);
+            for i in 0..4 {
+                let v = byte_pair(placer, chunks[i][0], chunks[i][1]);
+                shift_low.add_assign(&v);
+                let v = byte_pair(placer, chunks[i][2], chunks[i][3]);
+                shift_high.add_assign(&v);
+                // xor-rotate: out_byte[k] = Σ_i chunk[i][(k - i) mod 4]
+                let v = byte_pair(placer, chunks[i][(4 - i) % 4], chunks[i][(1 + 4 - i) % 4]);
+                rot_low.add_assign(&v);
+                let v = byte_pair(
+                    placer,
+                    chunks[i][(2 + 4 - i) % 4],
+                    chunks[i][(3 + 4 - i) % 4],
+                );
+                rot_high.add_assign(&v);
+            }
+            low.add_assign_masked(&is_shift_m, &shift_low);
+            high.add_assign_masked(&is_shift_m, &shift_high);
+            low.add_assign_masked(&is_xor_rot_m, &rot_low);
+            high.add_assign_masked(&is_xor_rot_m, &rot_high);
+
+            placer.conditionally_assign_field(rd_write_limbs[0], &any_f3, &low);
+            placer.conditionally_assign_field(rd_write_limbs[1], &any_f3, &high);
+        };
+        cs.set_values(value_fn);
+    }
+
     // rd-write constraint, gated on Family 3 firing so non-Family-3 cycles in the
     // unified circuit aren't forced to rd_write = 0. is_binary_op + is_shift is
     // the family-firing indicator (mutually exclusive ⇒ sum is 0 or 1).

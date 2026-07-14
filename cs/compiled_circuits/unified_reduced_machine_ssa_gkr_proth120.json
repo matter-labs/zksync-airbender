@@ -4440,7 +4440,17 @@
   [
     {
       "Bool": {
+        "Place": 29
+      }
+    },
+    {
+      "Bool": {
         "Place": 30
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 39
       }
     },
     {
@@ -4449,10 +4459,37 @@
       }
     },
     {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 0
+          },
+          "rhs": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "Select": {
+          "selector": {
+            "SubExpression": 0
+          },
+          "if_true": {
+            "U16SubExpression": 2
+          },
+          "if_false": {
+            "U16SubExpression": 3
+          }
+        }
+      }
+    },
+    {
       "Integer": {
         "LowestBits": {
           "value": {
-            "U16SubExpression": 1
+            "U16SubExpression": 5
           },
           "num_bits": 1
         }
@@ -4467,10 +4504,10 @@
       "Bool": {
         "FromGenericIntegerEquality": {
           "lhs": {
-            "U16SubExpression": 2
+            "U16SubExpression": 6
           },
           "rhs": {
-            "U16SubExpression": 3
+            "U16SubExpression": 7
           }
         }
       }
@@ -4480,17 +4517,17 @@
         "into_variable": 56,
         "source_subexpr": {
           "Bool": {
-            "SubExpression": 4
+            "SubExpression": 8
           }
         },
-        "condition_subexpr_idx": 0
+        "condition_subexpr_idx": 4
       }
     },
     {
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U16SubExpression": 1
+            "U16SubExpression": 5
           },
           "magnitude": 1
         }
@@ -4500,7 +4537,7 @@
       "Integer": {
         "LowestBits": {
           "value": {
-            "U16SubExpression": 6
+            "U16SubExpression": 10
           },
           "num_bits": 1
         }
@@ -4510,10 +4547,10 @@
       "Bool": {
         "FromGenericIntegerEquality": {
           "lhs": {
-            "U16SubExpression": 7
+            "U16SubExpression": 11
           },
           "rhs": {
-            "U16SubExpression": 3
+            "U16SubExpression": 7
           }
         }
       }
@@ -4523,17 +4560,17 @@
         "into_variable": 57,
         "source_subexpr": {
           "Bool": {
-            "SubExpression": 8
+            "SubExpression": 12
           }
         },
-        "condition_subexpr_idx": 0
+        "condition_subexpr_idx": 4
       }
     },
     {
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U16SubExpression": 1
+            "U16SubExpression": 5
           },
           "magnitude": 2
         }
@@ -4544,10 +4581,10 @@
         "into_variable": 79,
         "source_subexpr": {
           "U16": {
-            "U16SubExpression": 10
+            "U16SubExpression": 14
           }
         },
-        "condition_subexpr_idx": 0
+        "condition_subexpr_idx": 4
       }
     }
   ],
@@ -4714,7 +4751,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 94,
+        "into_variable": 93,
         "source_subexpr": {
           "Field": {
             "SubExpression": 17
@@ -4862,7 +4899,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 95,
+        "into_variable": 94,
         "source_subexpr": {
           "Field": {
             "SubExpression": 14
@@ -5035,7 +5072,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 103,
+        "into_variable": 102,
         "source_subexpr": {
           "Field": {
             "SubExpression": 17
@@ -5208,7 +5245,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 112,
+        "into_variable": 111,
         "source_subexpr": {
           "Field": {
             "SubExpression": 17
@@ -5381,7 +5418,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 121,
+        "into_variable": 120,
         "source_subexpr": {
           "Field": {
             "SubExpression": 17
@@ -5416,7 +5453,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 130,
+        "into_variable": 129,
         "source_subexpr": {
           "Bool": {
             "SubExpression": 2
@@ -5509,7 +5546,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 131,
+        "into_variable": 130,
         "source_subexpr": {
           "Bool": {
             "SubExpression": 9
@@ -5850,7 +5887,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 132,
+        "into_variable": 131,
         "source_subexpr": {
           "Bool": {
             "SubExpression": 38
@@ -7446,7 +7483,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 96,
+        "into_variable": 95,
         "source_subexpr": {
           "Field": {
             "SubExpression": 19
@@ -7554,7 +7591,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 97,
+        "into_variable": 96,
         "source_subexpr": {
           "Field": {
             "SubExpression": 10
@@ -7622,7 +7659,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 99,
+        "into_variable": 98,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -7665,7 +7702,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 101,
+        "into_variable": 100,
         "source_subexpr": {
           "Field": {
             "SubExpression": 3
@@ -7923,7 +7960,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 104,
+        "into_variable": 103,
         "source_subexpr": {
           "Field": {
             "SubExpression": 25
@@ -7991,7 +8028,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 107,
+        "into_variable": 106,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -8059,7 +8096,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 108,
+        "into_variable": 107,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -8127,7 +8164,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 109,
+        "into_variable": 108,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -8170,7 +8207,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 110,
+        "into_variable": 109,
         "source_subexpr": {
           "Field": {
             "SubExpression": 3
@@ -8213,7 +8250,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 111,
+        "into_variable": 110,
         "source_subexpr": {
           "Field": {
             "SubExpression": 3
@@ -8326,7 +8363,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 115,
+        "into_variable": 114,
         "source_subexpr": {
           "Field": {
             "SubExpression": 11
@@ -8394,7 +8431,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 116,
+        "into_variable": 115,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -8462,7 +8499,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 117,
+        "into_variable": 116,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -8530,7 +8567,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 118,
+        "into_variable": 117,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -8573,7 +8610,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 119,
+        "into_variable": 118,
         "source_subexpr": {
           "Field": {
             "SubExpression": 3
@@ -8616,7 +8653,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 120,
+        "into_variable": 119,
         "source_subexpr": {
           "Field": {
             "SubExpression": 3
@@ -8684,7 +8721,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 125,
+        "into_variable": 124,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -8752,7 +8789,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 126,
+        "into_variable": 125,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -8820,7 +8857,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 127,
+        "into_variable": 126,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -8863,7 +8900,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 128,
+        "into_variable": 127,
         "source_subexpr": {
           "Field": {
             "SubExpression": 3
@@ -8906,7 +8943,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 129,
+        "into_variable": 128,
         "source_subexpr": {
           "Field": {
             "SubExpression": 3
@@ -10776,12 +10813,17 @@
     },
     {
       "Bool": {
+        "Place": 30
+      }
+    },
+    {
+      "Bool": {
         "Place": 55
       }
     },
     {
       "Bool": {
-        "And": {
+        "Or": {
           "lhs": {
             "SubExpression": 0
           },
@@ -10792,41 +10834,23 @@
       }
     },
     {
+      "Bool": {
+        "And": {
+          "lhs": {
+            "SubExpression": 3
+          },
+          "rhs": {
+            "SubExpression": 2
+          }
+        }
+      }
+    },
+    {
       "WriteVariable": {
         "into_variable": 88,
         "source_subexpr": {
           "Bool": {
-            "SubExpression": 2
-          }
-        },
-        "condition_subexpr_idx": null
-      }
-    },
-    {
-      "Bool": {
-        "Negate": {
-          "SubExpression": 1
-        }
-      }
-    },
-    {
-      "Bool": {
-        "And": {
-          "lhs": {
-            "SubExpression": 0
-          },
-          "rhs": {
             "SubExpression": 4
-          }
-        }
-      }
-    },
-    {
-      "WriteVariable": {
-        "into_variable": 89,
-        "source_subexpr": {
-          "Bool": {
-            "SubExpression": 5
           }
         },
         "condition_subexpr_idx": null
@@ -11001,7 +11025,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 90,
+        "into_variable": 89,
         "source_subexpr": {
           "Field": {
             "SubExpression": 19
@@ -11281,7 +11305,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 91,
+        "into_variable": 90,
         "source_subexpr": {
           "Field": {
             "SubExpression": 27
@@ -11324,6 +11348,16 @@
     },
     {
       "Field": {
+        "Place": 29
+      }
+    },
+    {
+      "Field": {
+        "Place": 30
+      }
+    },
+    {
+      "Field": {
         "Place": 43
       }
     },
@@ -11356,43 +11390,13 @@
       "Field": {
         "AddProduct": {
           "additive_term": {
-            "SubExpression": 11
+            "SubExpression": 13
           },
           "mul_0": {
             "SubExpression": 0
           },
           "mul_1": {
-            "SubExpression": 8
-          }
-        }
-      }
-    },
-    {
-      "Field": {
-        "AddProduct": {
-          "additive_term": {
-            "SubExpression": 12
-          },
-          "mul_0": {
-            "SubExpression": 1
-          },
-          "mul_1": {
-            "SubExpression": 8
-          }
-        }
-      }
-    },
-    {
-      "Field": {
-        "AddProduct": {
-          "additive_term": {
-            "SubExpression": 13
-          },
-          "mul_0": {
-            "SubExpression": 2
-          },
-          "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 10
           }
         }
       }
@@ -11404,10 +11408,10 @@
             "SubExpression": 14
           },
           "mul_0": {
-            "SubExpression": 3
+            "SubExpression": 1
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 10
           }
         }
       }
@@ -11419,10 +11423,10 @@
             "SubExpression": 15
           },
           "mul_0": {
-            "SubExpression": 5
+            "SubExpression": 2
           },
           "mul_1": {
-            "SubExpression": 8
+            "SubExpression": 10
           }
         }
       }
@@ -11434,10 +11438,118 @@
             "SubExpression": 16
           },
           "mul_0": {
-            "SubExpression": 7
+            "SubExpression": 3
           },
           "mul_1": {
             "SubExpression": 10
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 17
+          },
+          "mul_0": {
+            "SubExpression": 5
+          },
+          "mul_1": {
+            "SubExpression": 10
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 18
+          },
+          "mul_0": {
+            "SubExpression": 6
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 19
+          },
+          "mul_0": {
+            "SubExpression": 7
+          },
+          "mul_1": {
+            "SubExpression": 9
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 20
+          },
+          "mul_0": {
+            "SubExpression": 8
+          },
+          "mul_1": {
+            "SubExpression": 12
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Mul": {
+          "lhs": {
+            "SubExpression": 6
+          },
+          "rhs": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Sub": {
+          "lhs": {
+            "SubExpression": 21
+          },
+          "rhs": {
+            "SubExpression": 22
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Mul": {
+          "lhs": {
+            "SubExpression": 7
+          },
+          "rhs": {
+            "SubExpression": 8
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Sub": {
+          "lhs": {
+            "SubExpression": 23
+          },
+          "rhs": {
+            "SubExpression": 24
           }
         }
       }
@@ -11454,7 +11566,7 @@
             "SubExpression": 4
           },
           "rhs": {
-            "SubExpression": 18
+            "SubExpression": 26
           }
         }
       }
@@ -11463,13 +11575,13 @@
       "Field": {
         "AddProduct": {
           "additive_term": {
-            "SubExpression": 17
+            "SubExpression": 25
           },
           "mul_0": {
-            "SubExpression": 19
+            "SubExpression": 27
           },
           "mul_1": {
-            "SubExpression": 6
+            "SubExpression": 8
           }
         }
       }
@@ -11486,7 +11598,7 @@
             "SubExpression": 4
           },
           "rhs": {
-            "SubExpression": 21
+            "SubExpression": 29
           }
         }
       }
@@ -11495,23 +11607,23 @@
       "Field": {
         "AddProduct": {
           "additive_term": {
-            "SubExpression": 20
+            "SubExpression": 28
           },
           "mul_0": {
-            "SubExpression": 22
+            "SubExpression": 30
           },
           "mul_1": {
-            "SubExpression": 9
+            "SubExpression": 11
           }
         }
       }
     },
     {
       "WriteVariable": {
-        "into_variable": 92,
+        "into_variable": 91,
         "source_subexpr": {
           "Field": {
-            "SubExpression": 23
+            "SubExpression": 31
           }
         },
         "condition_subexpr_idx": null
@@ -11522,6 +11634,21 @@
     {
       "Field": {
         "Place": 26
+      }
+    },
+    {
+      "Field": {
+        "Place": 29
+      }
+    },
+    {
+      "Field": {
+        "Place": 30
+      }
+    },
+    {
+      "Field": {
+        "Place": 44
       }
     },
     {
@@ -11548,13 +11675,13 @@
       "Field": {
         "AddProduct": {
           "additive_term": {
-            "SubExpression": 4
+            "SubExpression": 7
           },
           "mul_0": {
             "SubExpression": 0
           },
           "mul_1": {
-            "SubExpression": 2
+            "SubExpression": 5
           }
         }
       }
@@ -11563,23 +11690,101 @@
       "Field": {
         "AddProduct": {
           "additive_term": {
-            "SubExpression": 5
+            "SubExpression": 8
           },
           "mul_0": {
             "SubExpression": 1
           },
           "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 9
+          },
+          "mul_0": {
+            "SubExpression": 2
+          },
+          "mul_1": {
+            "SubExpression": 4
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 10
+          },
+          "mul_0": {
+            "SubExpression": 3
+          },
+          "mul_1": {
+            "SubExpression": 6
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Mul": {
+          "lhs": {
+            "SubExpression": 1
+          },
+          "rhs": {
             "SubExpression": 3
           }
         }
       }
     },
     {
+      "Field": {
+        "Sub": {
+          "lhs": {
+            "SubExpression": 11
+          },
+          "rhs": {
+            "SubExpression": 12
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Mul": {
+          "lhs": {
+            "SubExpression": 2
+          },
+          "rhs": {
+            "SubExpression": 3
+          }
+        }
+      }
+    },
+    {
+      "Field": {
+        "Sub": {
+          "lhs": {
+            "SubExpression": 13
+          },
+          "rhs": {
+            "SubExpression": 14
+          }
+        }
+      }
+    },
+    {
       "WriteVariable": {
-        "into_variable": 93,
+        "into_variable": 92,
         "source_subexpr": {
           "Field": {
-            "SubExpression": 6
+            "SubExpression": 15
           }
         },
         "condition_subexpr_idx": null
@@ -11589,7 +11794,12 @@
   [
     {
       "Integer": {
-        "U16Place": 90
+        "U16Place": 89
+      }
+    },
+    {
+      "Field": {
+        "Place": 90
       }
     },
     {
@@ -11600,11 +11810,6 @@
     {
       "Field": {
         "Place": 92
-      }
-    },
-    {
-      "Field": {
-        "Place": 93
       }
     },
     {
@@ -11688,7 +11893,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 98,
+        "into_variable": 97,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -11756,7 +11961,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 100,
+        "into_variable": 99,
         "source_subexpr": {
           "Field": {
             "SubExpression": 6
@@ -11799,7 +12004,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 102,
+        "into_variable": 101,
         "source_subexpr": {
           "Field": {
             "SubExpression": 3
@@ -11812,7 +12017,12 @@
   [
     {
       "Integer": {
-        "U16Place": 94
+        "U16Place": 93
+      }
+    },
+    {
+      "Field": {
+        "Place": 94
       }
     },
     {
@@ -11848,11 +12058,6 @@
     {
       "Field": {
         "Place": 101
-      }
-    },
-    {
-      "Field": {
-        "Place": 102
       }
     },
     {
@@ -12193,7 +12398,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 105,
+        "into_variable": 104,
         "source_subexpr": {
           "Field": {
             "SubExpression": 32
@@ -12306,7 +12511,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 106,
+        "into_variable": 105,
         "source_subexpr": {
           "Field": {
             "SubExpression": 11
@@ -12319,7 +12524,12 @@
   [
     {
       "Integer": {
-        "U16Place": 103
+        "U16Place": 102
+      }
+    },
+    {
+      "Field": {
+        "Place": 103
       }
     },
     {
@@ -12355,11 +12565,6 @@
     {
       "Field": {
         "Place": 110
-      }
-    },
-    {
-      "Field": {
-        "Place": 111
       }
     },
     {
@@ -12974,7 +13179,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 113,
+        "into_variable": 112,
         "source_subexpr": {
           "Field": {
             "SubExpression": 53
@@ -13167,7 +13372,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 114,
+        "into_variable": 113,
         "source_subexpr": {
           "Field": {
             "SubExpression": 19
@@ -13180,7 +13385,12 @@
   [
     {
       "Integer": {
-        "U16Place": 112
+        "U16Place": 111
+      }
+    },
+    {
+      "Field": {
+        "Place": 112
       }
     },
     {
@@ -13216,11 +13426,6 @@
     {
       "Field": {
         "Place": 119
-      }
-    },
-    {
-      "Field": {
-        "Place": 120
       }
     },
     {
@@ -13497,7 +13702,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 122,
+        "into_variable": 121,
         "source_subexpr": {
           "Field": {
             "SubExpression": 26
@@ -13827,7 +14032,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 123,
+        "into_variable": 122,
         "source_subexpr": {
           "Field": {
             "SubExpression": 32
@@ -14025,7 +14230,7 @@
     },
     {
       "WriteVariable": {
-        "into_variable": 124,
+        "into_variable": 123,
         "source_subexpr": {
           "Field": {
             "SubExpression": 20
@@ -14038,7 +14243,12 @@
   [
     {
       "Integer": {
-        "U16Place": 121
+        "U16Place": 120
+      }
+    },
+    {
+      "Field": {
+        "Place": 121
       }
     },
     {
@@ -14074,11 +14284,6 @@
     {
       "Field": {
         "Place": 128
-      }
-    },
-    {
-      "Field": {
-        "Place": 129
       }
     },
     {

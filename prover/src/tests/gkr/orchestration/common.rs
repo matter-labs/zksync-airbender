@@ -370,3 +370,16 @@ pub fn parse_prove_empty() -> bool {
 pub fn circuit_in_filter(filter: &Option<std::collections::HashSet<String>>, name: &str) -> bool {
     filter.as_ref().map(|s| s.contains(name)).unwrap_or(true)
 }
+
+pub fn log_prove_decision(name: &str, should_prove: bool, compute_only: bool) {
+    if should_prove {
+        println!("Proving {name}");
+    } else if compute_only {
+        println!("Skipping {name} prove (compute-only pass; witness still replayed)");
+    } else {
+        println!(
+            "Skipping {name} prove (filtered out by GKR_CIRCUITS, or 0 calls without \
+             GKR_PROVE_EMPTY); witness still replayed"
+        );
+    }
+}

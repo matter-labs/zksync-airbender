@@ -127,6 +127,31 @@ pub(crate) fn test_single_unified_cycle<F: PrimeField, OPT: DecodingOptions>(
     circuit_table_addition_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
     circuit_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
 ) {
+    test_single_unified_cycle_with_oracle::<F, OPT, _>(
+        decoder,
+        opcode_data,
+        binary,
+        circuit_table_addition_fn,
+        circuit_fn,
+        |oracle| oracle,
+    )
+}
+
+/// Like [`test_single_unified_cycle`], but lets the caller wrap the trace
+/// oracle (e.g. to poison output placeholders and pin the self-generating
+/// witness contract of the `ASSUME_MEMORY_VALUES_ASSIGNED == false` regime).
+pub(crate) fn test_single_unified_cycle_with_oracle<
+    F: PrimeField,
+    OPT: DecodingOptions,
+    O: ::cs::oracle::Oracle<F> + 'static,
+>(
+    decoder: impl OpcodeFamilyDecoder,
+    opcode_data: UnifiedOpcodeTracingDataWithTimestamp,
+    binary: &[u32],
+    circuit_table_addition_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
+    circuit_fn: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>),
+    wrap_oracle: impl FnOnce(UnifiedRiscvCircuitOracle<'static>) -> O,
+) {
     let mut t = process_binary_into_separate_tables_ext::<F, OPT, false, Global>(
         binary,
         &[Box::new(decoder)],
@@ -148,6 +173,7 @@ pub(crate) fn test_single_unified_cycle<F: PrimeField, OPT: DecodingOptions>(
         };
 
         let oracle: UnifiedRiscvCircuitOracle<'static> = unsafe { core::mem::transmute(oracle) };
+        let oracle = (wrap_oracle)(oracle);
         let mut cs = BasicAssembly::<F, CSDebugWitnessEvaluator<F>, false>::new_with_oracle_and_preprocessed_decoder(
             oracle,
             decoder_data.iter().map(|el| el.unwrap_or_default()).collect::<Vec<_>>(),

@@ -114,26 +114,34 @@ fn build_satisfying_trace_with_mutation(
     (circuit, full_trace)
 }
 
-/// Force a misaligned `writeaddr_lo` on an SW row.
-/// The decomposition `4*top_14 + 2*bit_1 + bit_0 = writeaddr_lo` becomes
-/// inconsistent (low bits unchanged, but `writeaddr_lo` no longer matches),
-/// so `check_satisfied` rejects.
+
+/// Coherent misaligned SW: shift `rs1_lo`, `writeaddr_lo`, and the pooled
+/// `ram_addr[0]` (shared scratch var[0]) together by +1 on an SW row, so the
+/// address-formation constraint and the select-trick both still hold — the
+/// mutated witness describes a genuine `sw` to a byte address ≡ 1 (mod 4).
+/// Only the SW alignment constraints (is_sw-gated decomposition with the
+/// honest bit/top slots, and the trap) can reject it.
 #[test]
 fn misaligned_sw_writeaddr_lo_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
+        let rs1_lo_addr = find_base_layer_address(circuit, "rs1 read_value[0]");
         let writeaddr_lo_addr = find_base_layer_address(circuit, "unified memwrite_addr[0]");
+        let ram_addr_lo_addr = find_base_layer_address(circuit, "shared scratch var[0]");
         let sw_row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute at least one SW");
-        // `0xFFFD` is a 16-bit value with bit 0 = 1 → misaligned. The
-        // decomposition constraint (degree 1, ungated) catches it because
-        // we leave bit_0/bit_1/top_14 unchanged.
-        write_cell(trace, writeaddr_lo_addr, sw_row, BabyBearField::new(0xFFFD));
+        let one = BabyBearField::ONE;
+        for addr in [rs1_lo_addr, writeaddr_lo_addr, ram_addr_lo_addr] {
+            let mut v = read_cell(trace, addr, sw_row);
+            v.add_assign(&one);
+            write_cell(trace, addr, sw_row, v);
+        }
     });
     assert!(
         !check_satisfied(&circuit, &full_trace),
-        "expected misaligned SW writeaddr_lo mutation to fail check_satisfied"
+        "expected coherent misaligned SW writeaddr mutation to fail check_satisfied \
+         (SW alignment decomposition + trap)"
     );
 }
 
@@ -360,6 +368,71 @@ fn unified_sw_align_bit0_flip_on_sw_row_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected sw-align bit_0 flip on SW row to fail check_satisfied (gated alignment trap)"
+    );
+}
+
+/// Family-4 LW-alignment pooled-bool binding. `bit_0` (shared scratch bool[3])
+/// decomposes the SELECTED Family-4 address low limb (readaddr on LW, writeaddr
+/// on SW). On an LW row the honest read address is word-aligned so `bit_0 = 0`;
+/// the is_lw-gated decomposition and the `(is_lw+is_sw)*(bit_0+bit_1)=0` trap
+/// pin it. Flipping it to 1 leaves every address-binding constraint untouched —
+/// only the LW alignment constraints can reject.
+#[test]
+fn unified_lw_align_bit0_flip_on_lw_row_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        // lw/sw-align bit_0 aliases shared scratch bool[3].
+        let bit_0_addr = find_base_layer_address(circuit, "shared scratch bool[3]");
+        let lw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one LW");
+        let cur = read_cell(trace, bit_0_addr, lw_row);
+        let flipped = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, bit_0_addr, lw_row, flipped);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected lw-align bit_0 flip on LW row to fail check_satisfied (gated alignment trap)"
+    );
+}
+
+/// Coherent misaligned LW: shift `rs1_lo`, `readaddr_lo`, and the pooled
+/// `ram_addr[0]` (shared scratch var[0]) together by +1 on an LW row, so that
+/// the address-formation constraint (`is_lw*(rs1_lo+imm_lo-readaddr_lo-2^16*of_lo)`)
+/// and the select-trick (`is_lw*(ram_addr[0]-readaddr_lo)`) BOTH still hold with
+/// the honest carry/scratch values — the mutated witness describes a genuine
+/// `lw` from a byte address ≡ 1 (mod 4). Only the alignment constraints
+/// (decomposition `4*top_14 + 2*bit_1 + bit_0 = readaddr_lo` with the honest
+/// bit/top slots, and the trap) can reject it.
+///
+/// Preconditions handled: the honest aligned `readaddr_lo` is a multiple of 4,
+/// so +1 cannot wrap the 16-bit limb (no carry change into the high limb) and
+/// cannot move the address across the ROM bound (high limb untouched).
+#[test]
+fn unified_lw_coherent_misaligned_readaddr_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        let rs1_lo_addr = find_base_layer_address(circuit, "rs1 read_value[0]");
+        let readaddr_lo_addr = find_base_layer_address(circuit, "unified memread_addr[0]");
+        let ram_addr_lo_addr = find_base_layer_address(circuit, "shared scratch var[0]");
+        let lw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one LW");
+        let one = BabyBearField::ONE;
+        for addr in [rs1_lo_addr, readaddr_lo_addr, ram_addr_lo_addr] {
+            let mut v = read_cell(trace, addr, lw_row);
+            v.add_assign(&one);
+            write_cell(trace, addr, lw_row, v);
+        }
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected coherent misaligned LW readaddr mutation to fail check_satisfied \
+         (LW alignment decomposition + trap)"
     );
 }
 

@@ -4492,7 +4492,17 @@
   [
     {
       "Bool": {
+        "Place": 29
+      }
+    },
+    {
+      "Bool": {
         "Place": 30
+      }
+    },
+    {
+      "Integer": {
+        "U16Place": 39
       }
     },
     {
@@ -4501,10 +4511,37 @@
       }
     },
     {
+      "Bool": {
+        "Or": {
+          "lhs": {
+            "SubExpression": 0
+          },
+          "rhs": {
+            "SubExpression": 1
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "Select": {
+          "selector": {
+            "SubExpression": 0
+          },
+          "if_true": {
+            "U16SubExpression": 2
+          },
+          "if_false": {
+            "U16SubExpression": 3
+          }
+        }
+      }
+    },
+    {
       "Integer": {
         "LowestBits": {
           "value": {
-            "U16SubExpression": 1
+            "U16SubExpression": 5
           },
           "num_bits": 1
         }
@@ -4519,10 +4556,10 @@
       "Bool": {
         "FromGenericIntegerEquality": {
           "lhs": {
-            "U16SubExpression": 2
+            "U16SubExpression": 6
           },
           "rhs": {
-            "U16SubExpression": 3
+            "U16SubExpression": 7
           }
         }
       }
@@ -4532,17 +4569,17 @@
         "into_variable": 56,
         "source_subexpr": {
           "Bool": {
-            "SubExpression": 4
+            "SubExpression": 8
           }
         },
-        "condition_subexpr_idx": 0
+        "condition_subexpr_idx": 4
       }
     },
     {
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U16SubExpression": 1
+            "U16SubExpression": 5
           },
           "magnitude": 1
         }
@@ -4552,7 +4589,7 @@
       "Integer": {
         "LowestBits": {
           "value": {
-            "U16SubExpression": 6
+            "U16SubExpression": 10
           },
           "num_bits": 1
         }
@@ -4562,10 +4599,10 @@
       "Bool": {
         "FromGenericIntegerEquality": {
           "lhs": {
-            "U16SubExpression": 7
+            "U16SubExpression": 11
           },
           "rhs": {
-            "U16SubExpression": 3
+            "U16SubExpression": 7
           }
         }
       }
@@ -4575,17 +4612,17 @@
         "into_variable": 57,
         "source_subexpr": {
           "Bool": {
-            "SubExpression": 8
+            "SubExpression": 12
           }
         },
-        "condition_subexpr_idx": 0
+        "condition_subexpr_idx": 4
       }
     },
     {
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U16SubExpression": 1
+            "U16SubExpression": 5
           },
           "magnitude": 2
         }
@@ -4596,10 +4633,10 @@
         "into_variable": 79,
         "source_subexpr": {
           "U16": {
-            "U16SubExpression": 10
+            "U16SubExpression": 14
           }
         },
-        "condition_subexpr_idx": 0
+        "condition_subexpr_idx": 4
       }
     }
   ],

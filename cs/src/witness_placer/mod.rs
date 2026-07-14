@@ -269,6 +269,10 @@ pub trait WitnessPlacer<F: PrimeField>: WitnessTypeSet<F> {
     fn get_oracle_u16(&mut self, placeholder: Placeholder) -> Self::U16;
     fn get_oracle_u8(&mut self, placeholder: Placeholder) -> Self::U8;
     fn get_oracle_boolean(&mut self, placeholder: Placeholder) -> Self::Mask;
+    fn get_oracle_timestamp_columns(
+        &mut self,
+        placeholder: Placeholder,
+    ) -> [Self::Field; NUM_TIMESTAMP_COLUMNS_FOR_RAM];
 
     fn get_field(&mut self, variable: Variable) -> Self::Field;
     fn get_boolean(&mut self, variable: Variable) -> Self::Mask;

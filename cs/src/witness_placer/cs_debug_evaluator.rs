@@ -117,6 +117,18 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         }
     }
 
+    fn get_oracle_timestamp_columns(
+        &mut self,
+        placeholder: Placeholder,
+    ) -> [Self::Field; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
+        let scalar = if let Some(oracle) = self.oracle.as_ref() {
+            oracle.get_timestamp_witness_from_placeholder(placeholder, 0)
+        } else {
+            0
+        };
+        timestamp_scalar_into_column_values(scalar).map(F::from_u32_with_reduction)
+    }
+
     fn get_oracle_u16(&mut self, placeholder: Placeholder) -> Self::U16 {
         if let Some(oracle) = self.oracle.as_ref() {
             oracle.get_u16_witness_from_placeholder(placeholder, 0)
