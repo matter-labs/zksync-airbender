@@ -9,6 +9,7 @@ pub mod cost;
 pub mod fif;
 pub mod interp;
 pub mod plan;
+pub mod price;
 pub mod search;
 pub mod trace;
 mod structure;

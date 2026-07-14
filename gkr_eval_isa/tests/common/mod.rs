@@ -779,6 +779,72 @@ pub fn synthetic_fma_compound_products_layer(n_cxc: usize, n_leaf: usize) -> Dis
     distill(&raw_layer(sources, exprs, roots), BwdRegime::Ext, &CrossFields::new(), None)
 }
 
+/// A shared-compound cone with genuine fan-out-2 nesting, for Task-8 removal-set
+/// pricing tests. Three nested shared compounds:
+///   * `U = Add(rU0, rU1)`   — used inside `W` and directly (Mul(U, rd)) → fan-out 2
+///   * `W = Mul(U, rW)`      — used inside `V` and directly (Mul(W, rc)) → fan-out 2
+///   * `V = Mul(W, rV)`      — used in Mul(V, ra) and Mul(V, rb)        → fan-out 2
+/// `root0 = Add(Mul(V,ra), Mul(V,rb), Mul(W,rc), Mul(U,rd))` (single claim root, so
+/// its four products become the spine terms). Every read leaf is fan-out 1
+/// (non-domain), so the site domain is exactly `{U, W, V}` and there are NO domain
+/// leaves — the pricing exercises pure COMPOUND cone suppression. Distilled Ext.
+/// No non-domain compound is ever wedged between two of these on a path (each is a
+/// direct operand of the next), so the pre-order stream reconstruction is exact.
+pub fn synthetic_shared_compound_layer() -> DistilledLayer {
+    let mut sources = Vec::new();
+    let mut exprs = Vec::new();
+    let ru0 = add_read(&mut sources, &mut exprs);
+    let ru1 = add_read(&mut sources, &mut exprs);
+    let rw = add_read(&mut sources, &mut exprs);
+    let rv = add_read(&mut sources, &mut exprs);
+    let ra = add_read(&mut sources, &mut exprs);
+    let rb = add_read(&mut sources, &mut exprs);
+    let rc = add_read(&mut sources, &mut exprs);
+    let rd = add_read(&mut sources, &mut exprs);
+    let u = add_expr(&mut exprs, Expr::Add(vec![ru0, ru1]));
+    let w = add_expr(&mut exprs, Expr::Mul(vec![u, rw]));
+    let v = add_expr(&mut exprs, Expr::Mul(vec![w, rv]));
+    let m_va = add_expr(&mut exprs, Expr::Mul(vec![v, ra]));
+    let m_vb = add_expr(&mut exprs, Expr::Mul(vec![v, rb]));
+    let m_wc = add_expr(&mut exprs, Expr::Mul(vec![w, rc]));
+    let m_ud = add_expr(&mut exprs, Expr::Mul(vec![u, rd]));
+    let root0 = add_expr(&mut exprs, Expr::Add(vec![m_va, m_vb, m_wc, m_ud]));
+    distill(
+        &raw_layer(sources, exprs, vec![claim_only_root(root0, 0)]),
+        BwdRegime::Ext,
+        &CrossFields::new(),
+        None,
+    )
+}
+
+/// Locate the three shared compounds `(U, W, V)` of
+/// [`synthetic_shared_compound_layer`] in the DISTILLED arena by structure: `U` is
+/// the site-domain `Add`; `W` is the site-domain `Mul` whose children include `U`;
+/// `V` is the site-domain `Mul` whose children include `W`.
+pub fn find_shared_compounds(d: &DistilledLayer) -> (ExprId, ExprId, ExprId) {
+    let domain: BTreeSet<ExprId> =
+        distilled_site_domain(d).into_iter().map(|s| s.value).collect();
+    let is_mul_with = |parent: ExprId, child: ExprId| -> bool {
+        matches!(&d.layer.exprs[parent.0 as usize], Expr::Mul(ch) if ch.contains(&child))
+    };
+    let u = domain
+        .iter()
+        .copied()
+        .find(|&e| matches!(d.layer.exprs[e.0 as usize], Expr::Add(_)))
+        .expect("shared U = domain Add");
+    let w = domain
+        .iter()
+        .copied()
+        .find(|&e| is_mul_with(e, u))
+        .expect("shared W = domain Mul containing U");
+    let v = domain
+        .iter()
+        .copied()
+        .find(|&e| is_mul_with(e, w))
+        .expect("shared V = domain Mul containing W");
+    (u, w, v)
+}
+
 // ── admission fixtures / probes ───────────────────────────────────────────────
 
 /// Locate the distilled `ExprId` of the `Read(column)` fold leaf, if present.

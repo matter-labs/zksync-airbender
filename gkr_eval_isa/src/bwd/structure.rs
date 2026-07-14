@@ -206,7 +206,7 @@ fn cone_dram_cells(
     cost
 }
 
-fn expr_width(d: &DistilledLayer, expr: ExprId, memo: &mut [Option<FieldKind>]) -> usize {
+pub(super) fn expr_width(d: &DistilledLayer, expr: ExprId, memo: &mut [Option<FieldKind>]) -> usize {
     match expr_field(d, expr, memo) {
         FieldKind::Base => 1,
         FieldKind::Ext => 4,

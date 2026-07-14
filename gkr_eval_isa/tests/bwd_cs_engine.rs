@@ -1,14 +1,18 @@
 mod common;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use common::*;
 use gkr_eval_isa::bwd::compile::{compile_distilled, compile_distilled_planned, compile_distilled_traced};
 use gkr_eval_isa::bwd::construct::construct_unit_order;
-use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain};
+use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain, DistilledLayer};
 use gkr_eval_isa::bwd::fif::{feasible_leaf_plan, fif_select, oracle_saved, plan_leaves, Gap};
-use gkr_eval_isa::bwd::plan::PlanAction;
+use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
+use gkr_eval_isa::bwd::price::{
+    compound_batch_plan, compound_candidates, modeled_traffic_full, planner_signature, price_pin,
+    priced_rounds, suppression_ranges, value_width,
+};
 use gkr_eval_isa::bwd::trace::{
-    certify, freeze_demand, live_profile, BwdEvent, BwdServedFrom, BwdServeKind,
+    certify, freeze_demand, live_profile, BwdEvent, BwdServedFrom, BwdServeKind, FrozenDemand,
 };
 use cs::gkr_compiler::dag_ir::{bwd_roots, BwdRegime, ExprId};
 
@@ -421,4 +425,227 @@ fn construct_order_is_deterministic() {
     let a = construct_unit_order(&layer, &d0, &stable_domain);
     let b = construct_unit_order(&layer, &d0, &stable_domain);
     assert_eq!(a, b, "construct_unit_order must be deterministic");
+}
+
+// ── Task 8 (CS-M0), Commit 1: removal-set pricing + CELF priced rounds ─────────
+
+/// The coordinate-correct `lower==place==budget` all-`Bypass` freeze (Task 5's
+/// `feasible_leaf_plan` step 1): harvest budget-independent domain-serve
+/// fingerprints from a `decisions:None` traced compile, build an all-`Bypass` plan,
+/// replay it at `lower==place==budget`, and re-freeze on THAT trace. This is the
+/// `frozen0` Task-8 pricing MUST use (never the fill-then-trim traced freeze).
+fn coordinate_correct_frozen(d: &DistilledLayer, budget: usize) -> FrozenDemand {
+    let (ft_c, ft_trace) = compile_distilled_traced(d, budget, None).expect("baseline traced");
+    let frozen_ft = freeze_demand(d, &ft_trace, &ft_c.program, &ft_c.specials);
+    let entries: Vec<PlanEntry> = frozen_ft
+        .domain_serves
+        .iter()
+        .map(|&(fp, _)| PlanEntry { fp, action: PlanAction::Bypass })
+        .collect();
+    let bypass = BwdOccurrencePlan {
+        epoch: frozen_ft.epoch,
+        entries_fnv: plan_entries_fnv(&entries),
+        stream_reductions: frozen_ft.stream_reductions,
+        entries,
+    };
+    let (c, t) = compile_distilled_planned(d, budget, &bypass).expect("all-Bypass compile feasible");
+    freeze_demand(d, &t, &c.program, &c.specials)
+}
+
+/// (a) Removal sets over the controlled shared-compound layer: `V ⊃ W ⊃ U` with
+/// hand-verifiable cone re-expansions, including the nested-pin case (V's single
+/// range strictly contains a W range). Exclusive reachability: each non-producer
+/// occurrence's range covers exactly that occurrence's domain descendants.
+#[test]
+fn suppression_ranges_exclusive_reachability() {
+    let d = synthetic_shared_compound_layer();
+    let frozen = coordinate_correct_frozen(&d, 16);
+    let (u, w, v) = find_shared_compounds(&d);
+
+    let covered = |ranges: &[std::ops::Range<usize>]| -> Vec<Vec<ExprId>> {
+        ranges
+            .iter()
+            .map(|r| frozen.domain_serves[r.clone()].iter().map(|(fp, _)| fp.value).collect())
+            .collect()
+    };
+
+    let rv = suppression_ranges(&frozen, v);
+    let rw = suppression_ranges(&frozen, w);
+    let ru = suppression_ranges(&frozen, u);
+
+    // V has 2 occurrences → 1 non-producer → 1 range, covering [W, U] (pre-order).
+    assert_eq!(rv.len(), 1, "V ranges: {rv:?}");
+    assert_eq!(covered(&rv), vec![vec![w, u]], "V's non-producer cone re-expansion = [W, U]");
+
+    // W has 3 occurrences → 2 non-producer → 2 ranges, each covering exactly [U].
+    assert_eq!(rw.len(), 2, "W ranges: {rw:?}");
+    assert_eq!(covered(&rw), vec![vec![u], vec![u]], "each W cone re-expansion = [U]");
+
+    // U has no domain descendants → every cone re-expansion is empty → dropped.
+    assert!(ru.is_empty(), "U ranges must be empty (no domain descendants): {ru:?}");
+
+    // Nested-pin case: V's range strictly contains one of W's ranges.
+    let vr = rv[0].clone();
+    assert!(
+        rw.iter().any(|r| {
+            vr.start <= r.start && r.end <= vr.end && (vr.start < r.start || r.end < vr.end)
+        }),
+        "V range {vr:?} must strictly contain a nested W range {rw:?}"
+    );
+}
+
+/// (b) O1 priced-oracle gap (spec §7): on keccak Ext L0 @ b16, take the top-12
+/// candidates by initial upper bound, exhaustively score all 2^12 subsets through
+/// `modeled_traffic_full`, and assert the CELF-committed subset (scored via the same
+/// full model) is within 1% modeled traffic of the oracle optimum. `#[ignore]` —
+/// exhaustive; still runs at Task 11 (needs `RUST_MIN_STACK`, may exceed 5 min).
+#[test]
+#[ignore = "priced-oracle gap: exhaustive 2^12; runs at Task 11 (RUST_MIN_STACK, may exceed 5 min)"]
+fn priced_oracle_gap() {
+    let (layer, cross) = load_layer("keccak_special5_layout_gkr.json", 0);
+    let d = distill(&layer, BwdRegime::Ext, &cross, None);
+    let frozen = coordinate_correct_frozen(&d, 16);
+
+    let mut ranked: Vec<(i64, ExprId)> = compound_candidates(&d, &frozen)
+        .into_iter()
+        .map(|c| (price_pin(&frozen, &BTreeSet::new(), c, value_width(&d, c)), c))
+        .collect();
+    ranked.sort_by(|a, b| b.0.cmp(&a.0));
+    ranked.truncate(12);
+    let top: Vec<ExprId> = ranked.iter().map(|&(_, c)| c).collect();
+    let width = |c: ExprId| value_width(&d, c);
+    let widths = |set: &BTreeSet<ExprId>| -> BTreeMap<ExprId, usize> {
+        set.iter().map(|&c| (c, width(c))).collect()
+    };
+
+    // Oracle: min modeled traffic over all feasible subsets of `top`.
+    let baseline = modeled_traffic_full(&frozen, &BTreeMap::new()).expect("baseline feasible");
+    let mut oracle = baseline;
+    for mask in 0u32..(1u32 << top.len()) {
+        let pins: BTreeMap<ExprId, usize> = top
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| mask & (1 << i) != 0)
+            .map(|(_, &c)| (c, width(c)))
+            .collect();
+        if let Some(t) = modeled_traffic_full(&frozen, &pins) {
+            oracle = oracle.min(t);
+        }
+    }
+
+    // CELF restricted to `top` (marginal greedy), scored via the SAME full model.
+    let mut committed: BTreeSet<ExprId> = BTreeSet::new();
+    loop {
+        let best = top
+            .iter()
+            .filter(|c| !committed.contains(c))
+            .map(|&c| (price_pin(&frozen, &committed, c, width(c)), c))
+            .filter(|&(delta, _)| delta > 0)
+            .max_by_key(|&(delta, _)| delta);
+        match best {
+            Some((_, c)) => {
+                committed.insert(c);
+            }
+            None => break,
+        }
+    }
+    let celf_traffic = modeled_traffic_full(&frozen, &widths(&committed)).expect("CELF set feasible");
+
+    assert!(
+        (celf_traffic as f64) <= oracle as f64 * 1.01,
+        "CELF traffic {celf_traffic} > 1% above oracle {oracle} (baseline {baseline}, top {})",
+        top.len()
+    );
+    eprintln!("priced_oracle_gap: baseline={baseline} oracle={oracle} celf={celf_traffic} candidates={}", top.len());
+}
+
+/// (c) Priced rounds converge or cap: add_sub + keccak Ext L0 @ b16 — `rounds <= 3`,
+/// the RETURNED round's plan certifies exactly with no divergence, `priced_rounds`
+/// is deterministic, and two identical rounds produce structurally-`==`
+/// `PlannerSignature`s (never a hash).
+#[test]
+fn priced_rounds_converge_or_cap() {
+    for name in ["add_sub_lui_auipc_mop_layout_gkr.json", "keccak_special5_layout_gkr.json"] {
+        let (layer, cross) = load_layer(name, 0);
+        let d = distill(&layer, BwdRegime::Ext, &cross, None);
+        let frozen0 = coordinate_correct_frozen(&d, 16);
+
+        let outcome = priced_rounds(&d, 16, frozen0.clone())
+            .unwrap_or_else(|e| panic!("{name}: priced_rounds must return Ok, got {e:?}"));
+        assert!(outcome.rounds <= 3, "{name}: rounds {} > 3", outcome.rounds);
+        assert_eq!(outcome.reclaim_attempted, 0, "{name}: Commit 1 has no reclaim");
+        assert_eq!(outcome.reclaim_kept, 0, "{name}: Commit 1 has no reclaim");
+
+        // The returned round's plan certifies exactly, with no divergence.
+        let (c, t) = compile_distilled_planned(&d, 16, &outcome.plan)
+            .unwrap_or_else(|e| panic!("{name}: returned plan must compile, got {e:?}"));
+        let report = certify(&c, &t);
+        assert!(report.is_ok(), "{name}: returned plan certify diverged: {report:?}");
+        assert!(
+            !t.events.iter().any(|e| matches!(e, BwdEvent::Diverge { .. })),
+            "{name}: returned plan diverged"
+        );
+
+        // `priced_rounds` is deterministic (no wall-clock / hashmap-order dependence).
+        let outcome2 = priced_rounds(&d, 16, frozen0.clone()).expect("second run");
+        assert_eq!(outcome.plan.entries, outcome2.plan.entries, "{name}: plan not deterministic");
+        assert_eq!(outcome.pins, outcome2.pins, "{name}: pins not deterministic");
+
+        // Two identical rounds → structurally-== signatures (independent compiles).
+        let pins: BTreeSet<ExprId> = outcome.pins.iter().copied().collect();
+        let (_c_a, t_a) = compile_distilled_planned(&d, 16, &outcome.plan).expect("compile a");
+        let (_c_b, t_b) = compile_distilled_planned(&d, 16, &outcome.plan).expect("compile b");
+        let sig_a = planner_signature(&frozen0, &t_a, &pins, &outcome.plan);
+        let sig_b = planner_signature(&frozen0, &t_b, &pins, &outcome.plan);
+        assert_eq!(sig_a, sig_b, "{name}: PlannerSignature must be structurally equal (never a hash)");
+
+        eprintln!(
+            "priced_rounds_converge_or_cap {name}: rounds={} converged={} pins={} traffic={}",
+            outcome.rounds,
+            outcome.converged,
+            outcome.pins.len(),
+            c.stats_ext.global + c.stats_ext.fold_traffic
+        );
+    }
+}
+
+/// (d) Compound-batch prediction == realization on the controlled layer: pin `V`,
+/// build the compound-batch plan over the predicted (suppressed) stream, compile it,
+/// and assert (i) NO divergence, (ii) the re-frozen domain-serve stream equals the
+/// predicted stream (plan entries) EXACTLY, (iii) suppression actually deleted
+/// serves. Exercises Task-4 rule-a/rule-b (V's admission + expired-resident release).
+#[test]
+fn compound_batch_prediction_realized() {
+    let d = synthetic_shared_compound_layer();
+    let frozen = coordinate_correct_frozen(&d, 16);
+    let (_u, _w, v) = find_shared_compounds(&d);
+    let pins: BTreeSet<ExprId> = [v].into_iter().collect();
+
+    let plan = compound_batch_plan(&frozen, &pins);
+    assert!(
+        plan.entries.iter().any(|e| e.fp.value == v && e.action == PlanAction::Retain),
+        "V must be retained at its producer occurrence"
+    );
+
+    let (c, t) = compile_distilled_planned(&d, 16, &plan).expect("compound-batch compile");
+    let diverge = t.events.iter().find(|e| matches!(e, BwdEvent::Diverge { .. }));
+    assert!(diverge.is_none(), "compound batch diverged (Task-4 machinery?): {diverge:?}");
+
+    let observed = freeze_demand(&d, &t, &c.program, &c.specials);
+    let predicted: Vec<_> = plan.entries.iter().map(|e| e.fp).collect();
+    let realized: Vec<_> = observed.domain_serves.iter().map(|(fp, _)| *fp).collect();
+    assert_eq!(predicted, realized, "predicted suppressed stream != observed re-frozen stream");
+
+    assert!(
+        observed.domain_serves.len() < frozen.domain_serves.len(),
+        "pinning V must suppress at least one cone re-expansion ({} !< {})",
+        observed.domain_serves.len(),
+        frozen.domain_serves.len()
+    );
+    eprintln!(
+        "compound_batch_prediction_realized: stream {} -> {} (suppressed {})",
+        frozen.domain_serves.len(),
+        observed.domain_serves.len(),
+        frozen.domain_serves.len() - observed.domain_serves.len()
+    );
 }
