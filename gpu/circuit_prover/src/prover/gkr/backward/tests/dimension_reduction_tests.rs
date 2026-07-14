@@ -14,7 +14,7 @@ use crate::upstream::{DimensionReducingInputOutput, Field, OutputType};
 #[test]
 #[serial]
 fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
-    let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
+    let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture();
     let context = &fixture.context;
     let expected_dimension_reducing_layers =
         fixture.initial_output_layer_idx - fixture.compiled_circuit.layers.len();

@@ -10,10 +10,7 @@ use worker::Worker;
 
 use super::super::*;
 
-use super::{
-    bitreverse_index, gather_tree_caps, transcript_commit_initial, BLOCK_SIZE,
-    USE_REDUCED_BLAKE2_ROUNDS,
-};
+use super::{bitreverse_index, BLOCK_SIZE, USE_REDUCED_BLAKE2_ROUNDS};
 use crate::upstream::{Field, Seed};
 
 #[test]
@@ -84,19 +81,6 @@ fn device_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
     memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
     memory_copy_async(&mut d_input, input, &stream).unwrap();
     super::transcript_commit(&mut d_seed, &d_input, &stream).unwrap();
-    let mut h_result = [0u32; STATE_SIZE];
-    memory_copy_async(&mut h_result[..], &d_seed, &stream).unwrap();
-    stream.synchronize().unwrap();
-    h_result
-}
-
-/// Helper: run device-side transcript_commit_initial and return the resulting seed.
-fn device_commit_initial(input: &[u32]) -> [u32; STATE_SIZE] {
-    let stream = CudaStream::default();
-    let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
-    let mut d_input = DeviceAllocation::alloc(input.len()).unwrap();
-    memory_copy_async(&mut d_input, input, &stream).unwrap();
-    transcript_commit_initial(&mut d_seed, &d_input, &stream).unwrap();
     let mut h_result = [0u32; STATE_SIZE];
     memory_copy_async(&mut h_result[..], &d_seed, &stream).unwrap();
     stream.synchronize().unwrap();
@@ -175,47 +159,6 @@ fn transcript_commit_parity_randomized() {
         assert_eq!(
             actual, expected,
             "commit mismatch for input_len={input_len}"
-        );
-    }
-}
-
-#[test]
-#[serial]
-fn transcript_commit_initial_parity_small() {
-    // 4 words — fits inside one block with padding.
-    let input: Vec<u32> = (10..14).collect();
-    assert_eq!(device_commit_initial(&input), host_commit_initial(&input));
-}
-
-#[test]
-#[serial]
-fn transcript_commit_initial_parity_exact_block() {
-    // 16 words — exactly one full block.
-    let input: Vec<u32> = (0..BLOCK_SIZE as u32).collect();
-    assert_eq!(device_commit_initial(&input), host_commit_initial(&input));
-}
-
-#[test]
-#[serial]
-fn transcript_commit_initial_parity_two_blocks() {
-    // 20 words — two blocks (16 + 4).
-    let input: Vec<u32> = (100..120).collect();
-    assert_eq!(device_commit_initial(&input), host_commit_initial(&input));
-}
-
-#[test]
-#[serial]
-fn transcript_commit_initial_parity_randomized() {
-    let mut rng = rand::rng();
-    for input_len in [
-        1, 4, 7, 8, 12, 15, 16, 17, 20, 24, 31, 32, 48, 64, 100, 128, 200, 256, 500, 1024,
-    ] {
-        let input: Vec<u32> = (0..input_len).map(|_| rng.random()).collect();
-        let expected = host_commit_initial(&input);
-        let actual = device_commit_initial(&input);
-        assert_eq!(
-            actual, expected,
-            "commit_initial mismatch for input_len={input_len}"
         );
     }
 }
@@ -332,53 +275,6 @@ fn transcript_commit_initial_chunked_parity_randomized() {
             assert_eq!(
                 actual, expected,
                 "chunked commit_initial mismatch for total_len={total_len}, num_chunks={num_chunks}"
-            );
-        }
-    }
-}
-
-#[test]
-#[serial]
-fn gather_tree_caps_parity() {
-    let stream = CudaStream::default();
-    // Pretend each "tree" is just `cap_words_per_coset` words; gather expects u64-encoded
-    // device pointers to the cap region of each tree.
-    for &(cap_words_per_coset, coset_count) in
-        &[(8usize, 1usize), (16, 2), (32, 4), (64, 8), (256, 4)]
-    {
-        // Pre-fill each per-coset source with a distinct pattern to verify the gather order.
-        let mut d_sources: Vec<DeviceAllocation<u32>> = (0..coset_count)
-            .map(|_| DeviceAllocation::alloc(cap_words_per_coset).unwrap())
-            .collect();
-        let mut h_sources: Vec<Vec<u32>> = Vec::with_capacity(coset_count);
-        for (i, d) in d_sources.iter_mut().enumerate() {
-            let pattern: Vec<u32> = (0..cap_words_per_coset)
-                .map(|j| ((i as u32) << 24) | (j as u32))
-                .collect();
-            memory_copy_async(d, &pattern[..], &stream).unwrap();
-            h_sources.push(pattern);
-        }
-        let src_ptrs: Vec<u64> = d_sources.iter().map(|d| d.as_ptr() as u64).collect();
-        let mut d_ptr_table: DeviceAllocation<u64> = DeviceAllocation::alloc(coset_count).unwrap();
-        memory_copy_async(&mut d_ptr_table, &src_ptrs[..], &stream).unwrap();
-        let mut d_dst: DeviceAllocation<u32> =
-            DeviceAllocation::alloc(coset_count * cap_words_per_coset).unwrap();
-        gather_tree_caps(
-            &d_ptr_table,
-            &mut d_dst,
-            cap_words_per_coset as u32,
-            &stream,
-        )
-        .unwrap();
-        let mut h_dst: Vec<u32> = vec![0u32; coset_count * cap_words_per_coset];
-        memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
-        stream.synchronize().unwrap();
-        for (coset_idx, expected) in h_sources.iter().enumerate() {
-            let actual =
-                &h_dst[coset_idx * cap_words_per_coset..(coset_idx + 1) * cap_words_per_coset];
-            assert_eq!(
-                actual, &expected[..],
-                "gather mismatch for coset {coset_idx} (cap_words={cap_words_per_coset}, count={coset_count})"
             );
         }
     }

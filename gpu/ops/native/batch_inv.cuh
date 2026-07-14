@@ -13,8 +13,6 @@ namespace airbender::ops {
 // and callers may set INV_BATCH independently.
 template <typename T, int INV_BATCH, bool batch_is_full>
 DEVICE_FORCEINLINE void batch_inv_registers(const T *inputs, T *fwd_scan_and_outputs, int runtime_batch_size) {
-  // If count < grid size, the kernel is inefficient no matter what (because each thread processes just one element)
-  // but we should still bail out if a thread has no assigned elems at all.
   T running_prod = T::ONE();
 #pragma unroll
   for (int i = 0; i < INV_BATCH; i++)

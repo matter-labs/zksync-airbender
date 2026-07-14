@@ -63,8 +63,6 @@ fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {
         sample_ext(10),
         sample_ext(20),
         sample_ext(20),
-        2,
-        2,
     );
     assert_eq!(blueprints.len(), 1);
     let blueprint = &blueprints[0];
@@ -148,8 +146,6 @@ fn max_quadratic_relation_dispatches_with_base_output() {
         sample_ext(10),
         sample_ext(20),
         sample_ext(20),
-        2,
-        2,
     );
     assert_eq!(blueprints.len(), 1);
     let blueprint = &blueprints[0];
@@ -251,18 +247,13 @@ fn main_layer_blueprints_for_inits_and_teardowns_initial_pair_use_canonical_top_
         sample_ext(10),
         sample_ext(15),
         sample_ext(20),
-        4,
-        0,
     );
     let static_blueprints = build_main_layer_kernel_blueprints_static(
         &layer,
-        0,
         &|addr| storage.layers[0].base_field_inputs.contains_key(addr),
         &external_challenges,
         &canonical_top_bits,
         high_bits_shift,
-        4,
-        0,
     );
 
     assert_eq!(dynamic_blueprints.len(), 2);
@@ -335,7 +326,7 @@ fn main_layer_blueprints_for_inits_and_teardowns_initial_pair_use_canonical_top_
 fn compute_main_layer_orphan_output_addresses_picks_unconsumed_outputs() {
     // Three layers; layer 0 produces an InnerLayer{1,0} output that
     // layer-1's kernels do not read — exactly the MaxQuadratic-with-
-    // higher-layer-consumer case the GPU port now handles. Bottom
+    // higher-layer-consumer case. Bottom
     // layer (layer_idx == 0) is always empty (no layer below). Top
     // layer's slot lists orphans of the layer below it (here:
     // layer-1 outputs that layer 2 doesn't consume).

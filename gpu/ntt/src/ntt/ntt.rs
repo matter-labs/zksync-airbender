@@ -1328,9 +1328,6 @@ pub fn lde_intermediate_size_with_coset_range(
     let outputs_matrix_mut = outputs_matrix.as_mut_ptr_and_stride();
     let log_k = log_n - 8;
     let (block_dim_x, vals_per_block) = get_lde_config_for_log_n(log_n);
-    // let grid_dim_x = (1 << log_n) / vals_per_block;
-    // let grid_dim_y = num_cols_per_coset_stride;
-    // let grid_dim: Dim3 = (grid_dim_x as u32, grid_dim_y as u32).into();
     let first_pass_function = match log_n {
         18 => LdeIntermediateFunction(ab_lde_first_10_stages_kernel),
         17 => LdeIntermediateFunction(ab_lde_first_9_stages_kernel),
@@ -1404,10 +1401,8 @@ pub fn lde_intermediate_size_with_coset_range(
 /// coset subrange.
 ///
 /// For the compact 1-pass range (`log_n <= 12`) all cosets are batched into one
-/// launch via `gridDim.x`, eliminating the per-coset launch overhead that
-/// previously dominated small-`log_n` work. For larger `log_n`
-/// (2-pass-compact-initial, 3-pass forward) cosets are batched up to the
-/// L2-pressure cap from the strategy.
+/// launch via `gridDim.x`. For larger `log_n` (2-pass-compact-initial, 3-pass
+/// forward) cosets are batched up to the L2-pressure cap from the strategy.
 ///
 /// Output layout: coset-major outer, column-major inner. Coset k's columns
 /// occupy `outputs[(k * num_cols_per_coset_stride + col) * trace_len ..]` for
@@ -1560,7 +1555,6 @@ fn bitreversed_monomials_to_natural_evals_multi_coset_impl(
         log_n,
         num_cols,
         num_cosets,
-        false,
         device_properties,
     )
     .unwrap_or_else(|e| unreachable!("forward strategy unavailable: {e:?}"));
@@ -1732,7 +1726,6 @@ pub fn bitreversed_monomials_to_natural_evals(
         log_n,
         cols,
         1,
-        false,
         device_properties,
     ) {
         Ok(strategy) => dispatch_strategy(
@@ -1938,7 +1931,6 @@ pub fn natural_evals_to_bitreversed_monomials(
         log_n,
         num_cols,
         1,
-        false,
         device_properties,
     )
     .unwrap_or_else(|e| {

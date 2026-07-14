@@ -36,7 +36,6 @@ pub(crate) struct GpuGKRForwardOutput<B, E> {
 
 #[allow(dead_code)]
 pub(crate) struct GpuGKRTranscriptHandoff<E> {
-    _tracing_ranges: Vec<Range>,
     explicit_evaluations: BTreeMap<OutputType, [HostAllocation<[E]>; 2]>,
     /// Backing for the packed flat evaluations buffer: the consolidated
     /// per-`AddressClass` Arc populated by the forward dim-reduction pass.
@@ -127,7 +126,6 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
         with_host_readback: bool,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRTranscriptHandoff<E>> {
-        let tracing_ranges = Vec::new();
         let reduced_outputs = self
             .dimension_reducing_inputs
             .get(&self.initial_layer_for_sumcheck)
@@ -173,7 +171,6 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
         );
 
         Ok(GpuGKRTranscriptHandoff {
-            _tracing_ranges: tracing_ranges,
             explicit_evaluations,
             flat_evaluations_backing,
             flat_total_len,
@@ -286,7 +283,6 @@ where
         setup_trace_holder.log_tree_cap_size,
         &stage1.memory_trace_holder,
         &stage1.witness_trace_holder,
-        context,
     )?;
     let storage_layout = std::sync::Arc::new(
         crate::prover::gkr::storage_layout::GpuGKRStorageLayout::from_artifact_with_tower(
@@ -837,7 +833,6 @@ where
                 forward_setup,
                 external_challenges,
                 decoder_predicate_address,
-                trace_len,
                 context,
             )?;
             *descriptor = lowered;

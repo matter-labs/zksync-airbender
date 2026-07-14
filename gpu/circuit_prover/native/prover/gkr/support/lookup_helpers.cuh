@@ -222,20 +222,9 @@ template <typename E, typename Mask, typename Value> DEVICE_FORCEINLINE void gkr
   result = E::add(result, E::ONE());
 }
 
-template <typename E, typename Mask, typename Value> DEVICE_FORCEINLINE void gkr_eval_mask_identity_quadratic(const Mask mask, const Value value, E &result) {
-  result = E::mul(value, mask);
-}
-
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_pair(const E a, const E b, const E c, const E d, E &num, E &den) {
   num = E::fma(a, d, E::mul(c, b));
   den = E::mul(b, d);
-}
-
-template <typename E, typename B, typename D> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair(const B b, const D d, const E gamma, E &num, E &den) {
-  const E shifted_b = E::add(b, gamma);
-  const E shifted_d = E::add(d, gamma);
-  num = E::add(shifted_b, shifted_d);
-  den = E::mul(shifted_b, shifted_d);
 }
 
 template <typename E>
@@ -252,16 +241,6 @@ template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_ext_pair(const E b
   const E shifted_d = E::add(d, gamma);
   num = E::add(shifted_b, shifted_d);
   den = E::mul(shifted_b, shifted_d);
-}
-
-template <typename E, typename B, typename D> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair_quadratic(const B b, const D d, E &num, E &den) {
-  num = E::ZERO();
-  den = E::mul(b, d);
-}
-
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair_quadratic(const bf b, const bf d, E &num, E &den) {
-  num = E::ZERO();
-  den = E::from_scalar(bf::mul(b, d));
 }
 
 template <typename E, typename B, typename C, typename D>
@@ -285,28 +264,11 @@ DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_v2(const bf b, c
   den = E::fma(gamma, bd_sum, gamma_sq_plus_bd);
 }
 
-template <typename E, typename B, typename C, typename D>
-DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const B b, const C c, const D d, E &num, E &den) {
-  num = E::neg(E::mul(c, b));
-  den = E::mul(b, d);
-}
-
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const bf b, const bf c, const bf d, E &num, E &den) {
-  num = E::neg(E::from_scalar(bf::mul(c, b)));
-  den = E::from_scalar(bf::mul(b, d));
-}
-
 template <typename E, typename D, typename A, typename B>
 DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced(const D d, const A a, const B b, const E gamma, E &num, E &den) {
   const E shifted_d = E::add(d, gamma);
   num = E::fma(a, shifted_d, b);
   den = E::mul(b, shifted_d);
-}
-
-template <typename E, typename D, typename A, typename B>
-DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced_quadratic(const D d, const A a, const B b, E &num, E &den) {
-  num = E::mul(d, a);
-  den = E::mul(d, b);
 }
 
 template <typename E, typename A, typename B, typename C, typename D>
@@ -315,12 +277,6 @@ DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup(const A a, const B
   const E shifted_d = E::add(d, gamma);
   num = E::fms(a, shifted_d, E::mul(c, shifted_b));
   den = E::mul(shifted_b, shifted_d);
-}
-
-template <typename E, typename A, typename B, typename C, typename D>
-DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup_quadratic(const A a, const B b, const C c, const D d, E &num, E &den) {
-  num = E::fms(a, d, E::mul(c, b));
-  den = E::mul(b, d);
 }
 
 // Pairwise-product tower: each block consumes B = blockDim.x contiguous input rows (or fewer, in

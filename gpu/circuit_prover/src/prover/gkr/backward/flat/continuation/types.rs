@@ -1,10 +1,8 @@
 use super::super::{CoefficientRecipe, GpuFlatC0Ref, GpuFlatC1Pair};
-use crate::primitives::field::BF;
-use crate::upstream::Field;
 
 // Continuation (round 3+) unique-source table size. Sizes the inline `sources`
 // array in the compact `GpuFlatContinuationUnifiedDesc` (+ its devptr companion)
-// and the per-step host source `Box`es. Raised 512 -> 3072 for
+// and the per-step host source `Box`es. Raised for
 // blake2_with_compression; stays well under the compact desc's 32 KB
 // inline ceiling (~4587 max). Lockstep with native `continuation.cuh`.
 pub(crate) const FLAT_CONT_MAX_SOURCES: usize = 3072;
@@ -20,7 +18,7 @@ pub(crate) const FLAT_CONT_MAX_CONSTANT: usize = 1024;
 
 // Round 1/2 mixed source limits. Size the inline `base_sources`/`ext_sources`
 // arrays in the round1/2 compact descs (+ devptr companions) and, summed,
-// `fold_sources`. Raised 512/384 -> 2048/1024 for blake2_with_compression
+// `fold_sources`. Raised for blake2_with_compression
 // (Stage 4); the sum (3072) stays under the round1/2 inline 32 KB ceiling
 // (max base+ext ~3376). Lockstep with native `continuation.cuh`.
 pub(crate) const FLAT_CONT_MAX_BASE_SOURCES: usize = 2048;
@@ -106,9 +104,9 @@ impl Default for FlatContinuationTermDesc {
 /// Complete build plan for the flat continuation kernel.
 /// `term_desc` holds the shared term arrays (same for all steps).
 /// Source entries are populated per step from prepared storage.
-pub(crate) struct FlatContinuationBuildPlan<E> {
+pub(crate) struct FlatContinuationBuildPlan {
     pub(crate) term_desc: FlatContinuationTermDesc,
-    pub(crate) recipes: Vec<CoefficientRecipe<E>>,
+    pub(crate) recipes: Vec<CoefficientRecipe>,
     /// One entry per unique source: records the first (gate_idx, is_ext, input_idx)
     /// that mapped to a source table index. Used to populate per-step source entries.
     pub(crate) source_assignments: Vec<ContinuationSourceAssignment>,
@@ -123,7 +121,7 @@ pub(crate) struct ContinuationSourceAssignment {
     pub(crate) source_table_idx: u32,
 }
 
-impl<E: Field + field::FieldExtension<BF>> FlatContinuationBuildPlan<E> {
+impl FlatContinuationBuildPlan {
     pub(crate) fn total_coefficients(&self) -> usize {
         self.recipes.len()
     }

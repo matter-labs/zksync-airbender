@@ -1,11 +1,8 @@
-//! CPU-only diagnostic measurement pass for the GKR backward path. Produces,
-//! per-circuit / per-layer / per-mode (cached + no-cache), the counts that
-//! determine whether the compact-`u16` encoding fits inside the
-//! `cudaLaunchKernelExC` 32 KB inline kernel-arg ceiling without falling back
-//! to driver H2D.
-//!
-//! The pass walks `cs::gkr_compiler::GKRCircuitArtifact` directly — no GPU
-//! allocations, no challenges, no kernel launches. It is structural only.
+//! Address classification and relation/cache dependency-collection primitives
+//! for the GKR backward path, shared by the storage layout (`storage_layout`)
+//! and the diagnostic audit pass in `gpu_circuit_prover`. Pure structural walks
+//! of `cs::gkr_compiler::GKRCircuitArtifact` — no GPU allocations, challenges,
+//! or kernel launches.
 //!
 //! Storage-partition taxonomy used as the backing-buffer key by
 //! `base_class_backings` / `ext_class_backings` and as the per-launch slot

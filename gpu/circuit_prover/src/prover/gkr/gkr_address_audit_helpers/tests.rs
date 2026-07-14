@@ -31,8 +31,8 @@ fn load_artifact(relative: &str) -> GKRCircuitArtifact<BabyBearField> {
 
 /// All committed circuit layouts under `cs/compiled_circuits/`. A new
 /// circuit MUST be added here so the audit covers it. The audit
-/// enumerates the cached + no-cache pair for every entry so missing
-/// modes show up at the top of the test output.
+/// enumerates the cached layout for every entry so missing
+/// entries show up at the top of the test output.
 const CIRCUIT_BASENAMES: &[&str] = &[
     "add_sub_lui_auipc_mop",
     "bigint_with_extended_control",
@@ -49,7 +49,7 @@ const CIRCUIT_BASENAMES: &[&str] = &[
 ];
 
 /// Measurement pass. Walks every layout JSON in
-/// `cs/compiled_circuits/` (cached + no-cache), audits per-layer
+/// `cs/compiled_circuits/` (cached), audits per-layer
 /// structural counts against the locked ceilings, and reports
 /// post-compaction descriptor sizes against the 32 KB inline kernel-arg
 /// ceiling.
@@ -224,13 +224,10 @@ fn project_circuit_flat_round0_term_counts(
         };
         let blueprints = build_main_layer_kernel_blueprints_static::<BabyBearExt4>(
             layer,
-            layer_idx,
             &is_base_field_at_layer,
             &external_challenges,
             &inits_top_bits,
             inits_high_bits_shift,
-            artifact.memory_layout.total_width,
-            artifact.witness_layout.total_width,
         );
         let layer_counts = super::project_layer_flat_round0_term_counts(&blueprints);
         log::debug!(
@@ -301,13 +298,10 @@ fn project_circuit_main_combined_claim_pair_max(
         };
         let blueprints = build_main_layer_kernel_blueprints_static::<BabyBearExt4>(
             layer,
-            layer_idx,
             &is_base_field_at_layer,
             &external_challenges,
             &inits_top_bits,
             inits_high_bits_shift,
-            artifact.memory_layout.total_width,
-            artifact.witness_layout.total_width,
         );
         let entries = super::project_layer_main_combined_claim_pair_count(&blueprints);
         log::debug!(
@@ -402,13 +396,10 @@ fn project_circuit_flat_recipe_audit(
         };
         let blueprints = build_main_layer_kernel_blueprints_static::<BabyBearExt4>(
             layer,
-            layer_idx,
             &is_base_field_at_layer,
             &external_challenges,
             &inits_top_bits,
             inits_high_bits_shift,
-            artifact.memory_layout.total_width,
-            artifact.witness_layout.total_width,
         );
         let r0 = super::project_layer_flat_round0_recipe_audit(&blueprints);
         let cont = super::project_layer_flat_continuation_recipe_audit(&blueprints);
@@ -528,13 +519,10 @@ fn project_circuit_main_gather_num_addresses_max(
         };
         let blueprints = build_main_layer_kernel_blueprints_static::<BabyBearExt4>(
             layer,
-            layer_idx,
             &is_base_field_at_layer,
             &external_challenges,
             &inits_top_bits,
             inits_high_bits_shift,
-            artifact.memory_layout.total_width,
-            artifact.witness_layout.total_width,
         );
         let n = super::project_layer_main_gather_num_addresses(&blueprints);
         log::debug!(

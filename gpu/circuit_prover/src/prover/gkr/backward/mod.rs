@@ -47,6 +47,10 @@ use crate::upstream::{
     LookupRationalPairWithUnbalancedExtensionGKRRelation, MaskIntoIdentityProductGKRRelation,
     SameSizeProductGKRRelation,
 };
+// `mod builders` is private, so sibling modules reach its builders via this
+// re-export as `backward::*`. rustc's `unused_imports` lint mis-flags a
+// path-consumed `pub use *`, and the consumed set varies by cfg, so allow it.
+#[allow(unused_imports)]
 pub(crate) use builders::*;
 #[cfg(test)]
 use builders::{
@@ -191,8 +195,6 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             },
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
-            num_base_layer_memory_polys: compiled_circuit.memory_layout.total_width,
-            num_base_layer_witness_polys: compiled_circuit.witness_layout.total_width,
             is_delegation,
         }
     }
@@ -416,7 +418,6 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
         }
         FlatContinuationSizeCheck {
             sizes,
-            has_sources,
             consistent: consistent && (!has_sources || sizes.is_some()),
         }
     }
@@ -446,7 +447,6 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
         }
         FlatContinuationSizeCheck {
             sizes,
-            has_sources,
             consistent: consistent && (!has_sources || sizes.is_some()),
         }
     }
@@ -482,7 +482,6 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
         }
         FlatContinuationSizeCheck {
             sizes,
-            has_sources,
             consistent: consistent && (!has_sources || sizes.is_some()),
         }
     }

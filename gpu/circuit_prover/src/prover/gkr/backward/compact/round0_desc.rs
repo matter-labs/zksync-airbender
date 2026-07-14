@@ -80,13 +80,13 @@ const _: () = {
 };
 
 // ---------------------------------------------------------------------------
-// Build plan: compact static desc + recipes (mirror of FlatRound0BuildPlan)
+// Build plan: compact static desc + recipes
 // ---------------------------------------------------------------------------
 
-/// Compact mirror of `FlatRound0BuildPlan` with the compact static descriptor.
-pub(crate) struct FlatRound0BuildPlan<E> {
+/// Owns the compact round-0 static descriptor plus its coefficient recipes.
+pub(crate) struct FlatRound0BuildPlan {
     pub(crate) static_desc: Box<GpuFlatRound0StaticDesc>,
-    pub(crate) recipes: Vec<CoefficientRecipe<E>>,
+    pub(crate) recipes: Vec<CoefficientRecipe>,
 }
 
 // ---------------------------------------------------------------------------

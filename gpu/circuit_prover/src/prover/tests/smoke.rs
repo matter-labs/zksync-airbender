@@ -15,11 +15,10 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
         batching_challenge,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge: _,
         expected_proof_layers,
         proof_layout,
         proof_slab,
-    } = prepare_basic_unrolled_async_backward_fixture(8);
+    } = prepare_basic_unrolled_async_backward_fixture();
 
     let scheduled = gpu_backward_state
         .schedule_execute_backward_workflow(
@@ -80,11 +79,10 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         batching_challenge,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge: _,
         expected_proof_layers: _,
         proof_layout: _,
         proof_slab: _,
-    } = prepare_basic_unrolled_async_backward_fixture(8);
+    } = prepare_basic_unrolled_async_backward_fixture();
 
     while let Some(layer_plan) = gpu_backward_state
         .prepare_next_layer_static(&context)
@@ -235,11 +233,10 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
         batching_challenge,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge: _,
         expected_proof_layers: _,
         proof_layout: _,
         proof_slab: _,
-    } = prepare_basic_unrolled_async_backward_fixture(8);
+    } = prepare_basic_unrolled_async_backward_fixture();
 
     while let Some(layer_plan) = gpu_backward_state
         .prepare_next_layer_static(&context)
@@ -378,57 +375,6 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
 
 #[test]
 #[serial]
-fn run_basic_unrolled_main_layer0_kernel_kind_trace_test() {
-    let BasicUnrolledAsyncBackwardFixture {
-        context,
-        compiled_circuit,
-        external_challenges,
-        mut gpu_backward_state,
-        batching_challenge,
-        lookup_multiplicative_part,
-        lookup_additive_part,
-        constraints_batch_challenge: _,
-        ..
-    } = prepare_basic_unrolled_async_backward_fixture(8);
-
-    while let Some(layer_plan) = gpu_backward_state
-        .prepare_next_layer_static(&context)
-        .unwrap()
-    {
-        drop(layer_plan);
-    }
-
-    let mut main_layer_state = gpu_backward_state.into_main_layer_backward_state(
-        compiled_circuit,
-        external_challenges,
-        lookup_multiplicative_part,
-        lookup_additive_part,
-        false,
-    );
-
-    let layer0_plan = loop {
-        let Some(layer_plan) = main_layer_state
-            .prepare_next_layer(batching_challenge, &context)
-            .unwrap()
-        else {
-            panic!("expected to reach main layer 0 plan");
-        };
-        if layer_plan.layer_idx == 0 {
-            break layer_plan;
-        }
-        drop(layer_plan);
-    };
-
-    let kernel_kinds = layer0_plan
-        .kernel_plans()
-        .iter()
-        .map(|kernel| kernel.kind)
-        .collect_vec();
-    eprintln!("layer0 kernel kinds: {kernel_kinds:?}");
-}
-
-#[test]
-#[serial]
 fn run_basic_unrolled_async_allocator_regression_test() {
     let BasicUnrolledAsyncBackwardFixture {
         context,
@@ -442,11 +388,10 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         batching_challenge,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge: _,
         expected_proof_layers: _,
         proof_layout,
         proof_slab,
-    } = prepare_basic_unrolled_async_backward_fixture(8);
+    } = prepare_basic_unrolled_async_backward_fixture();
 
     let host_before = context.get_host_used_mem_current();
     context.reset_host_used_mem_peak();
@@ -599,7 +544,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
 
     assert_eq!(
         after_handoff, before_handoff,
-        "forward scratch is now released inside schedule_forward_pass, not at the handoff"
+        "handoff is memory-neutral; forward scratch is released inside schedule_forward_pass"
     );
     drop(backward_state);
 }

@@ -1005,7 +1005,7 @@ fn fold_eq_high_group_matches_cpu() {
     launch_fold_eq_high_in_constant::<E4>(0, g0_size_before, &context).unwrap();
 
     // Read back slot 0 of the __constant__ symbol.
-    // SAFETY: see equivalent block in `cpu_factored_eq_matches_kernel_build`.
+    // SAFETY: see equivalent block in `build_eq_factored_matches_cpu`.
     let high_slice = unsafe {
         era_cudart::slice::DeviceSlice::<E4>::from_raw_parts(high_ptr, GKR_EQ_GROUP_TABLE_LEN)
     };

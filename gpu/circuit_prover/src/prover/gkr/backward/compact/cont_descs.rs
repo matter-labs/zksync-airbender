@@ -24,7 +24,7 @@ use super::kernel_limits::KERNEL_ARG_HARD_CEILING_BYTES;
 // GpuFlatRound1UnifiedDesc
 // ---------------------------------------------------------------------------
 
-/// Compact mirror of `GpuFlatRound1UnifiedDesc`. Source pointer pairs collapse
+/// Compact round-1 unified descriptor. Source pointer pairs collapse
 /// to a single u16 each via `tables`; layer-uniform metadata (sizes) hoists
 /// out of every per-source entry into descriptor-level `u32`s.
 ///
@@ -88,7 +88,7 @@ const _: () = {
 // GpuFlatRound2UnifiedDesc
 // ---------------------------------------------------------------------------
 
-/// Compact mirror of `GpuFlatRound2UnifiedDesc`. Same shape as round 1 with
+/// Compact round-2 unified descriptor. Same shape as round 1 with
 /// an extra `base_quarter_size` field for `base_after_two` semantics.
 ///
 /// Must match CUDA `flat_round2_unified_desc_compact`.

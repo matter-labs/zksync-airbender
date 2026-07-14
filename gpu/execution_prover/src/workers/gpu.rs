@@ -71,7 +71,7 @@ struct RequestState {
     /// Proof requests and consumed in Phase 1 to build the memory transfer.
     memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
     /// Original host witnesses returned to the orchestrator after the GPU work
-    /// completes so allocator ownership stays symmetric with the old prover.
+    /// completes so their allocators return to the pool.
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost>,
     tracing_data_result:
         Option<gpu_circuit_prover::prover::trace::tracing_data::TracingDataHost<A>>,

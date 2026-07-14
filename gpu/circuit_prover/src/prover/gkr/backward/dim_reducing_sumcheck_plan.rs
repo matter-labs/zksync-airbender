@@ -91,7 +91,7 @@ where
     ///
     /// E is generic but E4-only in this build; pointer casts below are safe
     /// (both `Field` and `E4` are `#[repr(C)]` with identical layouts).
-    /// `fold_eq == false` is the #320 final round: the round still reduces its
+    /// `fold_eq == false` is the final round: the round still reduces its
     /// univariate monomial, commits it, and draws the folding challenge, but it
     /// must NOT fold the factored eq for a next round (there is none — the
     /// factored eq is already fully consumed by the preceding `folding_steps-1`
@@ -219,8 +219,7 @@ where
         claim_layout: &ClaimBufferLayout,
         // Per-round kernels write coeffs directly into the slab's
         // `internal_round_coefficients` range for `layer_slot` and the
-        // per-address gather writes directly into `final_step_evaluations`
-        // (B1 + B2).
+        // per-address gather writes directly into `final_step_evaluations`.
         proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
         layer_slot: usize,
@@ -279,7 +278,7 @@ where
         // `folding_steps` entries. Must match the
         // `ProofLayout` allocation (`sumcheck_num_rounds * 4`).
         let coeffs_total_len = self.folding_steps * 4;
-        // B1: per-round kernels write coeffs straight into the slab range for
+        // Per-round kernels write coeffs straight into the slab range for
         // this layer — no standalone allocation and no post-loop slab D2D. The
         // kernels are stream-ordered against the terminal D2H of the slab in
         // `prove()`, so the slab is self-consistent on `exec_stream`.
@@ -324,8 +323,7 @@ where
         // Build the factored eq representation (high slabs in the
         // `ab_gkr_eq_high` __constant__ symbol + `eq_low_group` buffer in
         // global memory) directly from the device claim_point (using coords
-        // `[1..folding_steps]` — the suffix that `fill_round0_eq_pair_values`
-        // used to expand on host). Dim-reducing consumer kernels compute eq
+        // `[1..folding_steps]`). Dim-reducing consumer kernels compute eq
         // per-row inline from `(eq_low, eq_sizes)` via the inline-eq helper
         // (high slabs read from the __constant__ symbol).
         let challenge_count = self.folding_steps.saturating_sub(1);
@@ -412,12 +410,9 @@ where
             // SAFETY: `step < last_step <= folding_steps`, so the one-element
             // slice lies within the immutable input claim-point buffer.
             let prev_coord_slice = unsafe { device_claim_point_in.slice(step, 1) };
-            // SAFETY: `coeffs_buffer_ptr` points either into `proof_slab`
-            // (held alive by `_proof_slab` keepalive in `prove()`) or into
-            // `fallback_device_coeffs` (dropped at end of this function,
-            // after every kernel that writes through this pointer is
-            // scheduled). The 4-element window is in-bounds for both
-            // (`coeffs_total_len = last_step * 4`).
+            // SAFETY: `coeffs_buffer_ptr` points into this layer's `proof_slab`
+            // segment. The 4-element window is in-bounds
+            // (`coeffs_total_len = folding_steps * 4`).
             let coeffs_round_slice =
                 unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
             // SAFETY: `device_claim_point_out` is length `folding_steps + 2`,
@@ -426,8 +421,7 @@ where
             let challenge_slice = unsafe { device_claim_point_out.slice_mut(step, 1) };
 
             // Unfused round-kernel head + fused tail (reduce + round-update +
-            // fold-eq in one kernel; -0.9 ms vs the unfused 5-launch tail on this
-            // fixture). These `folding_steps - 1` rounds each fold the factored
+            // fold-eq in one kernel). These `folding_steps - 1` rounds each fold the factored
             // eq for the next round (`fold_eq = true`).
             self.dispatch_fused_tail(
                 acc_size,
@@ -442,7 +436,7 @@ where
             )?;
         }
 
-        // #320 final round (step == last_step == folding_steps - 1, acc_size == 1).
+        // Final round (step == last_step == folding_steps - 1, acc_size == 1).
         // The factored eq is now fully consumed (identity), so the round kernel
         // runs in monomial form (`explicit_form = false`) — exactly the CPU
         // `evaluate::<_, false>` last round — and the fused tail emits the
@@ -480,9 +474,8 @@ where
             )?;
         }
 
-        // B1: coeffs already landed in the slab via the per-round kernels
-        // (or in `fallback_device_coeffs` for test paths). No post-loop
-        // slab D2D needed.
+        // coeffs already landed in the slab via the per-round kernels; no
+        // post-loop slab D2D needed.
 
         // Device-side inter-layer transcript. The `[E;4]` last-round
         // bilinear line is gathered from the round storage into a TEMP device
@@ -541,7 +534,7 @@ where
             null_mut()
         };
 
-        // #320: reduce the `[E;4]` line over the last-output coordinate at
+        // Reduce the `[E;4]` line over the last-output coordinate at
         // `r_before_last` into the `[E;2]` LSB line, written into the slab.
         if num_addresses > 0 {
             // SAFETY: TEMP `[E;4]` buffer, E = E4 layout, alive through launch.
@@ -656,10 +649,10 @@ where
             // Fork exec -> d2h: every D2H source below has been written on exec by this point
             // (d_layer_challenges via `transcript_squeeze_e4`, device_new_claims via
             // `backward_new_claims_two_var`, device_seed/round_challenge_storage from earlier
-            // work in this layer; coeffs and packed last-evals are now slab-direct via B1/B2
+            // work in this layer; coeffs and packed last-evals are now slab-direct
             // and not D2H'd here). The join lets exec wait for the per-layer D2Hs before
             // scheduling the final-readback callback and dropping the source allocations.
-            // #320: `r_before_last` is now drawn in-loop and lives among the
+            // `r_before_last` is now drawn in-loop and lives among the
             // folding challenges `claim_point_out[0..folding_steps]`; only
             // `[r_last, next_batching_challenge]` are squeezed post-loop.
             let folding_steps = self.folding_steps;
@@ -698,9 +691,7 @@ where
                         d2h_stream,
                     )?;
 
-                    // Single D2H of device-computed new_claims. Replaces N per-address
-                    // D2Hs (one per address × 4 E) + the host
-                    // `evaluate_with_two_variable_eq_ext` loop.
+                    // Single D2H of device-computed new_claims.
                     if num_addresses > 0 {
                         memory_copy_async(
                             &mut new_claims_host,
@@ -712,7 +703,7 @@ where
                     // Bulk D2H the on-device per-layer state that the final readback
                     // callback needs to advance the workflow (seed + folding challenges
                     // for WHIR host setup; coeffs and packed last-evaluations stay on
-                    // device and flow through the proof slab via B1/B2).
+                    // device and flow through the proof slab).
                     memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
                     if folding_steps > 0 {
                         // SAFETY: `[0..folding_steps]` are written in-place by the
@@ -771,9 +762,7 @@ where
                     new_claim_point.push(r_last);
 
                     // Rebuild `new_claims` from the D2H'd device-computed per-
-                    // address buffer + the same address list. The host loop that
-                    // used to evaluate `eq_ext(values, r_before_last, r_last)` per
-                    // address is gone — the kernel already did it.
+                    // address buffer + the same address list.
                     let new_claims_slice = new_claims_accessor.get();
                     let new_claims: BTreeMap<GKRAddress, E> = callback_addresses
                         .iter()

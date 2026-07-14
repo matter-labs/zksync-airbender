@@ -21,7 +21,7 @@ fn fmt_source(idx: u16, assignments: &[ContinuationSourceAssignment]) -> String 
 }
 
 /// Format a coefficient recipe as a short string.
-fn fmt_recipe<E: std::fmt::Debug>(recipe: &CoefficientRecipe<E>) -> String {
+fn fmt_recipe(recipe: &CoefficientRecipe) -> String {
     let mut s = format!("β^{}", recipe.batch_power);
     if recipe.negate {
         s.push_str(" NEG");
@@ -37,7 +37,7 @@ fn fmt_recipe<E: std::fmt::Debug>(recipe: &CoefficientRecipe<E>) -> String {
 pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::fmt::Debug>(
     layer_idx: usize,
     round1_desc: Option<&Round1FusedSources>,
-    continuation_plan: Option<&FlatContinuationBuildPlan<E>>,
+    continuation_plan: Option<&FlatContinuationBuildPlan>,
     kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
 ) {
     let Some(plan) = continuation_plan else {

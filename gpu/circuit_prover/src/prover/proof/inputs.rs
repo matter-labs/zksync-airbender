@@ -1,18 +1,7 @@
-// Consolidated H2D bundle for prove() and commit_memory_from_transfers().
-//
-// Replaces the prior N-separate-transfers design: each pre-prove H2D piece
-// (setup, decoder, inits_and_teardowns, tracing_data, memory caps,
-// canonical_top_bits, external_challenges) used to own its own `Transfer<'a>`
-// with its own `allocated`/`transferred` event pair. After this module, all
-// H2D for one prove (or one commit_memory) lives on the bundle's single
-// shared `Transfer`, so `prove()` does one `ensure_transferred` at the top
-// instead of N, and the exec_stream prologue carries no callback or H2D
-// before the first kernel.
-//
-// The per-piece wrappers (GpuGKRSetupTransfer, DecoderTableTransfer, etc.)
-// keep their (host source, device buffer) state and gain a
-// `schedule_transfer(&mut Transfer<'a>, context)` method that enqueues their
-// H2D against the bundle's shared Transfer.
+// Consolidated H2D bundle for prove() and commit_memory_from_transfers():
+// one shared Transfer for every pre-prove H2D piece (setup, decoder,
+// inits_and_teardowns, tracing_data, memory caps, canonical_top_bits,
+// external_challenges), so prove() does a single ensure_transferred.
 
 use std::marker::PhantomData;
 use std::sync::Arc;

@@ -556,7 +556,6 @@ fn bootstrap_storage_without_uploaded_setup_leaves_virtual_setup_unmaterialized(
         log_tree_cap_size,
         &memory_trace_holder,
         &witness_trace_holder,
-        &context,
     )
     .unwrap();
 

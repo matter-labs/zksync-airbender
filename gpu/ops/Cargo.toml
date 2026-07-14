@@ -17,12 +17,6 @@ field = { workspace = true }
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
 
-[features]
-# Off by default; turn on to compile the unused unary ops (dbl, inv, neg, sqr
-# and their `_in_place` variants) plus their tests. Kept available for future
-# use without re-creating the scaffolding by hand.
-scaffolding_ops = []
-
 [dev-dependencies]
 gpu_core = { workspace = true }
 fft = { workspace = true }

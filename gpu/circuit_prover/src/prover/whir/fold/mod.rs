@@ -20,7 +20,6 @@ use crate::ops::ntt::{
 #[cfg(test)]
 use crate::ops::simple::{add, mul, mul_into_x};
 use crate::ops::transpose::transpose;
-use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::DeviceAllocation;
 #[cfg(test)]
 use crate::primitives::context::HostAllocation;
@@ -64,7 +63,7 @@ pub(super) struct GpuWhirState {
     eq_group_tables: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
     scratch1: DeviceAllocation<E4>,
-    #[allow(dead_code)]
+    #[cfg(test)]
     scalar: DeviceAllocation<E4>,
     reduce_temp: DeviceAllocation<u8>,
     reduce_out: DeviceAllocation<E4>,
@@ -110,8 +109,6 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     // so they outlive the kernels reading them.
     #[allow(dead_code)]
     _delinearization_ephemerals: Vec<DeviceAllocation<E4>>,
-    #[allow(dead_code)]
-    _query_index_callbacks: Vec<Callbacks<'static>>,
     // Trace holders of retired intermediate WHIR oracles — kept alive so any
     // scheduled D2D/D2H reads against their unified device cap remain valid.
     #[allow(dead_code)]
@@ -123,8 +120,8 @@ impl GpuWhirFoldScheduledExecution {
     /// execution still owns. All fold / OOD / delinearization / PoW / query
     /// kernels and the slab-bound D2D/D2H copies that read them have been
     /// enqueued on `exec_stream` by prove-end, so these pool reservations free
-    /// stream-ordered. The host query-index callbacks and tracing ranges stay
-    /// (they may still be consumed on the exec stream). Each clear is on its
+    /// stream-ordered. The tracing ranges stay (they may still be consumed on
+    /// the exec stream). Each clear is on its
     /// own line so a single buffer class can be re-retained when bisecting a
     /// multi-schedule regression.
     pub(crate) fn release_device_buffers(&mut self) {
@@ -162,6 +159,7 @@ impl GpuWhirState {
             )?,
             scratch0: context.alloc(half_len, AllocationPlacement::BestFit)?,
             scratch1: context.alloc(half_len, AllocationPlacement::BestFit)?,
+            #[cfg(test)]
             scalar: context.alloc(1, AllocationPlacement::BestFit)?,
             reduce_temp: context
                 .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
@@ -261,8 +259,6 @@ pub(super) fn initialize_batched_monomial_form(
         for column in 0..EXT4_DEGREE {
             let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
             let dst = &mut vectorized_scratch[column * trace_len..(column + 1) * trace_len];
-            // Interestingly, both work (I think because addition is commutative).
-            // hypercube_coeffs_natural_to_natural_evals(
             hypercube_coeffs_bitrev_to_bitrev_evals(src, dst, log_domain_size, stream)?;
         }
         deserialize_whir_e4_columns(
@@ -496,9 +492,9 @@ pub(super) fn schedule_accumulate_eq_samples_batched(
 
 #[cfg(test)]
 pub(crate) use tests::{
-    debug_apply_initial_fold_challenge_for_test, debug_build_initial_batched_evals_for_test,
-    debug_build_initial_fold_state_for_test, debug_build_initial_state_for_test,
-    debug_build_initial_state_snapshots_for_test, debug_initial_round_checkpoint_for_test,
+    debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,
+    debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
+    debug_initial_round_checkpoint_for_test,
 };
 
 #[cfg(test)]

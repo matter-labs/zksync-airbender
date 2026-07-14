@@ -29,7 +29,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   bf vals[VALS_PER_THREAD];
 
   // "ct" = consecutive tile layout
-  // "it" = interleaved tile layout
+  // "il" = interleaved tile layout
   const int thread_il_gmem_start = lane_in_tile + tile_id * TILE_GMEM_STRIDE;
   const int thread_ct_gmem_start = lane_in_tile + tile_id * IL_GMEM_STRIDE;
   const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
@@ -109,7 +109,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   bf vals[VALS_PER_THREAD];
 
   // "ct" = consecutive tile layout
-  // "it" = interleaved tile layout
+  // "il" = interleaved tile layout
   const int thread_il_gmem_start = lane_in_tile + tile_id * TILE_GMEM_STRIDE;
   const int thread_ct_gmem_start = lane_in_tile + tile_id * 2 * IL_GMEM_STRIDE;
   const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
@@ -148,7 +148,6 @@ EXTERN __launch_bounds__(512, 1) __global__
     vals[i] = smem_block[addr]; // read consecutive smem tiles
 
   int tile_exchg_region_offset = 2 * tile_id;
-  // reg_exchg_inv<16, 32, 1>(vals, tile_exchg_region_offset); tile_exchg_region_offset <<= 1;
   reg_exchg_inv<8, 16, 2>(vals, tile_exchg_region_offset);
   tile_exchg_region_offset <<= 1;
   reg_exchg_inv<4, 8, 4>(vals, tile_exchg_region_offset);

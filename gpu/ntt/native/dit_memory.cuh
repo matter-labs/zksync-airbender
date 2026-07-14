@@ -1,4 +1,3 @@
-// Ported from ntt-experiments include/memory.cuh.
 // Slim matrix accessors with cache-modifier loads/stores.
 // Pattern matches gpu_core/native_headers/primitives/memory.cuh for the cg modifier,
 // stripped to the bf row/col API used by NTT kernels.
@@ -247,8 +246,8 @@ template <unsigned LOG_VPT, StoreMode SM> DEVICE_FORCEINLINE void store_vec_vpt(
 }
 
 // =========================================================================
-// Combined-table (delta `d`) gmem AOS -> smem 2-row staging (relocated from
-// warp_ntt_2pass.cuh; geometry inlined so this header has no geom dependency).
+// Combined-table (delta `d`) gmem AOS -> smem 2-row staging (geometry inlined
+// so this header has no geom dependency).
 //   ROWS = VPT / 4   (1 for v4, 2 for v8);   ROW_BFS = (N/VPT) * 4 bf per row.
 // Each thread does 1 vec_VPT LDG from gmem, then ROWS v4 STS into the per-row
 // smem regions. Total smem footprint = N bf.

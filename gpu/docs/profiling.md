@@ -24,5 +24,5 @@ Both guides are written against parameters that the calling crate supplies:
 
 Crate-specific profiling setups — *which* test/bench, *which* NVTX range — live
 with the crate. Example: [`../circuit_prover/docs/profiling.md`](../circuit_prover/docs/profiling.md)
-supplies the prover's values (the `run_basic_unrolled_proof_job_profile_test`
-binary and the `test.gpu.prove.profiled_call@circuit_prover.tests` range).
+supplies the prover's values (the `run_add_sub_profile_test`
+binary and the `test.gpu.prove.profiled_call@gpu_circuit_prover.tests` range).

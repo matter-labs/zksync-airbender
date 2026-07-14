@@ -14,8 +14,6 @@ use gpu_core::primitives::field::{BF, E4};
 #[derive(Copy, Clone)]
 pub enum ReduceOperation {
     Sum,
-    #[allow(dead_code)] // only constructed in tests; kept for the CUB API surface.
-    Product,
 }
 
 type ReduceFunction<T> = unsafe extern "C" fn(
@@ -201,12 +199,10 @@ macro_rules! reduce_impl {
     ($type:ty) => {
         paste! {
             reduce_fns!(add, $type);
-            reduce_fns!(mul, $type);
             impl Reduce for $type {
                 fn get_reduce_function(operation: ReduceOperation) -> ReduceFunction<Self> {
                     match operation {
                         ReduceOperation::Sum => [<ab_reduce_add_ $type:lower>],
-                        ReduceOperation::Product => [<ab_reduce_mul_ $type:lower>],
                     }
                 }
 
@@ -215,7 +211,6 @@ macro_rules! reduce_impl {
                 ) -> SegmentedReduceFunction<Self> {
                     match operation {
                         ReduceOperation::Sum => [<ab_segmented_reduce_add_ $type:lower>],
-                        ReduceOperation::Product => [<ab_segmented_reduce_mul_ $type:lower>],
                     }
                 }
             }

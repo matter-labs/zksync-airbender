@@ -1,4 +1,3 @@
-// Ported from ntt-experiments include/ntt/kernels.cuh.
 // Unified NTT kernels: ntt_single (one engine call, no smem hop) + ntt_two_pass.
 #pragma once
 #include "dit_memory.cuh" // StoreMode, load_vec_vpt, store_vec_vpt,
@@ -20,10 +19,8 @@ template <unsigned LOG_N, unsigned LOG_VPT> constexpr unsigned ntt_single_smem()
 // (V4) once per block; each NTT in the warp's LANES-lane subgroup runs one
 // dit_phase (no smem hop). K cosets/slot via the in-register delta walk.
 // __device__ impl invoked by the EXTERN __global__ wrappers in dit_kernels_extern.cu
-// (wrapped by the Rust launcher `monomials_to_evals_dit`). MIN_BLOCKS_PER_SM is now unused
-// but kept so the wrapper's 6-arg instantiation still matches.
-template <unsigned LOG_N, unsigned LOG_VPT, unsigned NUM_WARPS, unsigned K_PER_NTT_SLOT = 8u, StoreMode STORE_MODE = StoreMode::CS,
-          unsigned MIN_BLOCKS_PER_SM = 0u>
+// (wrapped by the Rust launcher `monomials_to_evals_dit`).
+template <unsigned LOG_N, unsigned LOG_VPT, unsigned NUM_WARPS, unsigned K_PER_NTT_SLOT = 8u, StoreMode STORE_MODE = StoreMode::CS>
 DEVICE_FORCEINLINE void ntt_single(const bf *__restrict__ monomials_bitrev,
                                    const bf *__restrict__ tw_clean, // host-built clean triangle (N-1)
                                    bf *__restrict__ out_natural, u32 cfp_0, u32 coset_step,
@@ -76,7 +73,8 @@ DEVICE_FORCEINLINE void ntt_single(const bf *__restrict__ monomials_bitrev,
   }
 }
 
-// Bench-only: streaming single-pass. Each of the block's SLOTS_PER_BLOCK NTT
+// Production streaming single-pass path (see the dit_kernels_extern.cu wrapper
+// + dit.rs launcher). Each of the block's SLOTS_PER_BLOCK NTT
 // slots grid-strides cosets by gridDim.x*SLOTS_PER_BLOCK with a guard
 // (coset_idx < num_cosets), so the grid is free (any size). Uses the in-register
 // DELTA WALK (like ntt_single): twist once for the slot's first coset, then a
@@ -142,9 +140,8 @@ template <unsigned LOG_N, unsigned LOG_VPT> constexpr unsigned ntt_two_pass_smem
 }
 
 // __device__ impl invoked by the EXTERN __global__ wrappers in dit_kernels_extern.cu
-// (wrapped by the Rust launcher `monomials_to_evals_dit`). MIN_BLOCKS_PER_SM is now unused
-// but kept so the wrapper's 4-arg instantiation still matches.
-template <unsigned LOG_N, unsigned LOG_VPT, StoreMode SM, unsigned MIN_BLOCKS_PER_SM = 1u>
+// (wrapped by the Rust launcher `monomials_to_evals_dit`).
+template <unsigned LOG_N, unsigned LOG_VPT, StoreMode SM>
 DEVICE_FORCEINLINE void ntt_two_pass(const bf *__restrict__ monomials_bitrev,
                                      const bf *__restrict__ tw_p1_coupled, // host build_coupled_triangle
                                      const bf *__restrict__ tw_p2_clean,   // host build_clean_triangle<LOG_N2>
@@ -239,7 +236,7 @@ DEVICE_FORCEINLINE void ntt_two_pass(const bf *__restrict__ monomials_bitrev,
 
 // Bench-only: identical to ntt_two_pass but with a COMPILE-TIME coset loop count
 // K (fully unrolled), no runtime cosets_per_block. Launch grid = num_cosets / K.
-template <unsigned LOG_N, unsigned LOG_VPT, unsigned K, StoreMode SM, unsigned MIN_BLOCKS_PER_SM = 1u>
+template <unsigned LOG_N, unsigned LOG_VPT, unsigned K, StoreMode SM>
 DEVICE_FORCEINLINE void ntt_two_pass_fixed(const bf *__restrict__ monomials_bitrev,
                                            const bf *__restrict__ tw_p1_coupled, // host build_coupled_triangle
                                            const bf *__restrict__ tw_p2_clean,   // host build_clean_triangle<LOG_N2>

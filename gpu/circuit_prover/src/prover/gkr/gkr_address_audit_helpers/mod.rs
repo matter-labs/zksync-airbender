@@ -272,8 +272,7 @@ pub(crate) fn maxima(audit: &CircuitAudit) -> CircuitMaxima {
     m
 }
 
-/// Pretty-print a single circuit audit. Every line is structural data the
-/// plan authors will consult when locking ceilings.
+/// Pretty-print a single circuit audit.
 pub(crate) fn log_circuit_audit(audit: &CircuitAudit) {
     let m = maxima(audit);
     log::info!(
@@ -322,8 +321,7 @@ pub(crate) fn log_circuit_audit(audit: &CircuitAudit) {
     }
 }
 
-/// Hard-ceiling assertions. Any failure should abort the audit so we discuss
-/// numbers before touching kernel ABIs.
+/// Hard-ceiling assertions; any failure aborts the audit.
 ///
 /// Note: the gate count from `compiled_circuit.layers[i].gates` does NOT map
 /// to the dim-reducing batch's `record_count` budget. Layer 0's gates fold
@@ -447,7 +445,7 @@ impl FlatRound0TermCounts {
     }
 }
 
-/// `NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL` from `backward.rs` — the magic
+/// `NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL` from `backward/builders.rs` — the magic
 /// `lhs`/`input` value that marks the constant-offset row in linear-form
 /// metadata. Cross-product / materialize / single-times-linear-form gates
 /// skip these rows when emitting `c1_*` terms; constraint gates do not.
@@ -481,7 +479,7 @@ fn count_metadata_terms<E>(
 
 /// Project the flat-path round-0 term counts a layer's gates would push when
 /// `build_flat_round0_plan` runs against them. Mirrors the per-`kind` dispatch
-/// in `backward_flat::build_flat_round0_plan` exactly. Used by the audit
+/// in `backward::flat::build_flat_round0_plan` exactly. Used by the audit
 /// to find the per-circuit max for tightening `FLAT_ROUND0_MAX_*`.
 pub(crate) fn project_layer_flat_round0_term_counts<E>(
     blueprints: &[crate::prover::gkr::backward::kernels::GpuGKRMainLayerKernelBlueprint<E>],
@@ -587,8 +585,8 @@ pub(crate) fn project_layer_flat_round0_term_counts<E>(
 }
 
 /// Project the `combined_claim_desc_pairs` length a main-layer would push when
-/// `build_combined_claim`'s kernel-arg descriptor is filled. Mirrors the loop at
-/// `backward.rs:6647-6657` exactly: 2 u32 entries per output (base + ext)
+/// `build_combined_claim`'s kernel-arg descriptor is filled. Mirrors the loop
+/// exactly: 2 u32 entries per output (base + ext)
 /// across every kernel that is NOT `EnforceConstraintsMaxQuadratic`.
 ///
 /// Returns the count in u32 entries; H2D bytes = `result * 4`.
@@ -771,7 +769,7 @@ pub(super) fn metadata_qt_lt_term_lens<E>(
 }
 
 /// Project the per-layer main-layer gather payload size. Mirrors
-/// `final_evaluation_sources_for_last_step` (`backward.rs:6237-6275`) by
+/// `final_evaluation_sources_for_last_step` by
 /// counting distinct, non-placeholder addresses across every kernel's
 /// `inputs_in_base ∪ inputs_in_extension`. The result bounds
 /// `gather_e_addresses`'s `num_addresses` argument.

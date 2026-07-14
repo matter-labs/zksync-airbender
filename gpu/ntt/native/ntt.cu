@@ -7,11 +7,6 @@ DEVICE_FORCEINLINE unsigned get_forward_stage_twiddle_power(const unsigned group
   return exponent;
 }
 
-DEVICE_FORCEINLINE unsigned get_inverse_stage_twiddle_power(const unsigned group, const unsigned log_n) {
-  const unsigned exponent = bitrev(group, log_n - 1) << (OMEGA_LOG_ORDER - log_n);
-  return exponent;
-}
-
 EXTERN __global__ void ab_copy_scale_bitreversed_coeffs_kernel(const bf *src, bf *dst, const bf coset_offset, const bool apply_scale, const unsigned log_n) {
   const unsigned count = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -66,7 +61,7 @@ EXTERN __global__ void ab_natural_evals_to_bitreversed_coeffs_ntt_stage_kernel(b
   bf left = load_cg(values + left_idx);
   bf right = load_cg(values + right_idx);
   if (stage != 0) {
-    const unsigned twiddle_power = get_inverse_stage_twiddle_power(group, log_n);
+    const unsigned twiddle_power = get_forward_stage_twiddle_power(group, log_n);
     right = bf::mul(right, get_inverse_twiddle_power(twiddle_power));
   }
 

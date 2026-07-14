@@ -22,7 +22,7 @@ struct wrapped_f {
 
   // Mirrors host `WitnessComputationalField::from_raw_repr_with_reduction`: reduce the
   // integer mod ORDER and store it AS the raw Montgomery limb (NO into_mont), unlike
-  // `from` which Montgomery-encodes. Used by the add/sub mulmod/fmamod R^-1 fix (PR #309).
+  // `from` which Montgomery-encodes.
   template <typename U> static DEVICE_FORCEINLINE wrapped_f from_raw_repr_with_reduction(const U &value) {
     return wrapped_f(bf::from_raw_repr_with_reduction(value.inner));
   }
@@ -81,7 +81,7 @@ template <typename T, typename W> struct wrapped_integer {
 
   // Mirrors host `field.into_raw_repr_reduced()`: extract the RAW Montgomery limb (NO
   // from_mont / canonicalization), unlike `from(wrapped_f)` which returns the canonical
-  // value. Used by the add/sub mulmod/fmamod R^-1 fix (PR #309).
+  // value.
   static DEVICE_FORCEINLINE wrapped_integer raw_repr_reduced_from_field(const wrapped_f &value) {
     return wrapped_integer{static_cast<T>(bf::into_raw_u32(value.inner))};
   }

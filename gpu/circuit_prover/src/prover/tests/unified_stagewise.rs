@@ -81,14 +81,12 @@ fn run_unified_stagewise_parity_test() {
     let log_rows_per_leaf = whir_schedule.whir_steps_schedule[0] as u32;
     let log_tree_cap_size = whir_schedule.cap_size.trailing_zeros();
 
-    println!("DEBUG: creating context");
     let context = make_test_context_with_device_allocator_block_log_size(
         // 64 GB device arena, sized to match the unified fixture's arena.
         (64usize << 30) >> default_fixture_device_allocator_block_log_size(),
         1024,
         default_fixture_device_allocator_block_log_size(),
     );
-    println!("DEBUG: context created, precomputing setup");
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
@@ -102,7 +100,6 @@ fn run_unified_stagewise_parity_test() {
     let mut gpu_setup_transfer =
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
 
-    println!("DEBUG: gpu_setup_host precomputed, uploading decoder table");
     // Upload GPU decoder table (unwrapped form, matching the GPU wire format).
     let h_decoder_table: Vec<ExecutorFamilyDecoderData> = witness_gen_data
         .iter()
@@ -111,11 +108,6 @@ fn run_unified_stagewise_parity_test() {
         .collect_vec();
     let d_decoder_table = upload_slice_to_device_for_test(&h_decoder_table, &context);
 
-    println!(
-        "DEBUG: decoder table uploaded, uploading trace buffer (num_calls={}, size_bytes={})",
-        buffer.len(),
-        buffer.len() * std::mem::size_of::<UnifiedOpcodeTracingDataWithTimestamp>()
-    );
     // Build unified trace device.
     let trace_data = upload_slice_to_device_for_test(&buffer, &context);
     let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(
@@ -124,43 +116,24 @@ fn run_unified_stagewise_parity_test() {
         },
     ));
 
-    println!(
-        "DEBUG: trace buffer uploaded, building i/t pages; sparse_sets={}, sparse_entries_total={}",
-        sparse_inits_and_teardowns.len(),
-        sparse_inits_and_teardowns
-            .iter()
-            .map(|v| v.len())
-            .sum::<usize>()
-    );
     // Build inits-and-teardowns device and transfer.
     let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
         &sparse_inits_and_teardowns,
         TRACE_LEN_LOG2 as u32,
         num_unified_teardown_sets as u32,
     );
-    println!(
-        "DEBUG: i/t pages built: num_pages={}, values_bytes={}, timestamps_bytes={}",
-        page_indices.len(),
-        values_packed.len() * 4,
-        timestamps_packed.len() * 8
-    );
     let it_host = build_inits_and_teardowns_trace_host_for_test(
         &page_indices,
         &values_packed,
         &timestamps_packed,
     );
-    println!("DEBUG: it_host created, creating it_transfer");
     let mut it_transfer = InitsAndTeardownsTransfer::new(it_host, &context).unwrap();
-    println!("DEBUG: it_transfer created");
-    println!("DEBUG: scheduling it h2d");
     let it_h2d = crate::prover::transfer::single_shot_h2d(
         |t| it_transfer.schedule_transfer(t, &context),
         &context,
     )
     .unwrap();
-    println!("DEBUG: waiting it h2d");
     it_h2d.ensure_transferred(&context).unwrap();
-    println!("DEBUG: it h2d done, transferring setup");
 
     // Transfer GPU setup.
     let _setup_h2d = crate::prover::transfer::single_shot_h2d(
@@ -169,7 +142,6 @@ fn run_unified_stagewise_parity_test() {
     )
     .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
-    println!("DEBUG: setup transfer done, running stage1");
 
     // Run GPU stage1 with the Unified arm.
     let mut stage1_output = generate_stage1_output_for_test(
@@ -187,7 +159,6 @@ fn run_unified_stagewise_parity_test() {
     )
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
-    println!("DEBUG: stage1 done, committing memory trace");
 
     // Stage1 does not commit memory traces in production; materialize here for
     // the hypercube readback (mirrors stagewise.rs:328-332).
@@ -648,7 +619,7 @@ fn run_unified_stagewise_parity_test() {
             crate::allocator::tracker::AllocationPlacement::Bottom,
         )
         .unwrap();
-    let mut gpu_backward_execution = {
+    let gpu_backward_execution = {
         let _range = scoped_range(None, "test.gpu.sumcheck.backward_workflow");
         gpu_backward_state
             .schedule_execute_backward_workflow(

@@ -33,7 +33,7 @@ pub(crate) struct PreparedGateForFlatPlan<'a, E> {
 pub(crate) fn build_flat_round0_plan<'s, E: Field>(
     gates: &[PreparedGateForFlatPlan<'_, E>],
     storage: &'s GpuGKRStorage<BF, E>,
-) -> FlatRound0BuildPlan<E> {
+) -> FlatRound0BuildPlan {
     let mut b = FlatDescriptionBuilder::<'s, E>::new(storage);
 
     for gate in gates {
@@ -42,29 +42,26 @@ pub(crate) fn build_flat_round0_plan<'s, E: Field>(
         let p1 = p0 + 1; // second batch challenge power (if gate uses 2)
 
         // Helpers for creating simple recipes (no constraint prefactors)
-        let bc0 = || -> CoefficientRecipe<E> {
+        let bc0 = || -> CoefficientRecipe {
             CoefficientRecipe {
                 batch_power: p0,
                 negate: false,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
-        let bc1 = || -> CoefficientRecipe<E> {
+        let bc1 = || -> CoefficientRecipe {
             CoefficientRecipe {
                 batch_power: p1,
                 negate: false,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
-        let neg_bc0 = || -> CoefficientRecipe<E> {
+        let neg_bc0 = || -> CoefficientRecipe {
             CoefficientRecipe {
                 batch_power: p0,
                 negate: true,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }

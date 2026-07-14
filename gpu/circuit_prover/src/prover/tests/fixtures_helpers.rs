@@ -31,7 +31,6 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
 ) -> ExtractedFamily {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
     let cycles_bound = 1 << 20;
 
     let binary = std::fs::read(test_artifact_path(binary_path)).unwrap();
@@ -947,8 +946,6 @@ pub(crate) struct BasicUnrolledAsyncBackwardFixture {
     pub(crate) batching_challenge: E4,
     pub(crate) lookup_multiplicative_part: E4,
     pub(crate) lookup_additive_part: E4,
-    #[allow(dead_code)]
-    pub(crate) constraints_batch_challenge: E4,
     pub(crate) expected_proof_layers: usize,
     pub(crate) proof_layout: crate::prover::proof_layout::ProofLayout,
     pub(crate) proof_slab: crate::primitives::context::DeviceAllocation<E4>,
@@ -1177,16 +1174,13 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
         batching_challenge,
         lookup_multiplicative_part: lookup_alpha,
         lookup_additive_part,
-        constraints_batch_challenge,
         expected_proof_layers,
         proof_layout,
         proof_slab,
     }
 }
 
-pub(crate) fn prepare_basic_unrolled_async_backward_fixture(
-    _final_trace_size_log_2: usize,
-) -> BasicUnrolledAsyncBackwardFixture {
+pub(crate) fn prepare_basic_unrolled_async_backward_fixture() -> BasicUnrolledAsyncBackwardFixture {
     let (base, expected_cpu_proof) =
         prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,

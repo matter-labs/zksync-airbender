@@ -414,14 +414,11 @@ trait TracingDataProducerType: Sized {
     fn produce_tracing_data(holder: ChunkedTraceHolder<Self, A>) -> TracingDataHost<A>;
 }
 
-// One impl per `DelegationTracingDataHostSource` type. This was a blanket
-// `impl<T: DelegationTracingDataHostSource> TracingDataProducerType for T` while
-// `execution` lived inside the prover crate, but once carved into
-// `gpu_execution_prover` the trait `DelegationTracingDataHostSource` became foreign
-// (it lives in `gpu_circuit_prover`), so a blanket impl over it is no longer
-// coherent — the compiler can no longer prove the unrolled types below don't
-// also implement it. Enumerating the four delegation witness types is
-// behavior-identical (the trait has exactly these four impls upstream).
+// `DelegationTracingDataHostSource` is foreign (defined in `gpu_circuit_prover`),
+// so a blanket `impl<T: DelegationTracingDataHostSource>` is not coherent here —
+// the compiler cannot prove the unrolled types below don't also implement it.
+// Enumerate the four delegation witness types instead (the trait has exactly
+// these four impls upstream).
 macro_rules! impl_delegation_tracing_data_producer {
     ($($ty:ty),+ $(,)?) => {$(
         impl TracingDataProducerType for $ty {

@@ -4,7 +4,7 @@ use super::{metadata_qt_lt_term_lens, FLAT_LINEAR_FORM_SENTINEL};
 /// count), total prefactor terms (= `GpuPrefactorTerm` count, summed over
 /// recipe groups), and the qt×lt cross-product blowup accounting.
 ///
-/// Mirrors the gate-kind dispatch in [`backward_flat::build_flat_round0_plan`]
+/// Mirrors the gate-kind dispatch in [`backward::flat::build_flat_round0_plan`]
 /// and the per-emitter recipe shapes:
 /// - bare bc0/bc1/neg_bc0 recipes (output evaluations) → 1 recipe, 0 terms
 /// - `emit_constraint_gate` → M recipes, each with 1 group of qt[i].ct
@@ -35,23 +35,8 @@ pub(crate) struct FlatRecipeAudit {
     pub(crate) xprod_gates: u32,
     /// Σ M·N — recipes shipped today from cross-product expansion.
     pub(crate) xprod_expanded_recipes: u32,
-    /// Σ (M+N) — source-index entries needed if the kernel ABI accepted a
-    /// "product of two sums" term type (one recipe per gate, plus M+N source
-    /// indices on the side arrays).
-    pub(crate) xprod_source_indices_compact: u32,
-    /// Σ M·N · (avg terms per recipe) — terms shipped today from the
-    /// expansion. Used together with `xprod_source_indices_compact` to bound
-    /// the byte-savings of a hypothetical pair-of-sums ABI.
-    pub(crate) xprod_expanded_terms: u32,
-    /// Σ (Σ qt.ct + Σ lt.ct) — terms across all cross-product gates if the
-    /// kernel kept the prefactor groups merged (one (Σ qt.ct) group + one
-    /// (Σ lt.ct) group per gate).
-    pub(crate) xprod_compact_terms: u32,
     /// Largest single-gate M·N (worst per-gate blowup).
     pub(crate) xprod_max_m_times_n: u32,
-    /// Largest single-gate (M, N).
-    pub(crate) xprod_max_m: u32,
-    pub(crate) xprod_max_n: u32,
 }
 
 impl FlatRecipeAudit {
@@ -87,16 +72,10 @@ pub(crate) fn project_layer_flat_round0_recipe_audit<E>(
             let qt_total: usize = qt_lens.iter().sum();
             let lt_total: usize = lt_lens.iter().sum();
             let xprod_terms_today = (n * qt_total + m * lt_total) as u32;
-            let xprod_terms_compact = (qt_total + lt_total) as u32;
 
             a.xprod_gates += 1;
             a.xprod_expanded_recipes += mn;
-            a.xprod_source_indices_compact += (m + n) as u32;
-            a.xprod_expanded_terms += xprod_terms_today;
-            a.xprod_compact_terms += xprod_terms_compact;
             a.xprod_max_m_times_n = a.xprod_max_m_times_n.max(mn);
-            a.xprod_max_m = a.xprod_max_m.max(m as u32);
-            a.xprod_max_n = a.xprod_max_n.max(n as u32);
 
             a.total_recipes += mn;
             a.total_terms += xprod_terms_today;
@@ -199,7 +178,7 @@ pub(crate) fn project_layer_flat_round0_recipe_audit<E>(
 }
 
 /// Per-layer flat-path **continuation** audit — same shape as the round-0
-/// audit but mirrors `backward_flat::build_flat_continuation_plan` and its
+/// audit but mirrors `backward::flat::build_flat_continuation_plan` and its
 /// `emit_continuation_*` helpers. Continuation runs on rounds 3+ (after the
 /// dimension-reducing folds), so the recipe shapes differ from round-0.
 ///
@@ -283,13 +262,7 @@ pub(crate) fn project_layer_flat_continuation_recipe_audit<E>(
         if total_recipes > 0 {
             a.xprod_gates += 1;
             a.xprod_expanded_recipes += total_recipes;
-            a.xprod_expanded_terms += total_terms;
             a.xprod_max_m_times_n = a.xprod_max_m_times_n.max(xprod_mn);
-            a.xprod_max_m = a.xprod_max_m.max(m as u32);
-            a.xprod_max_n = a.xprod_max_n.max(n as u32);
-            a.xprod_source_indices_compact += (m + n + n_qt_consts + n_lt_consts) as u32;
-            a.xprod_compact_terms +=
-                (qt_total + lt_total + qt_consts_total + lt_consts_total) as u32;
         }
     };
 

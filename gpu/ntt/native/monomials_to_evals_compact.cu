@@ -135,7 +135,7 @@ DEFINE_COMPACT_KERNEL(12, 2)
 
 #undef DEFINE_COMPACT_KERNEL
 
-// First-K-stages compact NTT for 2-pass plans covering `log_n` in [15, 20].
+// First-K-stages compact NTT for 2-pass plans covering `log_n` in [13, 20].
 //
 // One block per chunk of `2^LOG_K` consecutive bitreversed inputs of a size-
 // `2^log_n` NTT. The block performs the first `LOG_K` butterfly stages of the

@@ -7,29 +7,6 @@ use gpu_core::primitives::field::{BF, E2, E4, E6};
 use crate::upstream::Field;
 use itertools::Itertools;
 
-#[cfg(feature = "scaffolding_ops")]
-type UnaryDeviceFn<T> = fn(&DeviceSlice<T>, &mut DeviceSlice<T>, &CudaStream) -> CudaResult<()>;
-
-#[cfg(feature = "scaffolding_ops")]
-type UnaryDeviceInPlaceFn<T> = fn(&mut DeviceSlice<T>, &CudaStream) -> CudaResult<()>;
-
-#[cfg(feature = "scaffolding_ops")]
-type UnaryHostFn<T> = fn(&T) -> T;
-
-#[cfg(feature = "scaffolding_ops")]
-#[allow(dead_code)]
-type ParametrizedUnaryDeviceFn<T> =
-    fn(&DeviceSlice<T>, u32, &mut DeviceSlice<T>, &CudaStream) -> CudaResult<()>;
-
-#[cfg(feature = "scaffolding_ops")]
-#[allow(dead_code)]
-type ParametrizedUnaryDeviceInPlaceFn<T> =
-    fn(&mut DeviceSlice<T>, u32, &CudaStream) -> CudaResult<()>;
-
-#[cfg(feature = "scaffolding_ops")]
-#[allow(dead_code)]
-type ParametrizedUnaryHostFn<T> = fn(&T, u32) -> T;
-
 type BinaryDeviceFn<T> =
     fn(&DeviceSlice<T>, &DeviceSlice<T>, &mut DeviceSlice<T>, &CudaStream) -> CudaResult<()>;
 
@@ -48,100 +25,6 @@ type MixedBinaryIntoYDeviceFn<T0, T1> =
     fn(&DeviceSlice<T0>, &mut DeviceSlice<T1>, &CudaStream) -> CudaResult<()>;
 
 type MixedBinaryHostFn<T0, T1, TR> = fn(&T0, &T1) -> TR;
-
-#[cfg(feature = "scaffolding_ops")]
-pub(super) fn unary_op_test<T: Field, const LOG_N: u32>(
-    device_fn: UnaryDeviceFn<T>,
-    host_fn: UnaryHostFn<T>,
-    additional_values: &[T],
-) {
-    let n = 1 << LOG_N;
-    let x_host = get_values(n, additional_values);
-    let stream = CudaStream::default();
-    let mut result_host = vec![T::ZERO; n];
-    let mut x_device = DeviceAllocation::alloc(n).unwrap();
-    let mut result_device = DeviceAllocation::alloc(n).unwrap();
-    memory_copy_async(&mut x_device, &x_host, &stream).unwrap();
-    device_fn(&x_device, &mut result_device, &stream).unwrap();
-    memory_copy_async(&mut result_host, &result_device, &stream).unwrap();
-    stream.synchronize().unwrap();
-    for i in 0..n {
-        let left = host_fn(&x_host[i]);
-        let right = result_host[i];
-        assert_eq!(left, right, "i = {}", i);
-    }
-}
-
-#[cfg(feature = "scaffolding_ops")]
-pub(super) fn unary_op_in_place_test<T: Field, const LOG_N: u32>(
-    device_fn: UnaryDeviceInPlaceFn<T>,
-    host_fn: UnaryHostFn<T>,
-    additional_values: &[T],
-) {
-    let n = 1 << LOG_N;
-    let x_host = get_values(n, additional_values);
-    let stream = CudaStream::default();
-    let mut result_host = vec![T::ZERO; n];
-    let mut x_device = DeviceAllocation::alloc(n).unwrap();
-    memory_copy_async(&mut x_device, &x_host, &stream).unwrap();
-    device_fn(&mut x_device, &stream).unwrap();
-    memory_copy_async(&mut result_host, &x_device, &stream).unwrap();
-    stream.synchronize().unwrap();
-    for i in 0..n {
-        let left = host_fn(&x_host[i]);
-        let right = result_host[i];
-        assert_eq!(left, right, "i = {}", i);
-    }
-}
-
-#[cfg(feature = "scaffolding_ops")]
-#[allow(dead_code)]
-pub(super) fn parametrized_unary_op_test<T: Field, const LOG_N: u32>(
-    parameter: u32,
-    device_fn: ParametrizedUnaryDeviceFn<T>,
-    host_fn: ParametrizedUnaryHostFn<T>,
-    additional_values: &[T],
-) {
-    let n = 1 << LOG_N;
-    let x_host = get_values(n, additional_values);
-    let stream = CudaStream::default();
-    let mut result_host = vec![T::ZERO; n];
-    let mut x_device = DeviceAllocation::alloc(n).unwrap();
-    let mut result_device = DeviceAllocation::alloc(n).unwrap();
-    memory_copy_async(&mut x_device, &x_host, &stream).unwrap();
-    device_fn(&x_device, parameter, &mut result_device, &stream).unwrap();
-    memory_copy_async(&mut result_host, &result_device, &stream).unwrap();
-    stream.synchronize().unwrap();
-    for i in 0..n {
-        let left = host_fn(&x_host[i], parameter);
-        let right = result_host[i];
-        assert_eq!(left, right, "i = {}", i);
-    }
-}
-
-#[cfg(feature = "scaffolding_ops")]
-#[allow(dead_code)]
-pub(super) fn parametrized_unary_op_in_place_test<T: Field, const LOG_N: u32>(
-    parameter: u32,
-    device_fn: ParametrizedUnaryDeviceInPlaceFn<T>,
-    host_fn: ParametrizedUnaryHostFn<T>,
-    additional_values: &[T],
-) {
-    let n = 1 << LOG_N;
-    let x_host = get_values(n, additional_values);
-    let stream = CudaStream::default();
-    let mut result_host = vec![T::ZERO; n];
-    let mut x_device = DeviceAllocation::alloc(n).unwrap();
-    memory_copy_async(&mut x_device, &x_host, &stream).unwrap();
-    device_fn(&mut x_device, parameter, &stream).unwrap();
-    memory_copy_async(&mut result_host, &x_device, &stream).unwrap();
-    stream.synchronize().unwrap();
-    for i in 0..n {
-        let left = host_fn(&x_host[i], parameter);
-        let right = result_host[i];
-        assert_eq!(left, right, "i = {}", i);
-    }
-}
 
 pub(super) fn binary_op_test<T: Field, const LOG_N: u32>(
     device_fn: BinaryDeviceFn<T>,

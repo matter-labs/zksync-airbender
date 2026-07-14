@@ -45,7 +45,7 @@ pub(super) fn schedule_commit_next_oracle_phase(
         lde_factor,
         1 << next_folding_steps,
         tree_cap_size,
-        // transform_leaves_to_multilinear_coeffs: coeff form by default (CPU #279
+        // transform_leaves_to_multilinear_coeffs: coeff form by default (CPU
         // commits recursive WHIR oracles in coeff form); the `eval_leaves` feature
         // selects eval form to mirror the CPU prover's recursive-oracle encoding.
         !cfg!(feature = "eval_leaves"),
@@ -119,9 +119,6 @@ pub(super) fn schedule_ood_sample_phase(
 /// slab's `whir.pow_nonces[pow_round_idx]` slot by `blake2s_pow`, and the
 /// transcript_commit that consumes the nonce as u32 words reads from that same
 /// slab slot — no intermediate `d_nonce` allocation, no D2D copy.
-///
-/// Returns a per-round callbacks container (currently empty; retained for
-/// future per-round callback wiring).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn schedule_pow_and_query_indexes_phase(
     device_seed: &mut DeviceSlice<u32>,
@@ -132,11 +129,8 @@ pub(super) fn schedule_pow_and_query_indexes_phase(
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     pow_round_state: &mut Vec<PowAndQueryIndexesState>,
-    _stream: &era_cudart::stream::CudaStream,
     context: &ProverContext,
-) -> CudaResult<Callbacks<'static>> {
-    let query_index_callbacks_for_round = Callbacks::new();
-
+) -> CudaResult<()> {
     // SAFETY: `ProofLayout` computes a live, non-overlapping mutable region for
     // the PoW-nonce array inside the slab allocation.
     let (pow_nonces_ptr, pow_nonces_len) =
@@ -163,7 +157,7 @@ pub(super) fn schedule_pow_and_query_indexes_phase(
         context,
     )?;
     pow_round_state.push(pow_round_state_entry);
-    Ok(query_index_callbacks_for_round)
+    Ok(())
 }
 
 /// Schedules the running-powers buffer `[x, x^2, ..., x^(num_queries + 1)]`

@@ -97,7 +97,6 @@ DEVICE_FORCEINLINE void lde_first_k_stages_impl(bf_matrix_getter<ld_modifier::cg
       // 5 intrawarp exchanges
       unsigned lane_mask = 1;
 #pragma unroll
-      // for (unsigned stage = 1; stage < 6; stage++, lane_mask <<= 1) {
       for (unsigned stage = 1; stage < 6; stage++, lane_mask <<= 1) {
         shfl_for_exchange(vals, lane_mask);
         twiddles_this_stage -= THREADS_PER_BLOCK >> stage;
@@ -208,7 +207,7 @@ EXTERN __launch_bounds__(128, 12) __global__
   const bf first_twiddle = ab_fully_precomputed_bitrev_twiddles[gid];
   // Cooperatively loads 31 twiddles for remaining stages with minimal divergence. Pain.
   // Stages are ordered in reverse in the shared memory chunk, ie
-  // [...[twiddles for stage 8] [twiddles for stage 9] [ twiddles for stage 10]]
+  // [...[twiddles for stage STAGES-2] [twiddles for stage STAGES-1] [twiddles for stage STAGES]]
   {
     const unsigned lz = __clz(lane_id);        // ranges from 32 to 32 - (STAGES - 1) inclusive
     const unsigned stage = STAGES - (32 - lz); // ranges from STAGES to 1 inclusive

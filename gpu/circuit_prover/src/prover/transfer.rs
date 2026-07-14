@@ -120,9 +120,7 @@ impl<'a> Transfer<'a> {
 }
 
 /// Test-only convenience for running a single wrapper's `schedule_transfer`
-/// through its own one-shot `Transfer`. Mirrors what the per-piece transfer
-/// wrappers used to do before they became transferless, so tests that
-/// previously called `wrapper.schedule_transfer(context)` can be rewritten as
+/// through its own one-shot `Transfer`, e.g.
 /// `single_shot_h2d(|t| wrapper.schedule_transfer(t, context), context)?`.
 ///
 /// The returned `Transfer` has its `transferred` event already recorded; the

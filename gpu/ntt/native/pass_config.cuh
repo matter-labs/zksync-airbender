@@ -3,8 +3,6 @@
 // Tile / thread tunables for the two-pass and three-pass NTT kernels, shared
 // across the forward, hypercube, and monomials-to-evals variants. Each phase
 // has its own namespace; bring it into a kernel with `using namespace`.
-//
-// TODO: make some of these kernel arguments.
 
 namespace airbender::ntt::pass_config {
 

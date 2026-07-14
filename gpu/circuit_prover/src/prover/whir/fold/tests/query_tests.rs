@@ -9,6 +9,7 @@ use serial_test::serial;
 use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
+use crate::primitives::callbacks::Callbacks;
 use crate::prover::test_utils::make_test_context;
 
 use super::helpers::{

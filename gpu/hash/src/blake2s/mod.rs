@@ -10,7 +10,6 @@ use gpu_core::primitives::field::BF;
 use gpu_core::primitives::field::E4;
 use gpu_core::primitives::utils::LOG_WARP_SIZE;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use gpu_ops::bit_reverse::bit_reverse_in_place;
 
 pub const STATE_SIZE: usize = 8;
 
@@ -509,7 +508,6 @@ pub fn build_merkle_tree(
     log_rows_per_hash: u32,
     stream: &CudaStream,
     layers_count: u32,
-    bit_reverse_leaves: bool,
 ) -> CudaResult<()> {
     assert_ne!(layers_count, 0);
     let values_len = values.len();
@@ -520,9 +518,6 @@ pub fn build_merkle_tree(
     assert_eq!(values_len % leaves_count, 0);
     let (leaves, nodes) = results.split_at_mut(leaves_count);
     build_merkle_tree_leaves(values, leaves, log_rows_per_hash, stream)?;
-    if bit_reverse_leaves {
-        bit_reverse_in_place(leaves, stream)?;
-    }
     build_merkle_tree_nodes(leaves, nodes, layers_count - 1, stream)
 }
 

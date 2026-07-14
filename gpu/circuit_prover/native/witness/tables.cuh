@@ -194,6 +194,4 @@ template <unsigned K, unsigned V> struct TableDriver {
   }
 };
 
-template <> DEVICE_FORCEINLINE void TableDriver<3, 0>::set_values_from_tables(const u32, bf *) const {}
-
 } // namespace airbender::witness::tables

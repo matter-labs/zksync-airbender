@@ -12,7 +12,7 @@ use crate::upstream::Field;
 /// Linear constraint terms → c0_only_linear (compact: c0 only; explicit: both).
 /// Constant offset → constant term.
 pub(super) fn emit_continuation_constraint_gate<E: Field>(
-    b: &mut FlatContinuationDescriptionBuilder<E>,
+    b: &mut FlatContinuationDescriptionBuilder,
     gate: &PreparedGateForFlatContinuationPlan<'_, E>,
     batch_power: u32,
 ) {
@@ -38,7 +38,6 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: E::ONE,
                         immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![qt.challenge_terms.clone()],
                     },
@@ -60,7 +59,6 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: E::ONE,
                         immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     },
@@ -79,7 +77,6 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                         b.push_constant(CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         });
@@ -90,7 +87,6 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                 b.push_constant(CoefficientRecipe {
                     batch_power,
                     negate: false,
-                    immediate_factor: E::ONE,
                     immediate_recipe: ImmediateFactorRecipeStructural::one(),
                     prefactors: vec![tmpl.constant_terms.clone()],
                 });
@@ -116,7 +112,6 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: qt.challenge,
                         immediate_recipe: qt.immediate_recipe.clone(),
                         prefactors: vec![],
                     },
@@ -137,7 +132,6 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: lt.challenge,
                         immediate_recipe: lt.immediate_recipe.clone(),
                         prefactors: vec![],
                     },
@@ -149,7 +143,6 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                     b.push_constant(CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: lt.challenge,
                         immediate_recipe: lt.immediate_recipe.clone(),
                         prefactors: vec![],
                     });
@@ -159,7 +152,6 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                 b.push_constant(CoefficientRecipe {
                     batch_power,
                     negate: false,
-                    immediate_factor: meta.constant_offset,
                     immediate_recipe: meta.constant_offset_recipe.clone(),
                     prefactors: vec![],
                 });
@@ -171,7 +163,7 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
 
 /// Emit unified_quadratic terms for cross-product gates.
 pub(super) fn emit_continuation_cross_product_gate<E: Field>(
-    b: &mut FlatContinuationDescriptionBuilder<E>,
+    b: &mut FlatContinuationDescriptionBuilder,
     gate: &PreparedGateForFlatContinuationPlan<'_, E>,
     batch_power: u32,
     base_input_offset: usize,
@@ -218,7 +210,6 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![
                                 qt.challenge_terms.clone(),
@@ -233,7 +224,6 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![qt.challenge_terms.clone(), lc.clone()],
                         },
@@ -255,7 +245,6 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone(), qc.clone()],
                         },
@@ -268,7 +257,6 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
                     b.push_constant(CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: E::ONE,
                         immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![qc.clone(), lc.clone()],
                     });
@@ -280,7 +268,7 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
             let mut quad_consts = Vec::new();
             for qt in &meta.quadratic_terms {
                 if qt.lhs == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                    quad_consts.push((qt.challenge, qt.immediate_recipe.clone()));
+                    quad_consts.push(qt.immediate_recipe.clone());
                 } else {
                     quad_terms.push(qt);
                 }
@@ -289,7 +277,7 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
             let mut lin_consts = Vec::new();
             for lt in &meta.linear_terms {
                 if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                    lin_consts.push((lt.challenge, lt.immediate_recipe.clone()));
+                    lin_consts.push(lt.immediate_recipe.clone());
                 } else {
                     lin_terms.push(lt);
                 }
@@ -310,8 +298,6 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
                         false,
                         lt.input as usize + base_input_offset,
                     );
-                    let mut coeff = qt.challenge;
-                    coeff.mul_assign(&lt.challenge);
                     let recipe = qt.immediate_recipe.mul(&lt.immediate_recipe);
                     b.push_unified_quadratic(
                         lhs,
@@ -319,22 +305,18 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
                 }
-                for (lc, lc_recipe) in &lin_consts {
-                    let mut coeff = qt.challenge;
-                    coeff.mul_assign(lc);
+                for lc_recipe in &lin_consts {
                     let recipe = qt.immediate_recipe.mul(lc_recipe);
                     b.push_c0_only_linear(
                         lhs,
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -350,16 +332,13 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
                     false,
                     lt.input as usize + base_input_offset,
                 );
-                for (qc, qc_recipe) in &quad_consts {
-                    let mut coeff = lt.challenge;
-                    coeff.mul_assign(qc);
+                for qc_recipe in &quad_consts {
                     let recipe = lt.immediate_recipe.mul(qc_recipe);
                     b.push_c0_only_linear(
                         rhs,
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -367,15 +346,12 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
                 }
             }
 
-            for (qc, qc_recipe) in &quad_consts {
-                for (lc, lc_recipe) in &lin_consts {
-                    let mut coeff = *qc;
-                    coeff.mul_assign(lc);
+            for qc_recipe in &quad_consts {
+                for lc_recipe in &lin_consts {
                     let recipe = qc_recipe.mul(lc_recipe);
                     b.push_constant(CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: coeff,
                         immediate_recipe: recipe,
                         prefactors: vec![],
                     });
@@ -386,9 +362,9 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
     }
 }
 
-/// Emit unified_linear terms for materialize gates.
+/// Emit c0-only linear terms (plus constants) for materialize gates.
 pub(super) fn emit_continuation_materialize_gate<E: Field>(
-    b: &mut FlatContinuationDescriptionBuilder<E>,
+    b: &mut FlatContinuationDescriptionBuilder,
     gate: &PreparedGateForFlatContinuationPlan<'_, E>,
     batch_power: u32,
     base_input_offset: usize,
@@ -400,7 +376,6 @@ pub(super) fn emit_continuation_materialize_gate<E: Field>(
                     b.push_constant(CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: E::ONE,
                         immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     });
@@ -418,7 +393,6 @@ pub(super) fn emit_continuation_materialize_gate<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: E::ONE,
                         immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     },
@@ -431,7 +405,6 @@ pub(super) fn emit_continuation_materialize_gate<E: Field>(
                     b.push_constant(CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: lt.challenge,
                         immediate_recipe: lt.immediate_recipe.clone(),
                         prefactors: vec![],
                     });
@@ -449,7 +422,6 @@ pub(super) fn emit_continuation_materialize_gate<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: lt.challenge,
                         immediate_recipe: lt.immediate_recipe.clone(),
                         prefactors: vec![],
                     },
@@ -463,7 +435,7 @@ pub(super) fn emit_continuation_materialize_gate<E: Field>(
 /// Emit unified_quadratic: cached_src × linear_form_term for each term.
 /// When `use_linear_terms` is true, iterates `linear_terms`; otherwise `quadratic_terms` (using lhs).
 pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
-    b: &mut FlatContinuationDescriptionBuilder<E>,
+    b: &mut FlatContinuationDescriptionBuilder,
     gate: &PreparedGateForFlatContinuationPlan<'_, E>,
     cached_src: u32,
     batch_power: u32,
@@ -481,7 +453,6 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                             CoefficientRecipe {
                                 batch_power,
                                 negate,
-                                immediate_factor: E::ONE,
                                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                                 prefactors: vec![lt.challenge_terms.clone()],
                             },
@@ -501,7 +472,6 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         },
@@ -515,7 +485,6 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                             CoefficientRecipe {
                                 batch_power,
                                 negate,
-                                immediate_factor: E::ONE,
                                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                                 prefactors: vec![qt.challenge_terms.clone()],
                             },
@@ -535,7 +504,6 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![qt.challenge_terms.clone()],
                         },
@@ -547,17 +515,12 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
             if use_linear_terms {
                 for lt in &meta.linear_terms {
                     if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                        let mut coeff = lt.challenge;
                         let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
-                        if negate {
-                            Field::negate(&mut coeff);
-                        }
                         b.push_c0_only_linear(
                             cached_src,
                             CoefficientRecipe {
                                 batch_power,
                                 negate: false,
-                                immediate_factor: coeff,
                                 immediate_recipe: recipe,
                                 prefactors: vec![],
                             },
@@ -571,18 +534,13 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                         false,
                         lt.input as usize + base_input_offset,
                     );
-                    let mut coeff = lt.challenge;
                     let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
-                    if negate {
-                        Field::negate(&mut coeff);
-                    }
                     b.push_unified_quadratic(
                         cached_src,
                         other,
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -591,17 +549,12 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
             } else {
                 for qt in &meta.quadratic_terms {
                     if qt.lhs == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                        let mut coeff = qt.challenge;
                         let recipe = immediate_recipe_with_negation(&qt.immediate_recipe, negate);
-                        if negate {
-                            Field::negate(&mut coeff);
-                        }
                         b.push_c0_only_linear(
                             cached_src,
                             CoefficientRecipe {
                                 batch_power,
                                 negate: false,
-                                immediate_factor: coeff,
                                 immediate_recipe: recipe,
                                 prefactors: vec![],
                             },
@@ -615,18 +568,13 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                         false,
                         qt.lhs as usize + base_input_offset,
                     );
-                    let mut coeff = qt.challenge;
                     let recipe = immediate_recipe_with_negation(&qt.immediate_recipe, negate);
-                    if negate {
-                        Field::negate(&mut coeff);
-                    }
                     b.push_unified_quadratic(
                         cached_src,
                         other,
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -640,7 +588,7 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
 
 /// Emit c0-only linear terms for a no-cache linear form (including constants).
 pub(super) fn emit_continuation_linear_form<E: Field>(
-    b: &mut FlatContinuationDescriptionBuilder<E>,
+    b: &mut FlatContinuationDescriptionBuilder,
     gate: &PreparedGateForFlatContinuationPlan<'_, E>,
     batch_power: u32,
     negate: bool,
@@ -655,7 +603,6 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         b.push_constant(CoefficientRecipe {
                             batch_power,
                             negate,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         });
@@ -673,7 +620,6 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         },
@@ -685,7 +631,6 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         b.push_constant(CoefficientRecipe {
                             batch_power,
                             negate,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![qt.challenge_terms.clone()],
                         });
@@ -703,7 +648,6 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![qt.challenge_terms.clone()],
                         },
@@ -715,15 +659,10 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
             if use_linear_terms {
                 for lt in &meta.linear_terms {
                     if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                        let mut coeff = lt.challenge;
                         let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
-                        if negate {
-                            Field::negate(&mut coeff);
-                        }
                         b.push_constant(CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         });
@@ -736,17 +675,12 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         false,
                         lt.input as usize + base_input_offset,
                     );
-                    let mut coeff = lt.challenge;
                     let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
-                    if negate {
-                        Field::negate(&mut coeff);
-                    }
                     b.push_c0_only_linear(
                         src,
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -755,15 +689,10 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
             } else {
                 for qt in &meta.quadratic_terms {
                     if qt.lhs == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                        let mut coeff = qt.challenge;
                         let recipe = immediate_recipe_with_negation(&qt.immediate_recipe, negate);
-                        if negate {
-                            Field::negate(&mut coeff);
-                        }
                         b.push_constant(CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         });
@@ -776,17 +705,12 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         false,
                         qt.lhs as usize + base_input_offset,
                     );
-                    let mut coeff = qt.challenge;
                     let recipe = immediate_recipe_with_negation(&qt.immediate_recipe, negate);
-                    if negate {
-                        Field::negate(&mut coeff);
-                    }
                     b.push_c0_only_linear(
                         src,
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -800,7 +724,7 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
 
 /// Emit unified_quadratic: linear_form_term × ext_source for each term.
 pub(super) fn emit_continuation_linear_form_times_ext<E: Field>(
-    b: &mut FlatContinuationDescriptionBuilder<E>,
+    b: &mut FlatContinuationDescriptionBuilder,
     gate: &PreparedGateForFlatContinuationPlan<'_, E>,
     ext_src: u32,
     batch_power: u32,
@@ -816,7 +740,6 @@ pub(super) fn emit_continuation_linear_form_times_ext<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         },
@@ -836,7 +759,6 @@ pub(super) fn emit_continuation_linear_form_times_ext<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate,
-                        immediate_factor: E::ONE,
                         immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     },
@@ -846,17 +768,12 @@ pub(super) fn emit_continuation_linear_form_times_ext<E: Field>(
         Some(GpuGKRMainLayerConstraintMetadataSource::Immediate(ref meta)) => {
             for lt in &meta.linear_terms {
                 if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                    let mut coeff = lt.challenge;
                     let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
-                    if negate {
-                        Field::negate(&mut coeff);
-                    }
                     b.push_c0_only_linear(
                         ext_src,
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -870,18 +787,13 @@ pub(super) fn emit_continuation_linear_form_times_ext<E: Field>(
                     false,
                     lt.input as usize + base_input_offset,
                 );
-                let mut coeff = lt.challenge;
                 let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
-                if negate {
-                    Field::negate(&mut coeff);
-                }
                 b.push_unified_quadratic(
                     bf_src,
                     ext_src,
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: coeff,
                         immediate_recipe: recipe,
                         prefactors: vec![],
                     },

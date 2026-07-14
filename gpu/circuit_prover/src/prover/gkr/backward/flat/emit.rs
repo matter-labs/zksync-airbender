@@ -32,7 +32,6 @@ pub(super) fn emit_constraint_gate<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: E::ONE,
                         immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![qt.challenge_terms.clone()],
                     },
@@ -49,7 +48,6 @@ pub(super) fn emit_constraint_gate<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: qt.challenge,
                         immediate_recipe: qt.immediate_recipe.clone(),
                         prefactors: vec![],
                     },
@@ -89,7 +87,6 @@ pub(super) fn emit_cross_product_gate<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: E::ONE,
                             immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![
                                 qt.challenge_terms.clone(),
@@ -114,8 +111,6 @@ pub(super) fn emit_cross_product_gate<E: Field>(
                     let rhs = b.add_bf_source(
                         &r0.base_field_inputs[lt.input as usize + base_input_offset],
                     );
-                    let mut coeff = qt.challenge;
-                    coeff.mul_assign(&lt.challenge);
                     let recipe = qt.immediate_recipe.mul(&lt.immediate_recipe);
                     b.push_c1_bf_bf(
                         lhs,
@@ -123,7 +118,6 @@ pub(super) fn emit_cross_product_gate<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -181,10 +175,8 @@ pub(super) fn emit_single_times_linear_form<E: Field>(
                     let form_src = b.add_bf_source(
                         &r0.base_field_inputs[lt.input as usize + base_input_offset],
                     );
-                    let mut coeff = lt.challenge;
                     let mut recipe = lt.immediate_recipe.clone();
                     if negate {
-                        Field::negate(&mut coeff);
                         recipe = recipe.negated();
                     }
                     b.push_c1_bf_bf(
@@ -193,7 +185,6 @@ pub(super) fn emit_single_times_linear_form<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -206,10 +197,8 @@ pub(super) fn emit_single_times_linear_form<E: Field>(
                     }
                     let form_src =
                         b.add_bf_source(&r0.base_field_inputs[qt.lhs as usize + base_input_offset]);
-                    let mut coeff = qt.challenge;
                     let mut recipe = qt.immediate_recipe.clone();
                     if negate {
-                        Field::negate(&mut coeff);
                         recipe = recipe.negated();
                     }
                     b.push_c1_bf_bf(
@@ -218,7 +207,6 @@ pub(super) fn emit_single_times_linear_form<E: Field>(
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
-                            immediate_factor: coeff,
                             immediate_recipe: recipe,
                             prefactors: vec![],
                         },
@@ -251,7 +239,6 @@ fn emit_single_times_linear_form_deferred_linear<E: Field>(
             CoefficientRecipe {
                 batch_power,
                 negate,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![lt.challenge_terms.clone()],
             },
@@ -279,7 +266,6 @@ fn emit_single_times_linear_form_deferred_quad<E: Field>(
             CoefficientRecipe {
                 batch_power,
                 negate,
-                immediate_factor: E::ONE,
                 immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![qt.challenge_terms.clone()],
             },
@@ -311,7 +297,6 @@ pub(super) fn emit_linear_form_times_ext<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate,
-                        immediate_factor: E::ONE,
                         immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     },
@@ -325,10 +310,8 @@ pub(super) fn emit_linear_form_times_ext<E: Field>(
                 }
                 let bf_src =
                     b.add_bf_source(&r0.base_field_inputs[lt.input as usize + base_input_offset]);
-                let mut coeff = lt.challenge;
                 let mut recipe = lt.immediate_recipe.clone();
                 if negate {
-                    Field::negate(&mut coeff);
                     recipe = recipe.negated();
                 }
                 b.push_c1_bf_e4(
@@ -337,7 +320,6 @@ pub(super) fn emit_linear_form_times_ext<E: Field>(
                     CoefficientRecipe {
                         batch_power,
                         negate: false,
-                        immediate_factor: coeff,
                         immediate_recipe: recipe,
                         prefactors: vec![],
                     },

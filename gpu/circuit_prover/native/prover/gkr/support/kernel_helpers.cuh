@@ -34,12 +34,6 @@ DEVICE_FORCEINLINE bf gkr_virtual_base_value(const gkr_base_source_kind kind, co
   }
 }
 
-template <typename E> DEVICE_FORCEINLINE bf gkr_get_base_after_one_bf_value(const gkr_base_after_one_source<bf, E> &source, const unsigned index) {
-  if (source.source_kind == GKR_BASE_SOURCE_REAL)
-    return load<bf, ld_modifier::cs>(source.base_input_start, index);
-  return gkr_virtual_base_value(source.source_kind, index);
-}
-
 template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_value(const gkr_ext_initial_source<E> &source, const unsigned index) {
   return load<E, ld_modifier::cs>(source.start, index);
 }
@@ -61,31 +55,6 @@ template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_delta(const gkr_ext_i
   const E f0 = gkr_get_initial_value(source, index);
   const E f1 = gkr_get_initial_value(source, source.next_layer_size + index);
   return E::sub(f1, f0);
-}
-
-template <typename E>
-DEVICE_FORCEINLINE E gkr_get_base_after_one_value(const gkr_base_after_one_source<bf, E> &source, const E first_folding_challenge, const unsigned index) {
-  if (!source.first_access)
-    return load<E, ld_modifier::cs>(source.this_layer_cache_start, index);
-
-  const bf f0 = gkr_get_base_after_one_bf_value(source, index);
-  const bf f1 = gkr_get_base_after_one_bf_value(source, source.base_layer_half_size + index);
-  const bf diff = bf::sub(f1, f0);
-  const E folded = E::fma(first_folding_challenge, diff, f0);
-  store<E, st_modifier::cs>(source.this_layer_cache_start, folded, index);
-  return folded;
-}
-
-template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_get_base_after_one_points(const gkr_base_after_one_source<bf, E> &source, const E first_folding_challenge, const unsigned index,
-                                                      E &f0, E &f1_or_delta) {
-  f0 = gkr_get_base_after_one_value(source, first_folding_challenge, index);
-  const E f1 = gkr_get_base_after_one_value(source, first_folding_challenge, source.next_layer_size + index);
-  if constexpr (EXPLICIT_FORM) {
-    f1_or_delta = f1;
-  } else {
-    f1_or_delta = E::sub(f1, f0);
-  }
 }
 
 template <typename E, bool EXPLICIT_FORM>

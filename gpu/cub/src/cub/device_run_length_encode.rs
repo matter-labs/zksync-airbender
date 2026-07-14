@@ -5,8 +5,6 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaError_t, cudaStream_t, cuda_fn_and_stub};
 
-use gpu_core::primitives::field::BaseField;
-
 cuda_fn_and_stub! {
     fn ab_encode_u32(
         d_temp_storage: *mut u8,
@@ -86,34 +84,6 @@ pub trait Encode: Sized {
 impl Encode for u32 {
     fn get_function() -> EncodeFunction<Self> {
         ab_encode_u32
-    }
-}
-
-impl Encode for BaseField {
-    fn get_function() -> EncodeFunction<Self> {
-        // SAFETY: `BaseField` is a transparent `u32` newtype for this CUB path,
-        // so the ABI matches `ab_encode_u32`.
-        unsafe { std::mem::transmute::<EncodeFunction<u32>, EncodeFunction<Self>>(ab_encode_u32) }
-    }
-
-    fn encode(
-        d_temp_storage: &mut DeviceSlice<u8>,
-        d_in: &DeviceSlice<Self>,
-        d_unique_out: &mut DeviceSlice<Self>,
-        d_counts_out: &mut DeviceSlice<u32>,
-        d_num_runs_out: &mut DeviceVariable<u32>,
-        stream: &CudaStream,
-    ) -> CudaResult<()> {
-        let d_in = unsafe { d_in.transmute() };
-        let d_unique_out = unsafe { d_unique_out.transmute_mut() };
-        u32::encode(
-            d_temp_storage,
-            d_in,
-            d_unique_out,
-            d_counts_out,
-            d_num_runs_out,
-            stream,
-        )
     }
 }
 

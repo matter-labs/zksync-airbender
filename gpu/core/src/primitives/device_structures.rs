@@ -92,25 +92,6 @@ pub trait DeviceVectorChunkImpl<T> {
     fn as_ptr(&self) -> *const T {
         ptr_from_slice_and_offset(self.slice(), self.offset())
     }
-
-    #[allow(dead_code)]
-    fn as_ptr_and_stride(&self) -> PtrAndStride<T> {
-        PtrAndStride::new(self.as_ptr(), self.slice().len())
-    }
-}
-
-#[allow(dead_code)]
-pub trait DeviceVectorChunkMutImpl<T>: DeviceVectorChunkImpl<T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T>;
-
-    fn as_mut_ptr(&mut self) -> *mut T {
-        let offset = self.offset();
-        mut_ptr_from_slice_and_offset(self.slice_mut(), offset)
-    }
-
-    fn as_mut_ptr_and_stride(&mut self) -> MutPtrAndStride<T> {
-        MutPtrAndStride::new(self.as_mut_ptr(), self.slice().len())
-    }
 }
 
 pub trait DeviceMatrixImpl<T> {
@@ -265,11 +246,6 @@ impl<T, D: DeviceBacking<T> + ?Sized> DeviceVectorChunkImpl<T> for D {
         self.as_device_slice()
     }
 }
-impl<T, D: DeviceBackingMut<T> + ?Sized> DeviceVectorChunkMutImpl<T> for D {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self.as_device_slice_mut()
-    }
-}
 
 impl<T, D: DeviceBacking<T> + ?Sized> DeviceMatrixImpl<T> for D {
     fn slice(&self) -> &DeviceSlice<T> {
@@ -360,12 +336,6 @@ impl<T> DeviceVectorChunkImpl<T> for DeviceVectorChunkMut<'_, T> {
 
     fn rows(&self) -> usize {
         self.len
-    }
-}
-
-impl<T> DeviceVectorChunkMutImpl<T> for DeviceVectorChunkMut<'_, T> {
-    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
-        self.slice
     }
 }
 

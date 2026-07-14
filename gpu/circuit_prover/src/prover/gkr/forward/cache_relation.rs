@@ -319,7 +319,6 @@ pub(super) fn lower_cache_relation<E>(
     forward_setup: &GpuGKRForwardSetup<E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
     decoder_predicate_address: Option<GKRAddress>,
-    _trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<(
     GpuGKRForwardCacheDescriptor<E>,

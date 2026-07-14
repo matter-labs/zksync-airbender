@@ -413,11 +413,6 @@ fn run_load_store_subword_only_profile_test() {
 // CPU unified orchestration test). All four build their fixture + CPU reference +
 // tracing host, then prove on the GPU.
 //
-// keccak / bigint / blake2_with_compression originally overflowed the fused flat
-// backward path's inline `__constant__`/`__grid_constant__` capacity caps. They
-// are unblocked by the dual-path device-memory fallback + capacity
-// raises (coeff / terms / recipe device buffers, per-layer cap raises), plus the
-// GKR materialize-gate sumcheck-emit fix and the WHIR query-index transcript fix.
 // All four tests are kept `#[ignore]`d (heavy GPU) — run with `--ignored`.
 // ===========================================================================
 
@@ -445,8 +440,7 @@ const BLAKE2_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 /// Replays `examples/bigint_with_control` (a program that issues exactly one
 /// bigint delegation call via the bigint CSR ABI; it takes no non-determinism
 /// input, so the nd array below is unused padding), so `bigint_calls > 0` and
-/// the fixture drives a REAL bigint delegation proof instead of the previous
-/// empty-buffer short-circuit.
+/// the fixture drives a REAL bigint delegation proof.
 fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriver<BF>) {
     let buffer = replay_delegation_trace_buffer_for_workload::<_, FullUnsignedMachineDecoderConfig>(
         BIGINT_WITH_CONTROL_BINARY_PATH,
@@ -509,22 +503,13 @@ fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
 
 fn prepare_bigint_profiling_fixture() -> BasicUnrolledFixture {
     let (buffer, table_driver) = replay_bigint_delegation_buffer();
-    let oracle = BigintDelegationOracle {
-        cycle_data: &buffer,
-        marker: core::marker::PhantomData,
-    };
-    let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_profiling_fixture(
+    prepare_delegation_profiling_fixture(
         DelegationCircuitType::BigIntWithControl,
         BIGINT_DELEGATION_LAYOUT_PATH,
         table_driver,
-        buffer_for_host,
-        oracle,
-        bigint_with_extended_control_mod::witness_eval_fn,
+        buffer,
         1 << 22,
-    );
-    drop(buffer);
-    fixture
+    )
 }
 
 /// bigint delegation proof_parity: GPU proof == CPU reference, byte-identical.
@@ -621,22 +606,13 @@ fn prepare_keccak_special5_proof_fixture() -> BasicUnrolledProofFixture {
 
 fn prepare_keccak_special5_profiling_fixture() -> BasicUnrolledFixture {
     let (buffer, table_driver) = replay_keccak_special5_delegation_buffer();
-    let oracle = KeccakDelegationOracle {
-        cycle_data: &buffer,
-        marker: core::marker::PhantomData,
-    };
-    let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_profiling_fixture(
+    prepare_delegation_profiling_fixture(
         DelegationCircuitType::KeccakSpecial5,
         KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH,
         table_driver,
-        buffer_for_host,
-        oracle,
-        fixtures::keccak_special5_mod::witness_eval_fn,
+        buffer,
         1 << 22,
-    );
-    drop(buffer);
-    fixture
+    )
 }
 
 /// keccak_special5 delegation proof_parity: GPU proof == CPU reference,
@@ -751,22 +727,13 @@ fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture 
 
 fn prepare_blake2_with_compression_profiling_fixture() -> BasicUnrolledFixture {
     let (buffer, table_driver) = replay_blake2_with_compression_delegation_buffer();
-    let oracle = Blake2sDelegationOracle {
-        cycle_data: &buffer,
-        marker: core::marker::PhantomData,
-    };
-    let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_profiling_fixture(
+    prepare_delegation_profiling_fixture(
         DelegationCircuitType::Blake2WithCompression,
         BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
         table_driver,
-        buffer_for_host,
-        oracle,
-        fixtures::blake2_with_extended_control_mod::witness_eval_fn,
+        buffer,
         BLAKE2_NUM_DELEGATION_CYCLES,
-    );
-    drop(buffer);
-    fixture
+    )
 }
 
 /// blake2_with_compression (blake2_with_extended_control) delegation proof_parity:
@@ -871,29 +838,18 @@ fn prepare_blake2_g_function_proof_fixture() -> BasicUnrolledProofFixture {
 
 fn prepare_blake2_g_function_profiling_fixture() -> BasicUnrolledFixture {
     let (buffer, table_driver) = replay_blake2_g_function_delegation_buffer();
-    let oracle = Blake2sGFunctionDelegationOracle {
-        cycle_data: &buffer,
-        marker: core::marker::PhantomData,
-    };
-    let buffer_for_host = buffer.clone();
-    let fixture = prepare_delegation_profiling_fixture(
+    prepare_delegation_profiling_fixture(
         DelegationCircuitType::Blake2GFunction,
         BLAKE2_G_FUNCTION_LAYOUT_PATH,
         table_driver,
-        buffer_for_host,
-        oracle,
-        fixtures::blake2_g_function_mod::witness_eval_fn,
+        buffer,
         BLAKE2_G_FUNCTION_NUM_DELEGATION_CYCLES,
-    );
-    drop(buffer);
-    fixture
+    )
 }
 
 /// blake2_g_function delegation proof_parity. The GPU proof is
-/// byte-identical to the CPU reference (blake_g_function_calls = 80). This is the
-/// one delegation that proves end-to-end via the GPU `prove()` path, confirming the
-/// generic delegation fixture builder is sound. `#[ignore]`d only because it is a
-/// heavy GPU test.
+/// byte-identical to the CPU reference (blake_g_function_calls = 80). `#[ignore]`d
+/// only because it is a heavy GPU test.
 #[test]
 #[serial]
 #[ignore]
@@ -1043,19 +999,8 @@ fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixtur
     super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(false).0
 }
 
-// Full-proof parity for the reduced-output inits-and-teardowns circuit
-// (PermutationProduct only, width-0 witness layer). These were the regression
-// guards for two zero-width-base-layer GPU bugs, now FIXED (CPU = source of
-// truth):
-//   1. The initial transcript committed the width-0 witness Merkle cap that the
-//      CPU omits (`witness_layout.total_width == 0`), diverging the seed and
-//      every downstream challenge — the evaluation point, backward sumcheck, and
-//      WHIR. Fixed in `stage1_forward.rs` by gating the memory/witness cap
-//      commits on their layout widths, matching the CPU.
-//   2. The parsed WHIR proof emitted a degenerate 16-digest cap for the width-0
-//      witness oracle, where the CPU's dummy tree yields an empty cap. Fixed in
-//      `proof_layout/accessors.rs::parse_whir_proof` by gating the base cap on
-//      `num_columns == 0`.
+// Regression guards for zero-width base-layer handling (width-0 witness):
+// initial transcript cap gating and WHIR base-cap gating.
 #[test]
 #[serial]
 #[ignore]
@@ -1070,8 +1015,8 @@ fn run_inits_and_teardowns_multi_schedule_test() {
     run_multi_schedule(prepare_inits_and_teardowns_matrix_proof_fixture());
 }
 
-// This one PASSES: `run_profile` checks proof structure + peak memory only (no
-// CPU comparison), so it is unaffected by the backward-sumcheck divergence.
+// run_profile checks proof structure + peak memory only (no CPU comparison),
+// unlike the other two.
 #[test]
 #[serial]
 #[ignore]

@@ -327,7 +327,6 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
     log_tree_cap_size: u32,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
-    _context: &ProverContext,
 ) -> CudaResult<GpuGKRStorage<BF, E>> {
     for (label, trace_holder) in [
         ("memory", memory_trace_holder),
@@ -448,7 +447,7 @@ impl<E> GpuGKRForwardSetup<E> {
     /// so it can be repurposed as the lookup-and-constraint device input for
     /// `schedule_execute_backward_workflow_from_shared_state` — saves the
     /// otherwise-required separate allocation + D2D from the post-forward
-    /// transcript squeeze (Opp. 3 of the pre-WHIR copy elimination plan).
+    /// transcript squeeze.
     pub(crate) fn into_host_keepalive_taking_lookup_challenges(
         self,
     ) -> (GpuGKRForwardSetupHostKeepalive<E>, DeviceAllocation<E>) {

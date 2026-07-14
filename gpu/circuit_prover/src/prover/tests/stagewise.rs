@@ -731,11 +731,9 @@ fn run_basic_unrolled_stagewise_parity_test() {
             .unwrap()
     };
 
-    // Per-layer sumcheck intermediate proof values are no longer exposed on the
-    // backward scheduler — they live in the device-resident proof slab and are
-    // parsed by the full `prove()` assembly path, which the end-to-end CPU parity
-    // tests (`run_basic_unrolled_test`, `run_basic_unrolled_proof_job_multi_schedule_test`)
-    // exercise directly.
+    // Per-layer sumcheck intermediate values live in the device-resident proof
+    // slab (parsed by the full `prove()` assembly path); this test compares
+    // CPU-side via `claims_for_layers` / `points_for_claims_at_layer` instead.
     assert_layer_points_eq_for_test(
         &gpu_backward_execution.points_for_claims_at_layer,
         &points_for_claims_at_layer,
@@ -876,11 +874,9 @@ fn run_basic_unrolled_stagewise_parity_test() {
     };
 
     // GPU base-layer-claims scheduling is exercised end-to-end via
-    // `prove()` smoke tests. Direct host-snapshot comparison against CPU
-    // (formerly via `prepare_base_layer_claims`) has been retired alongside
-    // the per-column D2H readback path it depended on. Downstream WHIR
-    // parity below feeds the CPU-computed claim vectors into both the CPU
-    // and GPU code paths so the test continues to verify the WHIR fold.
+    // `prove()` smoke tests. Downstream WHIR parity below feeds the
+    // CPU-computed claim vectors into both the CPU and GPU code paths so
+    // the test continues to verify the WHIR fold.
 
     // CPU side already merged virtual-setup and cached-relation values into
     // `cpu_base_layer_claims` above; the seed-advance must replay the same

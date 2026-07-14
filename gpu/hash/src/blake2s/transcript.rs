@@ -14,11 +14,6 @@ use gpu_core::primitives::utils::WARP_SIZE;
 
 cuda_kernel!(Blake2SPow, ab_blake2s_pow_kernel(seed: *const u32, bits_count: u32, max_nonce: u64, result: *mut u64));
 
-cuda_kernel!(
-    pub(crate) TranscriptCommitInitial,
-    ab_transcript_commit_initial_kernel(seed_out: *mut u32, input: *const u32, input_len: u32)
-);
-
 /// Maximum number of input chunks the chunked transcript-commit kernel-arg
 /// descriptor can hold. The pre-WHIR transcript pack feeds 5 chunks
 /// (canonical-top-bits + external_challenges + setup cap + memory cap +
@@ -86,7 +81,7 @@ cuda_kernel!(
     ab_reduce_raw_words_to_e4_kernel(raw: *const u32, output_e4: *mut E4, count: u32)
 );
 
-/// Chunked variant of [`transcript_commit_initial`]: computes
+/// Chunked variant of the single-buffer commit-initial kernel: computes
 /// `seed = Blake2s(chunk_0 || chunk_1 || ... || chunk_{N-1})` from the IV without
 /// requiring the host to first concatenate the chunks into a single contiguous
 /// device buffer. `seed` must be exactly `STATE_SIZE` u32 words; written.

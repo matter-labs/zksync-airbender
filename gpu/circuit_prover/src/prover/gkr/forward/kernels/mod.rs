@@ -391,7 +391,6 @@ pub(in crate::prover::gkr) use flat::*;
 /// `schedule_lookup_gamma_consts_prelude_e4` helper); the combined
 /// `crate::prover::gkr::ForwardKernels` supertrait aggregates this with the
 /// setup/backward sub-traits.
-#[allow(dead_code)] // several constants are referenced only from #[cfg(test)] launchers
 pub(crate) trait ForwardKernels: Copy + Sized {
     const FORWARD_CACHE: GpuGKRForwardCacheSignature<Self>;
     const VIRTUAL_BASE_ACCUM: GpuGKRVirtualBaseAccumSignature<Self>;

@@ -8,8 +8,7 @@ use crate::prover::gkr::GpuGKRStorage;
 use super::super::kernels::*;
 use super::super::{compact, flat};
 use super::blueprints::{
-    build_main_layer_kernel_blueprints_static, resolve_main_layer_auxiliary_challenge,
-    resolve_main_layer_constraint_metadata, summarize_main_layer_constraint_metadata_source,
+    build_main_layer_kernel_blueprints_static, summarize_main_layer_constraint_metadata_source,
     PreparedMainLayerKernelStaticData,
 };
 use crate::allocator::tracker::AllocationPlacement;
@@ -23,7 +22,7 @@ use crate::prover::ProverContext;
 use crate::upstream::{Field, FieldExtension, GKRAddress};
 
 /// H2D-upload a descriptor's overflowing term/tile tables into device buffers on
-/// `exec_stream` (Stage 3b). The copies precede all continuation kernels (which
+/// `exec_stream`. The copies precede all continuation kernels (which
 /// launch later on the same stream). The pinned host sources are captured by a
 /// keepalive callback scheduled onto `callbacks` (threaded into the
 /// finish-retained keepalive bundle), so they outlive the async copies even
@@ -114,7 +113,7 @@ fn stage_recipe_table<T: Copy>(
 }
 
 /// H2D-upload a compiled recipe descriptor's overflowing recipe/term/immediate
-/// tables into device buffers on `exec_stream` (Stage 3c). Mirrors
+/// tables into device buffers on `exec_stream`. Mirrors
 /// `upload_flat_term_tables`: pinned host sources are async-copied to device
 /// buffers, then retained by a keepalive callback until the copies complete (the
 /// layer plan itself may drop right after scheduling). The returned
@@ -199,7 +198,6 @@ impl FlatContinuationLaunchSizes {
 #[derive(Clone, Copy, Debug)]
 pub(in crate::prover::gkr::backward) struct FlatContinuationSizeCheck {
     pub(in crate::prover::gkr::backward) sizes: Option<FlatContinuationLaunchSizes>,
-    pub(in crate::prover::gkr::backward) has_sources: bool,
     pub(in crate::prover::gkr::backward) consistent: bool,
 }
 
@@ -207,7 +205,6 @@ impl FlatContinuationSizeCheck {
     pub(in crate::prover::gkr::backward) fn empty() -> Self {
         Self {
             sizes: None,
-            has_sources: false,
             consistent: true,
         }
     }
@@ -323,35 +320,11 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             .zip(round2_prepared_all.into_iter())
             .zip(round3_prepared_all.into_iter())
         {
-            let auxiliary_challenge = if batch_challenge_base.is_some() {
-                resolve_main_layer_auxiliary_challenge(
-                    blueprint.auxiliary_challenge_source,
-                    self.lookup_additive_challenge,
-                )
-            } else {
-                match blueprint.auxiliary_challenge_source {
-                    GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(value) => value,
-                    GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive => E::ZERO,
-                }
-            };
-            let constraint_metadata = if batch_challenge_base.is_some() {
-                resolve_main_layer_constraint_metadata(blueprint.constraint_metadata_source.clone())
-            } else {
-                match blueprint.constraint_metadata_source.as_ref() {
-                    None => None,
-                    Some(GpuGKRMainLayerConstraintMetadataSource::Immediate(metadata)) => {
-                        Some(metadata.clone())
-                    }
-                    Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(_)) => None,
-                }
-            };
             let constraint_metadata_summary = summarize_main_layer_constraint_metadata_source(
                 blueprint.constraint_metadata_source.as_ref(),
             );
             static_data.push(PreparedMainLayerKernelStaticData {
                 kind: blueprint.kind,
-                auxiliary_challenge,
-                constraint_metadata: constraint_metadata.clone(),
                 round0_descriptors: round0_descriptors_for_kernel,
             });
             kernel_plans.push(GpuGKRMainLayerKernelPlan {
@@ -373,7 +346,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // resolves each gate's source pointers against the per-(layer, class)
         // consolidated storage backings and emits packed `u16` source
         // descriptors as it walks the gates.
-        let flat_round0_template_compact: Option<compact::FlatRound0BuildPlan<E>> = {
+        let flat_round0_template_compact: Option<compact::FlatRound0BuildPlan> = {
             let gates: Vec<_> = static_data
                 .iter()
                 .zip(kernel_plans.iter())
@@ -422,7 +395,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                 } else {
                     Some(context.alloc(total, AllocationPlacement::BestFit)?)
                 };
-                // Stage 3c: when the recipe/term/immediate tables overflow the
+                // When the recipe/term/immediate tables overflow the
                 // inline `GpuFlatRecipeEvalDesc` caps (e.g. bigint's 3006 recipes),
                 // upload them to device buffers and dispatch the `_devptr`
                 // eval-recipes kernel; otherwise keep the inline descriptor. This
@@ -453,7 +426,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         } else {
             (None, None, 0, None, true)
         };
-        // Restored — no diagnostic override
 
         let max_acc_size = self.trace_len / 2;
         let reduction_temp_storage_bytes =
@@ -505,7 +477,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // `intermediate_folding_consolidated` covers the ext side.
         // Each unified-desc builder returns `(inline_desc, Option<term tables>)`.
         // `Some` means the term/tile count overflows the inline __grid_constant__
-        // cap → Stage 3b device-terms path: derive the `_devptr` companion desc
+        // cap → device-terms path: derive the `_devptr` companion desc
         // and H2D-upload the term/tile tables into device buffers.
         let mut flat_round1_terms_device = None;
         let flat_round1_unified_desc_compact = if let (Some(ref r1_desc), Some(plan)) =
@@ -562,7 +534,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             Vec::new()
         };
 
-        // Stage 3b coupling: the `_devptr_terms_` kernels always read
+        // Coupling: the `_devptr_terms_` kernels always read
         // coefficients from the device buffer (never __constant__), so any
         // term-device descriptor forces the continuation coefficient path to
         // device too. When coefficients already overflowed, this is a no-op
@@ -664,7 +636,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
     /// Build round-1 fused-source data from the continuation plan and round 1 prepared storage.
     fn build_flat_round1_desc(
-        plan: Option<&flat::FlatContinuationBuildPlan<E>>,
+        plan: Option<&flat::FlatContinuationBuildPlan>,
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
     ) -> Option<Box<flat::Round1FusedSources>> {
         use flat::{
@@ -801,7 +773,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
     /// Build round-2 fused-source data from the continuation plan and round 2 prepared storage.
     fn build_flat_round2_desc(
-        plan: Option<&flat::FlatContinuationBuildPlan<E>>,
+        plan: Option<&flat::FlatContinuationBuildPlan>,
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
     ) -> Option<Box<flat::Round2FusedSources>> {
         use flat::{
@@ -940,13 +912,13 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         _layer_idx: usize,
         context: &ProverContext,
     ) -> CudaResult<(
-        Option<flat::FlatContinuationBuildPlan<E>>,
+        Option<flat::FlatContinuationBuildPlan>,
         Vec<(
             usize,
             Box<[flat::GpuFlatContinuingSourceEntry; flat::FLAT_CONT_MAX_SOURCES]>,
         )>,
         Option<Box<crate::prover::gkr::eval_recipes::GpuFlatRecipeEvalDesc>>,
-        // Stage 3c device-recipes path for the continuation phase. `Some` iff the
+        // Device-recipes path for the continuation phase. `Some` iff the
         // recipe tables overflow the inline caps (mutually exclusive with the
         // inline desc above).
         Option<RecipeEvalDeviceBuffers>,
@@ -1004,7 +976,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // Compile one descriptor for the continuation eval-recipes launch.
         let compiled = compile_recipes_for_device(&plan.recipes);
         let mut cont_recipe_callbacks = Callbacks::new();
-        // Stage 3c: overflowing continuation recipe tables go to device buffers
+        // Overflowing continuation recipe tables go to device buffers
         // (dispatched via the `_devptr` eval-recipes kernel); otherwise the inline
         // descriptor is used. Mirror of the round-0 recipe-desc split.
         let (flat_cont_recipe_desc, flat_cont_recipe_desc_device) =
@@ -1173,8 +1145,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             batch_challenge_base,
             self.lookup_multiplicative_challenge,
             self.lookup_additive_challenge,
-            self.num_base_layer_memory_polys,
-            self.num_base_layer_witness_polys,
         );
         let plan = self.prepare_layer_from_blueprints(
             layer_idx,
@@ -1199,7 +1169,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
         let blueprints = build_main_layer_kernel_blueprints_static(
             &layer,
-            layer_idx,
             &|addr| {
                 // Universally base-field address kinds (trace-holder /
                 // scratch / setup) classify as base regardless of which
@@ -1229,8 +1198,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             &self.external_challenges,
             &self.inits_and_teardowns_top_bits,
             self.inits_and_teardowns_address_high_bits_shift,
-            self.num_base_layer_memory_polys,
-            self.num_base_layer_witness_polys,
         );
         Ok(Some(self.prepare_layer_from_blueprints(
             layer_idx, blueprints, None, context,

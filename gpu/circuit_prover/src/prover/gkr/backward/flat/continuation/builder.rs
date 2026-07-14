@@ -6,7 +6,6 @@ use super::types::{
     FLAT_CONT_MAX_C0_ONLY_LINEAR, FLAT_CONT_MAX_CONSTANT, FLAT_CONT_MAX_SOURCES,
     FLAT_CONT_MAX_UNIFIED_LINEAR, FLAT_CONT_MAX_UNIFIED_QUADRATIC,
 };
-use crate::upstream::Field;
 
 /// Apply an index permutation in-place to a slice.
 fn apply_permutation<T: Copy + Default>(order: &[usize], data: &mut [T]) {
@@ -29,18 +28,18 @@ struct ContinuationSourceKey {
     is_ext: bool,
 }
 
-pub(in crate::prover::gkr::backward::flat) struct FlatContinuationDescriptionBuilder<E> {
+pub(in crate::prover::gkr::backward::flat) struct FlatContinuationDescriptionBuilder {
     desc: FlatContinuationTermDesc,
     num_sources: u32,
-    recipes_constants: Vec<CoefficientRecipe<E>>,
-    recipes_c0_only: Vec<CoefficientRecipe<E>>,
-    recipes_quadratic: Vec<CoefficientRecipe<E>>,
-    recipes_linear: Vec<CoefficientRecipe<E>>,
+    recipes_constants: Vec<CoefficientRecipe>,
+    recipes_c0_only: Vec<CoefficientRecipe>,
+    recipes_quadratic: Vec<CoefficientRecipe>,
+    recipes_linear: Vec<CoefficientRecipe>,
     source_map: HashMap<ContinuationSourceKey, u32>,
     source_assignments: Vec<ContinuationSourceAssignment>,
 }
 
-impl<E: Field> FlatContinuationDescriptionBuilder<E> {
+impl FlatContinuationDescriptionBuilder {
     pub(in crate::prover::gkr::backward::flat) fn new() -> Self {
         Self {
             desc: FlatContinuationTermDesc::default(),
@@ -85,7 +84,7 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
 
     pub(in crate::prover::gkr::backward::flat) fn push_constant(
         &mut self,
-        recipe: CoefficientRecipe<E>,
+        recipe: CoefficientRecipe,
     ) {
         let i = self.desc.num_constants as usize;
         assert!(
@@ -99,7 +98,7 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
     pub(in crate::prover::gkr::backward::flat) fn push_c0_only_linear(
         &mut self,
         source_idx: u32,
-        recipe: CoefficientRecipe<E>,
+        recipe: CoefficientRecipe,
     ) {
         let i = self.desc.num_c0_only_linear as usize;
         assert!(
@@ -117,7 +116,7 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
         &mut self,
         source_a: u32,
         source_b: u32,
-        recipe: CoefficientRecipe<E>,
+        recipe: CoefficientRecipe,
     ) {
         let i = self.desc.num_unified_quadratic as usize;
         assert!(
@@ -141,7 +140,7 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
     pub(in crate::prover::gkr::backward::flat) fn push_unified_linear(
         &mut self,
         source_idx: u32,
-        recipe: CoefficientRecipe<E>,
+        recipe: CoefficientRecipe,
     ) {
         let i = self.desc.num_unified_linear as usize;
         assert!(
@@ -155,7 +154,7 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
         self.recipes_linear.push(recipe);
     }
 
-    pub(in crate::prover::gkr::backward::flat) fn finish(mut self) -> FlatContinuationBuildPlan<E> {
+    pub(in crate::prover::gkr::backward::flat) fn finish(mut self) -> FlatContinuationBuildPlan {
         // Sort terms within each category by source-group affinity so that
         // terms accessing the same sources are adjacent, improving L1 reuse.
         self.sort_terms_by_source_group();

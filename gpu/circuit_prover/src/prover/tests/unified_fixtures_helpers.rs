@@ -7,8 +7,6 @@ use prover::tracers::oracles::transpiler_oracles::delegation::Blake2sGFunctionDe
 use riscv_transpiler::witness::{BlakeGFunctionDelegationDestinationHolder, DelegationWitness};
 
 const UNIFIED_LAYOUT_PATH: &str = "cs/compiled_circuits/unified_reduced_machine_layout_gkr.json";
-const UNIFIED_NO_CACHES_LAYOUT_PATH: &str =
-    "cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json";
 // The default unified program: the SAME `app_blake2_g_function` the CPU unified
 // test runs (its default `multi_family_smoke_blake_g_function` config), so GPU
 // and CPU traces align.
@@ -26,8 +24,7 @@ const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 
-/// pr-332 removed `UnifiedRiscvCircuitOracle::new` (the oracle is now a plain
-/// borrow of an externally built decoder table). Derive the unified decoder
+/// Derive the unified decoder
 /// table the way the production setups path does
 /// (`unified_reduced_machine_circuit_setup`): `UnifiedReducedMachineDecoder`
 /// over `ReducedMachineDecoderConfig` with the 5 supported CSRs. The table is
@@ -294,12 +291,10 @@ where
     O: cs::oracle::Oracle<BF>,
 {
     // Match the CPU orchestration: an empty delegation contributes ONE and is
-    // not proved (the prover would assert ONE anyway). The witness-trace
-    // consistency check is intentionally skipped for the empty case, exactly as
-    // before (an empty delegation produces no trace to compare).
+    // not proved by the prover. We still build + consistency-check the
+    // (empty) traces below (cheap over a zero-length oracle) before
+    // short-circuiting.
     if is_empty {
-        // Still build + consistency-check the (empty) traces to preserve the
-        // original behavior: `evaluate_*` over a zero-length oracle is cheap.
         let memory_trace = evaluate_gkr_memory_witness_for_delegation_circuit::<BF, _, _, _>(
             circuit,
             num_delegation_cycles,
@@ -718,20 +713,14 @@ where
 
 /// Profiling variant: same delegation fixture, no CPU reference proof. Returns
 /// just the `BasicUnrolledFixture` for `run_profile`.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn prepare_delegation_profiling_fixture<O, W>(
+pub(super) fn prepare_delegation_profiling_fixture<W>(
     circuit_type: DelegationCircuitType,
     layout_path: &str,
     table_driver: TableDriver<BF>,
     buffer: Vec<W>,
-    _oracle: O,
-    _witness_eval_fn: fn(
-        &mut prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<'_, O, BF>,
-    ),
     num_delegation_cycles: usize,
 ) -> BasicUnrolledFixture
 where
-    O: cs::oracle::Oracle<BF>,
     W: crate::prover::trace::tracing_data::DelegationTracingDataHostSource,
 {
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
@@ -821,10 +810,6 @@ where
 
 pub(crate) fn prepare_unified_proof_fixture() -> BasicUnrolledProofFixture {
     prepare_unified_proof_fixture_with_layout(UNIFIED_LAYOUT_PATH)
-}
-
-pub(crate) fn prepare_unified_no_caches_proof_fixture() -> BasicUnrolledProofFixture {
-    prepare_unified_proof_fixture_with_layout(UNIFIED_NO_CACHES_LAYOUT_PATH)
 }
 
 /// Unified fixture WITHOUT a CPU reference proof, for the profile test (which only
