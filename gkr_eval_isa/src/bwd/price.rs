@@ -70,10 +70,13 @@ use crate::fwd::error::CompileError;
 pub const RECLAIM_N: usize = 32;
 
 /// Default cap on the compiler-tried COMPOUND greedy's candidate count (Commit 3).
-/// Reuses the leaf reclaim's [`RECLAIM_N`] so both compiler-in-the-loop greedies share
-/// one knob, and total compound recompiles are bounded to `≤ 2·COMPOUND_N` exactly as
-/// the leaf reclaim bounds itself to `≤ 2·RECLAIM_N`.
-pub const COMPOUND_N: usize = RECLAIM_N;
+/// Independent of the leaf reclaim's [`RECLAIM_N`] (CS-M3 Task 1): keccak's compound
+/// candidate count (~113) exceeds `RECLAIM_N`'s 32, so sharing the knob left the
+/// compound greedy cap-bound (30/32 kept, attempted pinned at 32) well below its true
+/// candidate count, throttling cone-suppression retention at saturation. `128` clears
+/// keccak's candidate count with headroom while still bounding total compound
+/// recompiles to `≤ 2·COMPOUND_N`, same shape as the leaf reclaim's `≤ 2·RECLAIM_N`.
+pub const COMPOUND_N: usize = 128;
 
 // ── ABI types ──────────────────────────────────────────────────────────────────
 
