@@ -66,8 +66,14 @@ use super::trace::{
 use crate::fwd::error::CompileError;
 
 /// Default cap on the gap-granular reclaim's candidate count (Commit 2 uses it;
-/// exported here so the whole knob lives in one place).
-pub const RECLAIM_N: usize = 32;
+/// exported here so the whole knob lives in one place). `512` (CS-M3 Task 2, raised
+/// from `32`) comfortably exceeds blake2's uncapped `feasible_leaf_plan` ceiling
+/// (hundreds of certified leaf retentions at b16): at `32` blake2's leaf reclaim was
+/// cap-bound (every attempted candidate kept, none reverted — the textbook signature
+/// of a cap that binds before the compiler ever says no), so the true candidate count
+/// was never explored. Total recompiles stay bounded to `≤ 2·RECLAIM_N` (now `1024`)
+/// via the unchanged cost guard at the leaf-reclaim truncate site.
+pub const RECLAIM_N: usize = 512;
 
 /// Default cap on the compiler-tried COMPOUND greedy's candidate count (Commit 3).
 /// Independent of the leaf reclaim's [`RECLAIM_N`] (CS-M3 Task 1): keccak's compound
