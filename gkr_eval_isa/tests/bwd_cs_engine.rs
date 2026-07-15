@@ -775,6 +775,16 @@ fn engine_runs_all_fixtures_b16() {
         ("blake2_with_extended_control_layout_gkr.json", 9528),
         ("unified_reduced_machine_layout_gkr.json", 3800),
     ];
+    // CS-M4 (spec §5, Phase-0b): per-fixture `HARD_MAX` = 2× the banked @1200 leaf-reclaim
+    // baseline — the research emergency ceiling. Production (`multiplier=1, gap_cap=512`)
+    // stays well under it; Stage A/A'/B + normalize leaf-search compiles per run must never
+    // exceed it. Only the 4 G-M0-tracked fixtures have a banked baseline.
+    const LEAF_CALL_HARD_MAX: &[(&str, usize)] = &[
+        ("keccak_special5_layout_gkr.json", 2400),
+        ("blake2_with_extended_control_layout_gkr.json", 4800),
+        ("bigint_with_extended_control_layout_gkr.json", 2400),
+        ("unified_reduced_machine_layout_gkr.json", 2320),
+    ];
     let mut checked = 0usize;
     println!(
         "engine_runs_all_fixtures_b16 (Ext L0, b16):\n  \
@@ -822,6 +832,19 @@ fn engine_runs_all_fixtures_b16() {
             );
         }
 
+        // CS-M4 (spec §5): the priced run's leaf-search compile count must stay within the
+        // banked `HARD_MAX` (present-fixture only). `leaf_calls` is `0` on a baseline
+        // fallback (no priced run happened) — trivially within any ceiling.
+        if let Some(&(_, hard_max)) =
+            LEAF_CALL_HARD_MAX.iter().find(|&&(fixture, _)| fixture == name)
+        {
+            assert!(
+                outcome.leaf_calls <= hard_max,
+                "{name}: leaf_calls {} > HARD_MAX {hard_max} — leaf-search cost bound broke",
+                outcome.leaf_calls
+            );
+        }
+
         // Value-parity spot gate on the shipped program (add_sub + keccak).
         if VALUE_PARITY.contains(&name) {
             let d_used = (!outcome.fell_back_to_baseline)
@@ -831,9 +854,14 @@ fn engine_runs_all_fixtures_b16() {
         }
 
         println!(
-            "  {name} | {} | {baseline_traffic} -> {cs_traffic} | {} | {} | {}",
+            "  {name} | {} | {baseline_traffic} -> {cs_traffic} | pins {} | leaf_calls {} | \
+             swaps {}/{} | wo_kept {} | r{} | {}",
             if outcome.fell_back_to_baseline { "FELL_BACK" } else { "IMPROVED " },
             outcome.pins.len(),
+            outcome.leaf_calls,
+            outcome.counters.swaps_kept,
+            outcome.counters.swaps_attempted,
+            outcome.counters.whole_origin_kept,
             outcome.rounds,
             outcome.converged,
         );
@@ -932,6 +960,50 @@ fn stage_a_whole_origin_lowers_or_holds() {
         if name.starts_with("keccak") {
             assert!(out.counters.whole_origin_kept > 0, "Stage A must retain ≥1 whole origin on keccak (depth)");
         }
+    }
+}
+
+/// CS-M4 Task 4 (spec §4): Stage A' — bounded one-in/k-out swap — must NEVER regress vs
+/// Stage A alone. Inserted into the A+B pipeline AFTER Stage A's post-stage normalize and
+/// BEFORE Stage B, it swaps ≤`K` low-yield accepted origins out to admit a higher-yield
+/// rejected origin `R`, KEEPING a swap only on a strict realized-traffic drop (else full
+/// revert). Because the safety net still ships lexicographic-`min(A+B, B-only)` and every
+/// swap is strict-drop-or-revert, this is a MONOTONE non-regression test: it PASSES at the
+/// Task-3 (Stage-A-only) traffic both BEFORE Stage A' is added (`swaps_*` = 0, traffic ==
+/// Task-3's) and AFTER (traffic can only drop). Pins: (a) shipped program certifies
+/// exactly; (b) traffic ≤ the recorded Task-3 traffic (keccak 15924, blake2 9320);
+/// (c) `!saw_incomplete_round` (no `Incomplete` selection until Task 5); (d) `swaps_kept
+/// <= swaps_attempted` (every kept swap is a strict drop — surfaced by the monotone ≤
+/// baseline). Records whether `swaps_kept > 0`.
+#[test]
+#[ignore] // heavy (~minutes): full production keccak + blake2 priced runs at b16.
+fn stage_a_prime_swap_only_strict_drops() {
+    for (name, task3_traffic) in [
+        ("keccak_special5_layout_gkr.json", 15924usize),
+        ("blake2_with_extended_control_layout_gkr.json", 9320),
+    ] {
+        let (layer, cross) = load_layer(name, 0);
+        let out = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+        let traffic = out.stats.global + out.stats.fold_traffic;
+        eprintln!(
+            "{name}: traffic={traffic} (Task-3 {task3_traffic}) swaps_kept={}/{} leaf_calls={}",
+            out.counters.swaps_kept, out.counters.swaps_attempted, out.leaf_calls
+        );
+        assert!(
+            out.certificate.counted_traffic == out.certificate.reported_traffic,
+            "{name}: shipped program certificate must be Ok (counted == reported)"
+        );
+        assert!(!out.saw_incomplete_round, "{name} saw an Incomplete round");
+        assert!(
+            out.counters.swaps_kept <= out.counters.swaps_attempted,
+            "{name}: swaps_kept {} > swaps_attempted {}",
+            out.counters.swaps_kept,
+            out.counters.swaps_attempted
+        );
+        assert!(
+            traffic <= task3_traffic,
+            "{name}: Stage A' regressed traffic {traffic} above the Task-3 baseline {task3_traffic}"
+        );
     }
 }
 

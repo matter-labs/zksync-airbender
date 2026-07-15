@@ -94,6 +94,20 @@ pub const COMPOUND_N: usize = 128;
 /// cost bound (spec §5), NOT this count.
 pub const LEAF_ORIGIN_N: usize = 2048;
 
+/// CS-M4 Task 4 (spec §4): cap on Stage A' candidate SWAP count per round. Stage A' walks
+/// the rejected origins highest-yield-per-cell first and, for each, tries ONE bounded
+/// one-in/K-out swap; this bounds how many swaps it TRIES. `64` is small (each swap is a
+/// full `compile_distilled_planned`) yet ample to un-stick the top misallocations; the
+/// shared per-round `TrialBudget` (reserve 1 for the following `normalize`) is the real
+/// cost bound (spec §5), NOT this count.
+pub const SWAP_N: usize = 64;
+
+/// CS-M4 Task 4 (spec §4): cap on the swap REMOVAL set size (origins evicted to admit one
+/// higher-yield rejected origin `R`). Small and fixed — a "one-in/K-out" swap removes at
+/// most `K` accepted origins (ascending yield-per-cell, resident at `R`'s pressure point);
+/// if `K` removals cannot free `R`'s `need`, `R` is skipped (never compiled).
+pub const K: usize = 3;
+
 // ── ABI types ──────────────────────────────────────────────────────────────────
 
 /// The full planner-input signature whose STRUCTURAL equality (spec §5, Rev 2)
@@ -815,6 +829,61 @@ fn per_gap_reclaim(
 /// same alignment [`super::fif::plan_leaves`] relies on). Retaining gap `j` flips the
 /// `j`-th occurrence; the `(j+1)`-th (always present — a gap needs a closing use) keeps
 /// the `PlanRun::new` "a Retain has a next serve for its value" invariant.
+/// CS-M4 Task 4 (spec §4): compact Stage-A rejection metadata for the Stage A' swap. Holds
+/// ONLY what a swap needs — never the full trial program/trace (memory: a wide layer rejects
+/// hundreds/thousands of origins). `pressure_k` is `R`'s FIRST-unrealized-opening PLAN-ENTRY
+/// index (the first `Retain` occurrence of `R` its Stage-A trial did NOT realize), which is
+/// STABLE across programs because every plan in the reclaim pipeline shares
+/// `base_plan.entries`' indexing (only the per-entry `action` differs). `need` is `R`'s
+/// residency width (cells); `(num, den)` is its yield-per-cell (gaps closed / summed occupied
+/// cell-instants) for the descending swap-priority order.
+struct StageARejection {
+    v: ExprId,
+    pressure_k: usize,
+    need: usize,
+    num: usize,
+    den: usize,
+}
+
+/// CS-M4 Task 4 (spec §4): the residency set at the PRE-ADMISSION boundary of plan-entry
+/// `k` — the live residents (→ their occupied width in cells) immediately BEFORE `k`'s own
+/// admission is attempted. Reconstructed from `trace` by walking events with (i) a
+/// DOMAIN-serve cursor incremented ONLY on a `Serve` whose value is in `domain_values` (the
+/// `trace.rs:265` filter that makes domain serves align 1:1 with plan entries) and (ii) the
+/// live residency set (`Admit` inserts, `Evict` removes). A plan-entry index is NOT a raw
+/// event index — `trace.events` interleaves `Serve`/`TrafficRead`/`Admit`/`Evict`, and only
+/// the cursor recovers the alignment. STOPS the instant it reaches the domain `Serve` whose
+/// cursor == `k` (that serve's own admit/evict fire LATER in the stream, so they are excluded
+/// — the boundary is pre-`k`-admission). Returns `None` if the trace diverged (the
+/// cursor↔entry alignment is void) or `k` is never reached.
+fn residency_before_entry(
+    trace: &BwdCompileTrace,
+    domain_values: &BTreeSet<ExprId>,
+    k: usize,
+) -> Option<BTreeMap<ExprId, usize>> {
+    let mut resident: BTreeMap<ExprId, usize> = BTreeMap::new();
+    let mut cursor = 0usize;
+    for e in &trace.events {
+        match e {
+            BwdEvent::Diverge { .. } => return None,
+            BwdEvent::Admit { value, width } => {
+                resident.insert(*value, *width as usize);
+            }
+            BwdEvent::Evict { value, .. } => {
+                resident.remove(value);
+            }
+            BwdEvent::Serve { fp, .. } if domain_values.contains(&fp.value) => {
+                if cursor == k {
+                    return Some(resident); // pre-admission boundary for entry k
+                }
+                cursor += 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn reclaim_leaves(
     d: &DistilledLayer,
     budget: usize,
@@ -928,8 +997,15 @@ fn reclaim_leaves(
     let mut whole_origin_attempted = 0usize;
     let mut whole_origin_kept = 0usize;
     let mut fully_realized_origins = 0usize;
+    // CS-M4 Task 4 (spec §4): compact Stage-A metadata the Stage A' swap consumes.
+    // `accepted_origins`: each KEPT whole-origin → its yield-per-cell `(num, den)` (the swap
+    // removal set ranks these ascending). `rejected`: each REJECTED origin with a genuine
+    // first-unrealized opening → its pressure point + `need` + yield (the swap admits these
+    // highest-yield first). Neither holds any trial program/trace (memory, spec §4 / Step 3).
+    let mut accepted_origins: BTreeMap<ExprId, (usize, usize)> = BTreeMap::new();
+    let mut rejected: Vec<StageARejection> = Vec::new();
 
-    for (v, _num, _den) in origins {
+    for (v, num, den) in origins {
         let occ = match occ_idx.get(&v) {
             Some(o) if o.len() >= 2 => o.clone(),
             _ => continue, // no multi-occurrence plan footprint — nothing to retain
@@ -966,7 +1042,25 @@ fn reclaim_leaves(
                     a_best_c = c;
                     a_best_trace = t;
                     whole_origin_kept += 1; // KEEP: whole-interval retain stays in acc_entries
+                    // Record the KEPT origin's yield-per-cell — a Stage A' swap removal
+                    // candidate (Stage A' swaps OUT low-yield accepted origins, §4).
+                    accepted_origins.insert(v, (num, den));
                 } else {
+                    // REJECTED: record compact swap metadata (spec §4) — `R`'s FIRST
+                    // unrealized opening is its pressure point (a PLAN-ENTRY index, stable
+                    // across programs). If EVERY opening realized (no capacity shortfall a
+                    // swap can fix) record nothing; a diverged trial yields an empty realized
+                    // set → the pressure point is the first opening.
+                    let realized = realized_openings(&trial, &t);
+                    if let Some(&pk) = occ[..last].iter().find(|k| !realized.contains(k)) {
+                        rejected.push(StageARejection {
+                            v,
+                            pressure_k: pk,
+                            need: width_of(d, v, &mut width_memo),
+                            num,
+                            den,
+                        });
+                    }
                     for (&k, &a) in occ.iter().zip(saved.iter()) {
                         acc_entries[k].action = a; // revert the WHOLE origin
                     }
@@ -987,13 +1081,20 @@ fn reclaim_leaves(
     // reserved credit; the TERMINAL normalize / `Incomplete` selection is Task 5, NOT here
     // (this `reclaim_leaves` still returns `Complete`).
     let stage_a_plan = plan_from(base_plan, acc_entries);
-    let (norm_plan, norm_c, norm_trace, demoted, _unrealized) =
+    let (norm_plan, norm_c, norm_trace, demoted_a, _unrealized) =
         normalize(d, budget, stage_a_plan, a_best_c, a_best_trace, trial_budget)?;
 
-    // A+B residual: per-gap over the NORMALIZED plan's `Bypass` gaps (Stage A's retained
-    // occurrences are non-`Bypass` → skipped by the loop). Reserve 1 for the terminal
-    // normalize (Task 5); shares the round budget with B-only + Stage A.
-    let (ab_entries, ab_c, ab_trace, ab_attempted, ab_kept) = per_gap_reclaim(
+    // ── A+B BASELINE (the Task-3 A+B path): per-gap residual over the post-Stage-A
+    // normalized plan. Runs HERE — right after Stage A's normalize and BEFORE Stage A' — so
+    // it sees the EXACT budget state Task-3's A+B saw (b_only + Stage A + normalize spent),
+    // reproducing Task-3's A+B decisions byte-for-byte. This is `best_AB`'s FLOOR: Stage A'
+    // (on the shared, DECREMENTING budget) can only be a bonus candidate, never a regression
+    // — a swap that steals budget from a later per-gap cannot push the shipped result above
+    // this floor, since we ship `min(ab_baseline, ab_aprime)` below (spec §4 monotone intent;
+    // the two-candidate `min(best_AB, best_B)` net alone does NOT bound `best_AB` from below
+    // its own Task-3 value, because Stage B is a budget-shared, path-dependent greedy).
+    // Reserve 1 for the terminal normalize (Task 5); shares the round budget.
+    let (abb_entries, abb_c, abb_trace, abb_attempted, abb_kept) = per_gap_reclaim(
         d,
         budget,
         base_plan,
@@ -1003,11 +1104,156 @@ fn reclaim_leaves(
         gap_cap,
         /*reserve*/ 1,
         norm_plan.entries.clone(),
-        norm_c,
-        norm_trace,
+        norm_c.clone(),
+        norm_trace.clone(),
         trial_budget,
     )?;
-    let ab_key = (ab_c.stats_ext.global + ab_c.stats_ext.fold_traffic, ab_c.stats.program_lanes);
+    let abb_key =
+        (abb_c.stats_ext.global + abb_c.stats_ext.fold_traffic, abb_c.stats.program_lanes);
+
+    // ══ CS-M4 Task 4 (spec §4) — Stage A': bounded one-in/K-out swap ══
+    // Un-stick Stage A's greedy misallocations: for each REJECTED origin `R` (highest
+    // yield-per-cell first), swap ≤`K` low-yield ACCEPTED origins (resident at `R`'s pressure
+    // point) OUT to admit `R`'s whole interval. KEEP a swap only if it certifies, does not
+    // diverge, and realized traffic (`global + fold_traffic`) STRICTLY drops vs the current
+    // best (else revert the WHOLE swap). Accumulating over the normalized Stage-A plan; the
+    // shared `TrialBudget` reserves 1 for the following `normalize`. Monotone — A' can only
+    // improve `best_AB`, never regress (the safety net still ships `min(A+B, B-only)`).
+    let domain_values: BTreeSet<ExprId> =
+        distilled_site_domain(d).into_iter().map(|s| s.value).collect();
+    let mut swaps_attempted = 0usize;
+    let mut swaps_kept = 0usize;
+    let mut ap_entries = norm_plan.entries.clone();
+    let mut ap_c = norm_c;
+    let mut ap_trace = norm_trace;
+    let mut ap_best_traffic = ap_c.stats_ext.global + ap_c.stats_ext.fold_traffic;
+
+    // Rejected swap candidates: highest yield-per-cell FIRST (desc, `ExprId` tie-break) —
+    // the SAME cross-multiplied fraction order Stage A ranks by (never float). Cap `SWAP_N`.
+    rejected.sort_by(|a, b| {
+        let lhs = (a.num as u128) * (b.den as u128);
+        let rhs = (b.num as u128) * (a.den as u128);
+        rhs.cmp(&lhs).then_with(|| a.v.cmp(&b.v))
+    });
+    rejected.truncate(SWAP_N);
+
+    for r in &rejected {
+        // Reconstruct the residency set at `R`'s pressure point from the CURRENT-best trace
+        // (accumulating: earlier kept swaps reshape it). A non-diverging best is required for
+        // the cursor↔entry alignment; a clean Stage-A/normalize best never diverges, but if
+        // one ever did, every remaining swap's pressure point is void → stop.
+        let resident = match residency_before_entry(&ap_trace, &domain_values, r.pressure_k) {
+            Some(m) => m,
+            None => break,
+        };
+        // Removal set: ACCEPTED origins RESIDENT at the pressure point, ascending
+        // yield-per-cell (tie `ExprId`), greedily added until freed width ≥ `R`'s `need`,
+        // capped at `K`. Freed width is the origin's OWN residency width at that point (from
+        // its `Admit`), never capacity it holds elsewhere. An accepted origin not resident
+        // here contributes nothing (overlap-elsewhere is a non-guarantee, spec §4).
+        let mut cands: Vec<(usize, usize, ExprId, usize)> = resident
+            .iter()
+            .filter_map(|(&ov, &w)| accepted_origins.get(&ov).map(|&(n, dsum)| (n, dsum, ov, w)))
+            .collect();
+        cands.sort_by(|a, b| {
+            let lhs = (a.0 as u128) * (b.1 as u128);
+            let rhs = (b.0 as u128) * (a.1 as u128);
+            lhs.cmp(&rhs).then_with(|| a.2.cmp(&b.2))
+        });
+        let mut removal: Vec<ExprId> = Vec::new();
+        let mut freed = 0usize;
+        for (_, _, ov, w) in cands {
+            if freed >= r.need || removal.len() >= K {
+                break;
+            }
+            removal.push(ov);
+            freed += w;
+        }
+        if freed < r.need {
+            continue; // ≤K removals cannot free `R`'s need — skip `R` (no compile, no spend)
+        }
+        // Charge one leaf-search credit, reserving 1 for the post-A' `normalize` (spec §5).
+        if !trial_budget.try_spend(1) {
+            break;
+        }
+        swaps_attempted += 1;
+        // Apply the swap on a CLONE of the current best entries: `Bypass` EVERY occurrence of
+        // each removed origin; add `R` whole-interval (`Retain` occ[0..last], `Bypass` the
+        // last — mirrors `compound_batch_plan_with`). A reject discards the clone (whole-swap
+        // revert); a keep adopts it.
+        let mut trial_entries = ap_entries.clone();
+        for ov in &removal {
+            if let Some(occ) = occ_idx.get(ov) {
+                for &k in occ {
+                    trial_entries[k].action = PlanAction::Bypass;
+                }
+            }
+        }
+        if let Some(r_occ) = occ_idx.get(&r.v) {
+            let r_last = r_occ.len() - 1;
+            for (i, &k) in r_occ.iter().enumerate() {
+                trial_entries[k].action =
+                    if i < r_last { PlanAction::Retain } else { PlanAction::Bypass };
+            }
+        }
+        let trial = plan_from(base_plan, trial_entries.clone());
+        match compile_distilled_planned(d, budget, &trial) {
+            Ok((c, t)) => {
+                let dram = c.stats_ext.global + c.stats_ext.fold_traffic;
+                let clean = certify(&c, &t).is_ok() && !diverged(&t);
+                if clean && dram < ap_best_traffic {
+                    ap_best_traffic = dram;
+                    ap_entries = trial_entries; // commit the swap
+                    ap_c = c;
+                    ap_trace = t;
+                    swaps_kept += 1;
+                }
+                // else: discard the clone (whole swap reverted)
+            }
+            // The swapped plan's realized floor exceeded the budget — revert (discard clone).
+            Err(CompileError::BudgetBelowFloor { .. }) => {}
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Post-A' `normalize` (spec §4): demote any A'-added unrealized retains — behavior- and
+    // traffic-neutral (spec §3). `normalize_calls` is now 2; `refused_retains_normalized`
+    // accumulates both passes. `_unrealized2` ignored (Task 5 wires the terminal normalize /
+    // `Incomplete` selection — this `reclaim_leaves` still returns `Complete`).
+    let stage_ap_plan = plan_from(base_plan, ap_entries);
+    let (norm2_plan, norm2_c, norm2_trace, demoted_ap, _unrealized2) =
+        normalize(d, budget, stage_ap_plan, ap_c, ap_trace, trial_budget)?;
+
+    // A+B (A'-augmented) residual: per-gap over the (twice-)NORMALIZED plan's `Bypass` gaps
+    // (Stage A/A' retained occurrences are non-`Bypass` → skipped by the loop). Runs on the
+    // budget LEFT after the A+B baseline + Stage A'; reserve 1 for the terminal normalize
+    // (Task 5). Shares the round budget with B-only + Stage A + baseline + Stage A'.
+    let (abp_entries, abp_c, abp_trace, abp_attempted, abp_kept) = per_gap_reclaim(
+        d,
+        budget,
+        base_plan,
+        &occ_idx,
+        &order,
+        &meta,
+        gap_cap,
+        /*reserve*/ 1,
+        norm2_plan.entries.clone(),
+        norm2_c,
+        norm2_trace,
+        trial_budget,
+    )?;
+    let abp_key =
+        (abp_c.stats_ext.global + abp_c.stats_ext.fold_traffic, abp_c.stats.program_lanes);
+
+    // `best_AB` = the lexicographic-better of the Task-3 FLOOR (`ab_baseline`) and the
+    // A'-augmented candidate (`ab_aprime`); an EXACT tie keeps the floor (byte-stable). Since
+    // the floor reproduces Task-3's A+B exactly, `best_AB ≤ Task-3's A+B` — Stage A' is
+    // strictly a potential improvement, never a regression.
+    let (ab_entries, ab_c, ab_trace, ab_attempted, ab_kept, ab_key) = if abp_key < abb_key {
+        (abp_entries, abp_c, abp_trace, abp_attempted, abp_kept, abp_key)
+    } else {
+        (abb_entries, abb_c, abb_trace, abb_attempted, abb_kept, abb_key)
+    };
 
     // ── Ship the lexicographic-min by `(traffic, instrs)`; EXACT tie → B-only (keeps
     // byte-identity with CS-M3 when A+B adds nothing). Counters describe the SHIPPED plan.
@@ -1017,13 +1263,14 @@ fn reclaim_leaves(
         let counters = LeafReclaimCounters {
             whole_origin_attempted,
             whole_origin_kept,
+            swaps_attempted,
+            swaps_kept,
             fully_realized_origins,
-            refused_retains_normalized: demoted,
-            normalize_calls: 1,
+            refused_retains_normalized: demoted_a + demoted_ap,
+            normalize_calls: 2,
             residual_gap_attempted: ab_attempted,
             residual_gap_kept: ab_kept,
             safety_net_chose_b_only: false,
-            ..LeafReclaimCounters::default()
         };
         Ok(LeafReclaimResult::Complete { plan: final_plan, c: ab_c, trace: ab_trace, counters })
     } else {
