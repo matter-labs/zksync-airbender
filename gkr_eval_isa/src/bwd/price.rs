@@ -1012,7 +1012,6 @@ pub fn reclaim_leaves(
     let mut a_best_trace = base_trace;
     let mut whole_origin_attempted = 0usize;
     let mut whole_origin_kept = 0usize;
-    let mut fully_realized_origins = 0usize;
     // CS-M4 Task 4 (spec §4): compact Stage-A metadata the Stage A' swap consumes.
     // `accepted_origins`: each KEPT whole-origin → its yield-per-cell `(num, den)` (the swap
     // removal set ranks these ascending). `rejected`: each REJECTED origin with a genuine
@@ -1048,12 +1047,6 @@ pub fn reclaim_leaves(
                 let dram = c.stats_ext.global + c.stats_ext.fold_traffic;
                 let clean = certify(&c, &t).is_ok() && !diverged(&t);
                 if clean && dram < a_best_traffic {
-                    // Fully realized iff EVERY retained occurrence of `v` stays resident
-                    // (its next occurrence serves `Resident`, spec §3) — diagnostic only.
-                    let realized = realized_openings(&trial, &t);
-                    if occ[..last].iter().all(|k| realized.contains(k)) {
-                        fully_realized_origins += 1;
-                    }
                     a_best_traffic = dram;
                     a_best_c = c;
                     a_best_trace = t;
@@ -1280,7 +1273,6 @@ pub fn reclaim_leaves(
             whole_origin_kept,
             swaps_attempted,
             swaps_kept,
-            fully_realized_origins,
             refused_retains_normalized: demoted_a + demoted_ap,
             normalize_calls: 2,
             residual_gap_attempted: ab_attempted,
@@ -1426,19 +1418,6 @@ impl TrialBudget {
             false
         }
     }
-
-    /// Unconditionally charge one leaf-search call, saturating `available` at zero.
-    /// Counts a `leaf_call` like [`Self::try_spend`].
-    pub fn spend(&mut self) {
-        self.leaf_calls += 1;
-        self.spent += 1;
-        self.available = self.available.saturating_sub(1);
-    }
-
-    /// Credits remaining (meaningful only in enforce mode).
-    pub fn remaining(&self) -> usize {
-        self.available
-    }
 }
 
 /// The set of plan-entry indices whose `Retain` is REALIZED against `trace` (spec
@@ -1565,7 +1544,6 @@ pub struct LeafReclaimCounters {
     pub normalize_calls: usize,
     pub residual_gap_attempted: usize,
     pub residual_gap_kept: usize,
-    pub fully_realized_origins: usize,
     /// CS-M4 Task 3 (RR no-regression safety net): `true` iff this round shipped the
     /// pure per-gap B-only candidate (the CS-M3 floor) because the A+B candidate did NOT
     /// strictly beat it on `(traffic, instrs)`. When set, all `whole_origin_*` /
@@ -1620,13 +1598,6 @@ struct RoundResult {
     /// This round's leaf-reclaim counters (the RETURNED round's are carried to
     /// [`PricedOutcome::counters`]).
     counters: LeafReclaimCounters,
-    /// Whether THIS round's leaf reclaim was `Incomplete` (spec §3/Finding-4). Carried
-    /// through per round but NEVER read: the run-level OR into
-    /// [`PricedOutcome::saw_incomplete_round`] operates on a function-local var in
-    /// `priced_rounds` (independent of best-round selection), not on this field, and
-    /// `key()` ignores it. Kept as a placeholder for future per-round use (Task 5). Always
-    /// `false` in Task 2.
-    saw_incomplete_round: bool,
 }
 
 impl RoundResult {
@@ -1703,7 +1674,6 @@ pub fn priced_rounds(
         compound_attempted: 0,
         compound_kept: 0,
         counters: LeafReclaimCounters::default(),
-        saw_incomplete_round: false,
     };
 
     let mut prev_sig: Option<PlannerSignature> = None;
@@ -1806,7 +1776,6 @@ pub fn priced_rounds(
             compound_attempted: c_attempted,
             compound_kept: c_kept,
             counters,
-            saw_incomplete_round: round_incomplete,
         };
         // `<=` (not `<`): on an inert tie with the pre-loop base a reclaim round still
         // adopts the outcome, so `reclaim_attempted` (the lever RAN) stays visible; ties
@@ -1823,7 +1792,6 @@ pub fn priced_rounds(
                 compound_attempted: result.compound_attempted,
                 compound_kept: result.compound_kept,
                 counters: result.counters.clone(),
-                saw_incomplete_round: result.saw_incomplete_round,
             };
         }
 
