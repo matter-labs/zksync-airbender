@@ -383,7 +383,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             let base := mload(CIRCUIT_PTR)
             mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
             let bp := add(GKR_ABS_PTR(), 32)
-            calldatacopy(bp, add(base, mul(16, 38)), mul(16, 68)) bp := add(bp, mul(16, 68))
+            calldatacopy(bp, add(base, mul(16, 38)), mul(16, 67)) bp := add(bp, mul(16, 67))
             calldatacopy(bp, add(base, mul(16, 2)), mul(16, 2)) bp := add(bp, mul(16, 2))
             calldatacopy(bp, add(base, mul(16, 5)), mul(16, 7)) bp := add(bp, mul(16, 7))
             calldatacopy(bp, add(base, mul(16, 14)), mul(16, 24)) bp := add(bp, mul(16, 24))
@@ -415,9 +415,9 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             calldatacopy(bp, add(base, mul(16, 0)), mul(16, 2)) bp := add(bp, mul(16, 2))
             calldatacopy(bp, add(base, mul(16, 4)), mul(16, 1)) bp := add(bp, mul(16, 1))
             calldatacopy(bp, add(base, mul(16, 12)), mul(16, 2)) bp := add(bp, mul(16, 2))
-            calldatacopy(bp, add(base, mul(16, 106)), mul(16, 10)) bp := add(bp, mul(16, 10))
+            calldatacopy(bp, add(base, mul(16, 105)), mul(16, 10)) bp := add(bp, mul(16, 10))
             s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR())) mstore(SEED_PTR(), s)
-            next_ptr := add(ptr, mul(16, 116))
+            next_ptr := add(ptr, mul(16, 115))
             next_claim := 0
             }
 }
@@ -455,36 +455,36 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 29)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7)), mod(gate, P))
     }
-    {  // SingleColumnLookup: 0 + -1[24] + 1[0] + 2^19[100] = Cache(8)
-        let gate := add(0, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 0)))), P)), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), P)))
+    {  // SingleColumnLookup: 0 + -1[24] + 1[0] + 2^19[99] = Cache(8)
+        let gate := add(0, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 0)))), P)), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), P)))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8)), mod(gate, P))
     }
-    {  // SingleColumnLookup: 2^19 + -1[25] + 1[1] + -1[100] = Cache(9)
-        let gate := add(524288, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 1)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), P)))
+    {  // SingleColumnLookup: 2^19 + -1[25] + 1[1] + -1[99] = Cache(9)
+        let gate := add(524288, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 1)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), P)))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 9)), mod(gate, P))
     }
-    {  // SingleColumnLookup: -1 + -1[24] + 1[5] + 2^19[101] = Cache(10)
-        let gate := add(sub(P, 1), add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 5)))), P)), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), P)))
+    {  // SingleColumnLookup: -1 + -1[24] + 1[5] + 2^19[100] = Cache(10)
+        let gate := add(sub(P, 1), add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 5)))), P)), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), P)))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 10)), mod(gate, P))
     }
-    {  // SingleColumnLookup: 2^19 + -1[25] + 1[6] + -1[101] = Cache(11)
-        let gate := add(524288, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 6)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), P)))
+    {  // SingleColumnLookup: 2^19 + -1[25] + 1[6] + -1[100] = Cache(11)
+        let gate := add(524288, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 6)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), P)))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 11)), mod(gate, P))
     }
-    {  // SingleColumnLookup: -2 + -1[24] + 1[12] + 2^19[102] = Cache(12)
-        let gate := add(sub(P, 2), add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 12)))), P)), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102)))), P)))
+    {  // SingleColumnLookup: -2 + -1[24] + 1[12] + 2^19[101] = Cache(12)
+        let gate := add(sub(P, 2), add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 12)))), P)), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), P)))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 12)), mod(gate, P))
     }
-    {  // SingleColumnLookup: 2^19 + -1[25] + 1[13] + -1[102] = Cache(13)
-        let gate := add(524288, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 13)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102)))), P)))
+    {  // SingleColumnLookup: 2^19 + -1[25] + 1[13] + -1[101] = Cache(13)
+        let gate := add(524288, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 13)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), P)))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 13)), mod(gate, P))
     }
     {  // VectorizedLookup: (0 + 1[22]) + (0 + 1[23]) + (0 + 1[4]) + (0 + 1[38]) + (0 + 1[39]) + (0 + 1[40]) + (0 + 1[41]) + (0 + 1[42]) + (0 + 1[43] + 2[44] + 2^2[45] + 2^3[46] + 2^4[47] + 2^5[48] + 2^6[49] + 2^7[50] + 2^8[51] + 2^9[52] + 2^10[53] + 2^11[54] + 2^12[55] + 2^13[56] + 2^14[57] + 2^15[58] + 2^16[59] + 2^17[60] + 2^18[9] + 2^19[16]) + (46 + 0) = Cache(14)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(46, 0)), add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), P), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), P)), mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), P)), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), P)), mulmod(16, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), P)), mulmod(32, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), P)), mulmod(64, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), P)), mulmod(128, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), P)), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), P)), mulmod(512, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), P)), mulmod(1024, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P)), mulmod(2048, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(4096, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(8192, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(16384, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P)), mulmod(32768, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P)), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P)), mulmod(131072, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P)), mulmod(262144, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P)), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)))), add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), P))), add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), P))), add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), P))), add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 39)))), P))), add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 38)))), P))), add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 4)))), P))), add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))), P))), add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22)))), P)))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14)), mod(gate, P))
     }
-    {  // VectorizedLookupSetup: β⁰[106] + β¹[107] + β²[108] + β³[109] + β⁴[110] + β⁵[111] + β⁶[112] + β⁷[113] + β⁸[114] + β⁹[115] = Cache(15)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 115))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 114))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 113))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 112))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 111))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 110))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 109))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 108))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 107))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 106)))))
+    {  // VectorizedLookupSetup: β⁰[105] + β¹[106] + β²[107] + β³[108] + β⁴[109] + β⁵[110] + β⁶[111] + β⁷[112] + β⁸[113] + β⁹[114] = Cache(15)
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 114))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 113))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 112))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 111))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 110))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 109))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 108))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 107))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 106))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 105)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15)), mod(gate, P))
     }
     {  // RangeCheck16Bits: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(16)
@@ -505,10 +505,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     }
             }
             function scl0_g0(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[102] + [102](1[102])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102)))), P), P))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[101] + [101](1[101])
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -553,12 +549,12 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g1(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[64] + [64](1[64])
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g1(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[63] + [63](1[63])
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -603,12 +599,12 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g2(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[54] + [54](1[54])
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g2(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[53] + [53](1[53])
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -653,12 +649,12 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g3(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0x380000000000000000000000000 + 0xe0000000000000000000000000[24] + -1[25] + 0x6ffff20000000000000000000000001[28] + 1[29] + 0
         let gate := add(add(0x380000000000000000000000000, add(add(add(mulmod(0xe0000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P)), mulmod(0x6ffff20000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 29)))), P))), 0)
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g3(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0x37ffe4000000000000000000000 + 0xdfff2000000000000000000000[24] + 0x6ffff2000e000000000000000000001[28] + [24](0x6ffffffffe400000000000000000001[24] + 0x3800000000000000000000[28]) + [28](0x6ffffffffe400000000000000000001[28])
         let gate := add(add(0x37ffe4000000000000000000000, add(mulmod(0xdfff2000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(0x6ffff2000e000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), P))), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), add(mulmod(0x6ffffffffe400000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(0x3800000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), mulmod(0x6ffffffffe400000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -667,50 +663,36 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P))), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[99] + [43](-1[21]) + [44](-1[21]) + [45](-1[21]) + [46](-1[21]) + [47](-1[21]) + [48](-1[21]) + [49](-1[21]) + [50](-1[21]) + [51](-1[21]) + [52](-1[21]) + [53](-1[21]) + [54](-1[21]) + [55](-1[21]) + [56](-1[21]) + [58](-1[21]) + [59](-1[21]) + [60](-1[21]) + [9](-1[21]) + [16](-1[21])
-        let gate := add(add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), P)), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)))
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[98] + [43](-1[21]) + [44](-1[21]) + [45](-1[21]) + [46](-1[21]) + [47](-1[21]) + [48](-1[21]) + [49](-1[21]) + [50](-1[21]) + [51](-1[21]) + [52](-1[21]) + [53](-1[21]) + [54](-1[21]) + [55](-1[21]) + [56](-1[21]) + [58](-1[21]) + [59](-1[21]) + [60](-1[21]) + [9](-1[21]) + [16](-1[21])
+        let gate := add(add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), P)), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [97](1[98]) + [98](1[23] + -1[27])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27)))), P)), P)))
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [96](1[97]) + [97](1[23] + -1[27])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 2^2[98] + [97](-2^16[98]) + [98](1[22] + -1[26])
-        let gate := add(add(0, mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), P)), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), P)), P)))
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 2^2[97] + [96](-2^16[97]) + [97](1[22] + -1[26])
+        let gate := add(add(0, mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), P)), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[98] + -1[21] + [53](1[21]) + [54](1[21]) + [55](1[21]) + [56](1[21])
-        let gate := add(add(0, add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P))), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)))
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[97] + -1[21] + [53](1[21]) + [54](1[21]) + [55](1[21]) + [56](1[21])
+        let gate := add(add(0, add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P))), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [64](1[16]) + [65](1[16])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P)))
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [64](1[9] + 1[16]) + [65](1[9] + 1[16])
+        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [64](1[16]) + [65](2[16]) + [87](2^2[16]) + [16](-1[17])
         let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [96](-1[8] + 1[20]) + [8](-1[16]) + [16](1[20])
-        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P), P)))
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [64](1[9]) + [65](2[9]) + [87](2^2[9]) + [9](-1[10])
+        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [96](-1[7] + 1[19]) + [7](-1[16]) + [16](1[19])
-        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[96] + -1[9] + [63](1[9])
-        let gate := add(add(0, add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), P))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-            }
-            function scl0_g4(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[95] + [63](-1[9])
-        let gate := add(add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), P))
-        acc := add(mulmod(acc, alpha, P), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [63](1[16])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P))
+    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[95] + [63](-1[9] + -1[16])
+        let gate := add(add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [63](1[16])
@@ -721,6 +703,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g4(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [67](1[9]) + [9](-1[11])
         let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -753,8 +737,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g5(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[38] + 1[10] + [38](1[9]) + [9](-1[10])
         let gate := add(add(0, add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 38)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))), P))), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 38)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -771,6 +753,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P))), add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P)), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g5(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [94](1[20])
         let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -803,8 +787,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))), P))), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g6(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [53](1[65]) + [54](1[65]) + [65](1[91])
         let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -821,6 +803,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g6(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [41](-1[55]) + [53](1[69] + -1[8]) + [54](1[69] + -1[8]) + [55](1[69] + -1[8]) + [56](1[69] + -1[8])
         let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -853,8 +837,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g7(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[7])
         let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -871,6 +853,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, add(add(add(mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), P), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), P)), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), P)), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), P))), add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), add(add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), add(add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g7(alpha, a) -> acc { acc := a
     {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 65535[46] + 65535[47] + 65535[48] + 65535[49] + [40](1[43] + 1[45]) + [43](-2^16[62] + 1[2] + 1[7] + -1[19]) + [44](-2^16[62] + -1[2] + 1[7] + 1[19]) + [45](-2^16[62] + -1[19] + 1[22]) + [46](-2^16[62] + 1[87] + -1[19]) + [47](-2^16[62] + 1[87] + -1[19]) + [48](-2^16[62] + 1[87] + -1[19]) + [49](-2^16[62] + 1[87] + -1[19])
         let gate := add(add(0, add(add(add(mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), P), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), P)), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), P)), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), P))), add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -887,13 +871,13 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // LookupWithCachedDensAndSetup: (([21])·((Cache(15))+δ) − ([105])·((Cache(14))+δ)) / (((Cache(14))+δ)((Cache(15))+δ)) = 70/71
+    {  // LookupWithCachedDensAndSetup: (([21])·((Cache(15))+δ) − ([104])·((Cache(14))+δ)) / (((Cache(14))+δ)((Cache(15))+δ)) = 70/71
         let bg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14))))
         let dg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15))))
         let den_out := mulmod(bg, dg, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), dg, P), sub(mul(2, P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 105)))), bg, P)))
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), dg, P), sub(mul(2, P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 104)))), bg, P)))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -921,8 +905,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g8(alpha, a) -> acc { acc := a
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[29]) + 1/(δ+Cache(8)) = 63/64
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 29)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8))))
@@ -933,11 +915,11 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [28]) - [104]/(δ + Cache(17)) = 61/62
+    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [28]) - [103]/(δ + Cache(17)) = 61/62
         let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), sub(P, mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 104)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), P)))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), sub(P, mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 103)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), P)))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -955,6 +937,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g8(alpha, a) -> acc { acc := a
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[11]) + 1/(δ+[17]) = 56/57
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))))
@@ -995,11 +979,11 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [87]) - [103]/(δ + Cache(16)) = 48/49
+    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [87]) - [102]/(δ + Cache(16)) = 48/49
         let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), sub(P, mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 103)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), P)))
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), sub(P, mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), P)))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -1015,8 +999,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 80)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 82)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g9(alpha, a) -> acc { acc := a
     {  // MaxQuadratic: 0 + 0 + [58](1[79]) + [60](1[81]) = 44
         let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 79)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 81)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -1033,6 +1015,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 84)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), P)), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g9(alpha, a) -> acc { acc := a
     {  // MaxQuadratic: 0 + 3[58] + [53](1[90]) + [54](1[90]) + [55](1[90]) + [56](1[90]) + [59](0x70000000000000000000000000000[84] + 0x6f90000000000000000000000000001[3]) + [60](0x70000000000000000000000000000[84] + 0x6f90000000000000000000000000001[3]) = 40
         let gate := add(add(0, mulmod(3, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P)), add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 84)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 84)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -1065,8 +1049,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 75)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g10(alpha, a) -> acc { acc := a
     {  // MaxQuadratic: 0 + 0 + [53](1[68]) + [54](1[68]) + [55](1[68]) + [56](1[68]) + [58](1[84]) + [59](1[66] + 1[86]) + [60](1[86]) = 32
         let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 84)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -1083,6 +1065,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 74)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g10(alpha, a) -> acc { acc := a
     {  // MaxQuadratic: 0 + 0 + [58](1[73]) = 28
         let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 73)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -1115,8 +1099,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, add(add(add(add(mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(9, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P)), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g11(alpha, a) -> acc { acc := a
     {  // MaxQuadratic: 0 + 0 + [58](1[70]) = 20
         let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -1133,6 +1115,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g11(alpha, a) -> acc { acc := a
     {  // MaxQuadratic: 0 + 0 + [42](1[58]) + [60](1[68]) = 16
         let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -1153,20 +1137,18 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := add(add(0, add(add(add(add(mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(9, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P)), P))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[66]) + [20](1[95]) = 11
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P), P)))
+    {  // MaxQuadratic: 0 + 0 + [58](1[66]) + [8](1[95]) + [9](-1[8] + 1[20]) + [16](-1[8] + 1[20]) = 11
+        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [53](1[66]) + [54](1[66]) + [55](1[66]) + [56](1[66]) + [58](0x70000000000000000000000000000[85] + 0x6f90000000000000000000000000001[7]) + [59](1[66]) + [19](1[95]) = 10
-        let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 85)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P), P)))
+    {  // MaxQuadratic: 0 + 0 + [53](1[66]) + [54](1[66]) + [55](1[66]) + [56](1[66]) + [58](0x70000000000000000000000000000[85] + 0x6f90000000000000000000000000001[7]) + [59](1[66]) + [7](1[95]) + [9](-1[7] + 1[19]) + [16](-1[7] + 1[19]) = 10
+        let gate := add(add(0, 0), add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 85)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // MaxQuadratic: 0 + 0 + [41](1[59]) + [53](1[87] + 1[88]) + [54](1[87] + 1[88]) + [55](1[87] + 1[88]) + [56](1[87] + 1[88]) + [58](1[85]) + [66](1[95]) + [67](2^16[95]) = 9
         let gate := add(add(0, 0), add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 85)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P), P)))
         acc := add(mulmod(acc, alpha, P), gate)
     }
-            }
-            function scl0_g12(alpha, a) -> acc { acc := a
     {  // MaxQuadratic: 0 + 1[53] + 1[54] + 1[55] + 1[56] + 2^3[58] + 3[59] + [21](34[95]) = 8
         let gate := add(add(0, add(add(add(add(add(mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P)), mulmod(3, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), mulmod(34, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P), P))
         acc := add(mulmod(acc, alpha, P), gate)
@@ -1189,6 +1171,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := mulmod(lhs, rhs, P)
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g12(alpha, a) -> acc { acc := a
     {  // InitialGrandProductFromCaches: Cache(6)*Cache(7) = 4
         let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 6))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7))), P)
         acc := add(mulmod(acc, alpha, P), gate)
@@ -1213,10 +1197,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             function sccl0(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
             claim := 0
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
             claim := mulmod(claim, alpha, P)
             claim := mulmod(claim, alpha, P)
             claim := mulmod(claim, alpha, P)

@@ -59,12 +59,12 @@ contract GKRVerifier {
     uint256 constant WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
     uint256 constant WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
     // GKR->WHIR handoff (MergedAndPackedMemoryAndWitness, pack_log2=4). Base-layer at-point
-    // claims (dense in layer0's calldata eval block): mem++wit = 106 cols, setup = 10 cols.
-    // Merge folds each 2^pack_log2=16-chunk by the 4 packing coords: 106->7, 10->1.
+    // claims (dense in layer0's calldata eval block): mem++wit = 105 cols, setup = 10 cols.
+    // Merge folds each 2^pack_log2=16-chunk by the 4 packing coords: 105->7, 10->1.
     uint256 constant WHIR_PACK_LOG2    = 4;
-    uint256 constant WHIR_NUM_MEMWIT   = 106;        // memory_layout + witness_layout total widths
+    uint256 constant WHIR_NUM_MEMWIT   = 105;        // memory_layout + witness_layout total widths
     uint256 constant WHIR_NUM_SETUP    = 10;         // generic_lookup_tables_width
-    uint256 constant WHIR_MERGED_MW    = 7;          // ceil(106/16)
+    uint256 constant WHIR_MERGED_MW    = 7;          // ceil(105/16)
     uint256 constant WHIR_BASE_Z_COORDS = 22;        // layer-0 folding point length
 
     fallback() external {
