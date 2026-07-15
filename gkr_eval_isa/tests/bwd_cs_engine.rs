@@ -1019,3 +1019,130 @@ fn planned_fill_then_trim_monotone() {
         );
     }
 }
+
+// ── CS-M4 Task 1: realized-retention model (`realized_openings` + `normalize`) ──
+
+/// Deterministic synthetic witness for the realized-retention model. Builds
+/// [`synthetic_refusable_whole_origin_layer`] (3 shared Ext fold leaves, each used in
+/// both sibling reduction terms `P`/`Q`), a coordinate-correct whole-origin plan
+/// retaining every shared leaf, and compiles it with a TIGHT eviction dial
+/// (`lower_budget = 8` = 2 Ext buckets) at a GENEROUS `place_budget = 12`. Two leaves
+/// admit (and REALIZE — held resident through their `Q` serve), one REFUSES (its
+/// admission declined once `live_width` fills), so the trace carries BOTH a realized and
+/// a refused opening while staying feasible and certifying. Returns
+/// `(d, place_budget, plan, c, trace)`; `assert!`s both openings are present so the
+/// witness can never silently degrade. Reused by Task 5's stranded-retain test.
+///
+/// Why the split budget: with fully-concurrent Ext retentions (retention width == acc
+/// width == 4) the refusal threshold (`live_width + 4 > budget`) coincides EXACTLY with
+/// the placement floor, so a single `compile_distilled_planned` either fully realizes or
+/// hits `BudgetBelowFloor` — the same reason keccak's roomy b16 shows no refusal (a
+/// verified CS-M4 Task-1 finding). The fill-then-trim's own `lower_budget` dial
+/// (`compile.rs` `compile_distilled_at_planned`) separates the two: a tight `lower_budget`
+/// forces refusals during lowering while the generous `place_budget` lets the survivors
+/// place — a genuine feasible-with-refusal, exactly the pressure Stage-A accumulation
+/// exerts in the full pipeline.
+#[cfg(test)]
+fn synthetic_layer_with_refusable_whole_origin() -> (
+    DistilledLayer,
+    usize,
+    BwdOccurrencePlan,
+    gkr_eval_isa::bwd::compile::BwdCompiledLayer,
+    gkr_eval_isa::bwd::trace::BwdCompileTrace,
+) {
+    use gkr_eval_isa::bwd::price::realized_openings;
+    const N_SHARED: usize = 3;
+    const PLACE_BUDGET: usize = 12; // fits the 2 survivors + acc (2*4 + 4 = 12)
+    const LOWER_BUDGET: usize = 8; // 2 Ext buckets → the 3rd admission refuses
+
+    let d = synthetic_refusable_whole_origin_layer(N_SHARED);
+    let frozen = coordinate_correct_frozen(&d, PLACE_BUDGET);
+    // Whole-origin retention of every shared fold leaf (retain each opening but its last).
+    let pins: BTreeSet<ExprId> = frozen.leaf_instants.keys().copied().collect();
+    let plan = compound_batch_plan(&frozen, &pins);
+    let (c, trace) = compile_distilled_at_planned_lb(&d, PLACE_BUDGET, LOWER_BUDGET, &plan)
+        .expect("split-budget compile must place-fit at PLACE_BUDGET");
+
+    // The witness must exhibit BOTH a realized and a refused opening (never silently pass).
+    let realized = realized_openings(&plan, &trace);
+    let requested: Vec<usize> = plan
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.action == PlanAction::Retain)
+        .map(|(k, _)| k)
+        .collect();
+    assert!(
+        requested.iter().any(|k| realized.contains(k)),
+        "witness must have a realized opening (an admitted, still-resident leaf)"
+    );
+    assert!(
+        requested.iter().any(|k| !realized.contains(k)),
+        "witness must have a refused (unrealized) opening"
+    );
+    (d, PLACE_BUDGET, plan, c, trace)
+}
+
+/// Task-1 minimal permissive `TrialBudget` stub (Task 2 enriches it with dynamic
+/// accrual). Large `available` so `normalize` never runs out of credit here.
+#[cfg(test)]
+fn trial_budget_stub() -> gkr_eval_isa::bwd::price::TrialBudget {
+    gkr_eval_isa::bwd::price::TrialBudget { available: 1 << 20 }
+}
+
+/// The realized-retention model unit gate (CS-M4 Task 1). On the deterministic synthetic
+/// witness (a whole-origin retention that partially refuses): (a) certify is `Ok` despite
+/// refusals; (b) `realized_openings` EXCLUDES the refused opening but INCLUDES a
+/// successful first-admission opening (the next-occurrence off-by-one guard — a first
+/// admission's OWN serve is `Recomputed`, its NEXT is `Resident`); (c) after `normalize`
+/// every remaining `Retain` is realized, the refused occurrences are `Bypass`, and traffic
+/// is unchanged; (d) a second `normalize` demotes nothing (idempotent) and spends no
+/// budget.
+#[test]
+fn normalize_demotes_refused_retain_and_is_idempotent() {
+    use gkr_eval_isa::bwd::price::{normalize, realized_openings};
+    let (d, budget, plan0, c0, trace0) = synthetic_layer_with_refusable_whole_origin();
+
+    // (a) refusals do not gate the certificate.
+    assert!(certify(&c0, &trace0).is_ok(), "refusals do not gate certify");
+
+    // (b) off-by-one guard: a refused opening is EXCLUDED, a first-admission opening INCLUDED.
+    let realized0 = realized_openings(&plan0, &trace0);
+    let requested: Vec<usize> = plan0
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.action == PlanAction::Retain)
+        .map(|(k, _)| k)
+        .collect();
+    assert!(requested.iter().any(|k| !realized0.contains(k)), "test must exercise a refusal");
+    assert!(requested.iter().any(|k| realized0.contains(k)), "a successful retention must stay");
+
+    // (c) normalize demotes only the refused Retains, once, traffic-neutral.
+    let mut budget_ctr = trial_budget_stub(); // Task 1: permissive stub; real TrialBudget in Task 2
+    let base_traffic = c0.stats_ext.global + c0.stats_ext.fold_traffic;
+    let (plan1, c1, trace1, demoted, unrealized1) =
+        normalize(&d, budget, plan0, c0, trace0, &mut budget_ctr).unwrap();
+    assert!(demoted >= 1, "at least one refused Retain demoted");
+    assert_eq!(unrealized1, 0, "permissive stub budget → normalize fully completes");
+    assert_eq!(
+        c1.stats_ext.global + c1.stats_ext.fold_traffic,
+        base_traffic,
+        "normalize is traffic-neutral"
+    );
+    let realized1 = realized_openings(&plan1, &trace1);
+    for (k, e) in plan1.entries.iter().enumerate() {
+        if e.action == PlanAction::Retain {
+            assert!(realized1.contains(&k), "no unrealized Retain remains after normalize");
+        }
+    }
+
+    // (d) idempotent + spends no budget on a fully-realized plan.
+    let available_before = budget_ctr.available;
+    let (plan2, _c2, _t2, demoted2, unrealized2) =
+        normalize(&d, budget, plan1, c1, trace1, &mut budget_ctr).unwrap();
+    assert_eq!(demoted2, 0, "normalize is idempotent");
+    assert_eq!(unrealized2, 0);
+    assert_eq!(budget_ctr.available, available_before, "idempotent normalize spends no budget");
+    let _ = plan2;
+}

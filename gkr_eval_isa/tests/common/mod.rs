@@ -742,6 +742,42 @@ pub fn synthetic_wide_add_layer_with_shared_leaf() -> DistilledLayer {
     distill(&raw_layer(sources, exprs, roots), BwdRegime::Ext, &CrossFields::new(), None)
 }
 
+/// `n_shared` Ext fold leaves `S_0..S_{n-1}`, each used in BOTH sibling reduction terms
+/// `P = Add(k7, S_0..)` and `Q = Add(k11, S_0..)` (`root0 = Add(P, Q)` → `P`, `Q` are the
+/// two alpha-spine terms). Each `S_i` has fan-out 2 (a domain fold leaf) and exactly two
+/// fold uses (its `P` use then its `Q` use), so a whole-origin retention retains its `P`
+/// occurrence and bypasses its `Q` occurrence. Distinct Base const seeds (7, 11) keep `P`
+/// and `Q` distinct and make every `S_i` a NON-seed Ext fold (`Read`, 4-lane residency).
+///
+/// The point: retaining all `n_shared` leaves whole-origin holds each resident from its
+/// `P` fold through its `Q` fold, so during `P`'s reduction they pile up concurrently —
+/// at a tight budget the first `budget/4` admit (and REALIZE, their `Q` serve is a
+/// resident hit) while the rest REFUSE (`live_width + 4 > budget`, no expired resident to
+/// evict) and stay unrealized. That is a plan with BOTH a realized and a refused opening,
+/// the capacity refusal keccak's roomy b16 cannot produce (CS-M4 Task 1 finding). Reused
+/// by Task 5's terminal-normalize stranded-retain test.
+pub fn synthetic_refusable_whole_origin_layer(n_shared: usize) -> DistilledLayer {
+    assert!(n_shared >= 2, "need >=2 shared leaves so one can realize while another refuses");
+    let mut sources = Vec::new();
+    let mut exprs = Vec::new();
+    let shared: Vec<ExprId> = (0..n_shared).map(|_| add_read(&mut sources, &mut exprs)).collect();
+    let seed_p = add_const(&mut sources, &mut exprs, 7); // Base-Plus preferred seed for P
+    let seed_q = add_const(&mut sources, &mut exprs, 11); // distinct seed keeps Q != P
+    let mut p_children = vec![seed_p];
+    p_children.extend(shared.iter().copied());
+    let mut q_children = vec![seed_q];
+    q_children.extend(shared.iter().copied());
+    let p = add_expr(&mut exprs, Expr::Add(p_children));
+    let q = add_expr(&mut exprs, Expr::Add(q_children));
+    let root0 = add_expr(&mut exprs, Expr::Add(vec![p, q]));
+    distill(
+        &raw_layer(sources, exprs, vec![claim_only_root(root0, 0)]),
+        BwdRegime::Ext,
+        &CrossFields::new(),
+        None,
+    )
+}
+
 /// A wide FMA cone (Task 2) whose product children mix LEAF products (`Mul([read, read])`
 /// — both operands direct, stay fused through `emit_fma_products`) and COMPOUND×COMPOUND
 /// products (`Mul([Add(read,read), Add(read,read)])` — BOTH operands must stash, the nested

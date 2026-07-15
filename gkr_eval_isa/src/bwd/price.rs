@@ -796,6 +796,189 @@ fn reclaim_leaves(
     Ok((final_plan, best_c, best_trace, attempted, kept))
 }
 
+// ── CS-M4 Task 1: realized-retention model ─────────────────────────────────────
+
+/// A single decrementing leaf-search budget (spec §5). Task 1 ships the MINIMAL
+/// stub — one credit per top-level `compile_distilled_planned` a leaf search spends;
+/// Task 2 enriches it with per-round dynamic accrual (`multiplier`/gap quotas).
+/// [`Self::try_spend`] is the only debit [`normalize`] uses: it spends one credit
+/// iff strictly more than `reserve` remain (the reserve keeps a credit for the
+/// mandatory following `normalize`, spec §5), so the debit is ALWAYS checked — never
+/// an underflowing bare spend.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TrialBudget {
+    pub available: usize,
+}
+
+impl TrialBudget {
+    /// Spend one credit iff strictly more than `reserve` remain; return whether it
+    /// was spent. Checked (never underflows): a caller with `available <= reserve`
+    /// gets `false` and spends nothing.
+    pub fn try_spend(&mut self, reserve: usize) -> bool {
+        if self.available > reserve {
+            self.available -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Unconditionally spend one credit, saturating at zero.
+    pub fn spend(&mut self) {
+        self.available = self.available.saturating_sub(1);
+    }
+}
+
+/// The set of plan-entry indices whose `Retain` is REALIZED against `trace` (spec
+/// §3). A `Retain` at value `v`'s occurrence `j` is realized iff `v`'s occurrence
+/// `j+1` served `from: Resident` — the OFF-BY-ONE that is the crux: `serve_occurrence`
+/// (`lower.rs:513`) records the `Serve` BEFORE any admission, so a first successful
+/// admission's OWN serve is `Recomputed` (`v` was not yet resident); its residency
+/// only shows at the NEXT serve. A refused admission never becomes resident, so its
+/// next serve is `Recomputed` too — unrealized. Matching `j`'s own serve would
+/// wrongly demote every successful first admission (a traffic regression).
+///
+/// Alignment: the plan drives the compile serve-by-serve, so for a non-diverging
+/// trace value `v`'s serves appear in the same order as its plan entries — `v`'s
+/// `j`-th serve is `v`'s `j`-th plan occurrence (the same alignment [`reclaim_leaves`]
+/// relies on at `price.rs:713-719`). `v` is a domain value (it carries plan entries),
+/// so ALL of `v`'s trace serves are domain serves — no separate domain filter is
+/// needed. A `Diverge` in the trace voids the alignment: return the empty set (all
+/// unrealized) and let the caller's non-diverge gate reject.
+pub fn realized_openings(plan: &BwdOccurrencePlan, trace: &BwdCompileTrace) -> BTreeSet<usize> {
+    if trace.events.iter().any(|e| matches!(e, BwdEvent::Diverge { .. })) {
+        return BTreeSet::new(); // alignment void — treat every Retain as unrealized
+    }
+    // Per value, its `Serve` events' `from` in program order.
+    let mut serves_from: BTreeMap<ExprId, Vec<BwdServedFrom>> = BTreeMap::new();
+    for e in &trace.events {
+        if let BwdEvent::Serve { fp, from } = e {
+            serves_from.entry(fp.value).or_default().push(*from);
+        }
+    }
+    // Walk plan entries in order; the running per-value count is this entry's
+    // occurrence index `j`. A `Retain` at `j` is realized iff `v`'s `(j+1)`-th serve
+    // is `Resident` (`.get` yields the safe "no next serve → unrealized" for the last
+    // occurrence, which a `Retain` can never realize anyway).
+    let mut occ: BTreeMap<ExprId, usize> = BTreeMap::new();
+    let mut realized = BTreeSet::new();
+    for (k, e) in plan.entries.iter().enumerate() {
+        let slot = occ.entry(e.fp.value).or_insert(0);
+        let this_j = *slot;
+        *slot += 1;
+        if e.action != PlanAction::Retain {
+            continue;
+        }
+        let next_resident = serves_from
+            .get(&e.fp.value)
+            .and_then(|froms| froms.get(this_j + 1))
+            .is_some_and(|from| *from == BwdServedFrom::Resident);
+        if next_resident {
+            realized.insert(k);
+        }
+    }
+    realized
+}
+
+/// Demote every UNREALIZED `Retain` in `plan` to `Bypass` in a single behavior- and
+/// traffic-neutral pass (spec §3), recompiling AT MOST once. Returns
+/// `(plan', c', trace', demoted, unrealized_after)`:
+/// - no unrealized `Retain` → return the inputs unchanged, `(0, 0)`, spending NOTHING
+///   (the idempotent no-op — a normalized plan re-normalizes to itself);
+/// - some unrealized but no budget credit (`!try_spend(0)`) → return the inputs,
+///   `(0, unrealized_count)` WITHOUT recompiling; the caller reads `unrealized_after
+///   > 0` as budget-exhausted-before-recompile and returns `Incomplete`;
+/// - else demote all unrealized to `Bypass`, `compile_distilled_planned` + `certify`
+///   once (fail-closed on a certificate mismatch), return `(plan', c', trace', demoted, 0)`.
+///
+/// SINGLE PASS (§3): a `Retain` is unrealized only when its admission was refused,
+/// and a refused admission never incremented `live_width` (`lower.rs:653-659`) while
+/// plan mode never preempts a live retention (`lower.rs:651`); so an unrealized
+/// `Retain` held ZERO capacity and demoting it frees nothing — it cannot make another
+/// `Retain` newly realize or newly refuse. One pass suffices; no fixed-point loop, no
+/// unchecked `spend()`.
+pub fn normalize(
+    d: &DistilledLayer,
+    budget: usize,
+    plan: BwdOccurrencePlan,
+    c: BwdCompiledLayer,
+    trace: BwdCompileTrace,
+    budget_ctr: &mut TrialBudget,
+) -> Result<(BwdOccurrencePlan, BwdCompiledLayer, BwdCompileTrace, usize, usize), CompileError> {
+    let realized = realized_openings(&plan, &trace);
+    let unrealized: Vec<usize> = plan
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(k, e)| e.action == PlanAction::Retain && !realized.contains(k))
+        .map(|(k, _)| k)
+        .collect();
+    if unrealized.is_empty() {
+        return Ok((plan, c, trace, 0, 0)); // every Retain realized — no-op, spend nothing
+    }
+    if !budget_ctr.try_spend(0) {
+        // No credit for the mandatory recompile — signal Incomplete WITHOUT recompiling.
+        return Ok((plan, c, trace, 0, unrealized.len()));
+    }
+    let mut entries = plan.entries.clone();
+    for &k in &unrealized {
+        entries[k].action = PlanAction::Bypass;
+    }
+    let plan2 = plan_from(&plan, entries);
+    let (c2, trace2) = compile_distilled_planned(d, budget, &plan2)?;
+    // Spec §3 mandates `compile_distilled_planned + certify ONCE`. Neutrality (§3) makes
+    // the recompile balance redundant today, but this is the foundational path every
+    // downstream stage (T3/T4/T5 + the terminal ship) routes through, and the binding
+    // constraint is exact-integer certificate equality on every shipped compile — so
+    // fail-closed here rather than trust the proof.
+    if let Err(report) = certify(&c2, &trace2) {
+        return Err(CompileError::InvalidSchedule(format!(
+            "normalize recompile failed certificate: counted_traffic {} != reported_traffic {}",
+            report.counted_traffic, report.reported_traffic,
+        )));
+    }
+    Ok((plan2, c2, trace2, unrealized.len(), 0))
+}
+
+/// Per-run leaf-reclaim activity counters (spec §6). Task 1 DEFINES the type; Tasks
+/// 2+ populate it and thread it through `RoundResult` → [`PricedOutcome`] → the
+/// engine's `CsOutcome`.
+#[derive(Clone, Debug, Default)]
+pub struct LeafReclaimCounters {
+    pub whole_origin_attempted: usize,
+    pub whole_origin_kept: usize,
+    pub swaps_attempted: usize,
+    pub swaps_kept: usize,
+    pub refused_retains_normalized: usize,
+    pub normalize_calls: usize,
+    pub residual_gap_attempted: usize,
+    pub residual_gap_kept: usize,
+    pub fully_realized_origins: usize,
+}
+
+/// The outcome of the two-stage leaf reclaim (spec §3/§4). Task 1 DEFINES the type;
+/// Task 2 switches [`reclaim_leaves`] to return it (always `Complete` until Task 5),
+/// and Task 5 adds the `Incomplete` selection semantics (an unnormalized plan — the
+/// shared budget was exhausted before a `normalize` could run — is INELIGIBLE to
+/// ship, spec §3). `Complete` asserts zero unrealized `Retain`; `Incomplete` carries
+/// the residual `unrealized` count as a diagnostic.
+#[derive(Clone, Debug)]
+pub enum LeafReclaimResult {
+    Complete {
+        plan: BwdOccurrencePlan,
+        c: BwdCompiledLayer,
+        trace: BwdCompileTrace,
+        counters: LeafReclaimCounters,
+    },
+    Incomplete {
+        plan: BwdOccurrencePlan,
+        c: BwdCompiledLayer,
+        trace: BwdCompileTrace,
+        counters: LeafReclaimCounters,
+        unrealized: usize,
+    },
+}
+
 // ── priced rounds ────────────────────────────────────────────────────────────────
 
 /// One round's certificate-passing outcome, for the lexicographic best-round pick.
