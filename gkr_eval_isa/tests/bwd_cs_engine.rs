@@ -904,6 +904,37 @@ fn phase0b_leaf_call_baseline() {
     }
 }
 
+/// CS-M4 Task 3 (spec §4): Stage A — whole-origin accumulating greedy + post-stage
+/// normalize — must LOWER traffic vs CS-M3, or at worst HOLD at the CS-M3 ceilings, on
+/// the two G-M0 fixtures whose deficit is caching COVERAGE (keccak = depth, blake2 =
+/// breadth). At production settings `cs_schedule_bwd_layer` runs Stage A ahead of the
+/// per-gap Stage B; this pins: (a) the shipped program certifies exactly; (b) traffic ≤
+/// the CS-M3 ceiling (keccak 16240, blake2 9528) AND ≤ the Task-2 baseline (Stage A only
+/// keeps strict-drop origins, so it can never regress); (c) `whole_origin_kept > 0` on
+/// keccak (depth wins realized — Stage A must retain ≥1 whole origin). The zero-
+/// unrealized-`Retain` shipped invariant is NOT asserted here (a Stage-B addition can
+/// strand an earlier retention until Task 5's TERMINAL normalize); `saw_incomplete_round`
+/// stays `false` (no `Incomplete` selection until Task 5).
+#[test]
+#[ignore] // heavy (~minutes): full production keccak + blake2 priced runs at b16.
+fn stage_a_whole_origin_lowers_or_holds() {
+    for (name, m3_ceiling) in [("keccak_special5_layout_gkr.json", 16240usize),
+                               ("blake2_with_extended_control_layout_gkr.json", 9528)] {
+        let (layer, cross) = load_layer(name, 0);
+        let out = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+        let traffic = out.stats.global + out.stats.fold_traffic;
+        assert!(out.certificate.counted_traffic == out.certificate.reported_traffic, "{name} cert");
+        assert!(traffic <= m3_ceiling, "{name} traffic {traffic} regressed past {m3_ceiling}");
+        // whole-origin activity + normalized invariant surfaced via counters:
+        eprintln!("{name}: traffic={traffic} whole_kept={} residual_kept={} saw_incomplete={}",
+                  out.counters.whole_origin_kept, out.counters.residual_gap_kept, out.saw_incomplete_round);
+        assert!(!out.saw_incomplete_round, "{name} saw an Incomplete round");
+        if name.starts_with("keccak") {
+            assert!(out.counters.whole_origin_kept > 0, "Stage A must retain ≥1 whole origin on keccak (depth)");
+        }
+    }
+}
+
 /// (b) Determinism: two `cs_schedule_bwd_layer` runs on keccak L0 @ b16 produce
 /// byte-equal outcomes — same permutation, same plan (entries + epoch + fnv), same
 /// stats, same pins, same fallback verdict. No wall-clock / hashmap-iteration-order

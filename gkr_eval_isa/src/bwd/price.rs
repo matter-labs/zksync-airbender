@@ -84,6 +84,16 @@ pub const RECLAIM_N: usize = 512;
 /// recompiles to `≤ 2·COMPOUND_N`, same shape as the leaf reclaim's `≤ 2·RECLAIM_N`.
 pub const COMPOUND_N: usize = 128;
 
+/// CS-M4 Task 3 (spec §4): cap on Stage A's whole-origin candidate COUNT. Stage A ranks
+/// realized domain-leaf origins (≥2 occurrences) by yield-per-cell and accumulatingly
+/// retains each whole interval that strictly drops traffic; this bounds how many origins
+/// it TRIES per round. `2048` comfortably exceeds every G-M0 fixture's realized origin
+/// count at b16 (blake2 ~1012 is the widest), so the effective truncate
+/// `min(candidate_count, LEAF_ORIGIN_N)` is candidate-bound in practice, not cap-bound;
+/// the shared per-round `TrialBudget` (with a reserved `normalize` credit) is the real
+/// cost bound (spec §5), NOT this count.
+pub const LEAF_ORIGIN_N: usize = 2048;
+
 // ── ABI types ──────────────────────────────────────────────────────────────────
 
 /// The full planner-input signature whose STRUCTURAL equality (spec §5, Rev 2)
@@ -707,6 +717,86 @@ fn plan_from(base: &BwdOccurrencePlan, entries: Vec<PlanEntry>) -> BwdOccurrence
     }
 }
 
+/// The per-gap leaf reclaim loop (spec §4 Stage B; the CS-M3 body). Starting from
+/// `entries`/`best_c`/`best_trace`, walk the FiF-ranked `order` and for each candidate
+/// gap whose opening occurrence is still `Bypass`, flip it to `Retain`,
+/// [`compile_distilled_planned`], and KEEP iff feasible ∧ non-diverging ∧ certifies ∧
+/// `dram_traffic` STRICTLY drops vs best; else revert. `reserve` is the [`TrialBudget`]
+/// credit held back for a following op (0 for the B-only floor which has no following
+/// `normalize`; 1 for the A+B residual which precedes the terminal normalize). Recompiles
+/// bounded to `≤ 2·gap_cap`. Returns `(entries, best_c, best_trace, attempted, kept)`.
+///
+/// CS-M4 Task 3 (RR no-regression safety net): this is called TWICE per round from
+/// [`reclaim_leaves`] over the SAME `order`/`meta`/`occ_idx` — once from the compound
+/// base (the CS-M3-reproducing B-only floor) and once from the post-Stage-A normalized
+/// plan (the A+B residual) — sharing the one round `TrialBudget`.
+#[allow(clippy::too_many_arguments)]
+fn per_gap_reclaim(
+    d: &DistilledLayer,
+    budget: usize,
+    plan_template: &BwdOccurrencePlan,
+    occ_idx: &BTreeMap<ExprId, Vec<usize>>,
+    order: &[usize],
+    meta: &[(ExprId, usize)],
+    gap_cap: usize,
+    reserve: usize,
+    mut entries: Vec<PlanEntry>,
+    mut best_c: BwdCompiledLayer,
+    mut best_trace: BwdCompileTrace,
+    trial_budget: &mut TrialBudget,
+) -> Result<(Vec<PlanEntry>, BwdCompiledLayer, BwdCompileTrace, usize, usize), CompileError> {
+    let mut best_traffic = best_c.stats_ext.global + best_c.stats_ext.fold_traffic;
+    let mut attempted = 0usize;
+    let mut kept = 0usize;
+    let mut compiles = 0usize;
+
+    for &gi in order {
+        if compiles >= 2 * gap_cap {
+            break; // recompile budget guard (≤ 2·gap_cap)
+        }
+        let (v, j) = meta[gi];
+        let occ = match occ_idx.get(&v) {
+            Some(o) if j + 1 < o.len() => o,
+            _ => continue, // no closing occurrence in the plan — cannot open a gap
+        };
+        let entry_idx = occ[j];
+        if entries[entry_idx].action != PlanAction::Bypass {
+            continue; // already retained via a chain — nothing to add here
+        }
+
+        // Charge one leaf-search credit, reserving `reserve` (0 = B-only floor, no
+        // following normalize; 1 = A+B residual, reserve for the terminal normalize). A
+        // refusal (budget exhausted) stops the loop with the best-so-far plan.
+        if !trial_budget.try_spend(reserve) {
+            break;
+        }
+        attempted += 1;
+        entries[entry_idx].action = PlanAction::Retain; // tentative flip
+        let trial = plan_from(plan_template, entries.clone());
+        compiles += 1;
+        match compile_distilled_planned(d, budget, &trial) {
+            Ok((c, t)) => {
+                let dram = c.stats_ext.global + c.stats_ext.fold_traffic;
+                let clean = certify(&c, &t).is_ok() && !diverged(&t);
+                if clean && dram < best_traffic {
+                    best_traffic = dram;
+                    best_c = c;
+                    best_trace = t;
+                    kept += 1; // KEEP: leave the flip standing in `entries`
+                } else {
+                    entries[entry_idx].action = PlanAction::Bypass; // revert
+                }
+            }
+            // Realized floor exceeded budget with this retention — revert.
+            Err(CompileError::BudgetBelowFloor { .. }) => {
+                entries[entry_idx].action = PlanAction::Bypass;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok((entries, best_c, best_trace, attempted, kept))
+}
+
 /// Bounded gap-granular leaf reclaim (spec §5 step 4, Rev 2 Full scope). Starting
 /// from the all-`Bypass`-leaves compound-batch plan `base_plan` (already compiled
 /// clean into `base_c`/`base_trace`), rank the REALIZED (`observed`) per-leaf gaps by
@@ -744,7 +834,8 @@ fn reclaim_leaves(
     }
 
     // Realized per-leaf chained-tiling gaps (program-position coordinates) + parallel
-    // metadata (leaf value, gap index j) — identical tiling to `plan_leaves`.
+    // metadata (leaf value, gap index j) — identical tiling to `plan_leaves`. SHARED by
+    // BOTH per-gap searches below (the B-only floor + the A+B residual).
     let mut gaps: Vec<Gap> = Vec::new();
     let mut meta: Vec<(ExprId, usize)> = Vec::new();
     for (&v, instants) in &observed.leaf_instants {
@@ -766,83 +857,189 @@ fn reclaim_leaves(
         let entry = occ_idx.get(&v).and_then(|o| o.get(j)).copied().unwrap_or(usize::MAX);
         (!fif_kept.contains(&gi), occ_range(&gaps[gi]), entry)
     });
-    // CS-M4 Task 2: `gap_cap` (production `RECLAIM_N`=512, Phase-0b 1200) bounds the
-    // Stage-B candidate COUNT here — replacing the legacy `RECLAIM_N` truncate. It is
-    // INDEPENDENT of the accrued budget (which is anchored on `min(G_r,1200)`, never
-    // `gap_cap`) and of the `multiplier` (spec §5).
+    // `gap_cap` (production `RECLAIM_N`=512, Phase-0b 1200) bounds the per-gap candidate
+    // COUNT — INDEPENDENT of the accrued budget (anchored on `min(G_r,1200)`) and of the
+    // `multiplier` (spec §5). Truncation is shared by both per-gap searches.
     order.truncate(gap_cap);
 
-    let mut entries = base_plan.entries.clone();
-    let mut best_traffic = base_c.stats_ext.global + base_c.stats_ext.fold_traffic;
-    let mut best_c = base_c;
-    let mut best_trace = base_trace;
-    let mut attempted = 0usize;
-    let mut kept = 0usize;
-    let mut compiles = 0usize;
+    // ══ CS-M4 Task 3 — RR no-regression safety net: ship lexicographic-min(A+B, B-only) ══
+    // Compute BOTH candidate plans from the SAME compound base, sharing the ONE round
+    // `TrialBudget`, and ship the lexicographic-min by `(traffic, instrs)` (EXACT tie →
+    // B-only). Because the B-only candidate reproduces CS-M3 exactly, CS-M4 is NEVER worse
+    // than CS-M3 on any fixture; Stage A's whole-origin coverage ships only where it
+    // STRICTLY beats that floor.
 
-    for gi in order {
-        if compiles >= 2 * gap_cap {
-            break; // recompile budget guard (≤ 2·gap_cap)
-        }
-        let (v, j) = meta[gi];
+    // ── Candidate B-only: the pure per-gap reclaim from the compound base — the CS-M3
+    // floor. It runs FIRST with reserve 0, so it reproduces CS-M3 byte-identically: this
+    // round's fresh accrual `min(G_r,1200) ≥` its `≤ min(G_r, gap_cap)` candidate count,
+    // so — running before the A+B path drains anything — it is never budget-refused and
+    // makes exactly CS-M3's per-gap decisions. No `normalize` follows it, so reserve 0 (a
+    // reserve here would drop CS-M3's last gap on a budget-tight small fixture and break
+    // the floor).
+    let (b_entries, b_c, b_trace, b_attempted, b_kept) = per_gap_reclaim(
+        d,
+        budget,
+        base_plan,
+        &occ_idx,
+        &order,
+        &meta,
+        gap_cap,
+        /*reserve*/ 0,
+        base_plan.entries.clone(),
+        base_c.clone(),
+        base_trace.clone(),
+        trial_budget,
+    )?;
+    let b_key = (b_c.stats_ext.global + b_c.stats_ext.fold_traffic, b_c.stats.program_lanes);
+
+    // ── Candidate A+B: Stage A whole-origin greedy → post-stage normalize → per-gap
+    // residual. Stage A candidate origins = realized domain leaves with ≥2 occurrences.
+    // RANK by YIELD-PER-CELL (spec §4): numerator = gathers the whole-interval residency
+    // saves (`len−1` closed gaps); denominator = summed occupied cell-instants over the
+    // value's live interval (`width(v)·(last_instant − first_instant)`, `width` via
+    // [`width_of`]). Descending, `ExprId` tie-break — in an accumulating greedy ORDER IS
+    // the selection authority, so the ranking is deterministic (cross-multiplied
+    // fractions, never float). Truncate to `LEAF_ORIGIN_N` (→ `min(candidate_count, 2048)`).
+    let mut width_memo: Vec<Option<FieldKind>> = vec![None; d.layer.exprs.len()];
+    let mut origins: Vec<(ExprId, usize, usize)> = observed
+        .leaf_instants
+        .iter()
+        .filter(|(_, instants)| instants.len() >= 2)
+        .map(|(&v, instants)| {
+            let num = instants.len() - 1; // gaps the whole-interval residency closes
+            let span = instants[instants.len() - 1] - instants[0];
+            let den = width_of(d, v, &mut width_memo) * span; // summed occupied cell-instants
+            (v, num, den)
+        })
+        .collect();
+    origins.sort_by(|a, b| {
+        let lhs = (a.1 as u128) * (b.2 as u128);
+        let rhs = (b.1 as u128) * (a.2 as u128);
+        rhs.cmp(&lhs).then_with(|| a.0.cmp(&b.0))
+    });
+    origins.truncate(LEAF_ORIGIN_N);
+
+    // Accumulate whole-interval retains ON TOP of the compound base `acc_entries` (never
+    // from scratch): each accepted origin's retains chain into later origins' trials.
+    let mut acc_entries = base_plan.entries.clone();
+    let mut a_best_traffic = base_c.stats_ext.global + base_c.stats_ext.fold_traffic;
+    let mut a_best_c = base_c;
+    let mut a_best_trace = base_trace;
+    let mut whole_origin_attempted = 0usize;
+    let mut whole_origin_kept = 0usize;
+    let mut fully_realized_origins = 0usize;
+
+    for (v, _num, _den) in origins {
         let occ = match occ_idx.get(&v) {
-            Some(o) if j + 1 < o.len() => o,
-            _ => continue, // no closing occurrence in the plan — cannot open a gap
+            Some(o) if o.len() >= 2 => o.clone(),
+            _ => continue, // no multi-occurrence plan footprint — nothing to retain
         };
-        let entry_idx = occ[j];
-        if entries[entry_idx].action != PlanAction::Bypass {
-            continue; // already retained via a chain — nothing to add here
-        }
-
-        // CS-M4 Task 2: charge one leaf-search credit. NO reserve (`try_spend(0)`) —
-        // Stage A's `normalize` reserve (`try_spend(1)`) arrives in Task 3. At
-        // production (`multiplier=1, gap_cap=512, enforce=true`) the round's accrued
-        // budget `min(G_r,1200) ≥` the `≤ min(G_r,512)` candidates this loop truncates
-        // to, so `try_spend(0)` NEVER refuses → this loop admits exactly the CS-M3 set
-        // (byte-for-byte). In count-only mode (Phase-0b) `try_spend` always succeeds and
-        // only tallies `leaf_calls`. A refusal (a future under-accrued caller) simply
-        // stops the loop with the best-so-far plan.
-        if !trial_budget.try_spend(0) {
+        // Charge one leaf-search credit, RESERVING 1 for the post-stage `normalize`
+        // (spec §5). A refusal (budget exhausted — B-only already spent its share) stops
+        // Stage A with the best-so-far accumulated plan.
+        if !trial_budget.try_spend(1) {
             break;
         }
-        attempted += 1;
-        entries[entry_idx].action = PlanAction::Retain; // tentative flip
-        let trial = plan_from(base_plan, entries.clone());
-        compiles += 1;
+        whole_origin_attempted += 1;
+        let last = occ.len() - 1;
+        // Mirror `compound_batch_plan_with` (`price.rs:598-627`) for a SINGLE leaf: Retain
+        // every occurrence but the last, Bypass the last — applied on top of `acc_entries`.
+        // Save prior actions so a reject reverts the WHOLE origin.
+        let saved: Vec<PlanAction> = occ.iter().map(|&k| acc_entries[k].action).collect();
+        for (i, &k) in occ.iter().enumerate() {
+            acc_entries[k].action =
+                if i < last { PlanAction::Retain } else { PlanAction::Bypass };
+        }
+        let trial = plan_from(base_plan, acc_entries.clone());
         match compile_distilled_planned(d, budget, &trial) {
             Ok((c, t)) => {
                 let dram = c.stats_ext.global + c.stats_ext.fold_traffic;
                 let clean = certify(&c, &t).is_ok() && !diverged(&t);
-                if clean && dram < best_traffic {
-                    best_traffic = dram;
-                    best_c = c;
-                    best_trace = t;
-                    kept += 1; // KEEP: leave the flip standing in `entries`
+                if clean && dram < a_best_traffic {
+                    // Fully realized iff EVERY retained occurrence of `v` stays resident
+                    // (its next occurrence serves `Resident`, spec §3) — diagnostic only.
+                    let realized = realized_openings(&trial, &t);
+                    if occ[..last].iter().all(|k| realized.contains(k)) {
+                        fully_realized_origins += 1;
+                    }
+                    a_best_traffic = dram;
+                    a_best_c = c;
+                    a_best_trace = t;
+                    whole_origin_kept += 1; // KEEP: whole-interval retain stays in acc_entries
                 } else {
-                    entries[entry_idx].action = PlanAction::Bypass; // revert
+                    for (&k, &a) in occ.iter().zip(saved.iter()) {
+                        acc_entries[k].action = a; // revert the WHOLE origin
+                    }
                 }
             }
-            // Realized floor exceeded budget with this retention — revert (a value that
-            // fit alone but not after a compound pin would surface here as a Task-4
-            // finding; the caller's fidelity gate makes any such surprise visible).
+            // The whole-interval retain's realized floor exceeded the budget — revert whole.
             Err(CompileError::BudgetBelowFloor { .. }) => {
-                entries[entry_idx].action = PlanAction::Bypass;
+                for (&k, &a) in occ.iter().zip(saved.iter()) {
+                    acc_entries[k].action = a;
+                }
             }
             Err(e) => return Err(e),
         }
     }
 
-    let final_plan = plan_from(base_plan, entries);
-    // CS-M4 Task 2: always `Complete` (no `Incomplete` selection until Task 5). The
-    // per-gap loop is spec §4's Stage-B residual, so its attempted/kept land in the
-    // residual-gap counter fields; the Stage-A/A'/normalize fields stay default (0)
-    // until Tasks 3/4 populate them.
-    let counters = LeafReclaimCounters {
-        residual_gap_attempted: attempted,
-        residual_gap_kept: kept,
-        ..LeafReclaimCounters::default()
-    };
-    Ok(LeafReclaimResult::Complete { plan: final_plan, c: best_c, trace: best_trace, counters })
+    // Post-stage `normalize` (spec §4): demote Stage A's own refused (unrealized) retains
+    // to `Bypass` — behavior- and traffic-neutral (spec §3). `_unrealized` is 0 given the
+    // reserved credit; the TERMINAL normalize / `Incomplete` selection is Task 5, NOT here
+    // (this `reclaim_leaves` still returns `Complete`).
+    let stage_a_plan = plan_from(base_plan, acc_entries);
+    let (norm_plan, norm_c, norm_trace, demoted, _unrealized) =
+        normalize(d, budget, stage_a_plan, a_best_c, a_best_trace, trial_budget)?;
+
+    // A+B residual: per-gap over the NORMALIZED plan's `Bypass` gaps (Stage A's retained
+    // occurrences are non-`Bypass` → skipped by the loop). Reserve 1 for the terminal
+    // normalize (Task 5); shares the round budget with B-only + Stage A.
+    let (ab_entries, ab_c, ab_trace, ab_attempted, ab_kept) = per_gap_reclaim(
+        d,
+        budget,
+        base_plan,
+        &occ_idx,
+        &order,
+        &meta,
+        gap_cap,
+        /*reserve*/ 1,
+        norm_plan.entries.clone(),
+        norm_c,
+        norm_trace,
+        trial_budget,
+    )?;
+    let ab_key = (ab_c.stats_ext.global + ab_c.stats_ext.fold_traffic, ab_c.stats.program_lanes);
+
+    // ── Ship the lexicographic-min by `(traffic, instrs)`; EXACT tie → B-only (keeps
+    // byte-identity with CS-M3 when A+B adds nothing). Counters describe the SHIPPED plan.
+    // Always `Complete` (Task 5 adds `Incomplete`).
+    if ab_key < b_key {
+        let final_plan = plan_from(base_plan, ab_entries);
+        let counters = LeafReclaimCounters {
+            whole_origin_attempted,
+            whole_origin_kept,
+            fully_realized_origins,
+            refused_retains_normalized: demoted,
+            normalize_calls: 1,
+            residual_gap_attempted: ab_attempted,
+            residual_gap_kept: ab_kept,
+            safety_net_chose_b_only: false,
+            ..LeafReclaimCounters::default()
+        };
+        Ok(LeafReclaimResult::Complete { plan: final_plan, c: ab_c, trace: ab_trace, counters })
+    } else {
+        // B-only shipped: the SHIPPED plan has no whole-origin retains and no `normalize`,
+        // so those counter fields are 0 (they describe the shipped plan). The A+B path
+        // still RAN — its cost is folded into the shared `leaf_calls`;
+        // `safety_net_chose_b_only` flags the fallback for T6 diagnostics.
+        let final_plan = plan_from(base_plan, b_entries);
+        let counters = LeafReclaimCounters {
+            residual_gap_attempted: b_attempted,
+            residual_gap_kept: b_kept,
+            safety_net_chose_b_only: true,
+            ..LeafReclaimCounters::default()
+        };
+        Ok(LeafReclaimResult::Complete { plan: final_plan, c: b_c, trace: b_trace, counters })
+    }
 }
 
 // ── CS-M4 Task 1: realized-retention model ─────────────────────────────────────
@@ -1056,6 +1253,13 @@ pub struct LeafReclaimCounters {
     pub residual_gap_attempted: usize,
     pub residual_gap_kept: usize,
     pub fully_realized_origins: usize,
+    /// CS-M4 Task 3 (RR no-regression safety net): `true` iff this round shipped the
+    /// pure per-gap B-only candidate (the CS-M3 floor) because the A+B candidate did NOT
+    /// strictly beat it on `(traffic, instrs)`. When set, all `whole_origin_*` /
+    /// `normalize_*` fields are `0` (they describe the SHIPPED plan, which has no
+    /// whole-origin retains); the A+B path still RAN (its cost is in `leaf_calls`), it
+    /// just lost the lexicographic-min. A T6 diagnostic hook.
+    pub safety_net_chose_b_only: bool,
 }
 
 /// The outcome of the two-stage leaf reclaim (spec §3/§4). Task 1 DEFINES the type;
