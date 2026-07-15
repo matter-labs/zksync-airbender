@@ -1,37 +1,29 @@
 //! Streaming Sethi–Ullman peak: lane demand to compute a cone with nothing
 //! resident, under SU-optimal (peak-descending) child order.
 //!
-//! # Cost model (corrected streaming model)
+//! # Cost model (uniform streaming fold)
 //!
-//! `peak(leaf) = 0`; a streamable Mul fuses (product never materialized); for
-//! a fold node over its NON-streamable children `F` sorted desc by peak:
-//! `|F|=0 → 0`, `|F|=1 → peak(F0)`, `|F|≥2 → max(peak(F0), width(node) +
-//! peak(F1))`. fma temp rule: a 2-arity Mul child under Add with a
-//! non-streamable operand contributes that operand's computation as a fold
-//! child (the temp is stashed at the operand's width).
+//! `peak(leaf) = 0`; a streamable Mul fuses (product never materialized);
+//! for ANY non-streamable fold node — Add and Mul alike — over its
+//! NON-streamable children `F` sorted desc by peak: `|F|=0 → 0`,
+//! `|F|=1 → peak(F0)`, `|F|≥2 → max(peak(F0), width(node) + peak(F1))` —
+//! while the i-th (i ≥ 1) child computes in the accumulator, the fold's
+//! partial value sits stashed at `width(node)`.
 //!
-//! # Realization notes
+//! No product-side temp is ever charged: fma is emitted only when both
+//! operands are ready; non-ready products lower as Mul-folds (stash parent,
+//! compute product in acc, combine), which is instruction-cheaper and
+//! peak-lower than fma-with-temps.
 //!
-//! - An Add's fold set `F` is its non-streamable children only: streamable
-//!   children (leaves, fma-Muls) stream into the accumulator for free, and a
-//!   single non-streamable child computes straight into the accumulator
-//!   (`|F|=1 → peak(F0)`, no width charge).
-//! - A NON-streamable Mul has no additive streaming accumulator to hide
-//!   behind: a computed operand must be stashed as a temp before the product
-//!   can stream into the consumer. This is the fma temp rule, realized by
-//!   applying the general fold formula to the Mul over ALL of its children
-//!   (streamable operands contribute peak 0, non-streamable ones their own
-//!   peak). Any non-streamable Mul has ≥2 children, so the `|F|≥2` arm fires
-//!   and charges `width(mul)` over the second-highest operand peak — the
-//!   nested-fold guard case `Add(Mul(Add(l,l), l), l)` lands on
-//!   `max(peak(innerAdd), width(mul) + 0) = 4` at Ext widths.
-//!   Conservative choice (documented as a Task-3 concern): the temp is
-//!   charged at `width(mul)` (the join of operand widths), not the computed
-//!   operand's own width — these differ only for a Base computed operand
-//!   multiplied by an Ext leaf, where we charge 4 instead of 1.
-//! - A >2-arity Mul is never streamable (streamable is strictly 2-arity per
-//!   spec), so a pure-leaf 3-arity Mul charges `width(mul)` — conservative:
-//!   the partial product is modeled as a stashed temp.
+//! # Notes
+//!
+//! - Streamable children (leaves, fma-Muls) stream into the accumulator for
+//!   free; a single non-streamable child computes straight into the
+//!   accumulator (`|F|=1 → peak(F0)`, no width charge).
+//! - A ≥3-arity Mul is never streamable (`streamable` is strictly 2-arity
+//!   per spec) — it is not an fma candidate — but a pure-leaf one is still
+//!   peak-free: all operands stream into its own Mul-fold accumulator
+//!   (`F = ∅`).
 //! - A root that is itself a leaf or a streamable Mul has peak 0 (its value
 //!   streams into the materialize sink without occupying a cell).
 //!
@@ -74,26 +66,20 @@ impl Memo {
         }
         let v = match view.kind(e) {
             NodeKind::Leaf(_) => 0,
-            NodeKind::Add(args) => {
-                // Fold set = non-streamable children only; streamables are free.
-                let mut fold = Vec::new();
-                for &a in args {
-                    if !self.streamable(view, a) {
-                        fold.push(self.peak(view, a));
-                    }
-                }
-                fold_peak(view, e, fold)
-            }
-            NodeKind::Mul(args) => {
+            // Uniform fold: Add and Mul alike, over non-streamable children
+            // only (streamables stream, contributing nothing). A streamable
+            // Mul is a fused fma — never materialized, peak 0 (its F would
+            // be empty anyway, so the formula agrees; the check just skips
+            // the walk).
+            NodeKind::Add(args) | NodeKind::Mul(args) => {
                 if self.streamable(view, e) {
-                    0 // fused fma: the product is never materialized
+                    0
                 } else {
-                    // fma temp rule: every operand is a fold child (streamable
-                    // operands have peak 0 by definition); the |F|≥2 arm
-                    // charges width(mul) for the stashed temp.
                     let mut fold = Vec::new();
                     for &a in args {
-                        fold.push(self.peak(view, a));
+                        if !self.streamable(view, a) {
+                            fold.push(self.peak(view, a));
+                        }
                     }
                     fold_peak(view, e, fold)
                 }
@@ -190,25 +176,75 @@ mod tests {
         assert_eq!(cone_peak(&v, ExprId(6)), 0);
     }
 
-    /// Add(Mul(Add(l,l), l), l) at Ext widths (challenge leaves): the inner
-    /// Add's value is a computed multiplicand — it must materialize as an fma
-    /// temp of width 4. Peak = 4.
+    /// Add(M1, M2) at Ext widths with M_i = Mul(Add(e,e), e): each product
+    /// computes entirely in the accumulator (stream-add the inner Add, Mul
+    /// the leaf in — `|F|=1 → 0`), but the outer fold has TWO non-streamable
+    /// children: while M2 computes in the acc, M1's partial value is stashed
+    /// at width 4. Peak = max(0, 4 + 0) = 4.
     #[test]
     fn nested_fold_spills_width() {
-        let sources = vec![challenge_source(); 4];
+        let sources = vec![challenge_source(); 6];
         let exprs = vec![
             Expr::Source(SourceId(0)),
             Expr::Source(SourceId(1)),
             Expr::Source(SourceId(2)),
             Expr::Source(SourceId(3)),
-            Expr::Add(vec![ExprId(0), ExprId(1)]), // inner Add, Ext (4 lanes)
-            Expr::Mul(vec![ExprId(4), ExprId(2)]), // non-streamable fma: temp = inner Add
-            Expr::Add(vec![ExprId(5), ExprId(3)]), // outer fold
+            Expr::Source(SourceId(4)),
+            Expr::Source(SourceId(5)),
+            Expr::Add(vec![ExprId(0), ExprId(1)]), // A1, Ext (4 lanes)
+            Expr::Mul(vec![ExprId(6), ExprId(2)]), // M1 = A1 * leaf: Mul-fold, peak 0
+            Expr::Add(vec![ExprId(3), ExprId(4)]), // A2
+            Expr::Mul(vec![ExprId(8), ExprId(5)]), // M2 = A2 * leaf
+            Expr::Add(vec![ExprId(7), ExprId(9)]), // outer fold: F = {M1, M2}
+        ];
+        let l = layer(sources, exprs, vec![root(ExprId(10))]);
+        let v = view(&l);
+        assert!(!streamable(&v, ExprId(7)), "Mul with a computed operand must not stream");
+        assert_eq!(cone_peak(&v, ExprId(7)), 0, "Mul-fold computes in the acc, no temp");
+        assert_eq!(cone_peak(&v, ExprId(10)), 4);
+    }
+
+    /// Ext Add(M, e) with M = Mul(C, x), C = Add(b1,b2) Base-computed
+    /// (peak 0), x/e Ext leaves. Walk trace: Load b1; Add b2 (C in acc);
+    /// Mul x (product in acc); Add e — no stash anywhere. Peak = 0: a
+    /// non-ready product lowers as a Mul-fold, never as fma-with-temp.
+    #[test]
+    fn mixed_width_product_needs_no_temp() {
+        let sources =
+            vec![base_read(0), base_read(1), challenge_source(), challenge_source()];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+            Expr::Source(SourceId(2)),             // x (Ext)
+            Expr::Source(SourceId(3)),             // e (Ext)
+            Expr::Add(vec![ExprId(0), ExprId(1)]), // C: Base computed, peak 0
+            Expr::Mul(vec![ExprId(4), ExprId(2)]), // M: |F|=1 → peak(C) = 0
+            Expr::Add(vec![ExprId(5), ExprId(3)]), // outer: |F|=1 → peak(M) = 0
         ];
         let l = layer(sources, exprs, vec![root(ExprId(6))]);
         let v = view(&l);
-        assert!(!streamable(&v, ExprId(5)), "Mul with a computed operand must not stream");
-        assert_eq!(cone_peak(&v, ExprId(6)), 4);
+        assert_eq!(v.width(ExprId(6)), 4, "outer Add is Ext (precondition)");
+        assert_eq!(cone_peak(&v, ExprId(6)), 0);
+    }
+
+    /// Add(Mul(l1,l2,l3), l4) all Base: a 3-arity Mul is not an fma
+    /// candidate (streamable is strictly 2-arity) but is still free to
+    /// fold — all operands stream into its own Mul-fold accumulator.
+    #[test]
+    fn pure_leaf_wide_product_is_free() {
+        let sources = vec![base_read(0), base_read(1), base_read(2), base_read(3)];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+            Expr::Source(SourceId(2)),
+            Expr::Source(SourceId(3)),
+            Expr::Mul(vec![ExprId(0), ExprId(1), ExprId(2)]),
+            Expr::Add(vec![ExprId(4), ExprId(3)]),
+        ];
+        let l = layer(sources, exprs, vec![root(ExprId(5))]);
+        let v = view(&l);
+        assert!(!streamable(&v, ExprId(4)), "3-arity Mul is not an fma candidate");
+        assert_eq!(cone_peak(&v, ExprId(5)), 0);
     }
 
     /// Fold with two computed Ext children: `max(p0, 4 + p1)` with F sorted
@@ -216,16 +252,16 @@ mod tests {
     /// (sorting must make order irrelevant) and at (4, 4).
     #[test]
     fn two_nonstreamable_children_charge_width() {
-        // Builds the peak-4 cone from `nested_fold_spills_width` twice and a
-        // peak-0 computed Ext child (Add of two challenge leaves), then folds
-        // selected pairs.
-        // Sources: 8 challenges for two nested cones + 2 for the flat Add.
-        let sources = vec![challenge_source(); 10];
-        // Nested cone A: exprs 0..=6 (root 6, peak 4).
-        // Nested cone B: exprs 7..=13 (root 13, peak 4).
-        // Flat Ext Add C: exprs 14..=16 (root 16, peak 0).
+        // Builds the peak-4 spill cone from `nested_fold_spills_width` twice
+        // and a peak-0 computed Ext child (Add of two challenge leaves),
+        // then folds selected pairs.
+        // Sources: 6 challenges per spill cone + 2 for the flat Add.
+        let sources = vec![challenge_source(); 14];
+        // Spill cone A: exprs 0..=10 (root 10, peak 4).
+        // Spill cone B: exprs 11..=21 (root 21, peak 4).
+        // Flat Ext Add C: exprs 22..=24 (root 24, peak 0).
         let mut exprs = Vec::new();
-        for (expr_base, src_base) in [(0u32, 0u32), (7, 4)] {
+        for (expr_base, src_base) in [(0u32, 0u32), (11, 6)] {
             let e = |i: u32| ExprId(expr_base + i);
             let s = |i: u32| SourceId(src_base + i);
             exprs.extend([
@@ -233,30 +269,34 @@ mod tests {
                 Expr::Source(s(1)),
                 Expr::Source(s(2)),
                 Expr::Source(s(3)),
-                Expr::Add(vec![e(0), e(1)]),
-                Expr::Mul(vec![e(4), e(2)]),
-                Expr::Add(vec![e(5), e(3)]),
+                Expr::Source(s(4)),
+                Expr::Source(s(5)),
+                Expr::Add(vec![e(0), e(1)]), // A1
+                Expr::Mul(vec![e(6), e(2)]), // M1
+                Expr::Add(vec![e(3), e(4)]), // A2
+                Expr::Mul(vec![e(8), e(5)]), // M2
+                Expr::Add(vec![e(7), e(9)]), // cone root: F = {M1, M2} → 4
             ]);
         }
         exprs.extend([
-            Expr::Source(SourceId(8)),
-            Expr::Source(SourceId(9)),
-            Expr::Add(vec![ExprId(14), ExprId(15)]),
+            Expr::Source(SourceId(12)),
+            Expr::Source(SourceId(13)),
+            Expr::Add(vec![ExprId(22), ExprId(23)]),
         ]);
-        let (a, b, c) = (ExprId(6), ExprId(13), ExprId(16));
+        let (a, b, c) = (ExprId(10), ExprId(21), ExprId(24));
         // Folds under test: (A, C) both orders, and (A, B).
-        exprs.push(Expr::Add(vec![a, c])); // 17
-        exprs.push(Expr::Add(vec![c, a])); // 18
-        exprs.push(Expr::Add(vec![a, b])); // 19
-        let l = layer(sources, exprs, vec![root(ExprId(17)), root(ExprId(18)), root(ExprId(19))]);
+        exprs.push(Expr::Add(vec![a, c])); // 25
+        exprs.push(Expr::Add(vec![c, a])); // 26
+        exprs.push(Expr::Add(vec![a, b])); // 27
+        let l = layer(sources, exprs, vec![root(ExprId(25)), root(ExprId(26)), root(ExprId(27))]);
         let v = view(&l);
-        assert_eq!(cone_peak(&v, a), 4, "nested cone peak (precondition)");
+        assert_eq!(cone_peak(&v, a), 4, "spill cone peak (precondition)");
         assert_eq!(cone_peak(&v, c), 0, "flat Ext Add peak (precondition)");
         // (p0, p1) = (4, 0): max(4, 4 + 0) = 4, regardless of child order.
-        assert_eq!(cone_peak(&v, ExprId(17)), 4);
-        assert_eq!(cone_peak(&v, ExprId(18)), 4);
+        assert_eq!(cone_peak(&v, ExprId(25)), 4);
+        assert_eq!(cone_peak(&v, ExprId(26)), 4);
         // (p0, p1) = (4, 4): max(4, 4 + 4) = 8.
-        assert_eq!(cone_peak(&v, ExprId(19)), 8);
+        assert_eq!(cone_peak(&v, ExprId(27)), 8);
     }
 
     /// A root that is itself a leaf, and one that is a streamable fma, both
