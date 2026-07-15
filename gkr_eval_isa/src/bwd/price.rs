@@ -884,7 +884,7 @@ fn residency_before_entry(
     None
 }
 
-fn reclaim_leaves(
+pub fn reclaim_leaves(
     d: &DistilledLayer,
     budget: usize,
     observed: &FrozenDemand,
@@ -1255,10 +1255,9 @@ fn reclaim_leaves(
         (abb_entries, abb_c, abb_trace, abb_attempted, abb_kept, abb_key)
     };
 
-    // ── Ship the lexicographic-min by `(traffic, instrs)`; EXACT tie → B-only (keeps
+    // ── Pick the lexicographic-min by `(traffic, instrs)`; EXACT tie → B-only (keeps
     // byte-identity with CS-M3 when A+B adds nothing). Counters describe the SHIPPED plan.
-    // Always `Complete` (Task 5 adds `Incomplete`).
-    if ab_key < b_key {
+    let (shipped_plan, shipped_c, shipped_trace, mut counters) = if ab_key < b_key {
         let final_plan = plan_from(base_plan, ab_entries);
         let counters = LeafReclaimCounters {
             whole_origin_attempted,
@@ -1271,12 +1270,13 @@ fn reclaim_leaves(
             residual_gap_attempted: ab_attempted,
             residual_gap_kept: ab_kept,
             safety_net_chose_b_only: false,
+            terminal_demoted: 0, // set by the terminal normalize below
         };
-        Ok(LeafReclaimResult::Complete { plan: final_plan, c: ab_c, trace: ab_trace, counters })
+        (final_plan, ab_c, ab_trace, counters)
     } else {
-        // B-only shipped: the SHIPPED plan has no whole-origin retains and no `normalize`,
-        // so those counter fields are 0 (they describe the shipped plan). The A+B path
-        // still RAN — its cost is folded into the shared `leaf_calls`;
+        // B-only shipped: the SHIPPED plan has no whole-origin retains and no intermediate
+        // `normalize`, so those counter fields are 0 (they describe the shipped plan). The
+        // A+B path still RAN — its cost is folded into the shared `leaf_calls`;
         // `safety_net_chose_b_only` flags the fallback for T6 diagnostics.
         let final_plan = plan_from(base_plan, b_entries);
         let counters = LeafReclaimCounters {
@@ -1285,7 +1285,57 @@ fn reclaim_leaves(
             safety_net_chose_b_only: true,
             ..LeafReclaimCounters::default()
         };
-        Ok(LeafReclaimResult::Complete { plan: final_plan, c: b_c, trace: b_trace, counters })
+        (final_plan, b_c, b_trace, counters)
+    };
+
+    // ══ CS-M4 Task 5 (spec §3/§4) — TERMINAL normalize on the SHIPPED (min) plan ══
+    // Stage B never leaves an unrealized `Retain` of its OWN (it keeps a gap flip only on a
+    // strict traffic drop, which requires the retention to realize), but a Stage-B addition
+    // CAN — by taking capacity at admission — strand an EARLIER whole-origin (A/A') `Retain`
+    // whose realization the intermediate normalizes had confirmed. This single, behavior- and
+    // traffic-NEUTRAL pass (spec §3: an unrealized `Retain` held zero capacity, so demoting it
+    // frees nothing and changes no traffic) demotes exactly those stranded retains to `Bypass`,
+    // closing the pipeline to the zero-unrealized-`Retain` shipped-plan invariant.
+    //
+    // Because it is traffic-neutral, it does NOT change which candidate was the min — so it
+    // runs AFTER the selection above, on whichever plan won. It is a CHECKED spend
+    // (`try_spend(0)`): if no credit remains it returns WITHOUT recompiling (no underflow, no
+    // `HARD_MAX` breach), signalling `Incomplete`. The reserved credit each earlier stage keeps
+    // (`try_spend(1)` throughout A/A'/B) funds it in the common case, so `Incomplete` is rare.
+    let (norm_plan, norm_c, norm_trace, demoted_t, unrealized_after) =
+        normalize(d, budget, shipped_plan, shipped_c, shipped_trace, trial_budget)?;
+    counters.refused_retains_normalized += demoted_t;
+    counters.terminal_demoted = demoted_t;
+    counters.normalize_calls += 1;
+
+    if unrealized_after == 0 {
+        // The shipped-plan invariant (spec §3): a `Complete` plan has ZERO unrealized `Retain`
+        // (`Retain` ⟺ realized). Re-derive it from the normalized trace and assert — a defensive
+        // gate on the terminal normalize, NOT a runtime branch (the `== 0` already decided it).
+        debug_assert!(
+            {
+                let realized = realized_openings(&norm_plan, &norm_trace);
+                norm_plan
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .all(|(k, e)| e.action != PlanAction::Retain || realized.contains(&k))
+            },
+            "terminal normalize returned Complete but the plan still holds an unrealized Retain",
+        );
+        Ok(LeafReclaimResult::Complete { plan: norm_plan, c: norm_c, trace: norm_trace, counters })
+    } else {
+        // Budget was exhausted before the terminal normalize could recompile: the plan is NOT
+        // an honest-residency record. INELIGIBLE to ship — `priced_rounds` marks the round
+        // `feasible = false` (best-round selection skips it, the engine falls back to the
+        // coordinate-correct baseline) and OR-s `saw_incomplete_round` as a diagnostic.
+        Ok(LeafReclaimResult::Incomplete {
+            plan: norm_plan,
+            c: norm_c,
+            trace: norm_trace,
+            counters,
+            unrealized: unrealized_after,
+        })
     }
 }
 
@@ -1507,6 +1557,12 @@ pub struct LeafReclaimCounters {
     /// whole-origin retains); the A+B path still RAN (its cost is in `leaf_calls`), it
     /// just lost the lexicographic-min. A T6 diagnostic hook.
     pub safety_net_chose_b_only: bool,
+    /// CS-M4 Task 5 (spec §3/§4): retains the TERMINAL normalize demoted on the SHIPPED
+    /// (min) plan — Stage-B-created stranded retains cleaned to close the zero-unrealized
+    /// invariant. `0` on the common (nothing stranded) path; `> 0` witnesses that the
+    /// terminal normalize was load-bearing on this run. Also counted in the
+    /// `refused_retains_normalized` total.
+    pub terminal_demoted: usize,
 }
 
 /// The outcome of the two-stage leaf reclaim (spec §3/§4). Task 1 DEFINES the type;

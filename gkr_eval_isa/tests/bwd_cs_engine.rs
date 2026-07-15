@@ -1309,3 +1309,194 @@ fn normalize_demotes_refused_retain_and_is_idempotent() {
     assert_eq!(budget_ctr.available, available_before, "idempotent normalize spends no budget");
     let _ = plan2;
 }
+
+// ── CS-M4 Task 5: terminal normalize + Complete/Incomplete + zero-unrealized invariant ──
+
+/// THE deterministic (fast, non-ignored) red for the terminal normalize (spec §3/§4).
+///
+/// Part A — the terminal-normalize LOGIC is load-bearing on a genuinely stranded plan.
+/// A single-budget `compile_distilled_planned` cannot express a feasible-with-refusal on
+/// uniform-Ext fold leaves — the acc-width == retention-width coincidence means it either
+/// fully realizes or hits `BudgetBelowFloor`, so a synthetic Stage-B addition never strands
+/// through `reclaim_leaves`' own compiles (a verified CS-M4 finding; the real fixtures also
+/// happen not to strand at b16). We therefore reproduce the STRANDED accumulated plan — the
+/// exact shape a Stage-B gap-retention leaves when it consumes capacity at an earlier
+/// whole-origin retain's admission — via the split lower-budget dial (the Task-1 witness).
+/// This IS the min plan `reclaim_leaves` ships BEFORE its terminal pass; the terminal pass is
+/// exactly the `normalize` call that pass makes. Assert: BEFORE ≥1 unrealized (stranded)
+/// Retain; AFTER the terminal `normalize`, ZERO unrealized and realized traffic UNCHANGED
+/// (spec §3: an unrealized Retain held zero capacity, so demoting it frees nothing). Without
+/// the terminal pass the stranded Retain would ship; with it the plan is an honest-residency
+/// record.
+///
+/// Part B — the `reclaim_leaves` WIRING: the terminal normalize runs on the shipped min plan
+/// and the returned `Complete` plan is a zero-unrealized record. On the (clean-by-construction)
+/// P/Q synthetic `reclaim_leaves` ships the B-only floor, whose `normalize_calls` is exactly
+/// the ONE terminal pass — `0` without the Task-5 terminal normalize, so this assertion is a
+/// genuine fail-without / pass-with signal for the wiring.
+#[test]
+fn terminal_normalize_cleans_stage_b_stranded_retain() {
+    use gkr_eval_isa::bwd::price::{
+        normalize, realized_openings, reclaim_leaves, LeafReclaimResult, TrialBudget,
+    };
+
+    // ── Part A: the terminal normalize cleans a stranded (Stage-B-shaped) plan ──────────
+    let (d, budget, stranded_plan, c, trace) = synthetic_layer_with_refusable_whole_origin();
+    let realized_before = realized_openings(&stranded_plan, &trace);
+    let unreal_before = stranded_plan
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(k, e)| e.action == PlanAction::Retain && !realized_before.contains(k))
+        .count();
+    assert!(unreal_before >= 1, "witness must carry ≥1 stranded (unrealized) Retain BEFORE");
+    let traffic_before = c.stats_ext.global + c.stats_ext.fold_traffic;
+
+    let mut tb = TrialBudget { available: 1 << 20, ..Default::default() };
+    let (clean_plan, clean_c, clean_trace, demoted, unrealized_after) =
+        normalize(&d, budget, stranded_plan, c, trace, &mut tb).unwrap();
+    assert!(demoted >= 1, "terminal normalize must demote the stranded Retain(s)");
+    assert_eq!(unrealized_after, 0, "terminal normalize must leave ZERO unrealized");
+    let realized_after = realized_openings(&clean_plan, &clean_trace);
+    for (k, e) in clean_plan.entries.iter().enumerate() {
+        if e.action == PlanAction::Retain {
+            assert!(realized_after.contains(&k), "unrealized Retain @ {k} survived terminal normalize");
+        }
+    }
+    assert_eq!(
+        clean_c.stats_ext.global + clean_c.stats_ext.fold_traffic,
+        traffic_before,
+        "terminal normalize is traffic-neutral (an unrealized Retain held zero capacity)",
+    );
+
+    // ── Part B: reclaim_leaves ships a Complete, zero-unrealized plan; the terminal pass
+    // is wired (normalize_calls accounts for it). ─────────────────────────────────────────
+    let dq = synthetic_refusable_whole_origin_layer(3);
+    let bud = 16usize;
+    let frozen0 = coordinate_correct_frozen(&dq, bud);
+    let base0 = compound_batch_plan(&frozen0, &BTreeSet::new());
+    let (bc0, bt0) = compile_distilled_planned(&dq, bud, &base0).unwrap();
+    let observed = freeze_demand(&dq, &bt0, &bc0.program, &bc0.specials);
+    let base = compound_batch_plan(&observed, &BTreeSet::new());
+    let (bc, bt) = compile_distilled_planned(&dq, bud, &base).unwrap();
+    let mut tb2 = TrialBudget { available: 1 << 20, ..Default::default() };
+    let res = reclaim_leaves(&dq, bud, &observed, &base, bc, bt, RECLAIM_N, &mut tb2).unwrap();
+    let (plan, trace, counters) = match res {
+        LeafReclaimResult::Complete { plan, trace, counters, .. } => (plan, trace, counters),
+        LeafReclaimResult::Incomplete { unrealized, .. } => {
+            panic!("reclaim_leaves must return Complete on the ample-budget synthetic, got Incomplete({unrealized})")
+        }
+    };
+    let realized = realized_openings(&plan, &trace);
+    for (k, e) in plan.entries.iter().enumerate() {
+        if e.action == PlanAction::Retain {
+            assert!(realized.contains(&k), "reclaim_leaves shipped an unrealized Retain @ {k}");
+        }
+    }
+    // The terminal normalize always runs (spec §3): it is +1 `normalize_calls` over the
+    // pre-terminal count (0 for the B-only floor, 2 for the A+B path). Removing it drops this.
+    let expected = if counters.safety_net_chose_b_only { 1 } else { 3 };
+    assert_eq!(
+        counters.normalize_calls, expected,
+        "terminal normalize must be counted (sn_b={})",
+        counters.safety_net_chose_b_only,
+    );
+}
+
+/// Heavy G-M0 integration gate (spec §3): for all four tracked fixtures the shipped CS plan
+/// is a zero-unrealized `Complete` honest-residency record, its certificate holds by exact
+/// integer equality, and the shipped program is value-exact. No round returns `Incomplete`
+/// (the reserve funds the terminal normalize). None strands at b16 in practice, so this is
+/// the invariant gate rather than the red — but it is the through-`reclaim_leaves` proof that
+/// the pipeline closes on real data.
+#[test]
+#[ignore] // heavy (~minutes): full production priced runs at b16 on the four G-M0 fixtures.
+fn pipeline_returns_complete_zero_unrealized() {
+    use gkr_eval_isa::bwd::price::realized_openings;
+    for name in [
+        "keccak_special5_layout_gkr.json",
+        "blake2_with_extended_control_layout_gkr.json",
+        "bigint_with_extended_control_layout_gkr.json",
+        "unified_reduced_machine_layout_gkr.json",
+    ] {
+        let (layer, cross) = load_layer(name, 0);
+        let out = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+
+        // (a) no round exhausted its normalization budget; none of the four falls back.
+        assert!(!out.saw_incomplete_round, "{name}: a round returned Incomplete");
+        assert!(!out.fell_back_to_baseline, "{name}: CS path unexpectedly fell back to baseline");
+
+        // (b) zero unrealized Retain on the shipped plan (re-distill + recompile for the trace).
+        if let Some(plan) = out.plan.as_ref() {
+            let d = distill(&layer, BwdRegime::Ext, &cross, Some(&out.unit_permutation));
+            let (_c, trace) = compile_distilled_planned(&d, 16, plan).unwrap();
+            let realized = realized_openings(plan, &trace);
+            for (k, e) in plan.entries.iter().enumerate() {
+                if e.action == PlanAction::Retain {
+                    assert!(realized.contains(&k), "{name}: unrealized Retain @ {k}");
+                }
+            }
+        }
+
+        // (c) certificate exact-integer equality on the shipped compile.
+        assert_eq!(
+            out.certificate.counted_traffic, out.certificate.reported_traffic,
+            "{name}: shipped program certificate must be Ok (counted == reported)",
+        );
+
+        // (d) value-parity on the shipped program (same reconstruction as the engine gate).
+        let d_used = (!out.fell_back_to_baseline)
+            .then(|| distill(&layer, BwdRegime::Ext, &cross, Some(&out.unit_permutation)));
+        let bl_d;
+        let d_ref = match &d_used {
+            Some(d) => d,
+            None => {
+                bl_d = distill(&layer, BwdRegime::Ext, &cross, None);
+                &bl_d
+            }
+        };
+        assert_bwd_value_parity(&out.compiled, d_ref, &layer);
+
+        eprintln!(
+            "{name}: Complete zero-unrealized, term_demoted={} normalize_calls={} traffic={}",
+            out.counters.terminal_demoted,
+            out.counters.normalize_calls,
+            out.stats.global + out.stats.fold_traffic,
+        );
+    }
+}
+
+/// Heavy reserve gate (spec §5): the reserved normalization credit (each stage admits only
+/// while `available > 1`) funds the mandatory terminal normalize, so a run never spuriously
+/// returns `Incomplete`. Run the research entry across production and escalated multipliers;
+/// assert `!saw_incomplete_round` and that the shipped plan is `Complete` (did not fall back
+/// to the baseline because a round went Incomplete). `unified` is the fastest G-M0 fixture.
+#[test]
+#[ignore] // heavy (~tens of seconds): unified priced runs at b16 across two multipliers.
+fn normalize_reserve_prevents_spurious_incomplete() {
+    let name = "unified_reduced_machine_layout_gkr.json";
+    let (layer, cross) = load_layer(name, 0);
+    for multiplier in [1usize, 2] {
+        let out = cs_schedule_bwd_layer_research(
+            &layer,
+            BwdRegime::Ext,
+            &cross,
+            16,
+            multiplier,
+            RECLAIM_N,
+            /*enforce_budget*/ true,
+        );
+        assert!(
+            !out.saw_incomplete_round,
+            "{name} (mult={multiplier}): reserved credit failed to fund the terminal normalize",
+        );
+        assert!(
+            !out.fell_back_to_baseline,
+            "{name} (mult={multiplier}): shipped plan is not Complete (fell back to baseline)",
+        );
+        assert_eq!(
+            out.certificate.counted_traffic, out.certificate.reported_traffic,
+            "{name} (mult={multiplier}): shipped certificate must be Ok",
+        );
+    }
+}
