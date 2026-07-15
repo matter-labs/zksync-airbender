@@ -21,7 +21,8 @@ use common::{load_layer, CrossFields};
 use cs::gkr_compiler::dag_ir::{bwd_roots, BwdRegime, DagLayer};
 use gkr_eval_isa::bwd::compile::compile_distilled;
 use gkr_eval_isa::bwd::distill::distill;
-use gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer;
+use gkr_eval_isa::bwd::engine::{cs_schedule_bwd_layer, cs_schedule_bwd_layer_research};
+use gkr_eval_isa::bwd::price::RECLAIM_N;
 use gkr_eval_isa::bwd::search::{
     search_bwd_layer, BwdOrderMutation, BwdSearchConfig, BwdSeedStrategy,
 };
@@ -310,4 +311,135 @@ fn g_m0_comparator() {
         })
         .collect();
     assert!(failures.is_empty(), "G-M0 comparator FAILURES:\n{}", failures.join("\n"));
+}
+
+// ── g_m0_comparator_sweep (CS-M4 Task 6, #[ignore] — in-process 1x/2x sweep) ─────
+
+/// One CS run at a given leaf-reclaim `multiplier` (production `gap_cap=RECLAIM_N`,
+/// `enforce_budget=true`), plus the Tier-2 verdict vs the SHARED GA reference. The
+/// verdict rule is IDENTICAL to `g_m0_comparator`'s pass rule (certificate Ok AND CS
+/// never loses: strict traffic drop, or a tie broken by `instrs`) — but here it is only
+/// RECORDED, never asserted, so the sweep can measure (and report) a Partial.
+struct CsSweepRun {
+    multiplier: usize,
+    traffic: usize,
+    /// Per-run leaf-search `compile_distilled_planned` count (`CsOutcome::leaf_calls`).
+    leaf_calls: usize,
+    instrs: usize,
+    reaches_tier2: bool,
+}
+
+/// Run `cs_schedule_bwd_layer_research(.., multiplier, RECLAIM_N, true)` once and score
+/// it against the already-computed GA reference. Asserts ONLY the per-run sanity gate
+/// (certificate exact-equality `counted_traffic == reported_traffic`); never a tier/GA
+/// gate.
+fn run_cs_sweep(
+    layer: &DagLayer,
+    cross: &CrossFields,
+    multiplier: usize,
+    ga_traffic: usize,
+    ga_instrs: usize,
+) -> CsSweepRun {
+    let out =
+        cs_schedule_bwd_layer_research(layer, BwdRegime::Ext, cross, BUDGET, multiplier, RECLAIM_N, true);
+    let traffic = out.stats.global + out.stats.fold_traffic;
+    let cert_ok = out.certificate.counted_traffic == out.certificate.reported_traffic;
+    // Sanity only — the shipped plan must certify exactly (counted == reported). This is
+    // the sole assertion in the sweep; there is NO cs <= ga / tier gate here.
+    assert!(
+        cert_ok,
+        "CS@{multiplier} certificate must be Ok (counted == reported): counted={} reported={}",
+        out.certificate.counted_traffic, out.certificate.reported_traffic
+    );
+    // Same rule as g_m0_comparator: CS reaches Tier 2 on this fixture iff it never loses
+    // to the GA reference (strict traffic drop, or tie broken by instrs).
+    let reaches_tier2 =
+        traffic < ga_traffic || (traffic == ga_traffic && out.instrs <= ga_instrs);
+    CsSweepRun { multiplier, traffic, leaf_calls: out.leaf_calls, instrs: out.instrs, reaches_tier2 }
+}
+
+/// THE G-M0 multiplier sweep (heavy, in-process): for each of the four gated fixtures it
+/// computes the GA-at-strength reference ONCE (identical config to [`g_m0_comparator`] —
+/// `pop=64, evals=2000, seeds [0,1,2]`, best-of-3), then runs CS at `multiplier=1` and,
+/// ONLY when multiplier 1 misses Tier 2 on that fixture, again at `multiplier=2`. It
+/// prints a per-fixture ledger (GA, CS@1, conditional CS@2 — traffic + leaf-search calls
+/// + tier verdict each, plus the smallest sufficient multiplier ∈ {1, 2, none}) so the
+/// controller can adjudicate the smallest sufficient multiplier per fixture. NO hard
+/// `cs <= ga` assert — the sweep MEASURES (only per-run certificate sanity is asserted,
+/// inside [`run_cs_sweep`]). Run explicitly (NOT part of normal CI, ~GA-bound heavy):
+///
+/// ```text
+/// RUST_MIN_STACK=1073741824 RUSTFLAGS=-Awarnings cargo test -p gkr_eval_isa --release \
+///   --test bwd_cs_comparator g_m0_comparator_sweep -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "G-M0 heavy sweep: 4 circuits x 3 GA seeds at pop=64/evals=2000 (GA-bound) + \
+            CS at multiplier 1 (and conditionally 2) — run explicitly, see doc header"]
+fn g_m0_comparator_sweep() {
+    for &name in G_M0_FIXTURES {
+        let (layer, cross) = load_layer(name, 0);
+        assert!(!bwd_roots(&layer).is_empty(), "{name}: layer 0 must have bwd roots");
+
+        // ── GA-at-strength reference, computed ONCE per fixture (the expensive part) —
+        //    identical config to g_m0_comparator: GA_POP/GA_EVALS over GA_SEEDS,
+        //    best-of-3 by (infeasible, traffic, instrs), DNF-excluded. NEVER re-run per
+        //    multiplier. ──────────────────────────────────────────────────────────────
+        let ga_results: Vec<GaSeedResult> = GA_SEEDS
+            .iter()
+            .map(|&seed| run_ga_seed(&layer, BwdRegime::Ext, &cross, BUDGET, seed, GA_POP, GA_EVALS))
+            .collect();
+        let (ga_traffic, ga_instrs, ga_seed) = match best_of(&ga_results) {
+            Some(g) => (g.traffic, g.instrs, g.seed),
+            // No valid GA baseline (all 3 seeds DNF) — cannot form a reference. Report
+            // and move on; the sweep is measurement-only, never a hard fail here.
+            None => {
+                eprintln!(
+                    "g_m0_sweep {name} (Ext L0, b{BUDGET}): GA=ALL-DNF (no reference) — SKIP"
+                );
+                continue;
+            }
+        };
+
+        // ── CS @ multiplier 1 (production controls). ──────────────────────────────────
+        let cs1 = run_cs_sweep(&layer, &cross, 1, ga_traffic, ga_instrs);
+
+        // ── CS @ multiplier 2 ONLY if multiplier 1 misses Tier 2 on this fixture. ─────
+        let cs2 = if cs1.reaches_tier2 {
+            None
+        } else {
+            Some(run_cs_sweep(&layer, &cross, 2, ga_traffic, ga_instrs))
+        };
+
+        // Smallest sufficient multiplier ∈ {1, 2, none} that reaches Tier 2.
+        let smallest = if cs1.reaches_tier2 {
+            "1"
+        } else if cs2.as_ref().is_some_and(|c| c.reaches_tier2) {
+            "2"
+        } else {
+            "none"
+        };
+
+        let verdict = |r: &CsSweepRun| if r.reaches_tier2 { "PASS" } else { "MISS" };
+        let cs2_str = match &cs2 {
+            Some(c) => format!(
+                " | CS@2 traffic={} leaf_calls={} instrs={} tier2={}",
+                c.traffic,
+                c.leaf_calls,
+                c.instrs,
+                verdict(c)
+            ),
+            None => " | CS@2 not-run (CS@1 already Tier 2)".to_string(),
+        };
+
+        // Per-fixture ledger line (unconditional; NO tier/GA assert).
+        eprintln!(
+            "g_m0_sweep {name} (Ext L0, b{BUDGET}): GA={ga_traffic} (instrs={ga_instrs}, seed{ga_seed}) \
+             | CS@1 traffic={} leaf_calls={} instrs={} tier2={}{cs2_str} \
+             | smallest_sufficient_multiplier={smallest}",
+            cs1.traffic,
+            cs1.leaf_calls,
+            cs1.instrs,
+            verdict(&cs1),
+        );
+    }
 }
