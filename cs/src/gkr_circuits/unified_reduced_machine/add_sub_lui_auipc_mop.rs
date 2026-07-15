@@ -264,23 +264,28 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 let is_mulmod = placer.get_boolean(is_mulmod_var);
                 let is_fmamod = placer.get_boolean(is_fmamod_var);
                 let is_mul_like = is_mulmod.or(&is_fmamod);
-                let op1 =
-                    if F::CHAR_BITS > 32 {
-                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO)
-                    } else {
-                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                let op1 = if F::CHAR_BITS > 32 {
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
+                        F::ZERO,
+                    )
+                } else {
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                             rs1_u32,
                         )
-                    };
+                };
                 let op2 = if F::CHAR_BITS > 32 {
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO)
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
+                        F::ZERO,
+                    )
                 } else {
                     <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                         rs2_u32,
                     )
                 };
                 let rd_raw = if F::CHAR_BITS > 32 {
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO)
+                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
+                        F::ZERO,
+                    )
                 } else {
                     <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                         rd_read_u32,

@@ -1,5 +1,5 @@
-use prover::field::PrimeField;
 use proc_macro2::TokenStream;
+use prover::field::PrimeField;
 use quote::quote;
 use std::collections::BTreeMap;
 
@@ -536,7 +536,10 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
             } => {
                 let term_start = single_terms.len();
                 for &(coeff, ref addr) in rel.input.linear_terms.iter() {
-                    single_terms.push((MW::coeff_to_internal_repr(coeff.as_u32_reduced()), find_idx(addr)));
+                    single_terms.push((
+                        MW::coeff_to_internal_repr(coeff.as_u32_reduced()),
+                        find_idx(addr),
+                    ));
                 }
                 single_descs.push((
                     cached_idx,
@@ -550,7 +553,10 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
                 for column in rel.columns.iter() {
                     let t_start = vector_terms.len();
                     for &(coeff, ref addr) in column.linear_terms.iter() {
-                        vector_terms.push((MW::coeff_to_internal_repr(coeff.as_u32_reduced()), find_idx(addr)));
+                        vector_terms.push((
+                            MW::coeff_to_internal_repr(coeff.as_u32_reduced()),
+                            find_idx(addr),
+                        ));
                     }
                     vector_cols.push((
                         MW::coeff_to_internal_repr(column.constant.as_u32_reduced()),
@@ -916,11 +922,13 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             layer_idx,
             get_output_sorted_addrs(layer_idx),
         ));
-        layer_functions.extend(standard_layer::generate_layer_final_step_accumulator::<MW, _>(
-            &compiled_circuit.layers[layer_idx],
-            layer_idx,
-            &standard_sorted_addrs[layer_idx],
-        ));
+        layer_functions.extend(
+            standard_layer::generate_layer_final_step_accumulator::<MW, _>(
+                &compiled_circuit.layers[layer_idx],
+                layer_idx,
+                &standard_sorted_addrs[layer_idx],
+            ),
+        );
     }
 
     if num_standard_layers <= initial_layer_for_sumcheck {

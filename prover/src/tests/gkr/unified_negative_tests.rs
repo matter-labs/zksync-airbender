@@ -114,7 +114,6 @@ fn build_satisfying_trace_with_mutation(
     (circuit, full_trace)
 }
 
-
 /// Coherent misaligned SW: shift `rs1_lo`, `writeaddr_lo`, and the pooled
 /// `ram_addr[0]` (shared scratch var[0]) together by +1 on an SW row, so the
 /// address-formation constraint and the select-trick both still hold — the

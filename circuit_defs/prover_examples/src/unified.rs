@@ -1,4 +1,3 @@
-use prover::transcript::Blake2sTranscript;
 use crate::unrolled::make_tracer_buffers;
 use crate::unrolled::{
     prove_delegation_circuit, replay_delegation_circuit, run_unrolled_machine_in_full,
@@ -28,6 +27,7 @@ use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::merkle_trees::MerkleTreeCapVarLength;
+use prover::transcript::Blake2sTranscript;
 use prover::worker;
 use riscv_transpiler::cycle::{MachineConfig, ReducedMachineWithDelegation};
 use riscv_transpiler::vm::Counters;
@@ -590,7 +590,12 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     );
 
     let pow_challenge = if permutation_argument_pow_bits > 0 {
-        Blake2sTranscript::<true>::search_pow(&all_challenges_seed, permutation_argument_pow_bits, worker).1
+        Blake2sTranscript::<true>::search_pow(
+            &all_challenges_seed,
+            permutation_argument_pow_bits,
+            worker,
+        )
+        .1
     } else {
         0
     };
@@ -702,20 +707,24 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             );
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor, Blake2sTranscript>(
-                    &unified_setup.compiled_circuit,
-                    &external_challenges,
-                    witness_trace,
-                    &unified_setup.setup,
-                    &setup_commitment,
-                    twiddles_for_size,
-                    &prover_config,
-                    CommitmentMode::SeparateMemoryAndWitness,
-                    top_bits.clone(),
-                    trace_len,
-                    worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                Blake2sTranscript,
+            >(
+                &unified_setup.compiled_circuit,
+                &external_challenges,
+                witness_trace,
+                &unified_setup.setup,
+                &setup_commitment,
+                twiddles_for_size,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                top_bits.clone(),
+                trace_len,
+                worker,
+            );
             println!("Proving time for unified circuit is {:?}", now.elapsed());
 
             program_proof
