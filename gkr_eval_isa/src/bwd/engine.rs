@@ -43,7 +43,7 @@ use super::construct::construct_unit_order;
 use super::distill::{distill, stable_distilled_site_domain, DistilledLayer};
 use super::fif::coordinate_correct_frozen;
 use super::plan::BwdOccurrencePlan;
-use super::price::{priced_rounds, LeafReclaimCounters, RECLAIM_N};
+use super::price::{priced_rounds, LeafReclaimCounters, PRODUCTION_GAP_CAP, RECLAIM_N};
 use super::trace::{certify, BwdCompileTrace, BwdEvent, CertificateReport};
 use crate::fwd::error::CompileError;
 
@@ -210,8 +210,11 @@ fn baseline_outcome(
 /// → certify → non-regression fallback). See the module docs for the full contract.
 ///
 /// PRODUCTION entry: a thin wrapper over [`cs_schedule_bwd_layer_research`] at the fixed
-/// production controls `(multiplier=1, gap_cap=RECLAIM_N=512, enforce_budget=true)` —
-/// byte-for-byte the CS-M3 behavior.
+/// production controls `(multiplier=1, gap_cap=PRODUCTION_GAP_CAP=1200, enforce_budget=true)`.
+/// CS-M4 T7 banked `gap_cap=1200` after the G-M0 milestone (spec §12): the safety-net
+/// floor reaches Tier 0 (all four) + Tier 1 (blake2 8348) there; Tier 2 (GA 7996) is
+/// unreachable by the whole-origin machinery even un-starved. The multiplier stays `1`
+/// (the credit lever is measured-inert). ~2.4× the CS-M3 `gap_cap=512` wall.
 ///
 /// NEVER panics on a schedule problem: an infeasible or non-improving CS path falls
 /// back to the canonical `decisions:None` baseline. It panics ONLY if even that
@@ -223,7 +226,7 @@ pub fn cs_schedule_bwd_layer(
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> CsOutcome {
-    cs_schedule_bwd_layer_research(layer, regime, cross, budget, 1, RECLAIM_N, true)
+    cs_schedule_bwd_layer_research(layer, regime, cross, budget, 1, PRODUCTION_GAP_CAP, true)
 }
 
 /// The RESEARCH entry (CS-M4 Task 2, spec §5): identical pipeline to

@@ -765,20 +765,24 @@ fn priced_reclaim_capture_heavy() {
 fn engine_runs_all_fixtures_b16() {
     const VALUE_PARITY: &[&str] =
         &["add_sub_lui_auipc_mop_layout_gkr.json", "keccak_special5_layout_gkr.json"];
-    // CS-M3 (CS-M0 follow-up M2) regression guard: the 4 G-M0-tracked fixtures' shipped
-    // CS traffic must never regress above the CS-M3 banked (G-M0-comparator-verified)
-    // values. `<=` so future improvements still pass; only a regression fails. Only the
-    // milestone-tracked metrics are pinned (not all 12) to avoid brittleness.
-    const CS_M3_TRAFFIC_CEILINGS: &[(&str, usize)] = &[
-        ("bigint_with_extended_control_layout_gkr.json", 18764),
-        ("keccak_special5_layout_gkr.json", 16240),
-        ("blake2_with_extended_control_layout_gkr.json", 9528),
-        ("unified_reduced_machine_layout_gkr.json", 3800),
+    // CS-M4 T7 (spec §12) regression guard: the 4 G-M0-tracked fixtures' shipped CS traffic
+    // must never regress above the CS-M4 banked values. These are the `gap_cap=1200`
+    // (PRODUCTION_GAP_CAP) milestone results — Tier 0 (all four) + Tier 1 (blake2 8348),
+    // reached by the no-regression safety-net floor; Tier 2 (GA 7996) is unreachable by the
+    // whole-origin machinery even un-starved (measured). `<=` so future improvements still
+    // pass; only a regression fails. Only the milestone-tracked metrics are pinned (not all
+    // 12) to avoid brittleness. (Superseded the CS-M3 @512 ceilings 18764/16240/9528/3800.)
+    const CS_M4_TRAFFIC_CEILINGS: &[(&str, usize)] = &[
+        ("bigint_with_extended_control_layout_gkr.json", 18056),
+        ("keccak_special5_layout_gkr.json", 14580),
+        ("blake2_with_extended_control_layout_gkr.json", 8348),
+        ("unified_reduced_machine_layout_gkr.json", 3668),
     ];
     // CS-M4 (spec §5, Phase-0b): per-fixture `HARD_MAX` = 2× the banked @1200 leaf-reclaim
-    // baseline — the research emergency ceiling. Production (`multiplier=1, gap_cap=512`)
-    // stays well under it; Stage A/A'/B + normalize leaf-search compiles per run must never
-    // exceed it. Only the 4 G-M0-tracked fixtures have a banked baseline.
+    // baseline — the research emergency ceiling. Production (`multiplier=1, gap_cap=1200`)
+    // stays well under it (keccak 1203, blake2 2406, bigint 1203, unified 1163); Stage
+    // A/A'/B + normalize leaf-search compiles per run must never exceed it. Only the 4
+    // G-M0-tracked fixtures have a banked baseline.
     const LEAF_CALL_HARD_MAX: &[(&str, usize)] = &[
         ("keccak_special5_layout_gkr.json", 2400),
         ("blake2_with_extended_control_layout_gkr.json", 4800),
@@ -820,15 +824,15 @@ fn engine_runs_all_fixtures_b16() {
         );
         assert!(outcome.rounds <= 3, "{name}: rounds {} > 3", outcome.rounds);
 
-        // CS-M3 banked-value regression guard (present-fixture only; a fixture in the
+        // CS-M4 banked-value regression guard (present-fixture only; a fixture in the
         // table that never runs here is simply not checked, not silently skipped).
         if let Some(&(_, ceiling)) =
-            CS_M3_TRAFFIC_CEILINGS.iter().find(|&&(fixture, _)| fixture == name)
+            CS_M4_TRAFFIC_CEILINGS.iter().find(|&&(fixture, _)| fixture == name)
         {
             assert!(
                 cs_traffic <= ceiling,
-                "{name}: CS traffic {cs_traffic} > CS-M3 banked ceiling {ceiling} — regression \
-                 vs the G-M0-comparator-verified shipped value"
+                "{name}: CS traffic {cs_traffic} > CS-M4 banked ceiling {ceiling} — regression \
+                 vs the G-M0-milestone shipped value (gap_cap=1200)"
             );
         }
 

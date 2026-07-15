@@ -75,6 +75,17 @@ use crate::fwd::error::CompileError;
 /// via the unchanged cost guard at the leaf-reclaim truncate site.
 pub const RECLAIM_N: usize = 512;
 
+/// CS-M4 T7 (spec §2/§12): the PRODUCTION Stage-B candidate cap (`gap_cap`) shipped by
+/// [`cs_schedule_bwd_layer`]. Banked at `1200` after the G-M0 milestone: the Tiers were
+/// set from the `gap_cap=1200` regime, and the no-regression safety-net floor `best_B`
+/// reaches Tier 0 (all four G-M0 fixtures) + Tier 1 (blake2 8348) there — keccak 14580,
+/// blake2 8348, bigint 18056, unified 3668. Tier 2 (GA's blake2 7996) is unreachable by
+/// the whole-origin machinery even un-starved (measured), so `1200` is the shipped
+/// Partial (~2.4× the `RECLAIM_N=512` wall). The multiplier stays `1` (the credit lever
+/// is inert — measured mult2 ≈ mult1). `RECLAIM_N` is retained as the legacy per-gap cap
+/// for the research entry + direct-`priced_rounds` tests, which pass it explicitly.
+pub const PRODUCTION_GAP_CAP: usize = 1200;
+
 /// Default cap on the compiler-tried COMPOUND greedy's candidate count (Commit 3).
 /// Independent of the leaf reclaim's [`RECLAIM_N`] (CS-M3 Task 1): keccak's compound
 /// candidate count (~113) exceeds `RECLAIM_N`'s 32, so sharing the knob left the
