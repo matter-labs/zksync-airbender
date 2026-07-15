@@ -145,6 +145,62 @@ pub(crate) mod testdag {
         let roots = vec![root(ExprId(4))];
         layer(sources, exprs, roots)
     }
+
+    /// A `BaseLayerWitness` read at `column` — the least-ceremony way to get
+    /// a Base-width (1-lane) `LeafClass::Dram` leaf for synthetic layers.
+    pub fn base_read(column: usize) -> SourceInfo {
+        read_source(ReadPlace::BaseLayerWitness { column })
+    }
+
+    /// `s = Mul(w, w2)` shared under two roots: `r0 = Add(s, a)`, `r1 =
+    /// Add(s, b)`. All Base witness reads. Exercises the sites-vs-floor-vs-
+    /// ceiling split under fan-in sharing (`analysis::tests::
+    /// shared_subexpr_counts_per_path`): `s`'s subtree is double-counted by
+    /// `sites`/`ceiling` (one full recompute per root) but its two leaves
+    /// (`w`, `w2`) are each counted once by `floor` (distinct Dram leaves).
+    pub fn shared_diamond() -> DagLayer {
+        let sources = vec![base_read(0), base_read(1), base_read(2), base_read(3)];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),             // w
+            Expr::Source(SourceId(1)),             // w2
+            Expr::Source(SourceId(2)),             // a
+            Expr::Source(SourceId(3)),             // b
+            Expr::Mul(vec![ExprId(0), ExprId(1)]), // s = w * w2
+            Expr::Add(vec![ExprId(4), ExprId(2)]), // r0 = s + a
+            Expr::Add(vec![ExprId(4), ExprId(3)]), // r1 = s + b
+        ];
+        layer(sources, exprs, vec![root(ExprId(5)), root(ExprId(6))])
+    }
+
+    /// Two-root layer for the `peak == max over roots of cone_peak`
+    /// cross-check (`analysis::tests::peak_matches_su`): root 0 is a flat
+    /// Base `Add` of 4 leaves (peak 0); root 1 reproduces the Ext
+    /// nested-fold-spill shape from `su::tests::nested_fold_spills_width`
+    /// (peak 4), so the test sees a non-degenerate, root-dependent maximum
+    /// rather than an all-zero one.
+    pub fn mixed_peak_layer() -> DagLayer {
+        let mut sources = vec![base_read(0), base_read(1), base_read(2), base_read(3)];
+        sources.extend((0..6).map(|_| challenge_source()));
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+            Expr::Source(SourceId(2)),
+            Expr::Source(SourceId(3)),
+            Expr::Add(vec![ExprId(0), ExprId(1), ExprId(2), ExprId(3)]), // flat root, peak 0
+            Expr::Source(SourceId(4)),
+            Expr::Source(SourceId(5)),
+            Expr::Source(SourceId(6)),
+            Expr::Source(SourceId(7)),
+            Expr::Source(SourceId(8)),
+            Expr::Source(SourceId(9)),
+            Expr::Add(vec![ExprId(5), ExprId(6)]),   // A1
+            Expr::Mul(vec![ExprId(11), ExprId(7)]),  // M1 = A1 * leaf
+            Expr::Add(vec![ExprId(8), ExprId(9)]),   // A2
+            Expr::Mul(vec![ExprId(13), ExprId(10)]), // M2 = A2 * leaf
+            Expr::Add(vec![ExprId(12), ExprId(14)]), // spill root, peak 4
+        ];
+        layer(sources, exprs, vec![root(ExprId(4)), root(ExprId(15))])
+    }
 }
 
 #[cfg(test)]
