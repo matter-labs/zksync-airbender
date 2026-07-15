@@ -3,12 +3,13 @@
 //!
 //! # Cost model (uniform streaming fold)
 //!
-//! `peak(leaf) = 0`; a streamable Mul fuses (product never materialized);
-//! for ANY non-streamable fold node — Add and Mul alike — over its
-//! NON-streamable children `F` sorted desc by peak: `|F|=0 → 0`,
-//! `|F|=1 → peak(F0)`, `|F|≥2 → max(peak(F0), width(node) + peak(F1))` —
-//! while the i-th (i ≥ 1) child computes in the accumulator, the fold's
-//! partial value sits stashed at `width(node)`.
+//! `peak(leaf) = 0`; a streamable Mul — 2-arity, both operands LEAVES —
+//! fuses (product never materialized: an fma under an Add parent, an
+//! associative mul-chain under a Mul parent); for ANY non-streamable fold
+//! node — Add and Mul alike — over its NON-streamable children `F` sorted
+//! desc by peak: `|F|=0 → 0`, `|F|=1 → peak(F0)`, `|F|≥2 → max(peak(F0),
+//! width(node) + peak(F1))` — while the i-th (i ≥ 1) child computes in the
+//! accumulator, the fold's partial value sits stashed at `width(node)`.
 //!
 //! No product-side temp is ever charged: fma is emitted only when both
 //! operands are ready; non-ready products lower as Mul-folds (stash parent,
@@ -24,6 +25,13 @@
 //!   per spec) — it is not an fma candidate — but a pure-leaf one is still
 //!   peak-free: all operands stream into its own Mul-fold accumulator
 //!   (`F = ∅`).
+//! - A 2-arity Mul with a nested-Mul operand is NOT streamable either —
+//!   operands must be leaves. Arena-built DAGs flatten Mul-under-Mul, so
+//!   production never constructs the shape; the restriction exists so the
+//!   model and the walker (`crate::walk`) agree unconditionally on any
+//!   accepted input, not just canonical ones. (A non-streamable nested Mul
+//!   is still usually peak-free through the fold formula: its streamable
+//!   children contribute nothing and `F` is often empty or a singleton.)
 //! - A root that is itself a leaf or a streamable Mul has peak 0 (its value
 //!   streams into the materialize sink without occupying a cell).
 //!
@@ -43,7 +51,10 @@ pub fn cone_peak(view: &LayerView<'_>, root: ExprId) -> u32 {
 }
 
 /// True iff the node streams into an accumulation without occupying a cell:
-/// any leaf, or a 2-arity Mul whose operands are both streamable (fma).
+/// any leaf, or a 2-arity Mul whose operands are both LEAVES (an fma under
+/// an Add parent, an associative mul-chain under a Mul parent). Strictly
+/// leaf operands — never recursive through nested Muls — so the model
+/// prices exactly what the walker's operand-based lowering can emit.
 pub fn streamable(view: &LayerView<'_>, e: ExprId) -> bool {
     let mut memo = vec![None; view.layer.exprs.len()];
     streamable_memo(view, e, &mut memo)
@@ -96,9 +107,14 @@ fn streamable_memo(view: &LayerView<'_>, e: ExprId, memo: &mut [Option<bool>]) -
     }
     let v = match view.kind(e) {
         NodeKind::Leaf(_) => true,
+        // Strictly LEAF operands — no recursion through nested Muls. This is
+        // exactly what the walker can lower without a stash (its `Operand`s
+        // name leaves, never sub-expressions), so model and walker agree on
+        // ANY accepted input, including non-canonical Mul-under-Mul shapes
+        // (arena-built DAGs flatten those, so on production inputs this
+        // coincides with the old operand-streamable definition).
         NodeKind::Mul(args) if args.len() == 2 => {
-            let (a, b) = (args[0], args[1]);
-            streamable_memo(view, a, memo) && streamable_memo(view, b, memo)
+            args.iter().all(|&a| matches!(view.kind(a), NodeKind::Leaf(_)))
         }
         NodeKind::Add(_) | NodeKind::Mul(_) => false,
     };
@@ -297,6 +313,32 @@ mod tests {
         assert_eq!(cone_peak(&v, ExprId(26)), 4);
         // (p0, p1) = (4, 4): max(4, 4 + 4) = 8.
         assert_eq!(cone_peak(&v, ExprId(27)), 8);
+    }
+
+    /// Nested-Mul shapes are NOT streamable: `streamable`'s Mul case
+    /// requires strictly LEAF operands (no recursion through an inner Mul).
+    /// Pins the two review counterexamples: Mul(Mul(x,y), z) and
+    /// Mul(x, Mul(a,b)) — the inner leaf-operand Mul stays streamable, the
+    /// outer one never is; both outer peaks are still 0 through the fold
+    /// formula (all their children are streamable, so `F = ∅`).
+    #[test]
+    fn nested_mul_is_not_streamable() {
+        let sources = vec![base_read(0), base_read(1), base_read(2)];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+            Expr::Source(SourceId(2)),
+            Expr::Mul(vec![ExprId(0), ExprId(1)]), // inner = Mul(x,y): leaf operands
+            Expr::Mul(vec![ExprId(3), ExprId(2)]), // Mul(inner, z): nested-Mul operand
+            Expr::Mul(vec![ExprId(2), ExprId(3)]), // Mul(z, inner): other operand order
+        ];
+        let l = layer(sources, exprs, vec![root(ExprId(4)), root(ExprId(5))]);
+        let v = view(&l);
+        assert!(streamable(&v, ExprId(3)), "leaf-operand Mul stays streamable");
+        assert!(!streamable(&v, ExprId(4)), "Mul with a nested-Mul operand must not stream");
+        assert!(!streamable(&v, ExprId(5)), "either operand position");
+        assert_eq!(cone_peak(&v, ExprId(4)), 0, "all children streamable: F = ∅");
+        assert_eq!(cone_peak(&v, ExprId(5)), 0);
     }
 
     /// A root that is itself a leaf, and one that is a streamable fma, both

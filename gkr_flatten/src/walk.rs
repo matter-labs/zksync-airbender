@@ -67,6 +67,12 @@ pub fn flatten(view: &LayerView<'_>, oracle: &dyn Oracle) -> WalkOutput {
         let root_expr = view.layer.roots[root_id.0 as usize].expr;
         let mut path = SitePath { root: root_id, steps: Vec::new() };
         walker.emit(root_expr, &mut path, 0);
+        debug_assert_eq!(
+            walker.live_stash_lanes, 0,
+            "gkr_flatten: stash lanes leaked past the end of root {root_id:?} — every slot \
+             stashed inside a root's cone must be consumed before its SinkMaterialize (stack \
+             discipline violated)"
+        );
         walker.push(Op::SinkMaterialize(root_id));
     }
     WalkOutput { program: walker.program, stats: walker.stats }
@@ -105,19 +111,26 @@ impl<'v, 'o> Walker<'v, 'o> {
                 let mut first = true;
                 for (dup, child) in ordered {
                     path.steps.push(SiteStep { child, dup });
-                    if is_add && self.is_fma_candidate(child) {
-                        // 2-arity Mul under Add, both operands ready (M1:
-                        // leaf): the product streams into acc — no temp,
-                        // no stash (spec §2 Rev 1).
+                    if self.is_ready_product(child) {
+                        // 2-arity Mul with both operands ready (M1: leaf):
+                        // the product streams into acc — no temp, no stash
+                        // (spec §2 Rev 1). Under an Add parent it fuses as
+                        // an Fma; under a Mul parent it chains
+                        // associatively (acc *= a; acc *= b). This arm is
+                        // exactly what `su::streamable` prices as free for
+                        // a Mul node, in ANY fold.
                         let (a, b) = self.mul_operands(child);
-                        self.stats.sites_visited += 1; // the fma Mul child's own occurrence
+                        self.stats.sites_visited += 1; // the fused Mul child's own occurrence
                         let oa = self.ready_operand(a);
                         let ob = self.ready_operand(b);
                         if first {
                             self.push(Op::Load(oa));
                             self.push(Op::Mul(ob));
-                        } else {
+                        } else if is_add {
                             self.push(Op::Fma(oa, ob));
+                        } else {
+                            self.push(Op::Mul(oa));
+                            self.push(Op::Mul(ob));
                         }
                     } else if self.is_ready(child) {
                         // leaf (M1) or resident (M2)
@@ -189,20 +202,18 @@ impl<'v, 'o> Walker<'v, 'o> {
         matches!(self.view.kind(e), NodeKind::Leaf(_))
     }
 
-    /// `child` is a 2-arity `Mul` with BOTH operands ready (M1: leaf) — spec
-    /// §2 Rev 1's fma-recognition rule.
+    /// `e` is a 2-arity `Mul` with BOTH operands ready (M1: leaf) — spec §2
+    /// Rev 1's recognition rule, generalized to any fold parent: under an
+    /// Add it lowers as an `Fma`, under a Mul as an associative mul-chain.
     ///
-    /// Checked directly via `is_ready` on the two operands rather than by
-    /// calling `su::streamable(child)` (which would be recursively true for
-    /// the same M1 shapes, since `streamable`'s own Mul case is defined the
-    /// same way) — `is_ready`-on-operands is the one that is actually sound
-    /// against `ready_operand`'s contract: an `Operand` can only name a
-    /// leaf/cached/stashed value, never an unevaluated sub-expression, so a
-    /// hypothetical nested streamable-Mul operand (which `su::streamable`
-    /// would also call "streamable") could never legally become an `Fma`
-    /// operand this way. The two checks agree on every shape these M1
-    /// fixtures exercise.
-    fn is_fma_candidate(&self, e: ExprId) -> bool {
+    /// Checked via `is_ready` on the two operands rather than by calling
+    /// `su::streamable(child)` because `is_ready`-on-operands is the check
+    /// that is sound against `ready_operand`'s contract: an `Operand` can
+    /// only name a leaf/cached/stashed value, never an unevaluated
+    /// sub-expression. Since `su::streamable`'s Mul case is now also
+    /// leaf-operands-only, the two predicates coincide exactly in M1 — the
+    /// model prices free precisely what this arm can emit.
+    fn is_ready_product(&self, e: ExprId) -> bool {
         match self.view.kind(e) {
             NodeKind::Mul(args) if args.len() == 2 => {
                 self.is_ready(args[0]) && self.is_ready(args[1])
@@ -259,9 +270,19 @@ impl<'v, 'o> Walker<'v, 'o> {
     /// `live_stash_lanes`, whose running max is `stats.peak` (must equal
     /// `su::cone_peak` — the load-bearing invariant). Returns the charged
     /// width so the caller can free it again once the slot is consumed.
+    ///
+    /// `width_of_slot` is max-write: slots are keyed by depth and reused
+    /// across sibling subtrees/roots whose fold widths may differ, so the
+    /// recorded width is the WIDEST value ever stashed at that depth — a
+    /// safe (conservative) per-slot sizing for M2's DP, where
+    /// last-write-wins would silently under-size.
     fn charge_stash(&mut self, e: ExprId, depth: u32) -> u32 {
         let w = self.view.width(e);
-        self.program.width_of_slot.insert(depth, w);
+        self.program
+            .width_of_slot
+            .entry(depth)
+            .and_modify(|v| *v = (*v).max(w))
+            .or_insert(w);
         self.live_stash_lanes += w;
         self.stats.peak = self.stats.peak.max(self.live_stash_lanes);
         if let Some(budget) = self.budget_hint {
@@ -306,6 +327,109 @@ mod tests {
         cross: &'a HashMap<cs::gkr_compiler::dag_ir::ReadPlace, cs::gkr_compiler::dag_ir::FieldKind>,
     ) -> LayerView<'a> {
         LayerView::new(l, cross, None)
+    }
+
+    // ── Non-canonical / hardening layer builders ──────────────────────────
+    //
+    // Arena-built DAGs flatten Mul-under-Mul, so production never constructs
+    // the nested-Mul shapes; testdag can, and the walker/model invariant
+    // must hold unconditionally on any accepted input (review of d6bb1de6).
+
+    /// Counterexample B: `Mul(x, Mul(a,b))`, all Base leaves. The inner Mul
+    /// is streamable (leaf operands) but sits under a MUL parent — must
+    /// lower as an associative mul-chain, never a stash.
+    fn nested_mul_under_mul_layer() -> DagLayer {
+        let sources = vec![testdag::base_read(0), testdag::base_read(1), testdag::base_read(2)];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),             // x
+            Expr::Source(SourceId(1)),             // a
+            Expr::Source(SourceId(2)),             // b
+            Expr::Mul(vec![ExprId(1), ExprId(2)]), // inner = Mul(a,b)
+            Expr::Mul(vec![ExprId(0), ExprId(3)]), // root = Mul(x, inner)
+        ];
+        testdag::layer(sources, exprs, vec![testdag::root(ExprId(4))])
+    }
+
+    /// Counterexample A: `Add(C, Mul(Mul(x,y), z))` at Ext widths, with
+    /// C = Add(c1,c2) computed. The outer Mul has a nested-Mul operand —
+    /// not streamable (post-fix) on EITHER side — so both the model and the
+    /// walker route it through the general fold branch, and the root's TWO
+    /// non-streamable children make the stash real and priced: peak 4.
+    fn nested_mul_under_add_layer() -> DagLayer {
+        let sources = vec![testdag::challenge_source(); 5];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),             // c1
+            Expr::Source(SourceId(1)),             // c2
+            Expr::Source(SourceId(2)),             // x
+            Expr::Source(SourceId(3)),             // y
+            Expr::Source(SourceId(4)),             // z
+            Expr::Add(vec![ExprId(0), ExprId(1)]), // C = Add(c1,c2)          (5)
+            Expr::Mul(vec![ExprId(2), ExprId(3)]), // inner = Mul(x,y)        (6)
+            Expr::Mul(vec![ExprId(6), ExprId(4)]), // M = Mul(inner, z)       (7)
+            Expr::Add(vec![ExprId(5), ExprId(7)]), // root = Add(C, M)        (8)
+        ];
+        testdag::layer(sources, exprs, vec![testdag::root(ExprId(8))])
+    }
+
+    /// Hardening (c): a shape with TWO simultaneously-live stash slots.
+    /// root = Add(M1, M2); M1 = Add(Mul(Add(s0,s1),s2), Mul(Add(s3,s4),s5))
+    /// is the standard Ext spill cone (peak 4); M2 = Mul(Add(X, D), y) with
+    /// X = Add(x1,x2), D = Add(d1,d2) both computed, so M2's inner Add
+    /// stashes internally (peak 4) WHILE the root's partial is stashed.
+    /// cone_peak(root) = max(4, 4+4) = 8.
+    fn two_live_slots_layer() -> DagLayer {
+        let sources = vec![testdag::challenge_source(); 11];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),               // s0
+            Expr::Source(SourceId(1)),               // s1
+            Expr::Source(SourceId(2)),               // s2
+            Expr::Source(SourceId(3)),               // s3
+            Expr::Source(SourceId(4)),               // s4
+            Expr::Source(SourceId(5)),               // s5
+            Expr::Add(vec![ExprId(0), ExprId(1)]),   // A1                    (6)
+            Expr::Mul(vec![ExprId(6), ExprId(2)]),   // P1 = A1*s2            (7)
+            Expr::Add(vec![ExprId(3), ExprId(4)]),   // A2                    (8)
+            Expr::Mul(vec![ExprId(8), ExprId(5)]),   // P2 = A2*s5            (9)
+            Expr::Add(vec![ExprId(7), ExprId(9)]),   // M1 (peak 4)           (10)
+            Expr::Source(SourceId(6)),               // x1                    (11)
+            Expr::Source(SourceId(7)),               // x2                    (12)
+            Expr::Source(SourceId(8)),               // d1                    (13)
+            Expr::Source(SourceId(9)),               // d2                    (14)
+            Expr::Source(SourceId(10)),              // y                     (15)
+            Expr::Add(vec![ExprId(11), ExprId(12)]), // X                     (16)
+            Expr::Add(vec![ExprId(13), ExprId(14)]), // D                     (17)
+            Expr::Add(vec![ExprId(16), ExprId(17)]), // inner (peak 4)        (18)
+            Expr::Mul(vec![ExprId(18), ExprId(15)]), // M2 (peak 4)           (19)
+            Expr::Add(vec![ExprId(10), ExprId(19)]), // root (peak 8)         (20)
+        ];
+        testdag::layer(sources, exprs, vec![testdag::root(ExprId(20))])
+    }
+
+    /// Hardening (d): the desc-by-cone_peak child sort is load-bearing.
+    /// root = Add(L, H) with L = Add(c1,c2) (peak 0) listed FIRST in arena
+    /// order and H = the Ext spill cone (peak 4) second. Sorted (H first)
+    /// the realized peak is 4 == cone_peak; unsorted (arena order) H's
+    /// internal stash would land under the root's live stash → 8.
+    fn peak_ordered_children_layer() -> DagLayer {
+        let sources = vec![testdag::challenge_source(); 8];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),               // s0
+            Expr::Source(SourceId(1)),               // s1
+            Expr::Source(SourceId(2)),               // s2
+            Expr::Source(SourceId(3)),               // s3
+            Expr::Source(SourceId(4)),               // s4
+            Expr::Source(SourceId(5)),               // s5
+            Expr::Add(vec![ExprId(0), ExprId(1)]),   // A1                    (6)
+            Expr::Mul(vec![ExprId(6), ExprId(2)]),   // P1                    (7)
+            Expr::Add(vec![ExprId(3), ExprId(4)]),   // A2                    (8)
+            Expr::Mul(vec![ExprId(8), ExprId(5)]),   // P2                    (9)
+            Expr::Add(vec![ExprId(7), ExprId(9)]),   // H (peak 4)            (10)
+            Expr::Source(SourceId(6)),               // c1                    (11)
+            Expr::Source(SourceId(7)),               // c2                    (12)
+            Expr::Add(vec![ExprId(11), ExprId(12)]), // L (peak 0)            (13)
+            Expr::Add(vec![ExprId(13), ExprId(10)]), // root: arena [L, H]!   (14)
+        ];
+        testdag::layer(sources, exprs, vec![testdag::root(ExprId(14))])
     }
 
     #[test]
@@ -427,6 +551,175 @@ mod tests {
         }
     }
 
+    /// Counterexample B (review of d6bb1de6): `Mul(x, Mul(a,b))`, all
+    /// leaves. The inner Mul is streamable and sits under a MUL parent —
+    /// it must chain associatively (`Mul(a); Mul(b)`) with zero stash,
+    /// matching the model's peak of 0.
+    ///
+    /// Trace: root's children are both streamable (x is a leaf; inner is a
+    /// leaf-operand 2-arity Mul) → arena order kept → x first (`Load x`),
+    /// inner second under a Mul parent (`Mul a; Mul b`). Model:
+    /// root is non-streamable (nested-Mul operand) but F = ∅ → peak 0.
+    #[test]
+    fn nested_mul_chains_under_mul_parent() {
+        let layer = nested_mul_under_mul_layer();
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        assert!(!su::streamable(&v, ExprId(4)), "root must not be streamable (nested Mul)");
+        assert_eq!(su::cone_peak(&v, ExprId(4)), 0);
+
+        let out = flatten(&v, &NeutralOracle);
+        match out.program.ops.as_slice() {
+            [
+                Op::Load(Operand::Leaf(SourceId(0))),
+                Op::Mul(Operand::Leaf(SourceId(1))),
+                Op::Mul(Operand::Leaf(SourceId(2))),
+                Op::SinkMaterialize(RootId(0)),
+            ] => {}
+            other => panic!("unexpected op sequence: {other:#?}"),
+        }
+        assert_eq!(out.stats.peak, 0, "walker peak must equal the model's 0");
+        assert!(out.program.width_of_slot.is_empty(), "no stash anywhere");
+        assert_eq!(out.stats.sites_visited, 5, "1 root + 1 leaf + 1 mul + 2 operands");
+        assert_eq!(out.stats.traffic, 3, "x, a, b Base touches");
+    }
+
+    /// Counterexample A (review of d6bb1de6): `Add(C, Mul(Mul(x,y), z))` at
+    /// Ext widths, C = Add(c1,c2). Pre-fix the model called the outer Mul
+    /// "streamable" (recursing through Mul operands → priced 0) while the
+    /// walker couldn't fma it (operand not ready) and stashed → realized 4 >
+    /// 0, the forbidden direction. Post-fix BOTH sides route it through the
+    /// general fold branch and BOTH price the stash: equality at 4, not 0.
+    ///
+    /// Hand-derived trace (documenting the re-derivation):
+    /// - model: M = Mul(inner, z) is non-streamable (inner = Mul(x,y) is not
+    ///   a leaf), but its children are both streamable → F(M) = ∅ → peak(M)
+    ///   = 0; C is non-streamable, peak 0. Root F = {C, M}, peaks (0,0),
+    ///   width(root) = 4 (Ext) → max(0, 4+0) = 4.
+    /// - walker: C and M tie at peak 0 → arena order (C first). C computes
+    ///   in acc (Load c1; Add c2); M is second → Stash s0 (4 lanes); M's
+    ///   cone: inner is a ready product under a MUL parent, first child →
+    ///   Load x; Mul y; then z streams (Mul z); combine Add(Stashed s0).
+    ///   Realized peak 4 == model 4.
+    #[test]
+    fn nested_mul_nonready_product_matches_model() {
+        let layer = nested_mul_under_add_layer();
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        assert!(!su::streamable(&v, ExprId(7)), "outer Mul must not be streamable post-fix");
+        let model_peak = su::cone_peak(&v, ExprId(8));
+        assert_eq!(model_peak, 4, "model prices the root stash (re-derived by hand above)");
+
+        let out = flatten(&v, &NeutralOracle);
+        match out.program.ops.as_slice() {
+            [
+                Op::Load(Operand::Leaf(SourceId(0))),
+                Op::Add(Operand::Leaf(SourceId(1))),
+                Op::Stash(SlotId(0)),
+                Op::Load(Operand::Leaf(SourceId(2))),
+                Op::Mul(Operand::Leaf(SourceId(3))),
+                Op::Mul(Operand::Leaf(SourceId(4))),
+                Op::Add(Operand::Stashed(SlotId(0))),
+                Op::SinkMaterialize(RootId(0)),
+            ] => {}
+            other => panic!("unexpected op sequence: {other:#?}"),
+        }
+        assert_eq!(out.stats.peak, model_peak, "walker == model, equality at 4 not 0");
+        assert_eq!(out.program.width_of_slot.get(&0), Some(&4));
+        for op in &out.program.ops {
+            assert!(!matches!(op, Op::Fma(..)), "no fma: the product operand is not ready");
+        }
+    }
+
+    /// Hardening (c): two SIMULTANEOUSLY-live stash slots with distinct ids.
+    /// root = Add(M1, M2), both peak 4 (tie → arena keeps M1 first), so
+    /// M2's internal stash (SlotId(1), depth 1) happens while the root's
+    /// partial sits in SlotId(0) (depth 0): live = 8 = cone_peak(root).
+    ///
+    /// Trace: M1's spill cone runs first and fully releases its own
+    /// (reused) SlotId(0); then the root stashes SlotId(0) and, inside M2's
+    /// inner Add, X computes in acc and D forces Stash SlotId(1) → live 8.
+    #[test]
+    fn two_simultaneous_stash_slots() {
+        let layer = two_live_slots_layer();
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        let model_peak = su::cone_peak(&v, ExprId(20));
+        assert_eq!(model_peak, 8, "max(4, 4+4): inner stash under live root stash");
+
+        let out = flatten(&v, &NeutralOracle);
+        match out.program.ops.as_slice() {
+            [
+                // M1's spill cone (its own transient SlotId(0) use):
+                Op::Load(Operand::Leaf(SourceId(0))),
+                Op::Add(Operand::Leaf(SourceId(1))),
+                Op::Mul(Operand::Leaf(SourceId(2))),
+                Op::Stash(SlotId(0)),
+                Op::Load(Operand::Leaf(SourceId(3))),
+                Op::Add(Operand::Leaf(SourceId(4))),
+                Op::Mul(Operand::Leaf(SourceId(5))),
+                Op::Add(Operand::Stashed(SlotId(0))),
+                // Root partial stashed; M2's cone with the SECOND live slot:
+                Op::Stash(SlotId(0)),
+                Op::Load(Operand::Leaf(SourceId(6))),
+                Op::Add(Operand::Leaf(SourceId(7))),
+                Op::Stash(SlotId(1)), // stashed while SlotId(0) is live → live 8
+                Op::Load(Operand::Leaf(SourceId(8))),
+                Op::Add(Operand::Leaf(SourceId(9))),
+                Op::Add(Operand::Stashed(SlotId(1))),
+                Op::Mul(Operand::Leaf(SourceId(10))),
+                Op::Add(Operand::Stashed(SlotId(0))),
+                Op::SinkMaterialize(RootId(0)),
+            ] => {}
+            other => panic!("unexpected op sequence: {other:#?}"),
+        }
+        assert_eq!(out.stats.peak, model_peak);
+        assert_eq!(out.program.width_of_slot.get(&0), Some(&4));
+        assert_eq!(out.program.width_of_slot.get(&1), Some(&4));
+    }
+
+    /// Hardening (d): the desc-by-cone_peak sort among non-streamable
+    /// children is load-bearing. Arena order lists L (peak 0) BEFORE H
+    /// (peak 4); emitting in arena order would put H's internal stash under
+    /// the root's live stash (realized 8), while the model prices
+    /// max(4, 4+0) = 4. The sort must emit H first.
+    #[test]
+    fn peak_desc_order_is_load_bearing() {
+        let layer = peak_ordered_children_layer();
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        let model_peak = su::cone_peak(&v, ExprId(14));
+        assert_eq!(model_peak, 4, "max(peak(H)=4, width 4 + peak(L)=0)");
+
+        let out = flatten(&v, &NeutralOracle);
+        // H's cone must come first: its first leaf is SourceId(0).
+        match out.program.ops.first() {
+            Some(Op::Load(Operand::Leaf(SourceId(0)))) => {}
+            other => panic!("peak-4 child must be emitted first, got {other:?}"),
+        }
+        match out.program.ops.as_slice() {
+            [
+                // H's spill cone, root partial not yet stashed:
+                Op::Load(Operand::Leaf(SourceId(0))),
+                Op::Add(Operand::Leaf(SourceId(1))),
+                Op::Mul(Operand::Leaf(SourceId(2))),
+                Op::Stash(SlotId(0)),
+                Op::Load(Operand::Leaf(SourceId(3))),
+                Op::Add(Operand::Leaf(SourceId(4))),
+                Op::Mul(Operand::Leaf(SourceId(5))),
+                Op::Add(Operand::Stashed(SlotId(0))),
+                // L second: root partial stashed only for L's cheap cone:
+                Op::Stash(SlotId(0)),
+                Op::Load(Operand::Leaf(SourceId(6))),
+                Op::Add(Operand::Leaf(SourceId(7))),
+                Op::Add(Operand::Stashed(SlotId(0))),
+                Op::SinkMaterialize(RootId(0)),
+            ] => {}
+            other => panic!("unexpected op sequence: {other:#?}"),
+        }
+        assert_eq!(out.stats.peak, model_peak, "unsorted emission would realize 8");
+    }
+
     /// Runs `flatten` twice over the same view and checks the emitted
     /// program (via its `Debug` rendering — `Op`/`Operand` are not
     /// `PartialEq`) and stats are byte-identical, on both a small synthetic
@@ -461,11 +754,21 @@ mod tests {
     /// (`analysis::size_layer`) — the load-bearing invariant: under
     /// `NeutralOracle` (no caching), the walker's traffic/sites/peak must
     /// equal the DP's ceiling/sites/peak exactly, across a no-sharing tree
-    /// (`tiny_fma_layer`), a fan-in-shared layer (`shared_diamond`), and a
-    /// layer with a non-degenerate root-dependent peak (`mixed_peak_layer`).
+    /// (`tiny_fma_layer`), a fan-in-shared layer (`shared_diamond`), a
+    /// layer with a non-degenerate root-dependent peak (`mixed_peak_layer`),
+    /// and the non-canonical/hardening shapes (nested Muls, two live slots,
+    /// order-sensitive peaks).
     #[test]
     fn neutral_stats_match_dp() {
-        for layer in [tiny_fma_layer(), shared_diamond(), mixed_peak_layer()] {
+        for layer in [
+            tiny_fma_layer(),
+            shared_diamond(),
+            mixed_peak_layer(),
+            nested_mul_under_mul_layer(),
+            nested_mul_under_add_layer(),
+            two_live_slots_layer(),
+            peak_ordered_children_layer(),
+        ] {
             let cross = HashMap::new();
             let v = view(&layer, &cross);
             let roots: Vec<ExprId> = layer.roots.iter().map(|r| r.expr).collect();
@@ -539,24 +842,41 @@ mod tests {
             }
         }
 
-        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
-        let layer = &dag.layers[0];
-        let v = LayerView::new(layer, &cross, None);
-        let out = flatten(&v, &NeutralOracle);
-
         let d = DetResolver;
         let r = Resolvers { read: &d, lookup: &d, virtual_setup: &d, challenge: &d };
-        for row in [0usize, 1, 7] {
-            let got = crate::ir::interpret(&out.program, layer, row, &r);
-            for (i, root) in layer.roots.iter().enumerate() {
-                let root_id = RootId(i as u32);
-                let expected = eval_layer_root(layer, root_id, row, &r);
-                assert_eq!(
-                    got[&root_id], expected,
-                    "root {i} (expr {:?}) mismatched reference eval at row {row}",
-                    root.expr
-                );
+
+        let check = |layer: &DagLayer, cross: &HashMap<_, _>, label: &str| {
+            let v = LayerView::new(layer, cross, None);
+            let out = flatten(&v, &NeutralOracle);
+            for row in [0usize, 1, 7] {
+                let got = crate::ir::interpret(&out.program, layer, row, &r);
+                for (i, root) in layer.roots.iter().enumerate() {
+                    let root_id = RootId(i as u32);
+                    let expected = eval_layer_root(layer, root_id, row, &r);
+                    assert_eq!(
+                        got[&root_id], expected,
+                        "[{label}] root {i} (expr {:?}) mismatched reference eval at row {row}",
+                        root.expr
+                    );
+                }
             }
+        };
+
+        // The synthetic layers exercise arms the real fixture can't reach
+        // (arena-canonical DAGs have no nested Muls): the mul-chain lowering
+        // and the two-simultaneous-slot stash discipline.
+        let empty_cross = HashMap::new();
+        for (layer, label) in [
+            (tiny_fma_layer(), "tiny_fma"),
+            (nested_mul_under_mul_layer(), "mul_chain"),
+            (nested_mul_under_add_layer(), "nested_mul_general"),
+            (two_live_slots_layer(), "two_live_slots"),
+            (peak_ordered_children_layer(), "peak_ordered"),
+        ] {
+            check(&layer, &empty_cross, label);
         }
+
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        check(&dag.layers[0], &cross, "add_sub L0");
     }
 }
