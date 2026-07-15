@@ -889,10 +889,11 @@ fn engine_runs_all_fixtures_b16() {
 /// (§2). Asserts the generic accrual `sum_quota <= leaf_calls` — the ONLY per-fixture
 /// comparison, and it lives here in the test, never in scheduler code.
 ///
-/// NOTE: this run's TRAFFIC is the @1200 traffic (14580/8348/…), NOT CS-M3's
-/// 16240/9528 — Phase-0b is a MEASUREMENT, not the traffic-preservation gate (that is
-/// `engine_runs_all_fixtures_b16` at production settings `multiplier=1, gap_cap=512,
-/// enforce_budget=true`).
+/// NOTE: this run's TRAFFIC is the @1200 count-only traffic (14580/8348/…), NOT CS-M3's
+/// 16240/9528 — Phase-0b is a MEASUREMENT (`enforce_budget=false`), not the traffic-
+/// preservation gate. That gate is `engine_runs_all_fixtures_b16`, which runs the
+/// PRODUCTION entry (`multiplier=1, gap_cap=1200, enforce_budget=true`); post-T7 both use
+/// `gap_cap=1200`, so they now differ only in `enforce_budget` (count-only vs enforced).
 #[test]
 #[ignore] // heavy (~minutes); banks the Phase-0b @1200 baseline via gap_cap + count-only mode (no RECLAIM_N edit).
 fn phase0b_leaf_call_baseline() {
@@ -939,21 +940,38 @@ fn phase0b_leaf_call_baseline() {
 /// CS-M4 Task 3 (spec §4): Stage A — whole-origin accumulating greedy + post-stage
 /// normalize — must LOWER traffic vs CS-M3, or at worst HOLD at the CS-M3 ceilings, on
 /// the two G-M0 fixtures whose deficit is caching COVERAGE (keccak = depth, blake2 =
-/// breadth). At production settings `cs_schedule_bwd_layer` runs Stage A ahead of the
-/// per-gap Stage B; this pins: (a) the shipped program certifies exactly; (b) traffic ≤
-/// the CS-M3 ceiling (keccak 16240, blake2 9528) AND ≤ the Task-2 baseline (Stage A only
-/// keeps strict-drop origins, so it can never regress); (c) `whole_origin_kept > 0` on
-/// keccak (depth wins realized — Stage A must retain ≥1 whole origin). The zero-
-/// unrealized-`Retain` shipped invariant is NOT asserted here (a Stage-B addition can
-/// strand an earlier retention until Task 5's TERMINAL normalize); `saw_incomplete_round`
-/// stays `false` (no `Incomplete` selection until Task 5).
+/// breadth). Exercised via the RESEARCH entry at `gap_cap=512` (`RECLAIM_N`), where the
+/// whole-origin path is ACTIVE (keccak ships `best_AB` with `whole_origin_kept>0`).
+/// PRODUCTION (`cs_schedule_bwd_layer`, T7's `gap_cap=1200`) ships the pure-per-gap
+/// safety-net floor `best_B` (`whole_origin_kept=0` on all four G-M0 fixtures), so it does
+/// NOT exercise this mechanism — see `engine_runs_all_fixtures_b16` for the shipped-@1200
+/// gate. Asserting `whole_origin_kept>0` at the production entry would therefore assert the
+/// negation of shipped behavior; the @512 research entry is where the mechanism lives.
+/// This pins: (a) the shipped program certifies exactly; (b) traffic ≤ the CS-M3 ceiling
+/// (keccak 16240, blake2 9528) AND ≤ the Task-2 baseline (Stage A only keeps strict-drop
+/// origins, so it can never regress) — @512 CS-M4 reaches 15924/9320, both ≤ the ceilings;
+/// (c) `whole_origin_kept > 0` on keccak (depth wins realized — Stage A must retain ≥1
+/// whole origin). The zero-unrealized-`Retain` shipped invariant is NOT asserted here (a
+/// Stage-B addition can strand an earlier retention until Task 5's TERMINAL normalize);
+/// `saw_incomplete_round` stays `false` (no `Incomplete` selection until Task 5).
 #[test]
-#[ignore] // heavy (~minutes): full production keccak + blake2 priced runs at b16.
+#[ignore] // heavy (~minutes): full keccak + blake2 priced runs at b16 (research entry, gap_cap=512).
 fn stage_a_whole_origin_lowers_or_holds() {
     for (name, m3_ceiling) in [("keccak_special5_layout_gkr.json", 16240usize),
                                ("blake2_with_extended_control_layout_gkr.json", 9528)] {
         let (layer, cross) = load_layer(name, 0);
-        let out = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+        // Stage A is active only at the CS-M3-reproducing `gap_cap=512`; PRODUCTION's
+        // `gap_cap=1200` ships the `best_B` floor (whole_origin_kept=0). Use the RESEARCH
+        // entry at `RECLAIM_N` so the whole-origin path is exercised.
+        let out = cs_schedule_bwd_layer_research(
+            &layer,
+            BwdRegime::Ext,
+            &cross,
+            16,
+            /*multiplier*/ 1,
+            RECLAIM_N,
+            /*enforce_budget*/ true,
+        );
         let traffic = out.stats.global + out.stats.fold_traffic;
         assert!(out.certificate.counted_traffic == out.certificate.reported_traffic, "{name} cert");
         assert!(traffic <= m3_ceiling, "{name} traffic {traffic} regressed past {m3_ceiling}");

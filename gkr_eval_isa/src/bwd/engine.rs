@@ -232,10 +232,12 @@ pub fn cs_schedule_bwd_layer(
 /// The RESEARCH entry (CS-M4 Task 2, spec §5): identical pipeline to
 /// [`cs_schedule_bwd_layer`] but with the THREE independent leaf-reclaim controls
 /// exposed — `multiplier` (scales accrued CREDITS; production 1, harness ≤2), `gap_cap`
-/// (bounds Stage-B candidate COUNT; production `RECLAIM_N`=512, Phase-0b 1200), and
+/// (bounds Stage-B candidate COUNT; production `PRODUCTION_GAP_CAP`=1200 after T7, the
+/// legacy `RECLAIM_N`=512 wall and Phase-0b 1200 are the other studied points), and
 /// `enforce_budget` (whether the budget caps/reserves; production `true`, Phase-0b
-/// `false` = count-only). Only the milestone/research harness varies these; production
-/// pins `(1, RECLAIM_N, true)`.
+/// `false` = count-only). This is the general three-knob form; PRODUCTION
+/// ([`cs_schedule_bwd_layer`]) pins `(1, PRODUCTION_GAP_CAP, true)` — see its doc for
+/// why T7 banked `gap_cap=1200`. Only the milestone/research harness varies these knobs.
 ///
 /// The non-regression contract is UNCHANGED (the CS key must strictly beat the canonical
 /// baseline), so a count-only or escalated run that fails to beat the baseline still

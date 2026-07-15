@@ -937,25 +937,30 @@ pub fn reclaim_leaves(
         let entry = occ_idx.get(&v).and_then(|o| o.get(j)).copied().unwrap_or(usize::MAX);
         (!fif_kept.contains(&gi), occ_range(&gaps[gi]), entry)
     });
-    // `gap_cap` (production `RECLAIM_N`=512, Phase-0b 1200) bounds the per-gap candidate
-    // COUNT — INDEPENDENT of the accrued budget (anchored on `min(G_r,1200)`) and of the
-    // `multiplier` (spec §5). Truncation is shared by both per-gap searches.
+    // `gap_cap` (production `PRODUCTION_GAP_CAP`=1200 after T7; the legacy `RECLAIM_N`=512
+    // research/Phase-0b point still passed explicitly by the research entry + direct tests)
+    // bounds the per-gap candidate COUNT — INDEPENDENT of the accrued budget (anchored on
+    // `min(G_r,1200)`) and of the `multiplier` (spec §5). Truncation is shared by both
+    // per-gap searches.
     order.truncate(gap_cap);
 
     // ══ CS-M4 Task 3 — RR no-regression safety net: ship lexicographic-min(A+B, B-only) ══
     // Compute BOTH candidate plans from the SAME compound base, sharing the ONE round
     // `TrialBudget`, and ship the lexicographic-min by `(traffic, instrs)` (EXACT tie →
-    // B-only). Because the B-only candidate reproduces CS-M3 exactly, CS-M4 is NEVER worse
-    // than CS-M3 on any fixture; Stage A's whole-origin coverage ships only where it
-    // STRICTLY beats that floor.
+    // B-only). The B-only candidate is the pure per-gap floor at whatever `gap_cap`
+    // production passes (T7's 1200; = CS-M3 byte-for-byte only at `gap_cap=512`). Because a
+    // wider `gap_cap` only ADMITS more strict-drop retentions, that floor is ≤ CS-M3's at
+    // any `gap_cap ≥ 512`, so CS-M4 is NEVER worse than CS-M3 on any fixture; Stage A's
+    // whole-origin coverage ships only where it STRICTLY beats that floor.
 
-    // ── Candidate B-only: the pure per-gap reclaim from the compound base — the CS-M3
-    // floor. It runs FIRST with reserve 0, so it reproduces CS-M3 byte-identically: this
-    // round's fresh accrual `min(G_r,1200) ≥` its `≤ min(G_r, gap_cap)` candidate count,
-    // so — running before the A+B path drains anything — it is never budget-refused and
-    // makes exactly CS-M3's per-gap decisions. No `normalize` follows it, so reserve 0 (a
-    // reserve here would drop CS-M3's last gap on a budget-tight small fixture and break
-    // the floor).
+    // ── Candidate B-only: the pure per-gap reclaim from the compound base — the per-gap
+    // floor at `gap_cap` (the CS-M3 floor exactly when `gap_cap=512`). It runs FIRST with
+    // reserve 0, so it makes the per-gap greedy's full decisions: this round's fresh
+    // accrual `min(G_r,1200) ≥` its `≤ min(G_r, gap_cap)` candidate count (equality at the
+    // production `gap_cap=1200`), so — running before the A+B path drains anything — it is
+    // never budget-refused and makes exactly the per-gap decisions at that cap (= CS-M3's
+    // when `gap_cap=512`). No `normalize` follows it, so reserve 0 (a reserve here would
+    // drop the last gap on a budget-tight small fixture and break the floor).
     let (b_entries, b_c, b_trace, b_attempted, b_kept) = per_gap_reclaim(
         d,
         budget,
@@ -1615,9 +1620,12 @@ struct RoundResult {
     /// This round's leaf-reclaim counters (the RETURNED round's are carried to
     /// [`PricedOutcome::counters`]).
     counters: LeafReclaimCounters,
-    /// Whether THIS round's leaf reclaim was `Incomplete` (OR-ed into
-    /// [`PricedOutcome::saw_incomplete_round`] independent of best-round selection —
-    /// spec §3/Finding-4). Always `false` in Task 2.
+    /// Whether THIS round's leaf reclaim was `Incomplete` (spec §3/Finding-4). Carried
+    /// through per round but NEVER read: the run-level OR into
+    /// [`PricedOutcome::saw_incomplete_round`] operates on a function-local var in
+    /// `priced_rounds` (independent of best-round selection), not on this field, and
+    /// `key()` ignores it. Kept as a placeholder for future per-round use (Task 5). Always
+    /// `false` in Task 2.
     saw_incomplete_round: bool,
 }
 
@@ -1745,8 +1753,10 @@ pub fn priced_rounds(
         // CS-M4 Task 2 (spec §5): accrue THIS round's leaf-search credit BEFORE the
         // reclaim. `G_r` (realized leaf gaps) is known only now (post re-freeze), so
         // credit accrues per round — never a pre-summed `Σ_r`. The quota reference is
-        // the FIXED 1200 (`min(G_r,1200)`), NOT `gap_cap` — coupling them would silently
-        // shrink the production budget to 512 and break the accrual math (spec §5).
+        // the FIXED 1200 (`min(G_r,1200)`), NOT `gap_cap` — coupling them would shrink the
+        // quota to `gap_cap` (e.g. to 512 under the legacy `RECLAIM_N` research entry) and
+        // break the accrual math; keeping it fixed holds the accrual reference constant
+        // across every `gap_cap` the research entry sweeps (spec §5).
         let g_r: usize =
             observed.leaf_instants.values().map(|i| i.len().saturating_sub(1)).sum();
         let quota_r = g_r.min(1200);
