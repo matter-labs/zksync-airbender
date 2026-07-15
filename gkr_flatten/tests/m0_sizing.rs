@@ -18,7 +18,7 @@ fn m0_sizing_report() {
     for name in FIXTURES {
         let (dag, cross) = load_circuit(name);
         for (li, layer) in dag.layers.iter().enumerate() {
-            let view = LayerView { layer, cross: &cross, overrides: None };
+            let view = LayerView::new(layer, &cross, None);
             let roots: Vec<ExprId> = layer.roots.iter().map(|r| r.expr).collect();
             let r = size_layer(&view, &roots);
             println!(
@@ -30,11 +30,7 @@ fn m0_sizing_report() {
 
         // bwd: Ext-regime distill of L0 (the hot layer).
         let d = distill(&dag.layers[0], BwdRegime::Ext, &cross, None);
-        let bview = LayerView {
-            layer: &d.layer,
-            cross: &d.cross_fields,
-            overrides: Some(&d.field_overrides),
-        };
+        let bview = LayerView::new(&d.layer, &d.cross_fields, Some(&d.field_overrides));
         let root = d.layer.roots[d.root.0 as usize].expr;
         let r = size_layer(&bview, &[root]);
         println!(

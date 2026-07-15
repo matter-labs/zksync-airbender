@@ -133,7 +133,7 @@ mod tests {
 
     fn view(l: &DagLayer) -> LayerView<'_> {
         static EMPTY_CROSS: OnceLock<HashMap<ReadPlace, FieldKind>> = OnceLock::new();
-        LayerView { layer: l, cross: EMPTY_CROSS.get_or_init(HashMap::new), overrides: None }
+        LayerView::new(l, EMPTY_CROSS.get_or_init(HashMap::new), None)
     }
 
     fn base_read(col: usize) -> SourceInfo {
@@ -321,7 +321,7 @@ mod tests {
     fn add_sub_l0_peaks_resolve() {
         let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
         let layer = &dag.layers[0];
-        let v = LayerView { layer, cross: &cross, overrides: None };
+        let v = LayerView::new(layer, &cross, None);
         for r in &layer.roots {
             let _ = cone_peak(&v, r.expr);
         }

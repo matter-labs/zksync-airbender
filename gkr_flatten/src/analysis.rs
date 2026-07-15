@@ -147,25 +147,16 @@ struct NodeStats {
 ///
 /// Also carries the extra debug assertion beyond the DP itself: for every
 /// reachable non-leaf node, `view.width(e) >= view.width(child)` for each
-/// child. This sanity-checks the bwd `field_overrides` pathway (a Task-2
-/// review carry-forward) — `LayerView::width` is per-`ExprId`, so a parent
-/// must never resolve to a narrower field than a child it folds.
-///
-/// KNOWN TO FIRE, PERVASIVELY, on real fixtures (see the M0 sizing report /
-/// task concerns — left intact per the task brief: flag, don't silently
-/// fix). Two distinct root causes, both upstream of this crate:
-///   1. bwd (Ext-regime distilled layers): `field_overrides` forces only
-///      the *leaf* (origin `Read`/`VirtualSetup`) to `Ext`; joins above it
-///      recompute their field via plain `expr_field`, which has no
-///      knowledge of the override and infers `Base` unless independently
-///      Ext. Fires on every bwd L0 in the M0 corpus (6%-82% of that layer's
-///      reachable nodes, by edge count).
-///   2. fwd: `expr_field`'s fold over `Add`/`Mul` args returns the *first*
-///      `Err(ReadPlace)` it hits (by design, for cross-layer reads),
-///      discarding any already-/not-yet-examined sibling's field — so an
-///      `Add` mixing a cross-layer-unresolved leaf with a locally-Ext leaf
-///      (e.g. a `Challenge`) can resolve narrower than its Ext child.
-///      Fires on ~10/12 fixtures, usually 1-3 edges per affected layer.
+/// child (a Task-2 review carry-forward). Since `LayerView::width` became
+/// an override-aware recursive join (see its doc — a composite's field is
+/// the join over its children's resolved fields, overrides consulted at
+/// every level), this holds by construction UNLESS an explicit override
+/// forces a composite below one of its children — so the assertion now
+/// serves as an override-consistency tripwire and is expected to stay
+/// silent. (Historical note: under the original `expr_field`-delegating
+/// `width`, it fired pervasively on real fixtures — every bwd L0 plus
+/// ~10/12 fwd fixtures — which is what motivated the width fix; see the M0
+/// sizing audit.)
 fn compute_node_stats(
     view: &LayerView<'_>,
     dag_nodes: usize,
@@ -256,7 +247,7 @@ mod tests {
     use crate::dag::testdag::{mixed_peak_layer, shared_diamond, tiny_fma_layer};
 
     fn view<'a>(l: &'a DagLayer, cross: &'a HashMap<ReadPlace, FieldKind>) -> LayerView<'a> {
-        LayerView { layer: l, cross, overrides: None }
+        LayerView::new(l, cross, None)
     }
 
     fn roots_of(l: &DagLayer) -> Vec<ExprId> {
@@ -314,7 +305,7 @@ mod tests {
     fn add_sub_l0_bracket_holds() {
         let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
         let layer = &dag.layers[0];
-        let v = LayerView { layer, cross: &cross, overrides: None };
+        let v = LayerView::new(layer, &cross, None);
         let roots: Vec<ExprId> = layer.roots.iter().map(|r| r.expr).collect();
         let r = size_layer(&v, &roots);
         assert!(
