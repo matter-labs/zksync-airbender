@@ -138,6 +138,20 @@ enum ProbeOutcome {
     Skipped(String),
 }
 
+/// Runs `f` with the default panic-hook stderr noise suppressed for the
+/// duration of the call, restoring the previous hook before returning —
+/// panics inside `f` are still caught and returned as an `Err`, they just
+/// don't print. Used to keep `probe_fixture`'s expected construct-skip
+/// panics quiet without silencing a real (never-caught) value mismatch,
+/// which always runs outside this helper's scope.
+fn silent_catch<R>(f: impl FnOnce() -> R + std::panic::UnwindSafe) -> std::thread::Result<R> {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let r = std::panic::catch_unwind(f);
+    std::panic::set_hook(prev);
+    r
+}
+
 /// Runs the bwd probe for one fixture: distill L0 (Ext regime), flatten the
 /// distilled layer from its single root, and compare `ir::interpret` against
 /// `eval_layer_root` at rows `[0, 1, 17]`.
@@ -151,7 +165,7 @@ fn probe_fixture(name: &str) -> ProbeOutcome {
     let (dag, cross) = load_circuit(name);
     let layer0 = &dag.layers[0];
 
-    let distilled = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let distilled = match silent_catch(std::panic::AssertUnwindSafe(|| {
         distill(layer0, BwdRegime::Ext, &cross, None)
     })) {
         Ok(d) => d,
@@ -159,7 +173,7 @@ fn probe_fixture(name: &str) -> ProbeOutcome {
     };
 
     let root_expr = distilled.layer.roots[distilled.root.0 as usize].expr;
-    let flattened = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let flattened = match silent_catch(std::panic::AssertUnwindSafe(|| {
         let view = LayerView::new(
             &distilled.layer,
             &distilled.cross_fields,
@@ -178,7 +192,7 @@ fn probe_fixture(name: &str) -> ProbeOutcome {
 
     let r = HashResolvers { seed: 7 }.bundle();
     for &row in &[0usize, 1, 17] {
-        let computed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let computed = silent_catch(std::panic::AssertUnwindSafe(|| {
             let got = interpret(&flattened.program, &distilled.layer, row, &r);
             let want = eval_layer_root(&distilled.layer, distilled.root, row, &r);
             (got[&distilled.root], want)

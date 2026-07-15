@@ -7,8 +7,9 @@
 //!
 //! `sites`, `max_depth`, `ceiling` are computed by a single bottom-up pass
 //! over the sub-DAG reachable from `roots` (`compute_node_stats`, gated by
-//! `mark_reachable`), memoized per `ExprId` in a plain `Vec` (not
-//! `Vec<Option<_>>` + recursion): arena construction
+//! `mark_reachable`), memoized per `ExprId` in a `Vec<Option<NodeStats>>`
+//! filled by a single ascending scan (unreachable nodes stay `None`), not by
+//! lazy Option-guarded recursion: arena construction
 //! (`ArenaBuilder::intern_expr`, `cs::gkr_compiler::dag_ir::arena`) only ever
 //! *appends*, so an `Add`/`Mul`'s children always carry a strictly smaller
 //! `ExprId` than the node itself. A single ascending scan over `0..dag_nodes`

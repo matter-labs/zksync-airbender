@@ -300,6 +300,11 @@ impl<'v, 'o> Walker<'v, 'o> {
     /// site. A no-op under `NeutralOracle` (always `None`) — M2 will act on
     /// `Some(priority)` by admitting `e` into the simulated cache
     /// (`Op::CacheStore`) and scheduling its eventual `Op::Evict`.
+    ///
+    /// M1 site domain is compound-only: this hook is only ever invoked for
+    /// `Add`/`Mul` nodes reached via the general recursive branch. Leaves and
+    /// fma-fused Mul operands (the `is_ready_product`/`ready_operand` arms
+    /// above) never reach it — M2 extends the site domain to cover them.
     fn maybe_cache(&mut self, e: ExprId, path: &SitePath) {
         let _ = e;
         let _ = self.oracle.keep_priority(path);
