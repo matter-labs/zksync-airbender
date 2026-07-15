@@ -2,7 +2,7 @@ use super::common::EXT_DEGREE;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
 pub const GKR_ROUNDS: usize = 24usize;
-pub const GKR_ADDRS: usize = 54usize;
+pub const GKR_ADDRS: usize = 70usize;
 pub const GKR_EVALS: usize = 128usize;
 pub const INIT_AND_TEARDOWN_SETS: usize = 0usize;
 pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize = EXT_DEGREE * (6usize + 1);
@@ -26,8 +26,8 @@ pub const PADDING_WORDS: usize = {
     }
 };
 pub const GKR_EVAL_BUF: usize = {
-    let dim_reducing = 54usize * DIM_REDUCE_EVAL_POINTS * EXT_DEGREE;
-    let standard = 54usize * STANDARD_EVAL_POINTS * EXT_DEGREE;
+    let dim_reducing = 70usize * DIM_REDUCE_EVAL_POINTS * EXT_DEGREE;
+    let standard = 70usize * STANDARD_EVAL_POINTS * EXT_DEGREE;
     let evals = 128usize * EXT_DEGREE;
     let max_data = if dim_reducing > standard {
         dim_reducing
