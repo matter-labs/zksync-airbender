@@ -1,0 +1,10 @@
+[package]
+name = "gkr_flatten"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+cs = { workspace = true, features = ["compiler"] }
+gkr_eval_isa = { path = "../gkr_eval_isa" }
+field = { workspace = true }
+serde_json = "1"

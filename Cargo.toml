@@ -19,6 +19,7 @@ members = [
     "gpu_gkr_fwd_generator",
     "gkr_design_space",
     "gkr_eval_isa",
+    "gkr_flatten",
     "verifier",
     "full_statement_verifier",
 
@@ -105,6 +106,7 @@ default-members = [
     # Note: --workspace and -p circuit_prover builds remain expected-broken until the GPU stage
     # (gpu/circuit_prover path-depends on gkr_eval_isa and has not yet been ported).
     "gkr_eval_isa",
+    "gkr_flatten",
     # The only pure-CPU gpu crates; the CUDA ones are omitted so the default build needs no CUDA.
     "gpu/gkr_model",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
