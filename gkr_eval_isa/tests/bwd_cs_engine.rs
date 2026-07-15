@@ -7,13 +7,13 @@ use gkr_eval_isa::bwd::compile::{
     compile_distilled_traced,
 };
 use gkr_eval_isa::bwd::construct::construct_unit_order;
-use gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer;
+use gkr_eval_isa::bwd::engine::{cs_schedule_bwd_layer, cs_schedule_bwd_layer_research};
 use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain, DistilledLayer};
 use gkr_eval_isa::bwd::fif::{feasible_leaf_plan, fif_select, oracle_saved, plan_leaves, Gap};
 use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
 use gkr_eval_isa::bwd::price::{
     compound_batch_plan, compound_candidates, modeled_traffic_full, planner_signature, price_pin,
-    priced_rounds, suppression_ranges, value_width,
+    priced_rounds, suppression_ranges, value_width, RECLAIM_N,
 };
 use gkr_eval_isa::bwd::trace::{
     certify, freeze_demand, live_profile, BwdEvent, BwdServedFrom, BwdServeKind, FrozenDemand,
@@ -561,7 +561,7 @@ fn priced_rounds_converge_or_cap() {
         let d = distill(&layer, BwdRegime::Ext, &cross, None);
         let frozen0 = coordinate_correct_frozen(&d, 16);
 
-        let outcome = priced_rounds(&d, 16, frozen0.clone())
+        let outcome = priced_rounds(&d, 16, frozen0.clone(), 1, RECLAIM_N, true)
             .unwrap_or_else(|e| panic!("{name}: priced_rounds must return Ok, got {e:?}"));
         assert!(outcome.rounds <= 3, "{name}: rounds {} > 3", outcome.rounds);
         // Commit 2: the gap-granular reclaim runs each round; kept ⊆ attempted, and at
@@ -585,7 +585,7 @@ fn priced_rounds_converge_or_cap() {
         );
 
         // `priced_rounds` is deterministic (no wall-clock / hashmap-order dependence).
-        let outcome2 = priced_rounds(&d, 16, frozen0.clone()).expect("second run");
+        let outcome2 = priced_rounds(&d, 16, frozen0.clone(), 1, RECLAIM_N, true).expect("second run");
         assert_eq!(outcome.plan.entries, outcome2.plan.entries, "{name}: plan not deterministic");
         assert_eq!(outcome.pins, outcome2.pins, "{name}: pins not deterministic");
 
@@ -697,7 +697,7 @@ fn priced_reclaim_capture_heavy() {
         let baseline_c = coordinate_correct_baseline(&d, 16);
         let baseline_traffic = baseline_c.stats_ext.global + baseline_c.stats_ext.fold_traffic;
 
-        let outcome = priced_rounds(&d, 16, frozen0.clone())
+        let outcome = priced_rounds(&d, 16, frozen0.clone(), 1, RECLAIM_N, true)
             .unwrap_or_else(|e| panic!("{name}: priced_rounds must return Ok, got {e:?}"));
 
         // The RETURNED round's realized final traffic, re-derived from the returned
@@ -846,6 +846,64 @@ fn engine_runs_all_fixtures_b16() {
     );
 }
 
+/// CS-M4 Phase-0b baseline banking (spec §5/§8): re-run the @1200 per-gap leaf
+/// reclaim in COUNT-ONLY mode (`enforce_budget=false`, so the reserve rule never
+/// shaves a candidate) with `gap_cap=1200` (bounds Stage-B candidates, replacing the
+/// legacy `RECLAIM_N=512` truncate WITHOUT any manual constant flip) and `multiplier=1`.
+/// Banks, per fixture per complete run (summed across rounds): the leaf-reclaim
+/// `compile_distilled_planned` count (`leaf_calls`), the base+compound compile count
+/// (`base_compound_calls`), `Σ_r G_r` (`sum_g`), and `Σ_r min(G_r,1200)` (`sum_quota`),
+/// plus end-to-end wall time. The banked `leaf_calls` sets `COST_CEILING`/`HARD_MAX`
+/// (§2). Asserts the generic accrual `sum_quota <= leaf_calls` — the ONLY per-fixture
+/// comparison, and it lives here in the test, never in scheduler code.
+///
+/// NOTE: this run's TRAFFIC is the @1200 traffic (14580/8348/…), NOT CS-M3's
+/// 16240/9528 — Phase-0b is a MEASUREMENT, not the traffic-preservation gate (that is
+/// `engine_runs_all_fixtures_b16` at production settings `multiplier=1, gap_cap=512,
+/// enforce_budget=true`).
+#[test]
+#[ignore] // heavy (~minutes); banks the Phase-0b @1200 baseline via gap_cap + count-only mode (no RECLAIM_N edit).
+fn phase0b_leaf_call_baseline() {
+    for name in [
+        "keccak_special5_layout_gkr.json",
+        "blake2_with_extended_control_layout_gkr.json",
+        "bigint_with_extended_control_layout_gkr.json",
+        "unified_reduced_machine_layout_gkr.json",
+    ] {
+        let (layer, cross) = load_layer(name, 0);
+        let t0 = std::time::Instant::now();
+        let out = cs_schedule_bwd_layer_research(
+            &layer,
+            BwdRegime::Ext,
+            &cross,
+            16,
+            /*multiplier*/ 1,
+            /*gap_cap*/ 1200,
+            /*enforce_budget*/ false,
+        );
+        let wall = t0.elapsed();
+        let cs_traffic = out.stats.global + out.stats.fold_traffic;
+        eprintln!(
+            "{name}: leaf_calls={} base_compound_calls={} sum_G={} sum_quota={} \
+             traffic={} rounds={} wall={:.1}s",
+            out.leaf_calls,
+            out.base_compound_calls,
+            out.sum_g,
+            out.sum_quota,
+            cs_traffic,
+            out.rounds,
+            wall.as_secs_f64(),
+        );
+        assert!(
+            out.sum_quota <= out.leaf_calls,
+            "{name}: accrual (sum_quota {}) must not exceed the banked @1200 leaf baseline \
+             (leaf_calls {})",
+            out.sum_quota,
+            out.leaf_calls,
+        );
+    }
+}
+
 /// (b) Determinism: two `cs_schedule_bwd_layer` runs on keccak L0 @ b16 produce
 /// byte-equal outcomes — same permutation, same plan (entries + epoch + fnv), same
 /// stats, same pins, same fallback verdict. No wall-clock / hashmap-iteration-order
@@ -971,7 +1029,7 @@ fn planned_fill_then_trim_monotone() {
         let frozen0 = coordinate_correct_frozen(&d, BUDGET);
 
         // The CS plan (same construction as `priced_rounds_converge_or_cap`).
-        let outcome = priced_rounds(&d, BUDGET, frozen0)
+        let outcome = priced_rounds(&d, BUDGET, frozen0, 1, RECLAIM_N, true)
             .unwrap_or_else(|e| panic!("{name}: priced_rounds must return Ok, got {e:?}"));
         let plan = &outcome.plan;
         let retains = plan.entries.iter().filter(|e| e.action == PlanAction::Retain).count();
@@ -1087,7 +1145,9 @@ fn synthetic_layer_with_refusable_whole_origin() -> (
 /// accrual). Large `available` so `normalize` never runs out of credit here.
 #[cfg(test)]
 fn trial_budget_stub() -> gkr_eval_isa::bwd::price::TrialBudget {
-    gkr_eval_isa::bwd::price::TrialBudget { available: 1 << 20 }
+    // Large `available` + enforcing so `normalize` never runs out of credit here; the
+    // enriched (Task 2) fields default to the zero/enforce state via `..Default::default()`.
+    gkr_eval_isa::bwd::price::TrialBudget { available: 1 << 20, ..Default::default() }
 }
 
 /// The realized-retention model unit gate (CS-M4 Task 1). On the deterministic synthetic

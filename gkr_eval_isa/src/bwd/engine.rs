@@ -43,7 +43,7 @@ use super::construct::construct_unit_order;
 use super::distill::{distill, stable_distilled_site_domain, DistilledLayer};
 use super::fif::coordinate_correct_frozen;
 use super::plan::BwdOccurrencePlan;
-use super::price::priced_rounds;
+use super::price::{priced_rounds, LeafReclaimCounters, RECLAIM_N};
 use super::trace::{certify, BwdCompileTrace, BwdEvent, CertificateReport};
 use crate::fwd::error::CompileError;
 
@@ -71,6 +71,23 @@ pub struct CsOutcome {
     pub rounds: usize,
     pub converged: bool,
     pub fell_back_to_baseline: bool,
+    /// CS-M4 (Task 2): the priced run's leaf-reclaim counters (Task 2 populates only the
+    /// residual-gap fields; the rest arrive in Tasks 3/4). Default (all `0`) on fallback.
+    pub counters: LeafReclaimCounters,
+    /// CS-M4 (Task 2): any round's leaf reclaim returned `Incomplete` (spec §3). Always
+    /// `false` in Task 2; `false` on fallback.
+    pub saw_incomplete_round: bool,
+    /// CS-M4 (Task 2, spec §5): per-run leaf-search `compile_distilled_planned` count
+    /// (the budget-scoped cost). `0` on fallback.
+    pub leaf_calls: usize,
+    /// CS-M4 (Task 2, spec §5): per-run base+compound compile count (UNBUDGETED,
+    /// reported separately from `leaf_calls`). `0` on fallback.
+    pub base_compound_calls: usize,
+    /// CS-M4 (Task 2, spec §5): `Σ_r G_r` (realized leaf gaps). `0` on fallback.
+    pub sum_g: usize,
+    /// CS-M4 (Task 2, spec §5): `Σ_r min(G_r, 1200)` (accrual reference quota). `0` on
+    /// fallback.
+    pub sum_quota: usize,
 }
 
 /// The lexicographic non-regression key `(infeasible, traffic, instrs)` — lower is
@@ -110,6 +127,12 @@ struct CsPath {
     feasible: bool,
     rounds: usize,
     converged: bool,
+    counters: LeafReclaimCounters,
+    saw_incomplete_round: bool,
+    leaf_calls: usize,
+    base_compound_calls: usize,
+    sum_g: usize,
+    sum_quota: usize,
 }
 
 fn try_cs_path(
@@ -118,6 +141,9 @@ fn try_cs_path(
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
     bl_d: &DistilledLayer,
+    multiplier: usize,
+    gap_cap: usize,
+    enforce_budget: bool,
 ) -> Result<CsPath, CompileError> {
     // (2) constructive order off the canonical distillation's reuse structure.
     let stable_domain = stable_distilled_site_domain(bl_d);
@@ -127,7 +153,7 @@ fn try_cs_path(
     // demand, and run the compiler-in-the-loop priced greedy.
     let d = distill(layer, regime, cross, Some(&perm));
     let frozen0 = coordinate_correct_frozen(&d, budget)?;
-    let outcome = priced_rounds(&d, budget, frozen0)?;
+    let outcome = priced_rounds(&d, budget, frozen0, multiplier, gap_cap, enforce_budget)?;
 
     // (4) recompile the returned plan to the SHIPPED program, then certify it.
     let (compiled, trace) = compile_distilled_planned(&d, budget, &outcome.plan)?;
@@ -142,6 +168,12 @@ fn try_cs_path(
         feasible,
         rounds: outcome.rounds,
         converged: outcome.converged,
+        counters: outcome.counters,
+        saw_incomplete_round: outcome.saw_incomplete_round,
+        leaf_calls: outcome.leaf_calls,
+        base_compound_calls: outcome.base_compound_calls,
+        sum_g: outcome.sum_g,
+        sum_quota: outcome.sum_quota,
     })
 }
 
@@ -163,12 +195,23 @@ fn baseline_outcome(
         rounds: 0,
         converged: false,
         fell_back_to_baseline: true,
+        // No priced run happened on fallback (spec §5): counters/costs default to 0/false.
+        counters: LeafReclaimCounters::default(),
+        saw_incomplete_round: false,
+        leaf_calls: 0,
+        base_compound_calls: 0,
+        sum_g: 0,
+        sum_quota: 0,
     }
 }
 
 /// Schedule one backward layer × regime at `budget` via the hint-model pipeline
 /// (constructive order → coordinate-correct freeze → compiler-in-the-loop priced greedy
 /// → certify → non-regression fallback). See the module docs for the full contract.
+///
+/// PRODUCTION entry: a thin wrapper over [`cs_schedule_bwd_layer_research`] at the fixed
+/// production controls `(multiplier=1, gap_cap=RECLAIM_N=512, enforce_budget=true)` —
+/// byte-for-byte the CS-M3 behavior.
 ///
 /// NEVER panics on a schedule problem: an infeasible or non-improving CS path falls
 /// back to the canonical `decisions:None` baseline. It panics ONLY if even that
@@ -179,6 +222,30 @@ pub fn cs_schedule_bwd_layer(
     regime: BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
+) -> CsOutcome {
+    cs_schedule_bwd_layer_research(layer, regime, cross, budget, 1, RECLAIM_N, true)
+}
+
+/// The RESEARCH entry (CS-M4 Task 2, spec §5): identical pipeline to
+/// [`cs_schedule_bwd_layer`] but with the THREE independent leaf-reclaim controls
+/// exposed — `multiplier` (scales accrued CREDITS; production 1, harness ≤2), `gap_cap`
+/// (bounds Stage-B candidate COUNT; production `RECLAIM_N`=512, Phase-0b 1200), and
+/// `enforce_budget` (whether the budget caps/reserves; production `true`, Phase-0b
+/// `false` = count-only). Only the milestone/research harness varies these; production
+/// pins `(1, RECLAIM_N, true)`.
+///
+/// The non-regression contract is UNCHANGED (the CS key must strictly beat the canonical
+/// baseline), so a count-only or escalated run that fails to beat the baseline still
+/// falls back — but its `leaf_calls`/`base_compound_calls`/`sum_g`/`sum_quota` measure
+/// the priced run either way when the CS path ran.
+pub fn cs_schedule_bwd_layer_research(
+    layer: &DagLayer,
+    regime: BwdRegime,
+    cross: &HashMap<ReadPlace, FieldKind>,
+    budget: usize,
+    multiplier: usize,
+    gap_cap: usize,
+    enforce_budget: bool,
 ) -> CsOutcome {
     // ── (1) canonical baseline: the non-regression floor AND the fallback ──────────
     let bl_d = distill(layer, regime, cross, None);
@@ -194,7 +261,16 @@ pub fn cs_schedule_bwd_layer(
     let bl_key = schedule_key(!bl_feasible, bl_traffic, bl_c.stats.program_lanes);
 
     // ── run the CS path; fall back on any compile error ────────────────────────────
-    let cs = match try_cs_path(layer, regime, cross, budget, &bl_d) {
+    let cs = match try_cs_path(
+        layer,
+        regime,
+        cross,
+        budget,
+        &bl_d,
+        multiplier,
+        gap_cap,
+        enforce_budget,
+    ) {
         Ok(cs) => cs,
         Err(_) => return baseline_outcome(n_units, bl_c, bl_report),
     };
@@ -215,6 +291,12 @@ pub fn cs_schedule_bwd_layer(
             rounds: cs.rounds,
             converged: cs.converged,
             fell_back_to_baseline: false,
+            counters: cs.counters,
+            saw_incomplete_round: cs.saw_incomplete_round,
+            leaf_calls: cs.leaf_calls,
+            base_compound_calls: cs.base_compound_calls,
+            sum_g: cs.sum_g,
+            sum_quota: cs.sum_quota,
         }
     } else {
         baseline_outcome(n_units, bl_c, bl_report)

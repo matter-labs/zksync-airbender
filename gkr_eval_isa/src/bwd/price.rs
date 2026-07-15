@@ -118,6 +118,26 @@ pub struct PricedOutcome {
     pub reclaim_kept: usize,
     pub compound_attempted: usize,
     pub compound_kept: usize,
+    /// CS-M4 (Task 2): the RETURNED (best) round's leaf-reclaim activity counters.
+    /// Task 2 populates only the residual-gap fields (from the per-gap loop); the
+    /// Stage-A/A'/normalize fields stay `0` until Tasks 3/4.
+    pub counters: LeafReclaimCounters,
+    /// CS-M4 (Task 2): `true` iff ANY round's leaf reclaim returned `Incomplete` —
+    /// OR-ed across ALL rounds, independent of the best-round selection (spec §3).
+    /// Always `false` in Task 2 (`reclaim_leaves` is always `Complete`); Task 5 wires
+    /// the selection.
+    pub saw_incomplete_round: bool,
+    /// CS-M4 (Task 2, spec §5): per-run leaf-search `compile_distilled_planned` count
+    /// (the budget-scoped cost), summed across rounds.
+    pub leaf_calls: usize,
+    /// CS-M4 (Task 2, spec §5): per-run base+compound compile count (essential,
+    /// UNBUDGETED), summed across rounds and reported separately from `leaf_calls`.
+    pub base_compound_calls: usize,
+    /// CS-M4 (Task 2, spec §5): `Σ_r G_r` (realized leaf gaps) across rounds.
+    pub sum_g: usize,
+    /// CS-M4 (Task 2, spec §5): `Σ_r min(G_r, 1200)` (the accrual reference quota)
+    /// across rounds — the generic allowance a run accrues at `multiplier = 1`.
+    pub sum_quota: usize,
 }
 
 // ── stream reconstruction (pre-order DFS over the filtered domain serves) ───────
@@ -521,7 +541,7 @@ fn reclaim_compounds(
     base_c: BwdCompiledLayer,
     base_trace: BwdCompileTrace,
 ) -> Result<
-    (BTreeSet<ExprId>, BwdOccurrencePlan, BwdCompiledLayer, BwdCompileTrace, usize, usize),
+    (BTreeSet<ExprId>, BwdOccurrencePlan, BwdCompiledLayer, BwdCompileTrace, usize, usize, usize),
     CompileError,
 > {
     // Hint-ranked candidates: the offline marginal price against the EMPTY set is an
@@ -580,7 +600,10 @@ fn reclaim_compounds(
         }
     }
 
-    Ok((pinned, best_plan, best_c, best_trace, attempted, kept))
+    // `compiles` is the count of compound `compile_distilled_planned` calls (each an
+    // essential, UNBUDGETED base/compound compile, spec §5) — reported separately from
+    // the leaf-search `leaf_calls`.
+    Ok((pinned, best_plan, best_c, best_trace, attempted, kept, compiles))
 }
 
 // ── plan construction ───────────────────────────────────────────────────────────
@@ -709,7 +732,9 @@ fn reclaim_leaves(
     base_plan: &BwdOccurrencePlan,
     base_c: BwdCompiledLayer,
     base_trace: BwdCompileTrace,
-) -> Result<(BwdOccurrencePlan, BwdCompiledLayer, BwdCompileTrace, usize, usize), CompileError> {
+    gap_cap: usize,
+    trial_budget: &mut TrialBudget,
+) -> Result<LeafReclaimResult, CompileError> {
     // Each domain leaf's opening-occurrence entry indices within the base plan.
     let mut occ_idx: BTreeMap<ExprId, Vec<usize>> = BTreeMap::new();
     for (k, e) in base_plan.entries.iter().enumerate() {
@@ -741,7 +766,11 @@ fn reclaim_leaves(
         let entry = occ_idx.get(&v).and_then(|o| o.get(j)).copied().unwrap_or(usize::MAX);
         (!fif_kept.contains(&gi), occ_range(&gaps[gi]), entry)
     });
-    order.truncate(RECLAIM_N);
+    // CS-M4 Task 2: `gap_cap` (production `RECLAIM_N`=512, Phase-0b 1200) bounds the
+    // Stage-B candidate COUNT here — replacing the legacy `RECLAIM_N` truncate. It is
+    // INDEPENDENT of the accrued budget (which is anchored on `min(G_r,1200)`, never
+    // `gap_cap`) and of the `multiplier` (spec §5).
+    order.truncate(gap_cap);
 
     let mut entries = base_plan.entries.clone();
     let mut best_traffic = base_c.stats_ext.global + base_c.stats_ext.fold_traffic;
@@ -752,8 +781,8 @@ fn reclaim_leaves(
     let mut compiles = 0usize;
 
     for gi in order {
-        if compiles >= 2 * RECLAIM_N {
-            break; // recompile budget guard (≤ 2N)
+        if compiles >= 2 * gap_cap {
+            break; // recompile budget guard (≤ 2·gap_cap)
         }
         let (v, j) = meta[gi];
         let occ = match occ_idx.get(&v) {
@@ -765,6 +794,17 @@ fn reclaim_leaves(
             continue; // already retained via a chain — nothing to add here
         }
 
+        // CS-M4 Task 2: charge one leaf-search credit. NO reserve (`try_spend(0)`) —
+        // Stage A's `normalize` reserve (`try_spend(1)`) arrives in Task 3. At
+        // production (`multiplier=1, gap_cap=512, enforce=true`) the round's accrued
+        // budget `min(G_r,1200) ≥` the `≤ min(G_r,512)` candidates this loop truncates
+        // to, so `try_spend(0)` NEVER refuses → this loop admits exactly the CS-M3 set
+        // (byte-for-byte). In count-only mode (Phase-0b) `try_spend` always succeeds and
+        // only tallies `leaf_calls`. A refusal (a future under-accrued caller) simply
+        // stops the loop with the best-so-far plan.
+        if !trial_budget.try_spend(0) {
+            break;
+        }
         attempted += 1;
         entries[entry_idx].action = PlanAction::Retain; // tentative flip
         let trial = plan_from(base_plan, entries.clone());
@@ -793,39 +833,101 @@ fn reclaim_leaves(
     }
 
     let final_plan = plan_from(base_plan, entries);
-    Ok((final_plan, best_c, best_trace, attempted, kept))
+    // CS-M4 Task 2: always `Complete` (no `Incomplete` selection until Task 5). The
+    // per-gap loop is spec §4's Stage-B residual, so its attempted/kept land in the
+    // residual-gap counter fields; the Stage-A/A'/normalize fields stay default (0)
+    // until Tasks 3/4 populate them.
+    let counters = LeafReclaimCounters {
+        residual_gap_attempted: attempted,
+        residual_gap_kept: kept,
+        ..LeafReclaimCounters::default()
+    };
+    Ok(LeafReclaimResult::Complete { plan: final_plan, c: best_c, trace: best_trace, counters })
 }
 
 // ── CS-M4 Task 1: realized-retention model ─────────────────────────────────────
 
-/// A single decrementing leaf-search budget (spec §5). Task 1 ships the MINIMAL
-/// stub — one credit per top-level `compile_distilled_planned` a leaf search spends;
-/// Task 2 enriches it with per-round dynamic accrual (`multiplier`/gap quotas).
-/// [`Self::try_spend`] is the only debit [`normalize`] uses: it spends one credit
-/// iff strictly more than `reserve` remain (the reserve keeps a credit for the
-/// mandatory following `normalize`, spec §5), so the debit is ALWAYS checked — never
-/// an underflowing bare spend.
-#[derive(Clone, Copy, Debug, Default)]
+/// A single decrementing leaf-search budget (spec §5) shared across all rounds of one
+/// [`priced_rounds`] run. Task 2 enriches Task 1's minimal stub with per-round dynamic
+/// accrual ([`Self::accrue`]: `available += multiplier · quota_r`, credits roll
+/// forward) and leaf-call counting.
+///
+/// THREE independent controls (spec §5 — never coupled): `multiplier` scales accrued
+/// CREDITS (the [`Self::accrue`] argument); `gap_cap` bounds Stage-B candidate COUNT
+/// (a [`reclaim_leaves`] arg, not this type); `enforce` toggles whether the budget
+/// actually caps/reserves. In COUNT-ONLY mode (`enforce == false`, spec §5 / Phase-0b)
+/// every [`Self::try_spend`] succeeds and never reserves — it ONLY increments
+/// `leaf_calls`, measuring the full @1200 leaf-call shape without the reserve rule
+/// shaving a candidate. In ENFORCE mode (`enforce == true`, production) `try_spend`
+/// spends one credit iff strictly more than `reserve` remain (the reserve keeps a
+/// credit for the mandatory following `normalize`, spec §5).
+///
+/// `leaf_calls` counts EVERY [`Self::try_spend`]/[`Self::spend`] — the leaf-search
+/// `compile_distilled_planned` calls the whole cost model (spec §5, `COST_CEILING`/
+/// `HARD_MAX`) is scoped to; base/compound compiles are counted separately by the
+/// caller and are NOT routed through this budget.
+#[derive(Clone, Copy, Debug)]
 pub struct TrialBudget {
     pub available: usize,
+    pub spent: usize,
+    pub leaf_calls: usize,
+    pub enforce: bool,
+}
+
+impl Default for TrialBudget {
+    /// Zero credits, nothing spent, ENFORCING (production default): a fresh budget
+    /// only spends after [`Self::accrue`] rolls in a round's quota.
+    fn default() -> Self {
+        Self { available: 0, spent: 0, leaf_calls: 0, enforce: true }
+    }
 }
 
 impl TrialBudget {
-    /// Spend one credit iff strictly more than `reserve` remain; return whether it
-    /// was spent. Checked (never underflows): a caller with `available <= reserve`
-    /// gets `false` and spends nothing.
+    /// A fresh budget in the given enforcement mode: `available = 0` (accrues per
+    /// round), nothing spent yet. `enforce = false` is count-only (spec §5).
+    pub fn new(enforce: bool) -> Self {
+        Self { available: 0, spent: 0, leaf_calls: 0, enforce }
+    }
+
+    /// Roll `multiplier · quota` credits forward into `available` (spec §5, saturating).
+    /// Called on entering each round's leaf reclaim, before any spend; unused credits
+    /// from earlier rounds persist.
+    pub fn accrue(&mut self, quota: usize, multiplier: usize) {
+        self.available = self.available.saturating_add(quota.saturating_mul(multiplier));
+    }
+
+    /// Charge one leaf-search call, reserving `reserve` credits for a following
+    /// mandatory op. ALWAYS increments `leaf_calls`. In count-only mode (`!enforce`) it
+    /// always succeeds and never caps/reserves (nothing debited from `available`). In
+    /// enforce mode it spends one credit iff strictly more than `reserve` remain
+    /// (checked — never underflows): a caller with `available <= reserve` gets `false`
+    /// and debits nothing.
     pub fn try_spend(&mut self, reserve: usize) -> bool {
+        self.leaf_calls += 1;
+        if !self.enforce {
+            self.spent += 1;
+            return true;
+        }
         if self.available > reserve {
             self.available -= 1;
+            self.spent += 1;
             true
         } else {
             false
         }
     }
 
-    /// Unconditionally spend one credit, saturating at zero.
+    /// Unconditionally charge one leaf-search call, saturating `available` at zero.
+    /// Counts a `leaf_call` like [`Self::try_spend`].
     pub fn spend(&mut self) {
+        self.leaf_calls += 1;
+        self.spent += 1;
         self.available = self.available.saturating_sub(1);
+    }
+
+    /// Credits remaining (meaningful only in enforce mode).
+    pub fn remaining(&self) -> usize {
+        self.available
     }
 }
 
@@ -992,6 +1094,13 @@ struct RoundResult {
     reclaim_kept: usize,
     compound_attempted: usize,
     compound_kept: usize,
+    /// This round's leaf-reclaim counters (the RETURNED round's are carried to
+    /// [`PricedOutcome::counters`]).
+    counters: LeafReclaimCounters,
+    /// Whether THIS round's leaf reclaim was `Incomplete` (OR-ed into
+    /// [`PricedOutcome::saw_incomplete_round`] independent of best-round selection —
+    /// spec §3/Finding-4). Always `false` in Task 2.
+    saw_incomplete_round: bool,
 }
 
 impl RoundResult {
@@ -1029,9 +1138,25 @@ pub fn priced_rounds(
     d: &DistilledLayer,
     budget: usize,
     frozen0: FrozenDemand,
+    multiplier: usize,
+    gap_cap: usize,
+    enforce_budget: bool,
 ) -> Result<PricedOutcome, CompileError> {
     let mut width_memo: Vec<Option<FieldKind>> = vec![None; d.layer.exprs.len()];
     let mut current_frozen = frozen0;
+
+    // CS-M4 Task 2 (spec §5): ONE decrementing leaf-search budget shared across all
+    // rounds. `available` starts at 0 and accrues `multiplier · min(G_r,1200)` per round
+    // (credits roll forward). `enforce_budget=false` is count-only (Phase-0b): it tallies
+    // `leaf_calls` but never caps/reserves. `sum_g`/`sum_quota` bank the accrual shape.
+    let mut trial_budget = TrialBudget::new(enforce_budget);
+    // Base+compound compiles are essential and UNBUDGETED (spec §5) — counted here,
+    // reported separately from the leaf-search `leaf_calls`.
+    let mut base_compound_calls = 0usize;
+    let mut sum_g = 0usize;
+    let mut sum_quota = 0usize;
+    // OR-ed across ALL rounds, independent of best-round selection (spec §3/Finding-4).
+    let mut saw_incomplete_round = false;
 
     // Coordinate-correct all-`Bypass` baseline: guaranteed feasible (it is the
     // program `current_frozen` was frozen from), and the fallback if every round
@@ -1039,6 +1164,7 @@ pub fn priced_rounds(
     let base_end = subtree_ends(&current_frozen);
     let base_plan = compound_batch_plan_with(&current_frozen, &BTreeSet::new(), &base_end);
     let (base_c, base_trace) = compile_distilled_planned(d, budget, &base_plan)?;
+    base_compound_calls += 1;
     let base_cert = certify(&base_c, &base_trace);
     let mut best = RoundResult {
         plan: base_plan,
@@ -1050,6 +1176,8 @@ pub fn priced_rounds(
         reclaim_kept: 0,
         compound_attempted: 0,
         compound_kept: 0,
+        counters: LeafReclaimCounters::default(),
+        saw_incomplete_round: false,
     };
 
     let mut prev_sig: Option<PlannerSignature> = None;
@@ -1065,6 +1193,7 @@ pub fn priced_rounds(
         // the round's fail-closed fallback (a `BudgetBelowFloor`/`Diverge` on the base
         // drops the round and exits with the previous best).
         let round_base_plan = compound_batch_plan_with(&current_frozen, &BTreeSet::new(), &end);
+        base_compound_calls += 1;
         let (rb_c, rb_trace) = match compile_distilled_planned(d, budget, &round_base_plan) {
             Ok(x) => x,
             Err(CompileError::BudgetBelowFloor { .. }) => break,
@@ -1078,7 +1207,7 @@ pub fn priced_rounds(
         // ranked, never filtered), each KEPT only on a real compile that is feasible,
         // non-diverging, and strictly-traffic-dropping — the model is the ranking hint,
         // never the selection authority.
-        let (pinned, compound_plan, cbatch_c, cbatch_trace, c_attempted, c_kept) =
+        let (pinned, compound_plan, cbatch_c, cbatch_trace, c_attempted, c_kept, c_compiles) =
             reclaim_compounds(
                 d,
                 budget,
@@ -1090,27 +1219,66 @@ pub fn priced_rounds(
                 rb_c,
                 rb_trace,
             )?;
+        base_compound_calls += c_compiles;
 
         // (3) re-freeze on the best compound compile's ACTUAL trace (realized suppression).
         let observed = freeze_demand(d, &cbatch_trace, &cbatch_c.program, &cbatch_c.specials);
+
+        // CS-M4 Task 2 (spec §5): accrue THIS round's leaf-search credit BEFORE the
+        // reclaim. `G_r` (realized leaf gaps) is known only now (post re-freeze), so
+        // credit accrues per round — never a pre-summed `Σ_r`. The quota reference is
+        // the FIXED 1200 (`min(G_r,1200)`), NOT `gap_cap` — coupling them would silently
+        // shrink the production budget to 512 and break the accrual math (spec §5).
+        let g_r: usize =
+            observed.leaf_instants.values().map(|i| i.len().saturating_sub(1)).sum();
+        let quota_r = g_r.min(1200);
+        sum_g += g_r;
+        sum_quota += quota_r;
+        trial_budget.accrue(quota_r, multiplier);
 
         // (4) Re-plan + BOUNDED GAP-GRANULAR leaf reclaim on the observed (realized)
         // demand: start from the all-`Bypass`-leaves compound batch and greedily retain
         // the top-N realized leaf gaps that (feasibly, non-divergingly) drop dram_traffic
         // against the REAL program (Commit 2, spec §5 step 4).
-        let (final_plan, final_c, final_trace, r_attempted, r_kept) =
-            reclaim_leaves(d, budget, &observed, &compound_plan, cbatch_c, cbatch_trace)?;
+        let reclaim = reclaim_leaves(
+            d,
+            budget,
+            &observed,
+            &compound_plan,
+            cbatch_c,
+            cbatch_trace,
+            gap_cap,
+            &mut trial_budget,
+        )?;
+        // Task 2: `reclaim_leaves` is always `Complete`; the `Incomplete` arm is
+        // future-proofing for Task 5's selection (unreachable here). `reclaim_attempted`
+        // / `reclaim_kept` mirror the residual-gap counters (the per-gap loop = spec §4
+        // Stage B).
+        let (final_plan, final_c, final_trace, counters, round_incomplete) = match reclaim {
+            LeafReclaimResult::Complete { plan, c, trace, counters } => {
+                (plan, c, trace, counters, false)
+            }
+            LeafReclaimResult::Incomplete { plan, c, trace, counters, .. } => {
+                (plan, c, trace, counters, true)
+            }
+        };
+        // OR incompleteness across ALL rounds, independent of best-round selection.
+        saw_incomplete_round |= round_incomplete;
         let cert = certify(&final_c, &final_trace);
         let result = RoundResult {
             plan: final_plan.clone(),
             pins: pinned.iter().copied().collect(),
-            feasible: cert.is_ok() && !diverged(&final_trace),
+            // An `Incomplete` round is INELIGIBLE to ship (spec §3): mark it infeasible so
+            // best-round selection skips it. (No-op in Task 2 — always `Complete`.)
+            feasible: cert.is_ok() && !diverged(&final_trace) && !round_incomplete,
             traffic: final_c.stats_ext.global + final_c.stats_ext.fold_traffic,
             instrs: final_c.stats.program_lanes,
-            reclaim_attempted: r_attempted,
-            reclaim_kept: r_kept,
+            reclaim_attempted: counters.residual_gap_attempted,
+            reclaim_kept: counters.residual_gap_kept,
             compound_attempted: c_attempted,
             compound_kept: c_kept,
+            counters,
+            saw_incomplete_round: round_incomplete,
         };
         // `<=` (not `<`): on an inert tie with the pre-loop base a reclaim round still
         // adopts the outcome, so `reclaim_attempted` (the lever RAN) stays visible; ties
@@ -1126,6 +1294,8 @@ pub fn priced_rounds(
                 reclaim_kept: result.reclaim_kept,
                 compound_attempted: result.compound_attempted,
                 compound_kept: result.compound_kept,
+                counters: result.counters.clone(),
+                saw_incomplete_round: result.saw_incomplete_round,
             };
         }
 
@@ -1148,5 +1318,13 @@ pub fn priced_rounds(
         reclaim_kept: best.reclaim_kept,
         compound_attempted: best.compound_attempted,
         compound_kept: best.compound_kept,
+        // Counters from the RETURNED (best) round; `saw_incomplete_round` OR-ed across
+        // ALL rounds (spec §3/Finding-4); `leaf_calls` from the shared budget.
+        counters: best.counters,
+        saw_incomplete_round,
+        leaf_calls: trial_budget.leaf_calls,
+        base_compound_calls,
+        sum_g,
+        sum_quota,
     })
 }
