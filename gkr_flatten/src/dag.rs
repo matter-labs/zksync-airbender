@@ -88,7 +88,9 @@ impl<'a> LayerView<'a> {
 #[cfg(test)]
 pub(crate) mod testdag {
     use super::*;
-    use cs::gkr_compiler::dag_ir::{BatchingOrder, Root, SourceId, SourceInfo};
+    use cs::gkr_compiler::dag_ir::{
+        BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, Root, SourceId, SourceInfo,
+    };
 
     /// Builds a `DagLayer` from explicit tables; `batching`/`resolutions`
     /// default to empty (fine for the synthetic layers these tests need).
@@ -104,6 +106,22 @@ pub(crate) mod testdag {
 
     pub fn read_source(place: ReadPlace) -> SourceInfo {
         SourceInfo { kind: SourceKind::Read { place } }
+    }
+
+    /// An Ext-width (4-lane) free leaf: a challenge source. Least-ceremony way
+    /// to get a `Source` expr that `source_field` resolves to `FieldKind::Ext`
+    /// without needing a `cross`-map or `overrides` entry (see
+    /// `field_infer::source_field`: `Challenge` is the only always-Ext,
+    /// always-locally-resolvable `SourceKind`).
+    pub fn challenge_source() -> SourceInfo {
+        SourceInfo {
+            kind: SourceKind::Challenge {
+                reference: ChallengeRef {
+                    key: ChallengeKey::ConstraintAggregation,
+                    power: ChallengePower::One,
+                },
+            },
+        }
     }
 
     pub fn root(expr: ExprId) -> Root {
