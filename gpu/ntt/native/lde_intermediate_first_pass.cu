@@ -97,7 +97,6 @@ DEVICE_FORCEINLINE void lde_first_k_stages_impl(bf_matrix_getter<ld_modifier::cg
       // 5 intrawarp exchanges
       unsigned lane_mask = 1;
 #pragma unroll
-      // for (unsigned stage = 1; stage < 6; stage++, lane_mask <<= 1) {
       for (unsigned stage = 1; stage < 6; stage++, lane_mask <<= 1) {
         shfl_for_exchange(vals, lane_mask);
         twiddles_this_stage -= THREADS_PER_BLOCK >> stage;
@@ -280,6 +279,181 @@ EXTERN __launch_bounds__(128, 12) __global__
       }
     }
   }
+}
+
+// One-shot LDE for log_n <= 13. Design goals:
+//  - Up to 13 stages in one pass
+//  - Between 64 and 512 threads per block
+//  - At least 1024 resident threads / SM
+// This means at most 64 registers per thread, so the approach is different from kernels above.
+// We assumes monomials are small enough to easily persist in L2.
+// Instead of reusing monomials, we prioritize reusing twiddles and coset adjustments
+// across monomials within each coset.
+template <unsigned LOG_WARPS_PER_BLOCK, unsigned STAGES>
+DEVICE_FORCEINLINE void lde_oneshot_k_stages_impl(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
+                                                  const unsigned log_n, const unsigned coset_index_base, const unsigned coset_factor_shift,
+                                                  const unsigned num_cols_per_coset, const unsigned num_cosets_in_tile) {
+  constexpr unsigned WARPS_PER_BLOCK = 1 << LOG_WARPS_PER_BLOCK;
+  constexpr unsigned LOG_VALS_PER_THREAD = 4;
+  constexpr unsigned VALS_PER_THREAD = 1 << LOG_VALS_PER_THREAD;
+  constexpr unsigned PAIRS_PER_THREAD = VALS_PER_THREAD >> 1;
+  constexpr unsigned LOG_VALS_PER_WARP = LOG_VALS_PER_THREAD + 5;
+  constexpr unsigned VALS_PER_WARP = VALS_PER_THREAD * 32;
+  constexpr unsigned PAIRS_PER_WARP = VALS_PER_WARP >> 1;
+  constexpr unsigned VALS_PER_BLOCK = VALS_PER_WARP * WARPS_PER_BLOCK;
+  constexpr unsigned PAIRS_PER_BLOCK = VALS_PER_BLOCK >> 1;
+
+  const unsigned lane_id = threadIdx.x & 31;
+  const unsigned warp_id = threadIdx.x >> 5;
+
+  // For this kernel, 1 block covers all rows.
+  gmem_in.add_row(warp_id * VALS_PER_WARP);
+  gmem_out.add_row(32 * warp_id);
+
+  // Because one block covers all rows, blockIdx.x isn't used for row indexing.
+  // Instead, we use it to specify this block's target coset.
+  gmem_out.add_col(num_cols_per_coset * blockIdx.x);
+
+  __shared__ bf smem[VALS_PER_BLOCK + PAIRS_PER_BLOCK];
+  bf *twiddles = smem + VALS_PER_BLOCK;
+
+  // The whole block uses all the twiddles, so we can load them non-divergently (much simpler than multi-pass kernels)
+#pragma unroll
+  for (unsigned i = threadIdx.x; i < PAIRS_PER_BLOCK; i += blockDim.x)
+    twiddles[i] = ab_fully_precomputed_bitrev_twiddles[i];
+
+  __syncthreads();
+
+  const unsigned coset = coset_index_base + blockIdx.x;
+  bf coset_adjustments[VALS_PER_THREAD];
+  if (coset > 0) {
+#pragma unroll
+    for (unsigned i{0}; i < PAIRS_PER_THREAD; i++) {
+      const unsigned global_bitrev_idx = warp_id * VALS_PER_WARP + 2 * lane_id + 64 * i;
+#pragma unroll
+      for (unsigned j{0}; j < 2; j++) {
+        const unsigned global_natural_idx = bitrev(global_bitrev_idx + j, log_n);
+        coset_adjustments[2 * i + j] = get_forward_twiddle_power((global_natural_idx << coset_factor_shift) * coset);
+      }
+    }
+  }
+
+#pragma unroll 1
+  for (unsigned monomial_col = 0;
+       monomial_col < num_cols_per_coset;
+       monomial_col++, gmem_in.add_col(1), gmem_out.add_col(1)) {
+    bf *smem_warp = smem + warp_id * VALS_PER_WARP;
+
+    // 5 + log(VALS_PER_THREAD) stages are handled within each warp
+#pragma unroll
+    for (unsigned initial_warp_region = 0; initial_warp_region < PAIRS_PER_THREAD; initial_warp_region++) {
+      const uint2 monomials_data = *(reinterpret_cast<uint2 *>(gmem_in.ptr) + 32 * initial_warp_region + lane_id);
+      bf vals[2] = {bf{monomials_data.x}, bf{monomials_data.y}};
+      // bf vals[2] = {bf::ONE(), bf::ONE()};
+
+      if (coset > 0) {
+        vals[0] = bf::mul(coset_adjustments[2 * initial_warp_region], vals[0]);
+        vals[1] = bf::mul(coset_adjustments[2 * initial_warp_region + 1], vals[1]);
+      }
+
+      unsigned exchg_region = PAIRS_PER_WARP * warp_id + 32 * initial_warp_region + lane_id;
+
+      exchg_dif(vals[0], vals[1], twiddles[exchg_region]);
+
+      // 5 intrawarp shuffle exchanges
+      unsigned lane_mask = 1;
+#pragma unroll 1
+      for (unsigned stage = 1; stage < 6; stage++, lane_mask <<= 1) {
+        shfl_for_exchange(vals, lane_mask);
+        exchg_region >>= 1;
+        exchg_dif(vals[0], vals[1], twiddles[exchg_region]);
+      }
+
+      // post results to this warp's smem chunk
+      smem_warp[64 * initial_warp_region + lane_id] = vals[0];
+      smem_warp[64 * initial_warp_region + lane_id + 32] = vals[1];
+    }
+
+    // log(VALS_PER_THREAD) - 1 intrawarp smem exchanges
+#pragma unroll 1
+    for (unsigned stage = 0; stage < LOG_VALS_PER_THREAD - 1; stage++) {
+      __syncwarp();
+      const unsigned regions_per_warp = PAIRS_PER_THREAD >> (stage + 1);
+      const unsigned exchg_stride = 64 << stage;
+      const unsigned global_region_offset = regions_per_warp * warp_id;
+      for (unsigned global_region{global_region_offset}, region_start{0};
+           region_start < VALS_PER_WARP;
+           global_region++, region_start += 2 * exchg_stride) {
+        const bf twiddle = twiddles[global_region];
+        for (unsigned lane_in_region = lane_id; lane_in_region < exchg_stride; lane_in_region += 32) {
+          bf a = smem_warp[region_start + lane_in_region];
+          bf b = smem_warp[region_start + lane_in_region + exchg_stride];
+          exchg_dif(a, b, twiddle);
+          smem_warp[region_start + lane_in_region] = a;
+          smem_warp[region_start + lane_in_region + exchg_stride] = b;
+        }
+      }
+    }
+
+    __syncthreads();
+
+    // Remaining exchanges, intrawarp again but with larger stride
+    smem_warp = smem + 32 * warp_id;
+#pragma unroll 1
+    for (unsigned stage = 0; stage < STAGES - LOG_VALS_PER_WARP; stage++) {
+      const unsigned exchg_stride = VALS_PER_WARP << stage;
+      for (unsigned region{0}, region_start{0};
+           region_start < VALS_PER_BLOCK;
+           region++, region_start += 2 * exchg_stride) {
+        const bf twiddle = twiddles[region];
+        for (unsigned lane_in_region = lane_id; lane_in_region < exchg_stride; lane_in_region += 32 * WARPS_PER_BLOCK) {
+          const unsigned base_lane = region_start + lane_in_region;
+          bf a = smem_warp[base_lane];
+          bf b = smem_warp[base_lane + exchg_stride];
+          exchg_dif(a, b, twiddle);
+          smem_warp[base_lane] = a;
+          smem_warp[base_lane + exchg_stride] = b;
+        }
+      }
+      __syncwarp();
+    }
+
+#pragma unroll
+    for (unsigned output_lane = lane_id; output_lane < VALS_PER_BLOCK; output_lane += 32 * WARPS_PER_BLOCK)
+      gmem_out.set_at_row(output_lane, smem_warp[output_lane]);
+
+    // protect reads from next iteration's writes
+    if (monomial_col < num_cols_per_coset - 1)
+      __syncthreads();
+  }
+}
+
+EXTERN __launch_bounds__(512, 2) __global__
+    void ab_lde_oneshot_13_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
+                                         const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
+                                         const unsigned num_cosets_in_tile) {
+  lde_oneshot_k_stages_impl<4, 13>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
+}
+
+EXTERN __launch_bounds__(256, 4) __global__
+    void ab_lde_oneshot_12_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
+                                         const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
+                                         const unsigned num_cosets_in_tile) {
+  lde_oneshot_k_stages_impl<3, 12>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
+}
+
+EXTERN __launch_bounds__(128, 8) __global__
+    void ab_lde_oneshot_11_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
+                                         const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
+                                         const unsigned num_cosets_in_tile) {
+  lde_oneshot_k_stages_impl<2, 11>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
+}
+
+EXTERN __launch_bounds__(64, 16) __global__
+    void ab_lde_oneshot_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const unsigned log_n,
+                                         const unsigned coset_index_base, const unsigned coset_factor_shift, const unsigned num_cols_per_coset,
+                                         const unsigned num_cosets_in_tile) {
+  lde_oneshot_k_stages_impl<1, 10>(gmem_in, gmem_out, log_n, coset_index_base, coset_factor_shift, num_cols_per_coset, num_cosets_in_tile);
 }
 
 } // namespace airbender::ntt

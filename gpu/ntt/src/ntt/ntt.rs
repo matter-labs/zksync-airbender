@@ -174,6 +174,10 @@ lde_intermediate!(ab_lde_first_9_stages_kernel);
 lde_intermediate!(ab_lde_first_8_stages_kernel);
 lde_intermediate!(ab_lde_first_7_stages_kernel);
 lde_intermediate!(ab_lde_first_6_stages_kernel);
+lde_intermediate!(ab_lde_oneshot_13_stages_kernel);
+lde_intermediate!(ab_lde_oneshot_12_stages_kernel);
+lde_intermediate!(ab_lde_oneshot_11_stages_kernel);
+lde_intermediate!(ab_lde_oneshot_10_stages_kernel);
 
 pub fn evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -1245,8 +1249,17 @@ fn get_lde_grid_dims_for_occupancy_hint(
     occupancy_hint_denominator: usize,
     device_properties: &DeviceProperties,
 ) -> CudaResult<Dim3> {
+    assert!(n.is_power_of_two());
     assert!(n >= vals_per_block);
     assert_eq!(n % vals_per_block, 0);
+
+    if n <= 1 << 13 {
+        assert_eq!(n, vals_per_block);
+        let grid = (cosets_in_tile as u32, 1, 1).into();
+        return Ok(grid);
+    } else {
+        assert!(n > vals_per_block);
+    }
 
     let max_blocks_per_sm = era_cudart::occupancy::max_active_blocks_per_multiprocessor(
         func,
@@ -1273,6 +1286,7 @@ fn get_lde_grid_dims_for_occupancy_hint(
     if grid_dim_x * num_cols_per_coset >= target_blocks {
         grid_dim_y = target_blocks.div_ceil(grid_dim_x);
         assert!(grid_dim_x * grid_dim_y >= target_blocks);
+        assert!(grid_dim_y < 65536); // CUDA hardware limit
         let grid = (grid_dim_x as u32, grid_dim_y as u32, 1).into();
         return Ok(grid);
     } else {
@@ -1288,6 +1302,8 @@ fn get_lde_grid_dims_for_occupancy_hint(
     // The grid would just include a bunch of spurious no-op blocks.
     // But it would indicate a weird, non-performant geometry we don't expect in production.
     assert!(grid_dim_z <= cosets_in_tile);
+    assert!(grid_dim_y < 65536); // CUDA hardware limit
+    assert!(grid_dim_z < 65536); // CUDA hardware limit
     let grid = (grid_dim_x as u32, grid_dim_y as u32, grid_dim_z as u32).into();
     return Ok(grid);
 }
@@ -1299,6 +1315,10 @@ fn get_lde_config_for_log_n(log_n: usize) -> (usize, usize) {
         16 => (128, 256),
         15 => (64, 128),
         14 => (128, 256),
+        13 => (512, 8192),
+        12 => (256, 4096),
+        11 => (128, 2048),
+        10 => (64, 1024),
         _ => unimplemented!(),
     };
     (block_dim_x, vals_per_block)
@@ -1326,7 +1346,6 @@ pub fn lde_intermediate_size_with_coset_range(
     let inputs_matrix = inputs_matrix.as_ptr_and_stride();
     let outputs_matrix_const = outputs_matrix.as_ptr_and_stride();
     let outputs_matrix_mut = outputs_matrix.as_mut_ptr_and_stride();
-    let log_k = log_n - 8;
     let (block_dim_x, vals_per_block) = get_lde_config_for_log_n(log_n);
     // let grid_dim_x = (1 << log_n) / vals_per_block;
     // let grid_dim_y = num_cols_per_coset_stride;
@@ -1337,6 +1356,10 @@ pub fn lde_intermediate_size_with_coset_range(
         16 => LdeIntermediateFunction(ab_lde_first_8_stages_kernel),
         15 => LdeIntermediateFunction(ab_lde_first_7_stages_kernel),
         14 => LdeIntermediateFunction(ab_lde_first_6_stages_kernel),
+        13 => LdeIntermediateFunction(ab_lde_oneshot_13_stages_kernel),
+        12 => LdeIntermediateFunction(ab_lde_oneshot_12_stages_kernel),
+        11 => LdeIntermediateFunction(ab_lde_oneshot_11_stages_kernel),
+        10 => LdeIntermediateFunction(ab_lde_oneshot_10_stages_kernel),
         _ => unimplemented!(),
     };
     let grid_dim: Dim3 = get_lde_grid_dims_for_occupancy_hint(
@@ -1361,7 +1384,10 @@ pub fn lde_intermediate_size_with_coset_range(
         cosets_in_tile as u32,
     );
     first_pass_function.launch(&config, &args)?;
-    // Pass 2: noninitial_8 with start_stage = log_k.
+    if log_n <= 13 {
+        return Ok(())
+    }
+    // Pass 2: noninitial_8 with start_stage = log_n - 8.
     assert!(
         cosets_in_tile.is_power_of_two(),
         "cosets_in_tile must be a power of 2 (got {cosets_in_tile})"
@@ -1369,7 +1395,7 @@ pub fn lde_intermediate_size_with_coset_range(
     let log_cosets_in_tile = cosets_in_tile.trailing_zeros();
     let threads_pass2 = 512;
     let bf_vals_per_block_pass2 = 1 << 13;
-    let start_stage = log_k;
+    let start_stage = log_n - 8;
     let num_block_exchg_regions = trace_len >> (start_stage + 8);
     let block_exchg_region_size = 1 << (start_stage + 8);
     let blocks_per_exchg_region = block_exchg_region_size / bf_vals_per_block_pass2;
@@ -1475,7 +1501,7 @@ pub fn lde_with_coset_range(
         "num_cosets must be a power of 2 (got {num_cosets})"
     );
     // TODO: extend to smaller sizes when chunking-friendly kernels are done
-    if (log_n <= 18) && (log_n >= 14) {
+    if (log_n <= 18) && (log_n >= 10) {
         let result = lde_intermediate_size_with_coset_range(
             inputs_matrix,
             outputs,

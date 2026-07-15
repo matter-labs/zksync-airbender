@@ -819,21 +819,21 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
         } else {
             None
         };
-        if coset_index_base == 0 && num_cosets == (1usize << log_lde_factor) {
-            bitreversed_monomials_to_natural_evals_multi_coset(
-                &inputs_matrix,
-                &mut candidate_device[..],
-                log_n,
-                log_lde_factor,
-                NUM_COLS,
-                false,
-                context.device_context(),
-                scratch_opt,
-                stream,
-                device_props,
-            )
-            .unwrap();
-        } else {
+        // if coset_index_base == 0 && num_cosets == (1usize << log_lde_factor) {
+        //     bitreversed_monomials_to_natural_evals_multi_coset(
+        //         &inputs_matrix,
+        //         &mut candidate_device[..],
+        //         log_n,
+        //         log_lde_factor,
+        //         NUM_COLS,
+        //         false,
+        //         context.device_context(),
+        //         scratch_opt,
+        //         stream,
+        //         device_props,
+        //     )
+        //     .unwrap();
+        // } else {
             lde_with_coset_range(
                 &inputs_matrix,
                 &mut candidate_device[..],
@@ -850,7 +850,7 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                 device_props,
             )
             .unwrap();
-        }
+        // }
     }
 
     {
@@ -1008,9 +1008,37 @@ multi_coset_range_parity_test!(
 multi_coset_range_parity_test!(
     multi_coset_monomials_to_evals_log_n_14_cosets_128_base_128,
     14,
-    12,
+    13,
     128,
     128
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_13_cosets_256_base_256,
+    13,
+    14,
+    256,
+    256
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_12_cosets_512_base_512,
+    12,
+    15,
+    512,
+    512
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_11_cosets_1024_base_1024,
+    11,
+    16,
+    1024,
+    1024
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_10_cosets_2048_base_2048,
+    10,
+    17,
+    2048,
+    2048
 );
 multi_coset_range_parity_test!(
     multi_coset_monomials_to_evals_log_n_23_cosets_8_base_8,
