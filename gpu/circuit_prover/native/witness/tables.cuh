@@ -59,6 +59,9 @@ enum TableType : u16 {
   XorRotate8,
   XorRotate7,
   ConditionalJmpBranchSltUnified,
+  WideXor,
+  WideOr,
+  WideAnd,
   DynamicPlaceholder,
 };
 
@@ -171,6 +174,11 @@ template <unsigned K, unsigned V> struct TableDriver {
     case XorRotate12:
     case XorRotate8:
     case XorRotate7:
+    // Unified-only 4-output binop tables (a, b) -> (a OP b, 0, 0, 0); same
+    // (a << 8) | b relative indexing as the narrow binops / XorRotate{r}.
+    case WideXor:
+    case WideOr:
+    case WideAnd:
       return index_for_keys<8, 0>(keys);
     case Xor9:
     case RangeCheck9x9:
