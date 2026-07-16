@@ -39,6 +39,7 @@ use cs::gkr_compiler::dag_ir::{
     RootOrigin, RootSlot, SiteKey, SourceKind,
 };
 
+use super::fragment::{decompose_spine, FragmentTable};
 use super::source::{BwdSpecial, BwdSpecialTable, FoldState, MaterializationPolicy, OriginLeaf};
 
 // ── DistilledLayer ────────────────────────────────────────────────────────────
@@ -72,6 +73,24 @@ pub struct DistilledLayer {
     stable_exprs: BTreeMap<ExprId, StableBwdExprKey>,
     /// Decoder-bearing cone detected: layer is OUT of v1 in BOTH regimes.
     pub skipped_decoder: bool,
+    /// Full-decomposition (CS-M5a) view of the alpha spine: each addend split
+    /// into fragments (`acc = c_init + Σ recipe_i · value(fragment_i)`). Built
+    /// unconditionally from the rebuilt root's Add children; order-dependent
+    /// distilled `ExprId`s inside are only cross-run comparable through
+    /// [`FragmentTable::stable_view`] / [`FragmentTable::stable_c_init`].
+    pub fragments: FragmentTable,
+}
+
+impl DistilledLayer {
+    /// Order-independent provenance of a rebuilt expression, or `None` when it was
+    /// SYNTHESIZED by distillation without a canonical/root/spine origin. Only the
+    /// alpha-batching beta `Challenge` powers (`distill` :176-182) lack an entry —
+    /// every reinterned canonical node and every batching-term / combined-spine
+    /// root is recorded. Mirrors `stable_distilled_site_domain`'s `stable_exprs`
+    /// lookup; the private map stays encapsulated behind this accessor.
+    pub fn stable_key(&self, e: ExprId) -> Option<StableBwdExprKey> {
+        self.stable_exprs.get(&e).copied()
+    }
 }
 
 /// Order-independent identity of an expression in a distilled backward layer.
@@ -237,6 +256,17 @@ pub fn distill(
         }
     }
 
+    // Fragment full-decomposition (CS-M5a Task 2). The spine root is an Add over
+    // [term_0, beta·term_1, ...] (built at :169-187); recompute its addends
+    // LOCALLY from the rebuilt root (`compile::spine_terms` stays authoritative for
+    // the term path — this local mirror serves only fragment decomposition).
+    let root_expr = rebuilt.roots[0].expr;
+    let spine_children: Vec<ExprId> = match &rebuilt.exprs[root_expr.0 as usize] {
+        Expr::Add(children) if !children.is_empty() => children.clone(),
+        _ => vec![root_expr],
+    };
+    let fragments = decompose_spine(&rebuilt, &spine_children);
+
     DistilledLayer {
         layer: rebuilt,
         root: RootId(0),
@@ -248,6 +278,7 @@ pub fn distill(
         unit_order: units,
         stable_exprs: cx.stable_exprs,
         skipped_decoder,
+        fragments,
     }
 }
 

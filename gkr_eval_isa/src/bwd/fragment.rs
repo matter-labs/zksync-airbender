@@ -43,7 +43,11 @@
 
 use std::collections::BTreeMap;
 
-use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, SourceKind};
+use cs::gkr_compiler::dag_ir::{
+    ChallengeKey, ChallengePower, ChallengeRef, DagLayer, Expr, ExprId, PermutationSlot, SourceKind,
+};
+
+use super::distill::{DistilledLayer, StableBwdExprKey};
 
 // ── Recipe / fragment types ──────────────────────────────────────────────────
 
@@ -88,6 +92,171 @@ pub struct FragmentSpec {
 pub struct FragmentTable {
     pub fragments: Vec<FragmentSpec>,
     pub c_init: MergedRecipe,
+}
+
+// ── Stable (order-independent) views ──────────────────────────────────────────
+
+/// Order-independent identity of one coefficient factor in a fragment / `c_init`
+/// recipe. Distilled `ExprId`s depend on relation-unit order, so a factor is
+/// projected to its distilled-expr provenance ([`FactorKey::Expr`]) when it has
+/// one. The alpha-batching beta powers distill SYNTHESIZES have no provenance
+/// entry (`distill` :176-182), so they fall back STRUCTURALLY: a synthesized
+/// `Challenge` leaf keeps its stable [`ChallengeRef`]; a `Constant` its interned
+/// value. Both fallbacks read a value-stable handle from the Source node, never
+/// an order-dependent arena index.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FactorKey {
+    Challenge(ChallengeRef),
+    Constant(u32),
+    Expr(StableBwdExprKey),
+}
+
+impl Ord for FactorKey {
+    // `ChallengeRef` (and its `ChallengeKey`/`ChallengePower`) are not `Ord`, so
+    // project each variant to a fully-ordered, injective tuple. The order itself
+    // is arbitrary but total + deterministic — it exists only to CANONICALIZE the
+    // factor lists so two runs compare equal.
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        fn rank(k: &FactorKey) -> u8 {
+            match k {
+                FactorKey::Challenge(_) => 0,
+                FactorKey::Constant(_) => 1,
+                FactorKey::Expr(_) => 2,
+            }
+        }
+        match (self, other) {
+            (FactorKey::Challenge(a), FactorKey::Challenge(b)) => {
+                challenge_ord(a).cmp(&challenge_ord(b))
+            }
+            (FactorKey::Constant(a), FactorKey::Constant(b)) => a.cmp(b),
+            (FactorKey::Expr(a), FactorKey::Expr(b)) => a.cmp(b),
+            _ => rank(self).cmp(&rank(other)),
+        }
+    }
+}
+
+impl PartialOrd for FactorKey {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Injective, fully-ordered projection of a `ChallengeRef` (see [`FactorKey`]'s
+/// `Ord`).
+fn challenge_ord(r: &ChallengeRef) -> (u8, u8, u8, u32) {
+    let (key_tag, key_sub) = match &r.key {
+        ChallengeKey::LookupAdditive => (0u8, 0u8),
+        ChallengeKey::LookupMultiplicative => (1, 0),
+        ChallengeKey::PermutationAdditive => (2, 0),
+        ChallengeKey::PermutationLinearization(slot) => (3, perm_slot_ord(slot)),
+        ChallengeKey::ConstraintAggregation => (4, 0),
+        ChallengeKey::ClaimBatching => (5, 0),
+    };
+    let (power_tag, power_val) = match &r.power {
+        ChallengePower::One => (0u8, 0u32),
+        ChallengePower::Static(i) => (1, *i),
+    };
+    (key_tag, key_sub, power_tag, power_val)
+}
+
+fn perm_slot_ord(slot: &PermutationSlot) -> u8 {
+    match slot {
+        PermutationSlot::AddressLow => 0,
+        PermutationSlot::AddressHigh => 1,
+        PermutationSlot::TimestampLow => 2,
+        PermutationSlot::TimestampHigh => 3,
+        PermutationSlot::ValueLow => 4,
+        PermutationSlot::ValueHigh => 5,
+    }
+}
+
+impl FragmentTable {
+    /// Project every fragment to `(atoms → stable keys, recipe terms → factor-key
+    /// lists)` — the ONLY cross-run comparison surface, since no raw distilled
+    /// `ExprId` leaks. Fragment ATOMS are non-scalar reinterned canonical values
+    /// and MUST carry provenance (a miss is a distillation bug and panics with
+    /// context); recipe FACTORS fall back structurally for synthesized beta powers.
+    ///
+    /// The raw `atoms` / factor lists / recipe terms are sorted by DISTILLED
+    /// `ExprId` (which is unit-order dependent), so this CANONICALIZES every level
+    /// — atoms by stable key, factors within a term, terms within a recipe — so
+    /// that the projection is a deterministic function of the layer's VALUE alone.
+    /// Fragment-level ordering is still traversal-order dependent; compare the
+    /// returned `Vec` as a multiset (or sort it) across runs.
+    pub fn stable_view(
+        &self,
+        d: &DistilledLayer,
+    ) -> Vec<(Vec<StableBwdExprKey>, Vec<Vec<FactorKey>>)> {
+        self.fragments
+            .iter()
+            .map(|f| {
+                let mut atoms: Vec<StableBwdExprKey> =
+                    f.atoms.iter().map(|&a| atom_key(d, a)).collect();
+                atoms.sort();
+                (atoms, recipe_factor_keys(d, &f.recipe))
+            })
+            .collect()
+    }
+
+    /// The `c_init` recipe as order-independent factor-key term lists (one inner
+    /// `Vec` per additive term; duplicates preserved — compare as a MULTISET, not
+    /// a set, so `A + A`-style repeated units stay two entries). Canonicalized the
+    /// same way as [`stable_view`](FragmentTable::stable_view).
+    pub fn stable_c_init(&self, d: &DistilledLayer) -> Vec<Vec<FactorKey>> {
+        recipe_factor_keys(d, &self.c_init)
+    }
+}
+
+/// Each recipe term's factors projected to [`FactorKey`]s, then CANONICALIZED:
+/// factors sorted within a term, terms sorted across the recipe (multiplicity
+/// preserved — this is a multiset canonicalization, never a dedup).
+fn recipe_factor_keys(d: &DistilledLayer, recipe: &MergedRecipe) -> Vec<Vec<FactorKey>> {
+    let mut terms: Vec<Vec<FactorKey>> = recipe
+        .terms
+        .iter()
+        .map(|t| {
+            let mut factors: Vec<FactorKey> = t.factors.iter().map(|&e| factor_key(d, e)).collect();
+            factors.sort();
+            factors
+        })
+        .collect();
+    terms.sort();
+    terms
+}
+
+/// Stable identity of a fragment ATOM. Every atom is a non-scalar reinterned
+/// canonical value, so it always carries distilled provenance — a miss is a
+/// distillation bug (not a synthesized-leaf case), so panic with context.
+fn atom_key(d: &DistilledLayer, atom: ExprId) -> StableBwdExprKey {
+    d.stable_key(atom).unwrap_or_else(|| {
+        panic!(
+            "fragment atom {atom:?} lacks stable provenance (node {:?}); atoms must always be \
+             reinterned canonical values",
+            d.layer.exprs[atom.0 as usize]
+        )
+    })
+}
+
+/// Stable identity of a coefficient FACTOR. Prefers distilled provenance; falls
+/// back to the Source node for the synthesized beta powers (`distill` :176-182),
+/// reading a value-stable handle (constant value / challenge reference).
+fn factor_key(d: &DistilledLayer, factor: ExprId) -> FactorKey {
+    if let Some(key) = d.stable_key(factor) {
+        return FactorKey::Expr(key);
+    }
+    match &d.layer.exprs[factor.0 as usize] {
+        Expr::Source(sid) => match &d.layer.sources[sid.0 as usize].kind {
+            SourceKind::Constant { value } => FactorKey::Constant(*value),
+            SourceKind::Challenge { reference } => FactorKey::Challenge(reference.clone()),
+            other => panic!(
+                "factor {factor:?} has no stable provenance and is not a Constant/Challenge \
+                 source (kind {other:?})"
+            ),
+        },
+        other => panic!(
+            "factor {factor:?} has no stable provenance and is not a source leaf (node {other:?})"
+        ),
+    }
 }
 
 // ── decompose_spine ───────────────────────────────────────────────────────────
