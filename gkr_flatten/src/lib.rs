@@ -32,6 +32,7 @@ pub mod dag;
 pub mod fixtures;
 pub mod genome;
 pub mod ir;
+pub mod order;
 pub mod oracle;
 pub mod residency;
 pub mod resolvers;
