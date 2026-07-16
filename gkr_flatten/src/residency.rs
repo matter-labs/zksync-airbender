@@ -61,7 +61,17 @@ impl Residency {
         self.resident_lanes -= r.width;
     }
 
-    pub fn admit(&mut self, e: ExprId, width: u32, priority: u32) -> Admit {
+    /// Admits `e` (width lanes, `priority`) into the pool, evicting the
+    /// lowest strictly-lower-priority residents as needed. `protected` names
+    /// residents that must NOT be evicted for the duration of THIS call — the
+    /// walker uses it to pin an already-resolved sibling operand (in flight,
+    /// pending an emit) so admitting its partner can never displace a value a
+    /// not-yet-pushed op still reads. A protected candidate is skipped during
+    /// victim collection (as if it were higher-priority); if skipping it
+    /// leaves too few reclaimable lanes, the admission refuses untouched
+    /// (check-before-mutate). Victim order is otherwise unchanged
+    /// (deterministic lowest-(priority, ExprId) first).
+    pub fn admit(&mut self, e: ExprId, width: u32, priority: u32, protected: &[ExprId]) -> Admit {
         assert!(
             !self.is_resident(e),
             "gkr_flatten residency: {e:?} already resident — the walker must hit-check before \
@@ -76,11 +86,15 @@ impl Residency {
         let mut victims = Vec::new();
         if width > free {
             // Check-before-mutate: collect strictly-lower-priority victims
-            // until enough lanes free up; if impossible, refuse untouched.
+            // (skipping any protected in-flight operand) until enough lanes
+            // free up; if impossible, refuse untouched.
             let mut reclaimable = 0u32;
             for (p, v, w) in self.victim_order() {
                 if p >= priority {
                     break;
+                }
+                if protected.contains(&v) {
+                    continue; // in-flight sibling operand: unevictable this call
                 }
                 victims.push(v);
                 reclaimable += w;
@@ -147,7 +161,7 @@ mod tests {
     #[test]
     fn admit_within_free_space_no_victims() {
         let mut r = Residency::new(Some(8));
-        assert_eq!(r.admit(ExprId(1), 4, 10), Admit::Admitted { victims: vec![] });
+        assert_eq!(r.admit(ExprId(1), 4, 10, &[]), Admit::Admitted { victims: vec![] });
         assert!(r.is_resident(ExprId(1)));
         assert_eq!(r.resident_lanes(), 4);
     }
@@ -155,11 +169,11 @@ mod tests {
     #[test]
     fn eviction_lowest_priority_first_exprid_tiebreak() {
         let mut r = Residency::new(Some(8));
-        r.admit(ExprId(1), 4, 5);
-        r.admit(ExprId(2), 4, 5);
+        r.admit(ExprId(1), 4, 5, &[]);
+        r.admit(ExprId(2), 4, 5, &[]);
         // Incoming priority 9 > 5: evicts strictly-lower residents, lowest
         // (priority, ExprId) first — ExprId(1) before ExprId(2).
-        assert_eq!(r.admit(ExprId(3), 4, 9), Admit::Admitted { victims: vec![ExprId(1)] });
+        assert_eq!(r.admit(ExprId(3), 4, 9, &[]), Admit::Admitted { victims: vec![ExprId(1)] });
         assert!(!r.is_resident(ExprId(1)));
         assert!(r.is_resident(ExprId(2)));
     }
@@ -167,26 +181,26 @@ mod tests {
     #[test]
     fn equal_priority_refuses() {
         let mut r = Residency::new(Some(4));
-        r.admit(ExprId(1), 4, 5);
+        r.admit(ExprId(1), 4, 5, &[]);
         // Strictly-lower rule: an equal-priority incomer would itself be lowest.
-        assert_eq!(r.admit(ExprId(2), 4, 5), Admit::Refused);
+        assert_eq!(r.admit(ExprId(2), 4, 5, &[]), Admit::Refused);
         assert!(r.is_resident(ExprId(1)));
     }
 
     #[test]
     fn refuse_when_higher_priority_residents_block() {
         let mut r = Residency::new(Some(4));
-        r.admit(ExprId(1), 4, 9);
-        assert_eq!(r.admit(ExprId(2), 4, 5), Admit::Refused);
+        r.admit(ExprId(1), 4, 9, &[]);
+        assert_eq!(r.admit(ExprId(2), 4, 5, &[]), Admit::Refused);
     }
 
     #[test]
     fn wide_incomer_evicts_multiple() {
         let mut r = Residency::new(Some(8));
-        r.admit(ExprId(1), 4, 1);
-        r.admit(ExprId(2), 4, 2);
+        r.admit(ExprId(1), 4, 1, &[]);
+        r.admit(ExprId(2), 4, 2, &[]);
         assert_eq!(
-            r.admit(ExprId(3), 8, 9),
+            r.admit(ExprId(3), 8, 9, &[]),
             Admit::Admitted { victims: vec![ExprId(1), ExprId(2)] }
         );
     }
@@ -194,19 +208,40 @@ mod tests {
     #[test]
     fn partial_eviction_refuses_and_mutates_nothing() {
         let mut r = Residency::new(Some(8));
-        r.admit(ExprId(1), 4, 1);
-        r.admit(ExprId(2), 4, 9);
+        r.admit(ExprId(1), 4, 1, &[]);
+        r.admit(ExprId(2), 4, 9, &[]);
         // Needs 8 lanes; only ExprId(1) (4 lanes) is strictly lower -> refuse,
         // and BOTH residents must survive (check-before-mutate).
-        assert_eq!(r.admit(ExprId(3), 8, 5), Admit::Refused);
+        assert_eq!(r.admit(ExprId(3), 8, 5, &[]), Admit::Refused);
         assert!(r.is_resident(ExprId(1)) && r.is_resident(ExprId(2)));
+    }
+
+    #[test]
+    fn protected_victim_is_skipped_and_admission_refuses() {
+        // Baseline (unprotected): a priority-9 incomer evicts the lone
+        // strictly-lower resident to make room.
+        let mut r = Residency::new(Some(4));
+        r.admit(ExprId(1), 4, 1, &[]);
+        assert_eq!(
+            r.admit(ExprId(2), 4, 9, &[]),
+            Admit::Admitted { victims: vec![ExprId(1)] }
+        );
+        assert!(!r.is_resident(ExprId(1)));
+
+        // Protected: the SAME admission may not touch ExprId(1) (its only
+        // viable victim), so it refuses untouched and ExprId(1) survives.
+        let mut r = Residency::new(Some(4));
+        r.admit(ExprId(1), 4, 1, &[]);
+        assert_eq!(r.admit(ExprId(2), 4, 9, &[ExprId(1)]), Admit::Refused);
+        assert!(r.is_resident(ExprId(1)), "protected resident survives");
+        assert!(!r.is_resident(ExprId(2)), "blocked incomer is not admitted");
     }
 
     #[test]
     fn stash_reservation_evicts_residents() {
         let mut r = Residency::new(Some(8));
-        r.admit(ExprId(1), 4, 100); // even max-priority residents lose to stash
-        r.admit(ExprId(2), 4, 1);
+        r.admit(ExprId(1), 4, 100, &[]); // even max-priority residents lose to stash
+        r.admit(ExprId(2), 4, 1, &[]);
         let victims = r.reserve_stash(8);
         assert_eq!(victims, vec![ExprId(2), ExprId(1)]); // lowest (priority, id) first
         assert_eq!(r.stash_lanes(), 8);
@@ -225,15 +260,15 @@ mod tests {
     #[should_panic(expected = "already resident")]
     fn duplicate_admission_panics() {
         let mut r = Residency::new(Some(8));
-        r.admit(ExprId(1), 4, 1);
-        r.admit(ExprId(1), 4, 1);
+        r.admit(ExprId(1), 4, 1, &[]);
+        r.admit(ExprId(1), 4, 1, &[]);
     }
 
     #[test]
     fn unbounded_never_evicts_or_refuses() {
         let mut r = Residency::new(None);
         for i in 0..1000u32 {
-            assert_eq!(r.admit(ExprId(i), 4, 0), Admit::Admitted { victims: vec![] });
+            assert_eq!(r.admit(ExprId(i), 4, 0, &[]), Admit::Admitted { victims: vec![] });
         }
         assert_eq!(r.reserve_stash(1_000_000), vec![]);
     }

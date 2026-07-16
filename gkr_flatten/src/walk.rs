@@ -191,7 +191,9 @@ impl<'v, 'o> Walker<'v, 'o> {
                         // `SiteStep` already pushed above), observed as a
                         // standalone value before `ready_operand` resolves it.
                         self.observe(child, path, false);
-                        let op = self.ready_operand(child, path);
+                        // Single operand: resolved and pushed immediately, so
+                        // nothing is in flight — no protection needed.
+                        let op = self.ready_operand(child, path, &[]);
                         self.push(if first {
                             Op::Load(op)
                         } else if is_add {
@@ -219,11 +221,20 @@ impl<'v, 'o> Walker<'v, 'o> {
                         self.observe(child, path, true);
                         path.steps.push(SiteStep { child: a, dup: 0 });
                         self.observe(a, path, false);
-                        let oa = self.ready_operand(a, path);
+                        let oa = self.ready_operand(a, path, &[]);
                         path.steps.pop();
                         path.steps.push(SiteStep { child: b, dup: u8::from(b == a) });
                         self.observe(b, path, false);
-                        let ob = self.ready_operand(b, path);
+                        // If `a` resolved to a cached value, it is in flight —
+                        // it will be read by the not-yet-pushed op below
+                        // (Load/Mul/Fma). Protect it so admitting `b` can never
+                        // evict it out from under that read (the fma-operand
+                        // mutual-eviction bug). The window is exactly this
+                        // resolution; nothing stays pinned after the push.
+                        let guard = [a];
+                        let protect: &[ExprId] =
+                            if matches!(oa, Operand::Cached(_)) { &guard } else { &[] };
+                        let ob = self.ready_operand(b, path, protect);
                         path.steps.pop();
                         if first {
                             self.push(Op::Load(oa));
@@ -347,7 +358,7 @@ impl<'v, 'o> Walker<'v, 'o> {
     ///
     /// The non-hit paths each count exactly one node occurrence
     /// (`sites_visited`), a node that never recurses through `emit`.
-    fn ready_operand(&mut self, e: ExprId, path: &SitePath) -> Operand {
+    fn ready_operand(&mut self, e: ExprId, path: &SitePath, protected: &[ExprId]) -> Operand {
         if self.residency.is_resident(e) {
             self.stats.hits += 1;
             return Operand::Cached(e);
@@ -356,7 +367,7 @@ impl<'v, 'o> Walker<'v, 'o> {
             NodeKind::Leaf(class) => {
                 self.stats.sites_visited += 1;
                 if let LeafClass::Dram { .. } = class {
-                    if let Some(victims) = self.try_admit(e, path) {
+                    if let Some(victims) = self.try_admit(e, path, protected) {
                         for victim in victims {
                             self.push(Op::Evict(victim));
                             self.stats.evictions += 1;
@@ -379,15 +390,19 @@ impl<'v, 'o> Walker<'v, 'o> {
     }
 
     /// Consults the oracle for `e`'s site and, on a wish (`Some(priority)`),
-    /// asks `residency` to admit `e` at `view.width(e)` lanes. Returns the
-    /// displaced victims (possibly empty) on admission, or `None` when there
-    /// is no wish OR the residency refuses (the incomer would be the
-    /// lowest-priority resident). Shared by `ready_operand` (leaf, `CacheLoad`)
-    /// and `maybe_cache` (compound/leaf-root, `CacheStore`). The caller must
-    /// have hit-checked `e` first — `residency.admit` asserts `!is_resident`.
-    fn try_admit(&mut self, e: ExprId, path: &SitePath) -> Option<Vec<ExprId>> {
+    /// asks `residency` to admit `e` at `view.width(e)` lanes. `protected`
+    /// pins residents that must not be evicted for this admission — a sibling
+    /// operand already resolved to `Operand::Cached` and pending an emit (see
+    /// `ready_operand`'s second-operand call). Returns the displaced victims
+    /// (possibly empty) on admission, or `None` when there is no wish OR the
+    /// residency refuses (the incomer would be lowest-priority, or every
+    /// viable victim is protected). Shared by `ready_operand` (leaf,
+    /// `CacheLoad`) and `maybe_cache` (compound/leaf-root, `CacheStore`). The
+    /// caller must have hit-checked `e` first — `residency.admit` asserts
+    /// `!is_resident`.
+    fn try_admit(&mut self, e: ExprId, path: &SitePath, protected: &[ExprId]) -> Option<Vec<ExprId>> {
         let priority = self.oracle.keep_priority(path)?;
-        match self.residency.admit(e, self.view.width(e), priority) {
+        match self.residency.admit(e, self.view.width(e), priority, protected) {
             Admit::Admitted { victims } => Some(victims),
             Admit::Refused => None,
         }
@@ -455,7 +470,7 @@ impl<'v, 'o> Walker<'v, 'o> {
         if let NodeKind::Leaf(LeafClass::Free) = self.view.kind(e) {
             return;
         }
-        if let Some(victims) = self.try_admit(e, path) {
+        if let Some(victims) = self.try_admit(e, path, &[]) {
             for victim in victims {
                 self.push(Op::Evict(victim));
                 self.stats.evictions += 1;
@@ -509,6 +524,42 @@ mod tests {
         cross: &'a HashMap<cs::gkr_compiler::dag_ir::ReadPlace, cs::gkr_compiler::dag_ir::FieldKind>,
     ) -> LayerView<'a> {
         LayerView::new(l, cross, None)
+    }
+
+    /// Structural cache-liveness invariant (independent of arithmetic):
+    /// replays `program.ops`, tracking the set of live cache ids, and asserts
+    /// every `Operand::Cached` read names a currently-live entry, no admission
+    /// (`CacheStore`/`CacheLoad`) overwrites a live entry, and no `Evict`
+    /// drops an absent one. A dead `Cached` read (the fma-operand
+    /// mutual-eviction bug) trips the first assert here — before the
+    /// interpreter would panic and before any hit could be miscounted.
+    fn assert_cache_reads_live(program: &Program) {
+        use std::collections::HashSet;
+        let live_read = |o: &Operand, live: &HashSet<ExprId>| {
+            if let Operand::Cached(id) = o {
+                assert!(live.contains(id), "Operand::Cached({id:?}) read while not live");
+            }
+        };
+        let mut live: HashSet<ExprId> = HashSet::new();
+        for op in &program.ops {
+            match op {
+                Op::Load(o) | Op::Add(o) | Op::Mul(o) => live_read(o, &live),
+                Op::Fma(a, b) => {
+                    live_read(a, &live);
+                    live_read(b, &live);
+                }
+                Op::CacheStore(id) => {
+                    assert!(live.insert(*id), "CacheStore({id:?}) overwrote a live entry");
+                }
+                Op::CacheLoad { id, .. } => {
+                    assert!(live.insert(*id), "CacheLoad({id:?}) overwrote a live entry");
+                }
+                Op::Evict(id) => {
+                    assert!(live.remove(id), "Evict of non-live {id:?}");
+                }
+                Op::Stash(_) | Op::SinkMaterialize(_) => {}
+            }
+        }
     }
 
     // ── Non-canonical / hardening layer builders ──────────────────────────
@@ -1109,6 +1160,7 @@ mod tests {
         let report = size_layer(&v, &roots);
 
         let out = flatten_budgeted(&v, &crate::oracle::AdmitAll, None);
+        assert_cache_reads_live(&out.program);
         assert!(out.stats.hits > 0, "second occurrence must hit");
         assert_eq!(out.stats.traffic, report.floor, "all-admit @ unbounded reaches the floor");
         assert!(out.program.ops.iter().any(|op| matches!(op, Op::CacheStore(_))));
@@ -1147,6 +1199,7 @@ mod tests {
             priorities: [(crate::oracle::path_key(&b_site.path), 5)].into_iter().collect(),
         };
         let out = flatten_budgeted(&v, &oracle, Some(8));
+        assert_cache_reads_live(&out.program);
 
         let cache_loads = out.program.ops.iter()
             .filter(|op| matches!(op, Op::CacheLoad { src: SourceId(1), .. })).count();
@@ -1184,6 +1237,7 @@ mod tests {
         }
         let oracle = crate::oracle::MapOracle { priorities };
         let out = flatten_budgeted(&v, &oracle, Some(1));
+        assert_cache_reads_live(&out.program);
 
         assert_eq!(out.stats.evictions, 1);
         let evict_pos = out.program.ops.iter()
@@ -1204,6 +1258,7 @@ mod tests {
             let v = view(&layer, &cross);
             let model: u32 = layer.roots.iter().map(|r| su::cone_peak(&v, r.expr)).max().unwrap();
             let out = flatten_budgeted(&v, &crate::oracle::AdmitAll, Some(model + 8));
+            assert_cache_reads_live(&out.program);
             assert!(out.stats.peak <= model, "hits only ever prune: peak {} > model {model}", out.stats.peak);
         }
     }
@@ -1218,6 +1273,7 @@ mod tests {
         let check = |layer: &DagLayer, cross: &HashMap<_, _>, budget: Option<u32>, label: &str| {
             let v = LayerView::new(layer, cross, None);
             let out = flatten_budgeted(&v, &crate::oracle::AdmitAll, budget);
+            assert_cache_reads_live(&out.program);
             for row in [0usize, 1, 7] {
                 let got = crate::ir::interpret(&out.program, layer, row, &rb);
                 for (i, _) in layer.roots.iter().enumerate() {
@@ -1244,5 +1300,52 @@ mod tests {
         };
         check(&dag.layers[0], &cross, None, "add_sub L0 unbounded");
         check(&dag.layers[0], &cross, Some(report.peak + 2), "add_sub L0 tight");
+    }
+
+    #[test]
+    fn sibling_admission_never_evicts_in_flight_operand() {
+        // root = Add(w0, Mul(a, b)); a, b Dram leaves; budget 1 lane. Oracle
+        // gives a's operand site priority 1 and b's priority 9. Without the
+        // in-flight protection, resolving b would evict the just-admitted a
+        // (Evict(a), CacheLoad(b)) and the fused Fma(Cached(a), Cached(b))
+        // would read a DEAD cache entry — an interpreter panic at parity time
+        // and a miscounted hit. Protection makes b's admission refuse (its
+        // only viable victim is the pinned a), so b stays a plain leaf touch.
+        let sources = vec![testdag::base_read(0), testdag::base_read(1), testdag::base_read(2)];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),             // w0
+            Expr::Source(SourceId(1)),             // a
+            Expr::Source(SourceId(2)),             // b
+            Expr::Mul(vec![ExprId(1), ExprId(2)]), // Mul(a, b)
+            Expr::Add(vec![ExprId(0), ExprId(3)]), // Add(w0, Mul)
+        ];
+        let layer = testdag::layer(sources, exprs, vec![testdag::root(ExprId(4))]);
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let mut priorities = std::collections::HashMap::new();
+        for s in &table.sites {
+            if s.path.root == RootId(0) && s.admissible {
+                if s.value == ExprId(1) { priorities.insert(crate::oracle::path_key(&s.path), 1); }
+                if s.value == ExprId(2) { priorities.insert(crate::oracle::path_key(&s.path), 9); }
+            }
+        }
+        let oracle = crate::oracle::MapOracle { priorities };
+        let out = flatten_budgeted(&v, &oracle, Some(1));
+
+        // The in-flight operand `a` must never be evicted while its `Cached`
+        // read is pending: no Evict may sit between its CacheLoad and a later
+        // Cached read of it. The structural checker captures exactly that.
+        assert_cache_reads_live(&out.program);
+
+        // And the emitted program must still evaluate bit-exact.
+        let r = crate::resolvers::HashResolvers { seed: 7 };
+        let rb = r.bundle();
+        for row in [0usize, 1] {
+            let got = crate::ir::interpret(&out.program, &layer, row, &rb);
+            let want = cs::gkr_compiler::dag_ir::eval::eval_layer_root(&layer, RootId(0), row, &rb);
+            assert_eq!(got[&RootId(0)], want, "row {row}");
+        }
     }
 }
