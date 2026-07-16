@@ -1,13 +1,24 @@
 //! The `Oracle` trait: pluggable root-visitation order and cache-admission
-//! priority for the demand-driven walker (`crate::walk::flatten`).
+//! priority for the demand-driven walker (`crate::walk::flatten`/
+//! `flatten_budgeted`).
 //!
-//! M1 ships only [`NeutralOracle`] — identity root order, never caches
-//! (`keep_priority` is always `None`). This is what makes the walker's
-//! neutral stats (`crate::walk::WalkStats`) comparable 1:1 against
-//! `analysis::size_layer`'s all-recompute DP: with no caching decision ever
-//! taken, the walker degenerates to exactly the all-recompute model the DP
-//! prices (every shared sub-expr is recomputed once per path that reaches
-//! it, never reused across sites).
+//! [`NeutralOracle`] — identity root order, never caches (`keep_priority` is
+//! always `None`) — is the M1 baseline every other oracle is measured
+//! against: with no caching decision ever taken, the walker degenerates to
+//! exactly the all-recompute model `analysis::size_layer`'s DP prices (every
+//! shared sub-expr is recomputed once per path that reaches it, never reused
+//! across sites), and its stats compare 1:1 against that DP
+//! (`neutral_stats_match_dp`) and stay byte-identical to M1 at any cache
+//! budget (`all_refuse_is_byte_identical_to_m1`).
+//!
+//! [`SiteTable`] is the M2 site-domain enumeration: one all-refuse
+//! `NeutralOracle`-driven recording walk over a layer lists every node
+//! OCCURRENCE (`SitePath` + `SiteObs`) the walker will ever visit, indexed by
+//! [`path_key`]. It is the sole authority a search needs to build an oracle
+//! over — `crate::genome::Genome`/`decode` turns a per-site keep-gene vector
+//! (indexed by the same table) into a [`crate::genome::GenomeOracle`] that
+//! implements this trait and drives `flatten_budgeted` exactly like
+//! `NeutralOracle` or any other oracle here.
 
 use std::collections::HashMap;
 

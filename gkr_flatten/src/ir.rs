@@ -21,25 +21,24 @@
 //! counterpart to that DAG-walking reference evaluator, over the same
 //! `Resolvers` bundle.
 //!
-//! # M1 vs M2
+//! # Cache and stash op semantics
 //!
-//! `Cached`/`CacheStore`/`CacheLoad`/`Evict` exist now as forward-declared
-//! hooks for the M2 caching walker, but the interpreter already gives them
-//! full (if simulation-only) semantics rather than stubbing them out:
+//! `CacheStore`/`CacheLoad`/`Evict`/`Operand::Cached` give the M2 caching
+//! walker's admission decisions (`crate::walk::flatten_budgeted`, backed by
+//! `crate::residency::Residency`) their value semantics here — simulation-only
+//! (no cost/traffic bookkeeping; that lives in `crate::walk::WalkStats`):
 //! `CacheStore(id)` admits the current `acc` into a `BTreeMap<ExprId, Ext>`
-//! value table, `CacheLoad { src, id }` streams leaf `src` straight into that
+//! value table; `CacheLoad { src, id }` streams leaf `src` straight into that
 //! table under `id` *without* touching `acc` (the counterpart admission path
 //! for a leaf consumed only as an `Add`/`Mul`/`Fma` operand, which never
-//! passes through the accumulator), and `Evict(id)` drops the table entry.
-//! Both admission ops now panic if `id` is already resident — the walker must
-//! never recompute/re-admit a value the cache already holds — and `Evict`
-//! panics if `id` is absent — the walker only evicts residents. (These
-//! markers only account for *value* availability — they carry no cost/
-//! traffic bookkeeping; that arrives with the M2 walker.) `Operand::Cached(id)`
+//! passes through the accumulator); `Evict(id)` drops the table entry. Both
+//! admission ops panic if `id` is already resident — the walker must never
+//! recompute/re-admit a value the cache already holds — and `Evict` panics if
+//! `id` is absent — the walker only evicts residents. `Operand::Cached(id)`
 //! reads the table, panicking with the offending `ExprId` if the value was
 //! never stored or was already evicted. `width_of_slot` is DP-facing
-//! accounting metadata (the lane width backing each stash slot, for M2's
-//! peak/traffic bookkeeping) — the interpreter never reads it.
+//! accounting metadata (the lane width backing each stash slot, for the
+//! walker's peak/traffic bookkeeping) — the interpreter never reads it.
 //!
 //! # Leaf resolution
 //!
@@ -277,80 +276,24 @@ pub fn interpret(
 
 #[cfg(test)]
 mod tests {
-    use cs::gkr_compiler::dag_ir::eval::{
-        ChallengeResolver, LookupResolver, ReadResolver, VirtualSetupResolver, eval_layer_root,
-    };
-    use cs::gkr_compiler::dag_ir::{ChallengeRef, LookupValueKind, ReadPlace, VirtualSetupKind};
+    use cs::gkr_compiler::dag_ir::eval::{ReadResolver, eval_layer_root};
+    use cs::gkr_compiler::dag_ir::ReadPlace;
 
     use super::*;
     use crate::dag::testdag::tiny_fma_layer;
+    use crate::resolvers::HashResolvers;
 
-    // ── Deterministic test-local resolver ─────────────────────────────────
-    //
-    // Hash-ish deterministic function of (a small integer tag identifying the
-    // reference, row) — no meaningful semantics beyond determinism, and no
-    // ambition to become the shared production resolver (that's Task 7's
-    // `src/resolvers.rs::HashResolvers`; kept separate on purpose to avoid a
-    // seam conflict).
-    fn mix(a: u32, b: u32) -> u32 {
-        a.wrapping_mul(2_654_435_761)
-            .wrapping_add(b.wrapping_mul(2_246_822_519))
-            .wrapping_add(0x9E3779B9)
-    }
-
-    struct DetResolver;
-
-    impl ReadResolver for DetResolver {
-        fn read(&self, place: &ReadPlace, row: usize) -> Ext {
-            let col = match place {
-                ReadPlace::BaseLayerWitness { column } => *column as u32,
-                ReadPlace::BaseLayerMemory { column } => *column as u32 + 1_000,
-                ReadPlace::Setup { column } => *column as u32 + 2_000,
-                ReadPlace::Scratch { slot } => *slot as u32 + 3_000,
-                ReadPlace::LayerOutput { layer, offset } => {
-                    (*layer as u32) * 100 + *offset as u32 + 4_000
-                }
-                ReadPlace::CacheOutput { layer, offset } => {
-                    (*layer as u32) * 100 + *offset as u32 + 5_000
-                }
-            };
-            lift(Bf::from_u32_with_reduction(mix(col, row as u32)))
-        }
-    }
-
-    impl LookupResolver for DetResolver {
-        fn lookup(
-            &self,
-            _kind: &LookupValueKind,
-            set_index: usize,
-            _evaluated_query: Ext,
-            row: usize,
-        ) -> Bf {
-            Bf::from_u32_with_reduction(mix(set_index as u32 + 6_000, row as u32))
-        }
-    }
-
-    impl VirtualSetupResolver for DetResolver {
-        fn virtual_setup(&self, _kind: &VirtualSetupKind, row: usize) -> Bf {
-            Bf::from_u32_with_reduction(mix(7_001, row as u32))
-        }
-    }
-
-    impl ChallengeResolver for DetResolver {
-        fn challenge(&self, _reference: &ChallengeRef) -> Ext {
-            lift(Bf::from_u32_with_reduction(mix(8_001, 0)))
-        }
-    }
-
-    fn resolvers(d: &DetResolver) -> Resolvers<'_> {
-        Resolvers { read: d, lookup: d, virtual_setup: d, challenge: d }
-    }
+    // Shared deterministic test resolver (`crate::resolvers::HashResolvers`):
+    // every test below needs *a* resolver whose answers are stable across the
+    // two calls it compares (or across the flattened vs. reference evaluator),
+    // never specific hand-picked values — so the production hash resolver
+    // serves just as well and avoids a duplicated test-local one.
 
     #[test]
     fn fma_program_evaluates() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         // acc = w0; acc += w1*w2  ==  w0 + w1*w2
         let p = Program {
             ops: vec![
@@ -367,8 +310,8 @@ mod tests {
     #[test]
     fn stash_roundtrip() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         // Load w0 (a); Stash s0; Load w1 (b); Mul(Stashed(s0)); Sink == a*b.
         let p = Program {
             ops: vec![
@@ -391,8 +334,8 @@ mod tests {
     #[should_panic(expected = "already consumed")]
     fn stashed_slot_consumed_twice_panics() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         // Stash once, then try to consume the same slot twice.
         let p = Program {
             ops: vec![
@@ -412,8 +355,8 @@ mod tests {
     #[should_panic(expected = "overwrote a live slot")]
     fn stash_overwrite_of_live_slot_panics() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         // Stash s0, then Stash s0 again without an intervening consumption.
         let p = Program {
             ops: vec![
@@ -432,8 +375,8 @@ mod tests {
     #[should_panic(expected = "accumulator read while undefined")]
     fn acc_use_after_stash_panics() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         // Stash frees acc; using it directly (not via Stashed) must panic.
         let p = Program {
             ops: vec![
@@ -450,8 +393,8 @@ mod tests {
     #[test]
     fn cache_store_evict_roundtrip() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         // Load w1*w2's product into the cache under a synthetic ExprId, read
         // it back via Cached, then evict and confirm a stale read panics.
         let p = Program {
@@ -473,8 +416,8 @@ mod tests {
     #[should_panic(expected = "missing from the value table")]
     fn cached_read_after_evict_panics() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         let p = Program {
             ops: vec![
                 Op::Load(Operand::Leaf(SourceId(1))),
@@ -491,8 +434,8 @@ mod tests {
     #[test]
     fn cache_load_roundtrip() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         // CacheLoad w1 without touching acc; acc built later reads it back.
         let p = Program {
             ops: vec![
@@ -514,8 +457,8 @@ mod tests {
     #[should_panic(expected = "live cache entry")]
     fn cache_store_overwrite_live_entry_panics() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         let p = Program {
             ops: vec![
                 Op::Load(Operand::Leaf(SourceId(0))),
@@ -532,8 +475,8 @@ mod tests {
     #[should_panic(expected = "live cache entry")]
     fn cache_load_overwrite_live_entry_panics() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         let p = Program {
             ops: vec![
                 Op::CacheLoad { src: SourceId(1), id: ExprId(1) },
@@ -550,8 +493,8 @@ mod tests {
     #[should_panic(expected = "Evict of absent")]
     fn evict_absent_entry_panics() {
         let layer = tiny_fma_layer();
-        let d = DetResolver;
-        let r = resolvers(&d);
+        let d = HashResolvers { seed: 7 };
+        let r = d.bundle();
         let p = Program {
             ops: vec![
                 Op::Load(Operand::Leaf(SourceId(0))),

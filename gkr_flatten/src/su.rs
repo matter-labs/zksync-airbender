@@ -35,19 +35,25 @@
 //! - A root that is itself a leaf or a streamable Mul has peak 0 (its value
 //!   streams into the materialize sink without occupying a cell).
 //!
-//! Both entry points memoize over the DAG per call (`Vec<Option<_>>` indexed
-//! by `ExprId`), so shared subgraphs are visited once — O(nodes) per call.
+//! Both entry points ([`cone_peak`], [`streamable`]) memoize over the DAG via
+//! a private, one-shot [`Memo`] — `Vec<Option<_>>` indexed by `ExprId` — so
+//! shared subgraphs are visited once, O(nodes) per call. A caller that calls
+//! either repeatedly against the same `LayerView` (e.g. the walker's
+//! `order_children`, once per fold) should instead hold one [`Memo`] across
+//! those calls (`Memo::new` + `Memo::peak`/`Memo::streamable`) to amortize the
+//! allocation and reuse results across folds.
 
 use cs::gkr_compiler::dag_ir::ExprId;
 
 use crate::dag::{LayerView, NodeKind};
 
 /// Peak stash demand (lanes) to compute `root` with nothing resident,
-/// under SU-optimal child order. Memoized over the DAG (O(nodes)).
+/// under SU-optimal child order. One-shot wrapper over [`Memo`]: allocates a
+/// fresh private memo and discards it. Callers in a hot loop over many roots
+/// (e.g. `Walker::order_children`) should hold their own [`Memo`] and call
+/// [`Memo::peak`] directly instead — see that type's docs.
 pub fn cone_peak(view: &LayerView<'_>, root: ExprId) -> u32 {
-    let n = view.layer.exprs.len();
-    let mut memo = Memo { peak: vec![None; n], streamable: vec![None; n] };
-    memo.peak(view, root)
+    Memo::new(view.layer.exprs.len()).peak(view, root)
 }
 
 /// True iff the node streams into an accumulation without occupying a cell:
@@ -55,23 +61,37 @@ pub fn cone_peak(view: &LayerView<'_>, root: ExprId) -> u32 {
 /// an Add parent, an associative mul-chain under a Mul parent). Strictly
 /// leaf operands — never recursive through nested Muls — so the model
 /// prices exactly what the walker's operand-based lowering can emit.
+/// One-shot wrapper over [`Memo`] — see [`cone_peak`]'s doc for the hot-loop
+/// caveat.
 pub fn streamable(view: &LayerView<'_>, e: ExprId) -> bool {
-    let mut memo = vec![None; view.layer.exprs.len()];
-    streamable_memo(view, e, &mut memo)
+    Memo::new(view.layer.exprs.len()).streamable(view, e)
 }
 
-/// Per-call memo tables, indexed by `ExprId`.
-struct Memo {
+/// Memo tables for [`cone_peak`]/[`streamable`], indexed by `ExprId`.
+///
+/// Caches are keyed purely by `ExprId` under one fixed `LayerView`, so a
+/// `Memo` is sound to reuse across many `peak`/`streamable` calls as long as
+/// every call passes the SAME view (the layer, and therefore its `ExprId`
+/// numbering, never changes underneath it) — exactly `Walker`'s lifetime
+/// contract (`crate::walk::Walker::su_memo`), which is why the walker holds
+/// one `Memo` for its whole life instead of allocating a fresh one per fold.
+pub struct Memo {
     peak: Vec<Option<u32>>,
     streamable: Vec<Option<bool>>,
 }
 
 impl Memo {
-    fn streamable(&mut self, view: &LayerView<'_>, e: ExprId) -> bool {
+    /// A fresh, empty memo sized for a layer with `n_exprs` expressions (same
+    /// sizing as the old per-call private allocation: one slot per `ExprId`).
+    pub fn new(n_exprs: usize) -> Memo {
+        Memo { peak: vec![None; n_exprs], streamable: vec![None; n_exprs] }
+    }
+
+    pub fn streamable(&mut self, view: &LayerView<'_>, e: ExprId) -> bool {
         streamable_memo(view, e, &mut self.streamable)
     }
 
-    fn peak(&mut self, view: &LayerView<'_>, e: ExprId) -> u32 {
+    pub fn peak(&mut self, view: &LayerView<'_>, e: ExprId) -> u32 {
         if let Some(v) = self.peak[e.0 as usize] {
             return v;
         }

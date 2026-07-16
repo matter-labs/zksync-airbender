@@ -22,6 +22,7 @@
 //! DP (`neutral_stats_match_dp`) and byte-identical across budgets
 //! (`all_refuse_is_byte_identical_to_m1`).
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceId};
@@ -110,6 +111,7 @@ pub fn flatten_budgeted(
         program: Program { ops: Vec::new(), width_of_slot: Default::default() },
         stats: WalkStats::default(),
         residency: Residency::new(budget),
+        su_memo: RefCell::new(su::Memo::new(view.layer.exprs.len())),
     };
     for root_id in oracle.root_order(view.layer) {
         let root_expr = view.layer.roots[root_id.0 as usize].expr;
@@ -139,6 +141,14 @@ struct Walker<'v, 'o> {
     /// `budget`/eviction tripwire — superseding M1's bare `live_stash_lanes`
     /// counter and `budget_hint` feasibility hook.
     residency: Residency,
+    /// SU-model memo (`su::cone_peak`/`su::streamable`), reused across every
+    /// `order_children` call for this walker's whole life instead of
+    /// allocating a fresh one per fold. Sound because a `Walker` owns exactly
+    /// one `LayerView` for its whole life (see `su::Memo`'s doc) — the memo's
+    /// `ExprId`-keyed results never go stale mid-walk. `RefCell` because
+    /// `order_children` is called from `&self` context (it does not itself
+    /// need `&mut Walker`) but memoization requires interior mutability.
+    su_memo: RefCell<su::Memo>,
 }
 
 impl<'v, 'o> Walker<'v, 'o> {
@@ -294,11 +304,12 @@ impl<'v, 'o> Walker<'v, 'o> {
             })
             .collect();
 
+        let mut memo = self.su_memo.borrow_mut();
         let (mut non_stream, stream): (Vec<(u8, ExprId)>, Vec<(u8, ExprId)>) =
-            indexed.into_iter().partition(|&(_, c)| !su::streamable(self.view, c));
+            indexed.into_iter().partition(|&(_, c)| !memo.streamable(self.view, c));
         // Stable sort: ties keep the relative order they already have
         // (original arena order, preserved by `partition`).
-        non_stream.sort_by_key(|&(_, c)| std::cmp::Reverse(su::cone_peak(self.view, c)));
+        non_stream.sort_by_key(|&(_, c)| std::cmp::Reverse(memo.peak(self.view, c)));
         non_stream.extend(stream);
         non_stream
     }
@@ -1036,61 +1047,15 @@ mod tests {
     /// actually exercises the stash/fma/mul-fold lowering's arithmetic.
     #[test]
     fn emitted_program_evaluates_correctly_on_real_fixture() {
-        use cs::gkr_compiler::dag_ir::eval::{
-            Bf, ChallengeResolver, Ext, LookupResolver, ReadResolver, Resolvers,
-            VirtualSetupResolver, eval_layer_root,
-        };
-        use cs::gkr_compiler::dag_ir::{ChallengeRef, LookupValueKind, VirtualSetupKind};
-        use field::{FieldExtension, PrimeField};
+        use cs::gkr_compiler::dag_ir::eval::eval_layer_root;
 
-        fn mix(a: u32, b: u32) -> u32 {
-            a.wrapping_mul(2_654_435_761)
-                .wrapping_add(b.wrapping_mul(2_246_822_519))
-                .wrapping_add(0x9E3779B9)
-        }
-        fn lift(b: Bf) -> Ext {
-            <Ext as FieldExtension<Bf>>::from_base(b)
-        }
-
-        struct DetResolver;
-        impl ReadResolver for DetResolver {
-            fn read(&self, place: &cs::gkr_compiler::dag_ir::ReadPlace, row: usize) -> Ext {
-                use cs::gkr_compiler::dag_ir::ReadPlace;
-                let col = match place {
-                    ReadPlace::BaseLayerWitness { column } => *column as u32,
-                    ReadPlace::BaseLayerMemory { column } => (*column as u32).wrapping_add(1_000),
-                    ReadPlace::Setup { column } => (*column as u32).wrapping_add(2_000),
-                    ReadPlace::Scratch { slot } => (*slot as u32).wrapping_add(3_000),
-                    ReadPlace::LayerOutput { layer, offset } => (*layer as u32)
-                        .wrapping_mul(100)
-                        .wrapping_add(*offset as u32)
-                        .wrapping_add(4_000),
-                    ReadPlace::CacheOutput { layer, offset } => (*layer as u32)
-                        .wrapping_mul(100)
-                        .wrapping_add(*offset as u32)
-                        .wrapping_add(5_000),
-                };
-                lift(Bf::from_u32_with_reduction(mix(col, row as u32)))
-            }
-        }
-        impl LookupResolver for DetResolver {
-            fn lookup(&self, _kind: &LookupValueKind, set_index: usize, _q: Ext, row: usize) -> Bf {
-                Bf::from_u32_with_reduction(mix((set_index as u32).wrapping_add(6_000), row as u32))
-            }
-        }
-        impl VirtualSetupResolver for DetResolver {
-            fn virtual_setup(&self, _kind: &VirtualSetupKind, row: usize) -> Bf {
-                Bf::from_u32_with_reduction(mix(7_001, row as u32))
-            }
-        }
-        impl ChallengeResolver for DetResolver {
-            fn challenge(&self, _reference: &ChallengeRef) -> Ext {
-                lift(Bf::from_u32_with_reduction(mix(8_001, 0)))
-            }
-        }
-
-        let d = DetResolver;
-        let r = Resolvers { read: &d, lookup: &d, virtual_setup: &d, challenge: &d };
+        // A shared deterministic resolver is all this test needs — it just
+        // has to agree with itself across the flattened and reference
+        // evaluators, not produce any particular value — so the production
+        // `HashResolvers` (`crate::resolvers`) serves directly instead of a
+        // duplicated test-local one.
+        let d = crate::resolvers::HashResolvers { seed: 7 };
+        let r = d.bundle();
 
         let check = |layer: &DagLayer, cross: &HashMap<_, _>, label: &str| {
             let v = LayerView::new(layer, cross, None);
