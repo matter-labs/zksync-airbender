@@ -1,0 +1,138 @@
+{
+  "MergedAndPackedMemoryAndWitness": {
+    "pack_log2": 4,
+    "external_challenges_pow_bits": 20,
+    "register_final_state": [
+      {
+        "value": 0,
+        "last_access_timestamp": 390
+      },
+      {
+        "value": 256,
+        "last_access_timestamp": 265
+      },
+      {
+        "value": 69205808,
+        "last_access_timestamp": 308
+      },
+      {
+        "value": 69208064,
+        "last_access_timestamp": 22
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      },
+      {
+        "value": 69205856,
+        "last_access_timestamp": 320
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      },
+      {
+        "value": 144,
+        "last_access_timestamp": 326
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 330
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 334
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 338
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 342
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 346
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 350
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 354
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 358
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 362
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 366
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 370
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 374
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 378
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 382
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 386
+      },
+      {
+        "value": 69205864,
+        "last_access_timestamp": 384
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      },
+      {
+        "value": 0,
+        "last_access_timestamp": 0
+      }
+    ],
+    "final_pc": 384,
+    "final_timestamp": 392
+  }
+}

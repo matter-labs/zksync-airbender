@@ -2,6 +2,7 @@ use std::alloc::Global;
 use std::collections::BTreeMap;
 
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
+use cs::utils::split_timestamp;
 use field::TwoAdicField;
 use field::{Field, FieldExtension, PrimeField};
 use transcript::Keccak256Transcript;
@@ -30,7 +31,7 @@ use crate::gkr::whir::{
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use crate::worker::Worker;
-use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
+use common_constants::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::definitions::{GKRAddress, VirtualSetupPoly};
 use std::sync::Arc;
 
@@ -52,6 +53,9 @@ pub enum CommitmentMode {
     MergedAndPackedMemoryAndWitness {
         pack_log2: usize,
         external_challenges_pow_bits: u32,
+        register_final_state: [crate::definitions::FinalRegisterValue; 32],
+        final_pc: u32,
+        final_timestamp: TimestampScalar,
     }, // this mode assumes that external challenges are not "external" anymore
 }
 
@@ -404,6 +408,9 @@ where
         CommitmentMode::MergedAndPackedMemoryAndWitness {
             pack_log2,
             external_challenges_pow_bits,
+            register_final_state,
+            final_pc,
+            final_timestamp,
         } => {
             // in this mode we will re-derive external challenges.
             //
@@ -455,7 +462,27 @@ where
             // we should commit all "external" variables,
             // that are still part of the circuit, even though they are not formally the public input
 
-            // circuit sequence and delegation type
+            // register final state - flatten same way as full statement verifier,
+            // and in general it can be flattened to (32+1) * 3 u32 words -> bytes without interpretation
+            // for L1 verifier
+            let mut registers_buffer = [0u32; 32 * 3];
+            for reg_idx in 0..32 {
+                let value = register_final_state[reg_idx].value;
+                let (timestamp_low, timestamp_high) =
+                    split_timestamp(register_final_state[reg_idx].last_access_timestamp);
+                registers_buffer[reg_idx * 3] = value;
+                registers_buffer[reg_idx * 3 + 1] = timestamp_low;
+                registers_buffer[reg_idx * 3 + 2] = timestamp_high;
+            }
+            transcript_input.extend(registers_buffer);
+
+            let mut final_pc_buffer = [0u32; 3];
+            final_pc_buffer[0] = final_pc;
+            final_pc_buffer[1] = split_timestamp(final_timestamp).0;
+            final_pc_buffer[2] = split_timestamp(final_timestamp).1;
+            transcript_input.extend(final_pc_buffer);
+
+            // inits and teardown bits
             transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
 
             // commit our setup
@@ -1032,16 +1059,67 @@ where
     // accumulator so the caller can do `initial_contribution * accumulator == 1`
     // as a single check (mirroring the standalone i/t proof's role).
     if let Some(it_evals) = final_explicit_evaluations.get(&OutputType::InitsAndTeardownsProduct) {
-        let [init_set_computed, teardown_set_computed] = it_evals.clone().map(|els| {
+        // here the numbering is read - write
+        let [teardown_set_computed, init_set_computed] = it_evals.clone().map(|els| {
             let mut result = E::ONE;
             for el in els.iter() {
                 result.mul_assign(el);
             }
             result
         });
-        let mut it_contribution = teardown_set_computed;
-        it_contribution.mul_assign(&init_set_computed.inverse().expect("must not be zero"));
-        grand_product_accumulator_computed.mul_assign(&it_contribution);
+        // accumulation is write/read
+        grand_product_accumulator_computed.mul_assign(&init_set_computed);
+        grand_product_accumulator_computed
+            .mul_assign(&teardown_set_computed.inverse().expect("must not be zero"));
+    }
+
+    #[cfg(feature = "gkr_self_checks")]
+    if let CommitmentMode::MergedAndPackedMemoryAndWitness {
+        register_final_state,
+        final_pc,
+        final_timestamp,
+        ..
+    } = commitment_mode
+    {
+        // self-check, write set/read set
+        let mut registers_buffer = [0u32; 32 * 3];
+        for reg_idx in 0..32 {
+            let value = register_final_state[reg_idx].value;
+            let (timestamp_low, timestamp_high) =
+                split_timestamp(register_final_state[reg_idx].last_access_timestamp);
+            registers_buffer[reg_idx * 3] = value;
+            registers_buffer[reg_idx * 3 + 1] = timestamp_low;
+            registers_buffer[reg_idx * 3 + 2] = timestamp_high;
+        }
+
+        use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
+        use cs::definitions::NUM_REGISTERS;
+
+        let (final_ts_low, final_ts_high) = split_timestamp(final_timestamp);
+
+        let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
+            prover::definitions::produce_initial_permutation_product_separate_contributions(
+                unsafe {
+                    core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(
+                        &registers_buffer,
+                    )
+                },
+                INITIAL_PC,
+                split_timestamp(INITIAL_TIMESTAMP),
+                final_pc,
+                (final_ts_low, final_ts_high),
+                &external_challenges,
+            );
+
+        let mut t = grand_product_accumulator_computed;
+        t.mul_assign(
+            &machine_state_read_set_contribution
+                .inverse()
+                .expect("non-zero"),
+        );
+        t.mul_assign(&machine_state_write_set_contribution);
+
+        assert_eq!(t, E::ONE);
     }
 
     GKRProof {
