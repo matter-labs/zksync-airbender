@@ -19,7 +19,7 @@ pub mod dag;
 pub mod fixtures;
 pub mod ir;
 pub mod oracle;
-pub mod resolvers;
 pub mod residency;
+pub mod resolvers;
 pub mod su;
 pub mod walk;
