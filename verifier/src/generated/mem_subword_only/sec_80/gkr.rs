@@ -21,10 +21,10 @@ use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
-    output_claims: &[BabyBearExt4; 37usize],
+    output_claims: &[BabyBearExt4; 39usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    const DESCS: [(usize, usize, usize); 48usize] = [
+    const DESCS: [(usize, usize, usize); 50usize] = [
         (1usize, 0usize, 0usize),
         (1usize, 1usize, 0usize),
         (1usize, 2usize, 0usize),
@@ -47,14 +47,16 @@ unsafe fn layer_0_compute_claim(
         (1usize, 19usize, 0usize),
         (1usize, 20usize, 0usize),
         (1usize, 21usize, 0usize),
-        (2usize, 22usize, 23usize),
-        (1usize, 24usize, 0usize),
+        (1usize, 22usize, 0usize),
+        (2usize, 23usize, 24usize),
         (2usize, 25usize, 26usize),
         (2usize, 27usize, 28usize),
         (2usize, 29usize, 30usize),
         (2usize, 31usize, 32usize),
-        (1usize, 33usize, 0usize),
-        (2usize, 34usize, 35usize),
+        (2usize, 33usize, 34usize),
+        (1usize, 35usize, 0usize),
+        (2usize, 36usize, 37usize),
+        (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
@@ -92,11 +94,11 @@ unsafe fn layer_0_final_step_accumulator(
     let mut current_batch = BabyBearExt4::ONE;
     {
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 5usize] = [
-            (SimpleGateType::Copy, [29usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [40usize, 41usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [42usize, 43usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [44usize, 45usize, 0usize, 0usize]),
-            (SimpleGateType::Product, [46usize, 47usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [30usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [41usize, 42usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [43usize, 44usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [45usize, 46usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [47usize, 48usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 5usize {
@@ -289,42 +291,14 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(20usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(21usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(21usize, 65536usize), (25usize, 2013200385usize)];
+                [(22usize, 65536usize), (26usize, 2013200385usize)];
             const VAL_LN: [(usize, usize); 5usize] = [
                 (2usize, 65536usize),
                 (6usize, 2013200385usize),
                 (7usize, 2013134849usize),
-                (16usize, 65536usize),
-                (21usize, 2013200385usize),
-            ];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(20usize, 4usize)];
-            const VAL_QI: [(usize, usize); 4usize] = [
-                (21usize, 1usize),
-                (22usize, 65536usize),
-                (25usize, 2013265920usize),
-                (26usize, 2013200385usize),
-            ];
-            const VAL_LN: [(usize, usize); 8usize] = [
-                (2usize, 1usize),
-                (3usize, 65536usize),
-                (6usize, 2013265920usize),
-                (7usize, 2013265919usize),
-                (16usize, 1usize),
                 (17usize, 65536usize),
-                (21usize, 2013265920usize),
                 (22usize, 2013200385usize),
             ];
             let val =
@@ -338,11 +312,54 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(20usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(21usize, 4usize)];
+            const VAL_QI: [(usize, usize); 4usize] = [
+                (22usize, 1usize),
+                (23usize, 65536usize),
+                (26usize, 2013265920usize),
+                (27usize, 2013200385usize),
+            ];
+            const VAL_LN: [(usize, usize); 8usize] = [
+                (2usize, 1usize),
+                (3usize, 65536usize),
+                (6usize, 2013265920usize),
+                (7usize, 2013265919usize),
+                (17usize, 1usize),
+                (18usize, 65536usize),
+                (22usize, 2013265920usize),
+                (23usize, 2013200385usize),
+            ];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(21usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
                 [(22usize, 1744830467usize), (26usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(22usize, 268435454usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(21usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(23usize, 1744830467usize), (27usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(8usize, 268295646usize), (22usize, 268435454usize)];
+                [(9usize, 268295646usize), (23usize, 268435454usize)];
             let val = super::common::eval_max_quadratic(
                 evals,
                 &VAL_QO,
@@ -360,11 +377,11 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 2usize] = [(23usize, 1usize), (24usize, 1usize)];
+            const VAL_QO: [(usize, usize); 2usize] = [(24usize, 1usize), (25usize, 1usize)];
             const VAL_QI: [(usize, usize); 2usize] =
                 [(7usize, 1744830467usize), (7usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(6usize, 268295646usize), (23usize, 268435454usize)];
+                [(6usize, 268295646usize), (24usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -374,8 +391,8 @@ unsafe fn layer_0_final_step_accumulator(
     }
     {
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 2usize] = [
+            (SimpleGateType::Copy, [10usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [9usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [8usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 2usize {
@@ -571,7 +588,7 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(8usize, 1744830467usize), (20usize, 1744830467usize)];
+                [(9usize, 1744830467usize), (21usize, 1744830467usize)];
             let val = super::common::eval_max_quadratic(
                 evals,
                 &VAL_QO,
@@ -587,7 +604,7 @@ unsafe fn layer_0_final_step_accumulator(
     }
     {
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 1usize] =
-            [(SimpleGateType::Copy, [20usize, 0usize, 0usize, 0usize])];
+            [(SimpleGateType::Copy, [21usize, 0usize, 0usize, 0usize])];
         let mut _sg = 0;
         while _sg < 1usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
@@ -779,19 +796,19 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(20usize, 4usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(21usize, 4usize)];
             const VAL_QI: [(usize, usize); 4usize] = [
-                (21usize, 1744830467usize),
-                (22usize, 1744970275usize),
-                (25usize, 268435454usize),
-                (26usize, 268295646usize),
+                (22usize, 1744830467usize),
+                (23usize, 1744970275usize),
+                (26usize, 268435454usize),
+                (27usize, 268295646usize),
             ];
             const VAL_LN: [(usize, usize); 5usize] = [
                 (5usize, 1064793976usize),
                 (6usize, 232644062usize),
                 (7usize, 116322031usize),
-                (21usize, 268435454usize),
-                (22usize, 268295646usize),
+                (22usize, 268435454usize),
+                (23usize, 268295646usize),
             ];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -804,13 +821,13 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 2usize] = [(18usize, 1usize), (19usize, 1usize)];
+            const VAL_QO: [(usize, usize); 2usize] = [(19usize, 1usize), (20usize, 1usize)];
             const VAL_QI: [(usize, usize); 2usize] =
                 [(7usize, 1744830467usize), (7usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 3usize] = [
                 (5usize, 268295646usize),
                 (6usize, 536591292usize),
-                (18usize, 268435454usize),
+                (19usize, 268435454usize),
             ];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -825,219 +842,8 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(6usize, 268295646usize), (18usize, 268435454usize)];
+                [(6usize, 268295646usize), (19usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 1usize] =
-            [(SimpleGateType::Copy, [27usize, 0usize, 0usize, 0usize])];
-        let mut _sg = 0;
-        while _sg < 1usize {
-            let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
-            match gt {
-                SimpleGateType::Copy => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let val = evals.get_unchecked(idx[0])[j];
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                SimpleGateType::Product => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut val = evals.get_unchecked(idx[0])[j];
-                        let vb = evals.get_unchecked(idx[1])[j];
-                        field_ops::mul_assign(&mut val, &vb);
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                SimpleGateType::MaskToIdentity => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut val = evals.get_unchecked(idx[0])[j];
-                        let mask_val = evals.get_unchecked(idx[1])[j];
-                        field_ops::sub_assign_base(&mut val, &BabyBearField::ONE);
-                        field_ops::mul_assign(&mut val, &mask_val);
-                        field_ops::add_assign_base(&mut val, &BabyBearField::ONE);
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                SimpleGateType::UnbalancedProduct => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut val = evals.get_unchecked(idx[0])[j];
-                        let vi = evals.get_unchecked(idx[1])[j];
-                        field_ops::mul_assign(&mut val, &vi);
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                SimpleGateType::LookupInitialPair => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut bg = evals.get_unchecked(idx[0])[j];
-                        let mut dg = evals.get_unchecked(idx[1])[j];
-                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
-                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
-                        let mut num = bg;
-                        field_ops::add_assign(&mut num, &dg);
-                        let mut den = bg;
-                        field_ops::mul_assign(&mut den, &dg);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                SimpleGateType::LookupWithSetup => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let mut bg = evals.get_unchecked(idx[0])[j];
-                        let mut dg = evals.get_unchecked(idx[2])[j];
-                        let mut cb = evals.get_unchecked(idx[1])[j];
-                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
-                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
-                        field_ops::mul_assign(&mut cb, &bg);
-                        let mut num = dg;
-                        field_ops::sub_assign(&mut num, &cb);
-                        let mut den = bg;
-                        field_ops::mul_assign(&mut den, &dg);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                SimpleGateType::LookupUnbalanced => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let a_val = evals.get_unchecked(idx[0])[j];
-                        let b_val = evals.get_unchecked(idx[1])[j];
-                        let mut r_g = evals.get_unchecked(idx[2])[j];
-                        field_ops::add_assign(&mut r_g, &lookup_additive_challenge);
-                        let mut num = a_val;
-                        field_ops::mul_assign(&mut num, &r_g);
-                        field_ops::add_assign(&mut num, &b_val);
-                        let mut den = b_val;
-                        field_ops::mul_assign(&mut den, &r_g);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                SimpleGateType::LookupAggregatePair => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let a_val = evals.get_unchecked(idx[0])[j];
-                        let b_val = evals.get_unchecked(idx[1])[j];
-                        let c_val = evals.get_unchecked(idx[2])[j];
-                        let d_val = evals.get_unchecked(idx[3])[j];
-                        let mut num = a_val;
-                        field_ops::mul_assign(&mut num, &d_val);
-                        let mut cb_tmp = c_val;
-                        field_ops::mul_assign(&mut cb_tmp, &b_val);
-                        field_ops::add_assign(&mut num, &cb_tmp);
-                        let mut den = b_val;
-                        field_ops::mul_assign(&mut den, &d_val);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                SimpleGateType::LookupInitialWithCachedDenominators => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..1 {
-                        let a_val = evals.get_unchecked(idx[0])[j];
-                        let mut b_cd = evals.get_unchecked(idx[1])[j];
-                        let c_val = evals.get_unchecked(idx[2])[j];
-                        let mut d_cd = evals.get_unchecked(idx[3])[j];
-                        field_ops::add_assign(&mut b_cd, &lookup_additive_challenge);
-                        field_ops::add_assign(&mut d_cd, &lookup_additive_challenge);
-                        let mut ad_cd = a_val;
-                        field_ops::mul_assign(&mut ad_cd, &d_cd);
-                        let mut cb_cd = c_val;
-                        field_ops::mul_assign(&mut cb_cd, &b_cd);
-                        field_ops::sub_assign(&mut ad_cd, &cb_cd);
-                        let mut den = b_cd;
-                        field_ops::mul_assign(&mut den, &d_cd);
-                        let out0 = ad_cd;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-            }
-            _sg += 1;
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..1 {
-            const VAL_QO: [(usize, usize); 3usize] =
-                [(4usize, 2usize), (27usize, 1usize), (28usize, 1usize)];
-            const VAL_QI: [(usize, usize); 4usize] = [
-                (9usize, 1744830467usize),
-                (18usize, 268435454usize),
-                (7usize, 1744830467usize),
-                (7usize, 268435454usize),
-            ];
-            const VAL_LN: [(usize, usize); 2usize] =
-                [(18usize, 1744830467usize), (27usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1239,11 +1045,222 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
+            const VAL_QO: [(usize, usize); 3usize] =
+                [(4usize, 2usize), (28usize, 1usize), (29usize, 1usize)];
+            const VAL_QI: [(usize, usize); 4usize] = [
+                (10usize, 1744830467usize),
+                (19usize, 268435454usize),
+                (7usize, 1744830467usize),
+                (7usize, 268435454usize),
+            ];
+            const VAL_LN: [(usize, usize); 2usize] =
+                [(19usize, 1744830467usize), (28usize, 268435454usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 1usize] =
+            [(SimpleGateType::Copy, [29usize, 0usize, 0usize, 0usize])];
+        let mut _sg = 0;
+        while _sg < 1usize {
+            let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
+            match gt {
+                SimpleGateType::Copy => {
+                    let bc = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let val = evals.get_unchecked(idx[0])[j];
+                        let mut contrib = bc;
+                        field_ops::mul_assign(&mut contrib, &val);
+                        field_ops::add_assign(&mut acc[j], &contrib);
+                    }
+                }
+                SimpleGateType::Product => {
+                    let bc = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vb = evals.get_unchecked(idx[1])[j];
+                        field_ops::mul_assign(&mut val, &vb);
+                        let mut contrib = bc;
+                        field_ops::mul_assign(&mut contrib, &val);
+                        field_ops::add_assign(&mut acc[j], &contrib);
+                    }
+                }
+                SimpleGateType::MaskToIdentity => {
+                    let bc = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let mask_val = evals.get_unchecked(idx[1])[j];
+                        field_ops::sub_assign_base(&mut val, &BabyBearField::ONE);
+                        field_ops::mul_assign(&mut val, &mask_val);
+                        field_ops::add_assign_base(&mut val, &BabyBearField::ONE);
+                        let mut contrib = bc;
+                        field_ops::mul_assign(&mut contrib, &val);
+                        field_ops::add_assign(&mut acc[j], &contrib);
+                    }
+                }
+                SimpleGateType::UnbalancedProduct => {
+                    let bc = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vi = evals.get_unchecked(idx[1])[j];
+                        field_ops::mul_assign(&mut val, &vi);
+                        let mut contrib = bc;
+                        field_ops::mul_assign(&mut contrib, &val);
+                        field_ops::add_assign(&mut acc[j], &contrib);
+                    }
+                }
+                SimpleGateType::LookupInitialPair => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[1])[j];
+                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
+                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
+                        let mut num = bg;
+                        field_ops::add_assign(&mut num, &dg);
+                        let mut den = bg;
+                        field_ops::mul_assign(&mut den, &dg);
+                        let out0 = num;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+                SimpleGateType::LookupWithSetup => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[2])[j];
+                        let mut cb = evals.get_unchecked(idx[1])[j];
+                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
+                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
+                        field_ops::mul_assign(&mut cb, &bg);
+                        let mut num = dg;
+                        field_ops::sub_assign(&mut num, &cb);
+                        let mut den = bg;
+                        field_ops::mul_assign(&mut den, &dg);
+                        let out0 = num;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+                SimpleGateType::LookupUnbalanced => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let mut r_g = evals.get_unchecked(idx[2])[j];
+                        field_ops::add_assign(&mut r_g, &lookup_additive_challenge);
+                        let mut num = a_val;
+                        field_ops::mul_assign(&mut num, &r_g);
+                        field_ops::add_assign(&mut num, &b_val);
+                        let mut den = b_val;
+                        field_ops::mul_assign(&mut den, &r_g);
+                        let out0 = num;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+                SimpleGateType::LookupAggregatePair => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let d_val = evals.get_unchecked(idx[3])[j];
+                        let mut num = a_val;
+                        field_ops::mul_assign(&mut num, &d_val);
+                        let mut cb_tmp = c_val;
+                        field_ops::mul_assign(&mut cb_tmp, &b_val);
+                        field_ops::add_assign(&mut num, &cb_tmp);
+                        let mut den = b_val;
+                        field_ops::mul_assign(&mut den, &d_val);
+                        let out0 = num;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+                SimpleGateType::LookupInitialWithCachedDenominators => {
+                    let bc0 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    let bc1 = current_batch;
+                    field_ops::mul_assign(&mut current_batch, &batch_base);
+                    for j in 0..1 {
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let mut b_cd = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let mut d_cd = evals.get_unchecked(idx[3])[j];
+                        field_ops::add_assign(&mut b_cd, &lookup_additive_challenge);
+                        field_ops::add_assign(&mut d_cd, &lookup_additive_challenge);
+                        let mut ad_cd = a_val;
+                        field_ops::mul_assign(&mut ad_cd, &d_cd);
+                        let mut cb_cd = c_val;
+                        field_ops::mul_assign(&mut cb_cd, &b_cd);
+                        field_ops::sub_assign(&mut ad_cd, &cb_cd);
+                        let mut den = b_cd;
+                        field_ops::mul_assign(&mut den, &d_cd);
+                        let out0 = ad_cd;
+                        let out1 = den;
+                        let mut c0 = bc0;
+                        field_ops::mul_assign(&mut c0, &out0);
+                        field_ops::add_assign(&mut acc[j], &c0);
+                        let mut c1 = bc1;
+                        field_ops::mul_assign(&mut c1, &out1);
+                        field_ops::add_assign(&mut acc[j], &c1);
+                    }
+                }
+            }
+            _sg += 1;
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
             const VAL_QO: [(usize, usize); 4usize] = [
-                (23usize, 1usize),
                 (24usize, 1usize),
-                (27usize, 1usize),
+                (25usize, 1usize),
                 (28usize, 1usize),
+                (29usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 4usize] = [
                 (7usize, 1744830467usize),
@@ -1252,7 +1269,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (7usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(24usize, 1744830467usize), (28usize, 268435454usize)];
+                [(25usize, 1744830467usize), (29usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1264,12 +1281,12 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(20usize, 1usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(21usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(4usize, 1476394949usize)];
             const VAL_LN: [(usize, usize); 3usize] = [
                 (4usize, 268435454usize),
-                (8usize, 536870908usize),
-                (20usize, 805306458usize),
+                (9usize, 536870908usize),
+                (21usize, 805306458usize),
             ];
             let val = super::common::eval_max_quadratic(
                 evals,
@@ -1286,32 +1303,35 @@ unsafe fn layer_0_final_step_accumulator(
     }
     {
         const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 9usize] = [
-            (SimpleGateType::Copy, [29usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [30usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupWithSetup,
-                [34usize, 13usize, 38usize, 0usize],
+                [8usize, 14usize, 39usize, 0usize],
             ),
-            (SimpleGateType::Copy, [35usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupInitialPair,
+                [35usize, 36usize, 0usize, 0usize],
+            ),
             (
                 SimpleGateType::LookupWithSetup,
-                [36usize, 14usize, 39usize, 0usize],
+                [37usize, 15usize, 40usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [37usize, 48usize, 0usize, 0usize],
+                [38usize, 49usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [49usize, 50usize, 0usize, 0usize],
+                [50usize, 51usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupInitialPair,
-                [51usize, 52usize, 0usize, 0usize],
+                [52usize, 53usize, 0usize, 0usize],
             ),
-            (SimpleGateType::Copy, [53usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [54usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupInitialWithCachedDenominators,
-                [29usize, 54usize, 15usize, 55usize],
+                [30usize, 55usize, 16usize, 56usize],
             ),
         ];
         let mut _sg = 0;
@@ -1505,9 +1525,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(29usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(29usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(29usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(30usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(30usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(30usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1520,15 +1540,15 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 3usize] =
-                [(0usize, 1usize), (1usize, 1usize), (20usize, 2usize)];
+                [(0usize, 1usize), (1usize, 1usize), (21usize, 2usize)];
             const VAL_QI: [(usize, usize); 4usize] = [
-                (20usize, 1744830467usize),
-                (20usize, 268435454usize),
+                (21usize, 1744830467usize),
                 (21usize, 268435454usize),
-                (25usize, 1744830467usize),
+                (22usize, 268435454usize),
+                (26usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(1usize, 1744830467usize), (25usize, 268435454usize)];
+                [(1usize, 1744830467usize), (26usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1540,10 +1560,26 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(20usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(21usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(22usize, 268435454usize), (26usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(26usize, 268435454usize)];
+                [(23usize, 268435454usize), (27usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(27usize, 268435454usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(21usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(22usize, 1744830467usize), (26usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 2usize] =
+                [(8usize, 939524105usize), (22usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1569,8 +1605,8 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(8usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(20usize, 268435454usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(9usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(21usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -1583,14 +1619,14 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 2usize] = [(30usize, 2usize), (34usize, 1usize)];
+            const VAL_QO: [(usize, usize); 2usize] = [(31usize, 2usize), (35usize, 1usize)];
             const VAL_QI: [(usize, usize); 3usize] = [
-                (30usize, 1usize),
-                (34usize, 2013265919usize),
-                (34usize, 1usize),
+                (31usize, 1usize),
+                (35usize, 2013265919usize),
+                (35usize, 1usize),
             ];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(30usize, 2013200393usize), (34usize, 65528usize)];
+                [(31usize, 2013200393usize), (35usize, 65528usize)];
             let val = super::common::eval_max_quadratic(
                 evals,
                 &VAL_QO,
@@ -1611,10 +1647,10 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
             const VAL_LN: [(usize, usize); 4usize] = [
-                (30usize, 65536usize),
-                (31usize, 268435454usize),
-                (34usize, 2013200385usize),
-                (35usize, 1744830467usize),
+                (31usize, 65536usize),
+                (32usize, 268435454usize),
+                (35usize, 2013200385usize),
+                (36usize, 1744830467usize),
             ];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 262144usize, j);
@@ -1627,14 +1663,14 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 2usize] = [(32usize, 2usize), (36usize, 1usize)];
+            const VAL_QO: [(usize, usize); 2usize] = [(33usize, 2usize), (37usize, 1usize)];
             const VAL_QI: [(usize, usize); 3usize] = [
-                (32usize, 1981808641usize),
-                (36usize, 62914560usize),
-                (36usize, 1981808641usize),
+                (33usize, 1981808641usize),
+                (37usize, 62914560usize),
+                (37usize, 1981808641usize),
             ];
             const VAL_LN: [(usize, usize); 2usize] =
-                [(32usize, 1761599489usize), (36usize, 251666432usize)];
+                [(33usize, 1761599489usize), (37usize, 251666432usize)];
             let val = super::common::eval_max_quadratic(
                 evals,
                 &VAL_QO,
@@ -1655,10 +1691,10 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
             const VAL_LN: [(usize, usize); 4usize] = [
-                (32usize, 2013257729usize),
-                (33usize, 1744830467usize),
-                (36usize, 8192usize),
-                (37usize, 268435454usize),
+                (33usize, 2013257729usize),
+                (34usize, 1744830467usize),
+                (37usize, 8192usize),
+                (38usize, 268435454usize),
             ];
             let val = super::common::eval_max_quadratic(
                 evals,
@@ -1677,9 +1713,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(20usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(20usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(20usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(21usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(21usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(21usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1747,23 +1783,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(8usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(8usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(8usize, 1744830467usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(10usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(10usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(10usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(9usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(9usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(9usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -1799,12 +1821,26 @@ unsafe fn layer_0_final_step_accumulator(
             field_ops::add_assign(&mut acc[j], &contrib);
         }
     }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..1 {
+            const VAL_QO: [(usize, usize); 1usize] = [(13usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(13usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(13usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
     acc
 }
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_1_compute_claim(
-    output_claims: &[BabyBearExt4; 19usize],
+    output_claims: &[BabyBearExt4; 20usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     const DESCS: [(usize, usize, usize); 16usize] = [
@@ -1816,12 +1852,12 @@ unsafe fn layer_1_compute_claim(
         (1usize, 5usize, 0usize),
         (1usize, 6usize, 0usize),
         (2usize, 7usize, 8usize),
-        (1usize, 9usize, 0usize),
-        (2usize, 10usize, 11usize),
-        (2usize, 12usize, 13usize),
-        (1usize, 14usize, 0usize),
+        (2usize, 9usize, 10usize),
+        (2usize, 11usize, 12usize),
+        (2usize, 13usize, 14usize),
         (1usize, 15usize, 0usize),
-        (2usize, 16usize, 17usize),
+        (1usize, 16usize, 0usize),
+        (2usize, 17usize, 18usize),
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
     ];
@@ -1846,11 +1882,11 @@ unsafe fn layer_1_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 3usize] =
-                [(8usize, 1usize), (9usize, 1usize), (10usize, 1usize)];
+                [(9usize, 1usize), (10usize, 1usize), (11usize, 1usize)];
             const VAL_QI: [(usize, usize); 3usize] = [
-                (11usize, 268435454usize),
                 (12usize, 268435454usize),
                 (13usize, 268435454usize),
+                (14usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -1865,11 +1901,11 @@ unsafe fn layer_1_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 3usize] =
-                [(8usize, 1usize), (9usize, 1usize), (10usize, 1usize)];
+                [(9usize, 1usize), (10usize, 1usize), (11usize, 1usize)];
             const VAL_QI: [(usize, usize); 3usize] = [
-                (14usize, 268435454usize),
-                (14usize, 268435454usize),
                 (15usize, 268435454usize),
+                (15usize, 268435454usize),
+                (16usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -1884,11 +1920,11 @@ unsafe fn layer_1_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
             const VAL_QO: [(usize, usize); 3usize] =
-                [(8usize, 1usize), (9usize, 1usize), (10usize, 1usize)];
+                [(9usize, 1usize), (10usize, 1usize), (11usize, 1usize)];
             const VAL_QI: [(usize, usize); 3usize] = [
-                (16usize, 268435454usize),
-                (16usize, 268435454usize),
                 (17usize, 268435454usize),
+                (17usize, 268435454usize),
+                (18usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
@@ -1902,8 +1938,8 @@ unsafe fn layer_1_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..1 {
-            const VAL_QO: [(usize, usize); 1usize] = [(18usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(19usize, 268435454usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(19usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(20usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -1918,23 +1954,26 @@ unsafe fn layer_1_final_step_accumulator(
             (SimpleGateType::Product, [1usize, 3usize, 0usize, 0usize]),
             (SimpleGateType::Product, [2usize, 4usize, 0usize, 0usize]),
             (
-                SimpleGateType::LookupUnbalanced,
-                [20usize, 21usize, 22usize, 0usize],
-            ),
-            (SimpleGateType::Copy, [7usize, 0usize, 0usize, 0usize]),
-            (
-                SimpleGateType::LookupUnbalanced,
-                [29usize, 30usize, 31usize, 0usize],
+                SimpleGateType::LookupInitialPair,
+                [7usize, 8usize, 0usize, 0usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [27usize, 28usize, 25usize, 26usize],
+                [23usize, 24usize, 21usize, 22usize],
             ),
-            (SimpleGateType::Copy, [23usize, 0usize, 0usize, 0usize]),
-            (SimpleGateType::Copy, [24usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupUnbalanced,
-                [32usize, 33usize, 34usize, 0usize],
+                [31usize, 32usize, 33usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [29usize, 30usize, 27usize, 28usize],
+            ),
+            (SimpleGateType::Copy, [25usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [26usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupUnbalanced,
+                [34usize, 35usize, 36usize, 0usize],
             ),
         ];
         let mut _sg = 0;
@@ -2196,18 +2235,18 @@ unsafe fn layer_2_final_step_accumulator(
                 [2usize, 0usize, 0usize, 0usize],
             ),
             (
-                SimpleGateType::LookupUnbalanced,
-                [3usize, 4usize, 5usize, 0usize],
+                SimpleGateType::LookupAggregatePair,
+                [5usize, 6usize, 3usize, 4usize],
             ),
             (
                 SimpleGateType::LookupAggregatePair,
-                [10usize, 11usize, 8usize, 9usize],
+                [11usize, 12usize, 9usize, 10usize],
             ),
-            (SimpleGateType::Copy, [6usize, 0usize, 0usize, 0usize]),
             (SimpleGateType::Copy, [7usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [8usize, 0usize, 0usize, 0usize]),
             (
                 SimpleGateType::LookupUnbalanced,
-                [12usize, 13usize, 14usize, 0usize],
+                [13usize, 14usize, 15usize, 0usize],
             ),
         ];
         let mut _sg = 0;
@@ -2851,8 +2890,8 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(54usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(54usize));
+        if result != *state.prev_claims.get_unchecked(55usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(55usize));
         }
     }
     Ok(())
@@ -2884,8 +2923,8 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
-        if result != *state.prev_claims.get_unchecked(55usize) {
-            return Err(E::gkr_virtual_setup_eval_mismatch(55usize));
+        if result != *state.prev_claims.get_unchecked(56usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(56usize));
         }
     }
     Ok(())
@@ -4288,7 +4327,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 15usize * EXT_DEGREE;
+            let data_words = 16usize * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -4297,7 +4336,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(15usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(16usize);
                 let f = layer_2_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -4334,7 +4373,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             ts.commit(&mut extra_buf, extra_data_words);
-            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(15usize) };
+            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(16usize) };
             state.prev_claims.clear();
             {
                 const EXTRA_POS: [(usize, usize); 4usize] = [
@@ -4346,7 +4385,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 let mut regular_idx: usize = 0;
                 let mut ep_idx: usize = 0;
                 let mut merged_idx: usize = 0;
-                while merged_idx < 19usize {
+                while merged_idx < 20usize {
                     if ep_idx < 4usize && EXTRA_POS[ep_idx].0 == merged_idx {
                         state
                             .prev_claims
@@ -4362,7 +4401,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VL_DESCS: [(usize, usize, usize); 1usize] = [(18usize, 0usize, 9usize)];
+                const VL_DESCS: [(usize, usize, usize); 1usize] = [(19usize, 0usize, 9usize)];
                 const VL_COLS: [(u32, usize, usize); 9usize] = [
                     (0u32, 0usize, 1usize),
                     (0u32, 1usize, 1usize),
@@ -4422,7 +4461,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_1_compute_claim(
-                state.prev_claims.as_array::<19usize>(),
+                state.prev_claims.as_array::<20usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -4434,7 +4473,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 35usize * EXT_DEGREE;
+            let data_words = 37usize * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -4443,7 +4482,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(35usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(37usize);
                 let f = layer_1_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -4480,14 +4519,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             ts.commit(&mut extra_buf, extra_data_words);
-            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(35usize) };
+            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(37usize) };
             state.prev_claims.clear();
             {
-                const EXTRA_POS: [(usize, usize); 2usize] = [(8usize, 0usize), (9usize, 1usize)];
+                const EXTRA_POS: [(usize, usize); 2usize] = [(9usize, 0usize), (10usize, 1usize)];
                 let mut regular_idx: usize = 0;
                 let mut ep_idx: usize = 0;
                 let mut merged_idx: usize = 0;
-                while merged_idx < 37usize {
+                while merged_idx < 39usize {
                     if ep_idx < 2usize && EXTRA_POS[ep_idx].0 == merged_idx {
                         state
                             .prev_claims
@@ -4503,7 +4542,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VL_DESCS: [(usize, usize, usize); 1usize] = [(36usize, 0usize, 9usize)];
+                const VL_DESCS: [(usize, usize, usize); 1usize] = [(38usize, 0usize, 9usize)];
                 const VL_COLS: [(u32, usize, usize); 9usize] = [
                     (0u32, 0usize, 1usize),
                     (0u32, 1usize, 1usize),
@@ -4516,7 +4555,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (2013265857u32, 2usize, 0usize),
                 ];
                 const VL_TERMS: [(u32, usize); 2usize] =
-                    [(268435454u32, 8usize), (268435454u32, 9usize)];
+                    [(268435454u32, 9usize), (268435454u32, 10usize)];
                 let mut _vl = 0;
                 while _vl < 1usize {
                     let (cached_idx, col_start, col_count) = VL_DESCS[_vl];
@@ -4559,7 +4598,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         {
             let initial_claim = layer_0_compute_claim(
-                state.prev_claims.as_array::<37usize>(),
+                state.prev_claims.as_array::<39usize>(),
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
@@ -4571,7 +4610,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 56usize * EXT_DEGREE;
+            let data_words = 57usize * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -4580,7 +4619,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(56usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(57usize);
                 let f = layer_0_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -4617,32 +4656,32 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             ts.commit(&mut extra_buf, extra_data_words);
-            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(56usize) };
+            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(57usize) };
             state.prev_claims.clear();
             {
-                const LAYOUT_KIND: [usize; 72usize] = [
+                const LAYOUT_KIND: [usize; 73usize] = [
                     1usize, 1usize, 0usize, 0usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize, 1usize,
-                    1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
                     0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
-                    0usize, 0usize,
+                    0usize, 0usize, 0usize,
                 ];
-                const LAYOUT_POS: [usize; 72usize] = [
-                    0usize, 1usize, 16usize, 17usize, 2usize, 3usize, 4usize, 18usize, 19usize,
-                    20usize, 21usize, 22usize, 5usize, 6usize, 23usize, 24usize, 25usize, 26usize,
-                    27usize, 28usize, 29usize, 30usize, 31usize, 32usize, 33usize, 34usize,
-                    35usize, 36usize, 37usize, 0usize, 1usize, 2usize, 3usize, 4usize, 5usize,
+                const LAYOUT_POS: [usize; 73usize] = [
+                    0usize, 1usize, 17usize, 18usize, 2usize, 3usize, 4usize, 19usize, 20usize,
+                    21usize, 22usize, 23usize, 5usize, 6usize, 24usize, 25usize, 26usize, 27usize,
+                    28usize, 29usize, 30usize, 31usize, 32usize, 33usize, 34usize, 35usize,
+                    36usize, 37usize, 38usize, 0usize, 1usize, 2usize, 3usize, 4usize, 5usize,
                     6usize, 7usize, 8usize, 9usize, 10usize, 11usize, 12usize, 13usize, 14usize,
-                    15usize, 7usize, 8usize, 9usize, 10usize, 11usize, 12usize, 13usize, 14usize,
-                    15usize, 38usize, 39usize, 40usize, 41usize, 42usize, 43usize, 44usize,
+                    15usize, 16usize, 7usize, 8usize, 9usize, 10usize, 11usize, 12usize, 13usize,
+                    14usize, 15usize, 39usize, 40usize, 41usize, 42usize, 43usize, 44usize,
                     45usize, 46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize,
-                    53usize, 54usize, 55usize,
+                    53usize, 54usize, 55usize, 56usize,
                 ];
                 let mut i = 0usize;
-                while i < 72usize {
+                while i < 73usize {
                     let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
                     let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
                     let claim: BabyBearExt4 = if kind == 0usize {
@@ -4656,32 +4695,32 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const SC_DESCS: [(usize, u32, usize, usize); 6usize] = [
-                    (64usize, 0u32, 0usize, 3usize),
-                    (65usize, 133099247u32, 3usize, 3usize),
-                    (66usize, 1744830467u32, 6usize, 3usize),
-                    (67usize, 133099247u32, 9usize, 3usize),
-                    (68usize, 1476395013u32, 12usize, 3usize),
-                    (69usize, 133099247u32, 15usize, 3usize),
+                    (65usize, 0u32, 0usize, 3usize),
+                    (66usize, 133099247u32, 3usize, 3usize),
+                    (67usize, 1744830467u32, 6usize, 3usize),
+                    (68usize, 133099247u32, 9usize, 3usize),
+                    (69usize, 1476395013u32, 12usize, 3usize),
+                    (70usize, 133099247u32, 15usize, 3usize),
                 ];
                 const SC_TERMS: [(u32, usize); 18usize] = [
                     (1744830467u32, 23usize),
                     (268435454u32, 0usize),
-                    (133099247u32, 39usize),
-                    (1744830467u32, 24usize),
-                    (268435454u32, 1usize),
-                    (1744830467u32, 39usize),
-                    (1744830467u32, 23usize),
-                    (268435454u32, 5usize),
                     (133099247u32, 40usize),
                     (1744830467u32, 24usize),
-                    (268435454u32, 6usize),
+                    (268435454u32, 1usize),
                     (1744830467u32, 40usize),
                     (1744830467u32, 23usize),
-                    (268435454u32, 12usize),
+                    (268435454u32, 5usize),
                     (133099247u32, 41usize),
                     (1744830467u32, 24usize),
-                    (268435454u32, 13usize),
+                    (268435454u32, 6usize),
                     (1744830467u32, 41usize),
+                    (1744830467u32, 23usize),
+                    (268435454u32, 12usize),
+                    (133099247u32, 42usize),
+                    (1744830467u32, 24usize),
+                    (268435454u32, 13usize),
+                    (1744830467u32, 42usize),
                 ];
                 let mut _sc = 0;
                 while _sc < 6usize {
@@ -4707,7 +4746,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VL_DESCS: [(usize, usize, usize); 1usize] = [(70usize, 0usize, 9usize)];
+                const VL_DESCS: [(usize, usize, usize); 1usize] = [(71usize, 0usize, 9usize)];
                 const VL_COLS: [(u32, usize, usize); 9usize] = [
                     (0u32, 0usize, 1usize),
                     (0u32, 1usize, 1usize),
@@ -4767,9 +4806,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                const VS_DESCS: [(usize, usize, usize); 1usize] = [(71usize, 0usize, 9usize)];
+                const VS_DESCS: [(usize, usize, usize); 1usize] = [(72usize, 0usize, 9usize)];
                 const VS_DEPS: [usize; 9usize] = [
-                    45usize, 46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize, 53usize,
+                    46usize, 47usize, 48usize, 49usize, 50usize, 51usize, 52usize, 53usize, 54usize,
                 ];
                 let mut _vs = 0;
                 while _vs < 1usize {
@@ -4790,6 +4829,426 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                         return Err(E::gkr_permutation_cache_relation_failed(0usize, _vs));
                     }
                     _vs += 1;
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(0u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                let mut t_addr: BabyBearExt4 =
+                    external_challenges.permutation_argument_linearization_challenges[0usize];
+                let addr_claim = *state.prev_claims.get_unchecked(4usize);
+                field_ops::mul_assign(&mut t_addr, &addr_claim);
+                field_ops::add_assign(&mut expected, &t_addr);
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(0usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(1usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(2usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(3usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(57usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 1usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let as_claim = *state.prev_claims.get_unchecked(9usize);
+                let mut as_term: BabyBearExt4 = BabyBearExt4::from_base(BabyBearField::ONE);
+                field_ops::sub_assign(&mut as_term, &as_claim);
+                field_ops::add_assign(&mut expected, &as_term);
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(10usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(11usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(5usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(6usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(7usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(8usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(58usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 2usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(0u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                let mut t_addr: BabyBearExt4 =
+                    external_challenges.permutation_argument_linearization_challenges[0usize];
+                let addr_claim = *state.prev_claims.get_unchecked(4usize);
+                field_ops::mul_assign(&mut t_addr, &addr_claim);
+                field_ops::add_assign(&mut expected, &t_addr);
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(23usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(24usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(2usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(3usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(59usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 3usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let as_claim = *state.prev_claims.get_unchecked(9usize);
+                let mut as_term: BabyBearExt4 = BabyBearExt4::from_base(BabyBearField::ONE);
+                field_ops::sub_assign(&mut as_term, &as_claim);
+                field_ops::add_assign(&mut expected, &as_term);
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(10usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(11usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(23usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(268435454u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(24usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(7usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(8usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(60usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 4usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let as_claim = *state.prev_claims.get_unchecked(9usize);
+                field_ops::add_assign(&mut expected, &as_claim);
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(16usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(17usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(12usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(13usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(14usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(15usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(61usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 5usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(536870908u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                let mut t_addr: BabyBearExt4 =
+                    external_challenges.permutation_argument_linearization_challenges[0usize];
+                field_ops::mul_assign_by_base(
+                    &mut t_addr,
+                    &BabyBearField::from_reduced_raw_repr(0u32),
+                );
+                field_ops::add_assign(&mut expected, &t_addr);
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(23usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(24usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(21usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(22usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(62usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 6usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let as_claim = *state.prev_claims.get_unchecked(9usize);
+                field_ops::add_assign(&mut expected, &as_claim);
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[0usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(16usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_addr: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[1usize];
+                    let addr_claim = *state.prev_claims.get_unchecked(17usize);
+                    field_ops::mul_assign(&mut t_addr, &addr_claim);
+                    field_ops::add_assign(&mut expected, &t_addr);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(23usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(536870908u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(24usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(18usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(19usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(63usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 7usize));
+                }
+            }
+            {
+                let mut expected: BabyBearExt4 =
+                    external_challenges.permutation_argument_additive_part;
+                let c_addr_space = BabyBearField::from_reduced_raw_repr(536870908u32);
+                field_ops::add_assign_base(&mut expected, &c_addr_space);
+                let mut t_addr: BabyBearExt4 =
+                    external_challenges.permutation_argument_linearization_challenges[0usize];
+                field_ops::mul_assign_by_base(
+                    &mut t_addr,
+                    &BabyBearField::from_reduced_raw_repr(0u32),
+                );
+                field_ops::add_assign(&mut expected, &t_addr);
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[2usize];
+                    let mut ts_low = *state.prev_claims.get_unchecked(27usize);
+                    field_ops::add_assign_base(
+                        &mut ts_low,
+                        &BabyBearField::from_reduced_raw_repr(0u32),
+                    );
+                    field_ops::mul_assign(&mut t_ts, &ts_low);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_ts: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[3usize];
+                    let ts_high = *state.prev_claims.get_unchecked(28usize);
+                    field_ops::mul_assign(&mut t_ts, &ts_high);
+                    field_ops::add_assign(&mut expected, &t_ts);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[4usize];
+                    let val_claim = *state.prev_claims.get_unchecked(25usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                {
+                    let mut t_val: BabyBearExt4 =
+                        external_challenges.permutation_argument_linearization_challenges[5usize];
+                    let val_claim = *state.prev_claims.get_unchecked(26usize);
+                    field_ops::mul_assign(&mut t_val, &val_claim);
+                    field_ops::add_assign(&mut expected, &t_val);
+                }
+                let cached = *state.prev_claims.get_unchecked(64usize);
+                if expected != cached {
+                    return Err(E::gkr_permutation_cache_relation_failed(0usize, 8usize));
                 }
             }
             check_virtual_setup_range_check_16bits::<E>(&state)?;

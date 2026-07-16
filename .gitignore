@@ -9,3 +9,5 @@ rustc-ice-*.*
 .DS_Store
 **/.DS_Store
 verifier_evm/private/*_gist.sh
+__pycache__/
+*.pyc

@@ -5,9 +5,6 @@
 pub use ::prover;
 pub use ::setups;
 
-#[cfg(feature = "gpu")]
-pub mod gpu;
-
 pub mod unified;
 pub mod unrolled;
 

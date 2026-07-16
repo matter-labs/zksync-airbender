@@ -8,9 +8,10 @@ use ::field::baby_bear::base::BabyBearField;
 use ::field::Field;
 use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::unified_reduced_machine::{
-    FAMILY_1_FLAG_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET, FAMILY_3_FLAG_OFFSET,
-    FAMILY_3_XOR_ROT_BIT, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
+    FAMILY_1_FLAG_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET, FAMILY_3_BINARY_OP_BIT,
+    FAMILY_3_FLAG_OFFSET, FAMILY_4_LW_BIT, FAMILY_4_SW_BIT,
 };
+use cs::tables::TableType;
 use proptest::prelude::*;
 use riscv_transpiler::vm::*;
 use std::alloc::Global;
@@ -35,6 +36,35 @@ fn find_base_layer_address(circuit: &GKRCircuitArtifact<BabyBearField>, name: &s
         }
     }
     panic!("no variable named '{name}' in unified circuit artifact");
+}
+
+const XOR_ROTATE_TABLE_IDS: [u32; 4] = [
+    TableType::XorRotate16 as u32,
+    TableType::XorRotate12 as u32,
+    TableType::XorRotate8 as u32,
+    TableType::XorRotate7 as u32,
+];
+const WIDE_BINOP_TABLE_IDS: [u32; 3] = [
+    TableType::WideXor as u32,
+    TableType::WideOr as u32,
+    TableType::WideAnd as u32,
+];
+
+/// First row with `family_bit[bit]` = 1 whose decoder funct3 is in `funct3_filter`
+/// (`None` = any funct3).
+fn find_family_row(
+    circuit: &GKRCircuitArtifact<BabyBearField>,
+    trace: &GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    bit: usize,
+    funct3_filter: Option<&[u32]>,
+) -> Option<usize> {
+    let bit_addr = find_base_layer_address(circuit, &format!("family_bit[{bit}]"));
+    let funct3_addr = find_base_layer_address(circuit, "funct3 from decoder");
+    (0..base_trace_len(trace)).find(|&r| {
+        read_cell(trace, bit_addr, r) == BabyBearField::ONE
+            && funct3_filter
+                .is_none_or(|ids| ids.contains(&read_cell(trace, funct3_addr, r).as_u32_reduced()))
+    })
 }
 
 fn read_cell(
@@ -220,12 +250,14 @@ fn tri_add_output_low_corruption_rejected() {
 #[test]
 fn xor_rot_output_low_corruption_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
-        let xor_rot_addr =
-            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_3_XOR_ROT_BIT}]"));
         let out_lo_addr = find_base_layer_address(circuit, "rd/mem write write_value[0]");
-        let xor_rot_row = (0..base_trace_len(trace))
-            .find(|&r| read_cell(trace, xor_rot_addr, r) == BabyBearField::ONE)
-            .expect("multi_family_smoke must execute at least one xor-rotate");
+        let xor_rot_row = find_family_row(
+            circuit,
+            trace,
+            FAMILY_3_BINARY_OP_BIT,
+            Some(&XOR_ROTATE_TABLE_IDS),
+        )
+        .expect("multi_family_smoke must execute at least one xor-rotate");
         let cur = read_cell(trace, out_lo_addr, xor_rot_row);
         let wrong = if cur == BabyBearField::ZERO {
             BabyBearField::ONE
@@ -271,12 +303,14 @@ fn tri_add_output_high_corruption_rejected() {
 #[test]
 fn xor_rot_output_high_corruption_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
-        let xor_rot_addr =
-            find_base_layer_address(circuit, &format!("family_bit[{FAMILY_3_XOR_ROT_BIT}]"));
         let out_hi_addr = find_base_layer_address(circuit, "rd/mem write write_value[1]");
-        let xor_rot_row = (0..base_trace_len(trace))
-            .find(|&r| read_cell(trace, xor_rot_addr, r) == BabyBearField::ONE)
-            .expect("multi_family_smoke must execute at least one xor-rotate");
+        let xor_rot_row = find_family_row(
+            circuit,
+            trace,
+            FAMILY_3_BINARY_OP_BIT,
+            Some(&XOR_ROTATE_TABLE_IDS),
+        )
+        .expect("multi_family_smoke must execute at least one xor-rotate");
         let cur = read_cell(trace, out_hi_addr, xor_rot_row);
         let wrong = if cur == BabyBearField::ZERO {
             BabyBearField::ONE
@@ -288,6 +322,88 @@ fn xor_rot_output_high_corruption_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected xor-rot out_high corruption to fail check_satisfied (rotate-contribution reconstruction, high limb)"
+    );
+}
+
+/// Tri-add carry binding. After the fold into the F1 select-then-sum, each tri-add limb
+/// equation still uniquely determines its 2-bit carry (sum of two Booleans); flipping
+/// `tri_clo_b` (shared scratch-Boolean pool slot 2 on F1 rows) shifts the low-limb equation
+/// by ±2^16 with everything else fixed, so only the folded family constraint can reject —
+/// the flip is 0↔1, so Booleanity stays satisfied.
+#[test]
+fn tri_add_carry_corruption_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let tri_clo_b_addr = find_base_layer_address(circuit, "shared scratch bool[2]");
+        let tri_add_row = find_family_row(circuit, trace, FAMILY_1_TRI_ADD_BIT, None)
+            .expect("multi_family_smoke must execute at least one tri-add");
+        let cur = read_cell(trace, tri_clo_b_addr, tri_add_row);
+        let flipped = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, tri_clo_b_addr, tri_add_row, flipped);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected tri-add tri_clo_b carry flip to fail check_satisfied (folded F1 low-limb constraint)"
+    );
+}
+
+/// Plain-binop (Wide{Xor,Or,And}) output binding through the merged path: rd_write is pinned
+/// by the same cyclic reconstruction xor-rotate uses, degenerating to identity placement for
+/// the rot-0 wide tables. Flip `out_low` on a wide-binop row (0↔1 keeps the 16-bit RC happy).
+/// Coverage note: this pins output binding at the identity-degenerate case only — the cyclic
+/// INDEX arithmetic `(k−i) mod 4` is exercised by the rot≠0 xor-rot corruption tests above.
+#[test]
+fn wide_binop_output_corruption_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let out_lo_addr = find_base_layer_address(circuit, "rd/mem write write_value[0]");
+        let binop_row = find_family_row(
+            circuit,
+            trace,
+            FAMILY_3_BINARY_OP_BIT,
+            Some(&WIDE_BINOP_TABLE_IDS),
+        )
+        .expect("multi_family_smoke must execute at least one plain XOR/OR/AND");
+        let cur = read_cell(trace, out_lo_addr, binop_row);
+        let wrong = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, out_lo_addr, binop_row, wrong);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected wide-binop out_low corruption to fail check_satisfied (merged binop reconstruction)"
+    );
+}
+
+/// Plain-binop HIGH limb through the merged path (bytes 2,3 of the identity-placement
+/// reconstruction) — the low-limb test alone leaves out_high unpinned coverage-wise.
+#[test]
+fn wide_binop_output_high_corruption_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let out_hi_addr = find_base_layer_address(circuit, "rd/mem write write_value[1]");
+        let binop_row = find_family_row(
+            circuit,
+            trace,
+            FAMILY_3_BINARY_OP_BIT,
+            Some(&WIDE_BINOP_TABLE_IDS),
+        )
+        .expect("multi_family_smoke must execute at least one plain XOR/OR/AND");
+        let cur = read_cell(trace, out_hi_addr, binop_row);
+        let wrong = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, out_hi_addr, binop_row, wrong);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected wide-binop out_high corruption to fail check_satisfied (merged binop reconstruction, high limb)"
     );
 }
 
@@ -711,21 +827,25 @@ fn pbt_family_output_corruption_always_rejected() {
         ),
         (
             "F3 xor-rot out_lo",
-            FAMILY_3_XOR_ROT_BIT,
+            FAMILY_3_BINARY_OP_BIT,
             "rd/mem write write_value[0]",
         ),
         (
             "F3 xor-rot out_hi",
-            FAMILY_3_XOR_ROT_BIT,
+            FAMILY_3_BINARY_OP_BIT,
             "rd/mem write write_value[1]",
         ),
     ];
     let resolved: Vec<(&str, usize, GKRAddress)> = targets
         .iter()
         .filter_map(|(label, bit, col)| {
-            let bit_addr = find_base_layer_address(&circuit, &format!("family_bit[{bit}]"));
-            let row = (0..base_trace_len(&full_trace))
-                .find(|&r| read_cell(&full_trace, bit_addr, r) == BabyBearField::ONE)?;
+            // Post-merge, xor-rot rows share the binop bit; distinguish by funct3 = table id.
+            let funct3_filter: Option<&[u32]> = if label.contains("xor-rot") {
+                Some(&XOR_ROTATE_TABLE_IDS)
+            } else {
+                None
+            };
+            let row = find_family_row(&circuit, &full_trace, *bit, funct3_filter)?;
             assert!(
                 check_satisfied_row(&circuit, &full_trace, row),
                 "honest row {row} for {label} must satisfy before corruption"

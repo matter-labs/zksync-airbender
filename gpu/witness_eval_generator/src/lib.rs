@@ -1,0 +1,485 @@
+use cs::definitions::{GKRAddress, Variable, VirtualSetupPoly};
+use cs::gkr_compiler::GKRCircuitArtifact;
+use cs::oracle::Placeholder;
+use cs::witness_placer::graph_description::{
+    BoolNodeExpression, Expression, FieldNodeExpression, FixedWidthIntegerNodeExpression,
+    RawExpression,
+};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::File;
+use std::path::Path;
+
+mod boolean;
+mod field;
+mod integer;
+
+/// Internal column-address kind used by the generator. Upstream removed the
+/// `cs::definitions::ColumnAddress` enum; we keep a local one here that the
+/// generator maps `GKRAddress` into, so the SSA-walker code unchanged.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ColumnAddress {
+    MemorySubtree(usize),
+    WitnessSubtree(usize),
+    SetupSubtree(usize),
+    OptimizedOut(usize),
+}
+
+pub type F = ::field::baby_bear::base::BabyBearField;
+
+pub struct Generator {
+    write_into_memory: bool,
+    layout: BTreeMap<Variable, ColumnAddress>,
+    num_lookup_mappings: usize,
+    next_var_idx: usize,
+    output: String,
+    scratch_size: usize,
+    fn_indexes: Vec<usize>,
+    // Witness columns that are ONLY ever written under an `IF` guard (no
+    // unconditional write anywhere in the graph). The generators write them
+    // per-opcode, so rows whose opcode doesn't match leave the column
+    // untouched. The CPU witness is lazily zero-filled, so those gaps must read
+    // as zero; we fold a zero-default into each such column's FIRST write.
+    conditional_only_witness: BTreeSet<usize>,
+    // Conditional-only witness columns whose first write has already been
+    // emitted (as `SET_WITNESS_PLACE_OR_ZERO`). Subsequent writes stay `IF`.
+    witness_zero_default_emitted: BTreeSet<usize>,
+}
+
+impl Generator {
+    fn new(
+        layout: &BTreeMap<Variable, ColumnAddress>,
+        num_lookup_mappings: usize,
+        write_into_memory: bool,
+    ) -> Self {
+        let scratch_size = layout
+            .values()
+            .filter_map(|address| match address {
+                ColumnAddress::OptimizedOut(idx) => Some(idx + 1),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
+        Self {
+            layout: layout.clone(),
+            num_lookup_mappings,
+            write_into_memory,
+            next_var_idx: 0,
+            output: String::new(),
+            scratch_size,
+            fn_indexes: Vec::new(),
+            conditional_only_witness: BTreeSet::new(),
+            witness_zero_default_emitted: BTreeSet::new(),
+        }
+    }
+
+    /// Classify witness-column writes across the whole graph and record the
+    /// columns that are written exclusively under an `IF` condition. A column
+    /// with any unconditional write is fully covered and never needs a default;
+    /// the partition is clean in practice (no column is both), so folding a
+    /// zero-default into such a column's first write can't clobber a real write.
+    fn collect_conditional_only_witness(&mut self, graph: &[Vec<RawExpression<F>>]) {
+        let mut unconditional = BTreeSet::new();
+        let mut conditional = BTreeSet::new();
+        for expressions in graph {
+            for expr in expressions {
+                if let RawExpression::WriteVariable {
+                    into_variable,
+                    condition_subexpr_idx,
+                    ..
+                } = expr
+                {
+                    if let ColumnAddress::WitnessSubtree(idx) =
+                        self.get_column_address(into_variable)
+                    {
+                        if condition_subexpr_idx.is_some() {
+                            conditional.insert(idx);
+                        } else {
+                            unconditional.insert(idx);
+                        }
+                    }
+                }
+            }
+        }
+        self.conditional_only_witness = conditional.difference(&unconditional).copied().collect();
+    }
+
+    fn create_var(&mut self) -> usize {
+        let idx = self.next_var_idx;
+        self.next_var_idx += 1;
+        idx
+    }
+
+    fn get_column_address(&self, variable: &Variable) -> ColumnAddress {
+        if variable.is_placeholder() {
+            panic!("variable is placeholder");
+        }
+        self.layout[variable]
+    }
+
+    fn get_placeholder_ident(placeholder: &Placeholder) -> &'static str {
+        match placeholder {
+            Placeholder::PcInit => "{ PcInit }",
+            Placeholder::SecondRegMem => "{ SecondRegMem }",
+            Placeholder::MemSlot => "{ MemSlot }",
+            Placeholder::ExternalOracle => "{ ExternalOracle }",
+            Placeholder::WriteRdReadSetWitness => "{ WriteRdReadSetWitness }",
+            _ => unimplemented!(),
+        }
+    }
+
+    fn field_expr_into_var(&self, expr: &FieldNodeExpression<F>) -> usize {
+        let FieldNodeExpression::SubExpression(idx) = expr else {
+            unreachable!();
+        };
+        *idx
+    }
+
+    fn boolean_expr_into_var(&self, expr: &BoolNodeExpression<F>) -> usize {
+        let BoolNodeExpression::SubExpression(idx) = expr else {
+            unreachable!();
+        };
+        *idx
+    }
+
+    fn integer_expr_into_var(&self, expr: &FixedWidthIntegerNodeExpression<F>) -> usize {
+        match expr {
+            FixedWidthIntegerNodeExpression::U8SubExpression(idx)
+            | FixedWidthIntegerNodeExpression::U16SubExpression(idx)
+            | FixedWidthIntegerNodeExpression::U32SubExpression(idx) => *idx,
+            a @ _ => {
+                panic!("Trying to make variable from expression {:?}", a);
+            }
+        }
+    }
+
+    fn expression_into_var(&self, expr: &Expression<F>) -> usize {
+        match expr {
+            Expression::Bool(expr) => self.boolean_expr_into_var(expr),
+            Expression::Field(expr) => self.field_expr_into_var(expr),
+            Expression::U8(expr) | Expression::U16(expr) | Expression::U32(expr) => {
+                self.integer_expr_into_var(expr)
+            }
+        }
+    }
+
+    fn push(&mut self, string: &str) {
+        self.output.push_str(string);
+    }
+
+    fn add_expression(&mut self, expr: &RawExpression<F>) {
+        match expr {
+            RawExpression::Bool(expr) => {
+                self.add_boolean_expr(expr);
+            }
+            RawExpression::Field(expr) => {
+                self.add_field_expr(expr);
+            }
+            RawExpression::Integer(expr) => {
+                self.add_integer_expr(expr);
+            }
+            RawExpression::PerformLookup {
+                input_subexpr_idxes, // subexpressions
+                table_id_subexpr_idx,
+                num_outputs,
+                lookup_mapping_idx,
+            } => {
+                let lookup_mapping_idx = *lookup_mapping_idx;
+                assert!(
+                    lookup_mapping_idx < self.num_lookup_mappings,
+                    "expression refers to lookup number {}, while only {} exist in scope",
+                    lookup_mapping_idx,
+                    self.num_lookup_mappings
+                );
+                let new_ident = self.create_var();
+                let num_inputs = input_subexpr_idxes.len();
+                let num_outputs = *num_outputs;
+                let table_id = *table_id_subexpr_idx;
+                if num_outputs > 0 {
+                    self.push(&format!("LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {lookup_mapping_idx}"));
+                } else {
+                    self.push(&format!(
+                        "LOOKUP_ENFORCE({num_inputs}, {table_id}, {lookup_mapping_idx}"
+                    ));
+                }
+                for input in input_subexpr_idxes.iter().copied() {
+                    self.push(&format!(", VAR({input})"));
+                }
+                self.push(")\n");
+            }
+            RawExpression::MaybePerformLookup {
+                input_subexpr_idxes, // subexpressions
+                table_id_subexpr_idx,
+                mask_id_subexpr_idx,
+                num_outputs,
+            } => {
+                let new_ident = self.create_var();
+                let num_inputs = input_subexpr_idxes.len();
+                let num_outputs = *num_outputs;
+                let table_id = *table_id_subexpr_idx;
+                let mask_id = *mask_id_subexpr_idx;
+                self.push(&format!(
+                    "MAYBE_LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {mask_id}"
+                ));
+                for input in input_subexpr_idxes.iter().copied() {
+                    self.push(&format!(", VAR({input})"));
+                }
+                self.push(")\n");
+            }
+            RawExpression::AccessLookup {
+                subindex,
+                output_index,
+            } => {
+                let var_ident = *subindex;
+                let new_ident = self.create_var();
+                self.push(&format!(
+                    "ACCESS_LOOKUP({new_ident}, {var_ident}, {output_index})\n"
+                ));
+            }
+            RawExpression::WriteVariable {
+                into_variable,
+                source_subexpr, // it'll be only subexpression, but we need type
+                condition_subexpr_idx,
+            } => {
+                // this is an expression in SSA, so we should update index
+                self.next_var_idx += 1;
+                let address = self.get_column_address(into_variable);
+                match address {
+                    ColumnAddress::WitnessSubtree(idx) => {
+                        let source_ident = self.expression_into_var(source_subexpr);
+                        if let Some(condition) = condition_subexpr_idx {
+                            let condition_ident = *condition;
+                            // For a column that is ONLY ever written under a guard, fold the
+                            // zero-default into its FIRST write (in evaluation order): emit a
+                            // branchless `cond ? source : 0` store instead of an `IF`, so rows
+                            // whose guard is false get a definite zero with no separate prologue.
+                            // Later writes (mutually-exclusive opcode branches) stay `IF` and
+                            // overwrite where they fire.
+                            if self.conditional_only_witness.contains(&idx)
+                                && self.witness_zero_default_emitted.insert(idx)
+                            {
+                                self.push(&format!(
+                                    "SET_WITNESS_PLACE_OR_ZERO({idx}, {condition_ident}, {source_ident})\n"
+                                ));
+                            } else {
+                                self.push(&format!(
+                                    "IF({condition_ident}, SET_WITNESS_PLACE({idx}, {source_ident}))\n"
+                                ));
+                            }
+                        } else {
+                            self.output
+                                .push_str(&format!("SET_WITNESS_PLACE({idx}, {source_ident})\n"));
+                        }
+                    }
+                    ColumnAddress::MemorySubtree(_idx) => {
+                        if self.write_into_memory {
+                            unimplemented!("--write-memory: memory-subtree writes not implemented")
+                        } else {
+                            // do nothing and rely on the generic procedure. Hope that compiler optimizes out unused expressions
+                        }
+                    }
+                    ColumnAddress::SetupSubtree(_idx) => {
+                        unreachable!("can not write to setup");
+                    }
+                    ColumnAddress::OptimizedOut(idx) => {
+                        let source_ident = self.expression_into_var(source_subexpr);
+                        self.scratch_size = std::cmp::max(self.scratch_size, idx + 1);
+                        if let Some(condition) = condition_subexpr_idx {
+                            let condition_ident = *condition;
+                            self.push(&format!(
+                                "IF({condition_ident}, SET_SCRATCH_PLACE({idx}, {source_ident}))\n"
+                            ));
+                        } else {
+                            self.output
+                                .push_str(&format!("SET_SCRATCH_PLACE({idx}, {source_ident})\n"));
+                        }
+                    }
+                };
+            }
+        }
+    }
+
+    fn generate_header(&mut self, table_offsets: &[u32]) {
+        self.push("LOOKUP_TABLE_OFFSETS(");
+        for (i, offset) in table_offsets.iter().enumerate() {
+            if i != 0 {
+                self.push(", ");
+            }
+            self.push(&format!("{offset}"));
+        }
+        self.push(")\n");
+        self.push("\n");
+    }
+
+    fn generate_functions(
+        &mut self,
+        graph: &[Vec<RawExpression<F>>],
+        layout: &BTreeMap<Variable, ColumnAddress>,
+    ) {
+        for (index, expressions) in graph.iter().enumerate() {
+            self.next_var_idx = 0;
+            self.generate_function(layout, index, expressions);
+        }
+    }
+
+    fn generate_function(
+        &mut self,
+        layout: &BTreeMap<Variable, ColumnAddress>,
+        index: usize,
+        expressions: &[RawExpression<F>],
+    ) {
+        // quickly check that if all outputs are into memory, then we can skip such cases
+        if self.write_into_memory == false {
+            let mut can_skip = true;
+            for expr in expressions.iter() {
+                if let RawExpression::WriteVariable { into_variable, .. } = expr {
+                    let place = layout[into_variable];
+                    match place {
+                        ColumnAddress::MemorySubtree(..) => {}
+                        _ => {
+                            can_skip = false;
+                            break;
+                        }
+                    }
+                }
+                if let RawExpression::PerformLookup { .. } = expr {
+                    // we can not skip it as we will need to count multiplicity
+                    can_skip = false;
+                    break;
+                }
+            }
+            if can_skip {
+                return;
+            }
+        }
+        self.push("FN_BEGIN(");
+        self.push(&index.to_string());
+        self.push(")\n");
+        for expression in expressions {
+            self.add_expression(expression);
+        }
+        self.push("FN_END\n\n");
+        self.fn_indexes.push(index);
+    }
+
+    fn generate_footer(&mut self) {
+        let scratch_size = self.scratch_size;
+        self.push("FN_BEGIN(generate)\n");
+        for index in self.fn_indexes.clone().into_iter() {
+            self.push("FN_CALL(");
+            self.push(&index.to_string());
+            self.push(")\n");
+        }
+        self.push("FN_END\n");
+        self.push("\n");
+        let scratch = if scratch_size == 0 {
+            "constexpr wrapped_f *scratch = nullptr;\n".to_string()
+        } else {
+            "wrapped_f *scratch = scratch_storage + gid;\n".to_string()
+        };
+        self.push(&format!("#define SCRATCH {scratch}\n"));
+    }
+
+    pub fn generate(
+        graph: &[Vec<RawExpression<F>>],
+        circuit: &GKRCircuitArtifact<F>,
+        perform_assignments_to_memory: bool,
+    ) -> String {
+        let num_lookup_mappings = circuit.num_generic_lookups;
+        let mut layout = BTreeMap::new();
+        let mut next_scratch_slot = 0usize;
+        for (var, pos) in circuit.placement_data.iter() {
+            match pos {
+                GKRAddress::BaseLayerMemory(offset) => {
+                    layout.insert(*var, ColumnAddress::MemorySubtree(*offset));
+                }
+                GKRAddress::BaseLayerWitness(offset) => {
+                    layout.insert(*var, ColumnAddress::WitnessSubtree(*offset));
+                }
+                GKRAddress::InnerLayer { .. }
+                | GKRAddress::Cached { .. }
+                | GKRAddress::ScratchSpace(..) => {
+                    layout.insert(*var, ColumnAddress::OptimizedOut(next_scratch_slot));
+                    next_scratch_slot += 1;
+                }
+                GKRAddress::VirtualSetup(virtual_setup) => {
+                    let setup_index = match virtual_setup {
+                        VirtualSetupPoly::RangeCheck16Bits => 0,
+                        VirtualSetupPoly::RangeCheckTimestamp => 1,
+                        VirtualSetupPoly::InitsAndTeardownsLow => 2,
+                        VirtualSetupPoly::InitsAndTeardownsHigh => 3,
+                    };
+                    layout.insert(*var, ColumnAddress::SetupSubtree(setup_index));
+                }
+                GKRAddress::Setup(..) => {
+                    unreachable!("setup placements are not expected in GPU witness generation")
+                }
+            }
+        }
+        let mut generator =
+            Generator::new(&layout, num_lookup_mappings, perform_assignments_to_memory);
+        generator.generate_header(&circuit.table_offsets);
+        generator.collect_conditional_only_witness(graph);
+        generator.generate_functions(graph, &layout);
+        generator.generate_footer();
+        generator.output
+    }
+}
+
+pub fn generate_from_files(
+    layout_path: impl AsRef<Path>,
+    ssa_path: impl AsRef<Path>,
+    perform_assignments_to_memory: bool,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let layout = File::open(layout_path)?;
+    let ssa = File::open(ssa_path)?;
+    let compiled_circuit: GKRCircuitArtifact<F> = serde_json::from_reader(layout)?;
+    let compiled_graph: Vec<Vec<RawExpression<F>>> = serde_json::from_reader(ssa)?;
+
+    Ok(Generator::generate(
+        &compiled_graph,
+        &compiled_circuit,
+        perform_assignments_to_memory,
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use test_utils::skip_if_ci;
+
+    use crate::generate_from_files;
+    use std::fs::File;
+    use std::io::Write;
+
+    fn generate(id: &str) {
+        let layout_path = format!("../../cs/compiled_circuits/{id}_layout_gkr.json");
+        let ssa_path = format!("../../cs/compiled_circuits/{id}_ssa_gkr.json");
+        let generated_cu_path = format!("{id}.cuh");
+        println!("{generated_cu_path}");
+        let code = generate_from_files(&layout_path, &ssa_path, false).unwrap();
+        File::create(&generated_cu_path)
+            .unwrap()
+            .write_all(&code.as_bytes())
+            .unwrap();
+    }
+
+    #[test]
+    fn generate_all() {
+        skip_if_ci!();
+        const IDS: &[&str] = &[
+            "add_sub_lui_auipc_mop",
+            "bigint_with_extended_control",
+            "blake2_g_function",
+            "blake2_with_extended_control",
+            "jump_branch_slt",
+            "keccak_special5",
+            "mem_subword_only",
+            "mem_word_only",
+            "shift_binop",
+            "unified_reduced_machine",
+            "unsigned_mul_div",
+        ];
+        for id in IDS {
+            generate(id);
+        }
+    }
+}

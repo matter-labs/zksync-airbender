@@ -40,6 +40,8 @@ pub mod forward_loop;
 pub mod setup;
 pub mod stages;
 pub mod sumcheck_loop;
+#[cfg(feature = "gkr_test_forge")]
+pub mod test_forge;
 pub mod transcript_utils;
 pub mod utils;
 

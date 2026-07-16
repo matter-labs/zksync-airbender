@@ -157,4 +157,4 @@ cargo run --release -p cli -- run --bin examples/basic_fibonacci/app.bin --expec
 - `program_text_keccak`
 - `timings_ms`
 - `proof_counts`
-- `proof` (`UnrolledProgramProof`)
+- `proof` (`ProgramProof`)

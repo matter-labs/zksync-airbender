@@ -72,6 +72,11 @@ pub enum TableType {
     // rs2's pre-extracted sign bit instead of the full 16-bit sign source
     // The standalone `jump_branch_slt_family` circuit keeps that 2^22 table.
     ConditionalJmpBranchSltUnified,
+    // Unified-only 4-output binop tables: (a, b) -> (a OP b, 0, 0, 0) — the same output shape
+    // as XorRotate{r} with rotation 0
+    WideXor,
+    WideOr,
+    WideAnd,
     DynamicPlaceholder, // MUST be the last
 }
 
