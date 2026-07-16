@@ -21,6 +21,15 @@
 //! walker's stats compare 1:1 against `analysis::size_layer`'s all-recompute
 //! DP (`neutral_stats_match_dp`) and byte-identical across budgets
 //! (`all_refuse_is_byte_identical_to_m1`).
+//!
+//! M3 adds an optional per-value use countdown (`Walker::note_use`, funneled
+//! through `observe`) that syncs the residency's dead flag the instant a
+//! resident value's last use is consumed — see `flatten_counted`. A dead
+//! resident is worth nothing to keep and is evicted before any live one
+//! regardless of priority, letting a low-priority admission reclaim cells a
+//! priority-only scheme (M2) would refuse to touch. Disengaged entirely
+//! (`counts = None`, via `flatten`/`flatten_budgeted`) it is byte-identical
+//! to the pre-M3 walker for any oracle.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -29,7 +38,7 @@ use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceId};
 
 use crate::dag::{LayerView, LeafClass, NodeKind};
 use crate::ir::{Op, Operand, Program, SlotId};
-use crate::oracle::{Oracle, SiteObs, SitePath, SiteStep};
+use crate::oracle::{Oracle, SiteObs, SitePath, SiteStep, UseCounts};
 use crate::residency::{Admit, Residency};
 use crate::su;
 
@@ -82,6 +91,11 @@ pub struct WalkStats {
 pub struct WalkOutput {
     pub program: Program,
     pub stats: WalkStats,
+    /// Per-value use countdown remaining state, `Some` iff `flatten_counted`
+    /// was given `counts` (spec M3 §2): `consumed[e]` is the number of times
+    /// `e`'s use was ticked over this walk. `None` under the counts-free path
+    /// (`flatten`/`flatten_budgeted`), which never allocates or ticks it.
+    pub consumed: Option<Vec<u32>>,
 }
 
 /// Flattens every root of `view`'s layer (in `oracle.root_order` order) into
@@ -100,11 +114,51 @@ pub fn flatten(view: &LayerView<'_>, oracle: &dyn Oracle) -> WalkOutput {
 /// `NeutralOracle` (no wish ever, nothing resident) the budget is inert and
 /// the output is byte-identical to M1 regardless of `budget` — the regression
 /// net for the entire caching surgery.
+///
+/// A one-line wrapper over [`flatten_counted`] with `counts = None` — see
+/// there for the M3 use-countdown/deadness-sync semantics this leaves
+/// disengaged. `flatten_budgeted(view, oracle, budget) ==
+/// flatten_counted(view, oracle, budget, None)`, byte-for-byte, for any
+/// oracle: without counts, nothing about the walk changes.
 pub fn flatten_budgeted(
     view: &LayerView<'_>,
     oracle: &dyn Oracle,
     budget: Option<u32>,
 ) -> WalkOutput {
+    flatten_counted(view, oracle, budget, None)
+}
+
+/// Like [`flatten_budgeted`], but with an optional per-value use countdown
+/// (spec M3 §2). When `counts` is `Some`, the walker ticks a countdown for
+/// every value on every site it reaches (`Walker::note_use`, funneled
+/// through `observe`) and calls `residency.mark_dead` the instant a resident
+/// value's last use is consumed — both at the ticking site and, on
+/// admission, inside `try_admit` (a value can be admitted at its own last
+/// use). A dead resident becomes the residency's first-pick eviction victim
+/// (`Residency::mark_dead`'s doc) regardless of priority, letting a
+/// low-priority wish reclaim cells the countdown proves are otherwise
+/// unrecoverable, WITHOUT the oracle needing to know about liveness itself.
+///
+/// The countdown is built from `counts.total(e)` — typically
+/// `SiteTable::use_counts`'s all-recompute-tree row count for `e` — and is
+/// conservative in one direction: sites pruned inside someone else's cache
+/// hit are never ticked (a hit prunes the whole recompute cone, `observe`
+/// never fires under it), so the countdown can OVERSTATE remaining uses. A
+/// value the countdown marks dead is truly dead; a truly-dead value may be
+/// marked late. `debug_assert!(consumed[e] <= total(e))` at every tick holds
+/// because reached sites are a subset of table rows (the M2 coverage
+/// invariant) — exceeding the total would be a model bug, not a data issue.
+///
+/// `counts = None` disengages all of the above: no countdown is allocated,
+/// `note_use` is never called, and `WalkOutput.consumed` is `None` — byte-
+/// identical to the pre-M3 walker for any oracle.
+pub fn flatten_counted(
+    view: &LayerView<'_>,
+    oracle: &dyn Oracle,
+    budget: Option<u32>,
+    counts: Option<&UseCounts>,
+) -> WalkOutput {
+    let consumed = vec![0u32; if counts.is_some() { view.layer.exprs.len() } else { 0 }];
     let mut walker = Walker {
         view,
         oracle,
@@ -112,6 +166,8 @@ pub fn flatten_budgeted(
         stats: WalkStats::default(),
         residency: Residency::new(budget),
         su_memo: RefCell::new(su::Memo::new(view.layer.exprs.len())),
+        counts,
+        consumed,
     };
     for root_id in oracle.root_order(view.layer) {
         let root_expr = view.layer.roots[root_id.0 as usize].expr;
@@ -126,11 +182,12 @@ pub fn flatten_budgeted(
         );
         walker.push(Op::SinkMaterialize(root_id));
     }
-    WalkOutput { program: walker.program, stats: walker.stats }
+    let consumed = counts.map(|_| walker.consumed);
+    WalkOutput { program: walker.program, stats: walker.stats, consumed }
 }
 
 /// Walker state threaded through the recursive `emit`.
-struct Walker<'v, 'o> {
+struct Walker<'v, 'o, 'c> {
     view: &'v LayerView<'v>,
     oracle: &'o dyn Oracle,
     program: Program,
@@ -149,9 +206,17 @@ struct Walker<'v, 'o> {
     /// `order_children` is called from `&self` context (it does not itself
     /// need `&mut Walker`) but memoization requires interior mutability.
     su_memo: RefCell<su::Memo>,
+    /// Per-value use totals (spec M3 §2), `Some` iff `flatten_counted` was
+    /// given `counts` — `note_use` ticks `consumed` against these totals and
+    /// is a no-op (never called) when this is `None`.
+    counts: Option<&'c UseCounts>,
+    /// Per-value use countdown state: `consumed[e.0]` is the number of times
+    /// `e` has been ticked so far this walk. Sized to the layer's expr arena
+    /// iff `counts.is_some()`, empty otherwise (never indexed in that case).
+    consumed: Vec<u32>,
 }
 
-impl<'v, 'o> Walker<'v, 'o> {
+impl<'v, 'o, 'c> Walker<'v, 'o, 'c> {
     /// Emits ops so that, on return, `acc` holds `value(e)`. `depth` doubles
     /// as the stack-disciplined `SlotId` allocator: a stash at recursion
     /// depth `d` always uses `SlotId(d)`, and the LIFO stash/consume nesting
@@ -411,10 +476,23 @@ impl<'v, 'o> Walker<'v, 'o> {
     /// `CacheLoad`) and `maybe_cache` (compound/leaf-root, `CacheStore`). The
     /// caller must have hit-checked `e` first — `residency.admit` asserts
     /// `!is_resident`.
+    ///
+    /// Counts mode (spec M3 §2): on a successful admission, `e`'s own site
+    /// occurrence has already been ticked by the `observe` call that preceded
+    /// this (every caller observes `e` before resolving/folding it) — so if
+    /// that tick was `e`'s last use, `e` is admitted already-exhausted and
+    /// immediately marked dead, instantly reclaimable by the next wish.
     fn try_admit(&mut self, e: ExprId, path: &SitePath, protected: &[ExprId]) -> Option<Vec<ExprId>> {
         let priority = self.oracle.keep_priority(path)?;
         match self.residency.admit(e, self.view.width(e), priority, protected) {
-            Admit::Admitted { victims } => Some(victims),
+            Admit::Admitted { victims } => {
+                if let Some(counts) = self.counts {
+                    if self.residency.is_resident(e) && self.consumed[e.0 as usize] == counts.total(e) {
+                        self.residency.mark_dead(e);
+                    }
+                }
+                Some(victims)
+            }
             Admit::Refused => None,
         }
     }
@@ -496,11 +574,31 @@ impl<'v, 'o> Walker<'v, 'o> {
     /// has a standalone value to cache (`admissible = false` regardless of
     /// `e`'s kind), and otherwise a value is admissible iff `classify(e)`
     /// (Dram leaves and compounds; Free leaves are not). This is the single
-    /// entry point behind all three walker placement points, and a pure
-    /// observation — it neither emits ops nor moves any counter.
-    fn observe(&self, e: ExprId, path: &SitePath, streamed: bool) {
+    /// entry point behind all three walker placement points — and, in counts
+    /// mode (spec M3 §2), the single funnel for the per-value use countdown:
+    /// every site this function is called for ticks `note_use` before
+    /// consulting the oracle.
+    fn observe(&mut self, e: ExprId, path: &SitePath, streamed: bool) {
+        if self.counts.is_some() {
+            self.note_use(e);
+        }
         let admissible = !streamed && Self::classify(self.view.kind(e));
         self.oracle.observe_site(path, SiteObs { value: e, admissible });
+    }
+
+    /// Ticks `e`'s use countdown (counts mode only) and marks it dead in the
+    /// residency the moment its last use is consumed. Conservative: sites
+    /// pruned inside someone else's cache hit are never ticked, so the
+    /// countdown can overstate remaining uses — a value marked dead is truly
+    /// dead, a truly-dead value may be marked late (spec M3 §2).
+    fn note_use(&mut self, e: ExprId) {
+        let total = self.counts.unwrap().total(e);
+        let c = &mut self.consumed[e.0 as usize];
+        *c += 1;
+        debug_assert!(*c <= total, "gkr_flatten: consumed overshoots total for {e:?}");
+        if *c == total && self.residency.is_resident(e) {
+            self.residency.mark_dead(e);
+        }
     }
 
     /// Cache-admissibility by node kind: `Leaf(Dram)` and `Add`/`Mul` → true;
@@ -1311,6 +1409,105 @@ mod tests {
             let got = crate::ir::interpret(&out.program, &layer, row, &rb);
             let want = cs::gkr_compiler::dag_ir::eval::eval_layer_root(&layer, RootId(0), row, &rb);
             assert_eq!(got[&RootId(0)], want, "row {row}");
+        }
+    }
+
+    // ── M3 use countdown / deadness sync (Task 2) ─────────────────────────
+
+    #[test]
+    fn neutral_counted_consumes_every_use_exactly_once() {
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let v = LayerView::new(&dag.layers[0], &cross, None);
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let counts = table.use_counts(dag.layers[0].exprs.len());
+        let out = flatten_counted(&v, &NeutralOracle, None, Some(&counts));
+        let consumed = out.consumed.expect("counts were given");
+        // All-refuse reaches every site: countdown must land exactly on zero
+        // for every value (consumed == total, elementwise).
+        for e in 0..dag.layers[0].exprs.len() {
+            assert_eq!(consumed[e], counts.total(cs::gkr_compiler::dag_ir::ExprId(e as u32)),
+                "expr {e}: consumed != total on the all-refuse walk");
+        }
+        // And the counted neutral walk is still byte-identical to M1/M2.
+        let m2 = flatten(&v, &NeutralOracle);
+        assert_eq!(out.program, m2.program);
+        assert_eq!(out.stats, m2.stats);
+    }
+
+    #[test]
+    fn counted_caching_walk_never_overshoots_totals() {
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let v = LayerView::new(&dag.layers[0], &cross, None);
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let counts = table.use_counts(dag.layers[0].exprs.len());
+        let out = flatten_counted(&v, &crate::oracle::AdmitAll, Some(12), Some(&counts));
+        let consumed = out.consumed.unwrap();
+        for e in 0..dag.layers[0].exprs.len() {
+            assert!(consumed[e] <= counts.total(cs::gkr_compiler::dag_ir::ExprId(e as u32)));
+        }
+        assert_cache_reads_live(&out.program);
+    }
+
+    #[test]
+    fn dead_value_reclaimed_by_low_priority_admission() {
+        // a used ONCE (r0 only) at high priority; b shared; c at priority 1.
+        // Budget 2 (Base widths): after r0, a is resident-but-exhausted and b
+        // is resident-live. c's admission under M2 semantics is REFUSED
+        // (priority 1 is lowest); with counts, dead a is reclaimed instead.
+        //
+        // r1's operands are listed as `[c, b]` (not `[b, c]`): both are Leaf
+        // children, so `order_children` keeps them in this arena order
+        // (`su::streamable` is `true` for any Leaf, so neither is
+        // reordered by cone_peak — see its doc). c must be visited (and thus
+        // seek admission) BEFORE b's own second/last use is ticked in this
+        // same fold, or b would ALSO be exhausted by the time eviction runs,
+        // and the dead-first tie-break (lowest priority first, `Residency`'s
+        // `victim_order`) would pick b (priority 5) over a (priority 9)
+        // instead — same reclaim thesis, wrong named victim. Order is
+        // otherwise immaterial: Add is commutative, so this is still r1 =
+        // b + c arithmetically (checked below via `eval_layer_root`).
+        let sources = vec![testdag::base_read(0), testdag::base_read(1), testdag::base_read(2)];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),             // a
+            Expr::Source(SourceId(1)),             // b
+            Expr::Source(SourceId(2)),             // c
+            Expr::Add(vec![ExprId(0), ExprId(1)]), // r0 = a + b
+            Expr::Add(vec![ExprId(2), ExprId(1)]), // r1 = c + b
+        ];
+        let layer = testdag::layer(sources, exprs,
+            vec![testdag::root(ExprId(3)), testdag::root(ExprId(4))]);
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let counts = table.use_counts(layer.exprs.len());
+        let mut priorities = std::collections::HashMap::new();
+        for s in &table.sites {
+            if !s.admissible { continue; }
+            let p = match s.value { ExprId(0) => 9, ExprId(1) => 5, ExprId(2) => 1, _ => continue };
+            priorities.insert(crate::oracle::path_key(&s.path), p);
+        }
+        let oracle = crate::oracle::MapOracle { priorities };
+
+        let with = flatten_counted(&v, &oracle, Some(2), Some(&counts));
+        let without = flatten_counted(&v, &oracle, Some(2), None);
+
+        // With counts: a is dead after r0, so c's wish evicts it.
+        assert!(with.program.ops.iter().any(|op| matches!(op, Op::Evict(ExprId(0)))));
+        assert!(with.program.ops.iter().any(
+            |op| matches!(op, Op::CacheLoad { src: SourceId(2), .. })));
+        // Without counts (M2 semantics): c is refused — no eviction, no CacheLoad(c).
+        assert!(!without.program.ops.iter().any(
+            |op| matches!(op, Op::CacheLoad { src: SourceId(2), .. })));
+        assert_cache_reads_live(&with.program);
+        // Value parity for the counted program.
+        let r = crate::resolvers::HashResolvers { seed: 7 }.bundle();
+        for row in [0usize, 1] {
+            let got = crate::ir::interpret(&with.program, &layer, row, &r);
+            for (i, _) in layer.roots.iter().enumerate() {
+                let want = cs::gkr_compiler::dag_ir::eval::eval_layer_root(
+                    &layer, RootId(i as u32), row, &r);
+                assert_eq!(got[&RootId(i as u32)], want);
+            }
         }
     }
 }

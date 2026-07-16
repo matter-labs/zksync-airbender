@@ -208,6 +208,37 @@ impl SiteTable {
     pub fn is_empty(&self) -> bool {
         self.sites.is_empty()
     }
+
+    /// Counts total site occurrences per value: one pass over `sites`,
+    /// bumping `totals[value]` per row (every row, admissible or not — a
+    /// streamed fma/mul-chain product is still a use of its `ExprId`). This
+    /// is the all-recompute-tree "how many times is this value reached"
+    /// figure the M3 walker ticks its per-value countdown against
+    /// (`crate::walk::Walker::note_use`); `n_exprs` sizes the totals vector
+    /// to the layer's expr arena.
+    pub fn use_counts(&self, n_exprs: usize) -> UseCounts {
+        let mut totals = vec![0u32; n_exprs];
+        for s in &self.sites {
+            totals[s.value.0 as usize] += 1;
+        }
+        UseCounts { totals }
+    }
+}
+
+/// Per-value total use counts (spec M3 §2): `totals[e]` is the number of
+/// times `e` is reached across the whole all-recompute tree — i.e. its
+/// `SiteTable` row count — the fixed total the walker's per-value use
+/// countdown (`Walker::note_use`) counts down from. Built by
+/// [`SiteTable::use_counts`].
+pub struct UseCounts {
+    totals: Vec<u32>,
+}
+
+impl UseCounts {
+    /// `e`'s total use count (0 if `e` was never recorded as a site value).
+    pub fn total(&self, e: ExprId) -> u32 {
+        self.totals[e.0 as usize]
+    }
 }
 
 #[cfg(test)]
