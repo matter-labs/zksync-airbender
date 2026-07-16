@@ -2,7 +2,7 @@
 //!
 //! [`Score`] is the walker's objective: `(traffic, instrs)` compared
 //! lexicographically — traffic (DRAM touches) dominates, instruction count
-//! only breaks ties. The two field order is binding: `derive(Ord)` on a
+//! only breaks ties. The two-field order is binding: `derive(Ord)` on a
 //! struct is lexicographic over fields in declaration order, so `traffic`
 //! must be declared first. The objective is never blended into a single
 //! scalar — that would let a large `instrs` improvement mask a real traffic
@@ -84,6 +84,10 @@ pub fn greedy(
     budget: Option<u32>,
 ) -> Genome {
     let genome_of = |enabled: &[u32]| -> Genome {
+        debug_assert!(
+            enabled.len() <= u16::MAX as usize,
+            "greedy enabled-set exceeds u16 gene range"
+        );
         let mut keep = vec![0u16; table.len()];
         for (rank, &locus) in enabled.iter().enumerate() {
             keep[locus as usize] = (enabled.len() - rank) as u16;

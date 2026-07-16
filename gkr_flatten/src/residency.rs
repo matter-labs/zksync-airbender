@@ -61,6 +61,19 @@ impl Residency {
         self.resident_lanes -= r.width;
     }
 
+    /// Spec §2 post-mutation tripwire: the lane pool (stash + resident) must
+    /// never exceed the budget. This already holds by construction — every
+    /// mutation site checks/reclaims lanes before committing — so this is a
+    /// debug-only assert of an invariant, not a new behavior.
+    fn debug_check(&self) {
+        if let Some(b) = self.budget {
+            debug_assert!(
+                self.stash_lanes + self.resident_lanes <= b,
+                "gkr_flatten residency: lane pool overflow (model bug)"
+            );
+        }
+    }
+
     /// Admits `e` (width lanes, `priority`) into the pool, evicting the
     /// lowest strictly-lower-priority residents as needed. `protected` names
     /// residents that must NOT be evicted for the duration of THIS call — the
@@ -81,6 +94,7 @@ impl Residency {
             // Unbounded: always admit, never evict.
             self.resident.insert(e, Resident { width, priority });
             self.resident_lanes += width;
+            self.debug_check();
             return Admit::Admitted { victims: vec![] };
         };
         let mut victims = Vec::new();
@@ -111,6 +125,7 @@ impl Residency {
         }
         self.resident.insert(e, Resident { width, priority });
         self.resident_lanes += width;
+        self.debug_check();
         Admit::Admitted { victims }
     }
 
@@ -143,12 +158,14 @@ impl Residency {
             }
         }
         self.stash_lanes += lanes;
+        self.debug_check();
         victims
     }
 
     pub fn release_stash(&mut self, lanes: u32) {
         debug_assert!(lanes <= self.stash_lanes);
         self.stash_lanes -= lanes;
+        self.debug_check();
     }
 }
 

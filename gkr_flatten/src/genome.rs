@@ -1,6 +1,6 @@
 //! Genome + decode (spec §5): a fixed-length keep-gene encoding over a
-//! layer's site domain (`SiteTable`) that a search (M2, out of scope here)
-//! can mutate and recombine, decoded (`decode`) into a `GenomeOracle` the
+//! layer's site domain (`SiteTable`) that a search — see `crate::search` —
+//! mutates and scores, decoded (`decode`) into a `GenomeOracle` the
 //! walker (`crate::walk::flatten_budgeted`) consumes exactly like any other
 //! `Oracle` — genome search never touches the walker itself.
 //!
@@ -107,6 +107,11 @@ pub struct GenomeOracle<'t> {
 /// `Some(g.keep[i] as u32)` iff `table.sites[i].admissible && g.keep[i] >
 /// g.threshold`, else `None`.
 pub fn decode<'t>(g: &Genome, table: &'t SiteTable) -> GenomeOracle<'t> {
+    assert_eq!(
+        g.keep.len(),
+        table.len(),
+        "gkr_flatten: genome/table length mismatch — stale table or foreign genome"
+    );
     let priority = table
         .sites
         .iter()
