@@ -17,6 +17,7 @@
 pub mod analysis;
 pub mod dag;
 pub mod fixtures;
+pub mod genome;
 pub mod ir;
 pub mod oracle;
 pub mod residency;
