@@ -208,57 +208,6 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
         cs.add_constraint_expr(
             layer_2_copied_of_hi.clone() * (Expr::<F>::one() - layer_2_copied_of_hi),
         );
-
-        // Word alignment: LW/SW effective address must be ≡ 0 (mod 4); misaligned
-        // word accesses are unprovable. Exactly one
-        // of is_load/is_store is 1 per row (complements), so the two gated
-        // decompositions share one bit/top triple, and 2^16 ≡ 0 (mod 4) makes the
-        // low limb sufficient for the full byte address. The trap is
-        // execute-gated so padding rows stay provable; the decompositions
-        // themselves are satisfiable for any 16-bit limb value, so they don't
-        // over-constrain padding. Cost: 3 committed cols + 3 constraints + 1 RC.
-        let bit_0 = cs.add_named_boolean_variable("align: addr bit_0");
-        let bit_1 = cs.add_named_boolean_variable("align: addr bit_1");
-        let top_14 = cs.add_named_variable("align: addr top_14");
-        cs.require_invariant_from_lookup_input(
-            LookupInput::from(top_14),
-            Invariant::RangeChecked { width: 16 },
-        );
-        {
-            let readaddr_lo_var = memread_addr[0];
-            let writeaddr_lo_var = memwrite_addr[0];
-            let is_store_var = is_store.expect_variable();
-            let bit_0_var = bit_0.expect_variable();
-            let bit_1_var = bit_1.expect_variable();
-            let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                // sel = load ? readaddr_lo : writeaddr_lo  (is_load = !is_store)
-                let is_store_val = placer.get_boolean(is_store_var);
-                let read_lo = placer.get_u16(readaddr_lo_var);
-                let mut sel = placer.get_u16(writeaddr_lo_var);
-                sel.assign_masked(&is_store_val.negate(), &read_lo);
-                let b0 = sel.get_lowest_bits(1).is_one();
-                let b1 = sel.shr(1).get_lowest_bits(1).is_one();
-                let top = sel.shr(2);
-                placer.assign_mask(bit_0_var, &b0);
-                placer.assign_mask(bit_1_var, &b1);
-                placer.assign_u16(top_14, &top);
-            };
-            cs.set_values(value_fn);
-        }
-        let decomposition = Expr::constant(F::from_u32_with_reduction(4)) * Expr::var(top_14)
-            + Expr::constant(F::from_u32_with_reduction(2)) * Expr::from(bit_1)
-            + Expr::from(bit_0);
-        // is_load * (4*top_14 + 2*bit_1 + bit_0 - readaddr_lo) = 0   (deg 2)
-        cs.add_constraint_expr(
-            Expr::<F>::from(is_load) * (decomposition.clone() - Expr::var(memread_addr[0])),
-        );
-        // is_store * (4*top_14 + 2*bit_1 + bit_0 - writeaddr_lo) = 0  (deg 2)
-        cs.add_constraint_expr(
-            Expr::<F>::from(is_store) * (decomposition - Expr::var(memwrite_addr[0])),
-        );
-        // alignment trap: execute * (bit_0 + bit_1) = 0
-        cs.add_constraint_expr(Expr::var(inputs.execute) * (Expr::from(bit_0) + Expr::from(bit_1)));
-
         [cleanaddr_lo, cleanaddr_hi]
     };
     let (is_rom_base_layer, rom_addr_constraint) = {
