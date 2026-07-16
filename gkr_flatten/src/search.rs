@@ -32,8 +32,8 @@ use cs::gkr_compiler::dag_ir::ExprId;
 
 use crate::dag::LayerView;
 use crate::genome::{decode, Genome, SplitMix64};
-use crate::oracle::SiteTable;
-use crate::walk::flatten_budgeted;
+use crate::oracle::{SiteTable, UseCounts};
+use crate::walk::flatten_counted;
 
 /// The walker's objective: DRAM traffic first, instruction count as a
 /// tiebreak. `derive(Ord)` is lexicographic over fields in declaration
@@ -44,11 +44,38 @@ pub struct Score {
     pub instrs: u64,
 }
 
-/// One `flatten_budgeted` walk over `g` decoded against `table`, reduced to
-/// its `Score`.
-pub fn score(view: &LayerView<'_>, table: &SiteTable, g: &Genome, budget: Option<u32>) -> Score {
-    let out = flatten_budgeted(view, &decode(g, table), budget);
+/// Evaluation context threaded through the `*_ctx` search variants (spec M3).
+/// A single field today — `counts`, the per-value use countdown handed to
+/// [`crate::walk::flatten_counted`] so the dead-aware residency engages — kept
+/// as a struct so Task 6 can add order-key/after-set fields WITHOUT another
+/// signature churn across every caller. `Default` (all-`None`) recovers the
+/// M2 counts-free walk byte-for-byte, which is what makes the old
+/// `score`/`greedy`/`ga` names thin wrappers over their `*_ctx` bodies.
+#[derive(Default)]
+pub struct EvalCtx<'a> {
+    /// Per-value use totals for the dead-aware walk; `None` = M2 behavior
+    /// (no countdown, no early death, byte-identical to `flatten_budgeted`).
+    pub counts: Option<&'a UseCounts>,
+}
+
+/// One walk over `g` decoded against `table`, reduced to its `Score`. Threads
+/// `ctx.counts` into [`crate::walk::flatten_counted`]: with `None` (the
+/// `EvalCtx::default` the M2 wrapper passes) this is exactly the pre-M3
+/// `flatten_budgeted` walk; with `Some` it engages the dead-aware residency.
+pub fn score_ctx(
+    view: &LayerView<'_>,
+    table: &SiteTable,
+    g: &Genome,
+    budget: Option<u32>,
+    ctx: &EvalCtx<'_>,
+) -> Score {
+    let out = flatten_counted(view, &decode(g, table), budget, ctx.counts);
     Score { traffic: out.stats.traffic, instrs: out.stats.instrs }
+}
+
+/// M2 wrapper: `score_ctx` with the counts-free default context.
+pub fn score(view: &LayerView<'_>, table: &SiteTable, g: &Genome, budget: Option<u32>) -> Score {
+    score_ctx(view, table, g, budget, &EvalCtx::default())
 }
 
 /// Zero-search baseline: refuses every site (`Genome::ceiling`) — decodes to
@@ -77,11 +104,16 @@ pub fn naive_fill_genome(table: &SiteTable, n_roots: usize) -> Genome {
 /// evicted if a downstream consumer ever thresholds this genome. Disabled
 /// loci keep gene `0`, `threshold` is `0`, `root_keys` is the identity
 /// order (greedy never touches root visitation, only cache admission).
-pub fn greedy(
+///
+/// `ctx` threads the M3 eval context (`counts`) into every internal
+/// `score_ctx` price; [`greedy`] is the counts-free `EvalCtx::default`
+/// wrapper.
+pub fn greedy_ctx(
     view: &LayerView<'_>,
     table: &SiteTable,
     n_roots: usize,
     budget: Option<u32>,
+    ctx: &EvalCtx<'_>,
 ) -> Genome {
     let genome_of = |enabled: &[u32]| -> Genome {
         debug_assert!(
@@ -95,7 +127,7 @@ pub fn greedy(
         Genome { root_keys: (0..n_roots as u32).collect(), keep, threshold: 0 }
     };
     let mut enabled: Vec<u32> = Vec::new();
-    let mut current = score(view, table, &genome_of(&enabled), budget);
+    let mut current = score_ctx(view, table, &genome_of(&enabled), budget, ctx);
 
     // (gain vs current, locus). Gains are lexicographic improvements encoded
     // as (traffic_saved, instrs_saved) — larger is better in the heap.
@@ -111,7 +143,7 @@ pub fn greedy(
     for &l in &admissible {
         let mut trial = enabled.clone();
         trial.push(l);
-        let s = score(view, table, &genome_of(&trial), budget);
+        let s = score_ctx(view, table, &genome_of(&trial), budget, ctx);
         heap.push((gain_of(current, s), Reverse(l)));
     }
     while let Some((stale_gain, Reverse(l))) = heap.pop() {
@@ -120,7 +152,7 @@ pub fn greedy(
         }
         let mut trial = enabled.clone();
         trial.push(l);
-        let s = score(view, table, &genome_of(&trial), budget);
+        let s = score_ctx(view, table, &genome_of(&trial), budget, ctx);
         let fresh = gain_of(current, s);
         let next_best = heap.peek().map(|&(g, _)| g).unwrap_or((i64::MIN, i64::MIN));
         if fresh >= next_best {
@@ -134,6 +166,11 @@ pub fn greedy(
         }
     }
     genome_of(&enabled)
+}
+
+/// M2 wrapper: [`greedy_ctx`] with the counts-free default context.
+pub fn greedy(view: &LayerView<'_>, table: &SiteTable, n_roots: usize, budget: Option<u32>) -> Genome {
+    greedy_ctx(view, table, n_roots, budget, &EvalCtx::default())
 }
 
 /// Tunables for [`ga`] (spec §6). `Default` is the M2-exit strength:
@@ -185,13 +222,17 @@ impl Default for GaParams {
 /// scored in the initial population and best-ever tracks the global minimum,
 /// the returned score can never be worse than the best seed (in particular
 /// never worse than the greedy seed a caller passes in).
-pub fn ga(
+///
+/// `ctx` threads the M3 eval context (`counts`) through every internal
+/// `score_ctx` price; [`ga`] is the counts-free `EvalCtx::default` wrapper.
+pub fn ga_ctx(
     view: &LayerView<'_>,
     table: &SiteTable,
     n_roots: usize,
     budget: Option<u32>,
     params: &GaParams,
     seeds: Vec<Genome>,
+    ctx: &EvalCtx<'_>,
 ) -> (Genome, Score) {
     let mut rng = SplitMix64(params.seed);
     let mut spent: u64 = 0;
@@ -217,7 +258,7 @@ pub fn ga(
         if spent >= params.max_evals {
             return best.expect("gkr_flatten: ga max_evals too small to score any genome");
         }
-        let s = eval_counted(view, table, budget, &g, &mut spent, &mut best);
+        let s = eval_counted(view, table, budget, &g, ctx, &mut spent, &mut best);
         scored.push((g, s));
     }
 
@@ -242,7 +283,7 @@ pub fn ga(
             }
             let mut trial = dg.clone();
             flip_one_locus(&mut trial, n_loci, keep_len, &mut rng);
-            let ts = eval_counted(view, table, budget, &trial, &mut spent, &mut best);
+            let ts = eval_counted(view, table, budget, &trial, ctx, &mut spent, &mut best);
             if ts < ds {
                 dg = trial;
                 ds = ts;
@@ -262,7 +303,7 @@ pub fn ga(
             let pb = &scored[tournament(&scored, &mut rng)].0;
             let mut child = crossover(pa, pb, &mut rng);
             mutate(&mut child, n_loci, &mut rng);
-            let s = eval_counted(view, table, budget, &child, &mut spent, &mut best);
+            let s = eval_counted(view, table, budget, &child, ctx, &mut spent, &mut best);
             next.push((child, s));
         }
         scored = next;
@@ -276,19 +317,33 @@ pub fn ga(
     }
 }
 
-/// One `score` call that increments the spend counter and folds the result
+/// M2 wrapper: [`ga_ctx`] with the counts-free default context.
+pub fn ga(
+    view: &LayerView<'_>,
+    table: &SiteTable,
+    n_roots: usize,
+    budget: Option<u32>,
+    params: &GaParams,
+    seeds: Vec<Genome>,
+) -> (Genome, Score) {
+    ga_ctx(view, table, n_roots, budget, params, seeds, &EvalCtx::default())
+}
+
+/// One `score_ctx` call that increments the spend counter and folds the result
 /// into the best-ever tracker. Best-ever is updated only on a STRICT
 /// improvement, so ties keep the first (evaluation-order) genome — the tie
-/// rule that makes the returned genome reproducible across runs.
+/// rule that makes the returned genome reproducible across runs. `ctx` is the
+/// M3 eval context threaded from `ga_ctx` (counts-free under `ga`).
 fn eval_counted(
     view: &LayerView<'_>,
     table: &SiteTable,
     budget: Option<u32>,
     g: &Genome,
+    ctx: &EvalCtx<'_>,
     spent: &mut u64,
     best: &mut Option<(Genome, Score)>,
 ) -> Score {
-    let s = score(view, table, g, budget);
+    let s = score_ctx(view, table, g, budget, ctx);
     *spent += 1;
     if best.as_ref().map_or(true, |(_, bs)| s < *bs) {
         *best = Some((g.clone(), s));
