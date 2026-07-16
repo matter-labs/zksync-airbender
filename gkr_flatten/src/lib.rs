@@ -22,5 +22,6 @@ pub mod ir;
 pub mod oracle;
 pub mod residency;
 pub mod resolvers;
+pub mod search;
 pub mod su;
 pub mod walk;
