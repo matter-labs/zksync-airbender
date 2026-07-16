@@ -4,14 +4,23 @@
 //! per node OCCURRENCE in the all-recompute tree (never per distinct
 //! `ExprId`; a shared sub-expr is recomputed at every site that reaches it).
 //!
-//! M1 ships only `NeutralOracle` (identity root order, never caches): the
-//! walker's residency check always misses, so every non-leaf node is either
-//! folded straight into the accumulator (leaves, fma-able Muls) or fully
-//! recomputed via the stash-discipline general branch. `maybe_cache` is
-//! wired (the hook is invoked with a live `SitePath`) but is a no-op under
-//! `NeutralOracle`'s `None`-everywhere `keep_priority` — this is exactly
-//! what makes the neutral walker's stats compare 1:1 against
-//! `analysis::size_layer`'s all-recompute DP (`neutral_stats_match_dp`).
+//! M2 adds the simulated cache (`residency::Residency`): a value the oracle
+//! wishes to keep is admitted (`Op::CacheStore` for an accumulator value,
+//! `Op::CacheLoad` for an operand-position Dram leaf) under a lane budget,
+//! and reused at its later occurrences as `Op::Load(Cached)`/`Operand::Cached`
+//! — a HIT that prunes the whole recompute cone and charges no traffic.
+//! Admissions and stash reservations evict the lowest-priority residents when
+//! the budget is tight, each eviction emitting an `Op::Evict` before the op
+//! that displaced it. See `flatten_budgeted`.
+//!
+//! `NeutralOracle` (identity root order, `None`-everywhere `keep_priority`)
+//! recovers the M1 all-recompute baseline exactly: the residency check always
+//! misses and no value is ever admitted, so every non-leaf node is folded
+//! straight into the accumulator (leaves, fma-able Muls) or fully recomputed
+//! via the stash-discipline general branch. This is what makes the neutral
+//! walker's stats compare 1:1 against `analysis::size_layer`'s all-recompute
+//! DP (`neutral_stats_match_dp`) and byte-identical across budgets
+//! (`all_refuse_is_byte_identical_to_m1`).
 
 use std::collections::HashMap;
 
@@ -20,27 +29,52 @@ use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceId};
 use crate::dag::{LayerView, LeafClass, NodeKind};
 use crate::ir::{Op, Operand, Program, SlotId};
 use crate::oracle::{Oracle, SiteObs, SitePath, SiteStep};
+use crate::residency::{Admit, Residency};
 use crate::su;
 
-/// Aggregate cost counters produced by one `flatten()` call.
+/// Aggregate cost counters produced by one `flatten()`/`flatten_budgeted()`
+/// call.
 ///
-/// - `traffic`: width-weighted Dram-leaf TOUCHES (every `Load`/`Add`/`Mul`/
-///   `Fma` operand that is a Dram leaf charges its width; Free leaves charge
-///   0). Under `NeutralOracle`, equals `analysis::SizingReport::ceiling`.
+/// - `traffic`: width-weighted Dram-leaf TOUCHES. A plain Dram-leaf `Load`/
+///   `Add`/`Mul`/`Fma` operand charges its width, as does the `CacheLoad`
+///   that ADMITS an operand-position Dram leaf (charged exactly once — the
+///   `CacheLoad` REPLACES the plain leaf touch it stands in for, it does not
+///   add to it). A cache HIT (`Operand::Cached`/`Op::Load(Cached)`) charges
+///   NO traffic — this is how caching prunes the all-recompute ceiling toward
+///   the distinct-leaf floor. Free leaves charge 0. Under `NeutralOracle`
+///   (nothing ever resident, no hit/admission taken), equals
+///   `analysis::SizingReport::ceiling`.
 /// - `instrs`: total `Op`s emitted.
-/// - `peak`: max concurrent stash lanes. Under `NeutralOracle`, equals
+/// - `peak`: max concurrent STASH lanes (`residency.stash_lanes()` max) —
+///   stash-only, never stash+resident. Cached residents occupy a separate
+///   lane pool that never counts toward `peak`. Under `NeutralOracle`, equals
 ///   `su::cone_peak`/`analysis::SizingReport::peak` — the load-bearing
-///   invariant this walker exists to realize.
+///   invariant this walker exists to realize. Caching only ever PRUNES stashes
+///   (a resident fold child hits instead of recursing), so `peak` under any
+///   oracle never exceeds the neutral (all-recompute) model.
 /// - `sites_visited`: total node OCCURRENCES processed (every recursed
 ///   compound, every streamed leaf operand, every fused-fma Mul child PLUS
 ///   its two operands — see `Walker::emit`). Under `NeutralOracle`, equals
 ///   `analysis::SizingReport::sites`.
+/// - `hits`: cache HITS — a resident value reused (at the `emit` entry as
+///   `Load(Cached)`, or in operand position as `Operand::Cached`) instead of
+///   being recomputed. Zero under `NeutralOracle`.
+/// - `cache_stores`: admissions into the simulated cache — one per
+///   `Op::CacheStore` (compound/leaf-root value in the accumulator) PLUS one
+///   per `Op::CacheLoad` (operand-position leaf admitted straight from DRAM).
+///   Zero under `NeutralOracle`.
+/// - `evictions`: victims displaced from the cache — one per `Op::Evict`,
+///   whether displaced by an admission (`try_admit` victims) or by a stash
+///   reservation (`charge_stash` victims). Zero under `NeutralOracle`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct WalkStats {
     pub traffic: u64,
     pub instrs: u64,
     pub peak: u32,
     pub sites_visited: u64,
+    pub hits: u64,
+    pub cache_stores: u64,
+    pub evictions: u64,
 }
 
 /// A flattened `Program` plus the stats accumulated while producing it.
@@ -55,20 +89,35 @@ pub struct WalkOutput {
 /// underlying expr — each still gets its own `SinkMaterialize` (and, under
 /// `NeutralOracle`, its own full recompute).
 pub fn flatten(view: &LayerView<'_>, oracle: &dyn Oracle) -> WalkOutput {
+    flatten_budgeted(view, oracle, None)
+}
+
+/// Like [`flatten`], but with an explicit cell `budget` (lanes) for the
+/// simulated cache/stash pool. `None` = unbounded (never evicts, always
+/// admits on an oracle wish); `Some(b)` caps `stash_lanes + resident_lanes`
+/// at `b`, evicting the lowest-priority residents under pressure. Under
+/// `NeutralOracle` (no wish ever, nothing resident) the budget is inert and
+/// the output is byte-identical to M1 regardless of `budget` — the regression
+/// net for the entire caching surgery.
+pub fn flatten_budgeted(
+    view: &LayerView<'_>,
+    oracle: &dyn Oracle,
+    budget: Option<u32>,
+) -> WalkOutput {
     let mut walker = Walker {
         view,
         oracle,
         program: Program { ops: Vec::new(), width_of_slot: Default::default() },
         stats: WalkStats::default(),
-        live_stash_lanes: 0,
-        budget_hint: None,
+        residency: Residency::new(budget),
     };
     for root_id in oracle.root_order(view.layer) {
         let root_expr = view.layer.roots[root_id.0 as usize].expr;
         let mut path = SitePath { root: root_id, steps: Vec::new() };
         walker.emit(root_expr, &mut path, 0);
         debug_assert_eq!(
-            walker.live_stash_lanes, 0,
+            walker.residency.stash_lanes(),
+            0,
             "gkr_flatten: stash lanes leaked past the end of root {root_id:?} — every slot \
              stashed inside a root's cone must be consumed before its SinkMaterialize (stack \
              discipline violated)"
@@ -84,13 +133,12 @@ struct Walker<'v, 'o> {
     oracle: &'o dyn Oracle,
     program: Program,
     stats: WalkStats,
-    /// Sum of `width_of_slot` over currently-live (stashed, not yet
-    /// consumed) slots — the running value whose max is `stats.peak`.
-    live_stash_lanes: u32,
-    /// M2 feasibility tripwire (spec §5): when set, every `charge_stash`
-    /// asserts `live_stash_lanes <= budget_hint`. Unset (`None`) in M1 —
-    /// nothing enforces a cell budget yet.
-    budget_hint: Option<u32>,
+    /// The simulated cache/stash lane pool (spec M2 §2). Owns the running
+    /// stash-lane count (whose max is `stats.peak`), the resident value set
+    /// (hit-tested at every `emit` entry and operand resolution), and the
+    /// `budget`/eviction tripwire — superseding M1's bare `live_stash_lanes`
+    /// counter and `budget_hint` feasibility hook.
+    residency: Residency,
 }
 
 impl<'v, 'o> Walker<'v, 'o> {
@@ -104,10 +152,25 @@ impl<'v, 'o> Walker<'v, 'o> {
         // roots, and every compound reached by recursion. Its `SiteStep` (if
         // any) is already on `path`; observed as a standalone value.
         self.observe(e, path, false);
+        // Cache hit (M2): a value already resident is reused straight from the
+        // cache — its whole cone is pruned (no recursion, no traffic). Under
+        // `NeutralOracle` nothing is ever resident, so this is never taken and
+        // the walker degenerates to the M1 all-recompute tree.
+        if self.residency.is_resident(e) {
+            self.stats.hits += 1;
+            self.push(Op::Load(Operand::Cached(e)));
+            return;
+        }
         match self.view.kind(e) {
             NodeKind::Leaf(class) => {
                 self.charge_leaf(class);
                 self.push(Op::Load(Operand::Leaf(self.source_id(e))));
+                // Leaf-root admission (M2): the leaf's value is now in acc, so
+                // `CacheStore` (acc-based) is the right admission op here — the
+                // operand-position `CacheLoad` path is only for leaves consumed
+                // as Add/Mul/Fma operands (see `ready_operand`). No-op under
+                // `NeutralOracle`; skips Free leaves.
+                self.maybe_cache(e, path);
             }
             NodeKind::Add(children) | NodeKind::Mul(children) => {
                 let is_add = matches!(self.view.kind(e), NodeKind::Add(_));
@@ -115,7 +178,28 @@ impl<'v, 'o> Walker<'v, 'o> {
                 let mut first = true;
                 for (dup, child) in ordered {
                     path.steps.push(SiteStep { child, dup });
-                    if self.is_ready_product(child) {
+                    if self.is_ready(child) {
+                        // leaf (M1) or resident (M2). Checked BEFORE
+                        // `is_ready_product`: a *resident* streamable-Mul
+                        // product resolves here as `Operand::Cached` (a hit)
+                        // rather than being recomputed as an Fma. Under M1 this
+                        // reorder is behavior-preserving — leaves are never
+                        // products, and (all-refuse) nothing is ever resident,
+                        // so a Mul child never satisfies `is_ready` in M1.
+                        //
+                        // Placement 3 (spec M2 §4): the ready child (its
+                        // `SiteStep` already pushed above), observed as a
+                        // standalone value before `ready_operand` resolves it.
+                        self.observe(child, path, false);
+                        let op = self.ready_operand(child, path);
+                        self.push(if first {
+                            Op::Load(op)
+                        } else if is_add {
+                            Op::Add(op)
+                        } else {
+                            Op::Mul(op)
+                        });
+                    } else if self.is_ready_product(child) {
                         // 2-arity Mul with both operands ready (M1: leaf):
                         // the product streams into acc — no temp, no stash
                         // (spec §2 Rev 1). Under an Add parent it fuses as
@@ -135,11 +219,11 @@ impl<'v, 'o> Walker<'v, 'o> {
                         self.observe(child, path, true);
                         path.steps.push(SiteStep { child: a, dup: 0 });
                         self.observe(a, path, false);
-                        let oa = self.ready_operand(a);
+                        let oa = self.ready_operand(a, path);
                         path.steps.pop();
                         path.steps.push(SiteStep { child: b, dup: u8::from(b == a) });
                         self.observe(b, path, false);
-                        let ob = self.ready_operand(b);
+                        let ob = self.ready_operand(b, path);
                         path.steps.pop();
                         if first {
                             self.push(Op::Load(oa));
@@ -150,34 +234,24 @@ impl<'v, 'o> Walker<'v, 'o> {
                             self.push(Op::Mul(oa));
                             self.push(Op::Mul(ob));
                         }
-                    } else if self.is_ready(child) {
-                        // leaf (M1) or resident (M2)
-                        // Placement 3 (spec M2 §4): the ready leaf child (its
-                        // `SiteStep` already pushed above), observed as a
-                        // standalone value before `ready_operand` resolves it.
-                        self.observe(child, path, false);
-                        let op = self.ready_operand(child);
-                        self.push(if first {
-                            Op::Load(op)
-                        } else if is_add {
-                            Op::Add(op)
-                        } else {
-                            Op::Mul(op)
-                        });
                     } else {
                         // Non-ready compound child: stash acc (unless
                         // first), recurse, combine.
                         if !first {
                             let slot = SlotId(depth);
-                            self.push(Op::Stash(slot));
+                            // Charge the stash BEFORE pushing `Op::Stash`: the
+                            // reservation may evict cache residents, and every
+                            // such `Op::Evict` must precede the `Stash` that
+                            // displaced them (spec eviction ordering).
                             let w = self.charge_stash(e, depth);
+                            self.push(Op::Stash(slot));
                             self.emit(child, path, depth + 1);
                             self.push(if is_add {
                                 Op::Add(Operand::Stashed(slot))
                             } else {
                                 Op::Mul(Operand::Stashed(slot))
                             });
-                            self.live_stash_lanes -= w;
+                            self.residency.release_stash(w);
                         } else {
                             self.emit(child, path, depth);
                         }
@@ -218,10 +292,13 @@ impl<'v, 'o> Walker<'v, 'o> {
         non_stream
     }
 
-    /// M1 readiness: a leaf. (M2 will extend this to "leaf or resident in
-    /// the simulated cache.")
+    /// Readiness: `e` resolves to an `Operand` without recursion — a leaf, or
+    /// (M2) a value already resident in the simulated cache. A resident
+    /// compound is "ready" too: it resolves as `Operand::Cached`, its cone
+    /// pruned. Under `NeutralOracle` nothing is resident, so this degenerates
+    /// to the M1 leaf-only predicate.
     fn is_ready(&self, e: ExprId) -> bool {
-        matches!(self.view.kind(e), NodeKind::Leaf(_))
+        self.residency.is_resident(e) || matches!(self.view.kind(e), NodeKind::Leaf(_))
     }
 
     /// `e` is a 2-arity `Mul` with BOTH operands ready (M1: leaf) — spec §2
@@ -254,20 +331,65 @@ impl<'v, 'o> Walker<'v, 'o> {
         }
     }
 
-    /// Resolves a ready (M1: leaf) expr straight to an `Operand`, charging
-    /// its Dram traffic and counting its site occurrence. Every call site is
-    /// exactly one node occurrence that never recurses through `emit`.
-    fn ready_operand(&mut self, e: ExprId) -> Operand {
+    /// Resolves a ready expr straight to an `Operand`. Three cases:
+    ///
+    /// - **resident** → a cache HIT: `Operand::Cached(e)`, `hits += 1`, no
+    ///   traffic, no recompute. (Checked first, so `try_admit`'s
+    ///   already-resident assert can never fire from here.)
+    /// - **Dram leaf** with an oracle wish (`Some(priority)`) that
+    ///   `residency.admit` accepts → admit it in operand position via
+    ///   `Op::CacheLoad`: emit the displaced residents' `Evict`s first, charge
+    ///   the leaf's traffic exactly ONCE (the `CacheLoad` REPLACES the plain
+    ///   leaf touch, not adds to it), `cache_stores += 1`, and return
+    ///   `Operand::Cached(e)` so the caller folds the now-resident value.
+    /// - otherwise (Free leaf, no wish, or admission refused) → M1 leaf
+    ///   behavior: charge the leaf's traffic, return `Operand::Leaf`.
+    ///
+    /// The non-hit paths each count exactly one node occurrence
+    /// (`sites_visited`), a node that never recurses through `emit`.
+    fn ready_operand(&mut self, e: ExprId, path: &SitePath) -> Operand {
+        if self.residency.is_resident(e) {
+            self.stats.hits += 1;
+            return Operand::Cached(e);
+        }
         match self.view.kind(e) {
             NodeKind::Leaf(class) => {
-                self.charge_leaf(class);
                 self.stats.sites_visited += 1;
+                if let LeafClass::Dram { .. } = class {
+                    if let Some(victims) = self.try_admit(e, path) {
+                        for victim in victims {
+                            self.push(Op::Evict(victim));
+                            self.stats.evictions += 1;
+                        }
+                        self.charge_leaf(class); // the leaf touch, charged once
+                        self.push(Op::CacheLoad { src: self.source_id(e), id: e });
+                        self.stats.cache_stores += 1;
+                        return Operand::Cached(e);
+                    }
+                }
+                // Free leaf, no oracle wish, or admission refused: plain touch.
+                self.charge_leaf(class);
                 Operand::Leaf(self.source_id(e))
             }
             _ => unreachable!(
                 "gkr_flatten: ready_operand called on non-ready expr {e:?} (caller must check \
                  is_ready first)"
             ),
+        }
+    }
+
+    /// Consults the oracle for `e`'s site and, on a wish (`Some(priority)`),
+    /// asks `residency` to admit `e` at `view.width(e)` lanes. Returns the
+    /// displaced victims (possibly empty) on admission, or `None` when there
+    /// is no wish OR the residency refuses (the incomer would be the
+    /// lowest-priority resident). Shared by `ready_operand` (leaf, `CacheLoad`)
+    /// and `maybe_cache` (compound/leaf-root, `CacheStore`). The caller must
+    /// have hit-checked `e` first — `residency.admit` asserts `!is_resident`.
+    fn try_admit(&mut self, e: ExprId, path: &SitePath) -> Option<Vec<ExprId>> {
+        let priority = self.oracle.keep_priority(path)?;
+        match self.residency.admit(e, self.view.width(e), priority) {
+            Admit::Admitted { victims } => Some(victims),
+            Admit::Refused => None,
         }
     }
 
@@ -288,10 +410,14 @@ impl<'v, 'o> Walker<'v, 'o> {
     }
 
     /// Charges stashing fold node `e`'s partial: `view.width(e)` lanes,
-    /// recorded in `Program.width_of_slot[depth]` and added to the running
-    /// `live_stash_lanes`, whose running max is `stats.peak` (must equal
-    /// `su::cone_peak` — the load-bearing invariant). Returns the charged
-    /// width so the caller can free it again once the slot is consumed.
+    /// recorded in `Program.width_of_slot[depth]` and reserved through
+    /// `residency.reserve_stash`, whose running `stash_lanes()` max is
+    /// `stats.peak` (must equal `su::cone_peak` under `NeutralOracle` — the
+    /// load-bearing invariant). Stashes are unevictable and outrank every
+    /// cached value, so the reservation evicts the lowest-priority residents
+    /// as needed — each such victim gets an `Op::Evict` emitted HERE, before
+    /// the caller pushes the displacing `Op::Stash`. Returns the charged
+    /// width so the caller can release it again once the slot is consumed.
     ///
     /// `width_of_slot` is max-write: slots are keyed by depth and reused
     /// across sibling subtrees/roots whose fold widths may differ, so the
@@ -305,31 +431,38 @@ impl<'v, 'o> Walker<'v, 'o> {
             .entry(depth)
             .and_modify(|v| *v = (*v).max(w))
             .or_insert(w);
-        self.live_stash_lanes += w;
-        self.stats.peak = self.stats.peak.max(self.live_stash_lanes);
-        if let Some(budget) = self.budget_hint {
-            debug_assert!(
-                self.live_stash_lanes <= budget,
-                "gkr_flatten: live stash lanes {} exceed budget hint {} at expr {e:?}, depth {depth}",
-                self.live_stash_lanes,
-                budget
-            );
+        for victim in self.residency.reserve_stash(w) {
+            self.push(Op::Evict(victim));
+            self.stats.evictions += 1;
         }
+        self.stats.peak = self.stats.peak.max(self.residency.stash_lanes());
         w
     }
 
-    /// M2 caching hook: consults `oracle.keep_priority(path)` for `e`'s
-    /// site. A no-op under `NeutralOracle` (always `None`) — M2 will act on
-    /// `Some(priority)` by admitting `e` into the simulated cache
-    /// (`Op::CacheStore`) and scheduling its eventual `Op::Evict`.
+    /// M2 accumulator-position caching hook, invoked after a compound's fold
+    /// (value in acc) and after a leaf-root's `Load` (leaf value in acc). On
+    /// an oracle wish that `residency.admit` accepts, emits the displaced
+    /// residents' `Op::Evict`s and then an `Op::CacheStore(e)` marking `e`'s
+    /// accumulator value admitted (`cache_stores += 1`). Skips Free leaves
+    /// (inadmissible: 0 traffic, never worth a cell). A no-op under
+    /// `NeutralOracle` (`keep_priority` always `None`), which is what keeps the
+    /// neutral walk byte-identical to M1.
     ///
-    /// M1 site domain is compound-only: this hook is only ever invoked for
-    /// `Add`/`Mul` nodes reached via the general recursive branch. Leaves and
-    /// fma-fused Mul operands (the `is_ready_product`/`ready_operand` arms
-    /// above) never reach it — M2 extends the site domain to cover them.
+    /// The caller guarantees `e` is not resident on entry: a compound cannot
+    /// be admitted during its own fold (DAG acyclicity), and a resident value
+    /// would have hit at the `emit` entry and returned before reaching here.
     fn maybe_cache(&mut self, e: ExprId, path: &SitePath) {
-        let _ = e;
-        let _ = self.oracle.keep_priority(path);
+        if let NodeKind::Leaf(LeafClass::Free) = self.view.kind(e) {
+            return;
+        }
+        if let Some(victims) = self.try_admit(e, path) {
+            for victim in victims {
+                self.push(Op::Evict(victim));
+                self.stats.evictions += 1;
+            }
+            self.push(Op::CacheStore(e));
+            self.stats.cache_stores += 1;
+        }
     }
 
     /// Hands one site occurrence to the oracle. `admissible` folds the
@@ -941,5 +1074,175 @@ mod tests {
 
         let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
         check(&dag.layers[0], &cross, "add_sub L0");
+    }
+
+    // ── M2 caching walker (Task 4) ────────────────────────────────────────
+
+    #[test]
+    fn all_refuse_is_byte_identical_to_m1() {
+        // NeutralOracle under any budget must reproduce the M1 walker exactly.
+        for layer in [tiny_fma_layer(), shared_diamond(), mixed_peak_layer()] {
+            let cross = HashMap::new();
+            let v = view(&layer, &cross);
+            let m1 = flatten(&v, &NeutralOracle);
+            let m2 = flatten_budgeted(&v, &NeutralOracle, Some(64));
+            assert_eq!(m1.program, m2.program);
+            assert_eq!(m1.stats, m2.stats);
+        }
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let rv = LayerView::new(&dag.layers[0], &cross, None);
+        let m1 = flatten(&rv, &NeutralOracle);
+        let m2 = flatten_budgeted(&rv, &NeutralOracle, Some(64));
+        assert_eq!(m1.program, m2.program);
+        assert_eq!(m1.stats, m2.stats);
+    }
+
+    #[test]
+    fn shared_compound_hit_prunes_recursion() {
+        // shared_diamond: two roots sharing one compound. Admit it at its first
+        // (root-0) occurrence; root 1's walk must hit (Load(Cached)) instead of
+        // recomputing, and traffic must drop to the floor.
+        let layer = shared_diamond();
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        let roots: Vec<ExprId> = layer.roots.iter().map(|r| r.expr).collect();
+        let report = size_layer(&v, &roots);
+
+        let out = flatten_budgeted(&v, &crate::oracle::AdmitAll, None);
+        assert!(out.stats.hits > 0, "second occurrence must hit");
+        assert_eq!(out.stats.traffic, report.floor, "all-admit @ unbounded reaches the floor");
+        assert!(out.program.ops.iter().any(|op| matches!(op, Op::CacheStore(_))));
+        assert!(out.program.ops.iter().any(|op| matches!(op, Op::Load(Operand::Cached(_)))));
+        // Bracket sanity on the same walker:
+        let ceiling = flatten(&v, &NeutralOracle).stats.traffic;
+        assert!(out.stats.traffic <= ceiling);
+    }
+
+    #[test]
+    fn operand_position_leaf_caching_uses_cache_load() {
+        // root0 = Add(a, Mul(b, c)); root1 = Add(a, Mul(b, c)) again (two roots,
+        // same expr): admitting operand-position leaf b must emit CacheLoad at
+        // its first touch and Cached at the second, charging b's traffic once.
+        let sources = vec![testdag::base_read(0), testdag::base_read(1), testdag::base_read(2)];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),             // a
+            Expr::Source(SourceId(1)),             // b
+            Expr::Source(SourceId(2)),             // c
+            Expr::Mul(vec![ExprId(1), ExprId(2)]), // Mul(b, c)
+            Expr::Add(vec![ExprId(0), ExprId(3)]), // Add(a, Mul)
+        ];
+        let layer = testdag::layer(
+            sources, exprs,
+            vec![testdag::root(ExprId(4)), testdag::root(ExprId(4))],
+        );
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+
+        // Enable ONLY root-0's b-operand site.
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let b_site = table.sites.iter()
+            .find(|s| s.value == ExprId(1) && s.path.root == RootId(0) && s.admissible)
+            .expect("b operand site under root 0");
+        let oracle = crate::oracle::MapOracle {
+            priorities: [(crate::oracle::path_key(&b_site.path), 5)].into_iter().collect(),
+        };
+        let out = flatten_budgeted(&v, &oracle, Some(8));
+
+        let cache_loads = out.program.ops.iter()
+            .filter(|op| matches!(op, Op::CacheLoad { src: SourceId(1), .. })).count();
+        assert_eq!(cache_loads, 1, "b admitted via CacheLoad exactly once");
+        assert_eq!(out.stats.hits, 1, "root 1's b touch hits");
+        let neutral = flatten(&v, &NeutralOracle).stats.traffic;
+        assert_eq!(out.stats.traffic, neutral - 1, "b (Base, width 1) charged once instead of twice");
+    }
+
+    #[test]
+    fn eviction_under_pressure_emits_evict() {
+        // Budget 1 lane (Base widths): admit a at priority 1, then b at
+        // priority 9 -> a evicted, Evict(a) emitted BEFORE b's CacheLoad.
+        let sources = vec![testdag::base_read(0), testdag::base_read(1)];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),             // a
+            Expr::Source(SourceId(1)),             // b
+            Expr::Add(vec![ExprId(0), ExprId(1)]), // r0 = Add(a, b)
+            Expr::Add(vec![ExprId(0), ExprId(1)]), // r1 (recompute: fresh sites)
+        ];
+        let layer = testdag::layer(
+            sources, exprs,
+            vec![testdag::root(ExprId(2)), testdag::root(ExprId(3))],
+        );
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        // Under root 0: a's site gets priority 1, b's site priority 9.
+        let mut priorities = std::collections::HashMap::new();
+        for s in &table.sites {
+            if s.path.root == RootId(0) && s.admissible {
+                if s.value == ExprId(0) { priorities.insert(crate::oracle::path_key(&s.path), 1); }
+                if s.value == ExprId(1) { priorities.insert(crate::oracle::path_key(&s.path), 9); }
+            }
+        }
+        let oracle = crate::oracle::MapOracle { priorities };
+        let out = flatten_budgeted(&v, &oracle, Some(1));
+
+        assert_eq!(out.stats.evictions, 1);
+        let evict_pos = out.program.ops.iter()
+            .position(|op| matches!(op, Op::Evict(ExprId(0)))).expect("Evict(a) present");
+        let b_load_pos = out.program.ops.iter()
+            .position(|op| matches!(op, Op::CacheLoad { src: SourceId(1), .. }))
+            .expect("CacheLoad(b) present");
+        assert!(evict_pos < b_load_pos, "Evict precedes the displacing CacheLoad");
+    }
+
+    #[test]
+    fn caching_walks_never_exceed_model_peak() {
+        for layer in [
+            shared_diamond(), mixed_peak_layer(),
+            nested_mul_under_add_layer(), two_live_slots_layer(),
+        ] {
+            let cross = HashMap::new();
+            let v = view(&layer, &cross);
+            let model: u32 = layer.roots.iter().map(|r| su::cone_peak(&v, r.expr)).max().unwrap();
+            let out = flatten_budgeted(&v, &crate::oracle::AdmitAll, Some(model + 8));
+            assert!(out.stats.peak <= model, "hits only ever prune: peak {} > model {model}", out.stats.peak);
+        }
+    }
+
+    #[test]
+    fn caching_program_still_evaluates_correctly() {
+        // Value parity under caching: AdmitAll (finite + unbounded budgets) on
+        // synthetic layers and the real add_sub L0, vs eval_layer_root, via the
+        // shared HashResolvers.
+        let r = crate::resolvers::HashResolvers { seed: 7 };
+        let rb = r.bundle();
+        let check = |layer: &DagLayer, cross: &HashMap<_, _>, budget: Option<u32>, label: &str| {
+            let v = LayerView::new(layer, cross, None);
+            let out = flatten_budgeted(&v, &crate::oracle::AdmitAll, budget);
+            for row in [0usize, 1, 7] {
+                let got = crate::ir::interpret(&out.program, layer, row, &rb);
+                for (i, _) in layer.roots.iter().enumerate() {
+                    let want = cs::gkr_compiler::dag_ir::eval::eval_layer_root(
+                        layer, RootId(i as u32), row, &rb);
+                    assert_eq!(got[&RootId(i as u32)], want, "[{label}] root {i} row {row}");
+                }
+            }
+        };
+        let empty = HashMap::new();
+        for (layer, label) in [
+            (shared_diamond(), "diamond"),
+            (two_live_slots_layer(), "two_live_slots"),
+            (mixed_peak_layer(), "mixed_peak"),
+        ] {
+            check(&layer, &empty, None, label);
+            check(&layer, &empty, Some(9), label);
+        }
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let report = {
+            let v = LayerView::new(&dag.layers[0], &cross, None);
+            let roots: Vec<ExprId> = dag.layers[0].roots.iter().map(|r| r.expr).collect();
+            size_layer(&v, &roots)
+        };
+        check(&dag.layers[0], &cross, None, "add_sub L0 unbounded");
+        check(&dag.layers[0], &cross, Some(report.peak + 2), "add_sub L0 tight");
     }
 }

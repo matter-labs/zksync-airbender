@@ -111,7 +111,7 @@ pub enum Op {
 /// A flat linear-IR program over one `DagLayer` row. `width_of_slot` is DP
 /// accounting metadata (lane width per stash slot) for the M2 sizing/peak
 /// bookkeeping; [`interpret`] never reads it.
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Program {
     pub ops: Vec<Op>,
     pub width_of_slot: BTreeMap<u32, u32>,

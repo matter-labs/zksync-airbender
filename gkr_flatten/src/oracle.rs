@@ -82,6 +82,38 @@ impl Oracle for NeutralOracle {
     }
 }
 
+/// Test oracle: explicit per-path priorities (keyed by `path_key`), identity
+/// root order.
+#[cfg(test)]
+pub(crate) struct MapOracle {
+    pub priorities: std::collections::HashMap<PathKey, u32>,
+}
+
+#[cfg(test)]
+impl Oracle for MapOracle {
+    fn root_order(&self, layer: &DagLayer) -> Vec<RootId> {
+        (0..layer.roots.len() as u32).map(RootId).collect()
+    }
+    fn keep_priority(&self, site: &SitePath) -> Option<u32> {
+        self.priorities.get(&path_key(site)).copied()
+    }
+}
+
+/// Test oracle: admit-everything at a fixed priority (bracket floor when the
+/// budget is unbounded; naive-fill when finite).
+#[cfg(test)]
+pub(crate) struct AdmitAll;
+
+#[cfg(test)]
+impl Oracle for AdmitAll {
+    fn root_order(&self, layer: &DagLayer) -> Vec<RootId> {
+        (0..layer.roots.len() as u32).map(RootId).collect()
+    }
+    fn keep_priority(&self, _site: &SitePath) -> Option<u32> {
+        Some(1)
+    }
+}
+
 /// A `SitePath` flattened into an owned, hashable/equatable key. Encodes the
 /// route as `(root index, [(child ExprId, dup)])` — value-identical to the
 /// `SitePath` it came from, so two occurrences collide iff they name the same
