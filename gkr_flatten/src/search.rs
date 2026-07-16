@@ -25,6 +25,7 @@
 //! lowest locus index (`Reverse(locus)` in the max-heap key) so two runs
 //! over the same table produce the identical sequence of admissions.
 
+use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
@@ -33,7 +34,8 @@ use cs::gkr_compiler::dag_ir::ExprId;
 use crate::dag::LayerView;
 use crate::genome::{decode, Genome, SplitMix64};
 use crate::oracle::{SiteTable, UseCounts};
-use crate::walk::flatten_counted;
+use crate::order::{OrderCtx, OrderPolicy};
+use crate::walk::flatten_with;
 
 /// The walker's objective: DRAM traffic first, instruction count as a
 /// tiebreak. `derive(Ord)` is lexicographic over fields in declaration
@@ -45,23 +47,35 @@ pub struct Score {
 }
 
 /// Evaluation context threaded through the `*_ctx` search variants (spec M3).
-/// A single field today — `counts`, the per-value use countdown handed to
-/// [`crate::walk::flatten_counted`] so the dead-aware residency engages — kept
-/// as a struct so Task 6 can add order-key/after-set fields WITHOUT another
-/// signature churn across every caller. `Default` (all-`None`) recovers the
-/// M2 counts-free walk byte-for-byte, which is what makes the old
-/// `score`/`greedy`/`ga` names thin wrappers over their `*_ctx` bodies.
+/// `counts` is the per-value use countdown that engages the dead-aware
+/// residency (Task 3); `policy` (Task 6, default [`OrderPolicy::Su`]) and
+/// `order` select and drive the walker's fold-order channel (Task 5/6) — a
+/// `RefCell` because `score_ctx` rebuilds its genome-dependent `fills` map
+/// in place per genome (serial GA ⇒ never contended). `Default` (`Su`
+/// policy, both counts and order `None`) recovers the M2 counts-free walk
+/// byte-for-byte, which is what makes the old `score`/`greedy`/`ga` names
+/// thin wrappers over their `*_ctx` bodies.
 #[derive(Default)]
 pub struct EvalCtx<'a> {
     /// Per-value use totals for the dead-aware walk; `None` = M2 behavior
     /// (no countdown, no early death, byte-identical to `flatten_budgeted`).
     pub counts: Option<&'a UseCounts>,
+    /// The fold-order policy (spec M3/Task 6). Default `Su` — the M1/M2
+    /// order, byte-identical to every pre-M3 search.
+    pub policy: OrderPolicy,
+    /// The read-only order channel a non-`Su` `policy` requires (asserted by
+    /// [`crate::walk::flatten_with`]); `None` under `Su`.
+    pub order: Option<RefCell<OrderCtx<'a>>>,
 }
 
-/// One walk over `g` decoded against `table`, reduced to its `Score`. Threads
-/// `ctx.counts` into [`crate::walk::flatten_counted`]: with `None` (the
-/// `EvalCtx::default` the M2 wrapper passes) this is exactly the pre-M3
-/// `flatten_budgeted` walk; with `Some` it engages the dead-aware residency.
+/// One walk over `g` decoded against `table`, reduced to its `Score`. Under a
+/// non-`Su` `ctx.policy` with a nonzero `fill_weight`, first rebuilds
+/// `ctx.order`'s genome-dependent `fills` map for `g` (serial GA never
+/// contends the `RefCell`); then routes through
+/// [`crate::walk::flatten_with`] with `ctx.policy`/`ctx.order`. With the
+/// `EvalCtx::default` the M2 wrapper passes (`Su`, no counts, no order) this
+/// is exactly the pre-M3 `flatten_budgeted` walk; with `counts: Some` it
+/// engages the dead-aware residency.
 pub fn score_ctx(
     view: &LayerView<'_>,
     table: &SiteTable,
@@ -69,7 +83,18 @@ pub fn score_ctx(
     budget: Option<u32>,
     ctx: &EvalCtx<'_>,
 ) -> Score {
-    let out = flatten_counted(view, &decode(g, table), budget, ctx.counts);
+    let fill_weight = match ctx.policy {
+        OrderPolicy::Derived(p) | OrderPolicy::DerivedBiased(p) => p.fill_weight,
+        OrderPolicy::Su | OrderPolicy::Searched => 0,
+    };
+    if fill_weight != 0 {
+        if let Some(order) = &ctx.order {
+            order.borrow_mut().set_fills(g, view);
+        }
+    }
+    let oracle = decode(g, table);
+    let borrowed = ctx.order.as_ref().map(|o| o.borrow());
+    let out = flatten_with(view, &oracle, budget, ctx.policy, ctx.counts, borrowed.as_deref());
     Score { traffic: out.stats.traffic, instrs: out.stats.instrs }
 }
 
@@ -124,7 +149,12 @@ pub fn greedy_ctx(
         for (rank, &locus) in enabled.iter().enumerate() {
             keep[locus as usize] = (enabled.len() - rank) as u16;
         }
-        Genome { root_keys: (0..n_roots as u32).collect(), keep, threshold: 0 }
+        Genome {
+            root_keys: (0..n_roots as u32).collect(),
+            keep,
+            threshold: 0,
+            order_bias: vec![0; table.len()],
+        }
     };
     let mut enabled: Vec<u32> = Vec::new();
     let mut current = score_ctx(view, table, &genome_of(&enabled), budget, ctx);
@@ -174,7 +204,8 @@ pub fn greedy(view: &LayerView<'_>, table: &SiteTable, n_roots: usize, budget: O
 }
 
 /// Tunables for [`ga`] (spec §6). `Default` is the M2-exit strength:
-/// `pop: 64`, `max_evals: 2000`, `elites: 8`, `descent_flips: 16`, `seed: 0`.
+/// `pop: 64`, `max_evals: 2000`, `elites: 8`, `descent_flips: 16`, `seed: 0`,
+/// `mutate_bias: false`.
 #[derive(Clone, Copy, Debug)]
 pub struct GaParams {
     /// Population size (seeds + `Genome::random` fill up to this).
@@ -192,11 +223,17 @@ pub struct GaParams {
     /// PRNG seed — the sole source of nondeterminism, so two `ga` runs with
     /// equal inputs (incl. seed) produce the identical best genome + score.
     pub seed: u64,
+    /// Task 6: when `true`, [`mutate`] also perturbs `order_bias` genes
+    /// (typically paired with `DerivedBiased`/`Searched` policies). Default
+    /// `false` — the M2 gene space (`keep`/`root_keys`) is untouched by this
+    /// flag, and its RNG draws stay byte-identical to M2 when it is `false`
+    /// (the bias-mutation loop is skipped entirely, not merely a no-op draw).
+    pub mutate_bias: bool,
 }
 
 impl Default for GaParams {
     fn default() -> Self {
-        GaParams { pop: 64, max_evals: 2000, elites: 8, descent_flips: 16, seed: 0 }
+        GaParams { pop: 64, max_evals: 2000, elites: 8, descent_flips: 16, seed: 0, mutate_bias: false }
     }
 }
 
@@ -302,7 +339,7 @@ pub fn ga_ctx(
             let pa = &scored[tournament(&scored, &mut rng)].0;
             let pb = &scored[tournament(&scored, &mut rng)].0;
             let mut child = crossover(pa, pb, &mut rng);
-            mutate(&mut child, n_loci, &mut rng);
+            mutate(&mut child, n_loci, params.mutate_bias, &mut rng);
             let s = eval_counted(view, table, budget, &child, ctx, &mut spent, &mut best);
             next.push((child, s));
         }
@@ -381,17 +418,29 @@ fn tournament(scored: &[(Genome, Score)], rng: &mut SplitMix64) -> usize {
     }
 }
 
-/// Uniform crossover: each `keep` and `root_keys` locus takes its gene from
-/// parent `a` or `b` by an independent coin; `threshold` likewise comes from
-/// either parent. Parents were built against the same table/root count, so
-/// their gene vectors align by index.
+/// Uniform crossover: each `keep`/`order_bias` locus pair takes its genes
+/// from parent `a` or `b` by ONE shared independent coin per locus (Task 6:
+/// `order_bias` "copies per-locus like keep" — riding `keep`'s own coin costs
+/// zero extra RNG draws, so the RNG stream `keep`/`root_keys`/`threshold`
+/// consume is byte-identical to M2's crossover regardless of whether the
+/// bias vector is all-zero or not); each `root_keys` locus takes its own
+/// independent coin; `threshold` likewise comes from either parent. Parents
+/// were built against the same table/root count, so their gene vectors align
+/// by index.
 fn crossover(a: &Genome, b: &Genome, rng: &mut SplitMix64) -> Genome {
-    let keep = a
+    let (keep, order_bias) = a
         .keep
         .iter()
         .zip(&b.keep)
-        .map(|(&x, &y)| if rng.next_u64() & 1 == 0 { x } else { y })
-        .collect();
+        .zip(a.order_bias.iter().zip(&b.order_bias))
+        .map(|((&kx, &ky), (&bx, &by))| {
+            if rng.next_u64() & 1 == 0 {
+                (kx, bx)
+            } else {
+                (ky, by)
+            }
+        })
+        .unzip();
     let root_keys = a
         .root_keys
         .iter()
@@ -399,13 +448,18 @@ fn crossover(a: &Genome, b: &Genome, rng: &mut SplitMix64) -> Genome {
         .map(|(&x, &y)| if rng.next_u64() & 1 == 0 { x } else { y })
         .collect();
     let threshold = if rng.next_u64() & 1 == 0 { a.threshold } else { b.threshold };
-    Genome { root_keys, keep, threshold }
+    Genome { root_keys, keep, threshold, order_bias }
 }
 
 /// Per-locus mutation at probability ≈ `4/n_loci`: each `keep` and
 /// `root_keys` locus is independently replaced by a fresh random gene when a
 /// uniform draw in `0..n_loci` lands below 4 (so ≈ 4 loci mutate per genome).
-fn mutate(g: &mut Genome, n_loci: usize, rng: &mut SplitMix64) {
+/// `order_bias` mutates the same way, but ONLY when `mutate_bias` is set
+/// (Task 6), and its loop runs strictly AFTER `keep`/`root_keys` so that when
+/// `mutate_bias` is `false` the loop is skipped entirely — zero extra RNG
+/// draws, keeping the `keep`/`root_keys` stream byte-identical to M2's
+/// `mutate` (the regression net every fixed-seed M2 GA test leans on).
+fn mutate(g: &mut Genome, n_loci: usize, mutate_bias: bool, rng: &mut SplitMix64) {
     if n_loci == 0 {
         return;
     }
@@ -417,6 +471,13 @@ fn mutate(g: &mut Genome, n_loci: usize, rng: &mut SplitMix64) {
     for rk in g.root_keys.iter_mut() {
         if rng.below(n_loci as u64) < 4 {
             *rk = rng.next_u64() as u32;
+        }
+    }
+    if mutate_bias {
+        for b in g.order_bias.iter_mut() {
+            if rng.below(n_loci as u64) < 4 {
+                *b = rng.next_u64() as i16;
+            }
         }
     }
 }
@@ -483,7 +544,7 @@ mod tests {
         let table = SiteTable::enumerate(&v);
         let n = dag.layers[0].roots.len();
         let budget = Some(report.peak + 2);
-        let params = GaParams { pop: 8, max_evals: 120, elites: 2, descent_flips: 4, seed: 3 };
+        let params = GaParams { pop: 8, max_evals: 120, elites: 2, descent_flips: 4, seed: 3, ..GaParams::default() };
         let seeds = vec![
             neutral_genome(&table, n),
             naive_fill_genome(&table, n),
@@ -496,5 +557,76 @@ mod tests {
         assert_eq!(s1, s2);
         assert!(s1 <= seed_best, "elitism: GA never worse than its best seed");
         assert!(s1.traffic >= report.floor, "bracket");
+    }
+
+    #[test]
+    fn ga_with_bias_is_deterministic_and_elitist() {
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let v = LayerView::new(&dag.layers[0], &cross, None);
+        let roots: Vec<ExprId> = dag.layers[0].roots.iter().map(|r| r.expr).collect();
+        let report = crate::analysis::size_layer(&v, &roots);
+        let table = SiteTable::enumerate(&v);
+        let n = dag.layers[0].roots.len();
+        let budget = Some(report.peak + 2);
+        let n_exprs = dag.layers[0].exprs.len();
+        let counts = table.use_counts(n_exprs);
+        let order = crate::order::OrderCtx::new(&table, n_exprs);
+        let ctx = EvalCtx {
+            counts: Some(&counts),
+            policy: crate::order::OrderPolicy::Searched,
+            order: Some(std::cell::RefCell::new(order)),
+        };
+        let params =
+            GaParams { pop: 8, max_evals: 120, elites: 2, descent_flips: 4, seed: 5, mutate_bias: true };
+        let seeds = vec![
+            neutral_genome(&table, n),
+            naive_fill_genome(&table, n),
+            greedy(&v, &table, n, budget),
+        ];
+        // Apples-to-apples: score the seeds through the SAME (Searched, counted)
+        // ctx `ga_ctx` scores its initial population with, not the M2 `score`.
+        let seed_best =
+            seeds.iter().map(|g| score_ctx(&v, &table, g, budget, &ctx)).min().unwrap();
+        let (g1, s1) = ga_ctx(&v, &table, n, budget, &params, seeds.clone(), &ctx);
+        let (g2, s2) = ga_ctx(&v, &table, n, budget, &params, seeds, &ctx);
+        assert_eq!(g1, g2, "GA with bias must be deterministic");
+        assert_eq!(s1, s2);
+        assert!(s1 <= seed_best, "elitism: GA never worse than its best seed");
+        assert!(s1.traffic >= report.floor, "bracket");
+    }
+
+    #[test]
+    fn mutation_leaves_bias_untouched_when_disabled() {
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let v = LayerView::new(&dag.layers[0], &cross, None);
+        let roots: Vec<ExprId> = dag.layers[0].roots.iter().map(|r| r.expr).collect();
+        let report = crate::analysis::size_layer(&v, &roots);
+        let table = SiteTable::enumerate(&v);
+        let n = dag.layers[0].roots.len();
+        let budget = Some(report.peak + 2);
+        let seeds = vec![
+            neutral_genome(&table, n),
+            naive_fill_genome(&table, n),
+            greedy(&v, &table, n, budget),
+        ];
+        assert!(
+            seeds.iter().all(|g| g.order_bias.iter().all(|&b| b == 0)),
+            "precondition: zero-bias seeds"
+        );
+        // pop == seeds.len(): no `Genome::random` fill, so nothing but
+        // crossover-copied (still all-zero) bias ever enters the population.
+        let params = GaParams {
+            pop: seeds.len(),
+            max_evals: 60,
+            elites: 1,
+            descent_flips: 4,
+            seed: 9,
+            mutate_bias: false,
+        };
+        let (best, _) = ga(&v, &table, n, budget, &params, seeds);
+        assert!(
+            best.order_bias.iter().all(|&b| b == 0),
+            "mutate_bias: false must leave bias untouched"
+        );
     }
 }

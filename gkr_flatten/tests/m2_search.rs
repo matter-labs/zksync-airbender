@@ -101,7 +101,7 @@ fn smoke_add_sub_tight_budget() {
     let view = LayerView::new(&inst.layer, &inst.cross, None);
     let roots: Vec<ExprId> = inst.layer.roots.iter().map(|r| r.expr).collect();
     let report = size_layer(&view, &roots);
-    let params = GaParams { pop: 8, max_evals: 120, elites: 2, descent_flips: 4, seed: 0 };
+    let params = GaParams { pop: 8, max_evals: 120, elites: 2, descent_flips: 4, seed: 0, ..GaParams::default() };
     let (row, best) = run_cell(&inst, Some(report.peak + 2), &params);
     assert!(row.ga_best <= row.neutral);
     let table = SiteTable::enumerate(&view);

@@ -78,9 +78,11 @@ pub struct DerivedParams {
 /// baseline (SU peak-descending, no fills); `Derived` applies
 /// [`DerivedParams`] deterministically; `DerivedBiased` additionally consults a
 /// per-genome order-bias gene (Task 6); `Searched` is a fully search-driven
-/// order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// order. `Default` is `Su` — the M1/M2-compatible no-op policy every
+/// `EvalCtx::default()` (M2 wrapper) context runs under.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum OrderPolicy {
+    #[default]
     Su,
     Derived(DerivedParams),
     DerivedBiased(DerivedParams),
@@ -338,7 +340,8 @@ mod tests {
         // Genome: threshold 0. Give the inadmissible Mul (locus 2) a high gene
         // to prove admissibility gates it; give w2 (locus 4) gene 0 to prove
         // the strict threshold gates it.
-        let mut g = Genome { root_keys: vec![0], keep: vec![0, 5, 9, 5, 0], threshold: 0 };
+        let mut g =
+            Genome { root_keys: vec![0], keep: vec![0, 5, 9, 5, 0], threshold: 0, order_bias: vec![0; 5] };
         ctx.set_fills(&g, &v);
         let root_seed = OrderCtx::root_hash(RootId(0));
         let e3_prefix = OrderCtx::step_hash(root_seed, ExprId(3), 0);
@@ -371,7 +374,8 @@ mod tests {
         let mut wctx = OrderCtx::new(&wt, wl.exprs.len());
         // Sites: [E4 root, E3 inner Add (width 4), E0 c1 (Free), E1 c2 (Free), E2 w (width 1)].
         // Every gene above threshold; only admissibles (E3, E2) should count.
-        let wg = Genome { root_keys: vec![0], keep: vec![0, 5, 5, 5, 5], threshold: 0 };
+        let wg =
+            Genome { root_keys: vec![0], keep: vec![0, 5, 5, 5, 5], threshold: 0, order_bias: vec![0; 5] };
         wctx.set_fills(&wg, &wv);
         let wroot = OrderCtx::root_hash(RootId(0));
         assert_eq!(wctx.fills(wroot), 5, "width 4 (inner Ext Add) + width 1 (base leaf); Free leaves excluded");
