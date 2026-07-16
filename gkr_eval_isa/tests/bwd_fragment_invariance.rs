@@ -17,6 +17,7 @@ use std::collections::HashMap;
 
 use common::{layers_with_bwd_roots, FIXTURES};
 use cs::gkr_compiler::dag_ir::BwdRegime;
+use gkr_eval_isa::bwd::compile::compile_distilled_fragments;
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::fragment::FactorKey;
 
@@ -102,4 +103,46 @@ fn fragment_stable_views_are_unit_permutation_invariant() {
         "fragment invariance: {layers_checked} layer instances checked, \
          {permuted_layers} with a non-trivial reversed permutation"
     );
+}
+
+/// Reviewer finding (CS-M5a T5): `lower_bwd_fragments_virtual` indexed
+/// `table.fragments[frag_idx]` / `coeff_descs[frag_idx]` per schedule position with no
+/// validation that `order` is a permutation of `0..n`. An in-range DUPLICATE (unlike a
+/// wrong length or an out-of-range index, which already panic on the raw index) would
+/// silently double-count one fragment and drop another — a wrong accumulator with no
+/// panic. This gate compiles the first real fixture/layer with >= 2 fragments under an
+/// `order` with position 1 duplicating position 0's fragment index, and asserts the
+/// compile PANICS instead of silently corrupting the accumulator.
+#[test]
+fn fragment_order_duplicate_index_panics() {
+    for &name in FIXTURES {
+        for (_li, layer, cross) in layers_with_bwd_roots(name) {
+            let d = distill(&layer, BwdRegime::Ext, &cross, None);
+            if d.skipped_decoder {
+                continue;
+            }
+            let n = d.fragments.fragments.len();
+            if n < 2 {
+                continue; // need >= 2 fragments to construct a genuine duplicate
+            }
+
+            let mut ord: Vec<usize> = (0..n).collect();
+            ord[1] = 0; // duplicate: fragment 0 double-counted, fragment 1 dropped
+
+            let prev_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {})); // silence expected-panic noise
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                compile_distilled_fragments(&d, 16, Some(&ord))
+            }));
+            std::panic::set_hook(prev_hook);
+
+            assert!(
+                result.is_err(),
+                "[{name} Ext] compile_distilled_fragments must panic on a duplicate `order` \
+                 index (n={n}, order={ord:?}) instead of silently corrupting the accumulator"
+            );
+            return; // one real instance is sufficient
+        }
+    }
+    panic!("no fixture/layer had >= 2 fragments — could not exercise the duplicate-order panic");
 }

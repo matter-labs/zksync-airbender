@@ -29,7 +29,10 @@ use cs::gkr_compiler::dag_ir::{Expr, ExprId};
 
 use crate::fwd::binding::BackingTable;
 use crate::fwd::compile::decisions::OccurrenceStreams;
-use crate::fwd::compile::{compile_bwd_program, compile_bwd_program_peak, PlanInput, SiteDecisions};
+use crate::fwd::compile::{
+    compile_bwd_fragments_program, compile_bwd_program, compile_bwd_program_peak, PlanInput,
+    SiteDecisions,
+};
 use crate::fwd::context::DagForwardContext;
 use crate::fwd::error::CompileError;
 use crate::fwd::isa::{DstLine, Instr, LdcSub, OperandField, OperandLine, Program};
@@ -520,6 +523,386 @@ pub fn compile_distilled_at_planned_lb(
         BwdCompiledLayer {
             program,
             specials: d.specials.clone(),
+            backings: ctx.backings,
+            consts: ctx.consts,
+            challenges: ctx.challenges,
+            budget: place_budget,
+            stats,
+            stats_ext,
+        },
+        trace,
+    ))
+}
+
+// ── CS-M5a Task 5: fragment-mode (full-decomposition) compile driver ──────────
+
+/// Build the compile-local CLONED [`BwdSpecialTable`] for a fragment compile (Task 3
+/// ownership): clone `d.specials`, then intern an `AccInit` descriptor iff `c_init` is
+/// non-empty and a `Coefficient{fragment}` descriptor for each fragment whose recipe is
+/// NON-TRIVIAL. Returns `(specials, coeff_descs, acc_init_desc)`, where `coeff_descs[i]`
+/// is `Some(desc)` iff fragment `i`'s recipe is non-trivial (so the lowering emits it).
+/// ONLY descriptors that are actually emitted are interned — a `Coefficient` for a trivial
+/// recipe, or an `AccInit` for an empty `c_init`, would be an orphan the value gate rejects.
+/// The interned descs land BEYOND `d.specials.len()` (the distilled table never holds a
+/// `Coefficient`/`AccInit`), so `bind`'s per-run `states` stay dense over `d.specials`.
+fn fragment_descs(d: &DistilledLayer) -> (BwdSpecialTable, Vec<Option<u16>>, Option<u16>) {
+    let mut specials = d.specials.clone();
+    let acc_init_desc = if d.fragments.c_init.terms.is_empty() {
+        None
+    } else {
+        Some(specials.intern(BwdSpecial::AccInit))
+    };
+    let coeff_descs = d
+        .fragments
+        .fragments
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            if f.recipe.is_trivial() {
+                None
+            } else {
+                Some(specials.intern(BwdSpecial::Coefficient { fragment: i as u32 }))
+            }
+        })
+        .collect();
+    (specials, coeff_descs, acc_init_desc)
+}
+
+/// Fragment-mode sibling of [`compile_distilled`] (Task 5, spec §3): compile the
+/// FULL-DECOMPOSITION view of `d` — `acc = c_init + Σ_i recipe_i · value(fragment_i)` —
+/// instead of the spine-accumulation term loop. `order` permutes the schedule positions
+/// (`order[pos] = frag_idx`, identity when `None`); fragment accumulation is a field sum,
+/// so any order yields a bit-identical accumulator. There is no `decisions` parameter: the
+/// gene channel is TERM-ONLY in M5a, so this path is uncached (here) or plan-driven
+/// ([`compile_distilled_fragments_planned`]). Same legacy-first-then-streamed feasibility
+/// fallback as `compile_distilled`.
+pub fn compile_distilled_fragments(
+    d: &DistilledLayer,
+    budget: usize,
+    order: Option<&[usize]>,
+) -> Result<BwdCompiledLayer, CompileError> {
+    match compile_distilled_fragments_streamed(d, budget, order, false) {
+        Err(CompileError::BudgetBelowFloor { .. }) => {
+            compile_distilled_fragments_streamed(d, budget, order, true)
+        }
+        other => other,
+    }
+}
+
+/// Fragment sibling of [`compile_distilled_streamed`] — the same fill-then-trim feasibility
+/// search at a fixed `stream_reductions` (`lower_budget == budget` is the guaranteed
+/// baseline; `plan_placement` at the real `budget` is the oracle).
+fn compile_distilled_fragments_streamed(
+    d: &DistilledLayer,
+    budget: usize,
+    order: Option<&[usize]>,
+    stream_reductions: bool,
+) -> Result<BwdCompiledLayer, CompileError> {
+    const FILL: usize = 1 << 20;
+    let at = |lb: usize| compile_distilled_fragments_at(d, budget, lb, order, stream_reductions);
+    match at(FILL) {
+        Ok(c) => return Ok(c),
+        Err(CompileError::BudgetBelowFloor { .. }) => {}
+        Err(e) => return Err(e),
+    }
+    let mut best = at(budget)?; // baseline — never worse than this
+    let (mut lo, mut hi) = (budget, FILL); // lo fits, hi overflows
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        match at(mid) {
+            Ok(c) => {
+                best = c;
+                lo = mid;
+            }
+            Err(CompileError::BudgetBelowFloor { .. }) => hi = mid,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(best)
+}
+
+/// Fragment sibling of [`compile_distilled_at`]: lower at `lower_budget`, place at
+/// `place_budget`, tally against the CLONED (Coefficient/AccInit-extended) specials.
+fn compile_distilled_fragments_at(
+    d: &DistilledLayer,
+    place_budget: usize,
+    lower_budget: usize,
+    order: Option<&[usize]>,
+    stream_reductions: bool,
+) -> Result<BwdCompiledLayer, CompileError> {
+    let layer = &d.layer;
+    let (specials, coeff_descs, acc_init_desc) = fragment_descs(d);
+
+    let mut ctx = DagForwardContext::default();
+    ctx.cross_layer_fields = d.cross_fields.clone();
+
+    let (program, max_live_cells, _trace) = compile_bwd_fragments_program(
+        layer,
+        &d.fragments,
+        order,
+        &coeff_descs,
+        acc_init_desc,
+        &mut ctx,
+        &d.leaf_descs,
+        &d.field_overrides,
+        place_budget,
+        lower_budget,
+        stream_reductions,
+        None, // trace
+        None, // plan (uncached path)
+    )?;
+
+    // Same namespace fence as the term path: the bwd hook + cleared resolutions must never
+    // intern a fwd SpecialDescriptor; Coefficient/AccInit live in the CLONED bwd table only.
+    assert!(ctx.specials.is_empty(), "bwd fragment compile leaked into the fwd descriptor namespace");
+
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials);
+    stats.max_live_cells = max_live_cells;
+
+    Ok(BwdCompiledLayer {
+        program,
+        specials,
+        backings: ctx.backings,
+        consts: ctx.consts,
+        challenges: ctx.challenges,
+        budget: place_budget,
+        stats,
+        stats_ext,
+    })
+}
+
+/// Traced fragment sibling of [`compile_distilled_traced`] (observation-only): same
+/// legacy-first-then-streamed fallback, returning the [`BwdCompileTrace`] of the WINNING
+/// compile. No freeze: the fragment-trace variant (`DirectTopCorrection`) lands in Task 6.
+pub fn compile_distilled_fragments_traced(
+    d: &DistilledLayer,
+    budget: usize,
+    order: Option<&[usize]>,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    match compile_distilled_fragments_streamed_traced(d, budget, order, false) {
+        Err(CompileError::BudgetBelowFloor { .. }) => {
+            compile_distilled_fragments_streamed_traced(d, budget, order, true)
+        }
+        other => other,
+    }
+}
+
+/// Traced fragment sibling of [`compile_distilled_streamed`] — same fill-then-trim, keeping
+/// the trace of the WINNING lowering budget.
+fn compile_distilled_fragments_streamed_traced(
+    d: &DistilledLayer,
+    budget: usize,
+    order: Option<&[usize]>,
+    stream_reductions: bool,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    const FILL: usize = 1 << 20;
+    let at =
+        |lb: usize| compile_distilled_fragments_at_traced(d, budget, lb, order, stream_reductions);
+    match at(FILL) {
+        Ok(c) => return Ok(c),
+        Err(CompileError::BudgetBelowFloor { .. }) => {}
+        Err(e) => return Err(e),
+    }
+    let mut best = at(budget)?; // baseline — never worse than this
+    let (mut lo, mut hi) = (budget, FILL); // lo fits, hi overflows
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        match at(mid) {
+            Ok(c) => {
+                best = c;
+                lo = mid;
+            }
+            Err(CompileError::BudgetBelowFloor { .. }) => hi = mid,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(best)
+}
+
+/// Traced fragment sibling of [`compile_distilled_at_traced`] — seeds a trace, threads it
+/// through `compile_bwd_fragments_program`, then fills the per-instruction `free` envelope.
+fn compile_distilled_fragments_at_traced(
+    d: &DistilledLayer,
+    place_budget: usize,
+    lower_budget: usize,
+    order: Option<&[usize]>,
+    stream_reductions: bool,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    let layer = &d.layer;
+    let (specials, coeff_descs, acc_init_desc) = fragment_descs(d);
+
+    let mut ctx = DagForwardContext::default();
+    ctx.cross_layer_fields = d.cross_fields.clone();
+
+    let seed = BwdCompileTrace {
+        epoch: plan_epoch(d, place_budget, stream_reductions),
+        budget: place_budget,
+        stream_reductions,
+        events: Vec::new(),
+        free: Vec::new(),
+    };
+
+    let (program, max_live_cells, trace) = compile_bwd_fragments_program(
+        layer,
+        &d.fragments,
+        order,
+        &coeff_descs,
+        acc_init_desc,
+        &mut ctx,
+        &d.leaf_descs,
+        &d.field_overrides,
+        place_budget,
+        lower_budget,
+        stream_reductions,
+        Some(seed),
+        None, // plan (uncached traced path)
+    )?;
+
+    assert!(ctx.specials.is_empty(), "bwd fragment compile leaked into the fwd descriptor namespace");
+
+    let mut trace = trace.expect("a Some-seeded traced compile returns its trace");
+    trace.free = live_profile(&program)
+        .into_iter()
+        .map(|occ| place_budget.saturating_sub(occ))
+        .collect();
+
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials);
+    stats.max_live_cells = max_live_cells;
+
+    Ok((
+        BwdCompiledLayer {
+            program,
+            specials,
+            backings: ctx.backings,
+            consts: ctx.consts,
+            challenges: ctx.challenges,
+            budget: place_budget,
+            stats,
+            stats_ext,
+        },
+        trace,
+    ))
+}
+
+/// Plan-driven fragment sibling of [`compile_distilled_planned`] (spec §4/§5): replay
+/// `plan` against the fragment decomposition of `d`. Same hard epoch / `entries_fnv`
+/// asserts (a wrong or corrupted plan must never replay silently) and the same
+/// fill-then-trim realizer, `stream_reductions` pinned FROM the plan and tracing ON. No
+/// freeze here (Task 6). `order` permutes the schedule positions like the uncached entry.
+pub fn compile_distilled_fragments_planned(
+    d: &DistilledLayer,
+    budget: usize,
+    plan: &BwdOccurrencePlan,
+    order: Option<&[usize]>,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    let expected_epoch = plan_epoch(d, budget, plan.stream_reductions);
+    assert_eq!(
+        plan.epoch, expected_epoch,
+        "plan epoch mismatch: plan carries {} but (layer, budget {budget}, stream_reductions \
+         {}) hashes to {expected_epoch} — wrong or stale plan",
+        plan.epoch, plan.stream_reductions,
+    );
+    let expected_fnv = plan_entries_fnv(&plan.entries);
+    assert_eq!(
+        plan.entries_fnv, expected_fnv,
+        "plan entries_fnv mismatch: plan carries {} but its {} entries re-hash to \
+         {expected_fnv} — corrupted plan",
+        plan.entries_fnv,
+        plan.entries.len(),
+    );
+    compile_distilled_fragments_at_planned(d, budget, plan, order)
+}
+
+/// Fill-then-trim realizer for the plan-driven fragment compile — the fragment sibling of
+/// [`compile_distilled_at_planned`].
+fn compile_distilled_fragments_at_planned(
+    d: &DistilledLayer,
+    budget: usize,
+    plan: &BwdOccurrencePlan,
+    order: Option<&[usize]>,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    const FILL: usize = 1 << 20;
+    let at = |lb: usize| compile_distilled_fragments_at_planned_lb(d, budget, lb, plan, order);
+    match at(FILL) {
+        Ok(c) => return Ok(c),
+        Err(CompileError::BudgetBelowFloor { .. }) => {}
+        Err(e) => return Err(e),
+    }
+    let mut best = at(budget)?; // baseline — never worse than this
+    let (mut lo, mut hi) = (budget, FILL); // lo fits, hi overflows
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        match at(mid) {
+            Ok(c) => {
+                best = c;
+                lo = mid;
+            }
+            Err(CompileError::BudgetBelowFloor { .. }) => hi = mid,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(best)
+}
+
+/// The single plan-driven fragment lowering at an explicit `lower_budget` — the fragment
+/// sibling of [`compile_distilled_at_planned_lb`] (gene channel OFF by construction, plan
+/// channel ON, trace ON). The trace's epoch / `free` envelope stay keyed on `place_budget`.
+fn compile_distilled_fragments_at_planned_lb(
+    d: &DistilledLayer,
+    place_budget: usize,
+    lower_budget: usize,
+    plan: &BwdOccurrencePlan,
+    order: Option<&[usize]>,
+) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+    let layer = &d.layer;
+    let (specials, coeff_descs, acc_init_desc) = fragment_descs(d);
+    let stream_reductions = plan.stream_reductions;
+
+    let mut ctx = DagForwardContext::default();
+    ctx.cross_layer_fields = d.cross_fields.clone();
+
+    let domain: std::collections::BTreeSet<ExprId> =
+        distilled_site_domain(d).into_iter().map(|s| s.value).collect();
+
+    let seed = BwdCompileTrace {
+        epoch: plan_epoch(d, place_budget, stream_reductions),
+        budget: place_budget,
+        stream_reductions,
+        events: Vec::new(),
+        free: Vec::new(),
+    };
+
+    let (program, max_live_cells, trace) = compile_bwd_fragments_program(
+        layer,
+        &d.fragments,
+        order,
+        &coeff_descs,
+        acc_init_desc,
+        &mut ctx,
+        &d.leaf_descs,
+        &d.field_overrides,
+        place_budget,
+        lower_budget,
+        stream_reductions,
+        Some(seed),
+        Some(PlanInput { plan, domain }),
+    )?;
+
+    assert!(ctx.specials.is_empty(), "bwd fragment compile leaked into the fwd descriptor namespace");
+
+    let mut trace = trace.expect("a Some-seeded planned compile returns its trace");
+    trace.free = live_profile(&program)
+        .into_iter()
+        .map(|occ| place_budget.saturating_sub(occ))
+        .collect();
+
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials);
+    stats.max_live_cells = max_live_cells;
+
+    Ok((
+        BwdCompiledLayer {
+            program,
+            specials,
             backings: ctx.backings,
             consts: ctx.consts,
             challenges: ctx.challenges,

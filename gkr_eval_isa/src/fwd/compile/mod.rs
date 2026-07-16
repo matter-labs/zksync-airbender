@@ -610,6 +610,87 @@ pub(crate) fn compile_bwd_program(
     Ok((program, placement.max_live_cells, trace))
 }
 
+/// CS-M5a Task 5: the FRAGMENT-MODE sibling of [`compile_bwd_program`] — same phases
+/// (optimize → place → materialize), but Phase 1 runs the full-decomposition driver
+/// [`self::lower::lower_bwd_fragments_virtual`] over a [`crate::bwd::fragment::FragmentTable`]
+/// instead of the spine-accumulation term loop, and one placement step is minted per
+/// SCHEDULE POSITION (`n_steps = table.fragments.len().max(1)`). The gene channel is
+/// term-only in M5a, so there is deliberately no `streams` parameter (fragment lowering is
+/// uncached or plan-driven, never gene-driven). `coeff_descs` / `acc_init_desc` are the
+/// caller-owned (compile-local CLONED table) fragment→descriptor map, passed immutably.
+/// Scaffolding is duplicated rather than shared with `compile_bwd_program` so that function
+/// stays byte-for-byte untouched (the fwd seams are additive-only).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compile_bwd_fragments_program(
+    layer: &DagLayer,
+    table: &crate::bwd::fragment::FragmentTable,
+    order: Option<&[usize]>,
+    coeff_descs: &[Option<u16>],
+    acc_init_desc: Option<u16>,
+    ctx: &mut DagForwardContext,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+    field_overrides: &BTreeMap<ExprId, FieldKind>,
+    place_budget: usize,
+    lower_budget: usize,
+    stream_reductions: bool,
+    trace: Option<BwdCompileTrace>,
+    plan: Option<self::lower::PlanInput>,
+) -> Result<(Program, usize, Option<BwdCompileTrace>), CompileError> {
+    // Phase 1 — the bwd fragment-decomposition driver (result-in-acc terminal convention).
+    let (vinstrs, step_of, trace) = self::lower::lower_bwd_fragments_virtual(
+        layer, table, order, coeff_descs, acc_init_desc, ctx, leaf_descs, field_overrides,
+        lower_budget, stream_reductions, trace, plan,
+    )?;
+
+    // Phase 1.5 — the shared value-preserving peephole (same rules as `compile_bwd_program`).
+    let (vinstrs, step_of) = self::optimize::optimize_vinstrs(vinstrs, step_of);
+
+    let mut widths: HashMap<ValueId, OperandField> = HashMap::new();
+    for vi in &vinstrs {
+        if let Some(v) = vi.defines() {
+            widths.insert(v, vi.field());
+        }
+    }
+
+    // Phase 2 — lifetime-overlap placement (one step per schedule position).
+    let n_steps = table.fragments.len().max(1);
+    let free_steps: Vec<ResidencyStep> = (0..n_steps).map(|_| ResidencyStep::default()).collect();
+    let place_instrs: Vec<self::place::VirtualInstr> =
+        vinstrs.iter().map(|vi| vi.to_place()).collect();
+    let placement = plan_placement(&PlacementInput {
+        instrs: &place_instrs,
+        steps: &free_steps,
+        step_of_instr: &step_of,
+        widths: &widths,
+        budget: place_budget,
+    })?;
+
+    // Phase 3 — materialize to ISA instructions (+ any relocation MOVs).
+    let mut moves_at: HashMap<usize, Vec<RelocStep>> = HashMap::new();
+    for (i, r) in &placement.moves {
+        moves_at.entry(*i).or_default().push(*r);
+    }
+    let mut program = Program::default();
+    for (i, vi) in vinstrs.iter().enumerate() {
+        if let Some(ms) = moves_at.get(&i) {
+            for r in ms {
+                program.instrs.push(Instr::Mov {
+                    dir: MovDir::DstFromSrc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::Smem { cell: r.to }),
+                    src: Some(OperandLine::Smem { cell: r.from }),
+                });
+            }
+        }
+        program.instrs.push(materialize_vinstr(vi, i, &placement.cell_of)?);
+    }
+
+    // Phase 3.5 — v2 promote annotation (value-inert), same machine as fwd.
+    apply_promote(&mut program);
+
+    Ok((program, placement.max_live_cells, trace))
+}
+
 /// Task 6 (LIGHT diagnostic) sibling of [`compile_bwd_program`]: identical bwd compile,
 /// but placement runs through [`plan_placement_with_peak`] so the caller also receives the
 /// PEAK instruction index and the peak-live `(ValueId, width)` set (the values occupying the

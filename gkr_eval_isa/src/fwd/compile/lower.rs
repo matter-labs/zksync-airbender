@@ -1216,6 +1216,114 @@ impl<'a> VirtualLower<'a> {
         self.finalize_produced(expr_id, field)
     }
 
+    // ── CS-M5a Task 5: fragment top-atom lowering (value-in-acc) ──────────────────
+
+    /// Lower a fragment TOP ATOM with REAL occurrence semantics (serve / resident-hit /
+    /// source-or-compound admission), ending with the atom's value IN THE ACC. The
+    /// fragment sibling of [`Self::lower_operand_virtual`]: same `lower_operand_virtual`
+    /// choke, but instead of RETURNING an operand line for a caller to fold, it INITS the
+    /// acc from the served value (so [`Self::lower_bwd_fragment`] can seed / mul-fold it).
+    ///
+    /// Every fragment atom MUST route through here — the atoms ARE the reuse targets, so
+    /// a direct `compile_expr_virtual` (which bypasses serve / hit / admit / retain — see
+    /// `bwd/trace.rs`) would make them unservable and uncacheable. The plan-replay channel
+    /// therefore sees these as ordinary occurrences (Retain on a top atom is possible).
+    fn lower_bwd_top_atom(
+        &mut self,
+        layer: &DagLayer,
+        atom: ExprId,
+        expected: OperandField,
+    ) -> Result<(), CompileError> {
+        // Demand site (mirrors `lower_operand_virtual`): one occurrence off the stream
+        // (no-op under `decisions: None`), consumed before the hit/miss branch.
+        self.serve_occurrence(atom, BwdServeKind::Operand);
+
+        // 1. Resident hit → init the acc from the CURRENT generation's cell. Order mirrors
+        //    `lower_operand_virtual` EXACTLY: current gen → `defer_read` → `plan_release`
+        //    → `emit_init_field` (the acc read closes rule-a's slot lifetime). The
+        //    uncached gate never admits, so this arm is plan-mode only.
+        if self.defined.contains(&atom) {
+            let gen_id = self.current_value_id(atom);
+            let op = self.defer_read(gen_id);
+            self.plan_release_if_pending(atom);
+            let field = self.operand_field(layer, atom, expected);
+            self.emit_init_field(op, field);
+            return Ok(());
+        }
+        // 2. Source / resolution leaf → one operand line; may be admitted to residency
+        //    (`decisions`/`plan`). On admit, the eager cache write + evict-to-cell leaves
+        //    the value in acc (evict is `DstFromAcc`, acc stays live) — NO reload. The
+        //    non-admit tail inits the acc from the source op directly.
+        if layer.resolutions.contains_key(&atom)
+            || matches!(&layer.exprs[atom.0 as usize], Expr::Source(_))
+        {
+            let op = self.source_to_vop(layer, atom, expected)?;
+            let field = self.operand_field(layer, atom, expected);
+            if self.decisions.is_some() || self.plan.is_some() {
+                if let Some(gen_id) = self.admit_decision(atom, field) {
+                    // HIGH-1 (as in `lower_operand_virtual`): eager cache write from the
+                    // SOURCE keeps the `init;evict` pair F1-fusible.
+                    self.materialize_cache_root_from_src(atom, &op);
+                    self.emit_init_field(op, field);
+                    self.widths.insert(gen_id, field);
+                    self.emit_evict_to_cell(gen_id, field);
+                    self.defined.insert(atom);
+                    return Ok(());
+                }
+            }
+            self.materialize_cache_root_from_src(atom, &op); // F3: eager cache write from source
+            self.emit_init_field(op, field);
+            return Ok(());
+        }
+        // 3. Compound → recompute the cone into the acc, then finalize/admit EXACTLY as the
+        //    operand path's compound arm — but WITHOUT its mandatory temp+reload when no
+        //    admission happens: the value is already in acc (value-in-acc convention), and
+        //    an admit's evict-to-cell is `DstFromAcc` (acc stays live), so no reload either.
+        let field = self.operand_field(layer, atom, expected);
+        self.compile_expr_virtual(layer, atom, field)?;
+        self.materialize_if_root(atom, true);
+        if let Some(gen_id) = self.admit_decision(atom, field) {
+            self.widths.insert(gen_id, field);
+            self.emit_evict_to_cell(gen_id, field);
+            self.defined.insert(atom); // idempotent under Decisions/plan (admit already did this)
+        }
+        Ok(())
+    }
+
+    /// Lower ONE fragment's contribution into the acc: the product of its atoms (each
+    /// served via [`Self::lower_bwd_top_atom`]) times its coefficient recipe. On return
+    /// the acc holds `recipe · Π(atoms)`. Field semantics (normative): the running product
+    /// is CONSERVATIVELY spilled as Ext and mul-folded with `Mul{field: Ext}` — the operand
+    /// is typed Ext, the acc is promoted only when it must be, so a Base acc stays
+    /// value-preserving (the same conservative form the root driver uses for Ext partials).
+    /// A non-trivial recipe folds in the fragment's `Coefficient` special (Ext operand).
+    /// `atoms` is non-empty by construction (a fragment always keys on ≥1 non-scalar atom).
+    fn lower_bwd_fragment(
+        &mut self,
+        layer: &DagLayer,
+        atoms: &[ExprId],
+        coeff: Option<u16>,
+    ) -> Result<(), CompileError> {
+        // First atom seeds the acc (value-in-acc).
+        self.lower_bwd_top_atom(layer, atoms[0], OperandField::Ext)?;
+        // Further atoms: spill the running product (Ext), serve the atom into acc, mul-fold.
+        for &atom in &atoms[1..] {
+            let p = self.alloc_temp_evicting(OperandField::Ext)?;
+            self.lower_bwd_top_atom(layer, atom, OperandField::Ext)?;
+            self.push_fold(OperandField::Ext, vec![VirtualOp::Value(p)], /* is_add */ false, Sign::Plus);
+        }
+        // Non-trivial recipe → mul-fold the fragment's Coefficient special (Ext operand).
+        if let Some(desc) = coeff {
+            self.push_fold(
+                OperandField::Ext,
+                vec![VirtualOp::Special { desc }],
+                /* is_add */ false,
+                Sign::Plus,
+            );
+        }
+        Ok(())
+    }
+
     // ── expression lowering into the accumulator (mirrors arith::compile_expr) ────
 
     /// Behavior-neutral wrapper around [`Self::compile_expr_virtual_inner`]: pushes
@@ -2632,6 +2740,142 @@ pub(crate) fn lower_bwd_root_virtual(
             st.push_fold(OperandField::Ext, vec![VirtualOp::Value(t)], /* is_add */ true, Sign::Plus);
         }
     }
+    // Task 4: EOF divergence check + residency reclaim, before the trace is sealed.
+    st.plan_finish();
+    Ok((st.out, st.step_of_instr, st.bwd_trace))
+}
+
+/// CS-M5a Task 5: the FRAGMENT-MODE bwd one-root driver — the full-decomposition
+/// sibling of [`lower_bwd_root_virtual`]. Accumulates the fragment table
+/// `acc = c_init + Σ_i recipe_i · value(fragment_i)` (a field sum — visitation
+/// order-neutral), reshaped from the term loop: each SCHEDULE POSITION `pos`
+/// (`frag_idx = order[pos]`, identity when `order` is `None`) is one placement
+/// step (`cur_step = pos`, so fingerprints are schedule-positional), and every
+/// fragment top atom flows through [`VirtualLower::lower_bwd_top_atom`] so it is a
+/// servable / cacheable reuse target.
+///
+/// Seeding: a non-empty `c_init` seeds the acc first via `Mov AccFromSrc <-
+/// Special{AccInit}` (`acc_init_desc`), after which EVERY fragment is an
+/// add-folded contribution; otherwise the first VISITED fragment seeds the acc
+/// directly (still applying its coefficient). Descriptors are TABLE-indexed:
+/// `coeff_descs[frag_idx]` is `Some(desc)` iff that fragment's recipe is
+/// non-trivial (and `acc_init_desc` is `Some` iff `c_init` is non-empty), interned
+/// by the caller into a compile-local CLONED `BwdSpecialTable` BEYOND
+/// `d.specials.len()` and passed immutably.
+///
+/// The gene channel is TERM-ONLY in M5a: `streams` is always `None` here
+/// (`decisions: None` by construction), so the fragment path is uncached
+/// (`plan: None`) or plan-driven (`plan: Some`) — never gene-driven.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn lower_bwd_fragments_virtual(
+    layer: &DagLayer,
+    table: &crate::bwd::fragment::FragmentTable,
+    order: Option<&[usize]>,
+    coeff_descs: &[Option<u16>],
+    acc_init_desc: Option<u16>,
+    ctx: &mut DagForwardContext,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+    field_overrides: &BTreeMap<ExprId, FieldKind>,
+    budget: usize,
+    stream_reductions: bool,
+    trace: Option<BwdCompileTrace>,
+    plan_input: Option<PlanInput>,
+) -> Result<(Vec<VInstr>, Vec<usize>, Option<BwdCompileTrace>), CompileError> {
+    assert!(
+        (layer.exprs.len() as u64) < INTERNAL_BASE as u64,
+        "layer has {} exprs; internal ValueId base {INTERNAL_BASE} would collide",
+        layer.exprs.len()
+    );
+    // `order`, when given, MUST be a permutation of `0..table.fragments.len()`: the loop
+    // below indexes `table.fragments[frag_idx]` / `coeff_descs[frag_idx]` per `pos` with no
+    // other bound check, so an in-range duplicate silently double-counts one fragment and
+    // drops another (wrong accumulator, no panic) instead of failing loudly here.
+    if let Some(o) = order {
+        let n = table.fragments.len();
+        assert_eq!(
+            o.len(),
+            n,
+            "lower_bwd_fragments_virtual: order.len() = {} but table has {n} fragments",
+            o.len()
+        );
+        let mut seen = vec![false; n];
+        for (pos, &idx) in o.iter().enumerate() {
+            assert!(
+                idx < n && !seen[idx],
+                "lower_bwd_fragments_virtual: order[{pos}] = {idx} is {} (n = {n} fragments)",
+                if idx >= n { "out of range" } else { "a duplicate index" }
+            );
+            seen[idx] = true;
+        }
+    }
+    let plan_state = plan_input.map(|pi| PlanRunState {
+        run: PlanRun::new(pi.plan),
+        domain: pi.domain,
+        resident: BTreeMap::new(),
+        live_width: 0,
+        budget,
+        pending_action: BTreeMap::new(),
+        pending_bypass_release: None,
+        generation: HashMap::new(),
+        evicted_ever: HashSet::new(),
+        diverge_emitted: false,
+    });
+    let cross = ctx.cross_layer_fields.clone();
+    let mut st = VirtualLower {
+        ctx,
+        cross,
+        out: Vec::new(),
+        step_of_instr: Vec::new(),
+        cur_step: 0,
+        defined: HashSet::new(),
+        pinned_direct: HashSet::new(),
+        widths: HashMap::new(),
+        next_internal: INTERNAL_BASE,
+        expr_to_compute: HashMap::new(), // no materialize sinks: GlobalMaterialize unemittable
+        expr_to_cache_root: HashMap::new(),
+        exposed: HashSet::new(),
+        root_outputs: Vec::new(),
+        desc_by_expr: HashMap::new(), // distilled resolutions are CLEARED by contract
+        virtual_setup_descs: HashMap::new(),
+        decisions: None, // gene channel is TERM-ONLY in M5a (streams: None always)
+        leaf_descs,
+        field_overrides,
+        stream_reductions,
+        bwd_trace: trace,
+        consumer_stack: Vec::new(),
+        plan: plan_state,
+    };
+
+    let n = table.fragments.len();
+    let mut seeded = false;
+
+    // Seed: c_init present → AccInit (the acc's initial value); else the first
+    // VISITED fragment seeds the acc directly.
+    if let Some(desc) = acc_init_desc {
+        st.cur_step = 0;
+        st.emit_init_field(VirtualOp::Special { desc }, OperandField::Ext);
+        seeded = true;
+    }
+
+    for pos in 0..n {
+        let frag_idx = order.map(|o| o[pos]).unwrap_or(pos);
+        st.cur_step = pos;
+        let atoms = &table.fragments[frag_idx].atoms;
+        let coeff = coeff_descs[frag_idx];
+        if !seeded {
+            // First visited fragment seeds the acc (no cross-position fold).
+            st.lower_bwd_fragment(layer, atoms, coeff)?;
+            seeded = true;
+        } else {
+            // Spill the running total (conservatively Ext — value-preserving for a Base
+            // acc, promoting when an Ext addend folds in), compute this fragment's
+            // contribution, then add-fold the running total back (mirrors the term loop).
+            let t = st.alloc_temp_evicting(OperandField::Ext)?;
+            st.lower_bwd_fragment(layer, atoms, coeff)?;
+            st.push_fold(OperandField::Ext, vec![VirtualOp::Value(t)], /* is_add */ true, Sign::Plus);
+        }
+    }
+
     // Task 4: EOF divergence check + residency reclaim, before the trace is sealed.
     st.plan_finish();
     Ok((st.out, st.step_of_instr, st.bwd_trace))
