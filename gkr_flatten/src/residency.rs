@@ -1,7 +1,15 @@
-//! Simulated cache residency (spec M2 §2): one lane pool shared by cached
-//! values and open stash slots. Stashes are unevictable; cached values are
-//! always evictable. All victim selection is deterministic: lowest
-//! (priority, ExprId) first, over a BTreeMap (fixed iteration order).
+//! Simulated cache residency (spec M2 §2, dead-aware per M3 §2): one lane
+//! pool shared by cached values and open stash slots. Stashes are
+//! unevictable; cached values are always evictable. Victim selection order
+//! is `(is_live, priority, ExprId)`: dead (exhausted — no future readers)
+//! residents go first regardless of priority, since a dead value is worth
+//! nothing to keep around; among live residents the M2 rule is unchanged
+//! (strictly-lower-priority, lowest (priority, ExprId) first, over a
+//! BTreeMap for fixed iteration order). The protected in-flight set
+//! (`admit`'s `protected` argument) outranks deadness — an in-flight operand
+//! is never evicted for the duration of that call, dead or not. Marking a
+//! value dead never triggers a new eviction by itself: it only changes which
+//! resident gets picked when a displacement was going to happen anyway.
 
 use std::collections::BTreeMap;
 
@@ -11,6 +19,7 @@ use cs::gkr_compiler::dag_ir::ExprId;
 struct Resident {
     width: u32,
     priority: u32,
+    dead: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -35,6 +44,27 @@ impl Residency {
         self.resident.contains_key(&e)
     }
 
+    /// Marks a resident as dead (exhausted — no future readers per the
+    /// walker's liveness tracking): it becomes a first-pick victim (see
+    /// `victim_order`) regardless of its priority, but stays resident (and
+    /// still readable) until something actually displaces it. Does not
+    /// evict anything itself.
+    pub fn mark_dead(&mut self, e: ExprId) {
+        self.resident
+            .get_mut(&e)
+            .unwrap_or_else(|| {
+                panic!("gkr_flatten residency: mark_dead on non-resident {e:?} — walker deadness sync bug")
+            })
+            .dead = true;
+    }
+
+    /// Current residents as `(ExprId, width, dead)`, in deterministic
+    /// BTreeMap (ExprId) order. Consumed by the walker/scheduler to key
+    /// decisions on which values are resident and dead vs. still live.
+    pub fn residents(&self) -> impl Iterator<Item = (ExprId, u32, bool)> + '_ {
+        self.resident.iter().map(|(&e, r)| (e, r.width, r.dead))
+    }
+
     pub fn stash_lanes(&self) -> u32 {
         self.stash_lanes
     }
@@ -47,12 +77,15 @@ impl Residency {
         self.budget.map(|b| b - self.stash_lanes - self.resident_lanes)
     }
 
-    /// Residents sorted lowest (priority, ExprId) first — the deterministic
-    /// victim order for both admission pressure and stash pressure.
-    fn victim_order(&self) -> Vec<(u32, ExprId, u32)> {
-        let mut v: Vec<(u32, ExprId, u32)> =
-            self.resident.iter().map(|(&e, r)| (r.priority, e, r.width)).collect();
-        v.sort(); // (priority, ExprId, width): ExprId tiebreak by derive(Ord)
+    /// Residents sorted dead-first, then lowest (priority, ExprId) — the
+    /// deterministic victim order for both admission pressure and stash
+    /// pressure. `!r.dead` sorts `false` (dead) before `true` (live), so
+    /// every dead resident precedes every live one; ties within each group
+    /// break by (priority, ExprId) as in M2.
+    fn victim_order(&self) -> Vec<(bool, u32, ExprId, u32)> {
+        let mut v: Vec<(bool, u32, ExprId, u32)> =
+            self.resident.iter().map(|(&e, r)| (!r.dead, r.priority, e, r.width)).collect();
+        v.sort(); // (is_live, priority, ExprId, width): ExprId tiebreak by derive(Ord)
         v
     }
 
@@ -82,8 +115,11 @@ impl Residency {
     /// not-yet-pushed op still reads. A protected candidate is skipped during
     /// victim collection (as if it were higher-priority); if skipping it
     /// leaves too few reclaimable lanes, the admission refuses untouched
-    /// (check-before-mutate). Victim order is otherwise unchanged
-    /// (deterministic lowest-(priority, ExprId) first).
+    /// (check-before-mutate). Victim order is otherwise dead-first, then
+    /// deterministic lowest-(priority, ExprId): a dead resident is always a
+    /// valid victim regardless of the incomer's priority (it is worth
+    /// nothing to keep), while a live resident still needs strictly-lower
+    /// priority than the incomer, exactly as in M2.
     pub fn admit(&mut self, e: ExprId, width: u32, priority: u32, protected: &[ExprId]) -> Admit {
         assert!(
             !self.is_resident(e),
@@ -92,23 +128,28 @@ impl Residency {
         );
         let Some(free) = self.free_lanes() else {
             // Unbounded: always admit, never evict.
-            self.resident.insert(e, Resident { width, priority });
+            self.resident.insert(e, Resident { width, priority, dead: false });
             self.resident_lanes += width;
             self.debug_check();
             return Admit::Admitted { victims: vec![] };
         };
         let mut victims = Vec::new();
         if width > free {
-            // Check-before-mutate: collect strictly-lower-priority victims
-            // (skipping any protected in-flight operand) until enough lanes
-            // free up; if impossible, refuse untouched.
+            // Check-before-mutate: collect victims in dead-first,
+            // (priority, ExprId) order (skipping any protected in-flight
+            // operand) until enough lanes free up; if impossible, refuse
+            // untouched. A dead candidate is always taken; a live candidate
+            // only if it is strictly lower priority than the incomer —
+            // otherwise stop (sound: dead sorts first, so once a blocking
+            // live candidate is hit, every later candidate is live with
+            // priority >= that one).
             let mut reclaimable = 0u32;
-            for (p, v, w) in self.victim_order() {
-                if p >= priority {
-                    break;
-                }
+            for (is_live, p, v, w) in self.victim_order() {
                 if protected.contains(&v) {
                     continue; // in-flight sibling operand: unevictable this call
+                }
+                if is_live && p >= priority {
+                    break;
                 }
                 victims.push(v);
                 reclaimable += w;
@@ -123,17 +164,17 @@ impl Residency {
                 self.evict(v);
             }
         }
-        self.resident.insert(e, Resident { width, priority });
+        self.resident.insert(e, Resident { width, priority, dead: false });
         self.resident_lanes += width;
         self.debug_check();
         Admit::Admitted { victims }
     }
 
-    /// Reserves `lanes` stash lanes, evicting residents (lowest priority
-    /// first, unconditionally — stashes outrank every cached value) as
-    /// needed. Panics if the pool cannot satisfy the reservation: the
-    /// load-time peak assert guarantees stash demand always fits, so this is
-    /// a model-bug tripwire, not error handling.
+    /// Reserves `lanes` stash lanes, evicting residents (dead-first, then
+    /// lowest priority, unconditionally — stashes outrank every cached
+    /// value) as needed. Panics if the pool cannot satisfy the reservation:
+    /// the load-time peak assert guarantees stash demand always fits, so
+    /// this is a model-bug tripwire, not error handling.
     pub fn reserve_stash(&mut self, lanes: u32) -> Vec<ExprId> {
         let mut victims = Vec::new();
         if let Some(budget) = self.budget {
@@ -145,7 +186,7 @@ impl Residency {
             );
             let mut free = budget - self.stash_lanes - self.resident_lanes;
             if free < lanes {
-                for (_, v, w) in self.victim_order() {
+                for (_, _, v, w) in self.victim_order() {
                     victims.push(v);
                     free += w;
                     if free >= lanes {
@@ -288,5 +329,72 @@ mod tests {
             assert_eq!(r.admit(ExprId(i), 4, 0, &[]), Admit::Admitted { victims: vec![] });
         }
         assert_eq!(r.reserve_stash(1_000_000), vec![]);
+    }
+
+    #[test]
+    fn dead_evicted_before_live_regardless_of_priority() {
+        let mut r = Residency::new(Some(8));
+        r.admit(ExprId(1), 4, 9, &[]); // high priority
+        r.admit(ExprId(2), 4, 1, &[]); // low priority
+        r.mark_dead(ExprId(1));
+        // Incomer at priority 5: M2 semantics would evict ExprId(2) (lowest
+        // priority). Dead-first: ExprId(1) goes despite its priority 9.
+        assert_eq!(r.admit(ExprId(3), 4, 5, &[]), Admit::Admitted { victims: vec![ExprId(1)] });
+        assert!(r.is_resident(ExprId(2)));
+    }
+
+    #[test]
+    fn dead_reclaimable_by_lower_priority_incomer() {
+        let mut r = Residency::new(Some(4));
+        r.admit(ExprId(1), 4, 9, &[]);
+        r.mark_dead(ExprId(1));
+        // M2 semantics: priority 1 < 9 -> Refused. Dead values are worthless:
+        // any admission may reclaim them.
+        assert_eq!(r.admit(ExprId(2), 4, 1, &[]), Admit::Admitted { victims: vec![ExprId(1)] });
+    }
+
+    #[test]
+    fn live_residents_still_need_strictly_lower_priority() {
+        let mut r = Residency::new(Some(4));
+        r.admit(ExprId(1), 4, 5, &[]);
+        // No dead residents: the M2 strictly-lower rule is unchanged.
+        assert_eq!(r.admit(ExprId(2), 4, 5, &[]), Admit::Refused);
+    }
+
+    #[test]
+    fn protected_dead_resident_survives() {
+        let mut r = Residency::new(Some(4));
+        r.admit(ExprId(1), 4, 1, &[]);
+        r.mark_dead(ExprId(1));
+        // Protection outranks deadness (the in-flight fma-operand window).
+        assert_eq!(r.admit(ExprId(2), 4, 9, &[ExprId(1)]), Admit::Refused);
+        assert!(r.is_resident(ExprId(1)));
+    }
+
+    #[test]
+    fn stash_pressure_prefers_dead_victims() {
+        let mut r = Residency::new(Some(8));
+        r.admit(ExprId(1), 4, 1, &[]); // live, lowest priority
+        r.admit(ExprId(2), 4, 9, &[]);
+        r.mark_dead(ExprId(2));
+        assert_eq!(r.reserve_stash(4), vec![ExprId(2)]); // dead beats low-priority live
+        assert!(r.is_resident(ExprId(1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "mark_dead")]
+    fn mark_dead_non_resident_panics() {
+        let mut r = Residency::new(Some(8));
+        r.mark_dead(ExprId(1));
+    }
+
+    #[test]
+    fn residents_iterator_reports_width_and_deadness() {
+        let mut r = Residency::new(Some(8));
+        r.admit(ExprId(2), 4, 1, &[]);
+        r.admit(ExprId(1), 1, 2, &[]);
+        r.mark_dead(ExprId(2));
+        let v: Vec<_> = r.residents().collect();
+        assert_eq!(v, vec![(ExprId(1), 1, false), (ExprId(2), 4, true)]); // BTreeMap order
     }
 }
