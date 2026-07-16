@@ -1,0 +1,2143 @@
+use std::collections::{HashMap, HashSet};
+
+use cs::gkr_compiler::dag_ir::{
+    DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkInfo, SinkKind, SourceKind,
+};
+
+use crate::fwd::binding::BackingKey;
+use crate::fwd::compile::{copy_src_read_place, read_place_operand_field};
+use crate::fwd::context::{
+    CompileTrace, CompiledLayer, DagForwardContext, ForwardAction, OutputCell, RootOutput,
+};
+use crate::fwd::encode::{decode, encode};
+use crate::fwd::error::{BindError, DecodeError, EncodeError};
+use crate::fwd::isa::{
+    DstLine, Instr, LdcSub, MAX_CELL, MAX_DESC, MovDir, OperandField, OperandLine, Program, Sign,
+    Special,
+};
+use crate::fwd::source::{SpecialDescriptor, SpecialStrategy, lower_resolution};
+use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
+
+use super::{
+    CacheStoreFrom, IdentityError, MaterializeFrom, Operand, PackedEvalOp, PackedEvalPlan, RootKey,
+    TempId, ValueFingerprint, ValueRef, field_lanes, structural_fingerprints, unit_sign_expr,
+};
+
+const BABYBEAR_NEG_ONE: u32 = 0x7800_0001 - 1;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConcreteBindError {
+    BudgetOutOfRange(usize),
+    Bind(BindError),
+    Encode(EncodeError),
+    Decode(DecodeError),
+    Identity(IdentityError),
+    DuplicateResident(ValueFingerprint),
+    MissingResident(ValueFingerprint),
+    MissingDroppedResident(ValueFingerprint),
+    DuplicateTemp(TempId),
+    MissingTemp(TempId),
+    MissingStorageLocation(u32),
+    RelocationSourceMismatch {
+        id: u32,
+        expected: u16,
+        actual: u16,
+    },
+    UnsupportedCopyAliasSource(RootId),
+    UnencodableZero(ExprId),
+    MultiplicationByOne(ExprId),
+    MultiplicationByNegOne(ExprId),
+    MultiplicationBySyntheticUnit {
+        negative: bool,
+    },
+    LiveTempsAtEnd(Vec<TempId>),
+    PlacementFailed {
+        budget_lanes: usize,
+        peak_live_lanes: usize,
+        telemetry: PlacementTelemetry,
+    },
+    MissingDefinition(usize),
+    UncoveredLookup(ValueRef),
+    ExpectedSource(ValueRef),
+    DescriptorOverflow,
+    RootCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    RootIdentityMismatch {
+        root: RootId,
+    },
+    ReturnRootUnsupported,
+    InstructionCountMismatch {
+        predicted: usize,
+        emitted: usize,
+    },
+    EncodedLaneMismatch {
+        predicted: usize,
+        emitted: usize,
+    },
+    DramTrafficMismatch {
+        predicted: usize,
+        emitted: usize,
+    },
+    EncodeRoundtripMismatch,
+}
+
+impl From<BindError> for ConcreteBindError {
+    fn from(value: BindError) -> Self {
+        Self::Bind(value)
+    }
+}
+
+impl From<EncodeError> for ConcreteBindError {
+    fn from(value: EncodeError) -> Self {
+        Self::Encode(value)
+    }
+}
+
+impl From<DecodeError> for ConcreteBindError {
+    fn from(value: DecodeError) -> Self {
+        Self::Decode(value)
+    }
+}
+
+impl From<IdentityError> for ConcreteBindError {
+    fn from(value: IdentityError) -> Self {
+        Self::Identity(value)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ConcreteBindingStats {
+    pub encoded_lanes: usize,
+    pub max_live_lanes: usize,
+    pub relocation_moves: usize,
+    pub placement: PlacementTelemetry,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PlacementTelemetry {
+    pub exact_attempted: bool,
+    pub relocation_fallback: bool,
+    pub ext_nodes: u64,
+    pub base_nodes: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StorageMove {
+    id: StorageId,
+    from: u16,
+    to: u16,
+}
+
+struct PhysicalPlacement {
+    definition_locations: HashMap<StorageId, u16>,
+    moves_at: HashMap<usize, Vec<StorageMove>>,
+}
+
+impl PhysicalPlacement {
+    fn fixed(definition_locations: HashMap<StorageId, u16>) -> Self {
+        Self {
+            definition_locations,
+            moves_at: HashMap::new(),
+        }
+    }
+
+    fn move_count(&self) -> usize {
+        self.moves_at.values().map(Vec::len).sum()
+    }
+}
+
+pub struct ConcreteEvalProgram {
+    pub compiled: CompiledLayer,
+    pub encoded: Vec<u16>,
+    pub stats: ConcreteBindingStats,
+}
+
+/// Bind symbolic sources, residents, temporaries, and sinks to the existing
+/// forward VM's concrete operand namespaces and emit an encodable `Program`.
+pub fn bind_packed_plan(
+    packed: &PackedEvalPlan,
+    layer: &DagLayer,
+    root_order: &[RootId],
+    this_layer: usize,
+    budget_lanes: usize,
+) -> Result<ConcreteEvalProgram, ConcreteBindError> {
+    // Keep relocation exceptional: exhaust the fixed-location two-pass
+    // allocator (E4 quads first, BF lanes second) before allowing any move.
+    bind_packed_plan_with_mode(
+        packed,
+        layer,
+        root_order,
+        this_layer,
+        budget_lanes,
+        PlacementMode::Exact,
+    )
+}
+
+/// Bind a plan and attach the non-ISA forward actions classified from the
+/// artifact layer. `CopyAlias` roots become stable-backing `RootOutput::Alias`
+/// entries. Scratch-prefill roots, whose values were already created during
+/// witness generation, populate `CompiledLayer::skipped`. Neither action adds
+/// instructions, loads/stores, or DRAM traffic.
+pub fn bind_packed_plan_with_actions(
+    packed: &PackedEvalPlan,
+    layer: &DagLayer,
+    root_order: &[RootId],
+    this_layer: usize,
+    budget_lanes: usize,
+    actions: &HashMap<RootId, ForwardAction>,
+    cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
+) -> Result<ConcreteEvalProgram, ConcreteBindError> {
+    let mut concrete = bind_packed_plan(packed, layer, root_order, this_layer, budget_lanes)?;
+    concrete.compiled.ctx.actions = actions.clone();
+    concrete.compiled.ctx.cross_layer_fields = cross_layer_fields.clone();
+
+    let mut ordered_actions = actions.iter().collect::<Vec<_>>();
+    ordered_actions.sort_by_key(|entry| entry.0.0);
+    for (&root, action) in ordered_actions {
+        match action {
+            ForwardAction::Compute => {}
+            ForwardAction::CopyAlias { src_addr, .. } => {
+                let place = copy_src_read_place(*src_addr)
+                    .ok_or(ConcreteBindError::UnsupportedCopyAliasSource(root))?;
+                let fallback = layer.roots[root.0 as usize]
+                    .materialize
+                    .as_ref()
+                    .map_or(OperandField::Base, |sink| to_operand_field(sink.field));
+                let field = read_place_operand_field(&place, cross_layer_fields, fallback);
+                let (slot, col) = concrete
+                    .compiled
+                    .ctx
+                    .backings
+                    .read_slot_col(&place, field)?;
+                concrete
+                    .compiled
+                    .root_outputs
+                    .push((root, RootOutput::Alias(OperandLine::Global { slot, col })));
+            }
+            ForwardAction::SkipScratchPrefill => concrete.compiled.skipped.push(root),
+        }
+    }
+    Ok(concrete)
+}
+
+pub(super) fn bind_packed_plan_greedy(
+    packed: &PackedEvalPlan,
+    layer: &DagLayer,
+    root_order: &[RootId],
+    this_layer: usize,
+    budget_lanes: usize,
+) -> Result<ConcreteEvalProgram, ConcreteBindError> {
+    bind_packed_plan_with_mode(
+        packed,
+        layer,
+        root_order,
+        this_layer,
+        budget_lanes,
+        PlacementMode::GreedyOnly,
+    )
+}
+
+/// Fast concrete certificate for intermediate search candidates. This keeps
+/// greedy fixed placement first, but defers bounded exact fixed placement to
+/// the final winner certification instead of repeating it for every incumbent.
+pub(super) fn bind_packed_plan_for_search(
+    packed: &PackedEvalPlan,
+    layer: &DagLayer,
+    root_order: &[RootId],
+    this_layer: usize,
+    budget_lanes: usize,
+) -> Result<ConcreteEvalProgram, ConcreteBindError> {
+    bind_packed_plan_with_mode(
+        packed,
+        layer,
+        root_order,
+        this_layer,
+        budget_lanes,
+        PlacementMode::Relocating,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum PlacementMode {
+    GreedyOnly,
+    Relocating,
+    Exact,
+}
+
+fn bind_packed_plan_with_mode(
+    packed: &PackedEvalPlan,
+    layer: &DagLayer,
+    root_order: &[RootId],
+    this_layer: usize,
+    budget_lanes: usize,
+    placement_mode: PlacementMode,
+) -> Result<ConcreteEvalProgram, ConcreteBindError> {
+    if budget_lanes == 0 || budget_lanes > MAX_CELL as usize {
+        return Err(ConcreteBindError::BudgetOutOfRange(budget_lanes));
+    }
+    let lifetimes = analyze_lifetimes(packed)?;
+    let peak_live_lanes = peak_live_lanes(&lifetimes.intervals);
+    let fixed_mode = if matches!(placement_mode, PlacementMode::Exact) {
+        PlacementMode::Exact
+    } else {
+        PlacementMode::GreedyOnly
+    };
+    let (physical, placement) =
+        match place_intervals(&lifetimes.intervals, budget_lanes, fixed_mode) {
+            Ok((locations, telemetry)) => (PhysicalPlacement::fixed(locations), telemetry),
+            Err(mut telemetry) => {
+                if matches!(placement_mode, PlacementMode::GreedyOnly) {
+                    return Err(ConcreteBindError::PlacementFailed {
+                        budget_lanes,
+                        peak_live_lanes,
+                        telemetry,
+                    });
+                }
+                let physical = place_intervals_with_relocation(&lifetimes.intervals, budget_lanes)
+                    .ok_or(ConcreteBindError::PlacementFailed {
+                        budget_lanes,
+                        peak_live_lanes,
+                        telemetry,
+                    })?;
+                telemetry.relocation_fallback = true;
+                (physical, telemetry)
+            }
+        };
+    let relocation_moves = physical.move_count();
+    let fingerprints = structural_fingerprints(layer)?;
+    let pending_roots = root_order.iter().copied().collect::<HashSet<_>>();
+    if pending_roots.len() != root_order.len() {
+        return Err(ConcreteBindError::RootCountMismatch {
+            expected: root_order.len(),
+            actual: pending_roots.len(),
+        });
+    }
+    let mut emitter = Emitter {
+        layer,
+        this_layer,
+        fingerprints,
+        lifetimes: &lifetimes,
+        definition_locations: &physical.definition_locations,
+        moves_at: &physical.moves_at,
+        current_locations: HashMap::new(),
+        ctx: DagForwardContext::default(),
+        instrs: Vec::with_capacity(packed.stats.packed_instructions + relocation_moves),
+        residents: HashMap::new(),
+        temps: HashMap::new(),
+        pending_roots,
+        root_outputs: Vec::new(),
+        desc_by_expr: HashMap::new(),
+    };
+    for (index, op) in packed.ops.iter().enumerate() {
+        emitter.emit(index, op)?;
+    }
+    if !emitter.temps.is_empty() {
+        let mut live: Vec<_> = emitter.temps.keys().copied().collect();
+        live.sort_by_key(|temp| temp.0);
+        return Err(ConcreteBindError::LiveTempsAtEnd(live));
+    }
+    if !emitter.pending_roots.is_empty() {
+        return Err(ConcreteBindError::RootCountMismatch {
+            expected: root_order.len(),
+            actual: root_order.len() - emitter.pending_roots.len(),
+        });
+    }
+
+    let emitted_program = Program {
+        instrs: emitter.instrs,
+    };
+    let expected_instructions = packed.stats.packed_instructions + relocation_moves;
+    if emitted_program.instrs.len() != expected_instructions {
+        return Err(ConcreteBindError::InstructionCountMismatch {
+            predicted: expected_instructions,
+            emitted: emitted_program.instrs.len(),
+        });
+    }
+    let emitted_encoded = encode(&emitted_program)?;
+    let expected_encoded_lanes = packed.stats.encoded_lanes + 3 * relocation_moves;
+    if emitted_encoded.len() != expected_encoded_lanes {
+        return Err(ConcreteBindError::EncodedLaneMismatch {
+            predicted: expected_encoded_lanes,
+            emitted: emitted_encoded.len(),
+        });
+    }
+    if decode(&emitted_encoded)? != emitted_program {
+        return Err(ConcreteBindError::EncodeRoundtripMismatch);
+    }
+
+    let mut program = emitted_program;
+    fold_direct_source_stores(&mut program);
+    fold_load_mul_add(&mut program);
+    elide_accumulator_cell_roundtrips(&mut program);
+    let encoded = encode(&program)?;
+    let encoded_lanes = encoded.len();
+    if decode(&encoded)? != program {
+        return Err(ConcreteBindError::EncodeRoundtripMismatch);
+    }
+    let compile_stats = tally_program(&program, &emitter.ctx, peak_live_lanes);
+    if compile_stats.dram_traffic != packed.stats.dram_read_lanes {
+        return Err(ConcreteBindError::DramTrafficMismatch {
+            predicted: packed.stats.dram_read_lanes,
+            emitted: compile_stats.dram_traffic,
+        });
+    }
+    let trace = CompileTrace {
+        max_live_cells: peak_live_lanes,
+        ..CompileTrace::default()
+    };
+    let compiled = CompiledLayer {
+        program,
+        ctx: emitter.ctx,
+        root_outputs: emitter.root_outputs,
+        skipped: Vec::new(),
+        trace,
+        budget: budget_lanes,
+        stats: compile_stats,
+        resident_realized: Vec::new(),
+    };
+    Ok(ConcreteEvalProgram {
+        compiled,
+        encoded,
+        stats: ConcreteBindingStats {
+            encoded_lanes,
+            max_live_lanes: peak_live_lanes,
+            relocation_moves,
+            placement,
+        },
+    })
+}
+
+/// Replace `acc <- source; dst <- acc; acc <- other` with a direct
+/// `dst <- source` move. The final load proves that the accumulator value from
+/// the first load is dead after the store.
+fn fold_direct_source_stores(program: &mut Program) {
+    let original = std::mem::take(&mut program.instrs);
+    let mut rewritten = Vec::with_capacity(original.len());
+    let mut index = 0;
+    while index < original.len() {
+        let replacement = original.get(index..index + 3).and_then(|window| {
+            let (
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: load_field,
+                    dst: None,
+                    src: Some(source),
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: store_field,
+                    dst: Some(destination),
+                    src: None,
+                },
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    dst: None,
+                    src: Some(_),
+                    ..
+                },
+            ) = (&window[0], &window[1], &window[2])
+            else {
+                return None;
+            };
+            (load_field == store_field).then_some(Instr::Mov {
+                dir: MovDir::DstFromSrc,
+                field: *load_field,
+                dst: Some(*destination),
+                src: Some(*source),
+            })
+        });
+        if let Some(instruction) = replacement {
+            rewritten.push(instruction);
+            index += 2;
+        } else {
+            rewritten.push(original[index].clone());
+            index += 1;
+        }
+    }
+    program.instrs = rewritten;
+}
+
+/// Strength-reduce `acc <- A; acc *= X; acc += Y` to
+/// `acc <- Y; acc += A*X`. Restrict the match to one positive Add operand and
+/// one Mul operand; multiplication's accumulator-negate flag becomes the FMA
+/// product sign.
+fn fold_load_mul_add(program: &mut Program) {
+    let original = std::mem::take(&mut program.instrs);
+    let mut rewritten = Vec::with_capacity(original.len());
+    let mut index = 0;
+    while index < original.len() {
+        let replacement = original.get(index..index + 3).and_then(|window| {
+            let (
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: loaded_field,
+                    dst: None,
+                    src: Some(loaded),
+                },
+                Instr::Mul {
+                    field: multiplied_field,
+                    negate_acc,
+                    operands: factors,
+                    ..
+                },
+                Instr::Add {
+                    field: added_field,
+                    sign: Sign::Plus,
+                    operands: addends,
+                    ..
+                },
+            ) = (&window[0], &window[1], &window[2])
+            else {
+                return None;
+            };
+            let ([factor], [addend]) = (factors.as_slice(), addends.as_slice()) else {
+                return None;
+            };
+            let (field_lhs, lhs, field_rhs, rhs) =
+                if *loaded_field == OperandField::Ext && *multiplied_field == OperandField::Base {
+                    (*multiplied_field, *factor, *loaded_field, *loaded)
+                } else {
+                    (*loaded_field, *loaded, *multiplied_field, *factor)
+                };
+            let product_is_ext =
+                *loaded_field == OperandField::Ext || *multiplied_field == OperandField::Ext;
+            Some((
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: *added_field,
+                    dst: None,
+                    src: Some(*addend),
+                },
+                Instr::Fma {
+                    field_lhs,
+                    field_rhs,
+                    sign: if *negate_acc { Sign::Minus } else { Sign::Plus },
+                    promote: *added_field == OperandField::Base && product_is_ext,
+                    pairs: vec![(lhs, rhs)],
+                },
+            ))
+        });
+        if let Some((init, fma)) = replacement {
+            rewritten.push(init);
+            rewritten.push(fma);
+            index += 3;
+        } else {
+            rewritten.push(original[index].clone());
+            index += 1;
+        }
+    }
+    program.instrs = rewritten;
+}
+
+/// Remove `cell <- acc; acc <- cell` round trips exposed only after logical
+/// storage has been assigned to physical cells. The store leaves `acc`
+/// unchanged, so the immediately following reload cannot affect VM state.
+fn elide_accumulator_cell_roundtrips(program: &mut Program) {
+    let mut rewritten = Vec::with_capacity(program.instrs.len());
+    for instruction in program.instrs.drain(..) {
+        let redundant = matches!(
+            (rewritten.last(), &instruction),
+            (
+                Some(Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: stored_field,
+                    dst: Some(DstLine::Smem { cell: stored_cell }),
+                    src: None,
+                }),
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: loaded_field,
+                    dst: None,
+                    src: Some(OperandLine::Smem { cell: loaded_cell }),
+                },
+            ) if stored_field == loaded_field && stored_cell == loaded_cell
+        );
+        if !redundant {
+            rewritten.push(instruction);
+        }
+    }
+    program.instrs = rewritten;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct StorageId(u32);
+
+#[derive(Clone, Copy)]
+struct Interval {
+    id: StorageId,
+    field: FieldKind,
+    start: usize,
+    end: usize,
+}
+
+/// Precomputed BF interval graph used by bounded exact placement. A lane's
+/// assigned BF values and each value's conflicts share this dense bitset
+/// representation, so a fit check is a handful of word intersections rather
+/// than a scan of every interval already assigned to that lane.
+struct BaseConflictGraph {
+    words: usize,
+    conflicts: Vec<Box<[u64]>>,
+}
+
+impl BaseConflictGraph {
+    fn new(bases: &[Interval]) -> Self {
+        let words = bases.len().div_ceil(u64::BITS as usize);
+        let mut conflicts = vec![vec![0u64; words].into_boxed_slice(); bases.len()];
+        for left in 0..bases.len() {
+            for right in left + 1..bases.len() {
+                if overlap(bases[left], bases[right]) {
+                    set_bit(&mut conflicts[left], right);
+                    set_bit(&mut conflicts[right], left);
+                }
+            }
+        }
+        Self { words, conflicts }
+    }
+}
+
+fn set_bit(words: &mut [u64], index: usize) {
+    words[index / u64::BITS as usize] |= 1 << (index % u64::BITS as usize);
+}
+
+fn clear_bit(words: &mut [u64], index: usize) {
+    words[index / u64::BITS as usize] &= !(1 << (index % u64::BITS as usize));
+}
+
+fn intersects(left: &[u64], right: &[u64]) -> bool {
+    left.iter()
+        .zip(right)
+        .any(|(&left, &right)| left & right != 0)
+}
+
+struct LifetimeAnalysis {
+    intervals: Vec<Interval>,
+    definition_at: HashMap<usize, StorageId>,
+}
+
+fn analyze_lifetimes(plan: &PackedEvalPlan) -> Result<LifetimeAnalysis, ConcreteBindError> {
+    let mut intervals = Vec::<Interval>::new();
+    let mut definition_at = HashMap::new();
+    let mut residents = HashMap::<ValueFingerprint, StorageId>::new();
+    let mut temps = HashMap::<TempId, StorageId>::new();
+
+    for (op_index, op) in plan.ops.iter().enumerate() {
+        let time = 2 * op_index;
+        for operand in packed_operands(op) {
+            match operand {
+                Operand::Source(_) | Operand::Unit { .. } => {}
+                Operand::Resident(value) => {
+                    let id = *residents
+                        .get(&value.fingerprint)
+                        .ok_or(ConcreteBindError::MissingResident(value.fingerprint))?;
+                    interval_mut(&mut intervals, id).end = time;
+                }
+                Operand::Temp(temp) => {
+                    let id = temps
+                        .remove(&temp.id)
+                        .ok_or(ConcreteBindError::MissingTemp(temp.id))?;
+                    interval_mut(&mut intervals, id).end = time;
+                }
+            }
+        }
+        match op {
+            PackedEvalOp::SaveAcc(temp) => {
+                if temps.contains_key(&temp.id) {
+                    return Err(ConcreteBindError::DuplicateTemp(temp.id));
+                }
+                let id = StorageId(intervals.len() as u32);
+                intervals.push(Interval {
+                    id,
+                    field: temp.field,
+                    start: time,
+                    end: time,
+                });
+                temps.insert(temp.id, id);
+                definition_at.insert(op_index, id);
+            }
+            PackedEvalOp::CacheStore { value, .. } => {
+                if residents.contains_key(&value.fingerprint) {
+                    return Err(ConcreteBindError::DuplicateResident(value.fingerprint));
+                }
+                let id = StorageId(intervals.len() as u32);
+                intervals.push(Interval {
+                    id,
+                    field: value.field,
+                    start: time,
+                    end: time,
+                });
+                residents.insert(value.fingerprint, id);
+                definition_at.insert(op_index, id);
+            }
+            PackedEvalOp::CacheDrop(value) => {
+                residents
+                    .remove(&value.fingerprint)
+                    .ok_or(ConcreteBindError::MissingDroppedResident(value.fingerprint))?;
+            }
+            _ => {}
+        }
+    }
+    if !temps.is_empty() {
+        let mut live: Vec<_> = temps.keys().copied().collect();
+        live.sort_by_key(|temp| temp.0);
+        return Err(ConcreteBindError::LiveTempsAtEnd(live));
+    }
+    let end = 2 * plan.ops.len();
+    for id in residents.values().copied() {
+        interval_mut(&mut intervals, id).end = end;
+    }
+    Ok(LifetimeAnalysis {
+        intervals,
+        definition_at,
+    })
+}
+
+fn interval_mut(intervals: &mut [Interval], id: StorageId) -> &mut Interval {
+    &mut intervals[id.0 as usize]
+}
+
+fn packed_operands(op: &PackedEvalOp) -> Vec<Operand> {
+    match op {
+        PackedEvalOp::AccInit(operand) => vec![*operand],
+        PackedEvalOp::AccAdd { operands, .. } | PackedEvalOp::AccMul { operands, .. } => {
+            operands.clone()
+        }
+        PackedEvalOp::AccFma { pairs, .. } => {
+            pairs.iter().flat_map(|&(lhs, rhs)| [lhs, rhs]).collect()
+        }
+        PackedEvalOp::SaveAcc(_)
+        | PackedEvalOp::CacheStore { .. }
+        | PackedEvalOp::CacheDrop(_)
+        | PackedEvalOp::Commit { .. }
+        | PackedEvalOp::ReturnAcc { .. } => Vec::new(),
+    }
+}
+
+fn overlap(a: Interval, b: Interval) -> bool {
+    a.start <= b.end && b.start <= a.end
+}
+
+fn peak_live_lanes(intervals: &[Interval]) -> usize {
+    let end = intervals
+        .iter()
+        .map(|interval| interval.end)
+        .max()
+        .unwrap_or(0);
+    (0..=end)
+        .map(|time| {
+            intervals
+                .iter()
+                .filter(|interval| interval.start <= time && time <= interval.end)
+                .map(|interval| field_lanes(interval.field))
+                .sum()
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+fn place_intervals(
+    intervals: &[Interval],
+    budget: usize,
+    mode: PlacementMode,
+) -> Result<(HashMap<StorageId, u16>, PlacementTelemetry), PlacementTelemetry> {
+    let mut locations = HashMap::new();
+    let mut ext_by_quad: Vec<Vec<Interval>> = vec![Vec::new(); budget / 4];
+    let mut exts: Vec<_> = intervals
+        .iter()
+        .copied()
+        .filter(|interval| interval.field == FieldKind::Ext)
+        .collect();
+    exts.sort_by_key(|interval| (interval.start, interval.id.0));
+    let mut greedy_ext_ok = true;
+    for interval in exts {
+        let Some(quad) = ext_by_quad
+            .iter()
+            .position(|assigned| assigned.iter().all(|other| !overlap(interval, *other)))
+        else {
+            greedy_ext_ok = false;
+            break;
+        };
+        ext_by_quad[quad].push(interval);
+        locations.insert(interval.id, (quad * 4) as u16);
+    }
+
+    let mut bases: Vec<_> = intervals
+        .iter()
+        .copied()
+        .filter(|interval| interval.field == FieldKind::Base)
+        .collect();
+    bases.sort_by_key(|interval| (interval.start, interval.id.0));
+    if greedy_ext_ok
+        && let Some(base_locations) = pack_base_intervals_greedy(&bases, &ext_by_quad, budget)
+    {
+        locations.extend(base_locations);
+        return Ok((locations, PlacementTelemetry::default()));
+    }
+    if matches!(mode, PlacementMode::GreedyOnly) {
+        return Err(PlacementTelemetry::default());
+    }
+
+    let mut telemetry = PlacementTelemetry {
+        exact_attempted: true,
+        ..PlacementTelemetry::default()
+    };
+    let base_conflicts = BaseConflictGraph::new(&bases);
+    if greedy_ext_ok {
+        let mut base_nodes = 1_000_000u64;
+        if let Some(base_locations) = pack_base_intervals_bounded(
+            &bases,
+            &base_conflicts,
+            &ext_by_quad,
+            budget,
+            &mut base_nodes,
+        ) {
+            telemetry.base_nodes += 1_000_000 - base_nodes;
+            locations.extend(base_locations);
+            return Ok((locations, telemetry));
+        }
+        telemetry.base_nodes += 1_000_000 - base_nodes;
+    }
+
+    let mut searched_locations = HashMap::new();
+    let mut searched_quads = vec![Vec::new(); budget / 4];
+    let mut ext_nodes = 200_000u64;
+    // This budget is shared across every complete E4 placement considered by
+    // the fallback. Resetting a million-node BF search at each E4 leaf makes a
+    // nominally bounded placement attempt multiplicative and effectively
+    // unbounded on production-sized interval sets.
+    let mut base_nodes = 1_000_000u64;
+    let placed = search_ext_placement(
+        0,
+        &exts_for_search(intervals),
+        &bases,
+        &base_conflicts,
+        budget,
+        &mut searched_quads,
+        &mut searched_locations,
+        &mut ext_nodes,
+        &mut base_nodes,
+    );
+    telemetry.ext_nodes += 200_000 - ext_nodes;
+    telemetry.base_nodes += 1_000_000 - base_nodes;
+    if placed {
+        Ok((searched_locations, telemetry))
+    } else {
+        Err(telemetry)
+    }
+}
+
+/// Pathological fallback for a width-feasible plan whose fixed BF intervals
+/// cannot be colored around the already-fixed E4 quads. E4 locations remain
+/// relocation-free. At each later E4 definition, only live BF values occupying
+/// its quad are moved into currently free BF lanes.
+fn place_intervals_with_relocation(
+    intervals: &[Interval],
+    budget: usize,
+) -> Option<PhysicalPlacement> {
+    if peak_live_lanes(intervals) > budget {
+        return None;
+    }
+
+    let mut exts = intervals
+        .iter()
+        .copied()
+        .filter(|interval| interval.field == FieldKind::Ext)
+        .collect::<Vec<_>>();
+    exts.sort_by_key(|interval| (interval.start, interval.id.0));
+    let mut ext_by_quad = vec![Vec::<Interval>::new(); budget / 4];
+    let mut ext_locations = HashMap::new();
+    for interval in exts {
+        let quad = ext_by_quad
+            .iter()
+            .position(|assigned| assigned.iter().all(|other| !overlap(interval, *other)))?;
+        ext_by_quad[quad].push(interval);
+        ext_locations.insert(interval.id, (quad * 4) as u16);
+    }
+
+    let mut ordered = intervals.to_vec();
+    ordered.sort_by_key(|interval| (interval.start, interval.id.0));
+    let mut definition_locations = ext_locations.clone();
+    let mut moves_at = HashMap::<usize, Vec<StorageMove>>::new();
+    let mut active_bases = HashMap::<StorageId, (u16, usize)>::new();
+
+    for interval in ordered {
+        let time = interval.start;
+        debug_assert_eq!(
+            time % 2,
+            0,
+            "storage definitions occur at packed-op boundaries"
+        );
+        active_bases.retain(|_, (_, end)| *end >= time);
+
+        let mut forbidden = vec![false; budget];
+        for ext in intervals.iter().filter(|candidate| {
+            candidate.field == FieldKind::Ext && candidate.start <= time && time <= candidate.end
+        }) {
+            let start = ext_locations[&ext.id] as usize;
+            forbidden[start..start + 4].fill(true);
+        }
+
+        let mut displaced = active_bases
+            .iter()
+            .filter_map(|(&id, &(lane, _))| forbidden[lane as usize].then_some(id))
+            .collect::<Vec<_>>();
+        displaced.sort();
+        let displaced_set = displaced.iter().copied().collect::<HashSet<_>>();
+        let mut occupied = vec![false; budget];
+        for (&id, &(lane, _)) in &active_bases {
+            if !displaced_set.contains(&id) {
+                occupied[lane as usize] = true;
+            }
+        }
+        for id in displaced {
+            let (from, end) = active_bases[&id];
+            let to = choose_base_lane(
+                budget,
+                &forbidden,
+                &occupied,
+                time,
+                end,
+                intervals,
+                &ext_locations,
+            )?;
+            occupied[to as usize] = true;
+            active_bases.insert(id, (to, end));
+            moves_at
+                .entry(time / 2)
+                .or_default()
+                .push(StorageMove { id, from, to });
+        }
+
+        if interval.field == FieldKind::Base {
+            let lane = choose_base_lane(
+                budget,
+                &forbidden,
+                &occupied,
+                time,
+                interval.end,
+                intervals,
+                &ext_locations,
+            )?;
+            definition_locations.insert(interval.id, lane);
+            active_bases.insert(interval.id, (lane, interval.end));
+        }
+    }
+
+    Some(PhysicalPlacement {
+        definition_locations,
+        moves_at,
+    })
+}
+
+fn choose_base_lane(
+    budget: usize,
+    forbidden: &[bool],
+    occupied: &[bool],
+    time: usize,
+    end: usize,
+    intervals: &[Interval],
+    ext_locations: &HashMap<StorageId, u16>,
+) -> Option<u16> {
+    (0..budget)
+        .filter(|&lane| !forbidden[lane] && !occupied[lane])
+        .max_by_key(|&lane| {
+            let next_conflict = intervals
+                .iter()
+                .filter(|interval| interval.field == FieldKind::Ext)
+                .filter(|interval| ext_locations[&interval.id] as usize / 4 == lane / 4)
+                .filter(|interval| time < interval.start && interval.start <= end)
+                .map(|interval| interval.start)
+                .min()
+                .unwrap_or(usize::MAX);
+            (next_conflict, std::cmp::Reverse(lane))
+        })
+        .map(|lane| lane as u16)
+}
+
+fn exts_for_search(intervals: &[Interval]) -> Vec<Interval> {
+    let mut exts = intervals
+        .iter()
+        .copied()
+        .filter(|interval| interval.field == FieldKind::Ext)
+        .collect::<Vec<_>>();
+    exts.sort_by_key(|interval| (interval.start, interval.id.0));
+    exts
+}
+
+fn pack_base_intervals_bounded(
+    bases: &[Interval],
+    conflicts: &BaseConflictGraph,
+    ext_by_quad: &[Vec<Interval>],
+    budget: usize,
+    nodes: &mut u64,
+) -> Option<HashMap<StorageId, u16>> {
+    if let Some(locations) = pack_base_intervals_greedy(bases, ext_by_quad, budget) {
+        return Some(locations);
+    }
+    let mut allowed_lanes = vec![0u64; bases.len()];
+    for (index, &interval) in bases.iter().enumerate() {
+        for lane in 0..budget {
+            let ext_clear = ext_by_quad
+                .get(lane / 4)
+                .is_none_or(|assigned| assigned.iter().all(|other| !overlap(interval, *other)));
+            if ext_clear {
+                allowed_lanes[index] |= 1 << lane;
+            }
+        }
+        if allowed_lanes[index] == 0 {
+            return None;
+        }
+    }
+
+    let mut remaining = (0..bases.len()).collect::<Vec<_>>();
+    let mut assigned_by_lane = vec![vec![0u64; conflicts.words].into_boxed_slice(); budget];
+    let mut assignments = vec![None; bases.len()];
+    if !search_base_placement(
+        bases,
+        conflicts,
+        &mut remaining,
+        &allowed_lanes,
+        ext_by_quad,
+        &mut assigned_by_lane,
+        &mut assignments,
+        nodes,
+    ) {
+        return None;
+    }
+    Some(
+        bases
+            .iter()
+            .zip(assignments)
+            .map(|(interval, lane)| {
+                (
+                    interval.id,
+                    lane.expect("complete exact BF placement has every assignment"),
+                )
+            })
+            .collect(),
+    )
+}
+
+fn pack_base_intervals_greedy(
+    bases: &[Interval],
+    ext_by_quad: &[Vec<Interval>],
+    budget: usize,
+) -> Option<HashMap<StorageId, u16>> {
+    let mut locations = HashMap::new();
+    let mut bases_by_lane: Vec<Vec<Interval>> = vec![Vec::new(); budget];
+    for &interval in bases {
+        let lane = (0..budget)
+            .find(|&lane| base_fits_lane(interval, lane, ext_by_quad, &bases_by_lane))?;
+        bases_by_lane[lane].push(interval);
+        locations.insert(interval.id, lane as u16);
+    }
+    Some(locations)
+}
+
+fn base_fits_lane(
+    interval: Interval,
+    lane: usize,
+    ext_by_quad: &[Vec<Interval>],
+    bases_by_lane: &[Vec<Interval>],
+) -> bool {
+    let ext_clear = ext_by_quad
+        .get(lane / 4)
+        .is_none_or(|assigned| assigned.iter().all(|other| !overlap(interval, *other)));
+    ext_clear
+        && bases_by_lane[lane]
+            .iter()
+            .all(|other| !overlap(interval, *other))
+}
+
+fn search_base_placement(
+    bases: &[Interval],
+    conflicts: &BaseConflictGraph,
+    remaining: &mut Vec<usize>,
+    allowed_lanes: &[u64],
+    ext_by_quad: &[Vec<Interval>],
+    assigned_by_lane: &mut [Box<[u64]>],
+    assignments: &mut [Option<u16>],
+    nodes: &mut u64,
+) -> bool {
+    if *nodes == 0 {
+        return false;
+    }
+    *nodes -= 1;
+    if remaining.is_empty() {
+        return true;
+    }
+
+    let mut choice = None::<(usize, u64, (u32, std::cmp::Reverse<usize>, StorageId))>;
+    for (remaining_index, &base_index) in remaining.iter().enumerate() {
+        let interval = bases[base_index];
+        let mut lanes = allowed_lanes[base_index];
+        let mut candidates = lanes;
+        while candidates != 0 {
+            let lane = candidates.trailing_zeros() as usize;
+            candidates &= candidates - 1;
+            if intersects(&conflicts.conflicts[base_index], &assigned_by_lane[lane]) {
+                lanes &= !(1 << lane);
+            }
+        }
+        if lanes == 0 {
+            return false;
+        }
+        let key = (
+            lanes.count_ones(),
+            std::cmp::Reverse(interval.end - interval.start),
+            interval.id,
+        );
+        if choice
+            .as_ref()
+            .is_none_or(|(_, _, best_key)| key < *best_key)
+        {
+            choice = Some((remaining_index, lanes, key));
+        }
+    }
+    let (index, mut lanes, _) = choice.expect("non-empty remaining set has a choice");
+    let base_index = remaining.swap_remove(index);
+
+    let mut tried_lanes = 0u64;
+    while lanes != 0 {
+        let lane = lanes.trailing_zeros() as usize;
+        lanes &= lanes - 1;
+        let symmetric = (0..assigned_by_lane.len()).any(|previous| {
+            tried_lanes & (1 << previous) != 0
+                && ext_by_quad
+                    .get(lane / 4)
+                    .into_iter()
+                    .flatten()
+                    .map(|interval| interval.id)
+                    .eq(ext_by_quad
+                        .get(previous / 4)
+                        .into_iter()
+                        .flatten()
+                        .map(|interval| interval.id))
+                && assigned_by_lane[lane] == assigned_by_lane[previous]
+        });
+        if symmetric {
+            continue;
+        }
+        tried_lanes |= 1 << lane;
+
+        set_bit(&mut assigned_by_lane[lane], base_index);
+        assignments[base_index] = Some(lane as u16);
+        if search_base_placement(
+            bases,
+            conflicts,
+            remaining,
+            allowed_lanes,
+            ext_by_quad,
+            assigned_by_lane,
+            assignments,
+            nodes,
+        ) {
+            return true;
+        }
+        clear_bit(&mut assigned_by_lane[lane], base_index);
+        assignments[base_index] = None;
+    }
+    remaining.push(base_index);
+    false
+}
+
+#[allow(clippy::too_many_arguments)]
+fn search_ext_placement(
+    index: usize,
+    exts: &[Interval],
+    bases: &[Interval],
+    base_conflicts: &BaseConflictGraph,
+    budget: usize,
+    quads: &mut Vec<Vec<Interval>>,
+    locations: &mut HashMap<StorageId, u16>,
+    ext_nodes: &mut u64,
+    base_nodes: &mut u64,
+) -> bool {
+    if *ext_nodes == 0 || *base_nodes == 0 {
+        return false;
+    }
+    *ext_nodes -= 1;
+    if index == exts.len() {
+        if let Some(base_locations) =
+            pack_base_intervals_bounded(bases, base_conflicts, quads, budget, base_nodes)
+        {
+            locations.extend(base_locations);
+            return true;
+        }
+        return false;
+    }
+
+    let interval = exts[index];
+    let mut candidates = (0..quads.len())
+        .filter(|&quad| quads[quad].iter().all(|other| !overlap(interval, *other)))
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|&quad| {
+        (
+            std::cmp::Reverse(quads[quad].iter().map(|other| other.end).max()),
+            quad,
+        )
+    });
+    let mut signatures = HashSet::<Vec<StorageId>>::new();
+    candidates
+        .retain(|&quad| signatures.insert(quads[quad].iter().map(|other| other.id).collect()));
+    for quad in candidates {
+        quads[quad].push(interval);
+        locations.insert(interval.id, (quad * 4) as u16);
+        if search_ext_placement(
+            index + 1,
+            exts,
+            bases,
+            base_conflicts,
+            budget,
+            quads,
+            locations,
+            ext_nodes,
+            base_nodes,
+        ) {
+            return true;
+        }
+        quads[quad].pop();
+        locations.remove(&interval.id);
+    }
+    false
+}
+
+struct Emitter<'a> {
+    layer: &'a DagLayer,
+    this_layer: usize,
+    fingerprints: Vec<ValueFingerprint>,
+    lifetimes: &'a LifetimeAnalysis,
+    definition_locations: &'a HashMap<StorageId, u16>,
+    moves_at: &'a HashMap<usize, Vec<StorageMove>>,
+    current_locations: HashMap<StorageId, u16>,
+    ctx: DagForwardContext,
+    instrs: Vec<Instr>,
+    residents: HashMap<ValueFingerprint, StorageId>,
+    temps: HashMap<TempId, StorageId>,
+    pending_roots: HashSet<RootId>,
+    root_outputs: Vec<(RootId, RootOutput)>,
+    desc_by_expr: HashMap<cs::gkr_compiler::dag_ir::ExprId, u16>,
+}
+
+impl Emitter<'_> {
+    fn emit(&mut self, op_index: usize, op: &PackedEvalOp) -> Result<(), ConcreteBindError> {
+        self.emit_relocations(op_index)?;
+        match op {
+            PackedEvalOp::AccInit(operand) => {
+                let src = self.bind_operand(*operand)?;
+                self.instrs.push(Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: operand_field(*operand),
+                    dst: None,
+                    src: Some(src),
+                });
+            }
+            PackedEvalOp::AccAdd {
+                field,
+                promote,
+                sign,
+                operands,
+            } => {
+                let bound = operands
+                    .iter()
+                    .map(|&operand| self.bind_operand(operand))
+                    .collect::<Result<_, _>>()?;
+                self.instrs.push(Instr::Add {
+                    field: to_operand_field(*field),
+                    sign: *sign,
+                    promote: *promote,
+                    operands: bound,
+                });
+            }
+            PackedEvalOp::AccMul {
+                field,
+                promote,
+                sign,
+                operands,
+            } => {
+                operands
+                    .iter()
+                    .try_for_each(|&operand| self.reject_multiplication_by_one(operand))?;
+                let bound = operands
+                    .iter()
+                    .map(|&operand| self.bind_operand(operand))
+                    .collect::<Result<_, _>>()?;
+                self.instrs.push(Instr::Mul {
+                    field: to_operand_field(*field),
+                    promote: *promote,
+                    negate_acc: *sign == Sign::Minus,
+                    operands: bound,
+                });
+            }
+            PackedEvalOp::AccFma {
+                field_lhs,
+                field_rhs,
+                promote,
+                sign,
+                pairs,
+            } => {
+                pairs.iter().try_for_each(|&(lhs, rhs)| {
+                    self.reject_multiplication_by_one(lhs)?;
+                    self.reject_multiplication_by_one(rhs)
+                })?;
+                let bound = pairs
+                    .iter()
+                    .map(|&(lhs, rhs)| Ok((self.bind_operand(lhs)?, self.bind_operand(rhs)?)))
+                    .collect::<Result<_, ConcreteBindError>>()?;
+                self.instrs.push(Instr::Fma {
+                    field_lhs: to_operand_field(*field_lhs),
+                    field_rhs: to_operand_field(*field_rhs),
+                    sign: *sign,
+                    promote: *promote,
+                    pairs: bound,
+                });
+            }
+            PackedEvalOp::SaveAcc(temp) => {
+                let id = self.definition(op_index)?;
+                self.temps.insert(temp.id, id);
+                self.current_locations
+                    .insert(id, self.definition_locations[&id]);
+                self.instrs.push(Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: to_operand_field(temp.field),
+                    dst: Some(self.storage_dst(id, temp.field)),
+                    src: None,
+                });
+            }
+            PackedEvalOp::CacheStore { value, from } => {
+                let id = self.definition(op_index)?;
+                self.residents.insert(value.fingerprint, id);
+                self.current_locations
+                    .insert(id, self.definition_locations[&id]);
+                let dst = Some(self.storage_dst(id, value.field));
+                let instruction = match from {
+                    CacheStoreFrom::Acc => Instr::Mov {
+                        dir: MovDir::DstFromAcc,
+                        field: to_operand_field(value.field),
+                        dst,
+                        src: None,
+                    },
+                    CacheStoreFrom::Source => Instr::Mov {
+                        dir: MovDir::DstFromSrc,
+                        field: to_operand_field(value.field),
+                        dst,
+                        src: Some(self.bind_source(*value)?),
+                    },
+                };
+                self.instrs.push(instruction);
+            }
+            PackedEvalOp::CacheDrop(value) => {
+                let id = self
+                    .residents
+                    .remove(&value.fingerprint)
+                    .ok_or(ConcreteBindError::MissingDroppedResident(value.fingerprint))?;
+                self.current_locations.remove(&id);
+            }
+            PackedEvalOp::Commit {
+                root_id,
+                root,
+                sink,
+                from,
+            } => self.emit_commit(*root_id, root, sink, *from)?,
+            PackedEvalOp::ReturnAcc { .. } => return Err(ConcreteBindError::ReturnRootUnsupported),
+        }
+        Ok(())
+    }
+
+    fn emit_relocations(&mut self, op_index: usize) -> Result<(), ConcreteBindError> {
+        let Some(moves) = self.moves_at.get(&op_index) else {
+            return Ok(());
+        };
+        for relocation in moves {
+            let actual = self
+                .current_locations
+                .get(&relocation.id)
+                .copied()
+                .ok_or(ConcreteBindError::MissingStorageLocation(relocation.id.0))?;
+            if actual != relocation.from {
+                return Err(ConcreteBindError::RelocationSourceMismatch {
+                    id: relocation.id.0,
+                    expected: relocation.from,
+                    actual,
+                });
+            }
+            self.instrs.push(Instr::Mov {
+                dir: MovDir::DstFromSrc,
+                field: OperandField::Base,
+                dst: Some(DstLine::Smem {
+                    cell: relocation.to,
+                }),
+                src: Some(OperandLine::Smem {
+                    cell: relocation.from,
+                }),
+            });
+            self.current_locations.insert(relocation.id, relocation.to);
+        }
+        Ok(())
+    }
+
+    fn definition(&self, op_index: usize) -> Result<StorageId, ConcreteBindError> {
+        self.lifetimes
+            .definition_at
+            .get(&op_index)
+            .copied()
+            .ok_or(ConcreteBindError::MissingDefinition(op_index))
+    }
+
+    fn bind_operand(&mut self, operand: Operand) -> Result<OperandLine, ConcreteBindError> {
+        match operand {
+            Operand::Source(value) => self.bind_source(value),
+            Operand::Resident(value) => {
+                let id = *self
+                    .residents
+                    .get(&value.fingerprint)
+                    .ok_or(ConcreteBindError::MissingResident(value.fingerprint))?;
+                self.storage_operand(id, value.field)
+            }
+            Operand::Temp(temp) => {
+                let id = self
+                    .temps
+                    .remove(&temp.id)
+                    .ok_or(ConcreteBindError::MissingTemp(temp.id))?;
+                let operand = self.storage_operand(id, temp.field)?;
+                self.current_locations.remove(&id);
+                Ok(operand)
+            }
+            Operand::Unit { negative } => Ok(OperandLine::Ldc {
+                sub: LdcSub::Special,
+                idx: if negative {
+                    Special::NegOne as u16
+                } else {
+                    Special::One as u16
+                },
+            }),
+        }
+    }
+
+    fn reject_multiplication_by_one(&self, operand: Operand) -> Result<(), ConcreteBindError> {
+        let value = match operand {
+            Operand::Source(value) | Operand::Resident(value) => value,
+            Operand::Temp(_) => return Ok(()),
+            Operand::Unit { negative } => {
+                return Err(ConcreteBindError::MultiplicationBySyntheticUnit { negative });
+            }
+        };
+        if let Some(negative) = unit_sign_expr(self.layer, value.expr) {
+            return Err(if negative {
+                ConcreteBindError::MultiplicationByNegOne(value.expr)
+            } else {
+                ConcreteBindError::MultiplicationByOne(value.expr)
+            });
+        }
+        Ok(())
+    }
+
+    fn bind_source(&mut self, value: ValueRef) -> Result<OperandLine, ConcreteBindError> {
+        if let Some(strategy) = self.layer.resolutions.get(&value.expr) {
+            let desc =
+                self.intern_descriptor(value.expr, lower_resolution(strategy, value.expr))?;
+            return Ok(OperandLine::Special { desc });
+        }
+        let Expr::Source(source) = &self.layer.exprs[value.expr.0 as usize] else {
+            return Err(ConcreteBindError::ExpectedSource(value));
+        };
+        Ok(match &self.layer.sources[source.0 as usize].kind {
+            SourceKind::Read { place } => {
+                let (slot, col) = self
+                    .ctx
+                    .backings
+                    .read_slot_col(place, to_operand_field(value.field))?;
+                OperandLine::Global { slot, col }
+            }
+            SourceKind::Constant { value: constant } => match *constant {
+                0 => return Err(ConcreteBindError::UnencodableZero(value.expr)),
+                1 => OperandLine::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::One as u16,
+                },
+                BABYBEAR_NEG_ONE => OperandLine::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::NegOne as u16,
+                },
+                constant => OperandLine::Ldc {
+                    sub: LdcSub::Const,
+                    idx: self.ctx.consts.intern(constant),
+                },
+            },
+            SourceKind::Challenge { reference } => {
+                let (sub, idx) = self.ctx.challenges.intern(reference);
+                OperandLine::Ldc { sub, idx }
+            }
+            SourceKind::VirtualSetup { kind } => {
+                let descriptor = SpecialDescriptor {
+                    strategy: SpecialStrategy::VirtualSetup { kind: kind.clone() },
+                    origin_expr: value.expr,
+                };
+                OperandLine::Special {
+                    desc: self.intern_descriptor(value.expr, descriptor)?,
+                }
+            }
+            SourceKind::LookupValue { .. } => {
+                return Err(ConcreteBindError::UncoveredLookup(value));
+            }
+        })
+    }
+
+    fn intern_descriptor(
+        &mut self,
+        expr: cs::gkr_compiler::dag_ir::ExprId,
+        descriptor: SpecialDescriptor,
+    ) -> Result<u16, ConcreteBindError> {
+        if let Some(&desc) = self.desc_by_expr.get(&expr) {
+            return Ok(desc);
+        }
+        if self.ctx.specials.len() as u32 >= MAX_DESC {
+            return Err(ConcreteBindError::DescriptorOverflow);
+        }
+        let desc = self.ctx.specials.push(descriptor);
+        self.desc_by_expr.insert(expr, desc);
+        Ok(desc)
+    }
+
+    fn storage_operand(
+        &self,
+        id: StorageId,
+        field: FieldKind,
+    ) -> Result<OperandLine, ConcreteBindError> {
+        let location = self
+            .current_locations
+            .get(&id)
+            .copied()
+            .ok_or(ConcreteBindError::MissingStorageLocation(id.0))?;
+        Ok(OperandLine::Smem {
+            cell: wire_cell(location, field),
+        })
+    }
+
+    fn storage_dst(&self, id: StorageId, field: FieldKind) -> DstLine {
+        DstLine::Smem {
+            cell: wire_cell(self.current_locations[&id], field),
+        }
+    }
+
+    fn emit_commit(
+        &mut self,
+        root_id: RootId,
+        root: &RootKey,
+        sink: &SinkInfo,
+        from: MaterializeFrom,
+    ) -> Result<(), ConcreteBindError> {
+        if !self.pending_roots.remove(&root_id) {
+            return Err(ConcreteBindError::RootIdentityMismatch { root: root_id });
+        }
+        let expected = root_key(self.layer, &self.fingerprints, root_id);
+        if expected != *root
+            || self.layer.roots[root_id.0 as usize].materialize.as_ref() != Some(sink)
+        {
+            return Err(ConcreteBindError::RootIdentityMismatch { root: root_id });
+        }
+        let (key, offset) = sink_backing(sink, self.this_layer);
+        let (slot, col) = self.ctx.backings.slot_col(key, offset)?;
+        let (dir, src) = match from {
+            MaterializeFrom::Acc => (MovDir::DstFromAcc, None),
+            MaterializeFrom::Source(value) => (MovDir::DstFromSrc, Some(self.bind_source(value)?)),
+        };
+        self.instrs.push(Instr::Mov {
+            dir,
+            field: to_operand_field(sink.field),
+            dst: Some(DstLine::GlobalMaterialize { slot, col }),
+            src,
+        });
+        self.root_outputs
+            .push((root_id, RootOutput::Cell(OutputCell::Global { slot, col })));
+        Ok(())
+    }
+}
+
+fn wire_cell(lane: u16, field: FieldKind) -> u16 {
+    match field {
+        FieldKind::Base => lane,
+        FieldKind::Ext => {
+            debug_assert_eq!(lane % 4, 0);
+            lane / 4
+        }
+    }
+}
+
+fn operand_field(operand: Operand) -> OperandField {
+    to_operand_field(match operand {
+        Operand::Source(value) | Operand::Resident(value) => value.field,
+        Operand::Temp(temp) => temp.field,
+        Operand::Unit { .. } => FieldKind::Base,
+    })
+}
+
+fn to_operand_field(field: FieldKind) -> OperandField {
+    match field {
+        FieldKind::Base => OperandField::Base,
+        FieldKind::Ext => OperandField::Ext,
+    }
+}
+
+fn root_key(layer: &DagLayer, fingerprints: &[ValueFingerprint], root_id: RootId) -> RootKey {
+    let root = &layer.roots[root_id.0 as usize];
+    RootKey {
+        expr: fingerprints[root.expr.0 as usize],
+        materialize: root.materialize.clone(),
+        claim_origin: root.claim.as_ref().map(|claim| claim.origin.clone()),
+    }
+}
+
+fn sink_backing(sink: &SinkInfo, this_layer: usize) -> (BackingKey, usize) {
+    let field = to_operand_field(sink.field);
+    match sink.kind {
+        SinkKind::Inner { layer, offset } => (BackingKey::LayerOutput { layer, field }, offset),
+        SinkKind::Cache { layer, offset } => (BackingKey::CacheOutput { layer, field }, offset),
+        SinkKind::Export { slot } => (
+            BackingKey::LayerOutput {
+                layer: this_layer,
+                field,
+            },
+            slot,
+        ),
+        SinkKind::Scratch { slot } => (BackingKey::Scratch, slot),
+    }
+}
+
+fn tally_program(
+    program: &Program,
+    ctx: &DagForwardContext,
+    max_live_lanes: usize,
+) -> CompileStats {
+    let mut stats = CompileStats {
+        program_lanes: program.instrs.len(),
+        max_live_cells: max_live_lanes,
+        ..CompileStats::default()
+    };
+    for instr in &program.instrs {
+        match instr {
+            Instr::Mov {
+                dir,
+                field,
+                dst,
+                src,
+            } => {
+                stats.op_counts[OP_MOV] += 1;
+                if let Some(operand) = src {
+                    tally_operand(*operand, *field, ctx, &mut stats);
+                }
+                if matches!(dir, MovDir::DstFromAcc | MovDir::DstFromSrc)
+                    && matches!(dst, Some(DstLine::Smem { .. }))
+                {
+                    stats.cell_stores += 1;
+                }
+            }
+            Instr::Add {
+                field, operands, ..
+            } => {
+                stats.op_counts[OP_ADD] += 1;
+                for &operand in operands {
+                    tally_operand(operand, *field, ctx, &mut stats);
+                }
+            }
+            Instr::Mul {
+                field, operands, ..
+            } => {
+                stats.op_counts[OP_MUL] += 1;
+                for &operand in operands {
+                    tally_operand(operand, *field, ctx, &mut stats);
+                }
+            }
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                pairs,
+                ..
+            } => {
+                stats.op_counts[OP_FMA] += 1;
+                for &(lhs, rhs) in pairs {
+                    tally_operand(lhs, *field_lhs, ctx, &mut stats);
+                    tally_operand(rhs, *field_rhs, ctx, &mut stats);
+                }
+            }
+        }
+    }
+    stats.special_gathers = ctx
+        .specials
+        .iter()
+        .filter(|descriptor| !matches!(descriptor.strategy, SpecialStrategy::VirtualSetup { .. }))
+        .count();
+    stats
+}
+
+fn tally_operand(
+    operand: OperandLine,
+    field: OperandField,
+    ctx: &DagForwardContext,
+    stats: &mut CompileStats,
+) {
+    match operand {
+        OperandLine::Global { .. } => {
+            stats.dram_reads += 1;
+            stats.dram_traffic += match field {
+                OperandField::Base => 1,
+                OperandField::Ext => 4,
+            };
+        }
+        OperandLine::Smem { .. } => stats.cell_reads += 1,
+        OperandLine::Ldc {
+            sub: LdcSub::Special,
+            ..
+        } => {}
+        OperandLine::Ldc { .. } => stats.ldc_reads += 1,
+        OperandLine::Special { desc } => {
+            if !matches!(
+                ctx.specials
+                    .get(desc)
+                    .map(|descriptor| &descriptor.strategy),
+                Some(SpecialStrategy::VirtualSetup { .. })
+            ) {
+                stats.special_reads += 1;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eval_plan::PackedStats;
+
+    #[test]
+    fn concrete_store_reload_roundtrip_is_elided() {
+        let store = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Base,
+            dst: Some(DstLine::Smem { cell: 3 }),
+            src: None,
+        };
+        let reload = Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(OperandLine::Smem { cell: 3 }),
+        };
+        let different_reload = Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(OperandLine::Smem { cell: 4 }),
+        };
+        let mut program = Program {
+            instrs: vec![store.clone(), reload, different_reload.clone()],
+        };
+
+        elide_accumulator_cell_roundtrips(&mut program);
+
+        assert_eq!(program.instrs, vec![store, different_reload]);
+    }
+
+    #[test]
+    fn dead_accumulator_load_is_folded_into_direct_store() {
+        let source = OperandLine::Ldc {
+            sub: LdcSub::Const,
+            idx: 7,
+        };
+        let overwrite = Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(OperandLine::Special { desc: 4 }),
+        };
+        let mut program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(source),
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::Smem { cell: 3 }),
+                    src: None,
+                },
+                overwrite.clone(),
+            ],
+        };
+
+        fold_direct_source_stores(&mut program);
+
+        assert_eq!(
+            program.instrs,
+            vec![
+                Instr::Mov {
+                    dir: MovDir::DstFromSrc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::Smem { cell: 3 }),
+                    src: Some(source),
+                },
+                overwrite,
+            ]
+        );
+    }
+
+    #[test]
+    fn direct_store_fold_requires_a_following_accumulator_overwrite() {
+        let mut program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Smem { cell: 2 }),
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::Smem { cell: 3 }),
+                    src: None,
+                },
+                Instr::Add {
+                    field: OperandField::Base,
+                    sign: Sign::Plus,
+                    promote: false,
+                    operands: vec![OperandLine::Smem { cell: 4 }],
+                },
+            ],
+        };
+        let original = program.clone();
+
+        fold_direct_source_stores(&mut program);
+
+        assert_eq!(program, original);
+    }
+
+    #[test]
+    fn load_mul_add_is_folded_to_canonical_signed_fma() {
+        let loaded = OperandLine::Ldc {
+            sub: LdcSub::ConstChallenge,
+            idx: 2,
+        };
+        let factor = OperandLine::Smem { cell: 3 };
+        let addend = OperandLine::Smem { cell: 4 };
+        let mut program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Ext,
+                    dst: None,
+                    src: Some(loaded),
+                },
+                Instr::Mul {
+                    field: OperandField::Base,
+                    promote: false,
+                    negate_acc: true,
+                    operands: vec![factor],
+                },
+                Instr::Add {
+                    field: OperandField::Ext,
+                    sign: Sign::Plus,
+                    promote: false,
+                    operands: vec![addend],
+                },
+            ],
+        };
+
+        fold_load_mul_add(&mut program);
+
+        assert_eq!(
+            program.instrs,
+            vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Ext,
+                    dst: None,
+                    src: Some(addend),
+                },
+                Instr::Fma {
+                    field_lhs: OperandField::Base,
+                    field_rhs: OperandField::Ext,
+                    sign: Sign::Minus,
+                    promote: false,
+                    pairs: vec![(factor, loaded)],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn load_mul_add_fold_rejects_subtraction() {
+        let mut program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Smem { cell: 2 }),
+                },
+                Instr::Mul {
+                    field: OperandField::Base,
+                    promote: false,
+                    negate_acc: false,
+                    operands: vec![OperandLine::Smem { cell: 3 }],
+                },
+                Instr::Add {
+                    field: OperandField::Base,
+                    sign: Sign::Minus,
+                    promote: false,
+                    operands: vec![OperandLine::Smem { cell: 4 }],
+                },
+            ],
+        };
+        let original = program.clone();
+
+        fold_load_mul_add(&mut program);
+
+        assert_eq!(program, original);
+    }
+
+    #[test]
+    fn metadata_drop_does_not_extend_physical_lifetime() {
+        let value = ValueRef {
+            expr: ExprId(0),
+            fingerprint: ValueFingerprint([1, 0]),
+            field: FieldKind::Base,
+        };
+        let plan = PackedEvalPlan {
+            ops: vec![
+                PackedEvalOp::CacheStore {
+                    value,
+                    from: CacheStoreFrom::Source,
+                },
+                PackedEvalOp::AccInit(Operand::Resident(value)),
+                PackedEvalOp::CacheDrop(value),
+            ],
+            stats: PackedStats::default(),
+        };
+
+        let lifetimes = analyze_lifetimes(&plan).expect("valid resident lifetime");
+        assert_eq!(lifetimes.intervals.len(), 1);
+        assert_eq!(lifetimes.intervals[0].start, 0);
+        assert_eq!(lifetimes.intervals[0].end, 2);
+    }
+
+    fn reference_base_search(
+        remaining: &mut Vec<Interval>,
+        ext_by_quad: &[Vec<Interval>],
+        bases_by_lane: &mut Vec<Vec<Interval>>,
+    ) -> bool {
+        if remaining.is_empty() {
+            return true;
+        }
+        let mut choice = None::<(
+            usize,
+            Vec<usize>,
+            (usize, std::cmp::Reverse<usize>, StorageId),
+        )>;
+        for (index, &interval) in remaining.iter().enumerate() {
+            let lanes = (0..bases_by_lane.len())
+                .filter(|&lane| base_fits_lane(interval, lane, ext_by_quad, bases_by_lane))
+                .collect::<Vec<_>>();
+            if lanes.is_empty() {
+                return false;
+            }
+            let key = (
+                lanes.len(),
+                std::cmp::Reverse(interval.end - interval.start),
+                interval.id,
+            );
+            if choice
+                .as_ref()
+                .is_none_or(|(_, _, best_key)| key < *best_key)
+            {
+                choice = Some((index, lanes, key));
+            }
+        }
+        let (index, mut lanes, _) = choice.expect("non-empty reference search has a choice");
+        let interval = remaining.swap_remove(index);
+        let mut signatures = HashSet::<(Vec<StorageId>, Vec<StorageId>)>::new();
+        lanes.retain(|&lane| {
+            signatures.insert((
+                ext_by_quad
+                    .get(lane / 4)
+                    .into_iter()
+                    .flatten()
+                    .map(|other| other.id)
+                    .collect(),
+                bases_by_lane[lane].iter().map(|other| other.id).collect(),
+            ))
+        });
+        for lane in lanes {
+            bases_by_lane[lane].push(interval);
+            if reference_base_search(remaining, ext_by_quad, bases_by_lane) {
+                return true;
+            }
+            bases_by_lane[lane].pop();
+        }
+        remaining.push(interval);
+        false
+    }
+
+    fn assert_valid_base_locations(
+        bases: &[Interval],
+        ext_by_quad: &[Vec<Interval>],
+        budget: usize,
+        locations: &HashMap<StorageId, u16>,
+    ) {
+        assert_eq!(locations.len(), bases.len());
+        for (index, &interval) in bases.iter().enumerate() {
+            let lane = locations[&interval.id] as usize;
+            assert!(lane < budget);
+            assert!(
+                ext_by_quad
+                    .get(lane / 4)
+                    .into_iter()
+                    .flatten()
+                    .all(|other| !overlap(interval, *other))
+            );
+            for &other in &bases[index + 1..] {
+                if locations[&other.id] as usize == lane {
+                    assert!(!overlap(interval, other));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scalar_peak_does_not_certify_aligned_fixed_cell_placement() {
+        let interval = |id, field, start, end| Interval {
+            id: StorageId(id),
+            field,
+            start,
+            end,
+        };
+        let intervals = vec![
+            interval(0, FieldKind::Ext, 0, 78),
+            interval(1, FieldKind::Base, 40, 323),
+            interval(2, FieldKind::Base, 50, 95),
+            interval(3, FieldKind::Base, 60, 119),
+            interval(4, FieldKind::Ext, 66, 74),
+            interval(5, FieldKind::Base, 70, 99),
+            interval(6, FieldKind::Base, 84, 125),
+            interval(7, FieldKind::Ext, 114, 142),
+            interval(8, FieldKind::Ext, 122, 132),
+        ];
+
+        assert_eq!(peak_live_lanes(&intervals), 12);
+        // Neither the fast fixed two-pass allocator nor its bounded exact
+        // fallback can seat the witness at b12.
+        assert!(place_intervals(&intervals, 12, PlacementMode::GreedyOnly).is_err());
+        assert!(place_intervals(&intervals, 12, PlacementMode::Exact).is_err());
+        // With one additional lane the same fixed two-pass strategy succeeds,
+        // so no relocation is introduced when it is unnecessary.
+        assert!(place_intervals(&intervals, 13, PlacementMode::Exact).is_ok());
+        let relocated = place_intervals_with_relocation(&intervals, 12)
+            .expect("one BF relocation seats the width-feasible plan");
+        assert_eq!(relocated.definition_locations.len(), intervals.len());
+        assert_eq!(relocated.move_count(), 1);
+    }
+
+    #[test]
+    fn exact_base_bitsets_recover_from_a_greedy_list_coloring_trap() {
+        let base = |id, start, end| Interval {
+            id: StorageId(id),
+            field: FieldKind::Base,
+            start,
+            end,
+        };
+        let bases = vec![
+            base(0, 0, 2),
+            base(1, 1, 5),
+            base(2, 1, 5),
+            base(3, 1, 5),
+            base(4, 1, 5),
+        ];
+        // The later E4 reservation makes the four long BF intervals eligible
+        // only for lanes 0..4. Greedy puts the short, unconstrained interval in
+        // lane 0 first and gets stuck; exact placement must put it in lane 4.
+        let ext_by_quad = vec![
+            Vec::new(),
+            vec![Interval {
+                id: StorageId(5),
+                field: FieldKind::Ext,
+                start: 3,
+                end: 5,
+            }],
+        ];
+        assert!(pack_base_intervals_greedy(&bases, &ext_by_quad, 8).is_none());
+
+        let conflicts = BaseConflictGraph::new(&bases);
+        let mut nodes = 1_000_000;
+        let locations =
+            pack_base_intervals_bounded(&bases, &conflicts, &ext_by_quad, 8, &mut nodes)
+                .expect("exact BF placement recovers from the greedy lane choice");
+        assert!(locations[&StorageId(0)] >= 4);
+        assert!(
+            (1..=4).all(|id| locations[&StorageId(id)] < 4),
+            "the four E4-constrained BF intervals occupy the first quad"
+        );
+    }
+
+    #[test]
+    fn exact_base_bitsets_match_vector_reference_on_small_instances() {
+        let mut state = 0x6a09_e667_f3bc_c909u64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+
+        for case in 0..128u32 {
+            let count = 5 + next() as usize % 4;
+            let mut bases = (0..count)
+                .map(|index| {
+                    let start = next() as usize % 12;
+                    Interval {
+                        id: StorageId(index as u32),
+                        field: FieldKind::Base,
+                        start,
+                        end: start + next() as usize % 6,
+                    }
+                })
+                .collect::<Vec<_>>();
+            bases.sort_by_key(|interval| (interval.start, interval.id));
+            let ext_by_quad = (0..2)
+                .map(|quad| {
+                    let start = next() as usize % 12;
+                    (next() % 3 != 0)
+                        .then_some(Interval {
+                            id: StorageId(100 + quad),
+                            field: FieldKind::Ext,
+                            start,
+                            end: start + next() as usize % 5,
+                        })
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+
+            let mut reference_remaining = bases.clone();
+            let reference = reference_base_search(
+                &mut reference_remaining,
+                &ext_by_quad,
+                &mut vec![Vec::new(); 8],
+            );
+            let conflicts = BaseConflictGraph::new(&bases);
+            let mut nodes = 1_000_000;
+            let bitset =
+                pack_base_intervals_bounded(&bases, &conflicts, &ext_by_quad, 8, &mut nodes);
+            assert_eq!(
+                bitset.is_some(),
+                reference,
+                "BF exact placement disagreement in generated case {case}"
+            );
+            if let Some(locations) = bitset {
+                assert_valid_base_locations(&bases, &ext_by_quad, 8, &locations);
+            }
+        }
+    }
+}
