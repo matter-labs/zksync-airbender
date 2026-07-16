@@ -161,6 +161,8 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     cs.add_constraint(load.clone() * (Constraint::from(ram_addr[1]) - readaddr_hi));
     cs.add_constraint(store.clone() * (Constraint::from(ram_addr[1]) - writeaddr_hi));
 
+    let is_fam4: Constraint<F> = Constraint::from(is_lw) + Constraint::from(is_sw);
+
     let (is_rom_base_layer, rom_addr_constraint) = {
         // is_rom aliases shared scratch-Boolean pool slot [2]. Witnessed conditionally
         // on is_fam4 and constrained ONLY through the is_fam4-gated residue below + the
@@ -195,7 +197,6 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
             };
             cs.set_values(value_fn);
         }
-        let is_fam4: Constraint<F> = Constraint::from(is_lw) + Constraint::from(is_sw);
         let rom_bound_high = Term::from(1 << common_constants::ROM_SECOND_WORD_BITS);
         // residue gated by is_fam4: on non-Family-4 rows it is 0 (a valid 16-bit value)
         // regardless of the pooled is_rom/ram_addr[1] junk; on Family-4 rows (is_fam4=1)
@@ -226,17 +227,17 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     // gating is applied to both the table_id and the outputs via the inlined
     // `is_fam4 = is_lw + is_sw` sum and the single committed helper:
     //
-    //   - `gate_fam4_rom     = (is_lw + is_sw) AND is_rom`
+    //   - `gate_fam4_rom     = is_lw AND is_rom`
     //   - `gate_fam4_not_rom = (is_lw + is_sw) - gate_fam4_rom` (inlined at use)
     //
     // The "not_rom" gate is inlined at its use sites (output1 / output2 below)
     // as the degree-1 expression `(is_lw + is_sw) - gate_fam4_rom`. Saves 1
     // committed col vs the previous shape where both were base-layer Booleans.
-    // can never STORE into ROM region
+
+    // Also one can never STORE into ROM region, so is_sw AND is_rom is unreachable
     cs.add_constraint(Term::from(is_sw) * Term::from(is_rom_base_layer));
 
     let gate_fam4_rom_read = cs.add_named_boolean_variable("gate_fam4_rom_read");
-    let gate_fam4_ram_read = cs.add_named_boolean_variable("gate_fam4_ram_read");
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let is_lw_raw = placer.get_boolean(is_lw_var);
@@ -246,58 +247,56 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
                 is_lw_raw
             };
             let is_rom_val = placer.get_boolean(is_rom_base_layer.expect_variable());
-            let not_rom_val = is_rom_val.negate();
             let gate_rom_val = is_lw_val.and(&is_rom_val);
-            let gate_ram_val = is_lw_val.and(&not_rom_val);
             placer.assign_mask(gate_fam4_rom_read.expect_variable(), &gate_rom_val);
-            placer.assign_mask(gate_fam4_ram_read.expect_variable(), &gate_ram_val);
         };
         cs.set_values(value_fn);
     }
     cs.add_constraint(
         Constraint::from(gate_fam4_rom_read) - Term::from(is_lw) * Term::from(is_rom_base_layer),
     );
-    cs.add_constraint(
-        Constraint::from(gate_fam4_ram_read) - Term::from(is_lw) * (Term::from(1) - Term::from(is_rom_base_layer)),
-    );
 
     let rom_request = {
-        // for SW source is in RS2, destination is in RAM, for LW source is in RAM, destination is in RD,
-        // but due to structure of memory queries those are the same variables
         let [source_low, source_high] = rs2_read_or_lw_mem_value_u16;
         let [destination_low, destination_high] = rd_write_or_sw_mem_value_u16;
+
         assert_eq!(rom_addr_constraint.degree(), 1);
+        // input = gate_fam4_rom * rom_addr.
+        // We gate by `gate_fam4_rom` (forced to 0 off-Family-4 by its ungated def at
+        // line 248) rather than the now-pooled `is_rom`/`ram_addr` (which hold junk on
+        // non-Family-4 rows). This keeps the pooled-lookup input at 0 on non-Family-4
+        // rows so it does not pollute the shared lookup-pool slot. On Family-4 rows
+        // gate_fam4_rom == is_rom, so this equals the original `is_rom * rom_addr`.
+        let input = Constraint::from(gate_fam4_rom_read) * rom_addr_constraint;
+        // we want a constraint such that it's if we do ROM read then it's equal to destination value
+        // (what we write to RD), otherwise (RAM read or SW) - it's 0. We need in mind that SW * is_ROM is
+        // unreachable combiantion, so we freely treat is as 0. We also want to ensure that
+        // if we do RAM read or SW, then source and destination values are the same
 
-        // We want the following simple rules:
-        // - if we do LW from ROM, then destination_low/destination_high are in the lookup
-        // table, along with the address
-        // if we do LW from RAM, then destination_low/destination_high are equal to 
-        // source_low/source_high respectively
-        // if we do SW, then destination_low/destination_high are equal to 
-        // source_low/source_high respectively
-
-        // ROM case
-        let masked_input_address = Constraint::from(gate_fam4_rom_read) * rom_addr_constraint;
-        let masked_rd_low = Constraint::from(gate_fam4_rom_read) * Term::from(destination_low);
-        let masked_rd_high = Constraint::from(gate_fam4_rom_read) * Term::from(destination_high);
-
-        // RAM case in general
+        // ROM read case
+        let output1 = Constraint::from(gate_fam4_rom_read) * Term::from(destination_low);
+        let output2 = Constraint::from(gate_fam4_rom_read) * Term::from(destination_high);
+        // RAM read or SW - then if LW == 1 and we do not touch ROM, then it's 1 in predicate
         cs.add_constraint_expr(
-            (Expr::from(gate_fam4_ram_read) + Expr::from(is_sw.expect_variable()))
-            * (Expr::from(destination_low) - Expr::from(source_low))
+            (Expr::from(is_lw.expect_variable()) + Expr::from(is_sw.expect_variable())
+                - Expr::from(gate_fam4_rom_read))
+                * (Expr::from(destination_low) - Expr::from(source_low)),
         );
         cs.add_constraint_expr(
-            (Expr::from(gate_fam4_ram_read) + Expr::from(is_sw.expect_variable()))
-            * (Expr::from(destination_high) - Expr::from(source_high))
+            (Expr::from(is_lw.expect_variable()) + Expr::from(is_sw.expect_variable())
+                - Expr::from(gate_fam4_rom_read))
+                * (Expr::from(destination_high) - Expr::from(source_high)),
         );
 
         // table_id = execute * gate_fam4_rom * romread_table — collapses to 0
         // (ZeroEntry) when another family fires or on padding.
-        let table_id = Constraint::from(inputs.execute) * Term::from(gate_fam4_rom_read) * Term::from(TableType::AlignedRomRead.to_num());
-        LookupRequest::new(table_id, vec![masked_input_address, masked_rd_low, masked_rd_high])
+        let table_id = Constraint::from(inputs.execute)
+            * Term::from(gate_fam4_rom_read)
+            * Term::from(TableType::AlignedRomRead.to_num());
+        LookupRequest::new(table_id, vec![input, output1, output2])
     };
 
-    // TODO: refactor to make it universal for both SW/LW paths, basically acting on the 
+    // TODO: refactor to make it universal for both SW/LW paths, basically acting on the
 
     // When `is_sw = 1`, `writeaddr_lo` must be a multiple of 4 (RISC-V word
     // aligned). We decompose `writeaddr_lo` into `4 * top_14 + 2 * bit_1 + bit_0` and

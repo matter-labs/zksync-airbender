@@ -46,10 +46,14 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     // SW: mem[addr] || trap rom[addr] <- rs2                     with +0 offset accepted
     // NOTE: by preprocessing (decoder lookup) we have rd == 0 for loads not possible
 
-    let WordRepresentation::U16Limbs(rs2_read_or_lw_mem_value_u16) = rs2_or_lw_memread_access.read_value else {
+    let WordRepresentation::U16Limbs(rs2_read_or_lw_mem_value_u16) =
+        rs2_or_lw_memread_access.read_value
+    else {
         unreachable!("memread access must be allocated as U16Limbs")
     };
-    let WordRepresentation::U16Limbs(rd_write_or_sw_mem_value_u16) = rd_or_sw_memwrite_access.write_value else {
+    let WordRepresentation::U16Limbs(rd_write_or_sw_mem_value_u16) =
+        rd_or_sw_memwrite_access.write_value
+    else {
         unreachable!("memwrite access must be allocated with U16 write limbs")
     };
     let memread_addr = rs2_or_lw_memread_access.address;
