@@ -19,7 +19,7 @@ use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceId};
 
 use crate::dag::{LayerView, LeafClass, NodeKind};
 use crate::ir::{Op, Operand, Program, SlotId};
-use crate::oracle::{Oracle, SitePath, SiteStep};
+use crate::oracle::{Oracle, SiteObs, SitePath, SiteStep};
 use crate::su;
 
 /// Aggregate cost counters produced by one `flatten()` call.
@@ -100,6 +100,10 @@ impl<'v, 'o> Walker<'v, 'o> {
     /// guarantees no two simultaneously-live slots ever share a depth.
     fn emit(&mut self, e: ExprId, path: &mut SitePath, depth: u32) {
         self.stats.sites_visited += 1;
+        // Placement 1 (spec M2 §4): every `emit` occurrence — roots, leaf
+        // roots, and every compound reached by recursion. Its `SiteStep` (if
+        // any) is already on `path`; observed as a standalone value.
+        self.observe(e, path, false);
         match self.view.kind(e) {
             NodeKind::Leaf(class) => {
                 self.charge_leaf(class);
@@ -121,8 +125,22 @@ impl<'v, 'o> Walker<'v, 'o> {
                         // a Mul node, in ANY fold.
                         let (a, b) = self.mul_operands(child);
                         self.stats.sites_visited += 1; // the fused Mul child's own occurrence
+                        // Placement 2 (spec M2 §4): the fused Mul child (its
+                        // `SiteStep` already pushed above) is a STREAMED
+                        // product — no standalone value ever lands in acc, so
+                        // it is inadmissible. Then each operand gets its own
+                        // pushed step (dup = 1 for the second iff it equals
+                        // the first), observed at the SitePath `keep_priority`
+                        // will later see, before `ready_operand` resolves it.
+                        self.observe(child, path, true);
+                        path.steps.push(SiteStep { child: a, dup: 0 });
+                        self.observe(a, path, false);
                         let oa = self.ready_operand(a);
+                        path.steps.pop();
+                        path.steps.push(SiteStep { child: b, dup: u8::from(b == a) });
+                        self.observe(b, path, false);
                         let ob = self.ready_operand(b);
+                        path.steps.pop();
                         if first {
                             self.push(Op::Load(oa));
                             self.push(Op::Mul(ob));
@@ -134,6 +152,10 @@ impl<'v, 'o> Walker<'v, 'o> {
                         }
                     } else if self.is_ready(child) {
                         // leaf (M1) or resident (M2)
+                        // Placement 3 (spec M2 §4): the ready leaf child (its
+                        // `SiteStep` already pushed above), observed as a
+                        // standalone value before `ready_operand` resolves it.
+                        self.observe(child, path, false);
                         let op = self.ready_operand(child);
                         self.push(if first {
                             Op::Load(op)
@@ -308,6 +330,28 @@ impl<'v, 'o> Walker<'v, 'o> {
     fn maybe_cache(&mut self, e: ExprId, path: &SitePath) {
         let _ = e;
         let _ = self.oracle.keep_priority(path);
+    }
+
+    /// Hands one site occurrence to the oracle. `admissible` folds the
+    /// streamed flag with `classify`: a streamed fma/mul-chain product never
+    /// has a standalone value to cache (`admissible = false` regardless of
+    /// `e`'s kind), and otherwise a value is admissible iff `classify(e)`
+    /// (Dram leaves and compounds; Free leaves are not). This is the single
+    /// entry point behind all three walker placement points, and a pure
+    /// observation — it neither emits ops nor moves any counter.
+    fn observe(&self, e: ExprId, path: &SitePath, streamed: bool) {
+        let admissible = !streamed && Self::classify(self.view.kind(e));
+        self.oracle.observe_site(path, SiteObs { value: e, admissible });
+    }
+
+    /// Cache-admissibility by node kind: `Leaf(Dram)` and `Add`/`Mul` → true;
+    /// `Leaf(Free)` (const/challenge/virtual-setup/lookup-value) → false.
+    fn classify(kind: NodeKind<'_>) -> bool {
+        match kind {
+            NodeKind::Leaf(LeafClass::Dram { .. }) => true,
+            NodeKind::Leaf(LeafClass::Free) => false,
+            NodeKind::Add(_) | NodeKind::Mul(_) => true,
+        }
     }
 
     fn push(&mut self, op: Op) {
@@ -723,6 +767,20 @@ mod tests {
             other => panic!("unexpected op sequence: {other:#?}"),
         }
         assert_eq!(out.stats.peak, model_peak, "unsorted emission would realize 8");
+    }
+
+    /// The M2 site-domain coverage invariant on a real fixture: the neutral
+    /// recording walk (`SiteTable::enumerate`) records exactly one site per
+    /// node occurrence the walker's `sites_visited` counter charges. This is
+    /// the placement contract's 1:1 statement, checked on the real add_sub L0
+    /// (many roots, deep cones) in addition to the synthetic layers.
+    #[test]
+    fn site_table_covers_real_fixture() {
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let v = LayerView::new(&dag.layers[0], &cross, None);
+        let t = crate::oracle::SiteTable::enumerate(&v);
+        let stats = flatten(&v, &NeutralOracle).stats;
+        assert_eq!(t.len() as u64, stats.sites_visited);
     }
 
     /// Runs `flatten` twice over the same view and checks the emitted
