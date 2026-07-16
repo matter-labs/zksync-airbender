@@ -79,14 +79,15 @@ pub trait Oracle {
     /// at that site — the invariant M2's coverage rests on.
     fn observe_site(&self, _site: &SitePath, _obs: SiteObs) {}
 
-    /// Per-child order-bias for the walker's `Derived*`/`Searched` fold
+    /// Per-child order-bias for the walker's `DerivedBiased`/`Searched` fold
     /// ordering (spec M3): an additive integer nudge on a child's order key,
     /// keyed by the child's own `SitePath`. Higher biases sort the child
-    /// earlier. The default `0` leaves the derived key untouched (so `Derived`
-    /// and every M1/M2 oracle ignore ordering bias); a search-driven oracle
-    /// (Task 6) overrides it to steer visitation order from its genome. Inert
-    /// under [`OrderPolicy::Su`](crate::order::OrderPolicy) — the walker only
-    /// consults it on the derived path.
+    /// earlier. The default `0` leaves the derived key untouched (so plain
+    /// `Derived` and every M1/M2 oracle ignore ordering bias); a search-driven
+    /// oracle (Task 6) overrides it to steer visitation order from its
+    /// genome. Inert under [`OrderPolicy::Su`](crate::order::OrderPolicy) and
+    /// plain `Derived` — `Walker::ordered_children` only ever calls this
+    /// method from the `DerivedBiased`/`Searched` match arms.
     fn order_bias(&self, _site: &SitePath) -> i32 {
         0
     }

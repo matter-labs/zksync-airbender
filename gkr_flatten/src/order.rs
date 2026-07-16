@@ -1,8 +1,13 @@
 //! Order context (spec M3): the per-value path data, dies-in / fills queries,
 //! static-peak feasibility test, and the [`OrderPolicy`] selector the walker
-//! (`crate::walk`, Task 5) consults when choosing a fold's child order and
-//! deciding what to keep resident. Nothing here touches the walker — this is
-//! the read-only order channel it will consume.
+//! (`crate::walk`, Task 5) consults when choosing a fold's NON-streamable
+//! child order. This module decides nothing about caching — `dies_in`/
+//! `fills` only describe which residents a candidate order would let die (or
+//! which above-threshold sites sit under it), feeding the derived key; what
+//! actually gets admitted/evicted stays `Oracle::keep_priority` and
+//! `residency::Residency`'s job, untouched by anything here. Nothing here
+//! calls back into the walker — this is the read-only order channel
+//! `Walker::ordered_children` (Task 5) reads.
 //!
 //! # Three precomputed structures ([`OrderCtx`])
 //!
@@ -38,7 +43,8 @@
 //! `remaining > 0` liveness filter. Hashes are 64-bit and never compared for
 //! structural equality, so a collision can only make a locus LOOK inside a
 //! subtree it is not (a `dies_in` key slightly off) or inflate a `fills`
-//! count — it steers a heuristic (child order / keep priority), never the
+//! count — it steers only the derived CHILD-ORDER heuristic (never a caching
+//! decision — `Oracle::keep_priority` never reads this module), never the
 //! walker's authoritative consumed-count liveness or op emission, and
 //! [`order_feasible`] uses STATIC su peaks, so feasibility is unaffected. The
 //! conservative invariant the walker relies on — never "dead when live" — is
