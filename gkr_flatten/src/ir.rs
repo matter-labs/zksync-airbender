@@ -23,17 +23,23 @@
 //!
 //! # M1 vs M2
 //!
-//! `Cached`/`CacheStore`/`Evict` exist now as forward-declared hooks for the
-//! M2 caching walker, but M1's interpreter already gives them full (if
-//! simulation-only) semantics rather than stubbing them out: `CacheStore(id)`
-//! admits the current `acc` into a `BTreeMap<ExprId, Ext>` value table,
-//! `Evict(id)` drops that table entry (both markers only account for *value*
-//! availability — they carry no cost/traffic bookkeeping; that arrives with
-//! the M2 walker), and `Operand::Cached(id)` reads the table, panicking with
-//! the offending `ExprId` if the value was never stored or was already
-//! evicted. `width_of_slot` is DP-facing accounting metadata (the lane width
-//! backing each stash slot, for M2's peak/traffic bookkeeping) — the
-//! interpreter never reads it.
+//! `Cached`/`CacheStore`/`CacheLoad`/`Evict` exist now as forward-declared
+//! hooks for the M2 caching walker, but the interpreter already gives them
+//! full (if simulation-only) semantics rather than stubbing them out:
+//! `CacheStore(id)` admits the current `acc` into a `BTreeMap<ExprId, Ext>`
+//! value table, `CacheLoad { src, id }` streams leaf `src` straight into that
+//! table under `id` *without* touching `acc` (the counterpart admission path
+//! for a leaf consumed only as an `Add`/`Mul`/`Fma` operand, which never
+//! passes through the accumulator), and `Evict(id)` drops the table entry.
+//! Both admission ops now panic if `id` is already resident — the walker must
+//! never recompute/re-admit a value the cache already holds — and `Evict`
+//! panics if `id` is absent — the walker only evicts residents. (These
+//! markers only account for *value* availability — they carry no cost/
+//! traffic bookkeeping; that arrives with the M2 walker.) `Operand::Cached(id)`
+//! reads the table, panicking with the offending `ExprId` if the value was
+//! never stored or was already evicted. `width_of_slot` is DP-facing
+//! accounting metadata (the lane width backing each stash slot, for M2's
+//! peak/traffic bookkeeping) — the interpreter never reads it.
 //!
 //! # Leaf resolution
 //!
@@ -60,7 +66,7 @@ use field::{Field, FieldExtension, PrimeField};
 pub struct SlotId(pub u32);
 
 /// The value an `Op` combines into (or reads out to) the accumulator.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operand {
     /// Streamed from the resolver/DRAM: a `DagLayer` source leaf.
     Leaf(SourceId),
@@ -73,7 +79,7 @@ pub enum Operand {
 }
 
 /// One instruction of a [`Program`]'s linear accumulator machine.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     /// `acc = v`
     Load(Operand),
@@ -88,6 +94,12 @@ pub enum Op {
     /// Marker: admit acc's current value into the simulated cache under
     /// `ExprId` (M2 accounting). Does not consume `acc`.
     CacheStore(ExprId),
+    /// Read the stream leaf `src` and admit its value into the simulated
+    /// cache under `id` — the operand-position leaf-admission op (spec M2
+    /// §3): a leaf consumed as an `Add`/`Mul`/`Fma` operand never passes
+    /// through the accumulator, so `CacheStore` (which stores `acc`) cannot
+    /// cache it. Charges the leaf's traffic exactly once; `acc` untouched.
+    CacheLoad { src: SourceId, id: ExprId },
     /// Marker: walker-decided eviction of `ExprId` from the simulated cache
     /// (M2 accounting).
     Evict(ExprId),
@@ -99,6 +111,7 @@ pub enum Op {
 /// A flat linear-IR program over one `DagLayer` row. `width_of_slot` is DP
 /// accounting metadata (lane width per stash slot) for the M2 sizing/peak
 /// bookkeeping; [`interpret`] never reads it.
+#[derive(PartialEq)]
 pub struct Program {
     pub ops: Vec<Op>,
     pub width_of_slot: BTreeMap<u32, u32>,
@@ -153,6 +166,18 @@ fn resolve_operand(
                  slot may be read exactly once (use-after-free / double consumption)"
             )
         }),
+    }
+}
+
+/// Admits `v` into `cache` under `id`, panicking if `id` is already resident
+/// — shared by both cache-writing arms (`CacheStore`, `CacheLoad`): the
+/// walker must never recompute/re-admit a value the cache already holds.
+fn cache_insert(cache: &mut BTreeMap<ExprId, Ext>, id: ExprId, v: Ext, op: &str) {
+    if cache.insert(id, v).is_some() {
+        panic!(
+            "gkr_flatten interp: {op}({id:?}) overwrote a live cache entry — the walker must \
+             never recompute/re-admit a resident value (hit check missing?)"
+        );
     }
 }
 
@@ -224,11 +249,22 @@ pub fn interpret(
             }
             Op::CacheStore(expr) => {
                 let v = expect_acc(acc);
-                cache.insert(*expr, v);
+                cache_insert(&mut cache, *expr, v, "CacheStore");
                 // Non-consuming: unlike Stash, CacheStore does not invalidate acc.
             }
+            Op::CacheLoad { src, id } => {
+                let v = eval_leaf(*src, layer, row, r);
+                cache_insert(&mut cache, *id, v, "CacheLoad");
+                // acc is untouched: a leaf consumed as an operand never
+                // passes through the accumulator.
+            }
             Op::Evict(expr) => {
-                cache.remove(expr);
+                if cache.remove(expr).is_none() {
+                    panic!(
+                        "gkr_flatten interp: Evict of absent entry {expr:?} — the walker only \
+                         evicts residents"
+                    );
+                }
             }
             Op::SinkMaterialize(root) => {
                 let v = expect_acc(acc);
@@ -450,5 +486,90 @@ mod tests {
             width_of_slot: Default::default(),
         };
         let _ = interpret(&p, &layer, 0, &r);
+    }
+
+    #[test]
+    fn cache_load_roundtrip() {
+        let layer = tiny_fma_layer();
+        let d = DetResolver;
+        let r = resolvers(&d);
+        // CacheLoad w1 without touching acc; acc built later reads it back.
+        let p = Program {
+            ops: vec![
+                Op::CacheLoad { src: SourceId(1), id: ExprId(1) },
+                Op::Load(Operand::Leaf(SourceId(0))),
+                Op::Mul(Operand::Cached(ExprId(1))),
+                Op::SinkMaterialize(RootId(0)),
+            ],
+            width_of_slot: Default::default(),
+        };
+        let a = d.read(&ReadPlace::BaseLayerWitness { column: 0 }, 0);
+        let b = d.read(&ReadPlace::BaseLayerWitness { column: 1 }, 0);
+        let mut expected = a;
+        expected.mul_assign(&b);
+        assert_eq!(interpret(&p, &layer, 0, &r)[&RootId(0)], expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "live cache entry")]
+    fn cache_store_overwrite_live_entry_panics() {
+        let layer = tiny_fma_layer();
+        let d = DetResolver;
+        let r = resolvers(&d);
+        let p = Program {
+            ops: vec![
+                Op::Load(Operand::Leaf(SourceId(0))),
+                Op::CacheStore(ExprId(0)),
+                Op::CacheStore(ExprId(0)), // no Evict in between -> walker bug
+                Op::SinkMaterialize(RootId(0)),
+            ],
+            width_of_slot: Default::default(),
+        };
+        let _ = interpret(&p, &layer, 0, &r);
+    }
+
+    #[test]
+    #[should_panic(expected = "live cache entry")]
+    fn cache_load_overwrite_live_entry_panics() {
+        let layer = tiny_fma_layer();
+        let d = DetResolver;
+        let r = resolvers(&d);
+        let p = Program {
+            ops: vec![
+                Op::CacheLoad { src: SourceId(1), id: ExprId(1) },
+                Op::CacheLoad { src: SourceId(1), id: ExprId(1) },
+                Op::Load(Operand::Leaf(SourceId(0))),
+                Op::SinkMaterialize(RootId(0)),
+            ],
+            width_of_slot: Default::default(),
+        };
+        let _ = interpret(&p, &layer, 0, &r);
+    }
+
+    #[test]
+    #[should_panic(expected = "Evict of absent")]
+    fn evict_absent_entry_panics() {
+        let layer = tiny_fma_layer();
+        let d = DetResolver;
+        let r = resolvers(&d);
+        let p = Program {
+            ops: vec![
+                Op::Load(Operand::Leaf(SourceId(0))),
+                Op::Evict(ExprId(5)),
+                Op::SinkMaterialize(RootId(0)),
+            ],
+            width_of_slot: Default::default(),
+        };
+        let _ = interpret(&p, &layer, 0, &r);
+    }
+
+    #[test]
+    fn ops_compare_by_value() {
+        assert_eq!(Op::Load(Operand::Leaf(SourceId(3))), Op::Load(Operand::Leaf(SourceId(3))));
+        assert_ne!(Op::Add(Operand::Cached(ExprId(1))), Op::Add(Operand::Cached(ExprId(2))));
+        assert_eq!(
+            Op::CacheLoad { src: SourceId(1), id: ExprId(2) },
+            Op::CacheLoad { src: SourceId(1), id: ExprId(2) }
+        );
     }
 }
