@@ -4,21 +4,24 @@ use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables;
 use crate::gkr_circuits::binary_shifts_family::ShiftBinaryFamilyCircuitMask;
-use crate::types::Boolean;
 use crate::witness_placer::*;
 use field::PrimeField;
 
-/// Family 3 (binary ops / shifts / xor-rotate) constraints for the unified circuit.
-/// Mirrors the standalone inner; rd-write constraints are gated on
-/// `is_binary_op + is_shift + is_xor_rot` so non-Family-3 cycles don't pin
-/// rd_write_limbs. Xor-rotate's second operand (rd's old value) arrives through the
-/// rs2 read port — `preprocess_bytecode` aliases rs2 := rd — so it shares the rs2
-/// byte decomposition with the binary ops.
+/// Family 3 (binary ops / shifts) constraints for the unified circuit. Mirrors the
+/// standalone inner; rd-write constraints are gated on `is_binary_op + is_shift` so
+/// non-Family-3 cycles don't pin rd_write_limbs.
+///
+/// Xor-rotate (`ZimopIXorRot`) rides the ordinary binary-op path: the decoder gives it
+/// funct3 = XorRotate{r} table id (plain binops get the Wide{Xor,Or,And} ids), every
+/// binop lookup returns 4 contribution bytes, and the output word is reconstructed
+/// cyclically — identity byte placement for the rot-0 wide tables. Xor-rotate's second
+/// operand (rd's old value) arrives through the rs2 read port — `preprocess_bytecode`
+/// aliases rs2 := rd — with imm = 0, so its rows are operand-identical to register
+/// binop rows.
 pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: ShiftBinaryFamilyCircuitMask,
-    xor_rot: Boolean,
     rs1_limbs: [Variable; 2],
     rs2_limbs: [Variable; 2],
     rd_write_limbs: [Variable; 2],
@@ -29,28 +32,25 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // so we do NOT need to mask rd value
 
     // strategies:
-    // - for binary ops we have funct3 that encodes table type, and the only thing we need to deal with is
+    // - for binary ops we have funct3 that encodes table type (Wide{Xor,Or,And} for plain
+    // binops, XorRotate{r} for xor-rotate), and the only thing we need to deal with is the
     // immediate. Instead of preprocessing it as u32, we only sign-extend it into u16, and encode it as 2 lowest bytes.
     // Then we use one lookup to get sign-extension of the higher byte (either 0 or 0xff), and use unchecked addition
-    // of the immediate with rs2 value
+    // of the immediate with rs2 value. Every binop table returns 4 contribution bytes
+    // (T = LE bytes of `rotate_right((a ^ b) at byte 0, r)`; rot-0 shape for plain binops),
+    // and the output word is reconstructed cyclically: out_byte[k] = Σ_i chunk[i][(k-i) mod 4]
+    // — which degenerates to identity byte placement for the rot-0 wide tables.
     // - for shifts we take lowest 2 bytes of rs2 and feed it into table to truncate shift amount and ensure correct byte
     // decomposition. Then we use 2 tables: each takes as an input 8-bit chunk of the word, shift amount (5 bits), and funct3, and output
     // contributions to every other output word 8-bit chunk. One table is for the highest byte (for SRA), and another one for all other bytes
 
     // scratch space
-    // - for binary ops we need just 5: one for sign-extension of the immediate, and 4 for outputs
+    // - for binary ops we need 17: one for sign-extension of the immediate, and 4x4 for the
+    //   contribution bytes (aliasing the shift outputs — the two paths are mutually exclusive)
     // - for shift we need 17: 4x4 for output contributions, and one for truncated shift amount
 
     const _: () = assert!(F3_SCRATCH_VARS == 21);
-    let [binary_ops_imm_sign_ext, binop_output_0, binop_output_1, binop_output_2, binop_output_3, ..] =
-        scratch_space;
-    let binary_ops_outputs = [
-        binop_output_0,
-        binop_output_1,
-        binop_output_2,
-        binop_output_3,
-    ];
-
+    let binary_ops_imm_sign_ext = scratch_space[0];
     let truncated_shift_amount = scratch_space[0];
     let shift_outputs: [Variable; 16] = core::array::from_fn(|i| scratch_space[i + 1]);
     let shift_output_chunks = shift_outputs.as_chunks::<4>().0;
@@ -95,14 +95,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
 
     let is_binary_op = decoder.perform_binary_op();
     let is_shift = decoder.perform_shift();
-    let is_xor_rot = xor_rot;
-
-    {
-        // At most one Family-3 sub-opcode fires per row (binary-op / shift / xor-rotate).
-        let f3_sum: Constraint<F> =
-            Term::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot);
-        cs.add_constraint(f3_sum.clone() * (f3_sum - Term::from(1u32)));
-    }
 
     let shift_amount_constraint =
         Constraint::from(truncated_shift_amount) + Term::from(inputs.decoder_data.imm[0]);
@@ -121,6 +113,10 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
             is_binary_op,
         );
 
+        // Per byte-pair, the funct3-selected table (Wide{Xor,Or,And} or XorRotate{r}) returns
+        // 4 contribution bytes into the shared shift_output_chunks scratch (binop and shift are
+        // mutually exclusive). Xor-rot rows have imm = 0 (decoder), so `b + imm` and the imm
+        // sign-extension above both see zeros there.
         for i in 0..4 {
             let a = rs1_bytes[i].clone();
             let b = rs2_bytes[i].clone();
@@ -129,12 +125,12 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
             } else {
                 inputs.decoder_data.imm[i]
             };
-            let out = binary_ops_outputs[i];
+            let outs = shift_output_chunks[i];
 
             peek_lookup_values_unconstrained_into_variables(
                 cs,
                 &[LookupInput::from(a), LookupInput::from(b + Term::from(imm))],
-                &[out],
+                &outs,
                 LookupInput::from(inputs.decoder_data.funct3.expect("is present")),
                 is_binary_op,
             );
@@ -172,25 +168,6 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
                 &outs,
                 LookupInput::from(F::from_u32(table_id as u32).expect("must fit")),
                 is_shift,
-            );
-        }
-    }
-
-    // then xor-rotate (unified-only): per byte, look up the funct3-selected XorRotate{r} table on
-    // (rs1_byte, rs2_byte) -> the 4 contribution bytes T_i = rotate_right((rs1^rs2) byte at
-    // byte 0, r). rs2 aliases rd at decode, so rs2 carries rd_old and its byte decomposition is
-    // reused. Reuses the shift_output_chunks scratch (shift and xor-rot are mutually exclusive).
-    {
-        for i in 0..4 {
-            let a = rs1_bytes[i].clone();
-            let b = rs2_bytes[i].clone();
-            let outs = shift_output_chunks[i];
-            peek_lookup_values_unconstrained_into_variables(
-                cs,
-                &[LookupInput::from(a), LookupInput::from(b)],
-                &outs,
-                LookupInput::from(inputs.decoder_data.funct3.expect("is present")),
-                is_xor_rot,
             );
         }
     }
@@ -245,8 +222,8 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         constraints[1] += Term::from(is_binary_op) * Term::from(binary_op_imm);
         constraints[1] += Term::from(is_shift) * rs1_bytes[i].clone();
 
-        // output for the binary op, or shift amount for shift
-        constraints[2] += Term::from(is_binary_op) * Term::from(binary_ops_outputs[i]);
+        // shift amount for shift (binop tables are (a, b, o0..o3) — inputs at cols 0,1,
+        // contribution bytes at cols 2..6)
         constraints[2] += shift_amount_constraint.clone() * Term::from(is_shift);
 
         // only shift is used for inputs below. funct3 here
@@ -260,13 +237,11 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
             constraints[4 + j] += Term::from(is_shift) * Term::from(shift_outputs[j]);
         }
 
-        // xor-rotate: the XorRotate{r} table is (a, b, o0, o1, o2, o3) — inputs at cols 0,1,
-        // the 4 contribution bytes at cols 2..6 (reusing the shift_output_chunks scratch).
-        // rs2 carries rd_old (aliased at decode), so the byte split is shared with binops.
-        constraints[0] += Term::from(is_xor_rot) * rs1_bytes[i].clone();
-        constraints[1] += Term::from(is_xor_rot) * rs2_bytes[i].clone();
+        // binop (incl. xor-rotate): the funct3-selected table — Wide{Xor,Or,And} or
+        // XorRotate{r} — is (a, b, o0, o1, o2, o3): 4 contribution bytes at cols 2..6
+        // (reusing the shift_output_chunks scratch; the paths are mutually exclusive).
         for j in 0..4 {
-            constraints[2 + j] += Term::from(is_xor_rot) * Term::from(shift_outputs[j]);
+            constraints[2 + j] += Term::from(is_binary_op) * Term::from(shift_outputs[j]);
         }
 
         let mut table_id = Constraint::empty();
@@ -274,10 +249,9 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
             * Term::from_field(
                 F::from_u32(TableType::ShiftImplementationOverBytes as u32).expect("must fit"),
             );
+        // binop (incl. xor-rotate) dispatches by table_id = funct3 (decoder-remapped to the
+        // Wide{Xor,Or,And} id for plain binops, XorRotate{r} id for xor-rotate).
         table_id += Term::from(is_binary_op)
-            * Term::from(inputs.decoder_data.funct3.expect("must be present"));
-        // xor-rotate dispatches by funct3 = the per-rotation XorRotate{r} table id.
-        table_id += Term::from(is_xor_rot)
             * Term::from(inputs.decoder_data.funct3.expect("must be present"));
 
         per_byte_requests.push(LookupRequest::new(table_id, constraints.to_vec()));
@@ -287,42 +261,35 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // unified circuit aren't forced to rd_write = 0. is_binary_op + is_shift is
     // the family-firing indicator (mutually exclusive ⇒ sum is 0 or 1).
     let mut low_constraint = Constraint::empty();
-    low_constraint += Term::from(is_binary_op)
-        * (Term::from(1 << 8) * Term::from(binary_ops_outputs[1])
-            + Term::from(binary_ops_outputs[0]));
     for i in 0..4 {
         let shift_outputs = shift_output_chunks[i];
         low_constraint += Term::from(is_shift)
             * (Term::from(1 << 8) * Term::from(shift_outputs[1]) + Term::from(shift_outputs[0]));
-        // xor-rotate: cyclic reconstruction out_byte[k] = Σ_i chunk[i][(k - i) mod 4].
+        // binop (incl. xor-rotate): cyclic reconstruction out_byte[k] = Σ_i chunk[i][(k-i) mod 4]
+        // — identity byte placement for the rot-0 Wide{Xor,Or,And} tables.
         // low limb = out_byte[0] + out_byte[1]<<8.
         let b0 = shift_outputs[(4 - i) % 4]; // (0 - i) mod 4
         let b1 = shift_outputs[(1 + 4 - i) % 4]; // (1 - i) mod 4
         low_constraint +=
-            Term::from(is_xor_rot) * (Term::from(1 << 8) * Term::from(b1) + Term::from(b0));
+            Term::from(is_binary_op) * (Term::from(1 << 8) * Term::from(b1) + Term::from(b0));
     }
     low_constraint -=
-        (Constraint::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot))
-            * Term::from(rd_write_limbs[0]);
+        (Constraint::from(is_binary_op) + Term::from(is_shift)) * Term::from(rd_write_limbs[0]);
     cs.add_constraint(low_constraint);
 
     let mut high_constraint = Constraint::empty();
-    high_constraint += Term::from(is_binary_op)
-        * (Term::from(1 << 8) * Term::from(binary_ops_outputs[3])
-            + Term::from(binary_ops_outputs[2]));
     for i in 0..4 {
         let shift_outputs = shift_output_chunks[i];
         high_constraint += Term::from(is_shift)
             * (Term::from(1 << 8) * Term::from(shift_outputs[3]) + Term::from(shift_outputs[2]));
-        // xor-rotate high limb = out_byte[2] + out_byte[3]<<8.
+        // binop (incl. xor-rotate) high limb = out_byte[2] + out_byte[3]<<8.
         let b2 = shift_outputs[(2 + 4 - i) % 4]; // (2 - i) mod 4
         let b3 = shift_outputs[(3 + 4 - i) % 4]; // (3 - i) mod 4
         high_constraint +=
-            Term::from(is_xor_rot) * (Term::from(1 << 8) * Term::from(b3) + Term::from(b2));
+            Term::from(is_binary_op) * (Term::from(1 << 8) * Term::from(b3) + Term::from(b2));
     }
     high_constraint -=
-        (Constraint::from(is_binary_op) + Term::from(is_shift) + Term::from(is_xor_rot))
-            * Term::from(rd_write_limbs[1]);
+        (Constraint::from(is_binary_op) + Term::from(is_shift)) * Term::from(rd_write_limbs[1]);
     cs.add_constraint(high_constraint);
 
     let mut lookups = vec![combined_request];
