@@ -490,6 +490,13 @@ pub struct BwdBindings {
 pub fn bind(d: &DistilledLayer, policy: MaterializationPolicy, round: u8) -> BwdBindings {
     let states = (0..d.specials.len())
         .map(|i| match d.specials.get(i as u16).expect("dense desc index") {
+            // CS-M5a Task 3: Coefficient/AccInit descriptors live ONLY in a
+            // compiled layer's cloned table (interned by the Task-5 fragment
+            // lowering beyond `d.specials.len()`); the distilled `d.specials`
+            // this binder iterates never holds one, so binding them is a bug.
+            BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
+                unreachable!("Coefficient/AccInit descriptors never appear in d.specials")
+            }
             BwdSpecial::VirtualSetup { .. } => FoldState::LazyFromOriginals { depth: round },
             // VS-origin FoldSource: forced lazy regardless of policy (Bf resolver
             // cannot carry an Ext folded buffer — see the fn doc).

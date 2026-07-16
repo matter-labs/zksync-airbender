@@ -49,6 +49,23 @@ pub enum BwdSpecial {
     FoldSource { origin: OriginLeaf },
     /// The typed enum, not a raw device-ABI `u8`.
     VirtualSetup { kind: VirtualSetupKind },
+    /// A fragment's summed coefficient recipe value (CS-M5a Task 3): the interp
+    /// serves `d.fragments.fragments[fragment].recipe`, a scalar-pure `Σ Π` over
+    /// `Constant`/`Challenge` factors, via [`MergedRecipe::evaluate`]. Row- and
+    /// role-invariant (no fold, no `bindings.states`). Emitted ONLY into a
+    /// compiled layer's CLONED table by the Task-5 fragment lowering — interned
+    /// BEYOND `d.specials.len()` — so the distilled `d.specials` (which `bind`
+    /// iterates) never holds one.
+    ///
+    /// [`MergedRecipe::evaluate`]: super::fragment::MergedRecipe::evaluate
+    Coefficient { fragment: u32 },
+    /// The backward accumulator's initial value (CS-M5a Task 3): the interp
+    /// serves `d.fragments.c_init` (the scalar-pure `Σ Π` of the spine's
+    /// scalar-pure addends) via [`MergedRecipe::evaluate`]. Same
+    /// resolution/emission rules as [`BwdSpecial::Coefficient`].
+    ///
+    /// [`MergedRecipe::evaluate`]: super::fragment::MergedRecipe::evaluate
+    AccInit,
 }
 
 /// Interning table for `BwdSpecial`; dense `u16` descriptors assigned from 0
@@ -128,6 +145,22 @@ mod tests {
         let spec = BwdSpecial::VirtualSetup { kind: VirtualSetupKind::InitsAndTeardownsLow };
         let i = t.intern(spec.clone());
         assert_eq!(t.get(i), Some(&spec));
+    }
+
+    #[test]
+    fn coefficient_and_acc_init_intern_and_dedup() {
+        let mut t = BwdSpecialTable::default();
+        let acc = t.intern(BwdSpecial::AccInit);
+        let acc2 = t.intern(BwdSpecial::AccInit);
+        let c0 = t.intern(BwdSpecial::Coefficient { fragment: 0 });
+        let c0_again = t.intern(BwdSpecial::Coefficient { fragment: 0 });
+        let c1 = t.intern(BwdSpecial::Coefficient { fragment: 1 });
+        assert_eq!(acc, acc2, "AccInit dedups");
+        assert_eq!(c0, c0_again, "Coefficient dedups by fragment");
+        assert_ne!(c0, c1, "distinct fragments are distinct descriptors");
+        assert_eq!([acc, c0, c1], [0, 1, 2]);
+        assert_eq!(t.len(), 3);
+        assert_eq!(t.get(c1), Some(&BwdSpecial::Coefficient { fragment: 1 }));
     }
 
     #[test]

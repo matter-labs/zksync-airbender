@@ -193,6 +193,13 @@ fn cone_dram_cells(
                 .map(|special| match special {
                     BwdSpecial::FoldSource { origin } if !origin.is_vs() => 4,
                     BwdSpecial::FoldSource { .. } | BwdSpecial::VirtualSetup { .. } => 0,
+                    // CS-M5a Task 3: Coefficient/AccInit are scalar-pure recipe
+                    // values, never a fold leaf's DRAM width, and only ever live
+                    // in a compiled layer's cloned table — never in the
+                    // `d.specials` this walk consults.
+                    BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
+                        unreachable!("Coefficient/AccInit descriptors never appear in d.specials")
+                    }
                 })
                 .unwrap_or(0),
         },

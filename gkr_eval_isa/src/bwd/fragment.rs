@@ -44,8 +44,10 @@
 use std::collections::BTreeMap;
 
 use cs::gkr_compiler::dag_ir::{
-    ChallengeKey, ChallengePower, ChallengeRef, DagLayer, Expr, ExprId, PermutationSlot, SourceKind,
+    eval_layer_expr, ChallengeKey, ChallengePower, ChallengeRef, DagLayer, Expr, ExprId, Ext,
+    PermutationSlot, Resolvers, SourceKind,
 };
+use field::Field;
 
 use super::distill::{DistilledLayer, StableBwdExprKey};
 
@@ -73,6 +75,28 @@ impl MergedRecipe {
     /// factors.
     pub fn is_trivial(&self) -> bool {
         self.terms.len() == 1 && self.terms[0].factors.is_empty()
+    }
+
+    /// Evaluate this coefficient recipe to the Ext element the backward interp
+    /// serves for a `Coefficient`/`AccInit` descriptor: `Σ` over terms of `Π`
+    /// over factors of `eval_layer_expr(layer, factor, 0, r)`.
+    ///
+    /// An empty recipe (no terms) is the additive identity `0`; a term with no
+    /// factors is the multiplicative identity `1` (so a single empty-factor term
+    /// evaluates to `1`, two of them to `2`, matching the never-collapsed
+    /// multiplicity of the walk). Factors are scalar-pure `Constant`/`Challenge`
+    /// nests (see the module walk), so the row index is irrelevant and pinned to
+    /// `0`; the result is row- and role-invariant.
+    pub fn evaluate(&self, layer: &DagLayer, r: &Resolvers<'_>) -> Ext {
+        let mut sum = Ext::ZERO;
+        for term in &self.terms {
+            let mut prod = Ext::ONE;
+            for &factor in &term.factors {
+                prod.mul_assign(&eval_layer_expr(layer, factor, 0, r));
+            }
+            sum.add_assign(&prod);
+        }
+        sum
     }
 }
 
@@ -374,9 +398,11 @@ pub fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTable {
 mod tests {
     use super::*;
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ReadPlace, SourceId, SourceInfo,
-        VirtualSetupKind,
+        BatchingOrder, Bf, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
+        LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, SourceId, SourceInfo,
+        VirtualSetupKind, VirtualSetupResolver,
     };
+    use field::{Field, FieldExtension, PrimeField};
 
     // ── Fixture helpers (mirrors distill.rs's test-fixture pattern: literal
     // DagLayer construction, no separate arena-builder type) ────────────────
@@ -588,5 +614,104 @@ mod tests {
         assert_eq!(table.fragments[0].atoms, vec![ExprId(0), ExprId(3)]);
         assert!(table.fragments[0].recipe.is_trivial());
         assert!(table.c_init.terms.is_empty());
+    }
+
+    // ── MergedRecipe::evaluate (Task 3) ─────────────────────────────────────
+
+    fn lift(b: Bf) -> Ext {
+        <Ext as FieldExtension<Bf>>::from_base(b)
+    }
+
+    struct NoRead;
+    impl ReadResolver for NoRead {
+        fn read(&self, place: &ReadPlace, _row: usize) -> Ext {
+            panic!("scalar-pure recipe must not read {place:?}")
+        }
+    }
+    struct NoLookup;
+    impl LookupResolver for NoLookup {
+        fn lookup(&self, _: &LookupValueKind, _: usize, _: Ext, _: usize) -> Bf {
+            panic!("scalar-pure recipe must not look up")
+        }
+    }
+    struct NoVs;
+    impl VirtualSetupResolver for NoVs {
+        fn virtual_setup(&self, _: &VirtualSetupKind, _: usize) -> Bf {
+            panic!("scalar-pure recipe must not touch virtual setup")
+        }
+    }
+    /// Keyed challenge resolver: `ClaimBatching -> gamma`, `ConstraintAggregation -> beta`.
+    struct KeyedChallenge {
+        gamma: Ext,
+        beta: Ext,
+    }
+    impl ChallengeResolver for KeyedChallenge {
+        fn challenge(&self, r: &ChallengeRef) -> Ext {
+            match &r.key {
+                ChallengeKey::ClaimBatching => self.gamma,
+                ChallengeKey::ConstraintAggregation => self.beta,
+                other => panic!("unexpected challenge key {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn evaluate_sum_of_products_matches_manual_field_arithmetic() {
+        // Tiny arena: Constant c (=5), Challenge gamma (ClaimBatching),
+        // Challenge beta (ConstraintAggregation). Recipe [[c, gamma], [beta, beta]]
+        // must evaluate to c·gamma + beta².
+        let l = layer(
+            vec![
+                const_src(5),
+                challenge_src(ChallengeKey::ClaimBatching),
+                challenge_src(ChallengeKey::ConstraintAggregation),
+            ],
+            vec![
+                Expr::Source(SourceId(0)), // 0 = c
+                Expr::Source(SourceId(1)), // 1 = gamma
+                Expr::Source(SourceId(2)), // 2 = beta
+            ],
+        );
+        let gamma = lift(Bf::from_u32_with_reduction(3));
+        let beta = lift(Bf::from_u32_with_reduction(7));
+        let ch = KeyedChallenge { gamma, beta };
+        let no_read = NoRead;
+        let no_lookup = NoLookup;
+        let no_vs = NoVs;
+        let r = Resolvers {
+            read: &no_read,
+            lookup: &no_lookup,
+            virtual_setup: &no_vs,
+            challenge: &ch,
+        };
+
+        let recipe = MergedRecipe {
+            terms: vec![
+                ProductRecipe { factors: vec![ExprId(0), ExprId(1)] },
+                ProductRecipe { factors: vec![ExprId(2), ExprId(2)] },
+            ],
+        };
+        // Manual: c·gamma + beta·beta.
+        let mut expected = lift(Bf::from_u32_with_reduction(5));
+        expected.mul_assign(&gamma);
+        let mut beta_sq = beta;
+        beta_sq.mul_assign(&beta);
+        expected.add_assign(&beta_sq);
+        assert_eq!(recipe.evaluate(&l, &r), expected, "Σ Π mismatch");
+
+        // Empty recipe = additive identity 0.
+        assert_eq!(MergedRecipe::default().evaluate(&l, &r), Ext::ZERO);
+
+        // A single empty-factors term = multiplicative identity 1.
+        let unit = MergedRecipe { terms: vec![ProductRecipe::default()] };
+        assert_eq!(unit.evaluate(&l, &r), Ext::ONE);
+
+        // Two empty-factors terms = 1 + 1 (multiplicity preserved, never collapsed).
+        let two = MergedRecipe {
+            terms: vec![ProductRecipe::default(), ProductRecipe::default()],
+        };
+        let mut expected_two = Ext::ONE;
+        expected_two.add_assign(&Ext::ONE);
+        assert_eq!(two.evaluate(&l, &r), expected_two);
     }
 }

@@ -173,6 +173,7 @@ fn resolve(
     field: OperandField,
     cells: &[Ext],
     c: &BwdCompiledLayer,
+    d: &DistilledLayer,
     bindings: &BwdBindings,
     r: &Resolvers<'_>,
     role: Role,
@@ -216,6 +217,29 @@ fn resolve(
         },
         OperandLine::Special { desc } => {
             let spec = c.specials.get(desc).ok_or(InterpError::UnknownSpecial(desc))?;
+            // CS-M5a Task 3: match the descriptor KIND first. Coefficient/AccInit
+            // are scalar-pure recipe values — row- and role-invariant — resolved
+            // via `MergedRecipe::evaluate` over the distilled arena. They do NOT
+            // consult `bindings.states`: the Task-5 fragment lowering interns them
+            // into the compiled layer's CLONED table BEYOND `d.specials.len()`, so
+            // `bindings.states` (dense over `d.specials`) has no slot for them, and
+            // routing them through the FoldSource state path below would be a
+            // silent out-of-range read. They therefore return early here.
+            match spec {
+                BwdSpecial::Coefficient { fragment } => {
+                    let f = *fragment as usize;
+                    let recipe = d.fragments.fragments.get(f).map(|s| &s.recipe).ok_or_else(|| {
+                        InterpError::MalformedInstr(format!(
+                            "Coefficient desc {desc} names fragment {f}, but the distilled layer \
+                             has {} fragment(s)",
+                            d.fragments.fragments.len()
+                        ))
+                    })?;
+                    return Ok(recipe.evaluate(&d.layer, r));
+                }
+                BwdSpecial::AccInit => return Ok(d.fragments.c_init.evaluate(&d.layer, r)),
+                BwdSpecial::FoldSource { .. } | BwdSpecial::VirtualSetup { .. } => {}
+            }
             let state = *bindings
                 .states
                 .get(desc as usize)
@@ -226,6 +250,8 @@ fn resolve(
                     OriginLeaf::VirtualSetup { kind } => ReadPrim::Vs(kind),
                 },
                 BwdSpecial::VirtualSetup { kind } => ReadPrim::Vs(kind),
+                // Resolved and returned above; here only for match exhaustiveness.
+                BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => unreachable!(),
             };
             let a = fold_element(&prim, state, 2 * row, round_challenges, r)?;
             let b = fold_element(&prim, state, 2 * row + 1, round_challenges, r)?;
@@ -277,7 +303,7 @@ pub fn interpret_bwd_row(
 
     macro_rules! res {
         ($op:expr, $field:expr) => {
-            resolve($op, $field, &cells, c, bindings, r, role, row, round_challenges)?
+            resolve($op, $field, &cells, c, d, bindings, r, role, row, round_challenges)?
         };
     }
 
@@ -344,6 +370,7 @@ mod tests {
     use super::*;
     use crate::bwd::compile::compile_distilled;
     use crate::bwd::distill::{bind, distill};
+    use crate::bwd::fragment::{FragmentSpec, FragmentTable, MergedRecipe, ProductRecipe};
     use crate::bwd::source::MaterializationPolicy;
     use cs::gkr_compiler::dag_ir::{
         eval_layer_root, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
@@ -537,6 +564,90 @@ mod tests {
             let t2e = interpret_bwd_row(&ce, &de, &be, &r, Role::T2, x, &[]).unwrap();
             assert_eq!(t0e, v_even, "Ext round-0 FoldSource T0 mismatch at row {x}");
             assert_eq!(t2e, expected_t2, "Ext round-0 FoldSource T2 mismatch at row {x}");
+        }
+    }
+
+    // ── Coefficient / AccInit descriptors (Task 3) ────────────────────────────
+
+    /// `Mov AccFromSrc <- Special{AccInit}` then `Mul × Special{Coefficient{0}}`
+    /// must produce `c_init_value * coeff_value`, resolved via
+    /// `MergedRecipe::evaluate` WITHOUT touching `bindings.states`. Exercises the
+    /// Task-5 ownership model: the compiled layer's CLONED `specials` interns the
+    /// two emitted descs BEYOND `d.specials.len()`, while `bind` stays dense over
+    /// the un-extended `d.specials`.
+    #[test]
+    fn coefficient_and_acc_init_resolve_via_recipe_evaluate() {
+        // Distill a trivial real layer only to obtain a valid `d`/`c`.
+        let l = bare_read_layer();
+        let mut d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let mut c = compile_distilled(&d, 16, None).expect("R0 compile");
+
+        // Overwrite the distilled arena + fragment table with a controlled,
+        // scalar-pure arena so the recipe values are known exactly:
+        //   c_init recipe = [[5]] -> 5 ; fragment[0] recipe = [[3]] -> 3.
+        let crafted = layer(
+            vec![
+                SourceInfo { kind: SourceKind::Constant { value: 5 } }, // 0
+                SourceInfo { kind: SourceKind::Constant { value: 3 } }, // 1
+            ],
+            vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
+            vec![],
+        );
+        d.layer = crafted;
+        d.fragments = FragmentTable {
+            fragments: vec![FragmentSpec {
+                // atom identity is irrelevant to the coefficient path (only the
+                // recipe is evaluated), but must be a valid expr for realism.
+                atoms: vec![ExprId(1)],
+                recipe: MergedRecipe { terms: vec![ProductRecipe { factors: vec![ExprId(1)] }] },
+            }],
+            c_init: MergedRecipe { terms: vec![ProductRecipe { factors: vec![ExprId(0)] }] },
+        };
+
+        // Task-5 cloning model: intern the emitted descs into the COMPILED table.
+        let n_before = d.specials.len();
+        let acc_desc = c.specials.intern(BwdSpecial::AccInit);
+        let coeff_desc = c.specials.intern(BwdSpecial::Coefficient { fragment: 0 });
+        assert!(acc_desc as usize >= n_before, "emitted descs sit beyond d.specials.len()");
+        assert!(coeff_desc as usize >= n_before);
+
+        c.program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Ext,
+                    dst: None,
+                    src: Some(OperandLine::Special { desc: acc_desc }),
+                },
+                Instr::Mul {
+                    field: OperandField::Ext,
+                    promote: false,
+                    negate_acc: false,
+                    operands: vec![OperandLine::Special { desc: coeff_desc }],
+                },
+            ],
+        };
+
+        let read = WitnessRead;
+        let ch = BetaChallenge(Ext::ZERO);
+        let r = resolvers(&read, &ch);
+        let b = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
+        assert_eq!(b.states.len(), d.specials.len(), "bindings stay dense over d.specials");
+
+        let c_init_value = d.fragments.c_init.evaluate(&d.layer, &r);
+        let coeff_value = d.fragments.fragments[0].recipe.evaluate(&d.layer, &r);
+        let mut expected = c_init_value;
+        expected.mul_assign(&coeff_value);
+
+        // Concrete check: 5 * 3 = 15.
+        let mut fifteen = lift(Bf::from_u32_with_reduction(5));
+        fifteen.mul_assign(&lift(Bf::from_u32_with_reduction(3)));
+        assert_eq!(expected, fifteen, "recipe values must be 5 and 3");
+
+        // Coefficients are role-invariant: both finite points give the product.
+        for role in [Role::T0, Role::T2] {
+            let got = interpret_bwd_row(&c, &d, &b, &r, role, 0, &[]).unwrap();
+            assert_eq!(got, expected, "row must equal c_init * coeff at role {role:?}");
         }
     }
 

@@ -699,6 +699,15 @@ fn tally_bwd_program(
                         ext.fold_traffic += 4;
                     }
                 }
+                // CS-M5a Task 3: Coefficient/AccInit are scalar-pure recipe
+                // values the interp evaluates locally from consts/challenges — no
+                // DRAM, no fold buffer. They read like an Ldc-class constant load:
+                // counted in `ldc_reads`, with ZERO dram_traffic / fold_uses /
+                // fold_traffic (and never a fold-side gather, so excluded from
+                // `special_gathers` below).
+                Some(BwdSpecial::Coefficient { .. }) | Some(BwdSpecial::AccInit) => {
+                    stats.ldc_reads += 1;
+                }
                 // A dense bwd table has a desc for every index a Special operand
                 // can name; None means the program referenced an out-of-range desc.
                 None => debug_assert!(false, "bwd Special operand names an unknown desc {desc}"),
@@ -853,6 +862,53 @@ mod tests {
             }
         });
         n
+    }
+
+    // ── Coefficient / AccInit tally (Task 3) ──────────────────────────────────
+
+    /// Reads of Coefficient/AccInit descriptors tally as `ldc_reads` and
+    /// contribute ZERO to every DRAM / fold traffic class (they are locally
+    /// evaluated scalar-pure recipe values, not fold-side gathers).
+    #[test]
+    fn coefficient_and_acc_init_reads_tally_as_ldc_zero_traffic() {
+        let mut specials = BwdSpecialTable::default();
+        let acc = specials.intern(BwdSpecial::AccInit);
+        let coeff = specials.intern(BwdSpecial::Coefficient { fragment: 0 });
+
+        // Mov Acc<-AccInit ; Mul × [Coefficient{0}, Coefficient{0}] : 3 reads.
+        let program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Ext,
+                    dst: None,
+                    src: Some(OperandLine::Special { desc: acc }),
+                },
+                Instr::Mul {
+                    field: OperandField::Ext,
+                    promote: false,
+                    negate_acc: false,
+                    operands: vec![
+                        OperandLine::Special { desc: coeff },
+                        OperandLine::Special { desc: coeff },
+                    ],
+                },
+            ],
+        };
+
+        let (stats, ext) = tally_bwd_program(&program, &specials);
+
+        assert_eq!(stats.ldc_reads, 3, "1 AccInit + 2 Coefficient reads count as ldc_reads");
+        assert_eq!(stats.dram_reads, 0);
+        assert_eq!(stats.dram_traffic, 0);
+        assert_eq!(stats.special_reads, 0, "coeff/acc-init are not fold-side special gathers");
+        assert_eq!(stats.special_gathers, 0);
+        assert_eq!(stats.cell_reads, 0);
+        assert_eq!(
+            ext,
+            BwdTrafficStats::default(),
+            "zero global / fold_uses / fold_traffic for coeff/acc-init"
+        );
     }
 
     // ── (a)+(c): bare Read-leaf root — R0 Global / Ext FoldSource ─────────────
