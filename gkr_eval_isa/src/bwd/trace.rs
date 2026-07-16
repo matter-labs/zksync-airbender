@@ -9,7 +9,9 @@
 //! by construction, and an untraced backward compile is byte-identical to a traced
 //! one (only the recorded `events`/`free` differ).
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet};
+use std::hash::{Hash, Hasher};
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
 
@@ -121,6 +123,26 @@ fn fnv_u32(h: &mut u64, v: u32) {
     fnv_bytes(h, &v.to_le_bytes());
 }
 
+/// The backward compile DRIVER a plan/trace was produced by (CS-M5a Task 6). Folded
+/// into [`plan_epoch`] as a discriminant tag so a plan built by one driver can never
+/// satisfy the other driver's planned-compile epoch guard: the term (spine-accumulation)
+/// and fragment (full-decomposition) drivers produce STRUCTURALLY DIFFERENT programs from
+/// the same distilled layer, so their occurrence streams / serve fingerprints are not
+/// interchangeable. Closes the verified hole where a term-built plan passed the fragment
+/// planned entry's epoch/`entries_fnv` guards.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DriverMode {
+    Term,
+    Fragment,
+}
+
+fn driver_mode_disc(mode: DriverMode) -> u8 {
+    match mode {
+        DriverMode::Term => 0,
+        DriverMode::Fragment => 1,
+    }
+}
+
 /// Source-kind discriminant for the plan-epoch content walk (a stable ordinal, not
 /// the payload — the payload cannot change under a unit permutation).
 fn source_kind_disc(k: &SourceKind) -> u8 {
@@ -142,9 +164,31 @@ fn source_kind_disc(k: &SourceKind) -> u8 {
 /// re-interns cones in unit execution order, so a different permutation yields a
 /// different rebuilt arena. `DistilledLayer.unit_order` itself stays canonical under
 /// permutation and is therefore NOT a hash input.
+///
+/// The TERM entry (spine-accumulation driver). Its VALUE moved with CS-M5a Task 6 (the
+/// driver-mode tag is now folded in) — the epoch is an internal staleness guard, never
+/// persisted across runs and never pinned, so the value is free to change.
 pub fn plan_epoch(d: &DistilledLayer, budget: usize, stream_reductions: bool) -> u64 {
+    plan_epoch_mode(d, budget, stream_reductions, DriverMode::Term)
+}
+
+/// FRAGMENT entry (full-decomposition driver) of [`plan_epoch`]: same content walk plus
+/// the [`DriverMode::Fragment`] tag AND an FNV over the layer's STABLE fragment keys in
+/// schedule (fragment-index) order — so a fragment plan is additionally bound to the exact
+/// fragment decomposition it was priced against. Deterministic per distilled layer.
+pub fn plan_epoch_fragment(d: &DistilledLayer, budget: usize, stream_reductions: bool) -> u64 {
+    plan_epoch_mode(d, budget, stream_reductions, DriverMode::Fragment)
+}
+
+fn plan_epoch_mode(
+    d: &DistilledLayer,
+    budget: usize,
+    stream_reductions: bool,
+    mode: DriverMode,
+) -> u64 {
     let mut h = FNV_OFFSET;
     fnv_u32(&mut h, BWD_PLAN_ABI_VERSION);
+    fnv_bytes(&mut h, &[driver_mode_disc(mode)]); // CS-M5a T6 driver-mode tag
     fnv_bytes(&mut h, &[d.regime as u8]);
     fnv_bytes(&mut h, &(budget as u64).to_le_bytes());
     fnv_bytes(&mut h, &[stream_reductions as u8]);
@@ -170,6 +214,17 @@ pub fn plan_epoch(d: &DistilledLayer, budget: usize, stream_reductions: bool) ->
                 }
             }
         }
+    }
+    if let DriverMode::Fragment = mode {
+        // The full-decomposition binding: hash the order-INDEPENDENT stable fragment
+        // keys (atoms + coefficient/`c_init` factor-key lists, canonicalized by
+        // `FragmentTable::stable_view`/`stable_c_init`) in schedule order. Reduced via a
+        // fixed-seed `DefaultHasher` (deterministic within a build; the epoch is a
+        // non-persisted internal guard) and folded into the FNV stream.
+        let mut fh = DefaultHasher::new();
+        d.fragments.stable_view(d).hash(&mut fh);
+        d.fragments.stable_c_init(d).hash(&mut fh);
+        fnv_bytes(&mut h, &fh.finish().to_le_bytes());
     }
     h
 }
@@ -327,16 +382,49 @@ fn read_origin_positions_by_leaf(
     out
 }
 
+/// Whether [`freeze_demand_with`] applies the DIRECT-TOP-LEVEL-READ correction (CS-M5a
+/// Task 6): re-crediting a spine's bare-`Source` first term from `leaf_instants` to
+/// `nondomain_gather_cells`.
+///
+/// `Term` — the TERM driver's spine-term loop gathers that first bare-source term via
+/// `source_to_vop` with NO accompanying `Serve` (see the block below), so the correction
+/// is REQUIRED to restore the leaf-instants↔program alignment; term traces are frozen
+/// byte-identically to before this task.
+///
+/// `None` — the FRAGMENT driver (Task 5.2) gives every top atom a real `Serve`, so no
+/// unserved direct-top gather exists and the correction must be SKIPPED (applying it would
+/// wrongly evict a genuine served instant).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DirectTopCorrection {
+    Term,
+    None,
+}
+
 /// Task 2 (CS-M0): freeze the all-recompute demand stream D0 from a traced bwd
 /// compile — `d`'s site domain filters `trace`'s `Serve` events into
 /// `domain_serves` and gates `leaf_instants` (via a program scan of `program`
 /// keyed through `specials`), with everything outside the domain folded into
-/// `nondomain_gather_cells`.
+/// `nondomain_gather_cells`. The TERM-driver compat entry: applies the direct-top
+/// correction (see [`freeze_demand_with`]).
 pub fn freeze_demand(
     d: &DistilledLayer,
     trace: &BwdCompileTrace,
     program: &Program,
     specials: &BwdSpecialTable,
+) -> FrozenDemand {
+    freeze_demand_with(d, trace, program, specials, DirectTopCorrection::Term)
+}
+
+/// CS-M5a Task 6: [`freeze_demand`] parameterized over the [`DirectTopCorrection`] the
+/// compile driver requires. `Term` runs the direct-top block (byte-identical to the
+/// pre-Task-6 `freeze_demand`); `None` skips it (valid for fragment traces). Everything
+/// else is identical across both variants.
+pub fn freeze_demand_with(
+    d: &DistilledLayer,
+    trace: &BwdCompileTrace,
+    program: &Program,
+    specials: &BwdSpecialTable,
+    correction: DirectTopCorrection,
 ) -> FrozenDemand {
     let domain_values: BTreeSet<ExprId> =
         distilled_site_domain(d).into_iter().map(|site| site.value).collect();
@@ -370,39 +458,41 @@ pub fn freeze_demand(
 
     let mut leaf_instants = read_origin_positions_by_leaf(program, specials, &d.leaf_descs);
 
-    // DOCUMENTED OFFSET RULE: the driver's per-spine-term loop
-    // (`lower_bwd_root_virtual`, `fwd/compile/lower.rs` ~2156-2168) compiles EVERY
-    // spine term via a direct `compile_expr_virtual` call, bypassing
-    // `lower_operand_virtual`'s `serve_occurrence` wrapper entirely. A term that is
-    // itself a bare `Source` expr — a "direct top-level read term"; structurally
-    // this can only ever be `spine_terms(d)[0]` (the alpha spine's UNSCALED root_0
-    // child — every i>=1 term is `beta^i * expr(root_i)`, always a `Mul`, per
-    // `distill`'s alpha-spine doc) — therefore gathers via `source_to_vop` (a real
-    // `TrafficRead`) with NO accompanying `Serve` event.
-    //
-    // That term is also the very first thing the driver ever compiles (`cur_step`
-    // starts at 0 and nothing upstream of the term loop touches an individual leaf
-    // source — the one call before it, `serve_occurrence(root_expr, RootOutput)`,
-    // emits no instruction), so this untracked gather is provably the MINIMUM-index
-    // program occurrence of that leaf's desc: nothing else in the program can
-    // reference it before its own term starts. When such a leaf is ALSO a genuine
-    // (fan-out >= 2) domain leaf, this one occurrence is credited to
-    // `nondomain_gather_cells` instead of `leaf_instants`, restoring the alignment
-    // invariant. A leaf that is ONLY its own bare spine term has fan-out 1 and is
-    // already excluded from the site domain (`distilled_site_domain`), so this
-    // correction is a no-op for it — its lone gather is already counted above via
-    // the plain non-domain `TrafficRead` filter.
-    for term in spine_terms(d) {
-        if !domain_values.contains(&term) {
-            continue;
-        }
-        if !matches!(d.layer.exprs[term.0 as usize], Expr::Source(_)) {
-            continue;
-        }
-        if let Some(positions) = leaf_instants.get_mut(&term) {
-            if let Some((min_at, _)) = positions.iter().enumerate().min_by_key(|&(_, &p)| p) {
-                positions.remove(min_at);
-                nondomain_gather_cells += 4; // FoldSource gathers are always Ext (4 cells).
+    if let DirectTopCorrection::Term = correction {
+        // DOCUMENTED OFFSET RULE: the driver's per-spine-term loop
+        // (`lower_bwd_root_virtual`, `fwd/compile/lower.rs` ~2156-2168) compiles EVERY
+        // spine term via a direct `compile_expr_virtual` call, bypassing
+        // `lower_operand_virtual`'s `serve_occurrence` wrapper entirely. A term that is
+        // itself a bare `Source` expr — a "direct top-level read term"; structurally
+        // this can only ever be `spine_terms(d)[0]` (the alpha spine's UNSCALED root_0
+        // child — every i>=1 term is `beta^i * expr(root_i)`, always a `Mul`, per
+        // `distill`'s alpha-spine doc) — therefore gathers via `source_to_vop` (a real
+        // `TrafficRead`) with NO accompanying `Serve` event.
+        //
+        // That term is also the very first thing the driver ever compiles (`cur_step`
+        // starts at 0 and nothing upstream of the term loop touches an individual leaf
+        // source — the one call before it, `serve_occurrence(root_expr, RootOutput)`,
+        // emits no instruction), so this untracked gather is provably the MINIMUM-index
+        // program occurrence of that leaf's desc: nothing else in the program can
+        // reference it before its own term starts. When such a leaf is ALSO a genuine
+        // (fan-out >= 2) domain leaf, this one occurrence is credited to
+        // `nondomain_gather_cells` instead of `leaf_instants`, restoring the alignment
+        // invariant. A leaf that is ONLY its own bare spine term has fan-out 1 and is
+        // already excluded from the site domain (`distilled_site_domain`), so this
+        // correction is a no-op for it — its lone gather is already counted above via
+        // the plain non-domain `TrafficRead` filter.
+        for term in spine_terms(d) {
+            if !domain_values.contains(&term) {
+                continue;
+            }
+            if !matches!(d.layer.exprs[term.0 as usize], Expr::Source(_)) {
+                continue;
+            }
+            if let Some(positions) = leaf_instants.get_mut(&term) {
+                if let Some((min_at, _)) = positions.iter().enumerate().min_by_key(|&(_, &p)| p) {
+                    positions.remove(min_at);
+                    nondomain_gather_cells += 4; // FoldSource gathers are always Ext (4 cells).
+                }
             }
         }
     }

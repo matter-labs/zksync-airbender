@@ -55,13 +55,13 @@ use std::ops::Range;
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId, FieldKind};
 
-use super::compile::{compile_distilled_planned, BwdCompiledLayer};
+use super::compile::{BwdCompileBackend, BwdCompiledLayer, TermBackend};
 use super::distill::{distilled_site_domain, DistilledLayer};
 use super::fif::{fif_select, occ_range, Gap};
 use super::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
 use super::structure::expr_width;
 use super::trace::{
-    certify, freeze_demand, BwdCompileTrace, BwdEvent, BwdFingerprint, BwdServedFrom, FrozenDemand,
+    certify, BwdCompileTrace, BwdEvent, BwdFingerprint, BwdServedFrom, FrozenDemand,
 };
 use crate::fwd::error::CompileError;
 
@@ -566,6 +566,7 @@ pub fn modeled_traffic_full(frozen: &FrozenDemand, pins: &BTreeMap<ExprId, usize
 /// equals `compound_batch_plan_with(frozen, &kept_pins, end)`.
 #[allow(clippy::too_many_arguments)]
 fn reclaim_compounds(
+    backend: &dyn BwdCompileBackend,
     d: &DistilledLayer,
     budget: usize,
     frozen: &FrozenDemand,
@@ -610,7 +611,7 @@ fn reclaim_compounds(
         pinned.insert(c); // tentative add
         let trial = compound_batch_plan_with(frozen, &pinned, end);
         compiles += 1;
-        match compile_distilled_planned(d, budget, &trial) {
+        match backend.planned(d, budget, &trial) {
             Ok((tc, tt)) => {
                 let dram = tc.stats_ext.global + tc.stats_ext.fold_traffic;
                 let clean = certify(&tc, &tt).is_ok() && !diverged(&tt);
@@ -757,6 +758,7 @@ fn plan_from(base: &BwdOccurrencePlan, entries: Vec<PlanEntry>) -> BwdOccurrence
 /// plan (the A+B residual) — sharing the one round `TrialBudget`.
 #[allow(clippy::too_many_arguments)]
 fn per_gap_reclaim(
+    backend: &dyn BwdCompileBackend,
     d: &DistilledLayer,
     budget: usize,
     plan_template: &BwdOccurrencePlan,
@@ -799,7 +801,7 @@ fn per_gap_reclaim(
         entries[entry_idx].action = PlanAction::Retain; // tentative flip
         let trial = plan_from(plan_template, entries.clone());
         compiles += 1;
-        match compile_distilled_planned(d, budget, &trial) {
+        match backend.planned(d, budget, &trial) {
             Ok((c, t)) => {
                 let dram = c.stats_ext.global + c.stats_ext.fold_traffic;
                 let clean = certify(&c, &t).is_ok() && !diverged(&t);
@@ -895,7 +897,35 @@ fn residency_before_entry(
     None
 }
 
+/// TERM-backend compat wrapper for [`reclaim_leaves_with_backend`] (CS-M5a Task 6):
+/// preserves the pre-Task-6 public signature, so the direct callers in `bwd_cs_engine.rs`
+/// compile unchanged.
 pub fn reclaim_leaves(
+    d: &DistilledLayer,
+    budget: usize,
+    observed: &FrozenDemand,
+    base_plan: &BwdOccurrencePlan,
+    base_c: BwdCompiledLayer,
+    base_trace: BwdCompileTrace,
+    gap_cap: usize,
+    trial_budget: &mut TrialBudget,
+) -> Result<LeafReclaimResult, CompileError> {
+    reclaim_leaves_with_backend(
+        &TermBackend,
+        d,
+        budget,
+        observed,
+        base_plan,
+        base_c,
+        base_trace,
+        gap_cap,
+        trial_budget,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn reclaim_leaves_with_backend(
+    backend: &dyn BwdCompileBackend,
     d: &DistilledLayer,
     budget: usize,
     observed: &FrozenDemand,
@@ -962,6 +992,7 @@ pub fn reclaim_leaves(
     // when `gap_cap=512`). No `normalize` follows it, so reserve 0 (a reserve here would
     // drop the last gap on a budget-tight small fixture and break the floor).
     let (b_entries, b_c, b_trace, b_attempted, b_kept) = per_gap_reclaim(
+        backend,
         d,
         budget,
         base_plan,
@@ -1042,7 +1073,7 @@ pub fn reclaim_leaves(
                 if i < last { PlanAction::Retain } else { PlanAction::Bypass };
         }
         let trial = plan_from(base_plan, acc_entries.clone());
-        match compile_distilled_planned(d, budget, &trial) {
+        match backend.planned(d, budget, &trial) {
             Ok((c, t)) => {
                 let dram = c.stats_ext.global + c.stats_ext.fold_traffic;
                 let clean = certify(&c, &t).is_ok() && !diverged(&t);
@@ -1091,7 +1122,7 @@ pub fn reclaim_leaves(
     // (this `reclaim_leaves` still returns `Complete`).
     let stage_a_plan = plan_from(base_plan, acc_entries);
     let (norm_plan, norm_c, norm_trace, demoted_a, _unrealized) =
-        normalize(d, budget, stage_a_plan, a_best_c, a_best_trace, trial_budget)?;
+        normalize_with_backend(backend, d, budget, stage_a_plan, a_best_c, a_best_trace, trial_budget)?;
 
     // ── A+B BASELINE (the Task-3 A+B path): per-gap residual over the post-Stage-A
     // normalized plan. Runs HERE — right after Stage A's normalize and BEFORE Stage A' — so
@@ -1104,6 +1135,7 @@ pub fn reclaim_leaves(
     // its own Task-3 value, because Stage B is a budget-shared, path-dependent greedy).
     // Reserve 1 for the terminal normalize (Task 5); shares the round budget.
     let (abb_entries, abb_c, abb_trace, abb_attempted, abb_kept) = per_gap_reclaim(
+        backend,
         d,
         budget,
         base_plan,
@@ -1206,7 +1238,7 @@ pub fn reclaim_leaves(
             }
         }
         let trial = plan_from(base_plan, trial_entries.clone());
-        match compile_distilled_planned(d, budget, &trial) {
+        match backend.planned(d, budget, &trial) {
             Ok((c, t)) => {
                 let dram = c.stats_ext.global + c.stats_ext.fold_traffic;
                 let clean = certify(&c, &t).is_ok() && !diverged(&t);
@@ -1231,13 +1263,14 @@ pub fn reclaim_leaves(
     // `Incomplete` selection — this `reclaim_leaves` still returns `Complete`).
     let stage_ap_plan = plan_from(base_plan, ap_entries);
     let (norm2_plan, norm2_c, norm2_trace, demoted_ap, _unrealized2) =
-        normalize(d, budget, stage_ap_plan, ap_c, ap_trace, trial_budget)?;
+        normalize_with_backend(backend, d, budget, stage_ap_plan, ap_c, ap_trace, trial_budget)?;
 
     // A+B (A'-augmented) residual: per-gap over the (twice-)NORMALIZED plan's `Bypass` gaps
     // (Stage A/A' retained occurrences are non-`Bypass` → skipped by the loop). Runs on the
     // budget LEFT after the A+B baseline + Stage A'; reserve 1 for the terminal normalize
     // (Task 5). Shares the round budget with B-only + Stage A + baseline + Stage A'.
     let (abp_entries, abp_c, abp_trace, abp_attempted, abp_kept) = per_gap_reclaim(
+        backend,
         d,
         budget,
         base_plan,
@@ -1311,7 +1344,7 @@ pub fn reclaim_leaves(
     // `HARD_MAX` breach), signalling `Incomplete`. The reserved credit each earlier stage keeps
     // (`try_spend(1)` throughout A/A'/B) funds it in the common case, so `Incomplete` is rare.
     let (norm_plan, norm_c, norm_trace, demoted_t, unrealized_after) =
-        normalize(d, budget, shipped_plan, shipped_c, shipped_trace, trial_budget)?;
+        normalize_with_backend(backend, d, budget, shipped_plan, shipped_c, shipped_trace, trial_budget)?;
     counters.refused_retains_normalized += demoted_t;
     counters.terminal_demoted = demoted_t;
     counters.normalize_calls += 1;
@@ -1496,6 +1529,21 @@ pub fn normalize(
     trace: BwdCompileTrace,
     budget_ctr: &mut TrialBudget,
 ) -> Result<(BwdOccurrencePlan, BwdCompiledLayer, BwdCompileTrace, usize, usize), CompileError> {
+    normalize_with_backend(&TermBackend, d, budget, plan, c, trace, budget_ctr)
+}
+
+/// Backend-parameterized [`normalize`] (CS-M5a Task 6): the single recompile routes through
+/// `backend.planned`; `normalize` is the [`TermBackend`] compat wrapper.
+#[allow(clippy::too_many_arguments)]
+pub fn normalize_with_backend(
+    backend: &dyn BwdCompileBackend,
+    d: &DistilledLayer,
+    budget: usize,
+    plan: BwdOccurrencePlan,
+    c: BwdCompiledLayer,
+    trace: BwdCompileTrace,
+    budget_ctr: &mut TrialBudget,
+) -> Result<(BwdOccurrencePlan, BwdCompiledLayer, BwdCompileTrace, usize, usize), CompileError> {
     let realized = realized_openings(&plan, &trace);
     let unrealized: Vec<usize> = plan
         .entries
@@ -1516,7 +1564,7 @@ pub fn normalize(
         entries[k].action = PlanAction::Bypass;
     }
     let plan2 = plan_from(&plan, entries);
-    let (c2, trace2) = compile_distilled_planned(d, budget, &plan2)?;
+    let (c2, trace2) = backend.planned(d, budget, &plan2)?;
     // Spec §3 mandates `compile_distilled_planned + certify ONCE`. Neutrality (§3) makes
     // the recompile balance redundant today, but this is the foundational path every
     // downstream stage (T3/T4/T5 + the terminal ship) routes through, and the binding
@@ -1631,7 +1679,9 @@ fn diverged(trace: &BwdCompileTrace) -> bool {
 /// lexicographic objective. COMPOSITION ORDER: compounds FIRST (they reshape the serve
 /// stream by suppressing cone re-expansions), THEN leaves (fine-grained retention on the
 /// reshaped, re-frozen stream) — both greedies are compiler-validated per candidate.
-pub fn priced_rounds(
+#[allow(clippy::too_many_arguments)]
+pub fn priced_rounds_with_backend(
+    backend: &dyn BwdCompileBackend,
     d: &DistilledLayer,
     budget: usize,
     frozen0: FrozenDemand,
@@ -1660,7 +1710,7 @@ pub fn priced_rounds(
     // drops fail-closed.
     let base_end = subtree_ends(&current_frozen);
     let base_plan = compound_batch_plan_with(&current_frozen, &BTreeSet::new(), &base_end);
-    let (base_c, base_trace) = compile_distilled_planned(d, budget, &base_plan)?;
+    let (base_c, base_trace) = backend.planned(d, budget, &base_plan)?;
     base_compound_calls += 1;
     let base_cert = certify(&base_c, &base_trace);
     let mut best = RoundResult {
@@ -1690,7 +1740,7 @@ pub fn priced_rounds(
         // drops the round and exits with the previous best).
         let round_base_plan = compound_batch_plan_with(&current_frozen, &BTreeSet::new(), &end);
         base_compound_calls += 1;
-        let (rb_c, rb_trace) = match compile_distilled_planned(d, budget, &round_base_plan) {
+        let (rb_c, rb_trace) = match backend.planned(d, budget, &round_base_plan) {
             Ok(x) => x,
             Err(CompileError::BudgetBelowFloor { .. }) => break,
             Err(e) => return Err(e),
@@ -1705,6 +1755,7 @@ pub fn priced_rounds(
         // never the selection authority.
         let (pinned, compound_plan, cbatch_c, cbatch_trace, c_attempted, c_kept, c_compiles) =
             reclaim_compounds(
+                backend,
                 d,
                 budget,
                 &current_frozen,
@@ -1718,7 +1769,7 @@ pub fn priced_rounds(
         base_compound_calls += c_compiles;
 
         // (3) re-freeze on the best compound compile's ACTUAL trace (realized suppression).
-        let observed = freeze_demand(d, &cbatch_trace, &cbatch_c.program, &cbatch_c.specials);
+        let observed = backend.freeze(d, &cbatch_c, &cbatch_trace);
 
         // CS-M4 Task 2 (spec §5): accrue THIS round's leaf-search credit BEFORE the
         // reclaim. `G_r` (realized leaf gaps) is known only now (post re-freeze), so
@@ -1738,7 +1789,8 @@ pub fn priced_rounds(
         // demand: start from the all-`Bypass`-leaves compound batch and greedily retain
         // the top-N realized leaf gaps that (feasibly, non-divergingly) drop dram_traffic
         // against the REAL program (Commit 2, spec §5 step 4).
-        let reclaim = reclaim_leaves(
+        let reclaim = reclaim_leaves_with_backend(
+            backend,
             d,
             budget,
             &observed,
@@ -1823,4 +1875,18 @@ pub fn priced_rounds(
         sum_g,
         sum_quota,
     })
+}
+
+/// TERM-backend compat wrapper for [`priced_rounds_with_backend`] (CS-M5a Task 6):
+/// preserves the pre-Task-6 public signature, so the engine and the direct test callers
+/// compile unchanged.
+pub fn priced_rounds(
+    d: &DistilledLayer,
+    budget: usize,
+    frozen0: FrozenDemand,
+    multiplier: usize,
+    gap_cap: usize,
+    enforce_budget: bool,
+) -> Result<PricedOutcome, CompileError> {
+    priced_rounds_with_backend(&TermBackend, d, budget, frozen0, multiplier, gap_cap, enforce_budget)
 }

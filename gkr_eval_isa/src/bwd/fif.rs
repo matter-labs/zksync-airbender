@@ -27,11 +27,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use cs::gkr_compiler::dag_ir::ExprId;
 
 use super::compile::{
-    compile_distilled_planned, compile_distilled_traced, BwdCompiledLayer,
+    compile_distilled_planned, BwdCompileBackend, BwdCompiledLayer, TermBackend,
 };
 use super::distill::DistilledLayer;
 use super::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
-use super::trace::{freeze_demand, BwdCompileTrace, BwdEvent, FrozenDemand};
+use super::trace::{BwdCompileTrace, BwdEvent, FrozenDemand};
 use crate::fwd::error::CompileError;
 
 // ── FC0: exact fixed-order ceiling (per-site envelope FiF) ────────────────────
@@ -229,15 +229,29 @@ pub fn coordinate_correct_frozen(
     d: &DistilledLayer,
     budget: usize,
 ) -> Result<FrozenDemand, CompileError> {
+    coordinate_correct_frozen_with_backend(d, budget, &TermBackend)
+}
+
+/// Backend-parameterized [`coordinate_correct_frozen`] (CS-M5a Task 6, codex round-2):
+/// `backend.traced` → `all_bypass_plan` → `backend.planned` → `backend.freeze` on THAT
+/// (planned, `lower==place==budget`) trace. Every driver-specific step — the uncached
+/// traced compile, the plan replay, and the freeze's [`DirectTopCorrection`] — goes
+/// through `backend`, so the seed is coordinate-correct in whichever regime the priced
+/// replay will run. `coordinate_correct_frozen` is the [`TermBackend`] compat wrapper.
+pub fn coordinate_correct_frozen_with_backend(
+    d: &DistilledLayer,
+    budget: usize,
+    backend: &dyn BwdCompileBackend,
+) -> Result<FrozenDemand, CompileError> {
     // Step 1a: harvest budget-independent domain-serve fingerprints (any regime).
-    let (ft_c, ft_trace) = compile_distilled_traced(d, budget, None)?;
-    let frozen_ft = freeze_demand(d, &ft_trace, &ft_c.program, &ft_c.specials);
+    let (ft_c, ft_trace) = backend.traced(d, budget)?;
+    let frozen_ft = backend.freeze(d, &ft_c, &ft_trace);
 
     // Step 1b: re-freeze in the coordinate system the planned replay actually uses —
     // the zero-retention `lower==place==budget` program.
     let bootstrap = all_bypass_plan(&frozen_ft);
-    let (bypass_c, bypass_trace) = compile_distilled_planned(d, budget, &bootstrap)?;
-    Ok(freeze_demand(d, &bypass_trace, &bypass_c.program, &bypass_c.specials))
+    let (bypass_c, bypass_trace) = backend.planned(d, budget, &bootstrap)?;
+    Ok(backend.freeze(d, &bypass_c, &bypass_trace))
 }
 
 /// A copy of `frozen` with its per-instant free envelope capped at `cap` cells
@@ -268,6 +282,10 @@ fn refusals_and_divergence(trace: &BwdCompileTrace) -> (usize, bool) {
     (refusals, diverged)
 }
 
+/// TERM-ONLY (CS-M5a Task 6): seeds via the [`TermBackend`] `coordinate_correct_frozen`
+/// and replays through [`compile_distilled_planned`] directly — the fragment path never
+/// calls it.
+///
 /// The discount-seed + drop-to-fit feasibility wrapper (RR-directed hybrid, brief
 /// Revision 2). ALWAYS returns a leaf plan that [`compile_distilled_planned`] accepts —
 /// no `BudgetBelowFloor`, zero `Refuse`, no `Diverge` — together with its realized

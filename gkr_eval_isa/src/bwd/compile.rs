@@ -42,7 +42,10 @@ use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use super::distill::{distilled_site_domain, DistilledLayer};
 use super::plan::{plan_entries_fnv, BwdOccurrencePlan};
 use super::source::{BwdSpecial, BwdSpecialTable};
-use super::trace::{live_profile, plan_epoch, BwdCompileTrace};
+use super::trace::{
+    freeze_demand_with, live_profile, plan_epoch, plan_epoch_fragment, BwdCompileTrace,
+    DirectTopCorrection, FrozenDemand,
+};
 
 // ── BwdTrafficStats ───────────────────────────────────────────────────────────
 
@@ -735,7 +738,7 @@ fn compile_distilled_fragments_at_traced(
     ctx.cross_layer_fields = d.cross_fields.clone();
 
     let seed = BwdCompileTrace {
-        epoch: plan_epoch(d, place_budget, stream_reductions),
+        epoch: plan_epoch_fragment(d, place_budget, stream_reductions),
         budget: place_budget,
         stream_reductions,
         events: Vec::new(),
@@ -795,7 +798,7 @@ pub fn compile_distilled_fragments_planned(
     plan: &BwdOccurrencePlan,
     order: Option<&[usize]>,
 ) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
-    let expected_epoch = plan_epoch(d, budget, plan.stream_reductions);
+    let expected_epoch = plan_epoch_fragment(d, budget, plan.stream_reductions);
     assert_eq!(
         plan.epoch, expected_epoch,
         "plan epoch mismatch: plan carries {} but (layer, budget {budget}, stream_reductions \
@@ -865,7 +868,7 @@ fn compile_distilled_fragments_at_planned_lb(
         distilled_site_domain(d).into_iter().map(|s| s.value).collect();
 
     let seed = BwdCompileTrace {
-        epoch: plan_epoch(d, place_budget, stream_reductions),
+        epoch: plan_epoch_fragment(d, place_budget, stream_reductions),
         budget: place_budget,
         stream_reductions,
         events: Vec::new(),
@@ -912,6 +915,102 @@ fn compile_distilled_fragments_at_planned_lb(
         },
         trace,
     ))
+}
+
+// ── CS-M5a Task 6: compile-backend parameterization ───────────────────────────
+
+/// The compile-driver abstraction the freeze + pricing stack is parameterized over
+/// (CS-M5a Task 6). A backend bundles the three driver-specific operations the priced
+/// pipeline needs — an uncached traced compile ([`Self::traced`]), a plan-driven replay
+/// ([`Self::planned`]), and the freeze of a compiled trace into a [`FrozenDemand`]
+/// ([`Self::freeze`], which selects the driver's [`DirectTopCorrection`]) — so the same
+/// pricing code drives either the spine-accumulation ([`TermBackend`]) or the
+/// full-decomposition ([`FragmentBackend`]) lowering. The term path routes through the
+/// existing byte-identical entries.
+pub trait BwdCompileBackend {
+    fn planned(
+        &self,
+        d: &DistilledLayer,
+        budget: usize,
+        plan: &BwdOccurrencePlan,
+    ) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError>;
+    fn traced(
+        &self,
+        d: &DistilledLayer,
+        budget: usize,
+    ) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError>;
+    fn freeze(
+        &self,
+        d: &DistilledLayer,
+        c: &BwdCompiledLayer,
+        t: &BwdCompileTrace,
+    ) -> FrozenDemand;
+}
+
+/// The spine-accumulation (TERM) backend: delegates to the existing
+/// [`compile_distilled_traced`] (uncached, `decisions: None`) / [`compile_distilled_planned`]
+/// entries and freezes with the [`DirectTopCorrection::Term`] correction — byte-identical
+/// to the pre-Task-6 pipeline.
+pub struct TermBackend;
+
+impl BwdCompileBackend for TermBackend {
+    fn planned(
+        &self,
+        d: &DistilledLayer,
+        budget: usize,
+        plan: &BwdOccurrencePlan,
+    ) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+        compile_distilled_planned(d, budget, plan)
+    }
+    fn traced(
+        &self,
+        d: &DistilledLayer,
+        budget: usize,
+    ) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+        compile_distilled_traced(d, budget, None)
+    }
+    fn freeze(
+        &self,
+        d: &DistilledLayer,
+        c: &BwdCompiledLayer,
+        t: &BwdCompileTrace,
+    ) -> FrozenDemand {
+        freeze_demand_with(d, t, &c.program, &c.specials, DirectTopCorrection::Term)
+    }
+}
+
+/// The full-decomposition (FRAGMENT) backend: delegates to
+/// [`compile_distilled_fragments_traced`] / [`compile_distilled_fragments_planned`] at the
+/// carried schedule `order` and freezes with [`DirectTopCorrection::None`] (Task 5.2 serves
+/// every top atom, so there is no unserved direct-top gather to re-credit).
+pub struct FragmentBackend {
+    pub order: Vec<usize>,
+}
+
+impl BwdCompileBackend for FragmentBackend {
+    fn planned(
+        &self,
+        d: &DistilledLayer,
+        budget: usize,
+        plan: &BwdOccurrencePlan,
+    ) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+        compile_distilled_fragments_planned(d, budget, plan, Some(&self.order))
+    }
+    fn traced(
+        &self,
+        d: &DistilledLayer,
+        budget: usize,
+    ) -> Result<(BwdCompiledLayer, BwdCompileTrace), CompileError> {
+        compile_distilled_fragments_traced(d, budget, Some(&self.order))
+    }
+    fn freeze(
+        &self,
+        d: &DistilledLayer,
+        c: &BwdCompiledLayer,
+        t: &BwdCompileTrace,
+    ) -> FrozenDemand {
+        freeze_demand_with(d, t, &c.program, &c.specials, DirectTopCorrection::None)
+    }
 }
 
 // ── Task 6 (LIGHT) peak-composition diagnostic seam ───────────────────────────
