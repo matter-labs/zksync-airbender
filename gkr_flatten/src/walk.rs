@@ -32,6 +32,7 @@
 //! to the pre-M3 walker for any oracle.
 
 use std::cell::RefCell;
+use std::cmp::Reverse;
 use std::collections::HashMap;
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceId};
@@ -39,6 +40,7 @@ use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceId};
 use crate::dag::{LayerView, LeafClass, NodeKind};
 use crate::ir::{Op, Operand, Program, SlotId};
 use crate::oracle::{Oracle, SiteObs, SitePath, SiteStep, UseCounts};
+use crate::order::{order_feasible, OrderCtx, OrderPolicy};
 use crate::residency::{Admit, Residency};
 use crate::su;
 
@@ -76,6 +78,19 @@ use crate::su;
 /// - `evictions`: victims displaced from the cache — one per `Op::Evict`,
 ///   whether displaced by an admission (`try_admit` victims) or by a stash
 ///   reservation (`charge_stash` victims). Zero under `NeutralOracle`.
+/// - `clamps`: folds where the order policy's derived child order failed the
+///   static-peak feasibility test (`order::order_feasible`) and the walker
+///   fell back to the SU (peak-descending) order to stay within budget (spec
+///   M3). Always zero under `OrderPolicy::Su` and under an unbounded budget
+///   (which skips the check).
+/// - `order_folds`: folds at which the derived order policy actually ran its
+///   key sort — one per fold with ≥1 non-streamable child under a `Derived*`/
+///   `Searched` policy (spec M3's "ordered fold" readout). Always zero under
+///   `OrderPolicy::Su`.
+/// - `key_active`: derived-sorted folds where the leaving-signal was live —
+///   at least one child's `frees` (width freed by residents dying inside its
+///   subtree) was positive (spec M3's "is the order key doing anything"
+///   readout). A subset of `order_folds`; zero under `OrderPolicy::Su`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct WalkStats {
     pub traffic: u64,
@@ -85,6 +100,9 @@ pub struct WalkStats {
     pub hits: u64,
     pub cache_stores: u64,
     pub evictions: u64,
+    pub clamps: u64,
+    pub order_folds: u64,
+    pub key_active: u64,
 }
 
 /// A flattened `Program` plus the stats accumulated while producing it.
@@ -152,26 +170,83 @@ pub fn flatten_budgeted(
 /// `counts = None` disengages all of the above: no countdown is allocated,
 /// `note_use` is never called, and `WalkOutput.consumed` is `None` — byte-
 /// identical to the pre-M3 walker for any oracle.
+///
+/// A thin wrapper over [`flatten_with`] pinning [`OrderPolicy::Su`] and no
+/// order context — the M1 child order (SU peak-descending). Every M2/M1
+/// wrapper (`flatten`/`flatten_budgeted`) funnels through here unchanged.
 pub fn flatten_counted(
     view: &LayerView<'_>,
     oracle: &dyn Oracle,
     budget: Option<u32>,
     counts: Option<&UseCounts>,
 ) -> WalkOutput {
-    let consumed = vec![0u32; if counts.is_some() { view.layer.exprs.len() } else { 0 }];
+    flatten_with(view, oracle, budget, OrderPolicy::Su, counts, None)
+}
+
+/// The one flattening entry point every wrapper funnels through (spec M3): a
+/// walk under an explicit fold-order [`OrderPolicy`], the optional per-value
+/// countdown (`counts`, see [`flatten_counted`]), and an optional read-only
+/// order channel (`order`, the per-layer [`OrderCtx`]).
+///
+/// - [`OrderPolicy::Su`] reproduces the M1/M2 walker byte-for-byte — same
+///   program AND stats — for any oracle, any budget, with or without counts:
+///   the SU peak-descending child order, no order-key reads, and the three
+///   new counters (`clamps`/`order_folds`/`key_active`) all zero. This is the
+///   load-bearing invariant the whole M2/M3 gate stack rests on, so the `Su`
+///   arm of `ordered_children` runs the pre-order-channel logic verbatim.
+/// - The `Derived*`/`Searched` policies reorder each fold's NON-streamable
+///   children by a derived key (residents freed by the child's subtree, minus
+///   a fill-weighted resident-fill penalty, plus a per-child order bias),
+///   then clamp back to the SU order if the derived order would breach the
+///   static-peak budget (`order::order_feasible`). Streamable children keep
+///   arena order. These policies REQUIRE both `counts` and `order` (asserted).
+///
+/// `budget` unbounded (`None`) skips the feasibility clamp entirely (an
+/// unbounded pool can never be over-committed), so `clamps` stays zero there
+/// under any policy.
+pub fn flatten_with(
+    view: &LayerView<'_>,
+    oracle: &dyn Oracle,
+    budget: Option<u32>,
+    policy: OrderPolicy,
+    counts: Option<&UseCounts>,
+    order: Option<&OrderCtx<'_>>,
+) -> WalkOutput {
+    if !matches!(policy, OrderPolicy::Su) {
+        assert!(
+            counts.is_some() && order.is_some(),
+            "gkr_flatten: order policy {policy:?} requires both a use-count table and an \
+             OrderCtx — only OrderPolicy::Su may run without them"
+        );
+    }
+    let n_exprs = view.layer.exprs.len();
+    let consumed = vec![0u32; if counts.is_some() { n_exprs } else { 0 }];
+    let consumed_loci = vec![false; order.map_or(0, |o| o.n_loci())];
     let mut walker = Walker {
         view,
         oracle,
         program: Program { ops: Vec::new(), width_of_slot: Default::default() },
         stats: WalkStats::default(),
         residency: Residency::new(budget),
-        su_memo: RefCell::new(su::Memo::new(view.layer.exprs.len())),
+        su_memo: RefCell::new(su::Memo::new(n_exprs)),
         counts,
         consumed,
+        policy,
+        order,
+        budget,
+        prefix: Vec::new(),
+        consumed_loci,
     };
     for root_id in oracle.root_order(view.layer) {
         let root_expr = view.layer.roots[root_id.0 as usize].expr;
         let mut path = SitePath { root: root_id, steps: Vec::new() };
+        // The rolling prefix-hash stack mirrors `path.steps`: seed it with the
+        // root hash (in order mode) so `push_step`/`pop_step` can name any
+        // live subtree by a single `u64` matching `OrderCtx`'s `locus_prefix`.
+        walker.prefix.clear();
+        if walker.order.is_some() {
+            walker.prefix.push(OrderCtx::root_hash(root_id));
+        }
         walker.emit(root_expr, &mut path, 0);
         debug_assert_eq!(
             walker.residency.stash_lanes(),
@@ -180,6 +255,11 @@ pub fn flatten_counted(
              stashed inside a root's cone must be consumed before its SinkMaterialize (stack \
              discipline violated)"
         );
+        debug_assert!(
+            walker.order.is_none() || walker.prefix.len() == 1,
+            "gkr_flatten: prefix-hash stack unbalanced past root {root_id:?} — every push_step \
+             must be matched by a pop_step (order-channel discipline violated)"
+        );
         walker.push(Op::SinkMaterialize(root_id));
     }
     let consumed = counts.map(|_| walker.consumed);
@@ -187,7 +267,7 @@ pub fn flatten_counted(
 }
 
 /// Walker state threaded through the recursive `emit`.
-struct Walker<'v, 'o, 'c> {
+struct Walker<'v, 'o, 'c, 'd> {
     view: &'v LayerView<'v>,
     oracle: &'o dyn Oracle,
     program: Program,
@@ -214,9 +294,35 @@ struct Walker<'v, 'o, 'c> {
     /// `e` has been ticked so far this walk. Sized to the layer's expr arena
     /// iff `counts.is_some()`, empty otherwise (never indexed in that case).
     consumed: Vec<u32>,
+    /// The fold-order policy (spec M3). `Su` runs the M1 child order verbatim;
+    /// the `Derived*`/`Searched` variants reorder each fold's non-streamable
+    /// children by a derived key and clamp to `Su` when infeasible.
+    policy: OrderPolicy,
+    /// The read-only order channel (`Some` iff a `Derived*`/`Searched` policy
+    /// is active): per-value loci, rolling prefix hashes, `dies_in`/`fills`
+    /// queries, and the fold-arity cap. `None` under `Su` — no order read ever
+    /// happens, keeping the `Su` walk byte-identical to the pre-M3 walker.
+    order: Option<&'d OrderCtx<'d>>,
+    /// The cache/stash lane `budget` (mirrors `residency`'s, which keeps it
+    /// private): the feasibility clamp needs `budget − stash_lanes` as the
+    /// headroom for a fold's static-peak check. `None` (unbounded) skips the
+    /// clamp entirely.
+    budget: Option<u32>,
+    /// Rolling prefix-hash stack mirroring the live `path.steps` (order mode
+    /// only): `prefix[d]` is the splitmix hash of the length-`d` path prefix,
+    /// matching `OrderCtx::locus_prefix[l][d]`. Seeded with `root_hash` at each
+    /// root and kept in sync by `push_step`/`pop_step`, so the walker can key
+    /// the subtree under any child by a single `u64`. Empty (untouched) under
+    /// `Su`/counts-only walks.
+    prefix: Vec<u64>,
+    /// Per-locus consumed marks (order mode only): `consumed_loci[l]` is set
+    /// the moment the walker ticks the site at locus `l` (inside `observe`),
+    /// so `OrderCtx::dies_in` can tell which of a value's occurrences remain
+    /// unconsumed. Sized to `order.n_loci()`; empty (never indexed) otherwise.
+    consumed_loci: Vec<bool>,
 }
 
-impl<'v, 'o, 'c> Walker<'v, 'o, 'c> {
+impl<'v, 'o, 'c, 'd> Walker<'v, 'o, 'c, 'd> {
     /// Emits ops so that, on return, `acc` holds `value(e)`. `depth` doubles
     /// as the stack-disciplined `SlotId` allocator: a stash at recursion
     /// depth `d` always uses `SlotId(d)`, and the LIFO stash/consume nesting
@@ -249,10 +355,10 @@ impl<'v, 'o, 'c> Walker<'v, 'o, 'c> {
             }
             NodeKind::Add(children) | NodeKind::Mul(children) => {
                 let is_add = matches!(self.view.kind(e), NodeKind::Add(_));
-                let ordered = self.order_children(children);
+                let ordered = self.ordered_children(e, children, path);
                 let mut first = true;
                 for (dup, child) in ordered {
-                    path.steps.push(SiteStep { child, dup });
+                    self.push_step(path, SiteStep { child, dup });
                     if self.is_ready(child) {
                         // leaf (M1) or resident (M2). Checked BEFORE
                         // `is_ready_product`: a *resident* streamable-Mul
@@ -294,11 +400,11 @@ impl<'v, 'o, 'c> Walker<'v, 'o, 'c> {
                         // the first), observed at the SitePath `keep_priority`
                         // will later see, before `ready_operand` resolves it.
                         self.observe(child, path, true);
-                        path.steps.push(SiteStep { child: a, dup: 0 });
+                        self.push_step(path, SiteStep { child: a, dup: 0 });
                         self.observe(a, path, false);
                         let oa = self.ready_operand(a, path, &[]);
-                        path.steps.pop();
-                        path.steps.push(SiteStep { child: b, dup: u8::from(b == a) });
+                        self.pop_step(path);
+                        self.push_step(path, SiteStep { child: b, dup: u8::from(b == a) });
                         self.observe(b, path, false);
                         // If `a` resolved to a cached value, it is in flight —
                         // it will be read by the not-yet-pushed op below
@@ -310,7 +416,7 @@ impl<'v, 'o, 'c> Walker<'v, 'o, 'c> {
                         let protect: &[ExprId] =
                             if matches!(oa, Operand::Cached(_)) { &guard } else { &[] };
                         let ob = self.ready_operand(b, path, protect);
-                        path.steps.pop();
+                        self.pop_step(path);
                         if first {
                             self.push(Op::Load(oa));
                             self.push(Op::Mul(ob));
@@ -342,7 +448,7 @@ impl<'v, 'o, 'c> Walker<'v, 'o, 'c> {
                             self.emit(child, path, depth);
                         }
                     }
-                    path.steps.pop();
+                    self.pop_step(path);
                     first = false;
                 }
                 self.maybe_cache(e, path); // M2; no-op under NeutralOracle
@@ -350,14 +456,74 @@ impl<'v, 'o, 'c> Walker<'v, 'o, 'c> {
         }
     }
 
-    /// M1 convention (binding, from the Task-3 review): NON-STREAMABLE
-    /// children first, descending `su::cone_peak` (ties: original arena
-    /// order), then streamable children in original arena order — the
-    /// `|F|=1` zero-charge premise (a streamable child consumed first would
-    /// force a stash the model doesn't price). `dup` indices are assigned
-    /// among equal-`ExprId` siblings BEFORE this reordering, so `SitePath`
-    /// stays order-invariant.
-    fn order_children(&self, children: &[ExprId]) -> Vec<(u8, ExprId)> {
+    /// Pushes one `(child, dup)` step onto `path` and (order mode only) folds
+    /// the matching prefix hash onto `self.prefix`, keeping the two stacks in
+    /// lockstep. The single funnel replacing every raw `path.steps.push`, so
+    /// the rolling prefix stack always mirrors the live path. In non-order
+    /// modes the hash is skipped (the path discipline is unchanged, so the
+    /// emitted program/stats stay byte-identical to the pre-M3 walker).
+    fn push_step(&mut self, path: &mut SitePath, step: SiteStep) {
+        if self.order.is_some() {
+            let parent = *self.prefix.last().expect("gkr_flatten: prefix seeded at each root");
+            self.prefix.push(OrderCtx::step_hash(parent, step.child, step.dup));
+        }
+        path.steps.push(step);
+    }
+
+    /// Pops the innermost `path` step and (order mode only) its prefix hash —
+    /// the exact inverse of `push_step`. The single funnel replacing every raw
+    /// `path.steps.pop`.
+    fn pop_step(&mut self, path: &mut SitePath) {
+        path.steps.pop();
+        if self.order.is_some() {
+            self.prefix.pop();
+        }
+    }
+
+    /// The order bias for the child reached by extending `path` with
+    /// `(child, dup)` — consulted only on the biased derived paths
+    /// (`DerivedBiased`/`Searched`). `NeutralOracle` and every M1/M2 oracle
+    /// return the provided-default `0`.
+    fn child_bias(&self, path: &SitePath, child: ExprId, dup: u8) -> i64 {
+        let mut child_path = path.clone();
+        child_path.steps.push(SiteStep { child, dup });
+        self.oracle.order_bias(&child_path) as i64
+    }
+
+    /// Chooses the visitation order of a fold node `e`'s children under the
+    /// active [`OrderPolicy`] (spec M3). `dup` indices are assigned among
+    /// equal-`ExprId` siblings FIRST (before any reordering), so a `SitePath`
+    /// stays order-invariant regardless of the policy.
+    ///
+    /// - `Su`: the M1 convention verbatim — NON-streamable children first,
+    ///   descending `su::cone_peak` (ties keep arena order), then streamable
+    ///   children in arena order (the `|F|=1` zero-charge premise). Byte-
+    ///   identical to the pre-order-channel `order_children`.
+    /// - `Derived*`/`Searched`: the non-streamable children are re-sorted by a
+    ///   derived key over `(frees, fills, bias)` (see below), streamables still
+    ///   appended in arena order. The candidate order is then feasibility-
+    ///   clamped back to the SU order (`stats.clamps += 1`) if it would breach
+    ///   the static-peak budget; an unbounded budget skips the clamp.
+    ///
+    /// Derived key per non-streamable child `c` (child prefix = the rolling
+    /// hash of the path down to `c`, depth = steps taken including `c`):
+    /// - `frees(c)` = Σ over live residents `v` with `remaining(v) ≤ k_cap`
+    ///   (remaining = `total(v) − consumed(v)`) of `width(v)` when every
+    ///   unconsumed occurrence of `v` falls inside `c`'s subtree
+    ///   (`OrderCtx::dies_in`) — the resident lanes visiting `c` first reclaims.
+    /// - `key(c) = frees − fill_weight·fills(child_prefix) + bias`, where
+    ///   `bias` is `oracle.order_bias(c)` for `DerivedBiased`, the whole key
+    ///   for `Searched` (`frees`/`fills` dropped), and `0` for `Derived`.
+    /// - Stable sort: key-first ⇒ `(Reverse(key), Reverse(su_peak))`;
+    ///   `peak_first` ⇒ `(Reverse(su_peak), Reverse(key))` (`Searched` is
+    ///   key-first). Ties keep arena order.
+    fn ordered_children(
+        &mut self,
+        e: ExprId,
+        children: &[ExprId],
+        path: &SitePath,
+    ) -> Vec<(u8, ExprId)> {
+        // dup indices assigned BEFORE reordering (order-invariant SitePath).
         let mut dup_counts: HashMap<ExprId, u8> = HashMap::new();
         let indexed: Vec<(u8, ExprId)> = children
             .iter()
@@ -369,14 +535,127 @@ impl<'v, 'o, 'c> Walker<'v, 'o, 'c> {
             })
             .collect();
 
-        let mut memo = self.su_memo.borrow_mut();
-        let (mut non_stream, stream): (Vec<(u8, ExprId)>, Vec<(u8, ExprId)>) =
-            indexed.into_iter().partition(|&(_, c)| !memo.streamable(self.view, c));
-        // Stable sort: ties keep the relative order they already have
-        // (original arena order, preserved by `partition`).
-        non_stream.sort_by_key(|&(_, c)| std::cmp::Reverse(memo.peak(self.view, c)));
-        non_stream.extend(stream);
-        non_stream
+        // Non-streamable (reorderable) vs streamable (arena order, unchanged).
+        let (non_stream, stream): (Vec<(u8, ExprId)>, Vec<(u8, ExprId)>) = {
+            let mut memo = self.su_memo.borrow_mut();
+            indexed.into_iter().partition(|&(_, c)| !memo.streamable(self.view, c))
+        };
+
+        // Su path: the pre-order-channel logic, verbatim (byte-identical).
+        if let OrderPolicy::Su = self.policy {
+            let mut ns = non_stream;
+            {
+                let mut memo = self.su_memo.borrow_mut();
+                ns.sort_by_key(|&(_, c)| Reverse(memo.peak(self.view, c)));
+            }
+            ns.extend(stream);
+            return ns;
+        }
+
+        // The SU (peak-descending) order of the NON-streamable children — the
+        // clamp fallback (and, with streamables appended, the trivial-fold
+        // answer). Only the non-streamable children force stashes, so the
+        // feasibility test below is applied to this list alone; streamables
+        // (peak 0, folded as operands with no stash) are appended afterwards.
+        let su_ns: Vec<(u8, ExprId)> = {
+            let mut ns = non_stream.clone();
+            let mut memo = self.su_memo.borrow_mut();
+            ns.sort_by_key(|&(_, c)| Reverse(memo.peak(self.view, c)));
+            ns
+        };
+        let with_stream = |mut ns: Vec<(u8, ExprId)>| -> Vec<(u8, ExprId)> {
+            ns.extend(stream.iter().copied());
+            ns
+        };
+        if non_stream.is_empty() {
+            // Nothing to reorder: no key sort, no stat, no clamp.
+            return with_stream(su_ns);
+        }
+
+        // Derived-family key sort over the arena-order non-streamable children.
+        let order = self.order.expect("gkr_flatten: derived policy requires an OrderCtx");
+        let counts = self.counts.expect("gkr_flatten: derived policy requires use counts");
+        let parent_prefix = *self.prefix.last().expect("gkr_flatten: prefix seeded at each root");
+        let depth = path.steps.len() + 1;
+        let k_cap = order.k_cap();
+        let residents: Vec<(ExprId, u32, bool)> = self.residency.residents().collect();
+        let peak_first = match self.policy {
+            OrderPolicy::Derived(p) | OrderPolicy::DerivedBiased(p) => p.peak_first,
+            OrderPolicy::Searched => false,
+            OrderPolicy::Su => unreachable!("Su handled above"),
+        };
+
+        let mut any_frees = false;
+        // (key, su_peak, child) rows in arena order — sorted below.
+        let mut decorated: Vec<(i64, u32, (u8, ExprId))> = Vec::with_capacity(non_stream.len());
+        {
+            let mut memo = self.su_memo.borrow_mut();
+            for &(dup, child) in &non_stream {
+                let child_prefix = OrderCtx::step_hash(parent_prefix, child, dup);
+                let mut frees: i64 = 0;
+                for &(v, w, dead) in &residents {
+                    if dead {
+                        continue;
+                    }
+                    let remaining = counts.total(v).saturating_sub(self.consumed[v.0 as usize]);
+                    if remaining > k_cap {
+                        continue;
+                    }
+                    if order.dies_in(v, child_prefix, depth, &self.consumed_loci) {
+                        frees += w as i64;
+                    }
+                }
+                any_frees |= frees > 0;
+                let fills = order.fills(child_prefix) as i64;
+                let su_peak = memo.peak(self.view, child);
+                let key = match self.policy {
+                    OrderPolicy::Derived(p) => frees - p.fill_weight as i64 * fills,
+                    OrderPolicy::DerivedBiased(p) => {
+                        frees - p.fill_weight as i64 * fills + self.child_bias(path, child, dup)
+                    }
+                    OrderPolicy::Searched => self.child_bias(path, child, dup),
+                    OrderPolicy::Su => unreachable!("Su handled above"),
+                };
+                decorated.push((key, su_peak, (dup, child)));
+            }
+        }
+
+        self.stats.order_folds += 1;
+        if any_frees {
+            self.stats.key_active += 1;
+        }
+
+        if peak_first {
+            decorated.sort_by_key(|&(key, peak, _)| (Reverse(peak), Reverse(key)));
+        } else {
+            decorated.sort_by_key(|&(key, peak, _)| (Reverse(key), Reverse(peak)));
+        }
+        let candidate_ns: Vec<(u8, ExprId)> =
+            decorated.into_iter().map(|(_, _, c)| c).collect();
+
+        // Feasibility clamp (spec Global Constraints): the reordered
+        // non-streamable children must fit the fold's static-peak budget; on
+        // failure fall back to the SU (peak-descending) order — always feasible
+        // when the budget covers the model peak. An unbounded budget skips the
+        // check entirely. Streamables are appended after the decision (they
+        // never force a stash, so they do not enter the feasibility formula).
+        let chosen_ns = match self.budget {
+            Some(b) => {
+                let headroom = b - self.residency.stash_lanes();
+                let feasible = {
+                    let mut memo = self.su_memo.borrow_mut();
+                    order_feasible(&candidate_ns, self.view.width(e), headroom, self.view, &mut memo)
+                };
+                if feasible {
+                    candidate_ns
+                } else {
+                    self.stats.clamps += 1;
+                    su_ns
+                }
+            }
+            None => candidate_ns,
+        };
+        with_stream(chosen_ns)
     }
 
     /// Readiness: `e` resolves to an `Operand` without recursion — a leaf, or
@@ -581,6 +860,20 @@ impl<'v, 'o, 'c> Walker<'v, 'o, 'c> {
     fn observe(&mut self, e: ExprId, path: &SitePath, streamed: bool) {
         if self.counts.is_some() {
             self.note_use(e);
+        }
+        // Order mode: mark this occurrence's locus consumed the instant it is
+        // ticked, so `OrderCtx::dies_in` sees only the still-future
+        // occurrences of a value when a later fold prices its child order.
+        if let Some(order) = self.order {
+            let locus = order.locus(path);
+            debug_assert!(
+                locus.is_some(),
+                "gkr_flatten: order coverage invariant violated — walked site {path:?} missing \
+                 from the neutral-enumerated table"
+            );
+            if let Some(l) = locus {
+                self.consumed_loci[l as usize] = true;
+            }
         }
         let admissible = !streamed && Self::classify(self.view.kind(e));
         self.oracle.observe_site(path, SiteObs { value: e, admissible });
@@ -1507,6 +1800,359 @@ mod tests {
                 let want = cs::gkr_compiler::dag_ir::eval::eval_layer_root(
                     &layer, RootId(i as u32), row, &r);
                 assert_eq!(got[&RootId(i as u32)], want);
+            }
+        }
+    }
+
+    // ── M3 order-policy walker (Task 5) ───────────────────────────────────
+
+    use crate::genome::Genome;
+    use crate::order::{DerivedParams, OrderCtx, OrderPolicy};
+
+    /// Crafted two-root layer for the freeing-child / clamp tests:
+    /// - root 0 IS `X = Add(x1, x2)` (Ext); a caching oracle keeps it.
+    /// - root 1 = `Add(B, A)` — `B` (arena-FIRST) is the Ext spill cone
+    ///   (`su_peak` 4); `A` (arena-SECOND) = `Add(X, y)` (`su_peak` 0) and is
+    ///   the ONLY other occurrence of `X`, so `X` dies inside `A`'s subtree.
+    ///
+    /// Under `Su`, root 1's children sort peak-descending → `[B, A]` (arena).
+    /// A `Derived(fill_weight: 0)` policy scores `frees(A) = width(X) > 0` and
+    /// `frees(B) = 0`, so it prefers `A` first → `[A, B]`. `X` = ExprId(9),
+    /// `A` = ExprId(15), `B` = ExprId(14), root 1 = ExprId(16), `y` = Source(8).
+    fn freeing_child_layer() -> DagLayer {
+        let sources = vec![testdag::challenge_source(); 9];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),               // x1                    (0)
+            Expr::Source(SourceId(1)),               // x2                    (1)
+            Expr::Source(SourceId(2)),               // b0                    (2)
+            Expr::Source(SourceId(3)),               // b1                    (3)
+            Expr::Source(SourceId(4)),               // b2                    (4)
+            Expr::Source(SourceId(5)),               // b3                    (5)
+            Expr::Source(SourceId(6)),               // b4                    (6)
+            Expr::Source(SourceId(7)),               // b5                    (7)
+            Expr::Source(SourceId(8)),               // y                     (8)
+            Expr::Add(vec![ExprId(0), ExprId(1)]),   // X = Add(x1, x2)       (9)
+            Expr::Add(vec![ExprId(2), ExprId(3)]),   // Add(b0, b1)           (10)
+            Expr::Mul(vec![ExprId(10), ExprId(4)]),  // Mul(Add, b2)          (11)
+            Expr::Add(vec![ExprId(5), ExprId(6)]),   // Add(b3, b4)           (12)
+            Expr::Mul(vec![ExprId(12), ExprId(7)]),  // Mul(Add, b5)          (13)
+            Expr::Add(vec![ExprId(11), ExprId(13)]), // B (spill cone, peak 4)(14)
+            Expr::Add(vec![ExprId(9), ExprId(8)]),   // A = Add(X, y)         (15)
+            Expr::Add(vec![ExprId(14), ExprId(15)]), // root1 = Add(B, A)     (16)
+        ];
+        testdag::layer(sources, exprs, vec![testdag::root(ExprId(9)), testdag::root(ExprId(16))])
+    }
+
+    /// A `MapOracle` that keeps only root 0's `X` value (the root-0 root site).
+    fn keep_x_oracle() -> crate::oracle::MapOracle {
+        let mut priorities = std::collections::HashMap::new();
+        priorities.insert(
+            crate::oracle::path_key(&SitePath { root: RootId(0), steps: vec![] }),
+            5u32,
+        );
+        crate::oracle::MapOracle { priorities }
+    }
+
+    /// Task-5 test oracle: never caches, identity root order, and an
+    /// `order_bias` that returns each child's own `ExprId` — so among a fold's
+    /// non-streamable children, higher `ExprId` sorts EARLIER, reversing arena
+    /// order under a bias-driven policy.
+    struct BiasByExprId;
+    impl crate::oracle::Oracle for BiasByExprId {
+        fn root_order(&self, layer: &DagLayer) -> Vec<RootId> {
+            (0..layer.roots.len() as u32).map(RootId).collect()
+        }
+        fn keep_priority(&self, _site: &SitePath) -> Option<u32> {
+            None
+        }
+        fn order_bias(&self, site: &SitePath) -> i32 {
+            site.steps.last().map(|s| s.child.0 as i32).unwrap_or(0)
+        }
+    }
+
+    /// `Su` policy must be byte-identical (program AND stats) to
+    /// `flatten_counted` for any oracle/budget, with the three new order
+    /// counters pinned at zero. Exercised across synthetics + real add_sub L0,
+    /// two oracles (`AdmitAll`, a spread `MapOracle`), budgets `{peak+2, None}`.
+    #[test]
+    fn su_policy_is_byte_identical_to_counted() {
+        fn check(v: &LayerView<'_>, oracle: &dyn Oracle, budget: Option<u32>) {
+            let table = crate::oracle::SiteTable::enumerate(v);
+            let counts = table.use_counts(v.layer.exprs.len());
+            let a = flatten_with(v, oracle, budget, OrderPolicy::Su, Some(&counts), None);
+            let b = flatten_counted(v, oracle, budget, Some(&counts));
+            assert_eq!(a.program, b.program, "Su program diverged from flatten_counted");
+            assert_eq!(a.stats, b.stats, "Su stats diverged from flatten_counted");
+            assert_eq!(
+                (a.stats.clamps, a.stats.order_folds, a.stats.key_active),
+                (0, 0, 0),
+                "Su must leave the three order counters at zero"
+            );
+        }
+        fn spread_map(v: &LayerView<'_>) -> crate::oracle::MapOracle {
+            let table = crate::oracle::SiteTable::enumerate(v);
+            let mut priorities = std::collections::HashMap::new();
+            for (i, s) in table.sites.iter().enumerate() {
+                if s.admissible && i % 2 == 0 {
+                    priorities.insert(crate::oracle::path_key(&s.path), (i as u32 % 7) + 1);
+                }
+            }
+            crate::oracle::MapOracle { priorities }
+        }
+
+        let empty = HashMap::new();
+        for layer in [shared_diamond(), mixed_peak_layer(), two_live_slots_layer()] {
+            let v = view(&layer, &empty);
+            let roots: Vec<ExprId> = layer.roots.iter().map(|r| r.expr).collect();
+            let peak = size_layer(&v, &roots).peak;
+            let mo = spread_map(&v);
+            for budget in [Some(peak + 2), None] {
+                check(&v, &crate::oracle::AdmitAll, budget);
+                check(&v, &mo, budget);
+            }
+        }
+
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let v = LayerView::new(&dag.layers[0], &cross, None);
+        let roots: Vec<ExprId> = dag.layers[0].roots.iter().map(|r| r.expr).collect();
+        let peak = size_layer(&v, &roots).peak;
+        let mo = spread_map(&v);
+        for budget in [Some(peak + 2), None] {
+            check(&v, &crate::oracle::AdmitAll, budget);
+            check(&v, &mo, budget);
+        }
+    }
+
+    /// Every derived variant, at a tight budget under `AdmitAll` (dense
+    /// residency), must keep the realized stash peak within budget (the
+    /// feasibility clamp doing its job), leave the cache structurally sound,
+    /// and still interpret bit-exact vs the reference evaluator.
+    #[test]
+    fn derived_order_respects_budget_and_parity() {
+        use cs::gkr_compiler::dag_ir::eval::eval_layer_root;
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let layer = &dag.layers[0];
+        let v = LayerView::new(layer, &cross, None);
+        let roots: Vec<ExprId> = layer.roots.iter().map(|r| r.expr).collect();
+        let report = size_layer(&v, &roots);
+        let budget = Some(report.peak + 2);
+        let b = budget.unwrap();
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let counts = table.use_counts(layer.exprs.len());
+        let mut ctx = OrderCtx::new(&table, layer.exprs.len());
+        // Populate `fills` so the fill_weight variants exercise the penalty.
+        ctx.set_fills(&Genome::all_admit(&table, layer.roots.len()), &v);
+
+        let variants = [
+            OrderPolicy::Derived(DerivedParams { fill_weight: 0, peak_first: false }),
+            OrderPolicy::Derived(DerivedParams { fill_weight: 2, peak_first: false }),
+            OrderPolicy::Derived(DerivedParams { fill_weight: 1, peak_first: true }),
+            OrderPolicy::DerivedBiased(DerivedParams { fill_weight: 0, peak_first: false }),
+            OrderPolicy::DerivedBiased(DerivedParams { fill_weight: 1, peak_first: true }),
+            OrderPolicy::Searched,
+        ];
+        let r = crate::resolvers::HashResolvers { seed: 7 }.bundle();
+        for policy in variants {
+            let out =
+                flatten_with(&v, &crate::oracle::AdmitAll, budget, policy, Some(&counts), Some(&ctx));
+            assert_cache_reads_live(&out.program);
+            assert!(out.stats.peak <= b, "{policy:?}: peak {} exceeds budget {b}", out.stats.peak);
+            for row in [0usize, 1, 17] {
+                let got = crate::ir::interpret(&out.program, layer, row, &r);
+                for (i, _) in layer.roots.iter().enumerate() {
+                    let want = eval_layer_root(layer, RootId(i as u32), row, &r);
+                    assert_eq!(got[&RootId(i as u32)], want, "{policy:?} root {i} row {row}");
+                }
+            }
+        }
+    }
+
+    /// A resident value's last occurrence lives inside the arena-SECOND child
+    /// of a fold; `Derived(fill_weight: 0)` must visit that freeing child
+    /// FIRST (its `Load(Cached(X))` precedes the sibling's cone), while `Su`
+    /// keeps arena/peak order (the freeing child last). Unbounded budget, so
+    /// no clamp interferes.
+    #[test]
+    fn derived_prefers_freeing_child() {
+        let layer = freeing_child_layer();
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let counts = table.use_counts(layer.exprs.len());
+        let ctx = OrderCtx::new(&table, layer.exprs.len());
+        let oracle = keep_x_oracle();
+
+        let derived = flatten_with(
+            &v, &oracle, None,
+            OrderPolicy::Derived(DerivedParams { fill_weight: 0, peak_first: false }),
+            Some(&counts), Some(&ctx),
+        );
+        let su = flatten_with(&v, &oracle, None, OrderPolicy::Su, Some(&counts), None);
+
+        let cached_load = |p: &Program| -> usize {
+            p.ops
+                .iter()
+                .position(|op| matches!(op, Op::Load(Operand::Cached(ExprId(9)))))
+                .expect("X's cache hit must appear")
+        };
+        // The freeing child A carries the `Load(Cached(X))`; deriving it first
+        // pulls that op strictly earlier than the SU (B-first) order does.
+        assert!(
+            cached_load(&derived.program) < cached_load(&su.program),
+            "derived must visit the freeing child (A) before B; derived {} vs su {}",
+            cached_load(&derived.program),
+            cached_load(&su.program)
+        );
+        // Sanity: the derived walk actually ran an order key and it was live.
+        assert!(derived.stats.order_folds > 0 && derived.stats.key_active > 0);
+        assert_eq!(su.stats.order_folds, 0, "Su never orders");
+
+        // Both programs evaluate correctly (Add is commutative).
+        let r = crate::resolvers::HashResolvers { seed: 7 }.bundle();
+        for out in [&derived, &su] {
+            assert_cache_reads_live(&out.program);
+            for row in [0usize, 1, 7] {
+                let got = crate::ir::interpret(&out.program, &layer, row, &r);
+                for (i, _) in layer.roots.iter().enumerate() {
+                    let want = cs::gkr_compiler::dag_ir::eval::eval_layer_root(
+                        &layer, RootId(i as u32), row, &r);
+                    assert_eq!(got[&RootId(i as u32)], want);
+                }
+            }
+        }
+    }
+
+    /// The derived key prefers the small-peak freeing child first, but at a
+    /// tight budget that order breaches the static-peak bound — the walker
+    /// must clamp back to the SU order. Assert `clamps >= 1` AND that the
+    /// clamped program equals the pure-`Su` program (fallback realized), with
+    /// value parity intact.
+    #[test]
+    fn clamp_falls_back_to_su() {
+        let layer = freeing_child_layer();
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        let roots: Vec<ExprId> = layer.roots.iter().map(|r| r.expr).collect();
+        let report = size_layer(&v, &roots);
+        assert_eq!(report.peak, 4, "precondition: Ext spill cone dominates the peak");
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let counts = table.use_counts(layer.exprs.len());
+        let ctx = OrderCtx::new(&table, layer.exprs.len());
+        let oracle = keep_x_oracle();
+        // Budget == model peak: root 1's derived order [A(peak0), B(peak4)]
+        // needs width(4) + peak(B)=4 = 8 > 4 → infeasible → clamp to [B, A].
+        let budget = Some(report.peak);
+
+        let derived = flatten_with(
+            &v, &oracle, budget,
+            OrderPolicy::Derived(DerivedParams { fill_weight: 0, peak_first: false }),
+            Some(&counts), Some(&ctx),
+        );
+        let su = flatten_with(&v, &oracle, budget, OrderPolicy::Su, Some(&counts), None);
+
+        assert!(derived.stats.clamps >= 1, "the infeasible derived order must clamp");
+        assert_eq!(su.stats.clamps, 0, "Su never clamps");
+        assert_eq!(
+            derived.program, su.program,
+            "a fully-clamped derived walk must reproduce the SU program byte-for-byte"
+        );
+        assert!(derived.stats.peak <= 4, "clamped peak stays within budget");
+        assert_cache_reads_live(&derived.program);
+
+        let r = crate::resolvers::HashResolvers { seed: 7 }.bundle();
+        for row in [0usize, 1, 7] {
+            let got = crate::ir::interpret(&derived.program, &layer, row, &r);
+            for (i, _) in layer.roots.iter().enumerate() {
+                let want = cs::gkr_compiler::dag_ir::eval::eval_layer_root(
+                    &layer, RootId(i as u32), row, &r);
+                assert_eq!(got[&RootId(i as u32)], want);
+            }
+        }
+    }
+
+    /// `Su` leaves all three order counters at zero; a derived policy at an
+    /// unbounded budget never clamps (the feasibility check is skipped) even
+    /// though it does order folds.
+    #[test]
+    fn clamps_zero_under_su_and_unbounded() {
+        let (dag, cross) = crate::fixtures::load_circuit("add_sub_lui_auipc_mop_layout_gkr.json");
+        let layer = &dag.layers[0];
+        let v = LayerView::new(layer, &cross, None);
+        let roots: Vec<ExprId> = layer.roots.iter().map(|r| r.expr).collect();
+        let report = size_layer(&v, &roots);
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let counts = table.use_counts(layer.exprs.len());
+        let ctx = OrderCtx::new(&table, layer.exprs.len());
+
+        let su = flatten_with(
+            &v, &crate::oracle::AdmitAll, Some(report.peak + 2),
+            OrderPolicy::Su, Some(&counts), None,
+        );
+        assert_eq!(
+            (su.stats.clamps, su.stats.order_folds, su.stats.key_active),
+            (0, 0, 0),
+            "Su leaves the order counters untouched"
+        );
+
+        let derived = flatten_with(
+            &v, &crate::oracle::AdmitAll, None,
+            OrderPolicy::Derived(DerivedParams { fill_weight: 1, peak_first: false }),
+            Some(&counts), Some(&ctx),
+        );
+        assert_eq!(derived.stats.clamps, 0, "an unbounded budget must never clamp");
+        assert!(derived.stats.order_folds > 0, "add_sub L0 has multi-child folds to order");
+    }
+
+    /// `Searched` follows the oracle's order-bias genes: a bias that ranks
+    /// children by descending `ExprId` reverses a 3-child Add's arena order,
+    /// flipping which operand's cone the emitter visits first, while `Su`
+    /// keeps arena order. Value parity holds (Add is commutative).
+    #[test]
+    fn searched_order_follows_bias_genes() {
+        // root = Add(c0, c1, c2), each c_i = Add of two Ext leaves (all
+        // non-streamable, peak 0). c0=E6, c1=E7, c2=E8, root=E9.
+        let sources = vec![testdag::challenge_source(); 6];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+            Expr::Source(SourceId(2)),
+            Expr::Source(SourceId(3)),
+            Expr::Source(SourceId(4)),
+            Expr::Source(SourceId(5)),
+            Expr::Add(vec![ExprId(0), ExprId(1)]),            // c0                (6)
+            Expr::Add(vec![ExprId(2), ExprId(3)]),            // c1                (7)
+            Expr::Add(vec![ExprId(4), ExprId(5)]),            // c2                (8)
+            Expr::Add(vec![ExprId(6), ExprId(7), ExprId(8)]), // root = Add(c0,c1,c2) (9)
+        ];
+        let layer = testdag::layer(sources, exprs, vec![testdag::root(ExprId(9))]);
+        let cross = HashMap::new();
+        let v = view(&layer, &cross);
+        let table = crate::oracle::SiteTable::enumerate(&v);
+        let counts = table.use_counts(layer.exprs.len());
+        let ctx = OrderCtx::new(&table, layer.exprs.len());
+
+        let searched =
+            flatten_with(&v, &BiasByExprId, None, OrderPolicy::Searched, Some(&counts), Some(&ctx));
+        let su = flatten_with(&v, &BiasByExprId, None, OrderPolicy::Su, Some(&counts), None);
+
+        // Searched (bias desc by ExprId) visits c2 first → its first leaf a4;
+        // Su keeps arena order → c0 first → its first leaf a0.
+        match searched.program.ops.first() {
+            Some(Op::Load(Operand::Leaf(SourceId(4)))) => {}
+            other => panic!("Searched must visit reverse-arena (c2 first): {other:?}"),
+        }
+        match su.program.ops.first() {
+            Some(Op::Load(Operand::Leaf(SourceId(0)))) => {}
+            other => panic!("Su must visit arena order (c0 first): {other:?}"),
+        }
+
+        let r = crate::resolvers::HashResolvers { seed: 7 }.bundle();
+        for out in [&searched, &su] {
+            for row in [0usize, 1, 7] {
+                let got = crate::ir::interpret(&out.program, &layer, row, &r);
+                let want =
+                    cs::gkr_compiler::dag_ir::eval::eval_layer_root(&layer, RootId(0), row, &r);
+                assert_eq!(got[&RootId(0)], want);
             }
         }
     }

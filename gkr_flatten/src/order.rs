@@ -50,7 +50,7 @@ use cs::gkr_compiler::dag_ir::{ExprId, RootId};
 
 use crate::dag::LayerView;
 use crate::genome::Genome;
-use crate::oracle::{SiteTable, UseCounts};
+use crate::oracle::{SitePath, SiteTable, UseCounts};
 use crate::su;
 
 /// The splitmix64 avalanche (finalizer) — the mixing shape reused from
@@ -199,6 +199,16 @@ impl<'t> OrderCtx<'t> {
             }
         }
         any_live
+    }
+
+    /// The locus (site-table row) of `path`, if it was recorded — forwards to
+    /// the underlying [`SiteTable::locus`]. The walker marks
+    /// `consumed_loci[locus]` as it ticks each site so [`dies_in`](OrderCtx::dies_in)
+    /// can tell which of a value's occurrences remain unconsumed. Deterministic
+    /// (a pure `path_key` lookup); returns `None` for a path the neutral
+    /// enumeration never recorded (a model bug the walker debug-asserts against).
+    pub fn locus(&self, path: &SitePath) -> Option<u32> {
+        self.table.locus(path)
     }
 
     /// The fold arity cap for order search (default 4 via [`new`](OrderCtx::new)).
