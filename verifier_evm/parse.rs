@@ -1114,9 +1114,19 @@ fn main() {
                         assert_eq!(circuit.trace_len, 1<<22, "currently we expect gkr_compress to go up to 2^22");
                         assert_eq!(circuit.memory_layout.inits_and_teardowns_word_bits.unwrap(), 2, "we expect there to be just 2 empty low bits");
                         let high_bits_shift = prover::gkr::high_bits_offset_for_inits_and_teardowns::<2>(circuit.trace_len);
-                        let top_bits = set_idxes.map(|c| c << high_bits_shift);
                         let memory_alpha2 = Dual(format!("α²"), Yul::memory_alpha(1));
-                        top_bits.map(|c| Dual(format!("{memory_alpha2}({setup_high} + {c})"), yul_format!("mulmod({memory_alpha2:x}, add({setup_high:x}, {c}), P)")))
+                        // The set-window is `top_bits[set_idx] << high_bits_shift`, NOT `set_idx << shift`.
+                        // `top_bits` (the RAM-set base chunk indices) are data-dependent and cannot be
+                        // derived from the circuit, so read them from the transcript preimage in calldata:
+                        // layout is registers(384) + final_pc(12) then top_bits[..] as LE u32 => byte 396.
+                        const TOPBITS_PREIMAGE_BYTE_OFFSET: usize = 384 + 12;
+                        set_idxes.map(|c| {
+                            let byteoff = TOPBITS_PREIMAGE_BYTE_OFFSET + (c as usize) * 4;
+                            Dual(
+                                format!("{memory_alpha2}({setup_high} + (topbits[{c}]<<{high_bits_shift}))"),
+                                yul_format!("mulmod({memory_alpha2:x}, add({setup_high:x}, shl({high_bits_shift}, gkr_inits_teardowns_topbits({byteoff}))), P)")
+                            )
+                        })
                     };
                     let [lhs_timestamp_and_value, rhs_timestamp_and_value] = memrelinitparts_to_calldata_inner(timestamp_and_value, &mut running_max_group_offsets);
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
@@ -1279,12 +1289,12 @@ fn main() {
             let extra_set: std::collections::HashSet<usize> = cache_dep_offsets.iter().copied().collect();
             let cd_ranges = |offs: &[usize]| -> String {
                 contiguous_ranges(offs).iter().map(|(s, l)|
-                    format!("            calldatacopy(bp, add(base, mul(16, {s})), mul(16, {l})) bp := add(bp, mul(16, {l}))\n")
+                    format!("            calldatacopy(bp, add(base, mul(16, {s})), mul(16, {l}))\n            bp := add(bp, mul(16, {l}))\n")
                 ).collect()
             };
             let cache_reads = |slots: &[usize]| -> String {
                 slots.iter().map(|c|
-                    format!("            mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, {c}))))) bp := add(bp, 16)\n")
+                    format!("            mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, {c})))))\n            bp := add(bp, 16)\n")
                 ).collect()
             };
             // Build final_step (absorbed before the batching draw) and extras (after) in
@@ -1316,12 +1326,15 @@ fn main() {
             let base := mload(CIRCUIT_PTR)
             mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
             let bp := add(GKR_ABS_PTR(), 32)
-{fs_copy}            let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR())) mstore(SEED_PTR(), s)
-            s := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), s)
+{fs_copy}            let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
+            mstore(SEED_PTR(), s)
+            s := keccak256(SEED_PTR(), 32)
+            mstore(SEED_PTR(), s)
             next_alpha := mod(shr(128, s), P)
             mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
             bp := add(GKR_ABS_PTR(), 32)
-{ex_copy}            s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR())) mstore(SEED_PTR(), s)
+{ex_copy}            s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
+            mstore(SEED_PTR(), s)
             next_ptr := add(ptr, mul(16, {n}))
             next_claim := 0
             }}")
@@ -1482,6 +1495,13 @@ fn main() {
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
+        }}
+        // Reads one inits/teardowns `top_bits` u32 from the transcript preimage (little-endian,
+        // at absolute calldata `byteoff`). These are the RAM-set base chunk indices absorbed into
+        // Fiat-Shamir, so a mismatching value breaks the transcript — safe to read from calldata.
+        function gkr_inits_teardowns_topbits(byteoff) -> v {{
+            let w := calldataload(byteoff)
+            v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
         }}
 
         function gkr_virtual_poly_compose_vars(len, skip) -> eval {{
