@@ -28,7 +28,10 @@ era_cudart_sys = "=0.156.0"
 gpu_core = { workspace = true }
 worker = { workspace = true }
 blake2s_u32 = { workspace = true }
-transcript = { workspace = true }
+# `deterministic_pow` keeps the CPU `search_pow` reference deterministic so the
+# feature-gated GPU parity test compares like against like (cargo cannot enable
+# dev-dep features from the [features] table).
+transcript = { workspace = true, features = ["deterministic_pow"] }
 # Dev-only: the transcript parity test verifies the GPU kernels against the host
 # `prover::transcript::Blake2sTranscript` reference. Production `gpu_hash` and all
 # downstream crates depend only on gpu_core/gpu_ops — this does not leak.

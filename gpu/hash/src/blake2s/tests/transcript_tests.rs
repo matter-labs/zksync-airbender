@@ -36,6 +36,10 @@ fn pow() {
     assert!(digest[0].leading_zeros() >= BITS_COUNT);
 }
 
+// Feature-gated: run with `--features deterministic_pow` (not part of the
+// default suite). The CPU reference is kept deterministic via the dev-dep
+// `transcript/deterministic_pow` feature; without it both sides return
+// first-found nonces and the comparison is meaningless.
 #[cfg(feature = "deterministic_pow")]
 #[test]
 #[serial]
