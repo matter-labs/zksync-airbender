@@ -18,14 +18,14 @@ cuda_kernel!(Blake2SPow, ab_blake2s_pow_kernel(seed: *const u32, bits_count: u32
 /// descriptor can hold. The pre-WHIR transcript pack feeds 5 chunks
 /// (canonical-top-bits + external_challenges + setup cap + memory cap +
 /// witness cap); 8 leaves headroom without any meaningful kernel-arg cost.
-pub const GKR_CHUNKED_COMMIT_MAX_CHUNKS: usize = 8;
+const GKR_CHUNKED_COMMIT_MAX_CHUNKS: usize = 8;
 
 /// Kernel-arg descriptor for `transcript_commit_initial_chunked`. Streams
 /// Blake2s over the logical concatenation of `num_chunks` device-resident
 /// u32 buffers in one kernel launch (no host-side concat staging).
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct GpuChunkedInputDesc {
+struct GpuChunkedInputDesc {
     /// Number of populated entries in `src_ptrs` and `chunk_lens`.
     pub num_chunks: u32,
     /// Padding to keep the `u64` array 8-byte aligned across language

@@ -4,6 +4,7 @@ use rand::Rng;
 
 use super::*;
 
+use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::GetChunksCount;
 
 pub(crate) const BLOCK_SIZE: usize = 16;

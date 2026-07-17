@@ -1,4 +1,5 @@
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
+use era_cudart::stream::CudaStream;
 
 use itertools::Itertools;
 use rand::Rng;
@@ -6,6 +7,7 @@ use serial_test::serial;
 
 use super::super::*;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use gpu_core::primitives::field::BF;
 use gpu_ops::simple::set_to_zero;
 
 use super::{leaf_source_row, random_digest, verify_leaves, verify_nodes};

@@ -1,10 +1,25 @@
+//! Query-time gathering: leaf values, Merkle paths, and tree caps.
+//!
+//! The `*_for_queries` slab-write variants feed the proof slab's per-query
+//! layout that `parse_whir_proof` consumes:
+//! - `query_indices` (`u32`): tree-space index per query.
+//! - `query_leaves` (`BF`): row-major per query, `[v0c0, v0c1, ..., v(V-1)c(C-1)]`.
+//! - `query_paths` (`u32`): query-major, `[layer0_d, layer1_d, ..., layer(L-1)_d]`
+//!   per query, each digest is `STATE_SIZE` u32 words.
+//!
+//! The `#[doc(hidden)]` readers at the bottom are test-reference
+//! implementations kept for downstream parity tests, not production paths.
+
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-use super::{Digest, STATE_SIZE};
+use super::{checked_u32, Digest, STATE_SIZE};
+use gpu_core::primitives::device_structures::{
+    DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
+};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::{
     get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE,
@@ -31,6 +46,24 @@ pub struct OracleGatherDesc {
     /// `BF*` slab destination for this oracle. Layout is query-major:
     /// `slab[q * (rows_per_leaf * columns_count) + v * columns_count + col]`.
     pub slab_dst_ptr: u64,
+}
+
+impl OracleGatherDesc {
+    /// Defense against caller misuse: unused desc slots must be zeroed.
+    fn assert_inactive(&self, i: usize) {
+        assert_eq!(
+            self.cosets_ptr, 0,
+            "inactive desc slot {i} must have cosets_ptr == 0"
+        );
+        assert_eq!(
+            self.columns_count, 0,
+            "inactive desc slot {i} must have columns_count == 0"
+        );
+        assert_eq!(
+            self.slab_dst_ptr, 0,
+            "inactive desc slot {i} must have slab_dst_ptr == 0"
+        );
+    }
 }
 
 cuda_kernel!(
@@ -71,23 +104,9 @@ pub fn gather_leaves_for_queries(
         "gather_leaves_for_queries supports num_oracles in {{1, 3}}, got {num_oracles}"
     );
     assert!(log_domain_size >= log_rows_per_leaf);
-    let indexes_len = query_indexes.len();
-    assert!(indexes_len <= u32::MAX as usize);
-    let indexes_count = indexes_len as u32;
-    // Assert unused desc slots are zeroed (defense against caller misuse).
+    let indexes_count = checked_u32(query_indexes.len());
     for i in (num_oracles as usize)..3 {
-        assert_eq!(
-            descs[i].cosets_ptr, 0,
-            "inactive desc slot {i} must have cosets_ptr == 0"
-        );
-        assert_eq!(
-            descs[i].columns_count, 0,
-            "inactive desc slot {i} must have columns_count == 0"
-        );
-        assert_eq!(
-            descs[i].slab_dst_ptr, 0,
-            "inactive desc slot {i} must have slab_dst_ptr == 0"
-        );
+        descs[i].assert_inactive(i);
     }
     // Max columns_count across the active descriptors. Must be >= 1 (the
     // launch needs a non-empty gridDim.y); zero-column oracles are skipped
@@ -308,6 +327,28 @@ pub struct OraclePartialPathDesc {
     pub slab_dst_ptr: u64,
 }
 
+impl OraclePartialPathDesc {
+    /// Defense against caller misuse: unused desc slots must be zeroed.
+    fn assert_inactive(&self, i: usize) {
+        assert_eq!(
+            self.cosets_ptr, 0,
+            "inactive desc slot {i} must have cosets_ptr == 0"
+        );
+        assert_eq!(
+            self.partial_tree_ptr, 0,
+            "inactive desc slot {i} must have partial_tree_ptr == 0"
+        );
+        assert_eq!(
+            self.columns_count, 0,
+            "inactive desc slot {i} must have columns_count == 0"
+        );
+        assert_eq!(
+            self.slab_dst_ptr, 0,
+            "inactive desc slot {i} must have slab_dst_ptr == 0"
+        );
+    }
+}
+
 cuda_kernel!(
     GatherMerklePathsPartialForQueries,
     ab_gather_merkle_paths_partial_for_queries_kernel(
@@ -355,9 +396,7 @@ pub fn gather_merkle_paths_partial_for_queries(
     );
     assert!(layers_count >= LOG_WARP_SIZE);
     assert!(log_total_leaves_count >= LOG_WARP_SIZE);
-    let indexes_len = query_indexes.len();
-    assert!(indexes_len <= u32::MAX as usize);
-    let indexes_count = indexes_len as u32;
+    let indexes_count = checked_u32(query_indexes.len());
     // Per-coset partial-tree length in digests for `TreesHolder::Partial`:
     // `1 << (log_total_leaves_count + 1 - LOG_WARP_SIZE)`.
     let expected_stride = 1u32 << (log_total_leaves_count + 1 - LOG_WARP_SIZE);
@@ -365,24 +404,8 @@ pub fn gather_merkle_paths_partial_for_queries(
         stride_per_coset_in_digests, expected_stride,
         "stride_per_coset_in_digests ({stride_per_coset_in_digests}) must equal 1 << (log_total_leaves_count + 1 - LOG_WARP_SIZE) ({expected_stride})"
     );
-    // Assert unused desc slots are zeroed (defense against caller misuse).
     for i in (num_oracles as usize)..3 {
-        assert_eq!(
-            descs[i].cosets_ptr, 0,
-            "inactive desc slot {i} must have cosets_ptr == 0"
-        );
-        assert_eq!(
-            descs[i].partial_tree_ptr, 0,
-            "inactive desc slot {i} must have partial_tree_ptr == 0"
-        );
-        assert_eq!(
-            descs[i].columns_count, 0,
-            "inactive desc slot {i} must have columns_count == 0"
-        );
-        assert_eq!(
-            descs[i].slab_dst_ptr, 0,
-            "inactive desc slot {i} must have slab_dst_ptr == 0"
-        );
+        descs[i].assert_inactive(i);
     }
     let grid_dim = (indexes_count, num_oracles);
     let block_dim = WARP_SIZE;
@@ -481,7 +504,7 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
 /// Maximum coset count the inline `gather_tree_caps_inline` kernel-arg
 /// descriptor can hold. Sized for headroom — production lde_factor is
 /// typically ≤ 4.
-pub const GKR_GATHER_TREE_CAPS_MAX_COSETS: usize = 32;
+const GKR_GATHER_TREE_CAPS_MAX_COSETS: usize = 32;
 
 /// Kernel-arg descriptor for `gather_tree_caps_inline`. Consolidated form:
 /// a single base pointer plus per-coset stride lets the kernel gather every
@@ -491,7 +514,7 @@ pub const GKR_GATHER_TREE_CAPS_MAX_COSETS: usize = 32;
 /// legacy stage1 ordering.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
-pub struct GpuGatherTreeCapsDesc {
+struct GpuGatherTreeCapsDesc {
     /// Number of source cosets to gather (= `1 << log_lde_factor`).
     pub coset_count: u32,
     /// Number of u32 words gathered per source coset.
@@ -529,7 +552,7 @@ pub const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
 /// value as `__grid_constant__` data.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct GpuGatherEAddressesDesc {
+struct GpuGatherEAddressesDesc {
     /// Number of populated entries in `src_ptrs`.
     pub num_addresses: u32,
     /// Number of E4 elements gathered per source address.
@@ -649,4 +672,203 @@ pub fn gather_e_addresses(
     let config = CudaLaunchConfig::basic(num_addresses as u32, threads_per_block, stream);
     let args = GatherEAddressesArguments::new(desc, dst.as_mut_ptr() as *mut u32);
     GatherEAddressesFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    QueryIndexToTreeIndex,
+    ab_query_index_to_tree_index_kernel(
+        d_query_indexes: *const u32,
+        d_out: *mut u32,
+        indexes_count: u32,
+        log_lde_factor: u32,
+        coset_tree_size_log2: u32,
+    )
+);
+
+pub fn query_index_to_tree_index(
+    d_query_indexes: &DeviceSlice<u32>,
+    d_out: &mut DeviceSlice<u32>,
+    log_lde_factor: u32,
+    coset_tree_size_log2: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let n = d_query_indexes.len();
+    assert_eq!(d_out.len(), n);
+    let n = checked_u32(n);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE, n);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = QueryIndexToTreeIndexArguments::new(
+        d_query_indexes.as_ptr(),
+        d_out.as_mut_ptr(),
+        n,
+        log_lde_factor,
+        coset_tree_size_log2,
+    );
+    QueryIndexToTreeIndexFunction::default().launch(&config, &args)
+}
+
+// ---------------------------------------------------------------------------
+// Test-reference readers. No production callers: these direct gathers from a
+// fully-materialized cosets/tree backing back circuit_prover's TraceHolder
+// cache-mode and whir/fold query parity tests (which validate the production
+// tree-construction paths against independent CPU ground truth). `pub` +
+// `#[doc(hidden)]` because a dependency's `#[cfg(test)]` items are invisible
+// to consumers.
+// ---------------------------------------------------------------------------
+
+cuda_kernel!(
+    GatherLeafRows,
+    ab_gather_leaf_rows_kernel(
+        indexes: *const u32,
+        indexes_count: u32,
+        bit_reversed_indexes: bool,
+        log_leaves_count: u32,
+        log_rows_per_leaf: u32,
+        values: PtrAndStride<BF>,
+        results: MutPtrAndStride<BF>,
+    )
+);
+
+#[doc(hidden)]
+pub fn gather_leaf_rows(
+    indexes: &DeviceSlice<u32>,
+    bit_reverse_indexes: bool,
+    log_rows_per_leaf: u32,
+    values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    result: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let values_cols = values.cols();
+    let values_rows = values.rows();
+    assert!(values_rows.is_power_of_two());
+    let log_rows_count = values_rows.trailing_zeros();
+    assert!(log_rows_count >= log_rows_per_leaf);
+    let log_leaves_count = log_rows_count - log_rows_per_leaf;
+    let result_rows = result.rows();
+    let result_cols = result.cols();
+    let rows_per_leaf = 1 << log_rows_per_leaf;
+    assert_eq!(result_cols, values_cols);
+    assert_eq!(result_rows, indexes.len() << log_rows_per_leaf);
+    let indexes_count = checked_u32(indexes.len());
+    let (mut grid_dim, block_dim) = if log_rows_per_leaf < LOG_WARP_SIZE {
+        get_grid_block_dims_for_threads_count(
+            1 << (LOG_WARP_SIZE - log_rows_per_leaf),
+            indexes_count,
+        )
+    } else {
+        (indexes_count.into(), 1.into())
+    };
+    let block_dim = (rows_per_leaf, block_dim.x);
+    grid_dim.y = checked_u32(result_cols);
+    let indexes = indexes.as_ptr();
+    let values = values.as_ptr_and_stride();
+    let result = result.as_mut_ptr_and_stride();
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GatherLeafRowsArguments::new(
+        indexes,
+        indexes_count,
+        bit_reverse_indexes,
+        log_leaves_count,
+        log_rows_per_leaf,
+        values,
+        result,
+    );
+    GatherLeafRowsFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    GatherMerklePaths,
+    ab_gather_merkle_paths_kernel(
+        indexes: *const u32,
+        indexes_count: u32,
+        values: *const Digest,
+        log_leaves_count: u32,
+        results: *mut Digest,
+    )
+);
+
+#[doc(hidden)]
+pub fn gather_merkle_paths_device(
+    indexes: &DeviceSlice<u32>,
+    values: &DeviceSlice<Digest>,
+    results: &mut DeviceSlice<Digest>,
+    layers_count: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let indexes_count = checked_u32(indexes.len());
+    let values_count = values.len();
+    assert!(values_count.is_power_of_two());
+    let log_values_count = values_count.trailing_zeros();
+    assert_ne!(log_values_count, 0);
+    let log_leaves_count = log_values_count - 1;
+    // A per-coset cap of size 1 means the query path spans the full coset subtree depth.
+    assert!(layers_count <= log_leaves_count);
+    assert_eq!(indexes.len() * layers_count as usize, results.len());
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE / STATE_SIZE as u32, indexes_count);
+    let grid_dim = (grid_dim.x, layers_count);
+    let block_dim = (STATE_SIZE as u32, block_dim.x);
+    let indexes = indexes.as_ptr();
+    let values = values.as_ptr();
+    let result = results.as_mut_ptr();
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args =
+        GatherMerklePathsArguments::new(indexes, indexes_count, values, log_leaves_count, result);
+    GatherMerklePathsFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    GatherMerklePathsFromRows,
+    ab_gather_merkle_paths_from_rows_kernel(
+        indexes: *const u32,
+        indexes_count: u32,
+        bit_reverse_indexes: bool,
+        values: *const BF,
+        log_rows_per_leaf: u32,
+        cols_count: u32,
+        log_total_leaves_count: u32,
+        tree_bottom: *const Digest,
+        layers_count: u32,
+        merkle_paths: *mut Digest,
+    )
+);
+
+#[doc(hidden)]
+pub fn gather_merkle_paths_from_rows(
+    indexes: &DeviceSlice<u32>,
+    bit_reverse_indexes: bool,
+    values: &DeviceSlice<BF>,
+    log_rows_per_leaf: u32,
+    cols_count: usize,
+    tree_bottom: &DeviceSlice<Digest>,
+    merkle_paths: &mut DeviceSlice<Digest>,
+    layers_count: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let values_len = values.len();
+    assert_eq!(values_len % cols_count, 0);
+    let log_rows_count = (values_len / cols_count).trailing_zeros();
+    let indexes_count = checked_u32(indexes.len());
+    assert!(layers_count >= LOG_WARP_SIZE);
+    assert_eq!(indexes.len() * layers_count as usize, merkle_paths.len());
+    let cols_count = checked_u32(cols_count);
+    let log_total_leaves_count = log_rows_count - log_rows_per_leaf;
+    let config = CudaLaunchConfig::basic(indexes_count, WARP_SIZE, stream);
+    let indexes = indexes.as_ptr();
+    let values = values.as_ptr();
+    let tree_bottom = tree_bottom.as_ptr();
+    let merkle_paths = merkle_paths.as_mut_ptr();
+    let args = GatherMerklePathsFromRowsArguments::new(
+        indexes,
+        indexes_count,
+        bit_reverse_indexes,
+        values,
+        log_rows_per_leaf,
+        cols_count,
+        log_total_leaves_count,
+        tree_bottom,
+        layers_count,
+        merkle_paths,
+    );
+    GatherMerklePathsFromRowsFunction::default().launch(&config, &args)
 }

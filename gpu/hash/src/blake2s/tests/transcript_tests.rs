@@ -1,5 +1,7 @@
 use blake2s_u32::Blake2sState;
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
+use era_cudart::stream::CudaStream;
+use gpu_core::primitives::field::{BF, E4};
 
 type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<{ prover::definitions::USE_REDUCED_BLAKE2_ROUNDS }>;
