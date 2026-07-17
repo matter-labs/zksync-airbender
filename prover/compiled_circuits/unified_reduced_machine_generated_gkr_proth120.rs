@@ -722,7 +722,6 @@ fn eval_fn_15<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     );
 }
 #[allow(unused_variables)]
-#[inline(always)]
 fn eval_fn_16<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
@@ -733,34 +732,38 @@ fn eval_fn_16<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     W::U8: Copy,
     W::I32: Copy,
 {
-    let v_0 = witness_proxy.get_memory_place_boolean(16usize);
-    let v_1 = witness_proxy.get_memory_place_u16(17usize);
-    let v_2 = v_1.get_lowest_bits(1u32);
-    let v_3 = W::U16::constant(1u16);
-    let v_4 = W::U16::equal(&v_2, &v_3);
+    let v_0 = witness_proxy.get_memory_place_boolean(9usize);
+    let v_1 = witness_proxy.get_memory_place_boolean(16usize);
+    let v_2 = witness_proxy.get_memory_place_u16(10usize);
+    let v_3 = witness_proxy.get_memory_place_u16(17usize);
+    let v_4 = W::Mask::or(&v_0, &v_1);
+    let v_5 = WitnessComputationCore::select(&v_0, &v_2, &v_3);
+    let v_6 = v_5.get_lowest_bits(1u32);
+    let v_7 = W::U16::constant(1u16);
+    let v_8 = W::U16::equal(&v_6, &v_7);
     witness_proxy.set_witness_place_boolean(
         25usize,
         W::Mask::select(
-            &v_0,
             &v_4,
+            &v_8,
             &witness_proxy.get_witness_place_boolean(25usize),
         ),
     );
-    let v_6 = v_1.shr(1u32);
-    let v_7 = v_6.get_lowest_bits(1u32);
-    let v_8 = W::U16::equal(&v_7, &v_3);
+    let v_10 = v_5.shr(1u32);
+    let v_11 = v_10.get_lowest_bits(1u32);
+    let v_12 = W::U16::equal(&v_11, &v_7);
     witness_proxy.set_witness_place_boolean(
         26usize,
         W::Mask::select(
-            &v_0,
-            &v_8,
+            &v_4,
+            &v_12,
             &witness_proxy.get_witness_place_boolean(26usize),
         ),
     );
-    let v_10 = v_1.shr(2u32);
+    let v_14 = v_5.shr(2u32);
     witness_proxy.set_witness_place_u16(
         48usize,
-        W::U16::select(&v_0, &v_10, &witness_proxy.get_witness_place_u16(48usize)),
+        W::U16::select(&v_4, &v_14, &witness_proxy.get_witness_place_u16(48usize)),
     );
 }
 #[allow(unused_variables)]
