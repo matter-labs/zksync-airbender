@@ -131,10 +131,21 @@ pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> V
 ///   ood sample, PoW nonce, query openings; final round: monomials, PoW nonce,
 ///   final query openings).
 ///
+/// `folds` / `queries` are the WHIR round schedule (`whir_steps_schedule` /
+/// `whir_queries_schedule` from the same `WhirSchedule` the proof was produced with and the WHIR
+/// verifier is generated from), so the calldata stream matches both the prover and the verifier.
+///
 /// Needs the circuit + aux to reconstruct the handoff seed / batching / opening /
 /// evaluation point (none of which live in the proof); the proof stream itself comes
 /// from `proof.whir_proof`.
-pub fn whir_calldata(_circuit: &Circuit, proof: &Proof, _aux: &CommitmentMode) -> Vec<u8> {
+pub fn whir_calldata(
+    _circuit: &Circuit,
+    proof: &Proof,
+    _aux: &CommitmentMode,
+    folds: &[usize],
+    queries: &[usize],
+) -> Vec<u8> {
+    assert_eq!(folds.len(), queries.len(), "WHIR folds/queries schedule length mismatch");
     // Every committed-state value now comes straight from the proof — no GKR transcript replay:
     // the seed from GKRProof.intermediate_transcript_seed, and batching / batched-opening /
     // evaluation-point from the WHIR sub-proof's handoff fields (populated by the prover).
@@ -151,8 +162,6 @@ pub fn whir_calldata(_circuit: &Circuit, proof: &Proof, _aux: &CommitmentMode) -
         .as_ref()
         .expect("whir_proof.original_evaluation_point not set — regenerate/migrate the proof");
 
-    let folds = [2usize, 4, 4, 4, 4, 4];
-    let queries = [17usize, 12, 8, 6, 5, 4];
     let num_rounds = folds.len();
 
     let mut cd: Vec<u8> = vec![];

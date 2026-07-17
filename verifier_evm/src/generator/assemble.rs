@@ -5,13 +5,15 @@
 //! substituted. Everything the generator needs about the *circuit* comes from the artifact;
 //! the two genuinely non-circuit values (PoW difficulty, program terminal PC) are parameters.
 //!
-//! A handful of WHIR *proving-config* constants (`WHIR_PACK_LOG2`, `WHIR_CAP`, the WHIR
-//! round/fold/query schedule) are not encoded in the circuit artifact; they track the single
-//! supported WHIR proving configuration and are baked here / in the whir.sol template.
+//! The WHIR *proving-config* (fold/query/PoW schedule, base rate, merkle cap) is not encoded in
+//! the circuit artifact; it is supplied by the caller as the same `ProverConfig` the prover used,
+//! and (with `pack_log2`) drives both verifiers so they stay consistent — see [`WhirGenConfig`].
 
+use super::whir::WhirGenConfig;
 use super::{emit_circuit_yul, GeneratedContracts};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
+use prover::gkr::prover_config::ProverConfig;
 
 const GKR_TEMPLATE: &str = include_str!("../templates/gkr.sol");
 const WHIR_TEMPLATE: &str = include_str!("../templates/whir.sol");
@@ -19,11 +21,6 @@ const REGISTRY_TEMPLATE: &str = include_str!("../templates/GkrWhirRegistry.sol")
 
 /// Marker in `gkr.sol` where the generated `circuit.yul` is spliced.
 const INLINE_MARKER: &str = "// __INLINE_CIRCUIT_YUL__";
-
-// WHIR proving-config constants (the single supported configuration). Not derivable from the
-// circuit artifact; must match the whir.sol verifier + the prover's WHIR schedule.
-const WHIR_PACK_LOG2: u128 = 4;
-const WHIR_CAP: u128 = 8; // base-oracle merkle-cap size (2^CAP_LOG2)
 
 /// Replace the RHS of the single `uint256 constant <name> = <...>;` line with `= <value>;`,
 /// preserving indentation and any trailing `// comment`. Panics unless exactly one such line
@@ -101,18 +98,44 @@ impl Derived {
     }
 }
 
-/// Generate the GKR + WHIR + Registry Solidity for `circuit`. Uses only the circuit artifact
-/// plus the caller-supplied PoW difficulties and program terminal PC.
+/// Generate the GKR + WHIR + Registry Solidity for `circuit`.
+///
+/// The circuit *layout* comes from the artifact; the WHIR *proving config* (fold/query/PoW
+/// schedule, base rate, merkle cap) comes from `prover_config`, and the base-layer packing factor
+/// from `pack_log2` (the GKR `CommitmentMode`). Deriving both verifiers from the same config is
+/// what guarantees GKR↔WHIR consistency. `external_pow_bits` / `whir_batch_pow_bits` are the two
+/// per-circuit PoW difficulties (not part of the WHIR schedule), and `final_pc` the program's
+/// terminal PC.
 pub fn generate_verifiers(
     circuit: &GKRCircuitArtifact<Proth120>,
+    prover_config: &ProverConfig,
+    pack_log2: usize,
     external_pow_bits: u32,
     whir_batch_pow_bits: u32,
     final_pc: u32,
 ) -> GeneratedContracts {
     let d = Derived::from(circuit);
-    // registers(384) + final_pc(12) + top_bits(num_teardown_sets * 4) + setup_cap + memory_cap
-    let preimage_bytes = 384 + 12 + d.num_teardown_sets * 4 + 2 * WHIR_CAP * 32;
-    let caps_bytes = 2 * WHIR_CAP * 32;
+    // WHIR config derived from the same source the prover used, plus the artifact's widths.
+    let wc = WhirGenConfig::derive(
+        &prover_config.whir_schedule,
+        pack_log2,
+        d.rounds as usize,
+        d.num_memwit as usize,
+        d.num_setup as usize,
+    );
+    // GKR↔WHIR consistency: the shared parameters must agree between the two verifiers.
+    assert_eq!(
+        wc.merged_mw as u128, d.merged_mw,
+        "GKR/WHIR merged mem+wit width disagree ({} vs {})", wc.merged_mw, d.merged_mw
+    );
+    assert!(pack_log2 > 0, "pack_log2 must be positive");
+
+    let cap = wc.cap_size as u128;
+    // registers + final_pc/ts + top_bits(num_teardown_sets * 4) + setup_cap + memory_cap
+    let preimage_bytes = super::PREIMAGE_TOP_BITS_BYTE_OFFSET as u128
+        + d.num_teardown_sets * 4
+        + 2 * cap * 32;
+    let caps_bytes = 2 * cap * 32;
 
     // 1. GKR verifier: inline circuit.yul (replace the whole marker line, matching the awk
     //    splice the shell scripts used), then substitute circuit-derived + param constants.
@@ -134,11 +157,11 @@ pub fn generate_verifiers(
         ("__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS", d.rounds),
         ("__TEMPLATE_WHIR_NUM_MEMWIT", d.num_memwit),
         ("__TEMPLATE_WHIR_NUM_SETUP", d.num_setup),
-        ("__TEMPLATE_WHIR_MERGED_MW", d.merged_mw),
-        ("__TEMPLATE_WHIR_PACK_LOG2", WHIR_PACK_LOG2),
-        ("__TEMPLATE_WHIR_Z_COORDS", d.rounds + WHIR_PACK_LOG2),
+        ("__TEMPLATE_WHIR_MERGED_MW", wc.merged_mw as u128),
+        ("__TEMPLATE_WHIR_PACK_LOG2", pack_log2 as u128),
+        ("__TEMPLATE_WHIR_Z_COORDS", d.rounds + pack_log2 as u128),
         ("__TEMPLATE_WHIR_BASE_Z_COORDS", d.rounds),
-        ("__TEMPLATE_WHIR_CAP", WHIR_CAP),
+        ("__TEMPLATE_WHIR_CAP", cap),
         ("__TEMPLATE_MERKLE_TREE_CAPS_BYTES", caps_bytes),
         ("__TEMPLATE_GKR_INIT_PREIMAGE_BYTES", preimage_bytes),
         ("__TEMPLATE_EXTERNAL_POW_BITS", external_pow_bits as u128),
@@ -152,10 +175,33 @@ pub fn generate_verifiers(
     // the production source is just `contract GKRVerifier` and compiles under the legacy backend.
     let gkr = strip_from_contract(&gkr, "GKRVerifierTest");
 
-    // 2. WHIR verifier: substitute the artifact/config-derivable cap size; the round/fold/query
-    //    schedule stays baked in the template (the single supported WHIR proving configuration).
-    let mut whir = set_const(WHIR_TEMPLATE, "CAP", WHIR_CAP);
-    whir = set_const(&whir, "CAP_LOG2", WHIR_CAP.trailing_zeros() as u128);
+    // 2. WHIR verifier: inject the per-round fold/query/PoW schedule generated from `wc`, then
+    //    substitute every config-derived constant (schedule count, cap, RS-codeword domain
+    //    generators, base-column geometry). Nothing WHIR-specific is hand-supplied anymore.
+    let whir_schedule_yul = wc.schedule_switch_yul();
+    let mut whir = WHIR_TEMPLATE.replace(
+        "            // __WHIR_SCHEDULE_SWITCH__",
+        whir_schedule_yul.trim_end_matches('\n'),
+    );
+    assert!(
+        !whir.contains("__WHIR_SCHEDULE_SWITCH__"),
+        "whir.sol template missing the schedule marker"
+    );
+    for (name, value) in [
+        ("CAP", cap),
+        ("CAP_LOG2", wc.cap_log2 as u128),
+        ("__TEMPLATE_WHIR_NUM_ROUNDS", wc.num_rounds as u128),
+        ("__TEMPLATE_WHIR_GEN", wc.gen),
+        ("__TEMPLATE_WHIR_GEN_INV", wc.gen_inv),
+        ("__TEMPLATE_WHIR_NZ", wc.nz as u128),
+        ("__TEMPLATE_WHIR_GCOUNT", wc.gcount as u128),
+        ("__TEMPLATE_WHIR_RFIN", wc.rfin as u128),
+        ("__TEMPLATE_WHIR_NBCAPS", wc.nbcaps as u128),
+        ("__TEMPLATE_WHIR_MERGED_MW", wc.merged_mw as u128),
+        ("__TEMPLATE_WHIR_SETUP_MERGED", wc.setup_merged as u128),
+    ] {
+        whir = set_const(&whir, name, value);
+    }
     let whir = strip_from_contract(&whir, "WhirRealProofTest");
 
     GeneratedContracts {

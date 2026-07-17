@@ -3,6 +3,8 @@
 //! deployment tool would call to prepare the two on-chain transactions' calldata. The two-tx
 //! Foundry test reads these `debug_data/*.hex` files. Nothing here is read by `src/`.
 
+mod common;
+
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::gkr::prover::{CommitmentMode, GKRProof};
@@ -37,8 +39,16 @@ fn write_calldata_into_debug_data() {
         eprintln!("wrote debug_data/{name} ({} bytes)", bytes.len());
     };
 
+    let cfg = common::production_prover_config();
+    let (folds, queries) = (
+        &cfg.whir_schedule.whir_steps_schedule,
+        &cfg.whir_schedule.whir_queries_schedule,
+    );
     put("gkr_full_calldata.hex", &verifier_evm::gkr_calldata(&circuit, &proof, &aux));
-    put("proth120_whir_calldata_from_proof.hex", &verifier_evm::whir_calldata(&circuit, &proof, &aux));
+    put(
+        "proth120_whir_calldata_from_proof.hex",
+        &verifier_evm::whir_calldata(&circuit, &proof, &aux, folds, queries),
+    );
     put("gkr_step1_preimage.hex", &verifier_evm::commit_seed_preimage(&circuit, &proof, &aux));
     put("gkr_whir_handoff_seed.hex", &verifier_evm::gkr_whir_handoff_seed(&proof));
 }

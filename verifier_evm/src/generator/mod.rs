@@ -7,8 +7,22 @@
 //!   (and a few caller-supplied) constants.
 
 mod circuit_yul;
+mod whir;
 
 pub use circuit_yul::emit_circuit_yul;
+pub use whir::WhirGenConfig;
+
+// ── Transcript-preimage layout (bytes) ──────────────────────────────────────────────────────
+// The GKR→WHIR committed-state preimage is `registers ‖ final_pc+timestamp ‖ top_bits
+// (num_teardown_sets · 4) ‖ setup_cap ‖ memory_cap`. The fixed machine-state prefix (registers
+// and final pc/ts) is a RISC-V ABI constant, not circuit-derived — but it's shared by the
+// on-chain preimage assembly (circuit.yul) and the calldata-size computation (assemble.rs), so
+// it lives here once to keep the two in lockstep.
+pub(crate) const PREIMAGE_REGISTERS_BYTES: usize = 384;
+pub(crate) const PREIMAGE_FINAL_PC_TS_BYTES: usize = 12;
+/// Byte offset of the inits/teardowns `top_bits` block within the preimage (after the fixed prefix).
+pub(crate) const PREIMAGE_TOP_BITS_BYTE_OFFSET: usize =
+    PREIMAGE_REGISTERS_BYTES + PREIMAGE_FINAL_PC_TS_BYTES;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;

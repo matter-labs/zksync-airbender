@@ -9,6 +9,12 @@ use field::Proth120;
 
 /// Proth120 modulus P = 7*2^120 + 1 (same as gkr.sol / whir.sol once migrated).
 const PROTH120_P: u128 = 0x7000000000000000000000000000001;
+
+/// Width of the generic lookup tables (each generic lookup is a tuple of this many columns, and
+/// the setup carries this many lookup columns). Validated against the artifact's
+/// `generic_lookup_tables_width` in `emit_circuit_yul`, then used for every lookup-tuple length
+/// check so the magic `10` never appears inline.
+const LOOKUP_TABLES_WIDTH: usize = 10;
 use field::PrimeField;
 
 trait EachRefRev<T, const N: usize> {
@@ -443,12 +449,20 @@ fn quad_run_loop(lo: u32, hi: u32) -> String {
 /// too deep (neither legacy nor via_ir could place it). Order reproduces the old
 /// nesting exactly — inner(0,c5..c9) then outer(_,c0..c4) is Horner over
 /// c9,c8,c7,c6,c5,c4,c3,c2,c1,c0 with step(acc,c) = acc·β + c.
-fn lookrel_horner(cols: [&Dual; 10]) -> String {
+fn lookrel_horner(cols: &[Dual]) -> String {
+    // Horner over cols[n-1], …, cols[0]: step(acc, c) = acc·β + c. Length comes from the caller
+    // (= the artifact's generic-lookup-tuple width), so this works for any table width.
     let mut expr = "0".to_string();
-    for &i in &[9usize, 8, 7, 6, 5, 4, 3, 2, 1, 0] {
+    for i in (0..cols.len()).rev() {
         expr = format!("gkr_lookrel_step({expr}, {:x})", cols[i]);
     }
     expr
+}
+
+/// Join the human-readable sides of a lookup tuple's columns with " + " (the display half of the
+/// `lookrel_horner` fold).
+fn lookrel_display(cols: &[Dual]) -> String {
+    cols.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(" + ")
 }
 
 /// Memory-tuple (gkr_memrel_compress) emitter — module-level so BOTH the cache loop
@@ -558,6 +572,13 @@ fn memrel_to_calldata(tuple: &NoFieldSpecialMemoryContributionRelation, running_
 /// verifier; `generate_verifiers` inlines it into the hand-written gkr.sol template.
 pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     const DEBUG_ENABLE_DUMMY_CHECKS: bool = false;
+    // Harden against a layout with a different generic-lookup table width: the lookup-fold code
+    // and the WHIR_NUM_SETUP constant both assume exactly LOOKUP_TABLES_WIDTH setup lookup columns.
+    assert_eq!(
+        circuit.generic_lookup_tables_width, LOOKUP_TABLES_WIDTH,
+        "layout: generic_lookup_tables_width is {}, but this generator is specialized for {LOOKUP_TABLES_WIDTH}",
+        circuit.generic_lookup_tables_width
+    );
     // Serialize concurrent callers and reset the shared accumulator (the yul_println! macro and
     // the sub-function hoisting write into YUL_MAIN_OUTPUT; not re-entrant across threads).
     let _gen_guard = GEN_LOCK.lock().unwrap();
@@ -688,15 +709,13 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 NoFieldGKRCacheRelation::VectorizedLookupSetup(terms) => {
                     let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
                     let setup = {
-                        let [set0, set1, set2, set3, set4, set5, set6, set7, set8, set9] = terms.iter().enumerate().map(|(j, addr)| {
+                        assert_eq!(terms.len(), LOOKUP_TABLES_WIDTH, "layout: generic lookup setup tuple has {} columns, expected {LOOKUP_TABLES_WIDTH}", terms.len());
+                        let sets: Vec<Dual> = terms.iter().enumerate().map(|(j, addr)| {
                             let input = gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets);
                             let beta_j = logup_alpha.0.clone() + &superscript(j);
                             Dual(format!("{beta_j}{input}"), yul_format!("{input:x}"))
-                        }).collect::<Vec<_>>().try_into().ok().unwrap();
-                        Dual(
-                            format!("{set0} + {set1} + {set2} + {set3} + {set4} + {set5} + {set6} + {set7} + {set8} + {set9}"),
-                            yul_format!("{}", lookrel_horner([&set0, &set1, &set2, &set3, &set4, &set5, &set6, &set7, &set8, &set9]))
-                        )
+                        }).collect();
+                        Dual(lookrel_display(&sets), yul_format!("{}", lookrel_horner(&sets)))
                     };
                     // println!("{relation_name}: {setup} = {output}");
                     yul_println!("
@@ -709,7 +728,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     // cached = Σ_col α^col · (col_constant + Σ coeff·read), α-compressed by
                     // gkr_lookrel_compress_half (same nesting as VectorizedLookupSetup, but each
                     // slot is a compressed linear relation instead of a raw read). No γ here.
-                    assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
+                    assert_eq!(columns.len(), LOOKUP_TABLES_WIDTH, "layout: generic lookup tuple has {} columns, expected {LOOKUP_TABLES_WIDTH}", columns.len());
                     let cols: Vec<Dual> = columns.iter().map(|column| {
                         let NoFieldLinearRelation { linear_terms, constant } = column;
                         let linear = linear_terms.iter().map(|(c, addr)| {
@@ -720,11 +739,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                         let constant = proth120_const_to_evm(constant);
                         Dual(format!("({constant} + {linear})"), yul_format!("add({constant:x}, {linear:x})"))
                     }).collect();
-                    let [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9]: [Dual; 10] = cols.try_into().ok().unwrap();
-                    let compressed = Dual(
-                        format!("{c0} + {c1} + {c2} + {c3} + {c4} + {c5} + {c6} + {c7} + {c8} + {c9}"),
-                        yul_format!("{}", lookrel_horner([&c0, &c1, &c2, &c3, &c4, &c5, &c6, &c7, &c8, &c9])),
-                    );
+                    let compressed = Dual(lookrel_display(&cols), yul_format!("{}", lookrel_horner(&cols)));
                     yul_println!("
                     \t{{  // {relation_name}: {compressed} = {output}
                     \t    let gate := {compressed:x}
@@ -1048,17 +1063,17 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             }
             fn lookrelgeneric_to_calldata(tuple: &NoFieldVectorLookupRelation<Proth120>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
                 let NoFieldVectorLookupRelation { columns, lookup_set_index: _ } = tuple;
-                assert_eq!(columns.len(), 10, "we expect generic lookups to be tuples of 10 elements");
+                assert_eq!(columns.len(), LOOKUP_TABLES_WIDTH, "layout: generic lookup tuple has {} columns, expected {LOOKUP_TABLES_WIDTH}", columns.len());
                 let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
                 let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
-                let [col0, col1, col2, col3, col4, col5, col6, col7, col8, col9] = columns.iter().enumerate().map(|(j, column)| {
+                let cols: Vec<Dual> = columns.iter().enumerate().map(|(j, column)| {
                     let compressed_column = linrel_to_calldata_inner(column, expected_layer, layer0_group_widths, running_max_group_offsets);
                     let logup_alpha_j = logup_alpha.0.clone() + &superscript(j);
                     Dual(format!("{logup_alpha_j}({compressed_column})"), yul_format!("{compressed_column:x}"))
-                }).collect::<Vec<_>>().try_into().ok().unwrap();
+                }).collect();
                 Dual(
-                    format!("({logup_gamma} + {col0} + {col1} + {col2} + {col3} + {col4} + {col5} + {col6} + {col7} + {col8} + {col9})"),
-                    yul_format!("add({logup_gamma:x}, {})", lookrel_horner([&col0, &col1, &col2, &col3, &col4, &col5, &col6, &col7, &col8, &col9]))
+                    format!("({logup_gamma} + {})", lookrel_display(&cols)),
+                    yul_format!("add({logup_gamma:x}, {})", lookrel_horner(&cols))
                 )
             }
             fn linrel_to_calldata_inner(inputs: &NoFieldLinearRelation<Proth120>, expected_layer: usize, layer0_group_widths: (usize, usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize, usize)) -> Dual {
@@ -1303,17 +1318,14 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     let input_den = lookrelgeneric_to_calldata(input_den, i, layer0_group_widths, &mut running_max_group_offsets);
                     let setup_multiplicity = gkraddress_to_calldata(setup_multiplicity, i, layer0_group_widths, &mut running_max_group_offsets);
                     let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
-                    assert_eq!(setup_terms.len(), 10, "we expect generic lookups to be tuples of 10 elements");
+                    assert_eq!(setup_terms.len(), LOOKUP_TABLES_WIDTH, "layout: generic lookup setup tuple has {} columns, expected {LOOKUP_TABLES_WIDTH}", setup_terms.len());
                     let setup = {
-                        let [set0, set1, set2, set3, set4, set5, set6, set7, set8, set9] = setup_terms.iter().enumerate().map(|(j, addr)| {
+                        let sets: Vec<Dual> = setup_terms.iter().enumerate().map(|(j, addr)| {
                             let input = gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets);
                             let beta_j = logup_alpha.0.clone() + &superscript(j);
                             Dual(format!("{beta_j}{input}"), yul_format!("{input:x}"))
-                        }).collect::<Vec<_>>().try_into().ok().unwrap();
-                        Dual(
-                            format!("{set0} + {set1} + {set2} + {set3} + {set4} + {set5} + {set6} + {set7} + {set8} + {set9}"),
-                            yul_format!("{}", lookrel_horner([&set0, &set1, &set2, &set3, &set4, &set5, &set6, &set7, &set8, &set9]))
-                        )
+                        }).collect();
+                        Dual(lookrel_display(&sets), yul_format!("{}", lookrel_horner(&sets)))
                     };
                     let [num_out, den_out] = output.each_ref_mayberevmap(|addr| gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter));
                     claim_slots.push(Some(den_out)); claim_slots.push(Some(num_out));
@@ -1365,10 +1377,9 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                         // The set-window is `top_bits[set_idx] << high_bits_shift`, NOT `set_idx << shift`.
                         // `top_bits` (the RAM-set base chunk indices) are data-dependent and cannot be
                         // derived from the circuit, so read them from the transcript preimage in calldata:
-                        // layout is registers(384) + final_pc(12) then top_bits[..] as LE u32 => byte 396.
-                        const TOPBITS_PREIMAGE_BYTE_OFFSET: usize = 384 + 12;
+                        // layout is registers ‖ final_pc/ts then top_bits[..] as LE u32.
                         set_idxes.map(|c| {
-                            let byteoff = TOPBITS_PREIMAGE_BYTE_OFFSET + (c as usize) * 4;
+                            let byteoff = super::PREIMAGE_TOP_BITS_BYTE_OFFSET + (c as usize) * 4;
                             Dual(
                                 format!("{memory_alpha2}({setup_high} + (topbits[{c}]<<{high_bits_shift}))"),
                                 yul_format!("mulmod({memory_alpha2:x}, add({setup_high:x}, shl({high_bits_shift}, gkr_inits_teardowns_topbits({byteoff}))), P)")

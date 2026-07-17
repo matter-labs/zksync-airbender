@@ -1,6 +1,8 @@
 //! Verifies the ported flatten/seed modules reproduce the known-good calldata and
 //! seed bytes byte-for-byte from the on-disk circuit + proof + aux data.
 
+mod common;
+
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::gkr::prover::{CommitmentMode, GKRProof};
@@ -63,7 +65,14 @@ fn flatten_and_seed_match_reference() {
         "gkr_calldata diverged"
     );
 
-    let whir = verifier_evm::whir_calldata(&circuit, &proof, &aux);
+    let cfg = common::production_prover_config();
+    let whir = verifier_evm::whir_calldata(
+        &circuit,
+        &proof,
+        &aux,
+        &cfg.whir_schedule.whir_steps_schedule,
+        &cfg.whir_schedule.whir_queries_schedule,
+    );
     assert_eq!(
         hex::encode(&whir),
         read_fixture("proth120_whir_calldata_from_proof.hex"),

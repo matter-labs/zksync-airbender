@@ -41,21 +41,26 @@ contract WhirVerifier {
     uint256 constant P    = 0x7000000000000000000000000000001;
     uint256 constant MASK = 0xffffffffffffffffffffffffffffffff;
     uint256 constant HALF = 0x3800000000000000000000000000001;  // 2^-1 = (P+1)/2
-    // GEN = evaluation-domain generator for the RS codeword, GEN_INV = GEN^-1.
+    // __TEMPLATE_WHIR_GEN = evaluation-domain generator for the RS codeword, __TEMPLATE_WHIR_GEN_INV = __TEMPLATE_WHIR_GEN^-1.
     // Yul inline-asm only accepts direct number constants, so keep the active
     // codeword's generator here and swap when changing VARIANT:
-    //   VARIANT 4 (2^31): GEN=0x293B319B108C8A856BF8B8AB7799ECD
-    //                     GEN_INV=0x290A0CB0CAD8AC9DAFCDC73EBD1A223
-    //   VARIANT 5 (2^13): GEN=0x029ef460f7f59242f45befd0fa65241e
-    //                     GEN_INV=0x00cb35491d13c704939bb02be3b31e21
-    uint256 constant GEN     = 0x0293B319B108C8A856BF8B8AB7799ECD;
-    uint256 constant GEN_INV = 0x0290A0CB0CAD8AC9DAFCDC73EBD1A223;
+    //   VARIANT 4 (2^31): __TEMPLATE_WHIR_GEN=0x293B319B108C8A856BF8B8AB7799ECD
+    //                     __TEMPLATE_WHIR_GEN_INV=0x290A0CB0CAD8AC9DAFCDC73EBD1A223
+    //   VARIANT 5 (2^13): __TEMPLATE_WHIR_GEN=0x029ef460f7f59242f45befd0fa65241e
+    //                     __TEMPLATE_WHIR_GEN_INV=0x00cb35491d13c704939bb02be3b31e21
+    uint256 constant __TEMPLATE_WHIR_GEN     = 3425356216587033636351364223179792077;
+    uint256 constant __TEMPLATE_WHIR_GEN_INV = 3409408011976041282043764725012079139;
 
-    uint256 constant NUM_ROUNDS = 6;
+    uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS = 6;
+    uint256 constant __TEMPLATE_WHIR_NZ          = 26;  // WHIR eval-point coords = trace_log2 + pack_log2
+    uint256 constant __TEMPLATE_WHIR_GCOUNT      = 9;   // gamma-batched base columns + 1
+    uint256 constant __TEMPLATE_WHIR_RFIN        = 4;   // final-poly log2 = message_log2 - sum(folds)
+    uint256 constant __TEMPLATE_WHIR_NBCAPS      = 2;   // base-oracle merkle caps (witness, setup)
+    uint256 constant __TEMPLATE_WHIR_MERGED_MW   = 7;   // merged memory+witness base columns
+    uint256 constant __TEMPLATE_WHIR_SETUP_MERGED = 1;  // merged setup base columns
     // Message size selector (7 witness + 1 setup polys, both sizes):
     //   4 = production (message 2^26, RS codeword 2^31)
     //   5 = test       (message 2^8,  RS codeword 2^13)
-    uint256 constant VARIANT  = 4;
     // Must match the prover's `eval_leaves` cargo feature. 0 (default): intermediate
     // oracles commit multilinear-COEFFICIENT leaves -> fold with the plain monomial
     // tensor (fold_multilinear). 1 (eval_leaves): they commit raw EVALUATIONS -> fold
@@ -188,13 +193,13 @@ contract WhirVerifier {
         }
         // high_powers_offsets: bit-reversed powers of the order-2^fold generator's
         // inverse (matches prover `initial_high_powers_offsets`). set_generator =
-        // domain_generator_for_size(2^fold) = GEN^(2^(codeword_log2 - fold)), and
-        // qib = codeword_log2 - fold, so set_gen_inv = GEN_INV^(2^qib) = exp_pow2(GEN_INV, qib).
+        // domain_generator_for_size(2^fold) = __TEMPLATE_WHIR_GEN^(2^(codeword_log2 - fold)), and
+        // qib = codeword_log2 - fold, so set_gen_inv = __TEMPLATE_WHIR_GEN_INV^(2^qib) = exp_pow2(__TEMPLATE_WHIR_GEN_INV, qib).
         // hp[i] = set_gen_inv^i, then the length-2^(fold-1) array is bit-reversed.
         function compute_hpo(fold, qib) {
             let logc := sub(fold, 1)         // log2(count)
             let count := shl(logc, 1)
-            let sgi := exp_pow2(GEN_INV, qib) // order-2^fold generator inverse
+            let sgi := exp_pow2(__TEMPLATE_WHIR_GEN_INV, qib) // order-2^fold generator inverse
             let pw := 1
             for { let i := 0 } lt(i, count) { i := add(i, 1) } {
                 // bit-reverse i over logc bits -> store hp[i] = sgi^i at position bitrev(i)
@@ -369,7 +374,7 @@ contract WhirVerifier {
             let cur := mulmod(mload(REG_CURDELIN), delin, P)
             mstore(REG_CURDELIN, cur)
             let qidx := and(mload(add(QIDX_BUF_PTR, mul(qq, 32))), idx_mask)
-            let base_root_inv := powmod(GEN_INV, qidx)
+            let base_root_inv := powmod(__TEMPLATE_WHIR_GEN_INV, qidx)
             let depth := sub(qib, CAP_LOG2)
 
             switch r
@@ -378,8 +383,8 @@ contract WhirVerifier {
                 // 1 setup column (BCAP1), gamma-batched into the folding buffer.
                 // (7 = merged memory+witness packed columns; setup at gamma-power 7.)
                 for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(FBUF_PTR, mul(j, 32)), 0) }
-                cp := batch_oracle(cp, 7, 0, vp, depth, BCAP0_PTR, qidx, cb)
-                cp := batch_oracle(cp, 1, 7, vp, depth, BCAP1_PTR, qidx, cb)
+                cp := batch_oracle(cp, __TEMPLATE_WHIR_MERGED_MW, 0, vp, depth, BCAP0_PTR, qidx, cb)
+                cp := batch_oracle(cp, __TEMPLATE_WHIR_SETUP_MERGED, __TEMPLATE_WHIR_MERGED_MW, vp, depth, BCAP1_PTR, qidx, cb)
             }
             default {
                 cp := read_leaf(cp, vp, depth, QCAP_PTR, qidx, cb)
@@ -394,7 +399,7 @@ contract WhirVerifier {
             switch or(iszero(r), EVAL_LEAVES)
             case 1 { folded := fold_coset(fold, base_root_inv) }
             default { folded := fold_multilinear(fold) }
-            push_pow(exp_pow2(powmod(GEN, qidx), fold), cur)
+            push_pow(exp_pow2(powmod(__TEMPLATE_WHIR_GEN, qidx), fold), cur)
             mstore(REG_CC, addmod(mload(REG_CC), mulmod(folded, cur, P), P))
         }
 
@@ -448,13 +453,13 @@ contract WhirVerifier {
 
             for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
                 let qidx := and(mload(add(QIDX_BUF_PTR, mul(qq, 32))), idx_mask)
-                let base_root := powmod(GEN, qidx)
+                let base_root := powmod(__TEMPLATE_WHIR_GEN, qidx)
                 cp := read_leaf(cp, vp, depth, QCAP_PTR, qidx, cb)
                 // final round queries an intermediate oracle: coeff leaves fold with
                 // the plain monomial tensor, unless eval_leaves (raw evals -> fold_coset).
                 let folded
                 switch EVAL_LEAVES
-                case 1 { folded := fold_coset(fold, powmod(GEN_INV, qidx)) }
+                case 1 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_GEN_INV, qidx)) }
                 default { folded := fold_multilinear(fold) }
                 let qp := exp_pow2(base_root, fold)
                 let ev := mload(add(MONO_PTR, mul(sub(nmono, 1), 32)))
@@ -501,11 +506,10 @@ contract WhirVerifier {
         // 7 witness + 1 setup poly -> 9 batched columns, 2 base caps (witness,setup).
         //   VARIANT 4 (prod):  message 2^26, final poly 2^4 monomials (rfin 4)
         //   VARIANT 5 (test):  message 2^8,  final poly 2^2 monomials (rfin 2)
-        let nz := 26
-        let gcount := 9
-        let rfin := 4
-        let nbcaps := 2
-        if eq(VARIANT, 5) { nz := 8 rfin := 2 }
+        let nz := __TEMPLATE_WHIR_NZ
+        let gcount := __TEMPLATE_WHIR_GCOUNT
+        let rfin := __TEMPLATE_WHIR_RFIN
+        let nbcaps := __TEMPLATE_WHIR_NBCAPS
 
         // ---- parse + verify the single hashed state commitment -------------
         // preimage at calldata [0, plen): seed | batching | opening | z | base caps
@@ -546,46 +550,16 @@ contract WhirVerifier {
         mstore(REG_ZIOFF, 0)
         mstore(REG_CD, plen) // proof stream starts after the preimage
 
-        for { let r := 0 } lt(r, NUM_ROUNDS) { r := add(r, 1) } {
+        for { let r := 0 } lt(r, __TEMPLATE_WHIR_NUM_ROUNDS) { r := add(r, 1) } {
             // `cb` = coset bits = log2(LDE factor) for this round's oracle tree.
             let fold, q, pow_bits, qib, vp, cb
-            switch VARIANT
-            case 4 {
-                // PROTH120: 8 witness + 1 setup poly of 2^26 (message), initial LDE
-                // factor 32 (=2^5). Every round's RS codeword stays 2^31, so the LDE
-                // factor grows as the message folds down:
-                //   folds=[2,4,4,4,4,4] (sum 22 => final 2^4=16 monomials)
-                //   message_r = 2^(26 - prefolds), lde2_r = log2(2^31/message_r) = 5+prefolds
-                //   qib_r  = log2(codeword/vp) = 31 - fold_r
-                //   cb_r   = lde2_r (coset bits)
-                // Queries for 100-bit security under the pessimistic conjecture.
-                //   bits/query = cb (= log2 LDE); q = ceil(1.2 * (100 - pow_bits) / cb)
-                //   (20% margin over the conjecture, exact ceiling, no floor rounding).
-                // pow_bits is then reduced per round to the smallest value that leaves
-                // q unchanged (each round still yields >= 100 bits = pow + q*cb/1.2).
-                // All q are far below the 2^32 query-domain cap.
-                switch r
-                case 0 { fold := 2 q := 17 pow_bits := 30 qib := 29 vp := 4  cb := 5 }
-                case 1 { fold := 4 q := 12 pow_bits := 30 qib := 27 vp := 16 cb := 7 }
-                case 2 { fold := 4 q := 8  pow_bits := 27 qib := 27 vp := 16 cb := 11 }
-                case 3 { fold := 4 q := 6  pow_bits := 25 qib := 27 vp := 16 cb := 15 }
-                case 4 { fold := 4 q := 5  pow_bits := 21 qib := 27 vp := 16 cb := 19 }
-                default { fold := 4 q := 4 pow_bits := 24 qib := 27 vp := 16 cb := 23 }
-            }
-            default {
-                // PROTH120 TEST (matches prover proth120_evm_gen): 8 witness + 1 setup
-                // poly of 2^8 (message), initial LDE 32 => RS codeword 2^13. Every
-                // round folds by 1, so message halves and LDE doubles, codeword stays
-                // 2^13. vp = 2^fold = 2; qib = log2(codeword/vp) = 12; cb = log2(LDE).
-                //   folds=[1,1,1,1,1,1] (final 2^2 = 4 monomials), q=2, pow=0.
-                switch r
-                case 0 { fold := 1 q := 2 pow_bits := 0 qib := 12 vp := 2 cb := 5 }
-                case 1 { fold := 1 q := 2 pow_bits := 0 qib := 12 vp := 2 cb := 6 }
-                case 2 { fold := 1 q := 2 pow_bits := 0 qib := 12 vp := 2 cb := 7 }
-                case 3 { fold := 1 q := 2 pow_bits := 0 qib := 12 vp := 2 cb := 8 }
-                case 4 { fold := 1 q := 2 pow_bits := 0 qib := 12 vp := 2 cb := 9 }
-                default { fold := 1 q := 2 pow_bits := 0 qib := 12 vp := 2 cb := 10 }
-            }
+            switch r
+            case 0 { fold := 2 q := 17 pow_bits := 30 qib := 29 vp := 4 cb := 5 }
+            case 1 { fold := 4 q := 12 pow_bits := 30 qib := 27 vp := 16 cb := 7 }
+            case 2 { fold := 4 q := 8 pow_bits := 27 qib := 27 vp := 16 cb := 11 }
+            case 3 { fold := 4 q := 6 pow_bits := 25 qib := 27 vp := 16 cb := 15 }
+            case 4 { fold := 4 q := 5 pow_bits := 21 qib := 27 vp := 16 cb := 19 }
+            default { fold := 4 q := 4 pow_bits := 24 qib := 27 vp := 16 cb := 23 }
             let idx_mask := sub(shl(qib, 1), 1)
 
             for { let s := 0 } lt(s, fold) { s := add(s, 1) } {

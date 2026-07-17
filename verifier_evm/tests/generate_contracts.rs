@@ -2,6 +2,9 @@
 //! artifact. The Foundry project scaffolding (foundry.toml + the two-tx test) is committed
 //! static; only the three verifier sources are (re)generated here.
 
+mod common;
+
+use common::{production_prover_config, PACK_LOG2};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use std::path::Path;
@@ -21,6 +24,8 @@ fn generate_contracts_into_dir() {
 
     let out = verifier_evm::generate_verifiers(
         &circuit,
+        &production_prover_config(),
+        PACK_LOG2,
         EXTERNAL_POW_BITS,
         WHIR_BATCH_POW_BITS,
         FINAL_PC,
