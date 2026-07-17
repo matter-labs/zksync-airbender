@@ -333,6 +333,10 @@ pub fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTable {
     let mut frags: Vec<(Vec<ExprId>, Vec<ExprId>)> = Vec::new();
     let mut c_init_terms: Vec<ProductRecipe> = Vec::new();
     let mut occurrences: usize = 0;
+    // Final-review T1-M1: this single shared `(id, chain)` stack is semantically
+    // equivalent to the reference classifier's per-term stack (one stack per spine
+    // addend) — LIFO popping never interleaves chains across addends, since each
+    // pushed entry carries its own complete `chain` snapshot.
     let mut work: Vec<(ExprId, Vec<ExprId>)> = spine.iter().map(|&t| (t, Vec::new())).collect();
     while let Some((id, chain)) = work.pop() {
         if is_pure(id) {
@@ -562,6 +566,45 @@ mod tests {
         assert_eq!(table.fragments[0].atoms, vec![ExprId(1)]);
         assert!(table.fragments[0].recipe.is_trivial());
         assert_eq!(table.c_init.terms, vec![ProductRecipe { factors: vec![ExprId(0)] }]);
+    }
+
+    #[test]
+    fn c_init_keeps_distributed_chain() {
+        // c * (A + gamma), c and gamma scalar-pure, A non-scalar: distributing the
+        // Mul into the Add must carry the chain `[c]` all the way to BOTH children —
+        // frag {A} recipe [[c]], AND gamma's occurrence folds into c_init as the
+        // FULL chain [c, gamma] (not just [gamma], and not dropped).
+        let l = layer(
+            vec![read_src(0), const_src(7), challenge_src(ChallengeKey::ClaimBatching)],
+            vec![
+                Expr::Source(SourceId(0)),             // 0 = A
+                Expr::Source(SourceId(1)),             // 1 = c
+                Expr::Source(SourceId(2)),             // 2 = gamma
+                Expr::Add(vec![ExprId(0), ExprId(2)]), // 3 = A + gamma
+                Expr::Mul(vec![ExprId(1), ExprId(3)]), // 4 = c * (A + gamma)
+            ],
+        );
+        let table = decompose_spine(&l, &[ExprId(4)]);
+
+        assert_eq!(table.fragments.len(), 1, "distribution must yield exactly A");
+        assert_eq!(table.fragments[0].atoms, vec![ExprId(0)]);
+        assert_eq!(
+            table.fragments[0].recipe.terms,
+            vec![ProductRecipe { factors: vec![ExprId(1)] }],
+            "fragment {{A}} recipe must be [[c]]"
+        );
+        assert_eq!(
+            table.c_init.terms.len(),
+            1,
+            "gamma's distributed occurrence must fold into c_init as one term"
+        );
+        let mut factors = table.c_init.terms[0].factors.clone();
+        factors.sort();
+        assert_eq!(
+            factors,
+            vec![ExprId(1), ExprId(2)],
+            "c_init term must preserve the whole distributed chain [c, gamma], not just [gamma]"
+        );
     }
 
     #[test]

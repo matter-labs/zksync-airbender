@@ -7,9 +7,12 @@
 //!
 //! This test pins all of those, per fixture, for the CURRENT production term entry
 //! `cs_schedule_bwd_layer` (L0, Ext regime, b16 — the same corpus/slice the engine
-//! gates in `bwd_cs_engine.rs` run). The pinned constants in `PINS` below were
-//! generated at HEAD `e2ae8173` with the crate source CLEAN (before any Task-6 src
-//! change); the refactor is byte-neutral iff this test stays green afterward.
+//! gates in `bwd_cs_engine.rs` run), read via the probe-enabled sibling
+//! `cs_schedule_bwd_layer_with_term_floor` (CS-M5a final-review follow-up: identical
+//! production controls, the only difference is that `CsOutcome::term_floor` is populated).
+//! The pinned constants in `PINS` below were generated at HEAD `e2ae8173` with the crate
+//! source CLEAN (before any Task-6 src change); the refactor is byte-neutral iff this test
+//! stays green afterward.
 //!
 //! Per fixture it pins:
 //!   * `traffic`         — `stats_ext.global + stats_ext.fold_traffic` (the objective);
@@ -35,7 +38,7 @@
 mod common;
 use common::*;
 
-use gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer;
+use gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer_with_term_floor;
 use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 use gkr_eval_isa::fwd::isa::Program;
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
@@ -191,14 +194,19 @@ fn bwd_backend_neutrality() {
         if bwd_roots(&layer).is_empty() {
             continue; // L0 has no backward roots for this fixture
         }
-        let outcome = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+        let outcome = cs_schedule_bwd_layer_with_term_floor(&layer, BwdRegime::Ext, &cross, 16);
         // CS-M5a Task 10 (RR resolution): pin the TERM pricing path via the TERM-FLOOR probe
         // (`outcome.term_floor` = the lexicographic-min of {baseline, term-CS}, i.e. what the
         // engine would ship if the fragment candidate did not exist) — NOT the shipped
         // winner, which since Task 10 may be the fragment candidate. The pinned constants in
         // `PINS` are UNCHANGED: this test keeps proving the term pricing path is byte-
         // identical forever, independent of whether fragment now wins the shipped slot.
-        let floor = &outcome.term_floor;
+        // `cs_schedule_bwd_layer_with_term_floor` (final-review follow-up) is the only entry
+        // that populates the probe (`Some`); production entries set `None` without cloning.
+        let floor = outcome
+            .term_floor
+            .as_ref()
+            .expect("cs_schedule_bwd_layer_with_term_floor always populates term_floor");
         let traffic = floor.compiled.stats_ext.global + floor.compiled.stats_ext.fold_traffic;
         let lanes = floor.compiled.stats.program_lanes;
         let cert = floor.certificate;

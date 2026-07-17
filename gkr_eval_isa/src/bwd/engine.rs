@@ -128,7 +128,16 @@ pub struct CsOutcome {
     /// `{baseline, term-CS}`, i.e. exactly what the engine would ship if the fragment
     /// candidate did not exist. `bwd_backend_neutrality` compares against THIS so the term
     /// pricing path stays byte-pinned regardless of the shipped winner.
-    pub term_floor: TermFloorProbe,
+    ///
+    /// CS-M5a final-review follow-up: `TermFloorProbe` carries a CLONED
+    /// `BwdCompiledLayer` (the whole program + descriptor table), and its only consumer is
+    /// `bwd_backend_neutrality`. `None` on every PRODUCTION call ([`cs_schedule_bwd_layer`],
+    /// [`cs_schedule_bwd_layer_research`]) — the clone is skipped entirely, not merely
+    /// discarded. `Some` only via [`cs_schedule_bwd_layer_with_term_floor`], the probe-
+    /// enabled sibling `bwd_backend_neutrality` calls. Winner selection is unaffected
+    /// either way: the probe is derived FROM the already-computed candidates, after the
+    /// lexicographic-min selection has run.
+    pub term_floor: Option<TermFloorProbe>,
     /// CS-M5a (Task 10, RR resolution): the term-CS candidate's priced-search `leaf_calls`
     /// (`None` if that candidate errored out — no completed priced run). Guardrail scope:
     /// the per-search `HARD_MAX` applies to this INDEPENDENTLY of the shipped winner.
@@ -337,7 +346,7 @@ fn baseline_outcome(
     n_units: usize,
     bl_c: BwdCompiledLayer,
     bl_report: CertificateReport,
-    term_floor: TermFloorProbe,
+    term_floor: Option<TermFloorProbe>,
     term_leaf_calls: Option<usize>,
     fragment_leaf_calls: Option<usize>,
 ) -> CsOutcome {
@@ -388,7 +397,22 @@ pub fn cs_schedule_bwd_layer(
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> CsOutcome {
-    cs_schedule_bwd_layer_research(layer, regime, cross, budget, 1, PRODUCTION_GAP_CAP, true)
+    cs_schedule_bwd_layer_impl(layer, regime, cross, budget, 1, PRODUCTION_GAP_CAP, true, false)
+}
+
+/// CS-M5a final-review follow-up: the PROBE-ENABLED sibling of [`cs_schedule_bwd_layer`] —
+/// identical production controls `(multiplier=1, gap_cap=PRODUCTION_GAP_CAP, enforce_budget=
+/// true)`, but with [`CsOutcome::term_floor`] populated (`Some`). This is the ONLY entry
+/// that pays the `TermFloorProbe` clone; every other production/research entry sets it to
+/// `None` without constructing it. Exists solely so `bwd_backend_neutrality` can byte-pin
+/// the term pricing path — production code should keep calling [`cs_schedule_bwd_layer`].
+pub fn cs_schedule_bwd_layer_with_term_floor(
+    layer: &DagLayer,
+    regime: BwdRegime,
+    cross: &HashMap<ReadPlace, FieldKind>,
+    budget: usize,
+) -> CsOutcome {
+    cs_schedule_bwd_layer_impl(layer, regime, cross, budget, 1, PRODUCTION_GAP_CAP, true, true)
 }
 
 /// The RESEARCH entry (CS-M4 Task 2, spec §5): identical pipeline to
@@ -413,6 +437,38 @@ pub fn cs_schedule_bwd_layer_research(
     multiplier: usize,
     gap_cap: usize,
     enforce_budget: bool,
+) -> CsOutcome {
+    cs_schedule_bwd_layer_impl(
+        layer,
+        regime,
+        cross,
+        budget,
+        multiplier,
+        gap_cap,
+        enforce_budget,
+        false,
+    )
+}
+
+/// The shared implementation behind [`cs_schedule_bwd_layer`],
+/// [`cs_schedule_bwd_layer_research`], and [`cs_schedule_bwd_layer_with_term_floor`].
+///
+/// `probe_term_floor` (CS-M5a final-review follow-up) gates whether
+/// [`CsOutcome::term_floor`] is materialized at all: when `false` (every production and
+/// research entry) the `TermFloorProbe`'s `BwdCompiledLayer` clone is SKIPPED entirely — not
+/// just discarded — since its only consumer is `bwd_backend_neutrality`. The gate sits
+/// strictly after the lexicographic-min winner selection below, so it cannot influence
+/// which candidate ships.
+#[allow(clippy::too_many_arguments)]
+fn cs_schedule_bwd_layer_impl(
+    layer: &DagLayer,
+    regime: BwdRegime,
+    cross: &HashMap<ReadPlace, FieldKind>,
+    budget: usize,
+    multiplier: usize,
+    gap_cap: usize,
+    enforce_budget: bool,
+    probe_term_floor: bool,
 ) -> CsOutcome {
     // ── (1) canonical baseline: the non-regression floor AND the fallback ──────────
     let bl_d = distill(layer, regime, cross, None);
@@ -456,17 +512,27 @@ pub fn cs_schedule_bwd_layer_research(
     // what the engine would ship if the fragment candidate did not exist. `bwd_backend_
     // neutrality` byte-checks THIS, so the term pricing path stays pinned even when fragment
     // wins the shipped slot. Built (cloned) BEFORE the selection consumes the candidates.
-    let term_floor = match &term {
-        Some(t) if t.key() < bl_key => TermFloorProbe {
-            compiled: t.compiled.clone(),
-            certificate: t.report.clone(),
-            plan_entries_fnv: Some(t.plan.entries_fnv),
-        },
-        _ => TermFloorProbe {
-            compiled: bl_c.clone(),
-            certificate: bl_report.clone(),
-            plan_entries_fnv: None,
-        },
+    //
+    // CS-M5a final-review follow-up: `probe_term_floor` gates materialization. On every
+    // production/research call (`probe_term_floor == false`) this whole arm is skipped, so
+    // the `BwdCompiledLayer` clone (program + descriptor table, thousands of lanes on heavy
+    // fixtures) never happens — the probe's only consumer is `bwd_backend_neutrality`, via
+    // [`cs_schedule_bwd_layer_with_term_floor`].
+    let term_floor = if probe_term_floor {
+        Some(match &term {
+            Some(t) if t.key() < bl_key => TermFloorProbe {
+                compiled: t.compiled.clone(),
+                certificate: t.report.clone(),
+                plan_entries_fnv: Some(t.plan.entries_fnv),
+            },
+            _ => TermFloorProbe {
+                compiled: bl_c.clone(),
+                certificate: bl_report.clone(),
+                plan_entries_fnv: None,
+            },
+        })
+    } else {
+        None
     };
 
     // ── (4) ship the lexicographic-min of {baseline} ∪ {successful candidates} ─────
@@ -498,7 +564,7 @@ pub fn cs_schedule_bwd_layer_research(
 /// so `Some` ⟺ the fragment candidate shipped.
 fn outcome_from_cspath(
     cs: CsPath,
-    term_floor: TermFloorProbe,
+    term_floor: Option<TermFloorProbe>,
     term_leaf_calls: Option<usize>,
     fragment_leaf_calls: Option<usize>,
 ) -> CsOutcome {
