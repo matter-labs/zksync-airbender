@@ -25,7 +25,7 @@ fn blake2s_nodes() {
     let mut values_device = DeviceAllocation::alloc(values_host.len()).unwrap();
     let mut results_device = DeviceAllocation::alloc(results_host.len()).unwrap();
     memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
-    launch_nodes_kernel(&values_device, &mut results_device, &stream).unwrap();
+    hash_nodes(&values_device, &mut results_device, &stream).unwrap();
     memory_copy_async(&mut results_host, &results_device, &stream).unwrap();
     stream.synchronize().unwrap();
     verify_nodes(&values_host, &results_host);

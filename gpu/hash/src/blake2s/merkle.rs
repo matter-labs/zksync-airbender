@@ -10,12 +10,12 @@ use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
-use super::hash::launch_leaves_kernel;
+use super::hash::hash_leaves;
 use super::{checked_u32, Digest};
 
 cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32,));
 
-pub(crate) fn launch_nodes_kernel(
+pub(crate) fn hash_nodes(
     values: &DeviceSlice<Digest>,
     results: &mut DeviceSlice<Digest>,
     stream: &CudaStream,
@@ -47,7 +47,7 @@ pub fn build_merkle_tree_nodes(
         assert_eq!(values_len, 1 << layer);
         assert_eq!(values_len, results_len);
         let (nodes, nodes_remaining) = results.split_at_mut(results_len >> 1);
-        launch_nodes_kernel(values, nodes, stream)?;
+        hash_nodes(values, nodes, stream)?;
         build_merkle_tree_nodes(nodes, nodes_remaining, layers_count - 1, stream)
     }
 }
@@ -272,18 +272,18 @@ pub fn build_merkle_tree_multi_coset(
     values: &DeviceSlice<BF>,
     tree_backing: &mut DeviceSlice<Digest>,
     log_rows_per_hash: u32,
-    stream: &CudaStream,
     layers_count: u32,
     cosets_in_tile: usize,
     per_coset_leaves_count: usize,
     per_coset_values_stride_bf: usize,
     per_coset_tree_stride_digests: usize,
     cols_count: usize,
+    stream: &CudaStream,
 ) -> CudaResult<()> {
     assert_ne!(layers_count, 0);
     assert!(cosets_in_tile >= 1);
     assert!(per_coset_leaves_count >= 1 << (layers_count - 1));
-    super::hash::launch_leaves_kernel_multi_coset(
+    super::hash::hash_leaves_multi_coset(
         values,
         tree_backing,
         log_rows_per_hash,
@@ -325,6 +325,6 @@ pub fn build_merkle_tree(
     assert!(1 << (layers_count - 1) <= leaves_count);
     assert_eq!(values_len % leaves_count, 0);
     let (leaves, nodes) = results.split_at_mut(leaves_count);
-    launch_leaves_kernel(values, leaves, log_rows_per_hash, stream)?;
+    hash_leaves(values, leaves, log_rows_per_hash, stream)?;
     build_merkle_tree_nodes(leaves, nodes, layers_count - 1, stream)
 }

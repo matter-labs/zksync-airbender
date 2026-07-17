@@ -245,7 +245,6 @@ fn gather_tree_caps_inline_parity() {
             DeviceAllocation::alloc(coset_count * cap_words_per_coset).unwrap();
         super::gather_tree_caps_inline(
             d_source.as_ptr(),
-            coset_count as u32,
             cap_words_per_coset as u32,
             stride as u32,
             log_lde_factor,
@@ -302,7 +301,6 @@ fn gather_tree_caps_inline_stride_greater_than_cap_words() {
     let base = unsafe { d_source.as_ptr().add(tail_offset) };
     super::gather_tree_caps_inline(
         base,
-        coset_count as u32,
         cap_words_per_coset as u32,
         stride as u32,
         log_lde_factor,
@@ -349,8 +347,7 @@ fn gather_e_addresses_parity() {
         let src_ptrs: Vec<u64> = d_sources.iter().map(|d| d.as_ptr() as u64).collect();
         let mut d_dst: DeviceAllocation<E4> =
             DeviceAllocation::alloc(num_addresses * elements_per_addr).unwrap();
-        super::gather_e_addresses(&src_ptrs[..], &mut d_dst, elements_per_addr as u32, &stream)
-            .unwrap();
+        super::gather_e_addresses(&src_ptrs[..], &mut d_dst, &stream).unwrap();
         let mut h_dst_words: Vec<u32> = vec![0u32; num_addresses * elements_per_addr * 4];
         let d_dst_as_u32 = unsafe { d_dst.transmute::<u32>() };
         memory_copy_async(&mut h_dst_words[..], d_dst_as_u32, &stream).unwrap();

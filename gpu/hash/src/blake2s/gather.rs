@@ -105,8 +105,8 @@ pub fn gather_leaves_for_queries(
     );
     assert!(log_domain_size >= log_rows_per_leaf);
     let indexes_count = checked_u32(query_indexes.len());
-    for i in (num_oracles as usize)..3 {
-        descs[i].assert_inactive(i);
+    for (i, desc) in descs.iter().enumerate().skip(num_oracles as usize) {
+        desc.assert_inactive(i);
     }
     // Max columns_count across the active descriptors. Must be >= 1 (the
     // launch needs a non-empty gridDim.y); zero-column oracles are skipped
@@ -169,7 +169,7 @@ cuda_kernel!(
 /// `dst_slab` is written query-major: `dst_slab[idx * dst_cols + col]` where
 /// `dst_cols = src_cols_per_coset << log_values_per_leaf = EXT4_DEGREE *
 /// values_per_leaf`.
-pub fn launch_gather_leaves_for_queries_from_ntt(
+pub fn gather_leaves_for_queries_from_ntt(
     ntt_output: &DeviceSlice<BF>,
     slab_dst: &mut DeviceSlice<BF>,
     log_lde_factor: u32,
@@ -385,7 +385,6 @@ pub fn gather_merkle_paths_partial_for_queries(
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
     log_total_leaves_count: u32,
-    stride_per_coset_in_digests: u32,
     layers_count: u32,
     query_indexes: &DeviceSlice<u32>,
     stream: &CudaStream,
@@ -397,15 +396,10 @@ pub fn gather_merkle_paths_partial_for_queries(
     assert!(layers_count >= LOG_WARP_SIZE);
     assert!(log_total_leaves_count >= LOG_WARP_SIZE);
     let indexes_count = checked_u32(query_indexes.len());
-    // Per-coset partial-tree length in digests for `TreesHolder::Partial`:
-    // `1 << (log_total_leaves_count + 1 - LOG_WARP_SIZE)`.
-    let expected_stride = 1u32 << (log_total_leaves_count + 1 - LOG_WARP_SIZE);
-    assert_eq!(
-        stride_per_coset_in_digests, expected_stride,
-        "stride_per_coset_in_digests ({stride_per_coset_in_digests}) must equal 1 << (log_total_leaves_count + 1 - LOG_WARP_SIZE) ({expected_stride})"
-    );
-    for i in (num_oracles as usize)..3 {
-        descs[i].assert_inactive(i);
+    // Per-coset partial-tree length in digests for `TreesHolder::Partial`.
+    let stride_per_coset_in_digests = 1u32 << (log_total_leaves_count + 1 - LOG_WARP_SIZE);
+    for (i, desc) in descs.iter().enumerate().skip(num_oracles as usize) {
+        desc.assert_inactive(i);
     }
     let grid_dim = (indexes_count, num_oracles);
     let block_dim = WARP_SIZE;
@@ -450,7 +444,7 @@ cuda_kernel!(
 /// three GKR oracles and reads its cosets backing with packed-leaf addressing;
 /// this variant hard-codes single-oracle + single-TraceHolder-coset (WHIR
 /// oracle's `log_lde_factor = 0`, `log_rows_per_leaf = 0`) and reads via the
-/// pack-inverse used by `launch_gather_leaves_for_queries_from_ntt`.
+/// pack-inverse used by `gather_leaves_for_queries_from_ntt`.
 pub fn gather_merkle_paths_partial_for_queries_from_ntt(
     ntt_output: &DeviceSlice<BF>,
     partial_tree: &DeviceSlice<u32>,
@@ -597,17 +591,15 @@ cuda_kernel!(
 /// avoid an H2D for the source pointer table.
 pub fn gather_tree_caps_inline(
     base_ptr: *const u32,
-    coset_count: u32,
     cap_words_per_coset: u32,
     stride_per_coset_in_u32_words: u32,
     log_lde_factor: u32,
     dst: &mut DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(coset_count > 0);
+    let coset_count = 1u32 << log_lde_factor;
     assert!(cap_words_per_coset > 0);
     assert!(stride_per_coset_in_u32_words >= cap_words_per_coset);
-    assert_eq!(coset_count, 1u32 << log_lde_factor);
     assert!(
         (coset_count as usize) <= GKR_GATHER_TREE_CAPS_MAX_COSETS,
         "gather_tree_caps descriptor has {} cosets; exceeds GKR_GATHER_TREE_CAPS_MAX_COSETS = {}. \
@@ -634,22 +626,20 @@ pub fn gather_tree_caps_inline(
     GatherTreeCapsInlineFunction::default().launch(&config, &args)
 }
 
-/// Gather `src_ptrs.len()` E4 evaluation regions (each `elements_per_addr`
-/// E4 values long) from the device pointers in `src_ptrs` into the contiguous
-/// `dst[0..src_ptrs.len()*elements_per_addr]`. The caller orders `src_ptrs`
-/// (host slice) to match the desired output address sequence (typically the
-/// BTreeMap key order of the per-layer transcript inputs). The pointer table
-/// is passed by value as kernel-arg data; production callers must respect
-/// `GKR_GATHER_MAX_ADDRESSES`.
+/// Gather `src_ptrs.len()` equal-size E4 evaluation regions from the device
+/// pointers in `src_ptrs` into the contiguous `dst`. The per-address element
+/// count is derived as `dst.len() / src_ptrs.len()`. The caller orders
+/// `src_ptrs` (host slice) to match the desired output address sequence
+/// (typically the BTreeMap key order of the per-layer transcript inputs). The
+/// pointer table is passed by value as kernel-arg data; production callers must
+/// respect `GKR_GATHER_MAX_ADDRESSES`.
 pub fn gather_e_addresses(
     src_ptrs: &[u64],
     dst: &mut DeviceSlice<E4>,
-    elements_per_addr: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let num_addresses = src_ptrs.len();
     assert!(num_addresses > 0);
-    assert!(elements_per_addr > 0);
     assert!(
         num_addresses <= GKR_GATHER_MAX_ADDRESSES,
         "gather descriptor has {} addresses; exceeds GKR_GATHER_MAX_ADDRESSES = {}. \
@@ -658,13 +648,18 @@ pub fn gather_e_addresses(
         GKR_GATHER_MAX_ADDRESSES,
     );
     assert_eq!(
+        dst.len() % num_addresses,
+        0,
+        "gather_e_addresses dst length ({}) must be a multiple of num_addresses ({num_addresses})",
         dst.len(),
-        num_addresses * elements_per_addr as usize,
-        "gather_e_addresses dst length must match num_addresses * elements_per_addr",
     );
-    let mut desc = GpuGatherEAddressesDesc::default();
-    desc.num_addresses = num_addresses as u32;
-    desc.elements_per_addr = elements_per_addr;
+    let elements_per_addr = (dst.len() / num_addresses) as u32;
+    assert!(elements_per_addr > 0);
+    let mut desc = GpuGatherEAddressesDesc {
+        num_addresses: num_addresses as u32,
+        elements_per_addr,
+        ..Default::default()
+    };
     desc.src_ptrs[..num_addresses].copy_from_slice(src_ptrs);
     // Each E4 = 4 u32 words; cap thread count to a reasonable warp multiple.
     let words_per_addr = elements_per_addr.saturating_mul(4);

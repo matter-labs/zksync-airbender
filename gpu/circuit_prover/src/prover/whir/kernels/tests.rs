@@ -90,9 +90,7 @@ fn run_blake2s_leaves_from_ntt_matches_pack_then_blake(
     log_values_per_leaf: usize,
     coset_index_base: u32,
 ) {
-    use crate::ops::blake2s::{
-        launch_leaves_kernel_from_ntt_multi_coset, launch_leaves_kernel_multi_coset, Digest,
-    };
+    use crate::ops::blake2s::{hash_leaves_from_ntt_multi_coset, hash_leaves_multi_coset, Digest};
     use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 
     const EXT4_DEGREE: usize = 4;
@@ -141,7 +139,7 @@ fn run_blake2s_leaves_from_ntt_matches_pack_then_blake(
         DeviceAllocation::alloc(total_leaf_count).unwrap();
     // Existing kernel hashes one flat coset (cosets_in_tile = 1) covering all
     // `total_leaf_count` leaves; cols_count = EXT4_DEGREE * values_per_leaf.
-    launch_leaves_kernel_multi_coset(
+    hash_leaves_multi_coset(
         &d_packed[..],
         &mut d_ref_digests[..],
         /*log_rows_per_hash=*/ 0,
@@ -159,7 +157,7 @@ fn run_blake2s_leaves_from_ntt_matches_pack_then_blake(
     // New path: directly hash from natural NTT output.
     let mut d_new_digests: DeviceAllocation<Digest> =
         DeviceAllocation::alloc(total_leaf_count).unwrap();
-    launch_leaves_kernel_from_ntt_multi_coset(
+    hash_leaves_from_ntt_multi_coset(
         &d_natural[..],
         &mut d_new_digests[..],
         log_values_per_leaf as u32,
@@ -214,7 +212,7 @@ fn run_gather_leaves_for_queries_from_ntt_matches_packed(
     log_values_per_leaf: usize,
 ) {
     use crate::ops::blake2s::{
-        gather_leaves_for_queries, launch_gather_leaves_for_queries_from_ntt, OracleGatherDesc,
+        gather_leaves_for_queries, gather_leaves_for_queries_from_ntt, OracleGatherDesc,
     };
     use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 
@@ -306,7 +304,7 @@ fn run_gather_leaves_for_queries_from_ntt_matches_packed(
     // New: gather against the natural-NTT buffer using the new kernel.
     let mut d_new_slab: DeviceAllocation<BF> =
         DeviceAllocation::alloc(queries.len() * dst_cols).unwrap();
-    launch_gather_leaves_for_queries_from_ntt(
+    gather_leaves_for_queries_from_ntt(
         &d_natural[..],
         &mut d_new_slab[..],
         log_lde_factor as u32,

@@ -23,7 +23,7 @@ cuda_kernel!(
     )
 );
 
-pub(crate) fn launch_leaves_kernel(
+pub(crate) fn hash_leaves(
     values: &DeviceSlice<BF>,
     results: &mut DeviceSlice<Digest>,
     log_rows_per_hash: u32,
@@ -62,7 +62,7 @@ cuda_kernel!(
 /// offset `coset * per_coset_results_stride_digests` inside `results`. The
 /// caller passes the full `results` backing and the kernel addresses each
 /// coset's leaves slab via the stride.
-pub fn launch_leaves_kernel_multi_coset(
+pub fn hash_leaves_multi_coset(
     values: &DeviceSlice<BF>,
     results: &mut DeviceSlice<Digest>,
     log_rows_per_hash: u32,
@@ -139,7 +139,7 @@ cuda_kernel!(
 /// src_cols_per_coset = coset_in_tile`), column-major within each coset. The
 /// total backing length must be at least `cosets_in_tile * trace_len *
 /// src_cols_per_coset` BFs.
-pub fn launch_leaves_kernel_from_ntt_multi_coset(
+pub fn hash_leaves_from_ntt_multi_coset(
     ntt_output: &DeviceSlice<BF>,
     results: &mut DeviceSlice<Digest>,
     log_values_per_leaf: u32,

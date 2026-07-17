@@ -545,7 +545,6 @@ impl TraceHolder<BF> {
                 let cap_base = unsafe { base_u32.add(cap_offset_in_u32_words) };
                 gather_tree_caps_inline(
                     cap_base,
-                    lde_factor as u32,
                     cap_words_per_coset,
                     stride_in_u32_words,
                     log_lde_factor,
@@ -570,7 +569,6 @@ impl TraceHolder<BF> {
                 let cap_base = unsafe { base_u32.add(cap_offset_in_u32_words) };
                 gather_tree_caps_inline(
                     cap_base,
-                    lde_factor as u32,
                     cap_words_per_coset,
                     stride_in_u32_words,
                     log_lde_factor,
@@ -749,7 +747,6 @@ impl TraceHolder<BF> {
                 let cap_base = unsafe { base_u32.add(cap_offset_in_u32_words) };
                 gather_tree_caps_inline(
                     cap_base,
-                    /*num_cosets=*/ 1,
                     cap_words_per_coset,
                     stride_in_u32_words,
                     /*log_lde_factor=*/ 0,
@@ -771,7 +768,6 @@ impl TraceHolder<BF> {
                 let cap_base = unsafe { base_u32.add(cap_offset_in_u32_words) };
                 gather_tree_caps_inline(
                     cap_base,
-                    /*num_cosets=*/ 1,
                     cap_words_per_coset,
                     stride_in_u32_words,
                     /*log_lde_factor=*/ 0,
@@ -929,7 +925,7 @@ impl TraceHolder<BF> {
         let stream = context.get_exec_stream();
         let log_packed_leaf_count = log_trace_len - log_values_per_leaf;
         let trace_len = 1u32 << log_trace_len;
-        crate::ops::blake2s::launch_gather_leaves_for_queries_from_ntt(
+        crate::ops::blake2s::gather_leaves_for_queries_from_ntt(
             cosets,
             dst,
             natural_log_lde_factor,
@@ -1245,20 +1241,20 @@ pub(crate) fn commit_trace_multi_coset(
         evals_backing,
         trees_backing,
         log_rows_per_leaf,
-        stream,
         layers_count,
         cosets_in_tile,
         per_coset_leaves_count,
         per_coset_evals_stride,
         per_coset_tree_stride,
         columns_count,
+        stream,
     )
 }
 
 /// Mirror of `commit_trace_multi_coset` for the WHIR oracle path: builds a
 /// single flat merkle tree across all `cosets_in_tile = 1 <<
 /// natural_log_lde_factor` cosets, reading the natural-NTT cosets layout via
-/// `launch_leaves_kernel_from_ntt_multi_coset` and constructing node layers
+/// `hash_leaves_from_ntt_multi_coset` and constructing node layers
 /// with the single-tree `build_merkle_tree_nodes` (NOT the multi-coset
 /// variant, because the WHIR oracle's `TraceHolder` has `log_lde_factor = 0`
 /// and thus owns ONE flat tree across all natural cosets).
@@ -1461,7 +1457,7 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
         for (i, &(coset_index_base_this_stream, cosets_in_tile, offset)) in
             helpers_per_stream.iter().enumerate()
         {
-            crate::ops::blake2s::launch_leaves_kernel_from_ntt_multi_coset(
+            crate::ops::blake2s::hash_leaves_from_ntt_multi_coset(
                 &(ntt_output_matrix.slice())[offset..],
                 leaves,
                 log_values_per_leaf,
@@ -1534,13 +1530,13 @@ pub(crate) fn commit_trace_with_partial_tree_multi_coset(
         evals_backing,
         tree_tops_backing,
         log_rows_per_leaf,
-        stream,
         PARTIAL_TREE_REDUCTION_LAYERS,
         cosets_in_tile,
         per_coset_top_leaves_count,
         per_coset_evals_stride,
         per_coset_top_stride,
         columns_count,
+        stream,
     )?;
     // Bottom: each coset's "top layer" within tree_tops has
     // `per_coset_bottom_stride` digests sitting at offset
