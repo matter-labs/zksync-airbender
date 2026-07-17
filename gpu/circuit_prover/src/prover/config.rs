@@ -54,7 +54,7 @@ fn config_for_supported_level(
     circuit_type: CircuitType,
     security_level: SecurityLevel,
 ) -> ProverConfig {
-    let domain_size_log_2 = circuit_type.get_domain_size().trailing_zeros() as usize;
+    let domain_size_log_2 = circuit_type.get_domain_size_log2();
     // CPU's `example_configs` only defines schedules for {20, 22, 24}; collapse
     // 23 onto 24 to match the previous GPU mapping.
     let schedule_log_2 = match domain_size_log_2 {
