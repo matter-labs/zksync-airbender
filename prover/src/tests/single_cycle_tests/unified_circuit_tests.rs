@@ -765,7 +765,6 @@ mod two_field_mop_tests {
         );
     }
 
-
     #[test]
     fn out_of_range_q_invisible_to_arithmetic_checks() {
         let (rs1, rs2) = (BB_P - 1, BB_P - 1);

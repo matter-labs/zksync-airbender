@@ -587,7 +587,6 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
                     - q_expr * p_hat
                     - Expr::var(mulmod_intermediate_var) * r_hat,
             );
-
         } else {
             cs.add_constraint_expr(
                 montgomery_product_expr(rs1.clone(), rs2.clone())
