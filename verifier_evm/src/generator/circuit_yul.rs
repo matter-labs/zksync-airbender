@@ -421,6 +421,21 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
     out
 }
 
+/// Emit the Horner accumulation of a contiguous run of quadratic gates (GATEVAL slots `lo..hi`)
+/// as a single loop instead of `hi-lo` unrolled `acc := acc·α + mload(GATEVAL+slot)` steps.
+/// The gates got consecutive slots in processing order, so a run maps to a consecutive slot
+/// range and the loop reproduces the exact Horner order. Emitted inside a chunk function where
+/// `acc`/`alpha` are in scope; the modulus is hoisted into a local (loaded once) so the per-
+/// iteration `mulmod` uses a cheap stack DUP rather than re-reading P_PTR.
+fn quad_run_loop(lo: u32, hi: u32) -> String {
+    format!(
+        "            {{ let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()\n\
+         \x20           for {{ let s := {lo} }} lt(s, {hi}) {{ s := add(s, 1) }} {{\n\
+         \x20               acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))\n\
+         \x20           }} }}\n"
+    )
+}
+
 /// Fold 10 lookup columns into a β-Horner accumulator using 2-arg `gkr_lookrel_step`
 /// calls, so no call boundary materializes more than one column expression at a time.
 /// The prior 5-arg `gkr_lookrel_compress_half` forced solc to put all five column
@@ -855,6 +870,11 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         // the nonzero ones are kept (they seed GATEVAL[slot] before the term bucket loops add).
         let mut quad_gate_constant_terms: Vec<(u32, u128)> = vec![];
         let mut quad_slot_counter: u32 = 0;
+        // Layer-0 size opt: a contiguous run of quadratic gates (consecutive GATEVAL slots) in the
+        // current chunk is emitted as ONE Horner loop instead of per-gate steps. `pending_run` holds
+        // the open run's slot range `Some((lo, hi_exclusive))`; it is flushed (loop emitted into the
+        // current chunk) at a special gate, a chunk boundary, or the end. Stays None for i > 0.
+        let mut pending_run: Option<(u32, u32)> = None;
         // Buffer the gate sub-functions so they can be emitted at TOP LEVEL after the layer
         // (nested fns can't reuse ptr/alpha param names — Yul forbids shadowing).
         *YUL_BUFFER.get_or_init(|| std::sync::Mutex::new(None)).lock().unwrap() = Some(String::new());
@@ -863,7 +883,11 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         *CACHE_DEP_OFFSETS.get_or_init(|| std::sync::Mutex::new(None)).lock().unwrap() = Some(vec![]);
         for gate_idx in 0..gates.len() {
             if gate_idx % chunk_size == 0 {
-                if gate_idx > 0 { yul_println!("            }}"); }
+                if gate_idx > 0 {
+                    // flush any open quad run into the chunk before closing it (runs don't cross chunks)
+                    if let Some((lo, hi)) = pending_run.take() { yul_println!("{}", quad_run_loop(lo, hi)); }
+                    yul_println!("            }}");
+                }
                 let cidx = gate_idx / chunk_size;
                 yul_println!("            function scl{i}_g{cidx}(alpha, a) -> acc {{ acc := a");
                 chunk_calls.push(format!("acc := scl{i}_g{cidx}(alpha, acc)"));
@@ -871,6 +895,15 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             let gate_idx_rev = gates.len() - 1 - gate_idx;
             let gate = &gates[if DEBUG_NATURAL_GATE_ORDER { gate_idx } else { gate_idx_rev }];
             let GateArtifacts { output_layer, enforced_relation } = gate;
+            // A run of quadratic gates ends at the first non-quadratic (special) gate: flush it.
+            let is_quad_gate = matches!(
+                enforced_relation,
+                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. }
+                    | NoFieldGKRRelation::MaxQuadratic { .. }
+            );
+            if i == 0 && !is_quad_gate {
+                if let Some((lo, hi)) = pending_run.take() { yul_println!("{}", quad_run_loop(lo, hi)); }
+            }
             assert!(*output_layer == i+1);
             // variant name for comments only (serde_json overflows on Proth120 u128 coeffs).
             let relation_name = { let d = format!("{enforced_relation:?}"); d.split([' ', '{', '(']).next().unwrap_or(&d).to_string() };
@@ -1305,13 +1338,13 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     claim_slots.push(None);
                     if i == 0 {
                         // Table-driven: collect terms (which also records the gate-input offsets
-                        // for the transcript, via gkraddress_to_calldata) and emit a bare GATEVAL read.
+                        // for the transcript, via gkraddress_to_calldata). The Horner step is not
+                        // emitted here — the gate extends the current quad run, flushed as a loop.
                         let slot = collect_quad_terms(input, i, layer0_group_widths, &mut running_max_group_offsets, &mut quad_terms, &mut quad_gate_constant_terms, &mut quad_slot_counter);
-                        yul_println!("
-                        \t{{  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[{slot}] (see term table)
-                        \t    let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, {slot})))
-                        \t    {pointcheck_update:x}
-                        \t}}");
+                        pending_run = Some(match pending_run {
+                            None => (slot, slot + 1),
+                            Some((lo, hi)) => { debug_assert_eq!(hi, slot, "quad run slots must be consecutive"); (lo, slot + 1) }
+                        });
                     } else {
                         let input = quadrel_to_calldata_inner(input, i, layer0_group_widths, &mut running_max_group_offsets);
                         yul_println!("
@@ -1365,12 +1398,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));
                     if i == 0 {
+                        // Extend the current quad run (Horner step deferred to the run loop).
                         let slot = collect_quad_terms(input, i, layer0_group_widths, &mut running_max_group_offsets, &mut quad_terms, &mut quad_gate_constant_terms, &mut quad_slot_counter);
-                        yul_println!("
-                        \t{{  // MaxQuadratic: gate value precomputed in gateval[{slot}] (see term table); output claim {output}
-                        \t    let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, {slot})))
-                        \t    {pointcheck_update:x}
-                        \t}}");
+                        pending_run = Some(match pending_run {
+                            None => (slot, slot + 1),
+                            Some((lo, hi)) => { debug_assert_eq!(hi, slot, "quad run slots must be consecutive"); (lo, slot + 1) }
+                        });
                     } else {
                         let input = quadrel_to_calldata_inner(input, i, layer0_group_widths, &mut running_max_group_offsets);
                         yul_println!("
@@ -1436,6 +1469,8 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         // close the last gate sub-function (into the buffer), capture the sub-functions, then
         // call them all in order (Horner acc accumulation) inline in the layer function.
         let layer_chunk_funcs = if !gates.is_empty() {
+            // flush a quad run still open in the last chunk before closing it
+            if let Some((lo, hi)) = pending_run.take() { yul_println!("{}", quad_run_loop(lo, hi)); }
             yul_println!("            }}"); // close last chunk (still buffered)
             let funcs = YUL_BUFFER.get().unwrap().lock().unwrap().take().unwrap_or_default();
             // Layer-0 size opt: fill GATEVAL[] from the packed term table (compact bucket loops,

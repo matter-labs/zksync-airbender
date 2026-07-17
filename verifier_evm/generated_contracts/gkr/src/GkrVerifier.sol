@@ -1206,364 +1206,60 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     }
             }
             function scl0_g0(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[0] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 0)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[1] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 1)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[2] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 2)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[3] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 3)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[4] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 4)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[5] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 5)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[6] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 6)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[7] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 7)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[8] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 8)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[9] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 9)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[10] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 10)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[11] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 11)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 0 } lt(s, 12) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g1(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[12] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 12)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[13] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 13)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[14] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 14)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[15] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 15)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[16] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 16)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[17] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 17)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[18] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 18)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[19] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 19)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[20] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 20)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[21] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 21)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[22] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 22)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[23] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 23)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 12 } lt(s, 24) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g2(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[24] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 24)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[25] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 25)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[26] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 26)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[27] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 27)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[28] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 28)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[29] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 29)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[30] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 30)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[31] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 31)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[32] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 32)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[33] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 33)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[34] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 34)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[35] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 35)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 24 } lt(s, 36) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g3(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[36] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 36)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[37] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 37)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[38] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 38)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[39] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 39)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[40] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 40)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[41] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 41)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[42] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 42)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[43] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 43)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[44] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 44)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[45] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 45)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[46] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 46)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[47] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 47)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 36 } lt(s, 48) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g4(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[48] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 48)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[49] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 49)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[50] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 50)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[51] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 51)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[52] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 52)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[53] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 53)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[54] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 54)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[55] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 55)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[56] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 56)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[57] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 57)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[58] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 58)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[59] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 59)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 48 } lt(s, 60) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g5(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[60] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 60)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[61] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 61)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[62] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 62)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[63] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 63)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[64] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 64)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[65] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 65)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[66] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 66)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[67] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 67)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[68] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 68)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[69] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 69)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[70] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 70)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[71] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 71)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 60 } lt(s, 72) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g6(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[72] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 72)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[73] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 73)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[74] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 74)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[75] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 75)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[76] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 76)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[77] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 77)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[78] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 78)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[79] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 79)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[80] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 80)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[81] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 81)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[82] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 82)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[83] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 83)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 72 } lt(s, 84) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g7(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[84] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 84)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[85] (see term table)
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 85)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 84 } lt(s, 86) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
     {  // LookupWithCachedDensAndSetup: (([21])·((Cache(15))+δ) − ([103])·((Cache(14))+δ)) / (((Cache(14))+δ)((Cache(15))+δ)) = 70/71
         let bg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14))))
         let dg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15))))
@@ -1680,176 +1376,32 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: gate value precomputed in gateval[86] (see term table); output claim 47
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 86)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[87] (see term table); output claim 46
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 87)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[88] (see term table); output claim 45
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 88)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[89] (see term table); output claim 44
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 89)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[90] (see term table); output claim 43
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 90)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[91] (see term table); output claim 42
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 91)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[92] (see term table); output claim 41
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 92)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[93] (see term table); output claim 40
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 93)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[94] (see term table); output claim 39
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 94)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 86 } lt(s, 95) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g9(alpha, a) -> acc { acc := a
-    {  // MaxQuadratic: gate value precomputed in gateval[95] (see term table); output claim 38
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 95)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[96] (see term table); output claim 37
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 96)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[97] (see term table); output claim 36
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 97)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[98] (see term table); output claim 35
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 98)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[99] (see term table); output claim 34
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 99)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[100] (see term table); output claim 33
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 100)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[101] (see term table); output claim 32
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 101)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[102] (see term table); output claim 31
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 102)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[103] (see term table); output claim 30
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 103)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[104] (see term table); output claim 29
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 104)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[105] (see term table); output claim 28
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 105)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[106] (see term table); output claim 27
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 106)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 95 } lt(s, 107) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g10(alpha, a) -> acc { acc := a
-    {  // MaxQuadratic: gate value precomputed in gateval[107] (see term table); output claim 26
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 107)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[108] (see term table); output claim 25
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 108)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[109] (see term table); output claim 24
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 109)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[110] (see term table); output claim 23
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 110)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[111] (see term table); output claim 22
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 111)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[112] (see term table); output claim 21
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 112)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[113] (see term table); output claim 20
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 113)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[114] (see term table); output claim 19
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 114)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[115] (see term table); output claim 18
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 115)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[116] (see term table); output claim 17
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 116)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[117] (see term table); output claim 16
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 117)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[118] (see term table); output claim 15
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 118)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 107 } lt(s, 119) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
             }
             function scl0_g11(alpha, a) -> acc { acc := a
-    {  // MaxQuadratic: gate value precomputed in gateval[119] (see term table); output claim 14
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 119)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[120] (see term table); output claim 13
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 120)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[121] (see term table); output claim 12
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 121)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[122] (see term table); output claim 11
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 122)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[123] (see term table); output claim 10
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 123)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[124] (see term table); output claim 9
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 124)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[125] (see term table); output claim 8
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 125)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
-    {  // MaxQuadratic: gate value precomputed in gateval[126] (see term table); output claim 7
-        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 126)))
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-    }
+            { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
+            for { let s := 119 } lt(s, 127) { s := add(s, 1) } {
+                acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
+            } }
+
     {  // InitsOrTeardownsInitialPair: (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[0]<<8)) + α³[32] + α⁴[33] + α⁵[30] + α⁶[31]) * (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[1]<<8)) + α³[36] + α⁴[37] + α⁵[34] + α⁶[35]) = 6
         let shared := add(add(mload(add(MEMORY_CHALLS_PTR(), mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18))), mload(P_PTR)))
         let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(396))), mload(P_PTR)), gkr_memrel_compress_high(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 32)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 33)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 30)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 31))))))) // for memrel we collect
