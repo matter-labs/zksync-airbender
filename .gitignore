@@ -9,3 +9,4 @@ rustc-ice-*.*
 **/.DS_Store
 __pycache__/
 *.pyc
+.agents/experiments/
