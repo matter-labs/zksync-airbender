@@ -151,6 +151,11 @@ impl<'t> OrderCtx<'t> {
     /// own full path) iff it is admissible and its keep gene strictly exceeds
     /// the threshold (the decode rule of `genome::decode`).
     pub fn set_fills(&mut self, g: &Genome, view: &LayerView<'_>) {
+        debug_assert_eq!(
+            g.keep.len(),
+            self.table.len(),
+            "gkr_flatten: genome/table length mismatch — stale table or foreign genome"
+        );
         self.fills.clear();
         for (l, s) in self.table.sites.iter().enumerate() {
             if !(s.admissible && g.keep[l] > g.threshold) {

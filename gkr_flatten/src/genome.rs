@@ -100,9 +100,16 @@ impl Genome {
 
     /// A uniformly random genome (search seed material, M2/M3): random root
     /// tie-break keys, per-site keep genes, and per-site order-bias genes
-    /// drawn from `rng` (in that order — `root_keys`, `keep`, `order_bias` —
-    /// so the M2 fields' draws stay positioned exactly as before this field
-    /// existed), threshold fixed at the midpoint (`u16::MAX / 2`).
+    /// drawn from `rng` (in that order — `root_keys`, `keep`, `order_bias`),
+    /// threshold fixed at the midpoint (`u16::MAX / 2`). WITHIN one `random`
+    /// call the M2 fields' draws land at the same `rng` offsets as before
+    /// this field existed (`order_bias` only consumes stream after
+    /// `root_keys`/`keep` are drawn). That scoping does NOT extend across a
+    /// population: filling a GA population with successive `random` calls
+    /// off the same `rng`, every genome after the first now starts
+    /// `table.len()` draws later than its pre-M3 counterpart would have —
+    /// still fully deterministic for a given seed, just a different stream
+    /// than a pre-M3 population would have drawn.
     pub fn random(table: &SiteTable, n_roots: usize, rng: &mut SplitMix64) -> Genome {
         Genome {
             root_keys: (0..n_roots).map(|_| rng.next_u64() as u32).collect(),

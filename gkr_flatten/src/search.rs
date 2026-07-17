@@ -24,6 +24,13 @@
 //! `(traffic_saved, instrs_saved)` ordering as `Score`; ties break on the
 //! lowest locus index (`Reverse(locus)` in the max-heap key) so two runs
 //! over the same table produce the identical sequence of admissions.
+//!
+//! M3 extends this file two ways: [`EvalCtx`] gains `counts` (engages the
+//! Phase-0 dead-aware use countdown) and `policy`/`order` (selects and drives
+//! the order-search arms, `crate::order`, spec M3), threaded through the
+//! `*_ctx` variants alongside the M2 counts-free walk; and [`ga`]'s `Genome`
+//! gained a third `order_bias` vector (Task 6), which `mutate` only perturbs
+//! when [`GaParams::mutate_bias`] is set.
 
 use std::cell::RefCell;
 use std::cmp::Reverse;

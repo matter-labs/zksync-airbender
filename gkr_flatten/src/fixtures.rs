@@ -59,8 +59,7 @@ pub struct Instance {
     pub cross: HashMap<ReadPlace, FieldKind>,
     // The bwd distill's per-expr field overrides. `distill(..).field_overrides`
     // and `LayerView::new`'s third parameter are both `BTreeMap<ExprId,
-    // FieldKind>` in the landed code (the brief's skeleton showed a `HashMap`
-    // placeholder — the landed type wins). `None` for fwd layers.
+    // FieldKind>`. `None` for fwd layers.
     pub overrides: Option<BTreeMap<ExprId, FieldKind>>,
 }
 
