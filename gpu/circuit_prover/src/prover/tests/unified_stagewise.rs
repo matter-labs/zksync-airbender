@@ -9,7 +9,7 @@ use super::inits_and_teardowns::{
 #[ignore]
 fn run_unified_stagewise_parity_test() {
     type CountersT = DelegationsAndUnifiedCounters;
-    const TRACE_LEN_LOG2: usize = 24;
+    const TRACE_LEN_LOG2: usize = UnrolledCircuitType::Unified.get_domain_size_log2();
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
 

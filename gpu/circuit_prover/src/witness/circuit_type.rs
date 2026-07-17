@@ -186,6 +186,11 @@ impl UnrolledCircuitType {
     }
 
     #[inline(always)]
+    pub const fn get_domain_size_log2(&self) -> usize {
+        self.get_domain_size().trailing_zeros() as usize
+    }
+
+    #[inline(always)]
     pub const fn get_family_idx(&self) -> u8 {
         match self {
             Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
@@ -210,6 +215,11 @@ impl UnrolledMemoryCircuitType {
             Self::LoadStoreSubwordOnly => LOAD_STORE_SUBWORD_DOMAIN_SIZE,
             Self::LoadStoreWordOnly => LOAD_STORE_WORD_DOMAIN_SIZE,
         }
+    }
+
+    #[inline(always)]
+    pub const fn get_domain_size_log2(&self) -> usize {
+        self.get_domain_size().trailing_zeros() as usize
     }
 
     #[inline(always)]
@@ -249,6 +259,11 @@ impl UnrolledNonMemoryCircuitType {
             Self::MulDivUnsigned => MUL_DIV_UNSIGNED_DOMAIN_SIZE,
             Self::ShiftBinaryCsr => SHIFT_BINARY_DOMAIN_SIZE,
         }
+    }
+
+    #[inline(always)]
+    pub const fn get_domain_size_log2(&self) -> usize {
+        self.get_domain_size().trailing_zeros() as usize
     }
 
     #[inline(always)]

@@ -6,7 +6,8 @@ use super::*;
 fn run_basic_unrolled_workflow_input_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
+    const TRACE_LEN_LOG2: usize =
+        UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;

@@ -114,7 +114,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 ) {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
+    const TRACE_LEN_LOG2: usize = UnrolledCircuitType::InitsAndTeardowns.get_domain_size_log2();
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
 
     let trace_len = 1usize << TRACE_LEN_LOG2;
@@ -333,7 +333,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
+    const TRACE_LEN_LOG2: usize = UnrolledCircuitType::InitsAndTeardowns.get_domain_size_log2();
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
 
     let trace_len = 1usize << TRACE_LEN_LOG2;

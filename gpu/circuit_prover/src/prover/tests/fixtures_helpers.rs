@@ -171,8 +171,6 @@ pub(super) fn finish_proof_fixture(
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
 ) {
-    const TRACE_LEN_LOG2: usize = 24;
-    const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     // Match the production-sized arena. Every consumer either runs a full
@@ -180,7 +178,7 @@ pub(super) fn finish_proof_fixture(
     // fixture (`build_basic_unrolled_async_backward_fixture_from_base`).
     let device_allocator_arena_bytes: usize = 64usize << 30;
 
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+    let trace_len: usize = compiled_circuit.trace_len;
 
     let memory_argument_alpha =
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
@@ -244,7 +242,7 @@ pub(super) fn finish_proof_fixture(
 
         let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
             &compiled_circuit,
-            NUM_CYCLES_PER_CHUNK,
+            trace_len,
             &oracle,
             &worker,
             None,
@@ -254,7 +252,7 @@ pub(super) fn finish_proof_fixture(
         let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
             &compiled_circuit,
             witness_eval_fn,
-            NUM_CYCLES_PER_CHUNK,
+            trace_len,
             &oracle,
             &table_driver,
             &worker,
@@ -443,7 +441,6 @@ pub(super) fn extract_memory_family<const FAMILY_IDX: u8>(
 ) -> ExtractedFamily {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
     let cycles_bound = 1 << 20;
 
     let binary = std::fs::read(test_artifact_path(binary_path)).unwrap();
@@ -510,7 +507,6 @@ pub(super) fn extract_memory_family<const FAMILY_IDX: u8>(
         num_calls > 0,
         "selected workload must exercise memory family {FAMILY_IDX}",
     );
-    assert!(num_calls < (1 << TRACE_LEN_LOG2));
     let mut replay_state = snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = snapshotter
         .reads_buffer
@@ -585,13 +581,12 @@ pub(super) fn finish_proof_fixture_memory(
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
 ) {
-    const TRACE_LEN_LOG2: usize = 24;
-    const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
 
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+    let trace_len: usize = compiled_circuit.trace_len;
+    assert!(buffer.len() < trace_len);
 
     let memory_argument_alpha =
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
@@ -654,7 +649,7 @@ pub(super) fn finish_proof_fixture_memory(
 
         let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
             &compiled_circuit,
-            NUM_CYCLES_PER_CHUNK,
+            trace_len,
             &oracle,
             &worker,
             None,
@@ -664,7 +659,7 @@ pub(super) fn finish_proof_fixture_memory(
         let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
             &compiled_circuit,
             witness_eval_fn,
-            NUM_CYCLES_PER_CHUNK,
+            trace_len,
             &oracle,
             &table_driver,
             &worker,
