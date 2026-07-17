@@ -111,6 +111,8 @@ pub struct GKRProof<
     pub inits_and_teardowns_top_bits: Vec<u32>,
     pub lookup_challenges_pow_nonce: u64,
     pub batched_proximity_check_pow_nonce: u64,
+    #[serde(default)]
+    pub intermediate_transcript_seed: Option<[u8; 32]>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -1018,6 +1020,18 @@ where
         crate::gkr::whir::WhirIntermediateOracleMode::Monolithic
     };
 
+    let intermediate_transcript_seed = if core::any::TypeId::of::<TR>() == core::any::TypeId::of::<Keccak256Transcript>() {
+        // some unsafe magic
+        assert_eq!(core::any::TypeId::of::<F>(), core::any::TypeId::of::<::field::Proth120>());
+        assert_eq!(core::any::TypeId::of::<E>(), core::any::TypeId::of::<::field::Proth120>());
+        let seed_copy: <Keccak256Transcript as ::transcript::Transcript<::field::Proth120, ::field::Proth120>>::Seed = unsafe {
+            core::mem::transmute_copy(&seed)
+        };
+        Some(seed_copy.0)
+    } else {
+        None
+    };
+
     let whir_proof = whir_fold::<F, E, T, TR>(
         mem_oracle,
         mem_polys_claims,
@@ -1131,6 +1145,7 @@ where
         inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.to_vec(),
         lookup_challenges_pow_nonce,
         batched_proximity_check_pow_nonce,
+        intermediate_transcript_seed,
     }
 }
 

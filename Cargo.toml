@@ -14,6 +14,7 @@ members = [
     "non_determinism_source",
     "verifier_common",
     "verifier_generator",
+    "verifier_evm",
     "witness_eval_generator",
     "gpu/witness_eval_generator",
     "verifier",

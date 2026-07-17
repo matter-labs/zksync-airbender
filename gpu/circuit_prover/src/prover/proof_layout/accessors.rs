@@ -440,6 +440,10 @@ impl ProofLayout {
             pow_nonces,
             final_monomials,
             whir_schedule: WhirSchedule::default(),
+            // EVM GKR->WHIR handoff values are not reconstructed by the GPU proof-layout path.
+            batching_challenge: None,
+            original_evaluation_point: None,
+            batched_opening: None,
         }
     }
 

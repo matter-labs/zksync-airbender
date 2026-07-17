@@ -69,6 +69,55 @@ fn basic_fibonacci_config() -> ProgramConfig {
 
 const TRACE_LEN_LOG2: usize = 22;
 
+/// Load the serialized `CommitmentMode` aux data and build the transcript prefix the packed
+/// prover now prepends before the top-bits/caps: the 32 register final states as
+/// (value, ts_low, ts_high) u32 triples, then (final_pc, final_ts_low, final_ts_high).
+/// Returns (prefix_u32, register_final_state, final_pc, final_timestamp, external_pow_bits).
+fn load_boundary_transcript_prefix() -> (
+    Vec<u32>,
+    [crate::definitions::FinalRegisterValue; 32],
+    u32,
+    common_constants::TimestampScalar,
+    u32,
+) {
+    use crate::cs::definitions::split_timestamp;
+    let aux: CommitmentMode = {
+        let src = std::fs::File::open(
+            "unified_circuit_proof_proth120_commitment_mod_aux_data.json",
+        )
+        .expect("aux data — run gkr_unified_packed_commitment_basic_fibonacci_sec_80 first");
+        serde_json::from_reader(src).expect("deserialize CommitmentMode aux data")
+    };
+    let CommitmentMode::MergedAndPackedMemoryAndWitness {
+        register_final_state,
+        final_pc,
+        final_timestamp,
+        external_challenges_pow_bits,
+        ..
+    } = aux
+    else {
+        panic!("aux data must be MergedAndPackedMemoryAndWitness");
+    };
+    let mut prefix = Vec::with_capacity(32 * 3 + 3);
+    for reg in register_final_state.iter() {
+        let (ts_low, ts_high) = split_timestamp(reg.last_access_timestamp);
+        prefix.push(reg.value);
+        prefix.push(ts_low);
+        prefix.push(ts_high);
+    }
+    let (final_ts_low, final_ts_high) = split_timestamp(final_timestamp);
+    prefix.push(final_pc);
+    prefix.push(final_ts_low);
+    prefix.push(final_ts_high);
+    (
+        prefix,
+        register_final_state,
+        final_pc,
+        final_timestamp,
+        external_challenges_pow_bits,
+    )
+}
+
 #[test]
 fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
     let worker = Worker::new_with_num_threads(8);
@@ -341,7 +390,11 @@ fn validate_packed_transcript_recipe() {
     };
 
     // --- rebuild `transcript_input` exactly like the packed arm of the prover ---
+    let (boundary_prefix, _register_final_state, _final_pc, _final_timestamp, external_pow_bits) =
+        load_boundary_transcript_prefix();
     let mut transcript_input: Vec<u32> = vec![];
+    // 0) register final states (value, ts_low, ts_high) x32, then (final_pc, final_ts_low, high)
+    transcript_input.extend_from_slice(&boundary_prefix);
     // 1) circuit sequence / delegation top bits
     transcript_input.extend_from_slice(&proof.inits_and_teardowns_top_bits[..]);
     // 2) setup cap (present for this circuit: the setup has generic-lookup columns)
@@ -377,7 +430,7 @@ fn validate_packed_transcript_recipe() {
             "preimage keccak must equal commit_initial_u32 seed"
         );
         let hex: String = preimage.iter().map(|b| format!("{b:02x}")).collect();
-        let out = "../verifier_evm/whir/testdata/gkr_step1_preimage.hex";
+        let out = "../verifier_evm/debug_data/gkr_step1_preimage.hex";
         std::fs::write(out, &hex).expect("write step1 preimage fixture");
         println!(
             "[transcript] wrote {} preimage bytes to {out}",
@@ -386,11 +439,11 @@ fn validate_packed_transcript_recipe() {
     }
 
     let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits(
-        SecurityLevel::Sec80.security_bits(),
+        SecurityLevel::Sec100.security_bits(),
         pow_bits::lookup_identity_degree(&unified_circuit),
     );
-    // external_challenges_pow_bits = 0 in this test
-    let pow_bits_used = core::cmp::max(lookup_pow_bits, 0u32);
+    // prover draws external challenges with pow = max(lookup_pow_bits, external_pow_bits=20)
+    let pow_bits_used = core::cmp::max(lookup_pow_bits, external_pow_bits);
     println!("[transcript] lookup pow_bits = {pow_bits_used}");
 
     const TOTAL: usize = 7; // GKRExternalChallenges::TOTAL_CHALLENGES
@@ -450,7 +503,9 @@ fn capture_gkr_dim_reduce_reference() {
     };
 
     // --- replay STEP 1 to reach the post-external-challenges seed ---
+    let (boundary_prefix, _rfs, _fpc, _fts, external_pow_bits) = load_boundary_transcript_prefix();
     let mut transcript_input: Vec<u32> = vec![];
+    transcript_input.extend_from_slice(&boundary_prefix);
     transcript_input.extend_from_slice(&proof.inits_and_teardowns_top_bits[..]);
     flatten_merkle_caps_iter_into(
         Some(proof.whir_proof.setup_commitment.commitment.cap.clone()).into_iter(),
@@ -463,9 +518,12 @@ fn capture_gkr_dim_reduce_reference() {
     let mut seed = <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(
         &transcript_input,
     );
-    let pow = pow_bits::lookup_challenges_pow_bits(
-        SecurityLevel::Sec80.security_bits(),
-        pow_bits::lookup_identity_degree(&unified_circuit),
+    let pow = core::cmp::max(
+        pow_bits::lookup_challenges_pow_bits(
+            SecurityLevel::Sec100.security_bits(),
+            pow_bits::lookup_identity_degree(&unified_circuit),
+        ),
+        external_pow_bits,
     );
     let _ = draw_random_field_els_with_pow::<Proth120, Proth120, Keccak256Transcript>(
         &mut seed, 9, pow, &worker,
@@ -530,13 +588,111 @@ fn capture_gkr_dim_reduce_reference() {
         }
         let hex: String = blob.iter().map(|b| format!("{b:02x}")).collect();
         std::fs::write(
-            "../verifier_evm/whir/testdata/gkr_step2_output_evals.hex",
+            "../verifier_evm/debug_data/gkr_step2_output_evals.hex",
             &hex,
         )
         .unwrap();
         println!("[dimreduce] wrote {} output-eval bytes", blob.len());
     }
     println!("[dimreduce] OK: reproduced GKR-entry transcript + initial claims");
+}
+
+/// Validates the NO-INVERSION permutation identity check that the EVM verifier uses:
+/// accumulate read-set and write-set products separately (from the GKR output polys +
+/// the register/PC boundary), then require equality — instead of the prover's
+/// grand-product/inverse form. Confirms both the algebra and the exact calldata
+/// output-index mapping the Solidity verifier reads (BTreeMap<OutputType> order:
+/// PermutationProduct -> outputs [0,1], InitsAndTeardownsProduct -> outputs [8,9]).
+#[test]
+fn verify_permutation_identity_no_inversion() {
+    use crate::cs::definitions::split_timestamp;
+    use crate::cs::definitions::OutputType;
+    use crate::definitions::produce_initial_permutation_product_separate_contributions;
+    use crate::gkr::prover::GKRProof;
+    use ::field::Field;
+    use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
+    type E = Proth120;
+
+    let proof: GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap> = {
+        let src = std::fs::File::open("unified_circuit_proof_proth120.json")
+            .expect("run gkr_unified_packed_commitment_basic_fibonacci_sec_80 first");
+        serde_json::from_reader(src).expect("deserialize proof")
+    };
+    let (_prefix, register_final_state, final_pc, final_timestamp, _pow) =
+        load_boundary_transcript_prefix();
+
+    let prod = |els: &[E]| {
+        let mut r = E::ONE;
+        for e in els.iter() {
+            r.mul_assign(e);
+        }
+        r
+    };
+
+    // --- output-poly products, addressed the way the EVM verifier reads calldata ---
+    // Serialized order = BTreeMap<OutputType>.iter(), each key emits vals[0] then vals[1].
+    let mut flat: Vec<E> = vec![];
+    for (_ot, vals) in proof.final_explicit_evaluations.iter() {
+        flat.push(prod(&vals[0]));
+        flat.push(prod(&vals[1]));
+    }
+    assert_eq!(flat.len(), 10, "expected 10 output polys");
+    // Solidity indices (must match the calldata layout the verifier consumes):
+    let read_poly = flat[0]; // PermutationProduct.vals[0] = read
+    let write_poly = flat[1]; // PermutationProduct.vals[1] = write
+    let teardown_poly = flat[8]; // InitsAndTeardownsProduct.vals[0] = teardown
+    let init_poly = flat[9]; // InitsAndTeardownsProduct.vals[1] = init
+
+    // Cross-check the fixed indices against map access (guards the ordering assumption).
+    let perm = proof
+        .final_explicit_evaluations
+        .get(&OutputType::PermutationProduct)
+        .expect("PermutationProduct present");
+    let it = proof
+        .final_explicit_evaluations
+        .get(&OutputType::InitsAndTeardownsProduct)
+        .expect("InitsAndTeardownsProduct present");
+    assert_eq!(read_poly, prod(&perm[0]), "output[0] must be Perm.read");
+    assert_eq!(write_poly, prod(&perm[1]), "output[1] must be Perm.write");
+    assert_eq!(teardown_poly, prod(&it[0]), "output[8] must be I&T.teardown");
+    assert_eq!(init_poly, prod(&it[1]), "output[9] must be I&T.init");
+
+    // --- register/PC boundary contributions (read_bnd, write_bnd) ---
+    let register_final_data: [(u32, (u32, u32)); 32] = core::array::from_fn(|i| {
+        (
+            register_final_state[i].value,
+            split_timestamp(register_final_state[i].last_access_timestamp),
+        )
+    });
+    let (read_bnd, write_bnd) = produce_initial_permutation_product_separate_contributions::<
+        Proth120,
+        Proth120,
+    >(
+        &register_final_data,
+        INITIAL_PC,
+        split_timestamp(INITIAL_TIMESTAMP),
+        final_pc,
+        split_timestamp(final_timestamp),
+        &proof.external_challenges,
+    );
+
+    // --- no-inversion identity: read side product == write side product ---
+    let mut read_product = read_poly;
+    read_product.mul_assign(&teardown_poly);
+    read_product.mul_assign(&read_bnd);
+    let mut write_product = write_poly;
+    write_product.mul_assign(&init_poly);
+    write_product.mul_assign(&write_bnd);
+
+    println!(
+        "[perm-id] read_product =0x{:032x}\n[perm-id] write_product=0x{:032x}",
+        read_product.to_u128(),
+        write_product.to_u128()
+    );
+    assert_eq!(
+        read_product, write_product,
+        "no-inversion permutation identity must hold: read_poly*teardown*read_bnd == write_poly*init*write_bnd"
+    );
 }
 
 /// Output address for the single-output GKR relation variants (compute_claim kind 1).
@@ -843,7 +999,9 @@ fn verify_dim_reduce_layers() {
     .unwrap();
 
     // ---- replay transcript through the GKR entry (STEP 1 + STEP 2a) ----
+    let (boundary_prefix, _rfs, _fpc, _fts, external_pow_bits) = load_boundary_transcript_prefix();
     let mut ti: Vec<u32> = vec![];
+    ti.extend_from_slice(&boundary_prefix);
     ti.extend_from_slice(&proof.inits_and_teardowns_top_bits[..]);
     flatten_merkle_caps_iter_into(
         Some(proof.whir_proof.setup_commitment.commitment.cap.clone()).into_iter(),
@@ -854,9 +1012,12 @@ fn verify_dim_reduce_layers() {
         &mut ti,
     );
     let mut seed = <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&ti);
-    let pow = pow_bits::lookup_challenges_pow_bits(
-        SecurityLevel::Sec80.security_bits(),
-        pow_bits::lookup_identity_degree(&unified_circuit),
+    let pow = core::cmp::max(
+        pow_bits::lookup_challenges_pow_bits(
+            SecurityLevel::Sec100.security_bits(),
+            pow_bits::lookup_identity_degree(&unified_circuit),
+        ),
+        external_pow_bits,
     );
     let (_entry_nonce, entry_challenges) =
         draw_random_field_els_with_pow::<Proth120, Proth120, Keccak256Transcript>(
@@ -1221,6 +1382,18 @@ fn verify_dim_reduce_layers() {
             }
         }
 
+        println!(
+            "[layer-dbg] layer {config_idx} seed=0x{}",
+            seed.0.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        );
+        println!(
+            "[layer-dbg] layer {config_idx} initial_claim=0x{:032x}  batching=0x{:032x}  round0_c=[{:032x},{:032x},{:032x},{:032x}]",
+            claim.to_u128(), batching.to_u128(),
+            siv.internal_round_coefficients[0][0].to_u128(),
+            siv.internal_round_coefficients[0][1].to_u128(),
+            siv.internal_round_coefficients[0][2].to_u128(),
+            siv.internal_round_coefficients[0][3].to_u128(),
+        );
         // ---- 22 monomial sumcheck rounds (same loop as dim-reducing) ----
         let mut eq_prefactor = E::ONE;
         let mut new_point: Vec<E> = Vec::with_capacity(folding_steps);
@@ -1608,7 +1781,7 @@ fn verify_dim_reduce_layers() {
 
         // draw WHIR batching challenge (1 el, PoW-gated); validate nonce vs the proof
         let pow = pow_bits::batched_proximity_check_pow_bits(
-            SecurityLevel::Sec80.security_bits(),
+            SecurityLevel::Sec100.security_bits(),
             unified_circuit.trace_len.trailing_zeros() as usize,
             5, // base_lde_factor = 1<<5 (this proof's whir schedule)
             pow_bits::total_base_oracle_columns(&unified_circuit),
@@ -1652,7 +1825,7 @@ fn verify_dim_reduce_layers() {
         // fixture's preimage [seed:32] is authoritatively the GKR verifier's output — no guessing.
         let seed_hex: String = seed.0.iter().map(|b| format!("{b:02x}")).collect();
         std::fs::write(
-            "../verifier_evm/whir/testdata/gkr_whir_handoff_seed.hex",
+            "../verifier_evm/debug_data/gkr_whir_handoff_seed.hex",
             &seed_hex,
         )
         .unwrap();
@@ -1760,7 +1933,7 @@ fn verify_dim_reduce_layers() {
             }
             let hx: String = cd.iter().map(|b| format!("{b:02x}")).collect();
             std::fs::write(
-                "../verifier_evm/whir/testdata/proth120_whir_calldata_from_proof.hex",
+                "../verifier_evm/debug_data/proth120_whir_calldata_from_proof.hex",
                 &hx,
             )
             .unwrap();
@@ -1775,7 +1948,7 @@ fn verify_dim_reduce_layers() {
     // folding_steps*[c0..c3] then 10*[lsb0,lsb1], all field els BE16. Consumed by the
     // Solidity dim-reducing verifier's forge test.
     let hex: String = blob.iter().map(|b| format!("{b:02x}")).collect();
-    let path = "../verifier_evm/whir/testdata/gkr_dimreduce_data.hex";
+    let path = "../verifier_evm/debug_data/gkr_dimreduce_data.hex";
     std::fs::write(path, &hex).unwrap();
     println!(
         "[dimreduce-verify] wrote {} bytes of proof data to {path}",
@@ -1786,7 +1959,7 @@ fn verify_dim_reduce_layers() {
     // gkr.sol stream order: preimage(520) ‖ output-evals(2560) ‖ dim-reduce blob(20160) ‖
     // per-circuit-layer (coeffs ‖ group-offset evals). This is exactly what the ported
     // gkr.sol reads (transcript_init ‖ gkr_init ‖ gkr_compress ‖ gkr_circuit).
-    let td = "../verifier_evm/whir/testdata";
+    let td = "../verifier_evm/debug_data";
     let read_fixture = |name: &str| -> Vec<u8> {
         let h = std::fs::read_to_string(format!("{td}/{name}")).unwrap();
         (0..h.trim().len())
@@ -1795,14 +1968,21 @@ fn verify_dim_reduce_layers() {
             .collect()
     };
     let mut calldata: Vec<u8> = vec![];
-    calldata.extend_from_slice(&read_fixture("gkr_step1_preimage.hex")); // transcript preimage
+    calldata.extend_from_slice(&read_fixture("gkr_step1_preimage.hex")); // transcript preimage (916 B)
+    // external-challenge PoW nonce (8 B BE): the verifier folds keccak(seed || nonce_be8) and
+    // checks the top `pow_bits` bits are zero. Comes right after the preimage.
+    calldata.extend_from_slice(&proof.lookup_challenges_pow_nonce.to_be_bytes());
     calldata.extend_from_slice(&read_fixture("gkr_step2_output_evals.hex")); // GKR entry outputs
     calldata.extend_from_slice(&blob); // dim-reducing data
     calldata.extend_from_slice(&circuit_blob); // circuit layers (coeffs + group-offset evals)
+    // WHIR-batching PoW nonce (8 B BE) at the calldata tail: emit_gkr_mark folds
+    // keccak(handoff_seed || nonce_be8), checks the top 11 bits are zero, then draws the
+    // WHIR batching challenge. The verifier reads it at calldatasize()-8.
+    calldata.extend_from_slice(&proof.batched_proximity_check_pow_nonce.to_be_bytes());
     let calldata_hex: String = calldata.iter().map(|b| format!("{b:02x}")).collect();
     std::fs::write(format!("{td}/gkr_full_calldata.hex"), &calldata_hex).unwrap();
     println!(
-        "[calldata] wrote full GKR calldata: {} bytes (preimage 520 + outputs 2560 + dimreduce {} + circuit {})",
+        "[calldata] wrote full GKR calldata: {} bytes (preimage 916 + nonce 8 + outputs 2560 + dimreduce {} + circuit {})",
         calldata.len(),
         blob.len(),
         circuit_blob.len()
