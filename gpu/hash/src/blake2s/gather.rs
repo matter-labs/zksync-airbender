@@ -4,7 +4,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-use super::{DG, STATE_SIZE};
+use super::{Digest, STATE_SIZE};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::{
     get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE,
@@ -205,7 +205,7 @@ cuda_kernel!(
         indexes_count: u32,
         log_lde_factor: u32,
         stride_per_coset_in_digests: u32,
-        consolidated_tree: *const DG,
+        consolidated_tree: *const Digest,
         log_leaves_count: u32,
         layers_count: u32,
         slab_dst: *mut u32,
@@ -227,7 +227,7 @@ pub fn gather_merkle_paths_full_for_queries(
     query_indexes: &DeviceSlice<u32>,
     log_lde_factor: u32,
     stride_per_coset_in_digests: u32,
-    consolidated_tree: &DeviceSlice<DG>,
+    consolidated_tree: &DeviceSlice<Digest>,
     slab_dst: &mut DeviceSlice<u32>,
     layers_count: u32,
     stream: &CudaStream,

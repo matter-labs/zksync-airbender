@@ -8,7 +8,7 @@ use super::super::*;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_ops::simple::set_to_zero;
 
-use super::{gather_rows, leaf_source_row, random_digest, verify_leaves, verify_nodes};
+use super::{leaf_source_row, random_digest, verify_leaves, verify_nodes};
 use crate::upstream::Field;
 
 #[test]
@@ -110,53 +110,6 @@ fn merkle_tree_large() {
 
 #[test]
 #[serial]
-fn test_gather_rows() {
-    const SRC_LOG_ROWS: usize = 12;
-    const SRC_ROWS: usize = 1 << SRC_LOG_ROWS;
-    const COLS: usize = 16;
-    const INDEXES_COUNT: usize = 42;
-    const LOG_ROWS_PER_INDEX: usize = 1;
-    const DST_ROWS: usize = INDEXES_COUNT << LOG_ROWS_PER_INDEX;
-    let mut rng = rand::rng();
-    let mut indexes_host = vec![0; INDEXES_COUNT];
-    indexes_host.fill_with(|| rng.random_range(0..INDEXES_COUNT as u32));
-    let mut values_host = vec![BF::ZERO; SRC_ROWS * COLS];
-    values_host.fill_with(|| BF::from_nonreduced_u32(rng.random()));
-    let mut results_host = vec![BF::ZERO; DST_ROWS * COLS];
-    let stream = CudaStream::default();
-    let mut indexes_device = DeviceAllocation::<u32>::alloc(indexes_host.len()).unwrap();
-    let mut values_device = DeviceAllocation::<BF>::alloc(values_host.len()).unwrap();
-    let mut results_device = DeviceAllocation::<BF>::alloc(results_host.len()).unwrap();
-    memory_copy_async(&mut indexes_device, &indexes_host, &stream).unwrap();
-    memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
-    gather_rows(
-        &indexes_device,
-        false,
-        LOG_ROWS_PER_INDEX as u32,
-        &DeviceMatrix::new(&values_device, SRC_ROWS),
-        &mut DeviceMatrixMut::new(&mut results_device, DST_ROWS),
-        &stream,
-    )
-    .unwrap();
-    memory_copy_async(&mut results_host, &results_device, &stream).unwrap();
-    stream.synchronize().unwrap();
-    for (i, index) in indexes_host.into_iter().enumerate() {
-        let src_index = (index as usize) << LOG_ROWS_PER_INDEX;
-        let dst_index = i << LOG_ROWS_PER_INDEX;
-        for j in 0..1 << LOG_ROWS_PER_INDEX {
-            let src_index = src_index + j;
-            let dst_index = dst_index + j;
-            for k in 0..COLS {
-                let expected = values_host[(k << SRC_LOG_ROWS) + src_index];
-                let actual = results_host[(k * DST_ROWS) + dst_index];
-                assert_eq!(expected, actual);
-            }
-        }
-    }
-}
-
-#[test]
-#[serial]
 fn gather_leaf_rows() {
     const SRC_LOG_ROWS: usize = 12;
     const SRC_ROWS: usize = 1 << SRC_LOG_ROWS;
@@ -246,29 +199,4 @@ fn gather_merkle_paths() {
         }
     }
     verify_merkle_path(&indexes_host, &values_host, &results_host);
-}
-
-#[test]
-#[serial]
-fn merkle_tree_cap() {
-    const LOG_N: u32 = 10;
-    const N: usize = 1 << LOG_N;
-    const LOG_CAP_SIZE: u32 = LOG_N - 1;
-    const CAP_SIZE: usize = 1 << LOG_CAP_SIZE;
-    let mut values_host = vec![Digest::default(); N * 2];
-    let mut counter: u32 = 0;
-    values_host.fill_with(|| {
-        let value = counter;
-        counter += 1;
-        [value; STATE_SIZE]
-    });
-    let mut values_device = DeviceAllocation::alloc(values_host.len()).unwrap();
-    let stream = CudaStream::create().unwrap();
-    memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
-    let cap_device = super::merkle_tree_cap(&values_device, LOG_CAP_SIZE);
-    let mut cap_host = vec![Digest::default(); CAP_SIZE];
-    memory_copy_async(&mut cap_host, cap_device, &stream).unwrap();
-    stream.synchronize().unwrap();
-    assert_eq!(cap_host.len(), CAP_SIZE);
-    assert_eq!(cap_host, values_host[N..3 * N / 2]);
 }

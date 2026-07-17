@@ -202,7 +202,6 @@ pub fn reduce_raw_words_to_e4(
 pub fn blake2s_pow(
     seed: &DeviceSlice<u32>,
     bits_count: u32,
-    max_nonce: u64,
     result: &mut DeviceVariable<u64>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -222,7 +221,7 @@ pub fn blake2s_pow(
     let args = Blake2SPowArguments {
         seed,
         bits_count,
-        max_nonce,
+        max_nonce: u64::MAX,
         result,
     };
     kernel_function.launch(&config, &args)

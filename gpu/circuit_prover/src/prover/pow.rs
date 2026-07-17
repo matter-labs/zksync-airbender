@@ -57,7 +57,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     // pow_bits == 0 the nonce is 0 (the host `search_pow` also returns 0), but
     // the seed is STILL advanced by the commit below.
     if pow_bits > 0 {
-        blake2s_pow(device_seed, pow_bits, u64::MAX, nonce_slab_dst, stream)?;
+        blake2s_pow(device_seed, pow_bits, nonce_slab_dst, stream)?;
     } else {
         // SAFETY: `memory_set_async` is byte-granular; zeroing the 8-byte
         // `u64` slab slot through a `u8` view writes the canonical all-zero
@@ -147,7 +147,7 @@ pub(crate) fn schedule_draw_e4_challenges_with_pow(
     // PoW search (GPU) → nonce into the slab slot. For pow_bits == 0 we emulate
     // nonce = 0 (the host `search_pow` also returns nonce 0 there).
     if pow_bits > 0 {
-        blake2s_pow(device_seed, pow_bits, u64::MAX, nonce_slab_dst, stream)?;
+        blake2s_pow(device_seed, pow_bits, nonce_slab_dst, stream)?;
     } else {
         // SAFETY: `memory_set_async` is byte-granular; zeroing the 8-byte `u64`
         // slab slot through a `u8` view writes the canonical all-zero nonce = 0.

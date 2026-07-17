@@ -234,11 +234,10 @@ EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_cou
 // round-trips.
 // ---------------------------------------------------------------------------
 
-// Mirror of `GpuChunkedInputDesc` in gpu/circuit_prover/src/ops/blake2s.rs. Holds the
+// Mirror of `GpuChunkedInputDesc` in gpu/hash/src/blake2s/transcript.rs. Holds the
 // per-launch chunk source pointer table inline as kernel-arg data so the
 // chunked-commit kernel reads `num_chunks` contiguous u32 buffers without an
-// auxiliary device allocation. Replaces the host-side concat-into-d_transcript_input
-// pack in `prove()`.
+// auxiliary device allocation.
 constexpr unsigned GKR_CHUNKED_COMMIT_MAX_CHUNKS = 8;
 
 struct gpu_chunked_input_desc {
@@ -249,9 +248,9 @@ struct gpu_chunked_input_desc {
 };
 
 // commit_initial_chunked: seed_out = Blake2s(chunk_0 || chunk_1 || ... || chunk_{N-1}).
-// Identical Blake2s state evolution to `ab_transcript_commit_initial_kernel` for
-// the same logical concatenation — Blake2s streams 64-byte (= 16 u32) blocks, so
-// chunk boundaries that fall mid-block are handled transparently.
+// Blake2s streams 64-byte (= 16 u32) blocks, so chunk boundaries that fall
+// mid-block are handled transparently and the digest matches a single-buffer
+// commit over the same logical concatenation.
 EXTERN __global__ void ab_transcript_commit_initial_chunked_kernel(__grid_constant__ const gpu_chunked_input_desc desc, u32 *seed_out) {
   u32 state[STATE_SIZE];
   initialize(state);
@@ -286,51 +285,6 @@ EXTERN __global__ void ab_transcript_commit_initial_chunked_kernel(__grid_consta
           block[i] = 0;
         block_offset = 0;
       }
-    }
-  }
-
-  // Zero-pad and finalize.
-  for (unsigned i = block_offset; i < BLOCK_SIZE; i++)
-    block[i] = 0;
-  compress<true>(state, t, block, block_offset);
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    seed_out[i] = state[i];
-}
-
-// commit_initial: seed_out = Blake2s(input). Mirrors host `Transcript::commit_initial(input)` —
-// no prior seed; the entire `input` block is absorbed from the IV.
-// seed_out: STATE_SIZE u32 words, written with the resulting seed.
-// input:    input_len u32 words to absorb.
-EXTERN __global__ void ab_transcript_commit_initial_kernel(u32 *seed_out, const u32 *input, const unsigned input_len) {
-  u32 state[STATE_SIZE];
-  initialize(state);
-  u32 t = 0;
-  u32 block[BLOCK_SIZE];
-#pragma unroll
-  for (unsigned i = 0; i < BLOCK_SIZE; i++)
-    block[i] = 0;
-
-  unsigned block_offset = 0;
-  unsigned remaining = input_len;
-  const u32 *src = input;
-
-  while (remaining > 0) {
-    const unsigned space = BLOCK_SIZE - block_offset;
-    const unsigned n = remaining < space ? remaining : space;
-    for (unsigned i = 0; i < n; i++)
-      block[block_offset + i] = src[i];
-    block_offset += n;
-    src += n;
-    remaining -= n;
-
-    if (block_offset == BLOCK_SIZE && remaining > 0) {
-      compress<false>(state, t, block, BLOCK_SIZE);
-#pragma unroll
-      for (unsigned i = 0; i < BLOCK_SIZE; i++)
-        block[i] = 0;
-      block_offset = 0;
     }
   }
 

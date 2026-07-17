@@ -15,13 +15,11 @@ pub const STATE_SIZE: usize = 8;
 
 pub type Digest = [u32; STATE_SIZE];
 
-pub type DG = Digest;
-
 cuda_kernel!(
     Leaves,
     ab_blake2s_leaves_kernel(
         values: *const BF,
-        results: *mut DG,
+        results: *mut Digest,
         log_rows_per_hash: u32,
         cols_count: u32,
         count: u32,
@@ -30,7 +28,7 @@ cuda_kernel!(
 
 pub fn launch_leaves_kernel(
     values: &DeviceSlice<BF>,
-    results: &mut DeviceSlice<DG>,
+    results: &mut DeviceSlice<Digest>,
     log_rows_per_hash: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -50,23 +48,11 @@ pub fn launch_leaves_kernel(
     LeavesFunction::default().launch(&config, &args)
 }
 
-pub fn build_merkle_tree_leaves(
-    values: &DeviceSlice<BF>,
-    results: &mut DeviceSlice<DG>,
-    log_rows_per_hash: u32,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let values_len = values.len();
-    let leaves_count = results.len();
-    assert_eq!(values_len % leaves_count, 0);
-    launch_leaves_kernel(values, results, log_rows_per_hash, stream)
-}
-
 cuda_kernel!(
     LeavesMultiCoset,
     ab_blake2s_leaves_multi_coset_kernel(
         values: *const BF,
-        results: *mut DG,
+        results: *mut Digest,
         log_rows_per_hash: u32,
         cols_count: u32,
         log_per_coset_count: u32,
@@ -85,7 +71,7 @@ cuda_kernel!(
 /// leaves slab via the stride.
 pub fn launch_leaves_kernel_multi_coset(
     values: &DeviceSlice<BF>,
-    results: &mut DeviceSlice<DG>,
+    results: &mut DeviceSlice<Digest>,
     log_rows_per_hash: u32,
     cosets_in_tile: usize,
     per_coset_leaves_count: usize,
@@ -140,7 +126,7 @@ cuda_kernel!(
     LeavesFromNttMultiCoset,
     ab_blake2s_leaves_from_ntt_multi_coset_kernel(
         ntt_output: *const BF,
-        results: *mut DG,
+        results: *mut Digest,
         log_values_per_leaf: u32,
         src_cols_per_coset: u32,
         log_lde_factor: u32,
@@ -167,7 +153,7 @@ cuda_kernel!(
 /// src_cols_per_coset` BFs.
 pub fn launch_leaves_kernel_from_ntt_multi_coset(
     ntt_output: &DeviceSlice<BF>,
-    results: &mut DeviceSlice<DG>,
+    results: &mut DeviceSlice<Digest>,
     log_values_per_leaf: u32,
     src_cols_per_coset: u32,
     log_lde_factor: u32,
@@ -217,11 +203,11 @@ pub fn launch_leaves_kernel_from_ntt_multi_coset(
     LeavesFromNttMultiCosetFunction::default().launch(&config, &args)
 }
 
-cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const DG, results: *mut DG, count: u32,));
+cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32,));
 
 pub fn launch_nodes_kernel(
-    values: &DeviceSlice<DG>,
-    results: &mut DeviceSlice<DG>,
+    values: &DeviceSlice<Digest>,
+    results: &mut DeviceSlice<Digest>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let values_len = values.len();
@@ -238,8 +224,8 @@ pub fn launch_nodes_kernel(
 }
 
 pub fn build_merkle_tree_nodes(
-    values: &DeviceSlice<DG>,
-    results: &mut DeviceSlice<DG>,
+    values: &DeviceSlice<Digest>,
+    results: &mut DeviceSlice<Digest>,
     layers_count: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -260,8 +246,8 @@ pub fn build_merkle_tree_nodes(
 cuda_kernel!(
     NodesMultiCoset,
     ab_blake2s_nodes_multi_coset_kernel(
-        values: *const DG,
-        results: *mut DG,
+        values: *const Digest,
+        results: *mut Digest,
         log_per_coset_count: u32,
         per_coset_values_stride_digests: u32,
         per_coset_results_stride_digests: u32,
@@ -277,8 +263,8 @@ cuda_kernel!(
 /// use `launch_nodes_kernel_multi_coset_at_offsets` to avoid the aliased
 /// `&mut` borrow.
 fn launch_nodes_kernel_multi_coset_separate(
-    src_backing: &DeviceSlice<DG>,
-    dst_backing: &mut DeviceSlice<DG>,
+    src_backing: &DeviceSlice<Digest>,
+    dst_backing: &mut DeviceSlice<Digest>,
     cosets_in_tile: usize,
     per_coset_src_stride_digests: usize,
     per_coset_dst_stride_digests: usize,
@@ -330,7 +316,7 @@ fn launch_nodes_kernel_multi_coset_separate(
 /// would violate Rust aliasing rules when src and dst sit in the same
 /// allocation).
 fn launch_nodes_kernel_multi_coset_at_offsets(
-    backing: &mut DeviceSlice<DG>,
+    backing: &mut DeviceSlice<Digest>,
     cosets_in_tile: usize,
     per_coset_stride_digests: usize,
     src_offset_in_coset: usize,
@@ -366,7 +352,7 @@ fn launch_nodes_kernel_multi_coset_at_offsets(
     // overlap. We cast away the shared borrow only to construct the kernel
     // arg.
     let base = backing.as_mut_ptr();
-    let src_ptr = unsafe { base.add(src_offset_in_coset) } as *const DG;
+    let src_ptr = unsafe { base.add(src_offset_in_coset) } as *const Digest;
     let dst_ptr = unsafe { base.add(dst_offset_in_coset) };
     let (grid_dim, block_dim) =
         get_grid_block_dims_for_threads_count(WARP_SIZE * 4, total_count as u32);
@@ -388,7 +374,7 @@ fn launch_nodes_kernel_multi_coset_at_offsets(
 /// `initial_src_offset_in_coset` (typically the leaves layer at offset 0) and
 /// writes to `initial_src_offset_in_coset + initial_src_layer_count_per_coset`.
 pub fn build_merkle_tree_nodes_multi_coset(
-    tree_backing: &mut DeviceSlice<DG>,
+    tree_backing: &mut DeviceSlice<Digest>,
     layers_count: u32,
     cosets_in_tile: usize,
     per_coset_tree_stride_digests: usize,
@@ -422,8 +408,8 @@ pub fn build_merkle_tree_nodes_multi_coset(
 /// separate allocation, typically the tree_tops slab); subsequent layers hash
 /// up inside `dst_backing` (the tree_bottoms slab) starting at offset 0.
 pub fn build_merkle_tree_nodes_multi_coset_from_external_src(
-    src_backing: &DeviceSlice<DG>,
-    dst_backing: &mut DeviceSlice<DG>,
+    src_backing: &DeviceSlice<Digest>,
+    dst_backing: &mut DeviceSlice<Digest>,
     layers_count: u32,
     cosets_in_tile: usize,
     per_coset_src_stride_digests: usize,
@@ -467,7 +453,7 @@ pub fn build_merkle_tree_nodes_multi_coset_from_external_src(
 /// (instead of `cosets_in_tile * layers_count` launches).
 pub fn build_merkle_tree_multi_coset(
     values: &DeviceSlice<BF>,
-    tree_backing: &mut DeviceSlice<DG>,
+    tree_backing: &mut DeviceSlice<Digest>,
     log_rows_per_hash: u32,
     stream: &CudaStream,
     layers_count: u32,
@@ -504,7 +490,7 @@ pub fn build_merkle_tree_multi_coset(
 
 pub fn build_merkle_tree(
     values: &DeviceSlice<BF>,
-    results: &mut DeviceSlice<DG>,
+    results: &mut DeviceSlice<Digest>,
     log_rows_per_hash: u32,
     stream: &CudaStream,
     layers_count: u32,
@@ -517,21 +503,9 @@ pub fn build_merkle_tree(
     assert!(1 << (layers_count - 1) <= leaves_count);
     assert_eq!(values_len % leaves_count, 0);
     let (leaves, nodes) = results.split_at_mut(leaves_count);
-    build_merkle_tree_leaves(values, leaves, log_rows_per_hash, stream)?;
+    launch_leaves_kernel(values, leaves, log_rows_per_hash, stream)?;
     build_merkle_tree_nodes(leaves, nodes, layers_count - 1, stream)
 }
-
-cuda_kernel!(
-GatherRows,
-ab_gather_rows_kernel(
-    indexes: *const u32,
-    indexes_count: u32,
-    bit_reversed_indexes: bool,
-    log_rows_count: u32,
-    values: PtrAndStride<BF>,
-    results: MutPtrAndStride<BF>,
-)
-);
 
 cuda_kernel!(
     GatherLeafRows,
@@ -601,17 +575,17 @@ cuda_kernel!(
     ab_gather_merkle_paths_kernel(
         indexes: *const u32,
         indexes_count: u32,
-        values: *const DG,
+        values: *const Digest,
         log_leaves_count: u32,
-        results: *mut DG,
+        results: *mut Digest,
     )
 );
 
 #[doc(hidden)]
 pub fn gather_merkle_paths_device(
     indexes: &DeviceSlice<u32>,
-    values: &DeviceSlice<DG>,
-    results: &mut DeviceSlice<DG>,
+    values: &DeviceSlice<Digest>,
+    results: &mut DeviceSlice<Digest>,
     layers_count: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -638,23 +612,6 @@ pub fn gather_merkle_paths_device(
         GatherMerklePathsArguments::new(indexes, indexes_count, values, log_leaves_count, result);
     GatherMerklePathsFunction::default().launch(&config, &args)
 }
-
-cuda_kernel!(
-    GatherRowsAndMerklePaths,
-    ab_gather_rows_and_merkle_paths_kernel(
-        indexes: *const u32,
-        indexes_count: u32,
-        bit_reverse_indexes: bool,
-        values: *const BF,
-        log_rows_per_leaf: u32,
-        cols_count: u32,
-        log_total_leaves_count: u32,
-        leaf_values: MutPtrAndStride<BF>,
-        tree_bottom: *const Digest,
-        layers_count: u32,
-        merkle_paths: *mut Digest,
-    )
-);
 
 cuda_kernel!(
     GatherMerklePathsFromRows,
@@ -760,15 +717,6 @@ pub fn query_index_to_tree_index(
     QueryIndexToTreeIndexFunction::default().launch(&config, &args)
 }
 
-pub fn merkle_tree_cap(values: &DeviceSlice<DG>, log_tree_cap_size: u32) -> &DeviceSlice<DG> {
-    let values_len = values.len();
-    assert_ne!(values_len, 0);
-    assert!(values_len.is_power_of_two());
-    let log_values_len = values_len.trailing_zeros();
-    assert!(log_values_len > log_tree_cap_size);
-    let offset = values_len - (1 << (log_tree_cap_size + 1));
-    &values[offset..offset + (1 << log_tree_cap_size)]
-}
 mod gather;
 mod transcript;
 

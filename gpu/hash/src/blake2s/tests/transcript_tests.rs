@@ -23,7 +23,7 @@ fn pow() {
     let mut d_result = DeviceAllocation::alloc(1).unwrap();
     let stream = CudaStream::default();
     memory_copy_async(&mut d_seed, &h_seed, &stream).unwrap();
-    blake2s_pow(&d_seed, BITS_COUNT, u64::MAX, &mut d_result[0], &stream).unwrap();
+    blake2s_pow(&d_seed, BITS_COUNT, &mut d_result[0], &stream).unwrap();
     memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
     stream.synchronize().unwrap();
     let mut state = Blake2sState::new();
@@ -62,7 +62,7 @@ fn pow_deterministic_matches_cpu_baseline() {
             let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
             let mut d_result = DeviceAllocation::alloc(1).unwrap();
             memory_copy_async(&mut d_seed, &seed.0, &stream).unwrap();
-            blake2s_pow(&d_seed, pow_bits, u64::MAX, &mut d_result[0], &stream).unwrap();
+            blake2s_pow(&d_seed, pow_bits, &mut d_result[0], &stream).unwrap();
             memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
             stream.synchronize().unwrap();
             assert_eq!(
