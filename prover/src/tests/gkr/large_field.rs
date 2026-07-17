@@ -18,6 +18,7 @@ use super::orchestration::common::{
     run_vm_and_capture, ProgramConfig, VmRunOutput, NUM_CYCLES_PER_CHUNK,
 };
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
+use crate::definitions::FinalRegisterValue;
 use crate::definitions::SecurityLevel;
 use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
@@ -71,13 +72,13 @@ const TRACE_LEN_LOG2: usize = 22;
 #[test]
 fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
     let worker = Worker::new_with_num_threads(8);
-    let level = SecurityLevel::Sec80;
+    let level = SecurityLevel::Sec100;
     // With `pack_log2 = 4` the 2^22 base trace is packed into a single 2^26-variate
     // multilinear per column — exactly the `message_log2 = 26` of the EVM-production
     // WHIR config (`generate_whir_input_for_evm_production`), whose parameters we
     // reuse below.
     let pack_log2 = 4usize;
-    let external_challenges_pow_bits = 0u32;
+    let external_challenges_pow_bits = 20u32;
 
     // 1. Run the plain fibonacci program (reduced machine, no precompiles).
     let config = basic_fibonacci_config();
@@ -98,17 +99,123 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
     let num_calls = vm
         .counters
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-    assert!(num_calls < (1 << TRACE_LEN_LOG2));
+    assert!(num_calls <= (1 << TRACE_LEN_LOG2));
 
     // 3. Build the unified witness trace with precompiles disabled at preprocessing.
-    let (full_trace, table_driver, decoder_table) = build_unified_trace_without_precompiles(
-        &vm,
-        super::unified_reduced_machine_proth120::witness_eval_fn,
-        &unified_circuit,
-        num_teardown_sets,
-        1 << TRACE_LEN_LOG2,
-        &worker,
-    );
+    let (full_trace, table_driver, decoder_table, top_bits) =
+        build_unified_trace_without_precompiles(
+            &vm,
+            super::unified_reduced_machine_proth120::witness_eval_fn,
+            &unified_circuit,
+            num_teardown_sets,
+            1 << TRACE_LEN_LOG2,
+            &worker,
+        );
+
+    // ── DIAGNOSTIC: witness-level permutation self-check (family_circuits.rs style) ──
+    // Extract the state (PC/ts) and shuffle-RAM permutation sets straight from the built
+    // witness + the register/PC boundary, and check they reduce to identity. If they do,
+    // the witness is consistent and any prover self-check divergence is in the accumulator
+    // arithmetic, not the trace itself.
+    {
+        use crate::gkr::witness_gen::family_circuits::GKRMemoryOnlyWitnessTrace;
+        use common_constants::{TimestampScalar, INITIAL_PC};
+        use cs::definitions::INITIAL_TIMESTAMP;
+        use std::collections::BTreeSet;
+
+        let memory_trace = GKRMemoryOnlyWitnessTrace {
+            column_major_trace: full_trace.column_major_memory_trace.clone(),
+        };
+        let register_final_state = vm.register_final_state();
+        let final_pc = vm.final_pc();
+        let final_timestamp = vm.final_timestamp();
+        let flattened_inits_and_teardowns: Vec<_> = vm
+            .shuffle_ram_touched_addresses
+            .iter()
+            .flatten()
+            .cloned()
+            .collect();
+
+        let mut write_set = BTreeSet::<(u32, TimestampScalar)>::new();
+        let mut read_set = BTreeSet::<(u32, TimestampScalar)>::new();
+        write_set.insert((INITIAL_PC, INITIAL_TIMESTAMP));
+        read_set.insert((final_pc, final_timestamp));
+
+        let mut memory_write_set = BTreeSet::<(bool, u32, TimestampScalar, u32)>::new();
+        let mut memory_read_set = BTreeSet::<(bool, u32, TimestampScalar, u32)>::new();
+        let mut delegation_write_set = BTreeSet::<(bool, u32, TimestampScalar)>::new();
+        for i in 0..32 {
+            memory_write_set.insert((true, i as u32, 0, 0));
+            memory_read_set.insert((
+                true,
+                i as u32,
+                register_final_state[i].last_access_timestamp,
+                register_final_state[i].current_value,
+            ));
+        }
+
+        super::parse_state_permutation_elements_from_full_trace(
+            &unified_circuit,
+            &memory_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        super::parse_shuffle_ram_accesses_from_full_trace(
+            &unified_circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_write_set,
+        );
+
+        let state_ok = write_set == read_set;
+        let init_diff: Vec<_> = memory_read_set
+            .difference(&memory_write_set)
+            .cloned()
+            .collect();
+        let teardown_diff: Vec<_> = memory_write_set
+            .difference(&memory_read_set)
+            .cloned()
+            .collect();
+        let mem_init_ok = init_diff
+            .iter()
+            .all(|(is_reg, _, ts, val)| !*is_reg && *ts == 0 && *val == 0);
+        println!(
+            "[witness-check] STATE write==read: {state_ok}   |w|={} |r|={}",
+            write_set.len(),
+            read_set.len()
+        );
+        println!(
+            "[witness-check] MEMORY init_diff={} teardown_diff={} flattened_it={}  inits_all(mem,ts=0,val=0)={mem_init_ok}",
+            init_diff.len(),
+            teardown_diff.len(),
+            flattened_inits_and_teardowns.len()
+        );
+        println!(
+            "[witness-check] DELEGATION write_set len={}",
+            delegation_write_set.len()
+        );
+        if !state_ok {
+            let w_only: Vec<_> = write_set.difference(&read_set).take(8).cloned().collect();
+            let r_only: Vec<_> = read_set.difference(&write_set).take(8).cloned().collect();
+            println!("[witness-check] STATE write-only (first 8): {:?}", w_only);
+            println!("[witness-check] STATE read-only  (first 8): {:?}", r_only);
+        }
+        if teardown_diff.len() <= 8 {
+            println!("[witness-check] MEMORY teardown_diff: {:?}", teardown_diff);
+        }
+        assert!(state_ok, "witness state permutation is NOT identity");
+        assert_eq!(
+            init_diff.len(),
+            teardown_diff.len(),
+            "witness memory permutation unbalanced"
+        );
+        assert!(
+            mem_init_ok,
+            "witness memory inits are not (mem, ts=0, val=0)"
+        );
+        println!("[witness-check] witness permutation is IDENTITY — proceeding to prove");
+    }
 
     println!("Preparing data for proving");
     // 4. Prover config for a 2^22 base trace, but with the WHIR schedule taken from
@@ -157,7 +264,17 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
 
     // 6. Prove one unified circuit instance with the packed commitment mode.
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
-    let top_bits: Vec<u32> = (0..num_teardown_sets).map(|i| i as u32).collect();
+
+    let commitment_mode = CommitmentMode::MergedAndPackedMemoryAndWitness {
+        pack_log2,
+        external_challenges_pow_bits,
+        final_pc: vm.final_pc(),
+        final_timestamp: vm.final_timestamp(),
+        register_final_state: vm.register_final_state().map(|el| FinalRegisterValue {
+            value: el.current_value,
+            last_access_timestamp: el.last_access_timestamp,
+        }),
+    };
 
     println!("Trying to prove (unified, packed commitment, pack_log2 = {pack_log2})");
     let now = std::time::Instant::now();
@@ -174,10 +291,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
         &setup_commitment,
         &packed_twiddles,
         &prover_config,
-        CommitmentMode::MergedAndPackedMemoryAndWitness {
-            pack_log2,
-            external_challenges_pow_bits,
-        },
+        commitment_mode,
         top_bits,
         trace_len,
         &worker,
@@ -185,6 +299,10 @@ fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
     println!("Packed unified proving time is {:?}", now.elapsed());
 
     serialize_to_file(&proof, "unified_circuit_proof_proth120.json");
+    serialize_to_file(
+        &commitment_mode,
+        "unified_circuit_proof_proth120_commitment_mod_aux_data.json",
+    );
 }
 
 /// STEP 1 of the EVM GKR verifier: reproduce the `MergedAndPackedMemoryAndWitness`
@@ -1822,6 +1940,7 @@ fn build_unified_trace_without_precompiles<C, F: PrimeField>(
     GKRFullWitnessTrace<F, Global, Global>,
     TableDriver<F>,
     Vec<Option<ExecutorFamilyDecoderData>>,
+    Vec<u32>,
 )
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
@@ -1881,24 +2000,47 @@ where
     };
     let unified_table_driver = build_unified_table_driver::<F>(&vm.binary);
 
-    // Inits/teardown columns sized to the unified circuit's set count.
-    let mut inits_and_teardowns = Vec::with_capacity(num_teardown_sets);
-    for _ in 0..num_teardown_sets {
-        let a = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let b = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let c = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        inits_and_teardowns.push(([a, b], [c, d]));
-    }
     println!("Collecting inits and teardowns");
-    vm.ram.collect_inits_and_teardowns_into_columns::<F, _>(
+
+    // // Inits/teardown columns sized to the unified circuit's set count.
+    // let mut inits_and_teardowns = Vec::with_capacity(num_teardown_sets);
+    // for _ in 0..num_teardown_sets {
+    //     let a = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+    //     let b = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+    //     let c = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+    //     let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+    //     inits_and_teardowns.push(([a, b], [c, d]));
+    // }
+    // vm.ram.collect_inits_and_teardowns_into_columns::<F, _>(
+    //     worker,
+    //     TRACE_LEN_LOG2,
+    //     0,
+    //     &mut inits_and_teardowns,
+    // );
+
+    // we should collect carefully here, as regions will not be continuous
+    let max_ram_touch = vm
+        .shuffle_ram_touched_addresses
+        .iter()
+        .map(|el| el.iter().map(|el| el.0).max().unwrap_or(0))
+        .max()
+        .expect("max address touched");
+    assert_eq!(max_ram_touch % 4, 0);
+    let mut inits_and_teardowns = vm.ram.collect_inits_and_teardowns_sets::<F, Global>(
         worker,
         TRACE_LEN_LOG2,
-        0,
-        &mut inits_and_teardowns,
+        num_teardown_sets,
+        Some(((max_ram_touch as usize) + 4) / 4),
     );
+    assert_eq!(inits_and_teardowns.len(), 1);
+    let (top_bits, inits_and_teardowns_chunks) = inits_and_teardowns
+        .drain(..1)
+        .next()
+        .expect("inits and teardowns");
+    assert_eq!(top_bits.len(), num_teardown_sets);
 
     println!("Calculating full witness trace");
+
     let full_trace = evaluate_gkr_witness_for_executor_family::<F, _, _, _>(
         unified_circuit,
         witness_eval_fn_ptr,
@@ -1906,10 +2048,10 @@ where
         &oracle,
         &unified_table_driver,
         worker,
-        Some(inits_and_teardowns),
+        Some(inits_and_teardowns_chunks),
         Global,
         Global,
     );
 
-    (full_trace, unified_table_driver, decoder_table)
+    (full_trace, unified_table_driver, decoder_table, top_bits)
 }
