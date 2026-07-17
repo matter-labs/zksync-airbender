@@ -71,7 +71,6 @@ contract GKRVerifier {
     uint256 constant __TEMPLATE_WHIR_BASE_Z_COORDS = 22;        // layer-0 folding point length
 
     fallback() external {
-        // uint256 variant = VARIANT;
         // NOTE: "memory-safe" is TRANSIENT — it lets solc spill the 1 leftover stack slot in the
         // OLD sumcheck_compress_2pass (dim-reducing, pending replacement by the validated
         // GkrDimReduce logic). The hand-placed memory is disjoint from spill slots, but

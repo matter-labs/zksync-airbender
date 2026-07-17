@@ -125,8 +125,8 @@ pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> V
     cd
 }
 
-/// Assemble the WHIR-verifier calldata (whir.sol VARIANT-4 layout):
-///   preimage [seed:32][batching:16][opening:16][z:26*16][witCap][setupCap]
+/// Assemble the WHIR-verifier calldata (whir.sol preimage + proof-stream layout):
+///   preimage [seed:32][batching:16][opening:16][z:nz*16][witCap][setupCap]
 ///   then the proof stream (per WHIR round: sumcheck polys, intermediate oracle cap,
 ///   ood sample, PoW nonce, query openings; final round: monomials, PoW nonce,
 ///   final query openings).
