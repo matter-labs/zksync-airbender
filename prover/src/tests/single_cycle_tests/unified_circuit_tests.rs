@@ -271,13 +271,14 @@ mod two_field_mop_tests {
         a.as_u32_raw_repr_reduced()
     }
 
-    fn build_two_field_cs(
+    fn with_two_field_cs<R>(
         opcode: u32,
         rs1_value: u32,
         rs2_value: u32,
         rd_old_value: u32,
         rd_value: u32,
-    ) -> BasicAssembly<F, CSDebugWitnessEvaluator<F>, false> {
+        f: impl FnOnce(&mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>) -> R,
+    ) -> R {
         let binary = vec![opcode];
         let mut t = process_binary_into_separate_tables_ext::<
             F,
@@ -340,7 +341,9 @@ mod two_field_mop_tests {
         }
         unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr::<F, _>(&mut cs);
 
-        cs
+        let result = f(&mut cs);
+        drop(cs);
+        result
     }
 
     fn var_by_name(
@@ -404,10 +407,11 @@ mod two_field_mop_tests {
         rd_old_value: u32,
         rd_value: u32,
     ) -> (bool, u32) {
-        let mut cs = build_two_field_cs(opcode, rs1_value, rs2_value, rd_old_value, rd_value);
-        let satisfied = cs.is_satisfied();
-        let out = resolved_rd_write(&cs);
-        (satisfied, out)
+        with_two_field_cs(opcode, rs1_value, rs2_value, rd_old_value, rd_value, |cs| {
+            let satisfied = cs.is_satisfied();
+            let out = resolved_rd_write(cs);
+            (satisfied, out)
+        })
     }
 
     #[test]
@@ -563,20 +567,27 @@ mod two_field_mop_tests {
     fn write_modular_row_out_reproduces_honest_scratch() {
         let (rs1, rs2) = (BB_P - 1, 2);
         let expected = expected_addmod(rs1, rs2); // honest out = 1, k = 1
-        let mut cs =
-            build_two_field_cs(encode_mop(ADDMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(
-            cs.is_satisfied(),
-            "untampered addmod twin must be satisfied"
-        );
+        with_two_field_cs(
+            encode_mop(ADDMOD_FUNCT7, 10, 11, 12),
+            rs1,
+            rs2,
+            0,
+            expected,
+            |cs| {
+                assert!(
+                    cs.is_satisfied(),
+                    "untampered addmod twin must be satisfied"
+                );
 
-        let out = resolved_rd_write(&cs);
-        // Rewrite `out` (and its implied scratch) through the helper with the SAME honest value.
-        write_modular_row_out(&mut cs, out);
-        assert!(
-            cs.is_satisfied(),
-            "write_modular_row_out with the honest out must reproduce the witness scratch \
-             (z, ic, carry) and leave the row satisfied"
+                let out = resolved_rd_write(cs);
+                // Rewrite `out` (and its implied scratch) through the helper with the SAME honest value.
+                write_modular_row_out(cs, out);
+                assert!(
+                    cs.is_satisfied(),
+                    "write_modular_row_out with the honest out must reproduce the witness scratch \
+                     (z, ic, carry) and leave the row satisfied"
+                );
+            },
         );
     }
 
@@ -584,20 +595,27 @@ mod two_field_mop_tests {
     fn mulmod_mul_relation_isolated_by_q_lo16_forgery() {
         let (rs1, rs2) = (BB_P - 1, BB_P - 1);
         let expected = expected_mulmod(rs1, rs2);
-        let mut cs =
-            build_two_field_cs(encode_mop(MULMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(
-            cs.is_satisfied(),
-            "untampered mulmod twin must be satisfied"
-        );
+        with_two_field_cs(
+            encode_mop(MULMOD_FUNCT7, 10, 11, 12),
+            rs1,
+            rs2,
+            0,
+            expected,
+            |cs| {
+                assert!(
+                    cs.is_satisfied(),
+                    "untampered mulmod twin must be satisfied"
+                );
 
-        let mut q_lo16 = read_field(&cs, "shared scratch var[0]");
-        Field::add_assign(&mut q_lo16, &F::ONE); // q̂ += 1, no compensating m
-        write_field(&mut cs, "shared scratch var[0]", q_lo16);
+                let mut q_lo16 = read_field(cs, "shared scratch var[0]");
+                Field::add_assign(&mut q_lo16, &F::ONE); // q̂ += 1, no compensating m
+                write_field(cs, "shared scratch var[0]", q_lo16);
 
-        assert!(
-            !cs.is_satisfied(),
-            "forged q_lo16 (no compensation) must break the two-field mul relation C1"
+                assert!(
+                    !cs.is_satisfied(),
+                    "forged q_lo16 (no compensation) must break the two-field mul relation C1"
+                );
+            },
         );
     }
 
@@ -605,36 +623,43 @@ mod two_field_mop_tests {
     fn mulmod_noncanonical_output_rejected_by_normalization() {
         let (rs1, rs2) = (u32::MAX, u32::MAX);
         let expected = expected_mulmod(rs1, rs2);
-        let mut cs =
-            build_two_field_cs(encode_mop(MULMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(
-            cs.is_satisfied(),
-            "untampered mulmod twin must be satisfied"
-        );
+        with_two_field_cs(
+            encode_mop(MULMOD_FUNCT7, 10, 11, 12),
+            rs1,
+            rs2,
+            0,
+            expected,
+            |cs| {
+                assert!(
+                    cs.is_satisfied(),
+                    "untampered mulmod twin must be satisfied"
+                );
 
-        let k = read_k_bits(&cs);
-        assert!(k >= 1, "need honest k ≥ 1 to form q' = q − R; got k = {k}");
-        assert_eq!(
-            read_field(&cs, "shared scratch bool[0]").as_u32_reduced(),
-            1,
-            "honest mulmod carry (out<p borrow) must be 1 before the forgery"
-        );
+                let k = read_k_bits(cs);
+                assert!(k >= 1, "need honest k ≥ 1 to form q' = q − R; got k = {k}");
+                assert_eq!(
+                    read_field(cs, "shared scratch bool[0]").as_u32_reduced(),
+                    1,
+                    "honest mulmod carry (out<p borrow) must be 1 before the forgery"
+                );
 
-        let m = read_field(&cs, "MULMOD intermediate value").as_u32_reduced();
-        let out_noncanon = m + BB_P; // m + p < 2p < 2^32
+                let m = read_field(cs, "MULMOD intermediate value").as_u32_reduced();
+                let out_noncanon = m + BB_P; // m + p < 2p < 2^32
 
-        // m' = m + p (field)
-        let mut m_new = read_field(&cs, "MULMOD intermediate value");
-        Field::add_assign(&mut m_new, &F::from_u32_with_reduction(BB_P));
-        write_field(&mut cs, "MULMOD intermediate value", m_new);
-        // q' = q − R keeps C1 satisfied
-        write_k_bits(&mut cs, k - 1);
-        // out' = m + p with a consistent borrow-subtraction scratch ⇒ carry 1→0 (out ≥ p)
-        write_modular_row_out(&mut cs, out_noncanon);
+                // m' = m + p (field)
+                let mut m_new = read_field(cs, "MULMOD intermediate value");
+                Field::add_assign(&mut m_new, &F::from_u32_with_reduction(BB_P));
+                write_field(cs, "MULMOD intermediate value", m_new);
+                // q' = q − R keeps C1 satisfied
+                write_k_bits(cs, k - 1);
+                // out' = m + p with a consistent borrow-subtraction scratch ⇒ carry 1→0 (out ≥ p)
+                write_modular_row_out(cs, out_noncanon);
 
-        assert!(
-            !cs.is_satisfied(),
-            "relation-consistent non-canonical mulmod output (m+p) must be rejected by out<p normalization C5"
+                assert!(
+                    !cs.is_satisfied(),
+                    "relation-consistent non-canonical mulmod output (m+p) must be rejected by out<p normalization C5"
+                );
+            },
         );
     }
 
@@ -642,27 +667,34 @@ mod two_field_mop_tests {
     fn mulmod_inrange_qshift_uniqueness_caught_by_link() {
         let (rs1, rs2) = (u32::MAX, u32::MAX);
         let expected = expected_mulmod(rs1, rs2);
-        let mut cs =
-            build_two_field_cs(encode_mop(MULMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(
-            cs.is_satisfied(),
-            "untampered mulmod twin must be satisfied"
-        );
+        with_two_field_cs(
+            encode_mop(MULMOD_FUNCT7, 10, 11, 12),
+            rs1,
+            rs2,
+            0,
+            expected,
+            |cs| {
+                assert!(
+                    cs.is_satisfied(),
+                    "untampered mulmod twin must be satisfied"
+                );
 
-        let k = read_k_bits(&cs);
-        assert!(
-            k <= 6,
-            "need k ≤ 6 to form q' = q + R in three bits; got k = {k}"
-        );
+                let k = read_k_bits(cs);
+                assert!(
+                    k <= 6,
+                    "need k ≤ 6 to form q' = q + R in three bits; got k = {k}"
+                );
 
-        let mut m_new = read_field(&cs, "MULMOD intermediate value");
-        Field::sub_assign(&mut m_new, &F::from_u32_with_reduction(BB_P)); // m − p (field wrap to ~char)
-        write_field(&mut cs, "MULMOD intermediate value", m_new);
-        write_k_bits(&mut cs, k + 1); // q' = q + R (still in-range)
+                let mut m_new = read_field(cs, "MULMOD intermediate value");
+                Field::sub_assign(&mut m_new, &F::from_u32_with_reduction(BB_P)); // m − p (field wrap to ~char)
+                write_field(cs, "MULMOD intermediate value", m_new);
+                write_k_bits(cs, k + 1); // q' = q + R (still in-range)
 
-        assert!(
-            !cs.is_satisfied(),
-            "in-range q+R / m−p shift must be rejected by the link (out cannot equal the wrapped m')"
+                assert!(
+                    !cs.is_satisfied(),
+                    "in-range q+R / m−p shift must be rejected by the link (out cannot equal the wrapped m')"
+                );
+            },
         );
     }
 
@@ -670,21 +702,28 @@ mod two_field_mop_tests {
     fn mulmod_output_off_by_one_rejected_by_link() {
         let (rs1, rs2) = (BB_P - 1, BB_P - 1);
         let expected = expected_mulmod(rs1, rs2);
-        let mut cs =
-            build_two_field_cs(encode_mop(MULMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(
-            cs.is_satisfied(),
-            "untampered mulmod twin must be satisfied"
-        );
+        with_two_field_cs(
+            encode_mop(MULMOD_FUNCT7, 10, 11, 12),
+            rs1,
+            rs2,
+            0,
+            expected,
+            |cs| {
+                assert!(
+                    cs.is_satisfied(),
+                    "untampered mulmod twin must be satisfied"
+                );
 
-        let m = read_field(&cs, "MULMOD intermediate value").as_u32_reduced();
-        // Keep out' in [0, p) so ONLY the link fires (out ≥ p would also trip normalization).
-        let out_off = if m + 1 < BB_P { m + 1 } else { m - 1 };
-        write_modular_row_out(&mut cs, out_off);
+                let m = read_field(cs, "MULMOD intermediate value").as_u32_reduced();
+                // Keep out' in [0, p) so ONLY the link fires (out ≥ p would also trip normalization).
+                let out_off = if m + 1 < BB_P { m + 1 } else { m - 1 };
+                write_modular_row_out(cs, out_off);
 
-        assert!(
-            !cs.is_satisfied(),
-            "off-by-one mulmod output must be rejected by the out↔residue link C4"
+                assert!(
+                    !cs.is_satisfied(),
+                    "off-by-one mulmod output must be rejected by the out↔residue link C4"
+                );
+            },
         );
     }
 
@@ -692,23 +731,30 @@ mod two_field_mop_tests {
     fn addmod_output_off_by_one_rejected_by_add_relation() {
         let (rs1, rs2) = (BB_P - 1, 2);
         let expected = expected_addmod(rs1, rs2); // = 1, k = 1
-        let mut cs =
-            build_two_field_cs(encode_mop(ADDMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(
-            cs.is_satisfied(),
-            "untampered addmod twin must be satisfied"
-        );
+        with_two_field_cs(
+            encode_mop(ADDMOD_FUNCT7, 10, 11, 12),
+            rs1,
+            rs2,
+            0,
+            expected,
+            |cs| {
+                assert!(
+                    cs.is_satisfied(),
+                    "untampered addmod twin must be satisfied"
+                );
 
-        let out = resolved_rd_write(&cs);
-        assert!(
-            out + 1 < BB_P,
-            "need out + 1 < p to keep ONLY the add relation firing"
-        );
-        write_modular_row_out(&mut cs, out + 1);
+                let out = resolved_rd_write(cs);
+                assert!(
+                    out + 1 < BB_P,
+                    "need out + 1 < p to keep ONLY the add relation firing"
+                );
+                write_modular_row_out(cs, out + 1);
 
-        assert!(
-            !cs.is_satisfied(),
-            "off-by-one addmod output must be rejected by the add relation C4 (x + y − k·p̂ − out)·is_addmod"
+                assert!(
+                    !cs.is_satisfied(),
+                    "off-by-one addmod output must be rejected by the add relation C4 (x + y − k·p̂ − out)·is_addmod"
+                );
+            },
         );
     }
 
@@ -716,23 +762,30 @@ mod two_field_mop_tests {
     fn submod_output_off_by_one_rejected_by_sub_relation() {
         let (rs1, rs2) = (87654321u32, 12345678u32);
         let expected = expected_submod(rs1, rs2); // = 75308643, k = 3
-        let mut cs =
-            build_two_field_cs(encode_mop(SUBMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(
-            cs.is_satisfied(),
-            "untampered submod twin must be satisfied"
-        );
+        with_two_field_cs(
+            encode_mop(SUBMOD_FUNCT7, 10, 11, 12),
+            rs1,
+            rs2,
+            0,
+            expected,
+            |cs| {
+                assert!(
+                    cs.is_satisfied(),
+                    "untampered submod twin must be satisfied"
+                );
 
-        let out = resolved_rd_write(&cs);
-        assert!(
-            out + 1 < BB_P,
-            "need out + 1 < p to keep ONLY the sub relation firing"
-        );
-        write_modular_row_out(&mut cs, out + 1);
+                let out = resolved_rd_write(cs);
+                assert!(
+                    out + 1 < BB_P,
+                    "need out + 1 < p to keep ONLY the sub relation firing"
+                );
+                write_modular_row_out(cs, out + 1);
 
-        assert!(
-            !cs.is_satisfied(),
-            "off-by-one submod output must be rejected by the sub relation C4 (x − y + 3p̂ − k·p̂ − out)·is_submod"
+                assert!(
+                    !cs.is_satisfied(),
+                    "off-by-one submod output must be rejected by the sub relation C4 (x − y + 3p̂ − k·p̂ − out)·is_submod"
+                );
+            },
         );
     }
 
@@ -740,28 +793,35 @@ mod two_field_mop_tests {
     fn addmod_kshift_noncanonical_output_rejected_by_normalization() {
         let (rs1, rs2) = (BB_P - 1, 1);
         let expected = expected_addmod(rs1, rs2); // = 0, honest k = 1
-        let mut cs =
-            build_two_field_cs(encode_mop(ADDMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(
-            cs.is_satisfied(),
-            "untampered addmod twin must be satisfied"
-        );
+        with_two_field_cs(
+            encode_mop(ADDMOD_FUNCT7, 10, 11, 12),
+            rs1,
+            rs2,
+            0,
+            expected,
+            |cs| {
+                assert!(
+                    cs.is_satisfied(),
+                    "untampered addmod twin must be satisfied"
+                );
 
-        let k = read_k_bits(&cs);
-        assert!(k >= 1, "need honest k ≥ 1 for the k−1 shift; got k = {k}");
-        assert_eq!(
-            read_field(&cs, "shared scratch bool[0]").as_u32_reduced(),
-            1,
-            "honest addmod carry (out<p borrow) must be 1 before the forgery"
-        );
+                let k = read_k_bits(cs);
+                assert!(k >= 1, "need honest k ≥ 1 for the k−1 shift; got k = {k}");
+                assert_eq!(
+                    read_field(cs, "shared scratch bool[0]").as_u32_reduced(),
+                    1,
+                    "honest addmod carry (out<p borrow) must be 1 before the forgery"
+                );
 
-        let out = resolved_rd_write(&cs);
-        write_k_bits(&mut cs, k - 1); // under-count the reduction
-        write_modular_row_out(&mut cs, out + BB_P); // out + p ≥ p ⇒ carry 1→0
+                let out = resolved_rd_write(cs);
+                write_k_bits(cs, k - 1); // under-count the reduction
+                write_modular_row_out(cs, out + BB_P); // out + p ≥ p ⇒ carry 1→0
 
-        assert!(
-            !cs.is_satisfied(),
-            "k−1 / out+p addmod forgery must be rejected by out<p normalization C5"
+                assert!(
+                    !cs.is_satisfied(),
+                    "k−1 / out+p addmod forgery must be rejected by out<p normalization C5"
+                );
+            },
         );
     }
 
@@ -769,39 +829,46 @@ mod two_field_mop_tests {
     fn out_of_range_q_invisible_to_arithmetic_checks() {
         let (rs1, rs2) = (BB_P - 1, BB_P - 1);
         let expected = expected_mulmod(rs1, rs2);
-        let mut cs =
-            build_two_field_cs(encode_mop(MULMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(
-            cs.is_satisfied(),
-            "untampered mulmod twin must be satisfied"
-        );
-
-        // Honest-witness sanity so a wrong vector/name fails loudly (k = 1, t = (1,0,0)).
-        assert_eq!(
-            read_field(&cs, "shared scratch var[1]").as_u32_reduced(),
+        with_two_field_cs(
+            encode_mop(MULMOD_FUNCT7, 10, 11, 12),
+            rs1,
+            rs2,
             0,
-            "honest q_hi16 must be 0 for the (p−1, p−1) vector"
-        );
-        assert_eq!(
-            read_field(&cs, "shared scratch bool[4]").as_u32_reduced(),
-            0,
-            "honest t2 must be 0 for the (p−1, p−1) vector"
-        );
+            expected,
+            |cs| {
+                assert!(
+                    cs.is_satisfied(),
+                    "untampered mulmod twin must be satisfied"
+                );
 
-        // q_hi16 += 2^19  ⇒  q_hi16 = 2^19 ≥ 2^16 (out of RC-16 range).
-        let mut q_hi16 = read_field(&cs, "shared scratch var[1]");
-        Field::add_assign(&mut q_hi16, &F::from_u32_unchecked(1 << 19));
-        write_field(&mut cs, "shared scratch var[1]", q_hi16);
-        // t2 -= 2  ⇒  t2 = −2 (non-Boolean); Δq̂ = 2^35 − 2^35 = 0 keeps C1 satisfied.
-        let mut t2 = read_field(&cs, "shared scratch bool[4]");
-        Field::sub_assign(&mut t2, &F::from_u32_with_reduction(2));
-        write_field(&mut cs, "shared scratch bool[4]", t2);
+                // Honest-witness sanity so a wrong vector/name fails loudly (k = 1, t = (1,0,0)).
+                assert_eq!(
+                    read_field(cs, "shared scratch var[1]").as_u32_reduced(),
+                    0,
+                    "honest q_hi16 must be 0 for the (p−1, p−1) vector"
+                );
+                assert_eq!(
+                    read_field(cs, "shared scratch bool[4]").as_u32_reduced(),
+                    0,
+                    "honest t2 must be 0 for the (p−1, p−1) vector"
+                );
 
-        assert!(
-            cs.is_satisfied(),
-            "an out-of-range q_hi16 + non-Boolean t2 with Δq̂ = 0 must be INVISIBLE to the \
-             arithmetic constraints — only the RC-16 / Booleanity LOOKUPS (not evaluated at the \
-             single-cycle level) can reject it"
+                // q_hi16 += 2^19  ⇒  q_hi16 = 2^19 ≥ 2^16 (out of RC-16 range).
+                let mut q_hi16 = read_field(cs, "shared scratch var[1]");
+                Field::add_assign(&mut q_hi16, &F::from_u32_unchecked(1 << 19));
+                write_field(cs, "shared scratch var[1]", q_hi16);
+                // t2 -= 2  ⇒  t2 = −2 (non-Boolean); Δq̂ = 2^35 − 2^35 = 0 keeps C1 satisfied.
+                let mut t2 = read_field(cs, "shared scratch bool[4]");
+                Field::sub_assign(&mut t2, &F::from_u32_with_reduction(2));
+                write_field(cs, "shared scratch bool[4]", t2);
+
+                assert!(
+                    cs.is_satisfied(),
+                    "an out-of-range q_hi16 + non-Boolean t2 with Δq̂ = 0 must be INVISIBLE to the \
+                     arithmetic constraints — only the RC-16 / Booleanity LOOKUPS (not evaluated at the \
+                     single-cycle level) can reject it"
+                );
+            },
         );
     }
 
