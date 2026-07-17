@@ -18,10 +18,11 @@ using namespace ::airbender::primitives::field;
   v[c] = v[c] + v[d];                                                                                                                                          \
   v[b] = ROTR32(v[b] ^ v[c], 7);
 
-constexpr bool USE_REDUCED_ROUNDS = true;
-constexpr unsigned FULL_ROUNDS = 10;
-constexpr unsigned REDUCED_ROUNDS = 7;
-constexpr unsigned ROUNDS = USE_REDUCED_ROUNDS ? REDUCED_ROUNDS : FULL_ROUNDS;
+// 7-round reduced Blake2s. Must match the host prover's USE_REDUCED_BLAKE2
+// (prover::definitions): both sides hash the same transcript, so this is a
+// cross-language parity constant, not a tunable. SIGMAS below stays the full
+// 10-round schedule; only the first ROUNDS rows are consumed.
+constexpr unsigned ROUNDS = 7;
 constexpr unsigned STATE_SIZE = 8;
 constexpr unsigned BLOCK_SIZE = 16;
 
@@ -90,9 +91,25 @@ template <bool IS_FINAL_BLOCK> DEVICE_FORCEINLINE void compress(u32 state[STATE_
     state[i] ^= v[i] ^ v[i + STATE_SIZE];
 }
 
-constexpr unsigned WARP_SIZE = 32;
-constexpr unsigned LOG_WARP_SIZE = 5;
-constexpr unsigned WARP_MASK = WARP_SIZE - 1;
-constexpr u32 FULL_MASK = 0xffffffff;
+// Streaming Blake2s absorb of `values_count` u32 words supplied by
+// `read(offset)`, finalizing into `state`. `read` is a functor
+// `u32(unsigned)`; offsets past the logical input (reached inside the final
+// partial block) must return 0. Mirrors the host Blake2sState absorb /
+// absorb_final_block chunking over 16-word blocks.
+template <typename Read> DEVICE_FORCEINLINE void absorb_stream(u32 state[STATE_SIZE], u32 &t, const unsigned values_count, Read read) {
+  u32 block[BLOCK_SIZE];
+  unsigned offset = 0;
+  while (offset < values_count) {
+    const unsigned remaining = values_count - offset;
+    const bool is_final_block = remaining <= BLOCK_SIZE;
+#pragma unroll
+    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
+      block[i] = read(offset);
+    if (is_final_block)
+      compress<true>(state, t, block, remaining);
+    else
+      compress<false>(state, t, block, BLOCK_SIZE);
+  }
+}
 
 } // namespace airbender::hash
