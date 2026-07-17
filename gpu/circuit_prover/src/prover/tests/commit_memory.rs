@@ -35,7 +35,7 @@ fn test_jump_branch_slt_commit_memory_matches_cpu() {
         "examples/hashed_fibonacci/app.bin",
         "examples/hashed_fibonacci/app.text",
         &[15, 1],
-        0,
+        4, // jump_branch_slt default_pc_value_in_padding (== GPU PC_STEP)
         UnrolledNonMemoryCircuitType::JumpBranchSlt,
         compiled_circuit,
     );

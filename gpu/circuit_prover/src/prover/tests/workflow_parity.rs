@@ -137,7 +137,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
         decoder_table: decoder_table_data,
-        default_pc_value_in_padding: 0,
+        default_pc_value_in_padding: 4, // == GPU PC_STEP for jump_branch_slt
     };
     let mut table_driver = TableDriver::new();
     jump_branch_slt_table_driver_fn(&mut table_driver);
