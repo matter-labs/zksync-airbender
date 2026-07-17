@@ -32,13 +32,13 @@ contract GKRVerifier {
     uint256 constant ROUNDS = 200;
 
     // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
-    uint256 constant MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
+    uint256 constant __TEMPLATE_MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
     // Proth120 packed-mode: keccak preimage = commit_initial_u32 bytes
     // (inits_and_teardowns_top_bits as LE u32 || setup cap digests || merged mem cap digests).
     // 520 for this proof (unified_reduced_machine, 2^22, pack_log2=4). See gkr_transcript_reference.md.
-    uint256 constant GKR_INIT_PREIMAGE_BYTES = 916; // registers(384) + final_pc(12) + top_bits(8) + setup_cap(256) + memory_cap(256)
-    uint256 constant EXTERNAL_POW_BITS       = 20;  // external-challenge PoW difficulty (max(lookup, 20))
-    uint256 constant EXPECTED_FINAL_PC       = 384; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES = 916; // registers(384) + final_pc(12) + top_bits(8) + setup_cap(256) + memory_cap(256)
+    uint256 constant __TEMPLATE_EXTERNAL_POW_BITS       = 20;  // external-challenge PoW difficulty (max(lookup, 20))
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC       = 384; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
     uint256 constant GKR_INIT_BYTES          = 2560; // 10 output polys * 16 elems * 16 bytes (Proth120)
@@ -49,7 +49,7 @@ contract GKRVerifier {
     uint256 constant GKR_COMPRESSION_POINTCHECK_BYTES      = 512; // 8 * 64
 
     // ── GKR circuit ───────────────────────────────────────────────────────────
-    uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = 22;
+    uint256 constant __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS = 22;
 
     // ── Committed-state handoff to WHIR (via the shared registry) ──────────────
     // After GKR verifies, it assembles the SAME committed-state preimage the WHIR
@@ -58,17 +58,17 @@ contract GKRVerifier {
     // recomputes the same bytes32 in its own tx; the registry events must match.
     uint256 constant REGISTRY          = 0xCAFE0001;
     uint256 constant MARK_GKR_SELECTOR = 0xef4f148a; // mark_gkr_verified(bytes32,bytes32,bytes32)
-    uint256 constant WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
-    uint256 constant WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
-    uint256 constant WHIR_BATCH_POW_BITS = 11;       // batched_proximity_check_pow_bits (Sec100)
+    uint256 constant __TEMPLATE_WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
+    uint256 constant __TEMPLATE_WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
+    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 11;       // batched_proximity_check_pow_bits (Sec100)
     // GKR->WHIR handoff (MergedAndPackedMemoryAndWitness, pack_log2=4). Base-layer at-point
     // claims (dense in layer0's calldata eval block): mem++wit = 104 cols, setup = 10 cols.
     // Merge folds each 2^pack_log2=16-chunk by the 4 packing coords: 104->7, 10->1.
-    uint256 constant WHIR_PACK_LOG2    = 4;
-    uint256 constant WHIR_NUM_MEMWIT   = 104;        // memory_layout + witness_layout total widths
-    uint256 constant WHIR_NUM_SETUP    = 10;         // generic_lookup_tables_width
-    uint256 constant WHIR_MERGED_MW    = 7;          // ceil(104/16)
-    uint256 constant WHIR_BASE_Z_COORDS = 22;        // layer-0 folding point length
+    uint256 constant __TEMPLATE_WHIR_PACK_LOG2    = 4;
+    uint256 constant __TEMPLATE_WHIR_NUM_MEMWIT   = 104;        // memory_layout + witness_layout total widths
+    uint256 constant __TEMPLATE_WHIR_NUM_SETUP    = 10;         // generic_lookup_tables_width
+    uint256 constant __TEMPLATE_WHIR_MERGED_MW    = 7;          // ceil(104/16)
+    uint256 constant __TEMPLATE_WHIR_BASE_Z_COORDS = 22;        // layer-0 folding point length
 
     fallback() external {
         // uint256 variant = VARIANT;
@@ -97,7 +97,7 @@ contract GKRVerifier {
             ptr := add(LOGUP_CHALLS_PTR(), mul(32, 2))
         }
         function GKR_INIT_GAS_PTR() -> ptr {
-            ptr := add(POINT_PTR(), mul(32, GKR_CIRCUIT_LAYER_ROUNDS))
+            ptr := add(POINT_PTR(), mul(32, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS))
         }
         function GKR_MAIN_GAS_PTR() -> ptr {
             ptr := add(GKR_INIT_GAS_PTR(), mul(32, 1))
@@ -129,6 +129,17 @@ contract GKRVerifier {
         // Placed above GKR_ABS_PTR's 32+2560 scratch. Sized for the widest layer (<128).
         function GKR_CIRCUIT_CLAIMS_PTR() -> ptr {
         ptr := add(SEED_PTR(), mul(32, 160)) }
+
+        // Layer-0 table-driven quadratic-gate evaluation (size opt). GATEVAL holds one reduced
+        // value per quadratic gate (filled by the compact bucket loops from GKR_QTABLE, read by
+        // the Horner chunk functions as `mload(GATEVAL+32*slot)`). QTABLE is the packed record
+        // stream (slot,a,b,coeff) written via mstore immediates. Both live in the pristine (zero,
+        // never-written) heap window above the widest claims array (< slot 288), so GATEVAL needs
+        // no zeroing. Only used during layer 0's point-check; nothing else touches these slots.
+        function GKR_GATEVAL_PTR() -> ptr {
+        ptr := add(SEED_PTR(), mul(32, 288)) }
+        function GKR_QTABLE_PTR() -> ptr {
+        ptr := add(SEED_PTR(), mul(32, 420)) }
 
         // Permutation-identity products: read_poly, write_poly, teardown_poly, init_poly
         // (∏ of each relevant GKR output poly's 16 elements). Filled in gkr_init, consumed by
@@ -168,18 +179,18 @@ contract GKRVerifier {
             // keccak-for-keccak in step1_test/GkrStep1.sol against the real proof.
             //   seed = keccak256(preimage)                       // commit_initial_u32 (916 B: regs+PC+topbits+caps)
             //   nonce = calldata[preimage..preimage+8] (BE u64)
-            //   seed = keccak256(seed || be8(nonce)); require top EXTERNAL_POW_BITS bits zero
+            //   seed = keccak256(seed || be8(nonce)); require top __TEMPLATE_EXTERNAL_POW_BITS bits zero
             //   for i in 0..9: seed = keccak256(seed); ch = (seed>>128) % P
             //   ch[0..7] -> MEMORY_CHALLS (6 perm-linearization + additive), ch[7..9] -> LOGUP (alpha, additive)
-            calldatacopy(SEED_PTR(), ptr, GKR_INIT_PREIMAGE_BYTES)
-            let seed := keccak256(SEED_PTR(), GKR_INIT_PREIMAGE_BYTES)
+            calldatacopy(SEED_PTR(), ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
+            let seed := keccak256(SEED_PTR(), __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
 
-            // PoW fold: digest = keccak(seed(32) || nonce_be8); require top EXTERNAL_POW_BITS zero.
-            let nonce := shr(192, calldataload(add(ptr, GKR_INIT_PREIMAGE_BYTES))) // 8-byte BE nonce
+            // PoW fold: digest = keccak(seed(32) || nonce_be8); require top __TEMPLATE_EXTERNAL_POW_BITS zero.
+            let nonce := shr(192, calldataload(add(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES))) // 8-byte BE nonce
             mstore(SEED_PTR(), seed)
             mstore(add(SEED_PTR(), 32), shl(192, nonce))
             seed := keccak256(SEED_PTR(), 40)
-            if shr(sub(256, EXTERNAL_POW_BITS), seed) { revert(0, 0) } // PoW: top pow_bits must be zero
+            if shr(sub(256, __TEMPLATE_EXTERNAL_POW_BITS), seed) { revert(0, 0) } // PoW: top pow_bits must be zero
 
             // draw 9 challenges (each: seed=keccak(seed); take top 128 bits mod P)
             mstore(SEED_PTR(), seed)
@@ -212,7 +223,7 @@ contract GKRVerifier {
             mstore(add(LOGUP_CHALLS_PTR(), 32),        mod(shr(128, seed), mload(P_PTR)))
 
             // SEED_PTR now holds the post-STEP-1 seed; the GKR entry (gkr_init) absorbs output evals next.
-            next_ptr := add(ptr, add(GKR_INIT_PREIMAGE_BYTES, 8)) // preimage + 8-byte PoW nonce
+            next_ptr := add(ptr, add(__TEMPLATE_GKR_INIT_PREIMAGE_BYTES, 8)) // preimage + 8-byte PoW nonce
         }
 
 
@@ -324,7 +335,7 @@ contract GKRVerifier {
             {
                 let pcv := preimage_u32(384)
                 // Bind the verified statement to this program's terminal PC.
-                if iszero(eq(pcv, EXPECTED_FINAL_PC)) {
+                if iszero(eq(pcv, __TEMPLATE_EXPECTED_FINAL_PC)) {
                 revert(0, 0) }
                 let ts_low := preimage_u32(388)
                 let ts_high := preimage_u32(392)
@@ -483,7 +494,7 @@ contract GKRVerifier {
 
         // Assemble the committed-state preimage and mark_gkr_verified(bytes32) on the
         // registry (own frame — keeps the fallback stack under the EVM limit). Layout
-        // mirrors whir.sol: [seed:32][batching:16][opening:16][z:WHIR_Z_COORDS*16]
+        // mirrors whir.sol: [seed:32][batching:16][opening:16][z:__TEMPLATE_WHIR_Z_COORDS*16]
         // [witCap:CAP*32][setupCap:CAP*32]. NOTE: the packed claims-merge + WHIR batching
         // (validated in the Rust mirror) must run first to populate the batching/opening/z
         // regions (GKR_CIRCUIT_ALPHA2_PTR / claim / POINT_PTR).
@@ -547,7 +558,7 @@ contract GKRVerifier {
             let mg := add(GKR_ABS_PTR(), 128)  // 8 merged claims (7 mem_wit ++ 1 setup)
             // draw 4 packing coords
             let seed := mload(sp)
-            for { let i := 0 } lt(i, WHIR_PACK_LOG2) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
                 seed := keccak256(sp, 32)
                 mstore(sp, seed)
                 mstore(add(ex, mul(32, i)), mod(shr(128, seed), mload(P_PTR)))
@@ -558,21 +569,21 @@ contract GKRVerifier {
             let e3 := mload(add(ex, 96))
             // merge base-layer claims (dense in layer0's eval block at CIRCUIT_PTR)
             let cdbase := mload(CIRCUIT_PTR)
-            for { let c := 0 } lt(c, WHIR_MERGED_MW) { c := add(c, 1) } {
+            for { let c := 0 } lt(c, __TEMPLATE_WHIR_MERGED_MW) { c := add(c, 1) } {
                 let off := mul(c, 16)
                 let count := 16
-                if gt(add(off, 16), WHIR_NUM_MEMWIT) {
-                count := sub(WHIR_NUM_MEMWIT, off) }
+                if gt(add(off, 16), __TEMPLATE_WHIR_NUM_MEMWIT) {
+                count := sub(__TEMPLATE_WHIR_NUM_MEMWIT, off) }
                 mstore(add(mg, mul(32, c)), whir_fold16(add(cdbase, mul(16, off)), count, e0, e1, e2, e3))
             }
-            mstore(add(mg, mul(32, WHIR_MERGED_MW)), whir_fold16(add(cdbase, mul(16, WHIR_NUM_MEMWIT)), WHIR_NUM_SETUP, e0, e1, e2, e3))
-            // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top WHIR_BATCH_POW_BITS
+            mstore(add(mg, mul(32, __TEMPLATE_WHIR_MERGED_MW)), whir_fold16(add(cdbase, mul(16, __TEMPLATE_WHIR_NUM_MEMWIT)), __TEMPLATE_WHIR_NUM_SETUP, e0, e1, e2, e3))
+            // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top __TEMPLATE_WHIR_BATCH_POW_BITS
             // must be zero; nonce is the 8-byte BE tail of the calldata). Then draw.
             let wnonce := shr(192, calldataload(sub(calldatasize(), 8)))
             mstore(sp, seed)
             mstore(add(sp, 32), shl(192, wnonce))
             seed := keccak256(sp, 40)
-            if shr(sub(256, WHIR_BATCH_POW_BITS), seed) {
+            if shr(sub(256, __TEMPLATE_WHIR_BATCH_POW_BITS), seed) {
             revert(0, 0) }
             mstore(sp, seed)
             seed := keccak256(sp, 32)
@@ -581,7 +592,7 @@ contract GKRVerifier {
             // batched opening = Σ merged_i · batching^i
             let opening := 0
             let bexp := 1
-            for { let i := 0 } lt(i, add(WHIR_MERGED_MW, 1)) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, add(__TEMPLATE_WHIR_MERGED_MW, 1)) { i := add(i, 1) } {
                 opening := addmod(opening, mulmod(mload(add(mg, mul(32, i))), bexp, mload(P_PTR)), mload(P_PTR))
                 bexp := mulmod(bexp, batching, mload(P_PTR))
             }
@@ -591,21 +602,21 @@ contract GKRVerifier {
             mstore(add(base, 32), shl(128, and(batching, MASK)))
             mstore(add(base, 48), shl(128, and(opening, MASK)))
             let plen := 64
-            for { let i := 0 } lt(i, WHIR_PACK_LOG2) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
                 mstore(add(base, plen), shl(128, and(mload(add(ex, mul(32, i))), MASK)))
                 plen := add(plen, 16)
             }
-            for { let i := 0 } lt(i, WHIR_BASE_Z_COORDS) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, __TEMPLATE_WHIR_BASE_Z_COORDS) { i := add(i, 1) } {
                 mstore(add(base, plen), shl(128, and(mload(add(POINT_PTR(), mul(i, 32))), MASK)))
                 plen := add(plen, 16)
             }
             // caps: committed state wants [memory_cap][setup_cap] as BE u32. The GKR preimage
             // (in calldata) holds them as LE u32 after registers(384) + final_pc(12) +
             // top_bits(num_teardown_sets*4 = 8): setup_cap @ byte 404, memory_cap @ byte 660.
-            // Re-encode to BE and reorder (memory first). count = WHIR_CAP*8 u32s per cap.
-            write_cap_be(add(base, plen), 660, mul(WHIR_CAP, 8))                                 // memory
-            write_cap_be(add(add(base, plen), mul(mul(WHIR_CAP, 8), 4)), 404, mul(WHIR_CAP, 8))  // setup
-            plen := add(plen, mul(mul(2, WHIR_CAP), 32))
+            // Re-encode to BE and reorder (memory first). count = __TEMPLATE_WHIR_CAP*8 u32s per cap.
+            write_cap_be(add(base, plen), 660, mul(__TEMPLATE_WHIR_CAP, 8))                                 // memory
+            write_cap_be(add(add(base, plen), mul(mul(__TEMPLATE_WHIR_CAP, 8), 4)), 404, mul(__TEMPLATE_WHIR_CAP, 8))  // setup
+            plen := add(plen, mul(mul(2, __TEMPLATE_WHIR_CAP), 32))
             let commitment := keccak256(base, plen)
             // public_input = registers x10..x17 (a0..a7); setup_commitment = x18..x25 (s2..s9).
             // Each register's u32 value is stored LE at preimage byte reg*12; concatenate the
@@ -1517,7 +1528,7 @@ function l0_lookrelHalf(uint256 acc, uint256 c0, uint256 c1, uint256 c2, uint256
 
 function l0_composeVars(uint256 len, uint256 skip, uint256[24] memory point) pure returns (uint256 eval) {
     unchecked {
-        uint256 max = 24 - skip; // GKR_CIRCUIT_LAYER_ROUNDS
+        uint256 max = 24 - skip; // __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS
         uint256 min = max - len;
         for (uint256 i = min; i < max; ++i) {
             eval = eval * 2 + point[i];

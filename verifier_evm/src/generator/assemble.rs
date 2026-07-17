@@ -131,19 +131,19 @@ pub fn generate_verifiers(
     }
     assert!(inlined, "gkr.sol template missing inline marker");
     for (name, value) in [
-        ("GKR_CIRCUIT_LAYER_ROUNDS", d.rounds),
-        ("WHIR_NUM_MEMWIT", d.num_memwit),
-        ("WHIR_NUM_SETUP", d.num_setup),
-        ("WHIR_MERGED_MW", d.merged_mw),
-        ("WHIR_PACK_LOG2", WHIR_PACK_LOG2),
-        ("WHIR_Z_COORDS", d.rounds + WHIR_PACK_LOG2),
-        ("WHIR_BASE_Z_COORDS", d.rounds),
-        ("WHIR_CAP", WHIR_CAP),
-        ("MERKLE_TREE_CAPS_BYTES", caps_bytes),
-        ("GKR_INIT_PREIMAGE_BYTES", preimage_bytes),
-        ("EXTERNAL_POW_BITS", external_pow_bits as u128),
-        ("WHIR_BATCH_POW_BITS", whir_batch_pow_bits as u128),
-        ("EXPECTED_FINAL_PC", final_pc as u128),
+        ("__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS", d.rounds),
+        ("__TEMPLATE_WHIR_NUM_MEMWIT", d.num_memwit),
+        ("__TEMPLATE_WHIR_NUM_SETUP", d.num_setup),
+        ("__TEMPLATE_WHIR_MERGED_MW", d.merged_mw),
+        ("__TEMPLATE_WHIR_PACK_LOG2", WHIR_PACK_LOG2),
+        ("__TEMPLATE_WHIR_Z_COORDS", d.rounds + WHIR_PACK_LOG2),
+        ("__TEMPLATE_WHIR_BASE_Z_COORDS", d.rounds),
+        ("__TEMPLATE_WHIR_CAP", WHIR_CAP),
+        ("__TEMPLATE_MERKLE_TREE_CAPS_BYTES", caps_bytes),
+        ("__TEMPLATE_GKR_INIT_PREIMAGE_BYTES", preimage_bytes),
+        ("__TEMPLATE_EXTERNAL_POW_BITS", external_pow_bits as u128),
+        ("__TEMPLATE_WHIR_BATCH_POW_BITS", whir_batch_pow_bits as u128),
+        ("__TEMPLATE_EXPECTED_FINAL_PC", final_pc as u128),
     ] {
         gkr = set_const(&gkr, name, value);
     }

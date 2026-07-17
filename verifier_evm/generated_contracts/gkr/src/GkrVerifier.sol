@@ -32,13 +32,13 @@ contract GKRVerifier {
     uint256 constant ROUNDS = 200;
 
     // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
-    uint256 constant MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
+    uint256 constant __TEMPLATE_MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
     // Proth120 packed-mode: keccak preimage = commit_initial_u32 bytes
     // (inits_and_teardowns_top_bits as LE u32 || setup cap digests || merged mem cap digests).
     // 520 for this proof (unified_reduced_machine, 2^22, pack_log2=4). See gkr_transcript_reference.md.
-    uint256 constant GKR_INIT_PREIMAGE_BYTES = 916; // registers(384) + final_pc(12) + top_bits(8) + setup_cap(256) + memory_cap(256)
-    uint256 constant EXTERNAL_POW_BITS       = 20;  // external-challenge PoW difficulty (max(lookup, 20))
-    uint256 constant EXPECTED_FINAL_PC       = 384; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES = 916; // registers(384) + final_pc(12) + top_bits(8) + setup_cap(256) + memory_cap(256)
+    uint256 constant __TEMPLATE_EXTERNAL_POW_BITS       = 20;  // external-challenge PoW difficulty (max(lookup, 20))
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC       = 384; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
     uint256 constant GKR_INIT_BYTES          = 2560; // 10 output polys * 16 elems * 16 bytes (Proth120)
@@ -49,7 +49,7 @@ contract GKRVerifier {
     uint256 constant GKR_COMPRESSION_POINTCHECK_BYTES      = 512; // 8 * 64
 
     // ── GKR circuit ───────────────────────────────────────────────────────────
-    uint256 constant GKR_CIRCUIT_LAYER_ROUNDS = 22;
+    uint256 constant __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS = 22;
 
     // ── Committed-state handoff to WHIR (via the shared registry) ──────────────
     // After GKR verifies, it assembles the SAME committed-state preimage the WHIR
@@ -58,17 +58,17 @@ contract GKRVerifier {
     // recomputes the same bytes32 in its own tx; the registry events must match.
     uint256 constant REGISTRY          = 0xCAFE0001;
     uint256 constant MARK_GKR_SELECTOR = 0xef4f148a; // mark_gkr_verified(bytes32,bytes32,bytes32)
-    uint256 constant WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
-    uint256 constant WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
-    uint256 constant WHIR_BATCH_POW_BITS = 11;       // batched_proximity_check_pow_bits (Sec100)
+    uint256 constant __TEMPLATE_WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
+    uint256 constant __TEMPLATE_WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
+    uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 11;       // batched_proximity_check_pow_bits (Sec100)
     // GKR->WHIR handoff (MergedAndPackedMemoryAndWitness, pack_log2=4). Base-layer at-point
     // claims (dense in layer0's calldata eval block): mem++wit = 104 cols, setup = 10 cols.
     // Merge folds each 2^pack_log2=16-chunk by the 4 packing coords: 104->7, 10->1.
-    uint256 constant WHIR_PACK_LOG2    = 4;
-    uint256 constant WHIR_NUM_MEMWIT   = 104;        // memory_layout + witness_layout total widths
-    uint256 constant WHIR_NUM_SETUP    = 10;         // generic_lookup_tables_width
-    uint256 constant WHIR_MERGED_MW    = 7;          // ceil(104/16)
-    uint256 constant WHIR_BASE_Z_COORDS = 22;        // layer-0 folding point length
+    uint256 constant __TEMPLATE_WHIR_PACK_LOG2    = 4;
+    uint256 constant __TEMPLATE_WHIR_NUM_MEMWIT   = 104;        // memory_layout + witness_layout total widths
+    uint256 constant __TEMPLATE_WHIR_NUM_SETUP    = 10;         // generic_lookup_tables_width
+    uint256 constant __TEMPLATE_WHIR_MERGED_MW    = 7;          // ceil(104/16)
+    uint256 constant __TEMPLATE_WHIR_BASE_Z_COORDS = 22;        // layer-0 folding point length
 
     fallback() external {
         // uint256 variant = VARIANT;
@@ -97,7 +97,7 @@ contract GKRVerifier {
             ptr := add(LOGUP_CHALLS_PTR(), mul(32, 2))
         }
         function GKR_INIT_GAS_PTR() -> ptr {
-            ptr := add(POINT_PTR(), mul(32, GKR_CIRCUIT_LAYER_ROUNDS))
+            ptr := add(POINT_PTR(), mul(32, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS))
         }
         function GKR_MAIN_GAS_PTR() -> ptr {
             ptr := add(GKR_INIT_GAS_PTR(), mul(32, 1))
@@ -129,6 +129,17 @@ contract GKRVerifier {
         // Placed above GKR_ABS_PTR's 32+2560 scratch. Sized for the widest layer (<128).
         function GKR_CIRCUIT_CLAIMS_PTR() -> ptr {
         ptr := add(SEED_PTR(), mul(32, 160)) }
+
+        // Layer-0 table-driven quadratic-gate evaluation (size opt). GATEVAL holds one reduced
+        // value per quadratic gate (filled by the compact bucket loops from GKR_QTABLE, read by
+        // the Horner chunk functions as `mload(GATEVAL+32*slot)`). QTABLE is the packed record
+        // stream (slot,a,b,coeff) written via mstore immediates. Both live in the pristine (zero,
+        // never-written) heap window above the widest claims array (< slot 288), so GATEVAL needs
+        // no zeroing. Only used during layer 0's point-check; nothing else touches these slots.
+        function GKR_GATEVAL_PTR() -> ptr {
+        ptr := add(SEED_PTR(), mul(32, 288)) }
+        function GKR_QTABLE_PTR() -> ptr {
+        ptr := add(SEED_PTR(), mul(32, 420)) }
 
         // Permutation-identity products: read_poly, write_poly, teardown_poly, init_poly
         // (∏ of each relevant GKR output poly's 16 elements). Filled in gkr_init, consumed by
@@ -168,18 +179,18 @@ contract GKRVerifier {
             // keccak-for-keccak in step1_test/GkrStep1.sol against the real proof.
             //   seed = keccak256(preimage)                       // commit_initial_u32 (916 B: regs+PC+topbits+caps)
             //   nonce = calldata[preimage..preimage+8] (BE u64)
-            //   seed = keccak256(seed || be8(nonce)); require top EXTERNAL_POW_BITS bits zero
+            //   seed = keccak256(seed || be8(nonce)); require top __TEMPLATE_EXTERNAL_POW_BITS bits zero
             //   for i in 0..9: seed = keccak256(seed); ch = (seed>>128) % P
             //   ch[0..7] -> MEMORY_CHALLS (6 perm-linearization + additive), ch[7..9] -> LOGUP (alpha, additive)
-            calldatacopy(SEED_PTR(), ptr, GKR_INIT_PREIMAGE_BYTES)
-            let seed := keccak256(SEED_PTR(), GKR_INIT_PREIMAGE_BYTES)
+            calldatacopy(SEED_PTR(), ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
+            let seed := keccak256(SEED_PTR(), __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
 
-            // PoW fold: digest = keccak(seed(32) || nonce_be8); require top EXTERNAL_POW_BITS zero.
-            let nonce := shr(192, calldataload(add(ptr, GKR_INIT_PREIMAGE_BYTES))) // 8-byte BE nonce
+            // PoW fold: digest = keccak(seed(32) || nonce_be8); require top __TEMPLATE_EXTERNAL_POW_BITS zero.
+            let nonce := shr(192, calldataload(add(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES))) // 8-byte BE nonce
             mstore(SEED_PTR(), seed)
             mstore(add(SEED_PTR(), 32), shl(192, nonce))
             seed := keccak256(SEED_PTR(), 40)
-            if shr(sub(256, EXTERNAL_POW_BITS), seed) { revert(0, 0) } // PoW: top pow_bits must be zero
+            if shr(sub(256, __TEMPLATE_EXTERNAL_POW_BITS), seed) { revert(0, 0) } // PoW: top pow_bits must be zero
 
             // draw 9 challenges (each: seed=keccak(seed); take top 128 bits mod P)
             mstore(SEED_PTR(), seed)
@@ -212,7 +223,7 @@ contract GKRVerifier {
             mstore(add(LOGUP_CHALLS_PTR(), 32),        mod(shr(128, seed), mload(P_PTR)))
 
             // SEED_PTR now holds the post-STEP-1 seed; the GKR entry (gkr_init) absorbs output evals next.
-            next_ptr := add(ptr, add(GKR_INIT_PREIMAGE_BYTES, 8)) // preimage + 8-byte PoW nonce
+            next_ptr := add(ptr, add(__TEMPLATE_GKR_INIT_PREIMAGE_BYTES, 8)) // preimage + 8-byte PoW nonce
         }
 
 
@@ -324,7 +335,7 @@ contract GKRVerifier {
             {
                 let pcv := preimage_u32(384)
                 // Bind the verified statement to this program's terminal PC.
-                if iszero(eq(pcv, EXPECTED_FINAL_PC)) {
+                if iszero(eq(pcv, __TEMPLATE_EXPECTED_FINAL_PC)) {
                 revert(0, 0) }
                 let ts_low := preimage_u32(388)
                 let ts_high := preimage_u32(392)
@@ -471,7 +482,7 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
     claim := sccl3(alpha)
     // SUMCHECK ROUNDS
     let eq_scale
-    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
@@ -479,10 +490,10 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
             mstore(CIRCUIT_PTR, ptr)
             scl3_caches()
             acc := scl3_g0(alpha, acc)
-    let rhs_scaled := mulmod(acc, eq_scale, P)
+    let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     // after stack-heavy values are dead
-    if mod(add(claim, sub(P, rhs_scaled)), P) { revert(0, 0) }
+    if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
             // WRITEBACK claims for next layer (16 evals)
@@ -522,16 +533,16 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
             function sccl3(alpha) -> claim {
             let src := GKR_CLAIMS_PTR()
             claim := 0
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 9))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 8))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 7))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 6))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 5))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 4))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 3))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 2))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 1))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 0))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
             }
 function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
@@ -539,7 +550,7 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
     claim := sccl2(alpha)
     // SUMCHECK ROUNDS
     let eq_scale
-    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
@@ -547,10 +558,10 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
             mstore(CIRCUIT_PTR, ptr)
             scl2_caches()
             acc := scl2_g0(alpha, acc)
-    let rhs_scaled := mulmod(acc, eq_scale, P)
+    let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     // after stack-heavy values are dead
-    if mod(add(claim, sub(P, rhs_scaled)), P) { revert(0, 0) }
+    if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
             // WRITEBACK claims for next layer (25 evals)
@@ -605,22 +616,22 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
             function sccl2(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
             claim := 0
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 15))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 14))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 13))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 12))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 11))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 10))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 9))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 8))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 7))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 6))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 5))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 4))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 3))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 2))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 1))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 0))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 15))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 14))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 13))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 12))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 11))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 10))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
             }
 function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
@@ -628,7 +639,7 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     claim := sccl1(alpha)
     // SUMCHECK ROUNDS
     let eq_scale
-    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
@@ -637,10 +648,10 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
             scl1_caches()
             acc := scl1_g0(alpha, acc)
             acc := scl1_g1(alpha, acc)
-    let rhs_scaled := mulmod(acc, eq_scale, P)
+    let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     // after stack-heavy values are dead
-    if mod(add(claim, sub(P, rhs_scaled)), P) { revert(0, 0) }
+    if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
             // WRITEBACK claims for next layer (72 evals)
@@ -671,7 +682,7 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
             mstore(SEED_PTR(), s)
             s := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), s)
-            next_alpha := mod(shr(128, s), P)
+            next_alpha := mod(shr(128, s), mload(P_PTR))
             mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
             bp := add(GKR_ABS_PTR(), 32)
             calldatacopy(bp, add(base, mul(16, 8)), mul(16, 40))
@@ -686,23 +697,23 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
             function scl1_caches() {
     {  // VectorizedLookup: (0 + 1[9]) + (0 + 1[10]) + (0 + 1[11]) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 1[8]) = Cache(0)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))))), add(0, 0)), add(0, 0)), add(0, 0)), add(0, 0)), add(0, 0)), add(0, 0)), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[13]) + (0 + 1[14]) + (0 + 1[15]) + (0 + 1[16]) + (0 + 1[17]) + (0 + 1[18]) + (0 + 1[19]) + (0 + 1[20]) + (0 + 0) + (0 + 1[12]) = Cache(1)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 12)))))), add(0, 0)), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 15)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 14)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 13))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[22]) + (0 + 1[23]) + (0 + 1[24]) + (0 + 1[25]) + (0 + 1[26]) + (0 + 1[27]) + (0 + 1[28]) + (0 + 1[29]) + (0 + 0) + (0 + 1[21]) = Cache(2)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))))), add(0, 0)), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 29)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[31]) + (0 + 1[32]) + (0 + 1[33]) + (0 + 1[34]) + (0 + 1[35]) + (0 + 1[36]) + (0 + 1[37]) + (0 + 1[38]) + (0 + 0) + (0 + 1[30]) = Cache(3)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 30)))))), add(0, 0)), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 38)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 37)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 36)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 35)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 34)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 33)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 32)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 31))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[40]) + (0 + 1[41]) + (0 + 1[42]) + (0 + 1[43]) + (0 + 1[44]) + (0 + 1[45]) + (0 + 1[46]) + (0 + 1[47]) + (0 + 0) + (0 + 1[39]) = Cache(4)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 39)))))), add(0, 0)), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)), mod(gate, mload(P_PTR)))
     }
             }
             function scl1_g0(alpha, a) -> acc { acc := a
@@ -713,32 +724,32 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     acc := gate_copyinextensionfield(alpha, acc, 6)
     
     {  // LookupUnbalancedPairWithMaterializedVectorInputs: [70]/[71] + 1/(δ + Cache(4)) = 21/22
-        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))), P)
+        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))), mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71)))))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71)))))
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupPairFromMaterializedVectorInputs: 1/(δ+Cache(2)) + 1/(δ+Cache(3)) = 19/20
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupPairFromMaterializedVectorInputs: 1/(δ+Cache(0)) + 1/(δ+Cache(1)) = 17/18
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     // CopyInExtensionField: [62] = 16
     acc := gate_copyinextensionfield(alpha, acc, 62)
@@ -750,20 +761,20 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     acc := gate_aggregatelookuprationalpair(alpha, acc, 65, 63, 66, 64)
     
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [67]/[68] + 1/(δ + [69]) = 11/12
-        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), P)
+        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))))
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [48]/[49] + 1/(δ + [7]) = 9/10
-        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), P)
+        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))))
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     // AggregateLookupRationalPair: [52]/[53] + [50]/[51] = 7/8
     acc := gate_aggregatelookuprationalpair(alpha, acc, 52, 50, 53, 51)
@@ -774,54 +785,54 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
             }
             function scl1_g1(alpha, a) -> acc { acc := a
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [58]/[59] + 1/(δ + [60]) = 3/4
-        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60))))), P)
+        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60))))), mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60))))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60))))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))))
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // TrivialProduct: [2]*[4] = 2
-        let gate := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 4)))), P)
-        acc := add(mulmod(acc, alpha, P), gate)
+        let gate := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 4)))), mload(P_PTR))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // TrivialProduct: [1]*[3] = 1
-        let gate := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 1)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)
-        acc := add(mulmod(acc, alpha, P), gate)
+        let gate := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 1)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), mload(P_PTR))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // CopyInBaseField: [0] = 0
         let gate := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 0))))
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function sccl1(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
             claim := 0
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 24))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 23))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 22))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 21))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 20))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 19))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 18))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 17))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 16))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 15))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 14))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 13))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 12))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 11))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 10))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 9))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 8))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 7))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 6))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 5))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 4))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 3))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 2))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 1))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 0))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 24))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 23))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 22))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 21))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 20))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 19))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 18))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 17))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 16))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 15))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 14))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 13))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 12))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 11))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 10))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
             }
 function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
@@ -829,13 +840,194 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     claim := sccl0(alpha)
     // SUMCHECK ROUNDS
     let eq_scale
-    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
     let acc
             mstore(CIRCUIT_PTR, ptr)
             scl0_caches()
+            // ── layer-0 max-quadratic gates: table-driven evaluation ──────────────────────
+            // Each gate's value is Σ(constant + Σ coeff·col[a] + Σ coeff·col[a]·col[b]), summed
+            // into gateval[gate_slot] and read back by the Horner chunk functions. Terms are stored
+            // as packed records rather than unrolled code (a large bytecode saving). Record layout
+            // (big-endian): [gate_slot:1][col_a:1]([col_b:1] for quadratic)[coeff:1|2|4|16]. Records
+            // are grouped into buckets by (linear/quadratic, coeff sign, coeff byte-width) so each
+            // loop below has one fixed stride; small negative coefficients store their magnitude and
+            // are negated in-loop.
+            // seed gateval[gate_slot] with each relation's nonzero constant term
+            mstore(add(GKR_GATEVAL_PTR(), mul(32, 34)), 0x380000000000000000000000000)
+            mstore(add(GKR_GATEVAL_PTR(), mul(32, 35)), 0x37ffe4000000000000000000000)
+            // packed term records, written 32 bytes at a time
+            mstore(add(GKR_QTABLE_PTR(), 0), 0x221d01242b01242c01242d01242e01242f012430012431012432012433012434)
+            mstore(add(GKR_QTABLE_PTR(), 32), 0x01243501243601243701243801243901243a01243b0124090124100125610127)
+            mstore(add(GKR_QTABLE_PTR(), 64), 0x60042860012d5e01361201371101380b01390a01415d01425c01435b01463704)
+            mstore(add(GKR_QTABLE_PTR(), 96), 0x4638044a35044a3604532e01532f015330015331015d3a035e35025e36025e37)
+            mstore(add(GKR_QTABLE_PTR(), 128), 0x025e38025e3a09663a02673533673633673733673833673a096f3a0170350570)
+            mstore(add(GKR_QTABLE_PTR(), 160), 0x3605703705703805703a09793505793605793705793805793a097d35017d3601)
+            mstore(add(GKR_QTABLE_PTR(), 192), 0x7d37017d38017d3a087d3b03512effff512fffff5130ffff5131ffff522effff)
+            mstore(add(GKR_QTABLE_PTR(), 224), 0x522fffff5230ffff5231ffff2218000000e0000000000000000000000000221c)
+            mstore(add(GKR_QTABLE_PTR(), 256), 0x06ffff200000000000000000000000012318000000dfff200000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 288), 0x0000231c06ffff2000e000000000000000000001006401016301026201036101)
+            mstore(add(GKR_QTABLE_PTR(), 320), 0x046001055f01065e01075d01085c01095b010a40010b3f010c3e010d3d010e3c)
+            mstore(add(GKR_QTABLE_PTR(), 352), 0x010f1001100901113b01123a0113390114380115370116360117350118340119)
+            mstore(add(GKR_QTABLE_PTR(), 384), 0x33011a32011b31011c30011d2f011e2e011f2d01202c01212b01221901281501)
+            mstore(add(GKR_QTABLE_PTR(), 416), 0x372701392601423701433501433601465a04475a015515017e09407e10400064)
+            mstore(add(GKR_QTABLE_PTR(), 448), 0x640101636301026262010361610104606001055f5f01065e5e01075d5d01085c)
+            mstore(add(GKR_QTABLE_PTR(), 480), 0x5c01095b5b010a4040010b3f3f010c3e3e010d3d3d010e3c3c010f1010011009)
+            mstore(add(GKR_QTABLE_PTR(), 512), 0x0901113b3b01123a3a0113393901143838011537370116363601173535011834)
+            mstore(add(GKR_QTABLE_PTR(), 544), 0x3401193333011a3232011b3131011c3030011d2f2f011e2e2e011f2d2d01202c)
+            mstore(add(GKR_QTABLE_PTR(), 576), 0x2c01212b2b01265f600126601701276016012835150128361501283715012838)
+            mstore(add(GKR_QTABLE_PTR(), 608), 0x1501293f1001294010012a3f10012a4010022a5610042b5e08012b0914012b10)
+            mstore(add(GKR_QTABLE_PTR(), 640), 0x14012c5e07012c0913012c1013012e3e10012f3e100130421001314209013241)
+            mstore(add(GKR_QTABLE_PTR(), 672), 0x1001334109013429090134291001343c0901343c100134030901340310013528)
+            mstore(add(GKR_QTABLE_PTR(), 704), 0x090135281001350209013502100137271001392609013a3a44013a3a48013a3a)
+            mstore(add(GKR_QTABLE_PTR(), 736), 0x4c013a3a50013a3b44013a3b47013a3b4a013a3b51013b3a42013b3a46013b3a)
+            mstore(add(GKR_QTABLE_PTR(), 768), 0x4a013b3a4e013b3b42013b3b49013b3b4c013b3b4f013c5d14013d5d13013e5c)
+            mstore(add(GKR_QTABLE_PTR(), 800), 0x14013f575b0140435c0140565b01423739014335390143363901443540014436)
+            mstore(add(GKR_QTABLE_PTR(), 832), 0x400144405a01452935014529360145295a0145353e014535170145363e014536)
+            mstore(add(GKR_QTABLE_PTR(), 864), 0x030145373e014537170145383e0145381701462835014628360146285a014635)
+            mstore(add(GKR_QTABLE_PTR(), 896), 0x1601463602014637160146381601473843014835440148364401483744014838)
+            mstore(add(GKR_QTABLE_PTR(), 928), 0x44014929370149353c014935170149363c014936170149373c01493757014937)
+            mstore(add(GKR_QTABLE_PTR(), 960), 0x080149383c0149385701493808014a2837014a3516014a3616014a3756014a37)
+            mstore(add(GKR_QTABLE_PTR(), 992), 0x07014a3856014a3807014b3214014c3213014d3206014e3205014f3208015032)
+            mstore(add(GKR_QTABLE_PTR(), 1024), 0x070151292b0151292d01512b3d01512b0301512b0801512c3d01512c0801512c)
+            mstore(add(GKR_QTABLE_PTR(), 1056), 0x1401512d3d01512d1701512e3d01512e5701512f3d01512f570151303d015130)
+            mstore(add(GKR_QTABLE_PTR(), 1088), 0x570151313d015131570151343d0151343e01513403015134080151340f015228)
+            mstore(add(GKR_QTABLE_PTR(), 1120), 0x2b0152282d01522b0201522b0701522c0701522c1301522d1601522e5601522f)
+            mstore(add(GKR_QTABLE_PTR(), 1152), 0x56015230560152315601523402015234070152340e01542e1301542f0701542f)
+            mstore(add(GKR_QTABLE_PTR(), 1184), 0x1301543013015431130155151501563a5101573a5001583a4f01583b5101593a)
+            mstore(add(GKR_QTABLE_PTR(), 1216), 0x4e01593b50015a2a3a015a3b4f015b283a015b351a015b361a015b371a015b38)
+            mstore(add(GKR_QTABLE_PTR(), 1248), 0x1a015b3a41015b3b4e015c3540015c3640015c3740015c3840015c3b41015d35)
+            mstore(add(GKR_QTABLE_PTR(), 1280), 0x59015d3659015d3759015d3859015e2a3b015f3a4d01603a4c01613a4b01613b)
+            mstore(add(GKR_QTABLE_PTR(), 1312), 0x4d01623a4a01623b4c01632a3a01633b4b0164283a01643a4101643b4a016535)
+            mstore(add(GKR_QTABLE_PTR(), 1344), 0x4301653643016537430165384301653a5301653b4101653b5501662a3510662a)
+            mstore(add(GKR_QTABLE_PTR(), 1376), 0x3610662a3710662a381066353d0466354108663542026635450166363d046636)
+            mstore(add(GKR_QTABLE_PTR(), 1408), 0x4108663642026636450166373d0466374108663742026637450166383d046638)
+            mstore(add(GKR_QTABLE_PTR(), 1440), 0x41086638420266384501663b5301672a3b01683a4901693a48016a3a47016a3b)
+            mstore(add(GKR_QTABLE_PTR(), 1472), 0x49016b3a46016b3b48016c2a3a016c3b47016d283a016d3a41016d3b46016e29)
+            mstore(add(GKR_QTABLE_PTR(), 1504), 0x3b016e3545016e3645016e3745016e3845016f3544016f3644016f3744016f38)
+            mstore(add(GKR_QTABLE_PTR(), 1536), 0x4401702a3b01713a4501723a4401733a4301733b4501743a4201743b4401752a)
+            mstore(add(GKR_QTABLE_PTR(), 1568), 0x3a01753b430176283a01763a4101763b420177283b0177354201773642017737)
+            mstore(add(GKR_QTABLE_PTR(), 1600), 0x420177384201773a5201773b540178350301783603017837030178380301783b)
+            mstore(add(GKR_QTABLE_PTR(), 1632), 0x5201792a3b017a3a41017a145e017b3541017b3641017b3741017b3841017b3b)
+            mstore(add(GKR_QTABLE_PTR(), 1664), 0x41017b135e017c293b017c3556017c3557017c3656017c3657017c3756017c37)
+            mstore(add(GKR_QTABLE_PTR(), 1696), 0x57017c3856017c3857017c3a54017c415e017d155e227e0942017e1042013a3a)
+            mstore(add(GKR_QTABLE_PTR(), 1728), 0x4501003a3a4901003a3a4d01003a3a5101003a3b4501003a3b4801003a3b4b01)
+            mstore(add(GKR_QTABLE_PTR(), 1760), 0x003a3b4e01003b3a4301003b3a4701003b3a4b01003b3a4f01003b3b4301003b)
+            mstore(add(GKR_QTABLE_PTR(), 1792), 0x3b4601003b3b4d01003b3b500100542e1400010000542f0800010000542f1400)
+            mstore(add(GKR_QTABLE_PTR(), 1824), 0x01000054301400010000543114000100007c425e000100007e093e000100007e)
+            mstore(add(GKR_QTABLE_PTR(), 1856), 0x103e0001000023181806ffffffffe40000000000000000000123181c00000000)
+            mstore(add(GKR_QTABLE_PTR(), 1888), 0x003800000000000000000000231c1c06ffffffffe4000000000000000000015c)
+            mstore(add(GKR_QTABLE_PTR(), 1920), 0x3a53000700000000000000000000000000005c3a0306f9000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 1952), 0x00000000015c3b55000700000000000000000000000000005c3b0806f9000000)
+            mstore(add(GKR_QTABLE_PTR(), 1984), 0x00000000000000000000015d3b53000700000000000000000000000000005d3b)
+            mstore(add(GKR_QTABLE_PTR(), 2016), 0x0306f900000000000000000000000000016e3a52000700000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2048), 0x000000006e3a0206f900000000000000000000000000016e3b54000700000000)
+            mstore(add(GKR_QTABLE_PTR(), 2080), 0x000000000000000000006e3b0706f900000000000000000000000000016f3b52)
+            mstore(add(GKR_QTABLE_PTR(), 2112), 0x000700000000000000000000000000006f3b0206f90000000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2144), 0x0000017b3a54000700000000000000000000000000007b3a0706f90000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2176), 0x000000000000000001242b1501242c1501242d1501242e1501242f1501243015)
+            mstore(add(GKR_QTABLE_PTR(), 2208), 0x0124311501243215012433150124341501243515012436150124371501243815)
+            mstore(add(GKR_QTABLE_PTR(), 2240), 0x0124391501243a1501243b15012409150124101501252b1501252c1501252d15)
+            mstore(add(GKR_QTABLE_PTR(), 2272), 0x01252e1501252f15012530150125311501253215012533150125341501253515)
+            mstore(add(GKR_QTABLE_PTR(), 2304), 0x01253615012537150125381501253a1501253b1501250915012510150126601b)
+            mstore(add(GKR_QTABLE_PTR(), 2336), 0x0127601a012a1011012b5e14012b0809012b0810012c5e13012c0709012c0710)
+            mstore(add(GKR_QTABLE_PTR(), 2368), 0x012d3e09013010120131090b013210110133090a0134090b013410120135090a)
+            mstore(add(GKR_QTABLE_PTR(), 2400), 0x0135101101361012013710110138090b0139090a013a3a14013a3b14013b3a13)
+            mstore(add(GKR_QTABLE_PTR(), 2432), 0x013b3b13013f5b1401405b1301405c1301413539014136390141373901413839)
+            mstore(add(GKR_QTABLE_PTR(), 2464), 0x0145351b0145361b0145371b0145381b01463559014636590146375901463859)
+            mstore(add(GKR_QTABLE_PTR(), 2496), 0x0148293701483508014836080148370801483808014935570149365701493703)
+            mstore(add(GKR_QTABLE_PTR(), 2528), 0x01493803014a3556014a3656014a3702014a380201512b1401512c0301512d14)
+            mstore(add(GKR_QTABLE_PTR(), 2560), 0x01512e1401512f1401513014015131140151341401522b1301522c0201522d13)
+            mstore(add(GKR_QTABLE_PTR(), 2592), 0x01522e1301522f1301523013015231130152341301532e3c01532f3c0153303c)
+            mstore(add(GKR_QTABLE_PTR(), 2624), 0x0153313c01542e0201542e0701542f02015430580154315801275f6000010000)
+            mstore(add(GKR_QTABLE_PTR(), 2656), 0x343d0900010000343d1000010000353c0900010000353c100001000045353f00)
+            mstore(add(GKR_QTABLE_PTR(), 2688), 0x01000045363f0001000045373f0001000045383f0001000046353e0001000046)
+            mstore(add(GKR_QTABLE_PTR(), 2720), 0x363e0001000046373e0001000046383e0001000049353d0001000049363d0001)
+            mstore(add(GKR_QTABLE_PTR(), 2752), 0x000049373d0001000049383d000100004a353c000100004a363c000100004a37)
+            mstore(add(GKR_QTABLE_PTR(), 2784), 0x3c000100004a383c00010000512b3c00010000512c3c00010000512d3c000100)
+            mstore(add(GKR_QTABLE_PTR(), 2816), 0x00512e3c00010000512f3c0001000051303c0001000051313c0001000051343c)
+            mstore(add(GKR_QTABLE_PTR(), 2848), 0x0001000051343f00010000522b3d00010000522c3d00010000522d3d00010000)
+            mstore(add(GKR_QTABLE_PTR(), 2880), 0x522e3d00010000522f3d0001000052303d0001000052313d0001000052343d00)
+            mstore(add(GKR_QTABLE_PTR(), 2912), 0x01000052343e00010000542e0300010000542e0800010000542f030001000000)
+            // accumulate every term into gateval[gate_slot], one loop per bucket
+            {
+            let modulus := P
+            let col_base := mload(CIRCUIT_PTR) // calldata base of the column at-point evals
+            let gateval := GKR_GATEVAL_PTR()
+            // linear    terms, coeff  1B positive  (68 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 0) let rec_end := add(rec_ptr, 204)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(232, rec), 0xff), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
+            } }
+            // linear    terms, coeff  2B positive  (8 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 204) let rec_end := add(rec_ptr, 32)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xffff), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
+            } }
+            // linear    terms, coeff 16B canonical (4 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 236) let rec_end := add(rec_ptr, 72)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 18) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(112, rec), MASK), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
+            } }
+            // linear    terms, coeff  1B negative  (46 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 308) let rec_end := add(rec_ptr, 138)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(232, rec), 0xff)), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
+            } }
+            // quadratic terms, coeff  1B positive  (320 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 446) let rec_end := add(rec_ptr, 1280)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
+            } }
+            // quadratic terms, coeff  2B positive  (16 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1726) let rec_end := add(rec_ptr, 80)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 5) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(216, rec), 0xffff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
+            } }
+            // quadratic terms, coeff  4B positive  (8 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1806) let rec_end := add(rec_ptr, 56)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(200, rec), 0xffffffff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
+            } }
+            // quadratic terms, coeff 16B canonical (17 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1862) let rec_end := add(rec_ptr, 323)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 19) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(104, rec), MASK), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
+            } }
+            // quadratic terms, coeff  1B negative  (116 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 2185) let rec_end := add(rec_ptr, 464)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(224, rec), 0xff)), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
+            } }
+            // quadratic terms, coeff  4B negative  (42 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 2649) let rec_end := add(rec_ptr, 294)
+            for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
+                let rec := mload(rec_ptr)
+                let gate_ptr := add(gateval, mul(32, byte(0, rec)))
+                mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(200, rec), 0xffffffff)), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
+            } }
+            }
+
             acc := scl0_g0(alpha, acc)
             acc := scl0_g1(alpha, acc)
             acc := scl0_g2(alpha, acc)
@@ -849,10 +1041,10 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             acc := scl0_g10(alpha, acc)
             acc := scl0_g11(alpha, acc)
             acc := scl0_g12(alpha, acc)
-    let rhs_scaled := mulmod(acc, eq_scale, P)
+    let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     // after stack-heavy values are dead
-    if mod(add(claim, sub(P, rhs_scaled)), P) { revert(0, 0) }
+    if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
@@ -913,7 +1105,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             mstore(SEED_PTR(), s)
             s := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), s)
-            next_alpha := mod(shr(128, s), P)
+            next_alpha := mod(shr(128, s), mload(P_PTR))
             mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
             bp := add(GKR_ABS_PTR(), 32)
             calldatacopy(bp, add(base, mul(16, 0)), mul(16, 2))
@@ -934,949 +1126,949 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             function scl0_caches() {
     {  // MemoryTuple: (γ + 0 + α[4] + α²0 + α³(0 + [0]) + α⁴[1] + α⁵[2] + α⁶[3]) = Cache(0)
         let gate := add(gkr_memrel_compress_low(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 4)))), 0), gkr_memrel_compress_high(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 0))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 1)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + [9] + α[10] + α²[11] + α³(0 + [5]) + α⁴[6] + α⁵[7] + α⁶[8]) = Cache(1)
         let gate := add(gkr_memrel_compress_low(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11))))), gkr_memrel_compress_high(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 5))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 6)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + 0 + α[4] + α²0 + α³(0 + [24]) + α⁴[25] + α⁵[2] + α⁶[3]) = Cache(2)
         let gate := add(gkr_memrel_compress_low(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 4)))), 0), gkr_memrel_compress_high(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + [9] + α[10] + α²[11] + α³(1 + [24]) + α⁴[25] + α⁵[7] + α⁶[8]) = Cache(3)
         let gate := add(gkr_memrel_compress_low(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11))))), gkr_memrel_compress_high(add(1, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + [16] + α[17] + α²[18] + α³(0 + [12]) + α⁴[13] + α⁵[14] + α⁶[15]) = Cache(4)
         let gate := add(gkr_memrel_compress_low(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18))))), gkr_memrel_compress_high(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 12))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 13)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 14)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 15))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + 2 + α0 + α²0 + α³(0 + [24]) + α⁴[25] + α⁵[22] + α⁶[23]) = Cache(5)
         let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 5)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 5)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + [16] + α[17] + α²[18] + α³(2 + [24]) + α⁴[25] + α⁵[19] + α⁶[20]) = Cache(6)
         let gate := add(gkr_memrel_compress_low(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18))))), gkr_memrel_compress_high(add(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 6)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 6)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + 2 + α0 + α²0 + α³(0 + [28]) + α⁴[29] + α⁵[26] + α⁶[27]) = Cache(7)
         let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 29)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7)), mod(gate, mload(P_PTR)))
     }
     {  // SingleColumnLookup: 0 + -1[24] + 1[0] + 2^19[98] = Cache(8)
-        let gate := add(0, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 0))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), P)))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8)), mod(gate, P))
+        let gate := add(0, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 0))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), mload(P_PTR))))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8)), mod(gate, mload(P_PTR)))
     }
     {  // SingleColumnLookup: 2^19 + -1[25] + 1[1] + -1[98] = Cache(9)
-        let gate := add(524288, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 1))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), P)))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 9)), mod(gate, P))
+        let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 1))))), mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), mload(P_PTR))))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 9)), mod(gate, mload(P_PTR)))
     }
     {  // SingleColumnLookup: -1 + -1[24] + 1[5] + 2^19[99] = Cache(10)
-        let gate := add(sub(P, 1), add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 5))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), P)))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 10)), mod(gate, P))
+        let gate := add(sub(mload(P_PTR), 1), add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 5))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), mload(P_PTR))))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 10)), mod(gate, mload(P_PTR)))
     }
     {  // SingleColumnLookup: 2^19 + -1[25] + 1[6] + -1[99] = Cache(11)
-        let gate := add(524288, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 6))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), P)))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 11)), mod(gate, P))
+        let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 6))))), mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), mload(P_PTR))))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 11)), mod(gate, mload(P_PTR)))
     }
     {  // SingleColumnLookup: -2 + -1[24] + 1[12] + 2^19[100] = Cache(12)
-        let gate := add(sub(P, 2), add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 12))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), P)))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 12)), mod(gate, P))
+        let gate := add(sub(mload(P_PTR), 2), add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 12))))), mulmod(524288, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), mload(P_PTR))))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 12)), mod(gate, mload(P_PTR)))
     }
     {  // SingleColumnLookup: 2^19 + -1[25] + 1[13] + -1[100] = Cache(13)
-        let gate := add(524288, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 13))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), P)))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 13)), mod(gate, P))
+        let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 13))))), mulmod(sub(mload(P_PTR), 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), mload(P_PTR))))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 13)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[22]) + (0 + 1[23]) + (0 + 1[4]) + (0 + 1[38]) + (0 + 1[39]) + (0 + 1[40]) + (0 + 1[41]) + (0 + 1[42]) + (0 + 1[43] + 2[44] + 2^2[45] + 2^3[46] + 2^4[47] + 2^5[48] + 2^6[49] + 2^7[50] + 2^8[51] + 2^9[52] + 2^10[53] + 2^11[54] + 2^12[55] + 2^13[56] + 2^14[57] + 2^15[58] + 2^16[59] + 2^17[9] + 2^18[16]) + (46 + 0) = Cache(14)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(46, 0)), add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), P)), mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), P)), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), P)), mulmod(16, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), P)), mulmod(32, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), P)), mulmod(64, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), P)), mulmod(128, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), P)), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), P)), mulmod(512, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), P)), mulmod(1024, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P)), mulmod(2048, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(4096, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(8192, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(16384, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P)), mulmod(32768, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P)), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P)), mulmod(131072, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P)), mulmod(262144, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 39)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 38)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 4)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14)), mod(gate, P))
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(46, 0)), add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mload(P_PTR))), mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mload(P_PTR))), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mload(P_PTR))), mulmod(16, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mload(P_PTR))), mulmod(32, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mload(P_PTR))), mulmod(64, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mload(P_PTR))), mulmod(128, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mload(P_PTR))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mload(P_PTR))), mulmod(512, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mload(P_PTR))), mulmod(1024, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mload(P_PTR))), mulmod(2048, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mload(P_PTR))), mulmod(4096, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mload(P_PTR))), mulmod(8192, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mload(P_PTR))), mulmod(16384, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), mload(P_PTR))), mulmod(32768, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mload(P_PTR))), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mload(P_PTR))), mulmod(131072, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mload(P_PTR))), mulmod(262144, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mload(P_PTR))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 39)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 38)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 4)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))))), add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookupSetup: β⁰[104] + β¹[105] + β²[106] + β³[107] + β⁴[108] + β⁵[109] + β⁶[110] + β⁷[111] + β⁸[112] + β⁹[113] = Cache(15)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 113))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 112))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 111))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 110))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 109))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 108))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 107))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 106))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 105))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 104)))))
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15)), mod(gate, mload(P_PTR)))
     }
     {  // RangeCheck16Bits: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(16)
         let gate := gkr_virtual_poly_rangecheck(16)
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)), mod(gate, mload(P_PTR)))
     }
     {  // RangeCheckTimestamp: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = Cache(17)
         let gate := gkr_virtual_poly_rangecheck(19)
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)), mod(gate, mload(P_PTR)))
     }
     {  // InitsAndTeardownsLow: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = Cache(18)
         let gate := mul(4, gkr_virtual_poly_compose_vars(14, 0)) // u32 word-aligned
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18)), mod(gate, mload(P_PTR)))
     }
     {  // InitsAndTeardownsHigh: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = Cache(19)
         let gate := gkr_virtual_poly_compose_vars(8, 14)
-        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19)), mod(gate, P))
+        mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19)), mod(gate, mload(P_PTR)))
     }
             }
             function scl0_g0(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[100] + [100](1[100])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 100)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[0] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 0)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[99] + [99](1[99])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 99)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[1] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 1)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[98] + [98](1[98])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 98)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[2] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 2)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[97] + [97](1[97])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[3] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 3)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[96] + [96](1[96])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[4] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 4)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[95] + [95](1[95])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[5] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 5)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[94] + [94](1[94])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[6] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 6)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[93] + [93](1[93])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 93)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 93)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 93)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[7] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 7)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[92] + [92](1[92])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[8] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 8)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[91] + [91](1[91])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[9] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 9)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[64] + [64](1[64])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[10] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 10)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[63] + [63](1[63])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[11] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 11)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g1(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[62] + [62](1[62])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[12] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 12)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[61] + [61](1[61])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[13] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 13)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[60] + [60](1[60])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[14] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 14)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[16] + [16](1[16])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[15] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 15)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[9] + [9](1[9])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[16] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 16)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[59] + [59](1[59])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[17] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 17)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[58] + [58](1[58])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[18] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 18)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[57] + [57](1[57])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[19] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 19)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[56] + [56](1[56])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[20] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 20)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[55] + [55](1[55])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[21] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 21)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[54] + [54](1[54])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[22] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 22)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[53] + [53](1[53])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[23] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 23)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g2(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[52] + [52](1[52])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[24] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 24)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[51] + [51](1[51])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[25] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 25)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[50] + [50](1[50])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[26] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 26)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[49] + [49](1[49])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[27] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 27)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[48] + [48](1[48])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[28] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 28)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[47] + [47](1[47])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[29] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 29)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[46] + [46](1[46])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[30] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 30)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[45] + [45](1[45])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[31] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 31)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[44] + [44](1[44])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[32] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 32)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[43] + [43](1[43])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[33] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 33)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0x380000000000000000000000000 + 0xe0000000000000000000000000[24] + -1[25] + 0x6ffff20000000000000000000000001[28] + 1[29] + 0
-        let gate := add(add(0x380000000000000000000000000, add(add(add(mulmod(0xe0000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 25)))), P)), mulmod(0x6ffff20000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 29)))))), 0)
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[34] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 34)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0x37ffe4000000000000000000000 + 0xdfff2000000000000000000000[24] + 0x6ffff2000e000000000000000000001[28] + [24](0x6ffffffffe400000000000000000001[24] + 0x3800000000000000000000[28]) + [28](0x6ffffffffe400000000000000000001[28])
-        let gate := add(add(0x37ffe4000000000000000000000, add(mulmod(0xdfff2000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(0x6ffff2000e000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), P))), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), add(mulmod(0x6ffffffffe400000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 24)))), P), mulmod(0x3800000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), mulmod(0x6ffffffffe400000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[35] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 35)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g3(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[43] + 1[44] + 1[45] + 1[46] + 1[47] + 1[48] + 1[49] + 1[50] + 1[51] + 1[52] + 1[53] + 1[54] + 1[55] + 1[56] + 1[57] + 1[58] + 1[59] + 1[9] + 1[16] + [43](-1[21]) + [44](-1[21]) + [45](-1[21]) + [46](-1[21]) + [47](-1[21]) + [48](-1[21]) + [49](-1[21]) + [50](-1[21]) + [51](-1[21]) + [52](-1[21]) + [53](-1[21]) + [54](-1[21]) + [55](-1[21]) + [56](-1[21]) + [57](-1[21]) + [58](-1[21]) + [59](-1[21]) + [9](-1[21]) + [16](-1[21])
-        let gate := add(add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))))), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[36] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 36)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[97] + [43](-1[21]) + [44](-1[21]) + [45](-1[21]) + [46](-1[21]) + [47](-1[21]) + [48](-1[21]) + [49](-1[21]) + [50](-1[21]) + [51](-1[21]) + [52](-1[21]) + [53](-1[21]) + [54](-1[21]) + [55](-1[21]) + [56](-1[21]) + [58](-1[21]) + [59](-1[21]) + [9](-1[21]) + [16](-1[21])
-        let gate := add(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 97))))), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[37] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 37)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [95](1[96]) + [96](1[23] + -1[27])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[38] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 38)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 2^2[96] + [95](-2^16[96]) + [96](1[22] + -1[26])
-        let gate := add(add(0, mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), P)), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 95)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[39] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 39)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[96] + -1[21] + [53](1[21]) + [54](1[21]) + [55](1[21]) + [56](1[21])
-        let gate := add(add(0, add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 96)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P))), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[40] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 40)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [63](1[16]) + [64](1[16])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[41] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 41)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [63](1[16]) + [64](2[16]) + [86](2^2[16]) + [16](-1[17])
-        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[42] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 42)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [94](1[8] + -1[20]) + [8](-1[9] + -1[16]) + [9](1[20]) + [16](1[20])
-        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[43] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 43)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [94](1[7] + -1[19]) + [7](-1[9] + -1[16]) + [9](1[19]) + [16](1[19])
-        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[44] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 44)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[94] + [62](-1[9])
-        let gate := add(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94))))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[45] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 45)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [62](1[16])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[46] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 46)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [62](1[16])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[47] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 47)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g4(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [66](1[16]) + [16](-1[18])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[48] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 48)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [66](1[9]) + [9](-1[11])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[49] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 49)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [65](1[16]) + [16](-1[17])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[50] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 50)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [65](1[9]) + [9](-1[10])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[51] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 51)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [41](1[9] + 1[16]) + [60](1[9] + 1[16]) + [61](-2^16[9] + -2^16[16]) + [3](1[9] + 1[16]) + [9](-1[11]) + [16](-1[18])
-        let gate := add(add(0, 0), add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16))))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[52] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 52)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [40](1[9] + 1[16]) + [60](-2^16[9] + -2^16[16]) + [2](1[9] + 1[16]) + [9](-1[10]) + [16](-1[17])
-        let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16))))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[53] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 53)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[18] + [16](-1[18])
-        let gate := add(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18))))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18)))), P), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[54] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 54)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[39] + 1[17] + [39](1[16]) + [16](-1[17])
-        let gate := add(add(0, add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 39)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))))), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 39)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[55] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 55)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[11] + [9](-1[11])
-        let gate := add(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11))))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))), P), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[56] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 56)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[38] + 1[10] + [38](1[9]) + [9](-1[10])
-        let gate := add(add(0, add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 38)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))))), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 38)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[57] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 57)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [58](1[68] + 2^8[69] + 1[72] + 2^8[73] + 1[76] + 2^8[77] + 1[80] + 2^8[81] + -1[20]) + [59](1[68] + 2^8[69] + 1[71] + 2^8[72] + 1[74] + 2^8[75] + 2^8[78] + 1[81] + -1[20])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(add(add(add(add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 72))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 73)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 76))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 77)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 80))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 81)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(add(add(add(add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 72)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 74))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 75)))), P)), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 78)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 81))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[58] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 58)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [58](1[66] + 2^8[67] + 1[70] + 2^8[71] + 1[74] + 2^8[75] + 1[78] + 2^8[79] + -1[19]) + [59](1[66] + 2^8[67] + 2^8[70] + 1[73] + 1[76] + 2^8[77] + 1[79] + 2^8[80] + -1[19])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(add(add(add(add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 74))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 75)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 78))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 79)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(add(add(add(add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P)), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 73))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 76))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 77)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 79))))), mulmod(256, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 80)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[59] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 59)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g5(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [93](1[20])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 93)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[60] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 60)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [93](1[19])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 93)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[61] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 61)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [92](1[20])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[62] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 62)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [87](1[91]) + [91](-1[20])
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[63] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 63)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [67](1[92]) + [86](1[91]) + [91](-1[19]) + [92](-1[19])
-        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[64] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 64)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[93] + [53](-1[57]) + [54](-1[57]) + [55](-1[57]) + [56](-1[57])
-        let gate := add(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 93))))), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[65] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 65)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[55] + 1[92] + [55](1[57])
-        let gate := add(add(0, add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 92)))))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[66] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 66)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[53] + -1[54] + 1[91] + [53](1[57]) + [54](1[57])
-        let gate := add(add(0, add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 91)))))), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 57)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[67] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 67)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [53](1[64]) + [54](1[64]) + [64](1[90])
-        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[68] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 68)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [41](1[53] + 1[54] + 1[90]) + [53](1[62] + -2^16[63] + 1[23] + -1[27]) + [54](1[62] + -2^16[63] + 1[3] + -1[27]) + [55](1[62] + -2^16[63] + 1[23] + -1[27]) + [56](1[62] + -2^16[63] + 1[23] + -1[27])
-        let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90))))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[69] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 69)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 2^2[55] + 2^2[56] + -2^2[90] + [40](1[53] + 1[54] + 1[90]) + [53](-2^16[62] + -1[89] + 1[22]) + [54](-2^16[62] + -1[89] + 1[2]) + [55](-2^16[62] + -1[89] + 1[22]) + [56](-2^16[62] + -1[89] + 1[22])
-        let gate := add(add(0, add(add(mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P), mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(sub(P, 4), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90)))), P))), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90))))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[70] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 70)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[90] + [56](1[67])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 90)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[71] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 71)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g6(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [41](-1[55]) + [53](1[68] + -1[8]) + [54](1[68] + -1[8]) + [55](1[68] + -1[8]) + [56](1[68] + -1[8])
-        let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[72] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 72)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [41](1[55]) + [53](1[60] + -2^16[61] + -1[87] + 1[23]) + [54](1[60] + -2^16[61] + -1[87] + 1[23]) + [55](1[60] + -2^16[61] + 1[87] + -1[3] + 1[8]) + [56](1[60] + -2^16[61] + 1[87] + -1[3] + 1[8])
-        let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8))))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[73] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 73)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 2^2[53] + 2^2[54] + [40](1[55]) + [53](-2^16[60] + -1[86] + 1[22]) + [54](-2^16[60] + -1[86] + 1[22]) + [55](-2^16[60] + 1[86] + -1[2] + 1[7]) + [56](-2^16[60] + 1[86] + -1[2] + 1[7])
-        let gate := add(add(0, add(mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P))), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[74] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 74)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[20])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[75] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 75)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[19])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[76] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 76)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[6])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 6)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[77] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 77)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[5])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 5)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[78] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 78)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[8])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[79] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 79)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [50](1[7])
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 50)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[80] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 80)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 65535[46] + 65535[47] + 65535[48] + 65535[49] + [41](1[43] + 1[45]) + [43](-2^16[60] + 1[61] + 1[3] + 1[8] + -1[20]) + [44](-2^16[60] + 1[61] + -1[3] + 1[8] + 1[20]) + [45](-2^16[60] + 1[61] + -1[20] + 1[23]) + [46](-2^16[60] + 1[61] + 1[87] + -1[20]) + [47](-2^16[60] + 1[61] + 1[87] + -1[20]) + [48](-2^16[60] + 1[61] + 1[87] + -1[20]) + [49](-2^16[60] + 1[61] + 1[87] + -1[20]) + [52](-2^16[60] + 1[61] + 1[62] + -2^16[63] + 1[3] + 1[8] + 1[15] + -1[20])
-        let gate := add(add(0, add(add(add(mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), P), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), P)), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), P)), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), P))), add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45))))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), add(add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), add(add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), add(add(add(add(add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62))))), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 63)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 15))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[81] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 81)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 65535[46] + 65535[47] + 65535[48] + 65535[49] + [40](1[43] + 1[45]) + [43](-2^16[61] + 1[2] + 1[7] + -1[19]) + [44](-2^16[61] + -1[2] + 1[7] + 1[19]) + [45](-2^16[61] + -1[19] + 1[22]) + [46](-2^16[61] + 1[86] + -1[19]) + [47](-2^16[61] + 1[86] + -1[19]) + [48](-2^16[61] + 1[86] + -1[19]) + [49](-2^16[61] + 1[86] + -1[19]) + [52](-2^16[61] + -2^16[62] + 1[2] + 1[7] + 1[14] + -1[19])
-        let gate := add(add(0, add(add(add(mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), P), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), P)), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), P)), mulmod(65535, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), P))), add(add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45))))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 43)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 44)))), add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 45)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 22))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 52)))), add(add(add(add(add(mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 14))))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[82] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 82)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 1[46] + 1[47] + 1[48] + 1[49] + [46](-1[60]) + [47](-1[60]) + [48](-1[60]) + [49](-1[60])
-        let gate := add(add(0, add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))))), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[83] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 83)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g7(alpha, a) -> acc { acc := a
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + 0 + [46](-1[2] + -2^16[3] + -1[7] + -2^16[8] + 1[19] + 2^16[20]) + [47](-1[2] + -2^16[3] + 1[7] + 2^16[8] + 1[19] + 2^16[20]) + [48](-1[88] + 1[19] + 2^16[20]) + [49](-1[88] + 1[19] + 2^16[20])
-        let gate := add(add(0, 0), add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 46)))), add(add(add(add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), P), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P)), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19))))), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 47)))), add(add(add(add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), P), mulmod(sub(P, 65536), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19))))), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19))))), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), add(add(mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 88)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19))))), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[84] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 84)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // EnforceSingleMaxQuadraticConstraint: 0 == 0 + -1[21] + [21](1[21])
-        let gate := add(add(0, mulmod(sub(P, 1), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[85] (see term table)
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 85)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupWithCachedDensAndSetup: (([21])·((Cache(15))+δ) − ([103])·((Cache(14))+δ)) / (((Cache(14))+δ)((Cache(15))+δ)) = 70/71
         let bg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14))))
         let dg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15))))
-        let den_out := mulmod(bg, dg, P)
+        let den_out := mulmod(bg, dg, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), dg, P), sub(mul(2, P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 103)))), bg, P)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), dg, mload(P_PTR)), sub(mul(2, mload(P_PTR)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 103)))), bg, mload(P_PTR))))
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // CopyInBaseField: Cache(13) = 69
         let gate := mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 13)))
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+Cache(11)) + 1/(δ+Cache(12)) = 67/68
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 11))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 12))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+Cache(9)) + 1/(δ+Cache(10)) = 65/66
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 9))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 10))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[29]) + 1/(δ+Cache(8)) = 63/64
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 29)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [28]) - [102]/(δ + Cache(17)) = 61/62
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), sub(P, mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), P)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), sub(mload(P_PTR), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 102)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), mload(P_PTR))))
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // CopyInBaseField: [27] = 60
         let gate := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27))))
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[18]) + 1/(δ+[26]) = 58/59
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[11]) + 1/(δ+[17]) = 56/57
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[89]) + 1/(δ+[10]) = 54/55
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g8(alpha, a) -> acc { acc := a
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[20]) + 1/(δ+[23]) = 52/53
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[87]) + 1/(δ+[19]) = 50/51
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))))
-        let den_out := mulmod(den1, den2, P)
+        let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
         let num_out := add(den1, den2)
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [86]) - [101]/(δ + Cache(16)) = 48/49
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), P)
+        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), mload(P_PTR))
         let gate := den_out
-        acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), sub(P, mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), P)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))), sub(mload(P_PTR), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 101)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86))))), mload(P_PTR))))
         gate := num_out
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[81]) = 47
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 81)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[86] (see term table); output claim 47
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 86)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[80]) = 46
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 80)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[87] (see term table); output claim 46
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 87)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[79]) + [59](1[81]) = 45
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 79)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 81)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[88] (see term table); output claim 45
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 88)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[78]) + [59](1[80]) = 44
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 78)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 80)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[89] (see term table); output claim 44
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 89)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [42](1[58]) + [59](1[79]) = 43
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 79)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[90] (see term table); output claim 43
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 90)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [40](1[58]) + [53](1[26]) + [54](1[26]) + [55](1[26]) + [56](1[26]) + [58](1[65]) + [59](1[78]) = 42
-        let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 78)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[91] (see term table); output claim 42
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 91)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [53](1[64]) + [54](1[64]) + [55](1[64]) + [56](1[64]) + [58](0x70000000000000000000000000000[83] + 0x6f90000000000000000000000000001[3]) + [59](1[65] + 0x70000000000000000000000000000[85] + 0x6f90000000000000000000000000001[8]) = 41
-        let gate := add(add(0, 0), add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 64)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 83)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 85)))), P)), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 8)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[92] (see term table); output claim 41
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 92)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 3[58] + [53](1[89]) + [54](1[89]) + [55](1[89]) + [56](1[89]) + [59](0x70000000000000000000000000000[83] + 0x6f90000000000000000000000000001[3]) = 40
-        let gate := add(add(0, mulmod(3, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P)), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 83)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[93] (see term table); output claim 40
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 93)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 2[53] + 2[54] + 2[55] + 2[56] + 9[58] + [42](1[59]) = 39
-        let gate := add(add(0, add(add(add(add(mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(9, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[94] (see term table); output claim 39
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 94)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g9(alpha, a) -> acc { acc := a
-    {  // MaxQuadratic: 0 + 0 + [58](1[77]) = 38
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 77)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[95] (see term table); output claim 38
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 95)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[76]) = 37
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 76)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[96] (see term table); output claim 37
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 96)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[75]) + [59](1[77]) = 36
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 75)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 77)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[97] (see term table); output claim 36
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 97)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[74]) + [59](1[76]) = 35
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 74)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 76)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[98] (see term table); output claim 35
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 98)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [42](1[58]) + [59](1[75]) = 34
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 75)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[99] (see term table); output claim 34
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 99)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [40](1[58]) + [58](1[65]) + [59](1[74]) = 33
-        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 74)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[100] (see term table); output claim 33
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 100)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [53](1[67]) + [54](1[67]) + [55](1[67]) + [56](1[67]) + [58](1[83]) + [59](1[65] + 1[85]) = 32
-        let gate := add(add(0, 0), add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 83)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 85))))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[101] (see term table); output claim 32
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 101)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 2[58] + [42](2^4[53] + 2^4[54] + 2^4[55] + 2^4[56]) + [53](2^2[61] + 2^3[65] + 2[66] + 1[69]) + [54](2^2[61] + 2^3[65] + 2[66] + 1[69]) + [55](2^2[61] + 2^3[65] + 2[66] + 1[69]) + [56](2^2[61] + 2^3[65] + 2[66] + 1[69]) + [59](1[83]) = 31
-        let gate := add(add(0, mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P)), add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), add(add(add(mulmod(16, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(16, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(16, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(16, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), add(add(add(mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), add(add(add(mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), add(add(add(mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), add(add(add(mulmod(4, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), P), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(2, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 83)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[102] (see term table); output claim 31
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 102)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 51[53] + 51[54] + 51[55] + 51[56] + 9[58] + [42](1[59]) = 30
-        let gate := add(add(0, add(add(add(add(mulmod(51, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(51, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(51, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(51, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(9, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[103] (see term table); output claim 30
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 103)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[73]) = 29
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 73)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[104] (see term table); output claim 29
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 104)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[72]) = 28
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 72)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[105] (see term table); output claim 28
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 105)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[71]) + [59](1[73]) = 27
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 73)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[106] (see term table); output claim 27
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 106)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g10(alpha, a) -> acc { acc := a
-    {  // MaxQuadratic: 0 + 0 + [58](1[70]) + [59](1[72]) = 26
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 72)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[107] (see term table); output claim 26
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 107)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [42](1[58]) + [59](1[71]) = 25
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[108] (see term table); output claim 25
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 108)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [40](1[58]) + [58](1[65]) + [59](1[70]) = 24
-        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[109] (see term table); output claim 24
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 109)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [41](1[59]) + [53](1[69]) + [54](1[69]) + [55](1[69]) + [56](1[69]) + [58](0x70000000000000000000000000000[82] + 0x6f90000000000000000000000000001[2]) + [59](0x70000000000000000000000000000[84] + 0x6f90000000000000000000000000001[7]) = 23
-        let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 82)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 84)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[110] (see term table); output claim 23
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 110)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 1[58] + [53](1[68]) + [54](1[68]) + [55](1[68]) + [56](1[68]) + [59](0x70000000000000000000000000000[82] + 0x6f90000000000000000000000000001[2]) = 22
-        let gate := add(add(0, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58))))), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 82)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 2)))), P)), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[111] (see term table); output claim 22
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 111)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 5[53] + 5[54] + 5[55] + 5[56] + 9[58] + [42](1[59]) = 21
-        let gate := add(add(0, add(add(add(add(mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(9, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[112] (see term table); output claim 21
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 112)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[69]) = 20
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[113] (see term table); output claim 20
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 113)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[68]) = 19
-        let gate := add(add(0, 0), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[114] (see term table); output claim 19
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 114)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[67]) + [59](1[69]) = 18
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[115] (see term table); output claim 18
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 115)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[66]) + [59](1[68]) = 17
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[116] (see term table); output claim 17
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 116)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [42](1[58]) + [59](1[67]) = 16
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[117] (see term table); output claim 16
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 117)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [40](1[58]) + [58](1[65]) + [59](1[66]) = 15
-        let gate := add(add(0, 0), add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[118] (see term table); output claim 15
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 118)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g11(alpha, a) -> acc { acc := a
-    {  // MaxQuadratic: 0 + 0 + [40](1[59]) + [53](1[66]) + [54](1[66]) + [55](1[66]) + [56](1[66]) + [58](1[82]) + [59](1[84]) = 14
-        let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 40)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 82)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 84)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[119] (see term table); output claim 14
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 119)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [53](1[3]) + [54](1[3]) + [55](1[3]) + [56](1[3]) + [59](1[82]) = 13
-        let gate := add(add(0, 0), add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 3)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 82)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[120] (see term table); output claim 13
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 120)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 5[53] + 5[54] + 5[55] + 5[56] + 9[58] + [42](1[59]) = 12
-        let gate := add(add(0, add(add(add(add(mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), P), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), P)), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), P)), mulmod(5, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), P)), mulmod(9, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 42)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[121] (see term table); output claim 12
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 121)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [58](1[65]) + [20](1[94]) = 11
-        let gate := add(add(0, 0), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[122] (see term table); output claim 11
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 122)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [53](1[65]) + [54](1[65]) + [55](1[65]) + [56](1[65]) + [58](0x70000000000000000000000000000[84] + 0x6f90000000000000000000000000001[7]) + [59](1[65]) + [19](1[94]) = 10
-        let gate := add(add(0, 0), add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(mulmod(0x70000000000000000000000000000, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 84)))), P), mulmod(0x6f90000000000000000000000000001, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7)))), P)), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 19)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[123] (see term table); output claim 10
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 123)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 0 + [41](1[59]) + [53](1[86] + 1[87]) + [54](1[86] + 1[87]) + [55](1[86] + 1[87]) + [56](1[86] + 1[87]) + [58](1[84]) + [65](1[94]) + [66](2^16[94]) = 9
-        let gate := add(add(0, 0), add(add(add(add(add(add(add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 41)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56)))), add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 86)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 87))))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 84)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), P)), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))), mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), P), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[124] (see term table); output claim 9
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 124)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + 1[53] + 1[54] + 1[55] + 1[56] + 2^3[58] + 3[59] + [21](34[94]) = 8
-        let gate := add(add(0, add(add(add(add(add(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 53)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 54))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 55))))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 56))))), mulmod(8, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), P)), mulmod(3, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), P))), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21)))), mulmod(34, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 94)))), P), P))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[125] (see term table); output claim 8
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 125)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // MaxQuadratic: 0 + -2^6[9] + -2^6[16] + [9](2^16[62] + 1[66]) + [16](2^16[62] + 1[66]) = 7
-        let gate := add(add(0, add(mulmod(sub(P, 64), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), P), mulmod(sub(P, 64), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), P))), add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), add(mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66))))), P), mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 16)))), add(mulmod(65536, shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62)))), P), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66))))), P)))
-        acc := add(mulmod(acc, alpha, P), gate)
+    {  // MaxQuadratic: gate value precomputed in gateval[126] (see term table); output claim 7
+        let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, 126)))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // InitsOrTeardownsInitialPair: (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[0]<<8)) + α³[32] + α⁴[33] + α⁵[30] + α⁶[31]) * (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[1]<<8)) + α³[36] + α⁴[37] + α⁵[34] + α⁶[35]) = 6
-        let shared := add(add(mload(add(MEMORY_CHALLS_PTR(), mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18))), P))
-        let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(396))), P), gkr_memrel_compress_high(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 32)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 33)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 30)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 31))))))) // for memrel we collect
-        let rhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(400))), P), gkr_memrel_compress_high(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 36)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 37)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 34)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 35))))))) // for memrel we collect
-        let gate := mulmod(lhs, rhs, P)
-        acc := add(mulmod(acc, alpha, P), gate)
+        let shared := add(add(mload(add(MEMORY_CHALLS_PTR(), mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18))), mload(P_PTR)))
+        let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(396))), mload(P_PTR)), gkr_memrel_compress_high(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 32)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 33)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 30)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 31))))))) // for memrel we collect
+        let rhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(400))), mload(P_PTR)), gkr_memrel_compress_high(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 36)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 37)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 34)))), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 35))))))) // for memrel we collect
+        let gate := mulmod(lhs, rhs, mload(P_PTR))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // InitsOrTeardownsInitialPair: (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[0]<<8)) + 0) * (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[1]<<8)) + 0) = 5
-        let shared := add(add(mload(add(MEMORY_CHALLS_PTR(), mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18))), P))
-        let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(396))), P), 0)) // for memrel we collect
-        let rhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(400))), P), 0)) // for memrel we collect
-        let gate := mulmod(lhs, rhs, P)
-        acc := add(mulmod(acc, alpha, P), gate)
+        let shared := add(add(mload(add(MEMORY_CHALLS_PTR(), mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18))), mload(P_PTR)))
+        let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(396))), mload(P_PTR)), 0)) // for memrel we collect
+        let rhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(400))), mload(P_PTR)), 0)) // for memrel we collect
+        let gate := mulmod(lhs, rhs, mload(P_PTR))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // InitialGrandProductFromCaches: Cache(6)*Cache(7) = 4
-        let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 6))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7))), P)
-        acc := add(mulmod(acc, alpha, P), gate)
+        let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 6))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7))), mload(P_PTR))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // InitialGrandProductFromCaches: Cache(4)*Cache(5) = 3
-        let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 5))), P)
-        acc := add(mulmod(acc, alpha, P), gate)
+        let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 5))), mload(P_PTR))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function scl0_g12(alpha, a) -> acc { acc := a
     {  // InitialGrandProductFromCaches: Cache(2)*Cache(3) = 2
-        let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3))), P)
-        acc := add(mulmod(acc, alpha, P), gate)
+        let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3))), mload(P_PTR))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // InitialGrandProductFromCaches: Cache(0)*Cache(1) = 1
-        let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1))), P)
-        acc := add(mulmod(acc, alpha, P), gate)
+        let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1))), mload(P_PTR))
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
     {  // CopyInBaseField: [21] = 0
         let gate := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 21))))
-        acc := add(mulmod(acc, alpha, P), gate)
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
             function sccl0(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
             claim := 0
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := mulmod(claim, alpha, P)
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 71))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 70))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 69))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 68))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 67))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 66))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 65))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 64))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 63))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 62))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 61))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 60))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 59))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 58))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 57))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 56))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 55))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 54))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 53))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 52))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 51))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 50))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 49))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 48))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 47))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 46))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 45))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 44))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 43))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 42))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 41))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 40))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 39))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 38))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 37))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 36))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 35))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 34))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 33))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 32))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 31))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 30))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 29))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 28))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 27))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 26))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 25))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 24))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 23))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 22))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 21))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 20))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 19))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 18))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 17))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 16))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 15))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 14))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 13))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 12))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 11))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 10))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 9))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 8))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 7))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 6))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 5))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 4))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 3))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 2))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 1))))
-            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, 0))))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 71))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 70))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 69))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 68))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 67))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 66))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 65))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 64))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 63))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 62))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 61))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 60))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 59))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 58))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 57))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 56))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 55))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 54))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 53))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 52))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 51))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 50))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 49))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 48))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 47))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 46))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 45))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 44))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 43))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 42))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 41))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 40))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 39))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 38))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 37))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 36))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 35))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 34))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 33))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 32))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 31))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 30))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 29))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 28))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 27))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 26))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 25))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 24))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 23))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 22))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 21))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 20))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 19))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 18))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 17))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 16))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 15))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 14))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 13))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 12))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 11))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 10))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
             }
 function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {
-    // NB: need to inline GKR_CIRCUIT_LAYER_ROUNDS unfortunately
+    // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
     eq_scale := 1
-    for { let i := 0 } lt(i, GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
+    for { let i := 0 } lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
         let w0 := calldataload(ptr)
         let w1 := calldataload(add(ptr, 32))
         let c0 := shr(128, w0)
         let c1 := and(w0, MASK)
         let c2 := shr(128, w1)
         let c3 := and(w1, MASK)
-        let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
+        let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, mload(P_PTR))
         let r := transcript_4to1_dual(w0, w1) // before-check draw is intentional; see HEURISTICS.md
         // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-        if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
-        if mod(add(claim, sub(P, g0g1_scaled)), P) { revert(0, 0) }
+        if mod(add(claim, sub(mload(P_PTR), g0g1_scaled)), mload(P_PTR)) { revert(0, 0) }
+        if mod(add(claim, sub(mload(P_PTR), g0g1_scaled)), mload(P_PTR)) { revert(0, 0) }
 
-        claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
+        claim := add(mulmod(add(mulmod(add(mulmod(c3, r, mload(P_PTR)), c2), r, mload(P_PTR)), c1), r, mload(P_PTR)), c0)
         let z := mload(add(POINT_PTR(), mul(i, 32)))
-        let zr := mulmod(z, r, P)
-        eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
+        let zr := mulmod(z, r, mload(P_PTR))
+        eq_scale := add(add(add(zr, zr), 1), sub(mul(4, mload(P_PTR)), add(z, r)))
         mstore(add(POINT_PTR(), mul(i, 32)), r)
         ptr := add(ptr, 64)
     }
@@ -1890,7 +2082,7 @@ function transcriptNto1(ptr, input_elements) -> alpha {
     mstore(SEED_PTR(), seed)
     seed := keccak256(SEED_PTR(), 32)                       // draw (the mirror draws a fresh el)
     mstore(SEED_PTR(), seed)
-    alpha := mod(shr(128, seed), P)                         // batching is a field element mod P
+    alpha := mod(shr(128, seed), mload(P_PTR))                         // batching is a field element mod P
 }
 function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha {
     let is_odd := mod(points, 2)
@@ -1904,20 +2096,20 @@ function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha 
         let word := calldataload(add(ptr, mul(pair, 32)))
         let el1 := and(MASK, word)
         let el0 := shr(128, word)
-        next_claim := add(mulmod(next_claim, next_alpha, P), el1)
-        next_claim := add(mulmod(next_claim, next_alpha, P), el0)
+        next_claim := add(mulmod(next_claim, next_alpha, mload(P_PTR)), el1)
+        next_claim := add(mulmod(next_claim, next_alpha, mload(P_PTR)), el0)
     }
     next_ptr := add(ptr, mul(16, points))
 }
 
 function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {
     compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
-    compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
+    compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, mload(P_PTR)))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, mload(P_PTR)))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, mload(P_PTR)))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, mload(P_PTR)))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, mload(P_PTR)))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, mload(P_PTR)))
 }
 
 // Fold five generic lookup tuple columns into an existing Horner accumulator.
@@ -1926,17 +2118,17 @@ function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high
 // two five-column calls keeps each call boundary small while still supporting
 // arbitrary linrel_to_calldata_inner() output for every column.
 function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {
-    acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P), c4)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c3)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c2)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c1)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c0)
+    acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c4)
+    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c3)
+    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c2)
+    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c1)
+    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c0)
 }
 // One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner)
 // instead of one 5-arg compress_half, keeping every call boundary at 2 args so the
 // enclosing cache/gate function stays inside the EVM stack limit.
 function gkr_lookrel_step(acc, c) -> acc_next {
-    acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P), c)
+    acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c)
 }
 
 // Split memrel into a 3-arg low + 4-arg high, composed by the caller as
@@ -1945,14 +2137,14 @@ function gkr_lookrel_step(acc, c) -> acc_next {
 // cache function 1 slot too deep (same failure the lookrel split above avoids).
 function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {
     compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
-    compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
+    compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, mload(P_PTR)))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, mload(P_PTR)))
 }
 function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compressed {
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, mload(P_PTR)))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, mload(P_PTR)))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, mload(P_PTR)))
+    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, mload(P_PTR)))
 }
 // Reads one inits/teardowns `top_bits` u32 from the transcript preimage (little-endian,
 // at absolute calldata `byteoff`). These are the RAM-set base chunk indices absorbed into
@@ -1964,10 +2156,10 @@ function gkr_inits_teardowns_topbits(byteoff) -> v {
 
 function gkr_virtual_poly_compose_vars(len, skip) -> eval {
     // let total := add(skip, len)
-    let max := sub(GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
+    let max := sub(__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
     let min := sub(max, len)
     // NO NEED FOR THIS CHECK, WE DO IT VIA RUST
-    // if gt(total, GKR_CIRCUIT_LAYER_ROUNDS) { // abort when bad
+    // if gt(total, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) { // abort when bad
     //     min := max
     // }
     for { let i := min } lt(i, max) { i := add(i, 1) } {
@@ -1977,11 +2169,11 @@ function gkr_virtual_poly_compose_vars(len, skip) -> eval {
 function gkr_virtual_poly_zero_vars(len) -> eval {
     eval := 1
     for { let i := 0 } lt(i, len) { i := add(i, 1) } {
-        eval := mulmod(eval, add(1, sub(mul(2, P), mload(add(POINT_PTR(), mul(i, 32))))), P)
+        eval := mulmod(eval, add(1, sub(mul(2, mload(P_PTR)), mload(add(POINT_PTR(), mul(i, 32))))), mload(P_PTR))
     }
 }
 function gkr_virtual_poly_rangecheck(width) -> eval {
-    eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
+    eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS, width)), mload(P_PTR))
 }
 
 function gate_calldataload(idx) -> load {
@@ -1991,14 +2183,14 @@ function gate_mload(idx) -> load {
     load := mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, idx)))
 }
 function pointcheck_update(acc, alpha, gate) -> next_acc {
-    next_acc := add(mulmod(acc, alpha, P), gate)
+    next_acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
 }
 function logup_pointcheck_update(acc, alpha, num_out, den_out) -> next_acc {
     acc := pointcheck_update(acc, alpha, den_out)
     next_acc := pointcheck_update(acc, alpha, num_out)
 }
 function u128_neg(input) -> neg_input {
-    neg_input := sub(mul(2, P), input)
+    neg_input := sub(mul(2, mload(P_PTR)), input)
 }
 
 // 3
@@ -2007,8 +2199,8 @@ function gate_aggregatelookuprationalpair(alpha, acc, num1_idx, num2_idx, den1_i
     let num2 := gate_calldataload(num2_idx)
     let den1 := gate_calldataload(den1_idx)
     let den2 := gate_calldataload(den2_idx)
-    let den_out := mulmod(den1, den2, P)
-    let num_out := add(mulmod(num1, den2, P), mulmod(num2, den1, P))
+    let den_out := mulmod(den1, den2, mload(P_PTR))
+    let num_out := add(mulmod(num1, den2, mload(P_PTR)), mulmod(num2, den1, mload(P_PTR)))
     next_acc := logup_pointcheck_update(acc, alpha, num_out, den_out)
 }
 function gate_copyinextensionfield(alpha, acc, input_idx) -> next_acc {
@@ -2021,9 +2213,9 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
     let input := gate_calldataload(input_idx)
     let mask := gate_calldataload(mask_idx)
     // let neg_mask := u128_neg(mask)
-    // let gate := add(mulmod(input, mask, P), add(1, neg_mask))
-    let neg_one := sub(P, 1)
-    let gate := add(mulmod(mask, add(input, neg_one), P), 1)
+    // let gate := add(mulmod(input, mask, mload(P_PTR)), add(1, neg_mask))
+    let neg_one := sub(mload(P_PTR), 1)
+    let gate := add(mulmod(mask, add(input, neg_one), mload(P_PTR)), 1)
     next_acc := pointcheck_update(acc, alpha, gate)
 }
 
@@ -2043,7 +2235,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 
         // Assemble the committed-state preimage and mark_gkr_verified(bytes32) on the
         // registry (own frame — keeps the fallback stack under the EVM limit). Layout
-        // mirrors whir.sol: [seed:32][batching:16][opening:16][z:WHIR_Z_COORDS*16]
+        // mirrors whir.sol: [seed:32][batching:16][opening:16][z:__TEMPLATE_WHIR_Z_COORDS*16]
         // [witCap:CAP*32][setupCap:CAP*32]. NOTE: the packed claims-merge + WHIR batching
         // (validated in the Rust mirror) must run first to populate the batching/opening/z
         // regions (GKR_CIRCUIT_ALPHA2_PTR / claim / POINT_PTR).
@@ -2107,7 +2299,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             let mg := add(GKR_ABS_PTR(), 128)  // 8 merged claims (7 mem_wit ++ 1 setup)
             // draw 4 packing coords
             let seed := mload(sp)
-            for { let i := 0 } lt(i, WHIR_PACK_LOG2) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
                 seed := keccak256(sp, 32)
                 mstore(sp, seed)
                 mstore(add(ex, mul(32, i)), mod(shr(128, seed), mload(P_PTR)))
@@ -2118,21 +2310,21 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             let e3 := mload(add(ex, 96))
             // merge base-layer claims (dense in layer0's eval block at CIRCUIT_PTR)
             let cdbase := mload(CIRCUIT_PTR)
-            for { let c := 0 } lt(c, WHIR_MERGED_MW) { c := add(c, 1) } {
+            for { let c := 0 } lt(c, __TEMPLATE_WHIR_MERGED_MW) { c := add(c, 1) } {
                 let off := mul(c, 16)
                 let count := 16
-                if gt(add(off, 16), WHIR_NUM_MEMWIT) {
-                count := sub(WHIR_NUM_MEMWIT, off) }
+                if gt(add(off, 16), __TEMPLATE_WHIR_NUM_MEMWIT) {
+                count := sub(__TEMPLATE_WHIR_NUM_MEMWIT, off) }
                 mstore(add(mg, mul(32, c)), whir_fold16(add(cdbase, mul(16, off)), count, e0, e1, e2, e3))
             }
-            mstore(add(mg, mul(32, WHIR_MERGED_MW)), whir_fold16(add(cdbase, mul(16, WHIR_NUM_MEMWIT)), WHIR_NUM_SETUP, e0, e1, e2, e3))
-            // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top WHIR_BATCH_POW_BITS
+            mstore(add(mg, mul(32, __TEMPLATE_WHIR_MERGED_MW)), whir_fold16(add(cdbase, mul(16, __TEMPLATE_WHIR_NUM_MEMWIT)), __TEMPLATE_WHIR_NUM_SETUP, e0, e1, e2, e3))
+            // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top __TEMPLATE_WHIR_BATCH_POW_BITS
             // must be zero; nonce is the 8-byte BE tail of the calldata). Then draw.
             let wnonce := shr(192, calldataload(sub(calldatasize(), 8)))
             mstore(sp, seed)
             mstore(add(sp, 32), shl(192, wnonce))
             seed := keccak256(sp, 40)
-            if shr(sub(256, WHIR_BATCH_POW_BITS), seed) {
+            if shr(sub(256, __TEMPLATE_WHIR_BATCH_POW_BITS), seed) {
             revert(0, 0) }
             mstore(sp, seed)
             seed := keccak256(sp, 32)
@@ -2141,7 +2333,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             // batched opening = Σ merged_i · batching^i
             let opening := 0
             let bexp := 1
-            for { let i := 0 } lt(i, add(WHIR_MERGED_MW, 1)) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, add(__TEMPLATE_WHIR_MERGED_MW, 1)) { i := add(i, 1) } {
                 opening := addmod(opening, mulmod(mload(add(mg, mul(32, i))), bexp, mload(P_PTR)), mload(P_PTR))
                 bexp := mulmod(bexp, batching, mload(P_PTR))
             }
@@ -2151,21 +2343,21 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             mstore(add(base, 32), shl(128, and(batching, MASK)))
             mstore(add(base, 48), shl(128, and(opening, MASK)))
             let plen := 64
-            for { let i := 0 } lt(i, WHIR_PACK_LOG2) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
                 mstore(add(base, plen), shl(128, and(mload(add(ex, mul(32, i))), MASK)))
                 plen := add(plen, 16)
             }
-            for { let i := 0 } lt(i, WHIR_BASE_Z_COORDS) { i := add(i, 1) } {
+            for { let i := 0 } lt(i, __TEMPLATE_WHIR_BASE_Z_COORDS) { i := add(i, 1) } {
                 mstore(add(base, plen), shl(128, and(mload(add(POINT_PTR(), mul(i, 32))), MASK)))
                 plen := add(plen, 16)
             }
             // caps: committed state wants [memory_cap][setup_cap] as BE u32. The GKR preimage
             // (in calldata) holds them as LE u32 after registers(384) + final_pc(12) +
             // top_bits(num_teardown_sets*4 = 8): setup_cap @ byte 404, memory_cap @ byte 660.
-            // Re-encode to BE and reorder (memory first). count = WHIR_CAP*8 u32s per cap.
-            write_cap_be(add(base, plen), 660, mul(WHIR_CAP, 8))                                 // memory
-            write_cap_be(add(add(base, plen), mul(mul(WHIR_CAP, 8), 4)), 404, mul(WHIR_CAP, 8))  // setup
-            plen := add(plen, mul(mul(2, WHIR_CAP), 32))
+            // Re-encode to BE and reorder (memory first). count = __TEMPLATE_WHIR_CAP*8 u32s per cap.
+            write_cap_be(add(base, plen), 660, mul(__TEMPLATE_WHIR_CAP, 8))                                 // memory
+            write_cap_be(add(add(base, plen), mul(mul(__TEMPLATE_WHIR_CAP, 8), 4)), 404, mul(__TEMPLATE_WHIR_CAP, 8))  // setup
+            plen := add(plen, mul(mul(2, __TEMPLATE_WHIR_CAP), 32))
             let commitment := keccak256(base, plen)
             // public_input = registers x10..x17 (a0..a7); setup_commitment = x18..x25 (s2..s9).
             // Each register's u32 value is stored LE at preimage byte reg*12; concatenate the

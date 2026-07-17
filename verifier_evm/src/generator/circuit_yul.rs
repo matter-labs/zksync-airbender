@@ -267,6 +267,160 @@ fn scaled(c: &Dual, input: &Dual) -> Dual {
     }
 }
 
+/// One collected layer-0 quadratic/linear term for the table-driven evaluator.
+/// `coeff` is canonical in [0, P); `b == None` marks a linear term (`coeff·col[a]`),
+/// `b == Some` a quadratic term (`coeff·col[a]·col[b]`). `slot` is the gate's index into
+/// the GATEVAL accumulator array.
+struct QTerm {
+    slot: u32,
+    a: u32,
+    b: Option<u32>,
+    coeff: u128,
+}
+
+/// Emit the compact, table-driven evaluation of layer-0's max-quadratic gates (size opt).
+///
+/// Instead of ~20 KB of unrolled per-term `mulmod` code, every term becomes a packed record and
+/// a handful of fixed-stride loops sum `coeff · col[a] · col[b]` into `GATEVAL[slot]`; the Horner
+/// chunk functions then read each gate's value as `mload(GATEVAL+32·slot)`, so the accumulation
+/// order / α-powers / `sccl0` alignment are byte-for-byte unchanged. Records are bucketed by
+/// (quadratic|linear, coeff sign, coeff byte-width): small coefficients store just their
+/// magnitude (1/2/4 B), small negatives store the magnitude and are negated in-loop as
+/// `sub(Pm, mag)`, and genuine mid-range coefficients keep their full 16-byte canonical value.
+/// The modulus is loaded once from the `P` constant into the local `Pm` and reused (a cheap DUP
+/// in the shallow loop — no per-op PUSH16 and no heap reload). GATEVAL lives in pristine (zero)
+/// heap, so only nonzero gate constants need an explicit seed.
+/// `gate_constant_terms`: the additive constant of each quadratic relation `(gate slot, value)`,
+/// only for gates whose constant is nonzero (it seeds `GATEVAL[slot]` before the term loops add).
+fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) -> String {
+    use std::collections::BTreeMap;
+    // canonical coeff -> (byte width, is_negative, stored value). Small +ve: store as-is.
+    // Small -ve (canonical near P): store magnitude P-v, negate in-loop. Else: full 16 B.
+    fn classify(v: u128) -> (usize, bool, u128) {
+        let width_of = |x: u128| if x <= 0xff { 1 } else if x <= 0xffff { 2 } else { 4 };
+        if v < (1u128 << 32) {
+            (width_of(v), false, v)
+        } else if (PROTH120_P - v) < (1u128 << 32) {
+            let m = PROTH120_P - v;
+            (width_of(m), true, m)
+        } else {
+            (16, false, v)
+        }
+    }
+    // bucket key (is_quad, is_neg, width) -> packed record bytes
+    let mut buckets: BTreeMap<(bool, bool, usize), Vec<u8>> = BTreeMap::new();
+    for t in terms {
+        let (width, neg, stored) = classify(t.coeff);
+        let is_quad = t.b.is_some();
+        let rec = buckets.entry((is_quad, neg, width)).or_default();
+        rec.push(t.slot as u8);
+        rec.push(t.a as u8);
+        if let Some(b) = t.b {
+            rec.push(b as u8);
+        }
+        rec.extend_from_slice(&stored.to_be_bytes()[16 - width..]); // `width` low bytes, big-endian
+    }
+    // concatenate buckets into one byte stream; record (key, start, count, stride)
+    let mut stream: Vec<u8> = vec![];
+    let mut layout: Vec<((bool, bool, usize), usize, usize, usize)> = vec![];
+    for (key, bytes) in &buckets {
+        let (is_quad, _neg, width) = *key;
+        let stride = if is_quad { 3 } else { 2 } + width;
+        layout.push((*key, stream.len(), bytes.len() / stride, stride));
+        stream.extend_from_slice(bytes);
+    }
+    while stream.len() % 32 != 0 {
+        stream.push(0); // pad: the loop mload reads 32 B; trailing bytes are never consumed
+    }
+
+    let mut out = String::new();
+    out.push_str(
+"            // ── layer-0 max-quadratic gates: table-driven evaluation ──────────────────────
+            // Each gate's value is Σ(constant + Σ coeff·col[a] + Σ coeff·col[a]·col[b]), summed
+            // into gateval[gate_slot] and read back by the Horner chunk functions. Terms are stored
+            // as packed records rather than unrolled code (a large bytecode saving). Record layout
+            // (big-endian): [gate_slot:1][col_a:1]([col_b:1] for quadratic)[coeff:1|2|4|16]. Records
+            // are grouped into buckets by (linear/quadratic, coeff sign, coeff byte-width) so each
+            // loop below has one fixed stride; small negative coefficients store their magnitude and
+            // are negated in-loop.\n",
+    );
+    // 1. seed each quadratic relation's nonzero constant term (gateval is pristine zero otherwise)
+    if !gate_constant_terms.is_empty() {
+        out.push_str("            // seed gateval[gate_slot] with each relation's nonzero constant term\n");
+        for (slot, constant_value) in gate_constant_terms {
+            out.push_str(&format!(
+                "            mstore(add(GKR_GATEVAL_PTR(), mul(32, {slot})), 0x{constant_value:x})\n"
+            ));
+        }
+    }
+    // 2. materialize the packed record stream via mstore immediates
+    out.push_str("            // packed term records, written 32 bytes at a time\n");
+    for (i, chunk) in stream.chunks(32).enumerate() {
+        let mut word = [0u8; 32];
+        word[..chunk.len()].copy_from_slice(chunk);
+        let hex: String = word.iter().map(|b| format!("{b:02x}")).collect();
+        out.push_str(&format!(
+            "            mstore(add(GKR_QTABLE_PTR(), {}), 0x{hex})\n",
+            i * 32
+        ));
+    }
+    // 3. bucket loops — modulus loaded once from the P constant into a local (cheap DUP in the
+    //    shallow loop, no per-op PUSH16), calldata + gateval bases hoisted.
+    out.push_str("            // accumulate every term into gateval[gate_slot], one loop per bucket\n");
+    out.push_str("            {\n");
+    out.push_str("            let modulus := P\n");
+    out.push_str("            let col_base := mload(CIRCUIT_PTR) // calldata base of the column at-point evals\n");
+    out.push_str("            let gateval := GKR_GATEVAL_PTR()\n");
+    for (key, start, count, stride) in &layout {
+        if *count == 0 {
+            continue;
+        }
+        let (is_quad, neg, width) = *key;
+        let off = if is_quad { 3 } else { 2 };
+        let shift = 8 * (32 - off - width);
+        let mask = match width {
+            1 => "0xff".to_string(),
+            2 => "0xffff".to_string(),
+            4 => "0xffffffff".to_string(),
+            _ => "MASK".to_string(),
+        };
+        let coeff_raw = format!("and(shr({shift}, rec), {mask})");
+        let coeff = if neg {
+            format!("sub(modulus, {coeff_raw})")
+        } else {
+            coeff_raw
+        };
+        let col_a = "shr(128, calldataload(add(col_base, mul(16, byte(1, rec)))))";
+        let value = if is_quad {
+            let col_b = "shr(128, calldataload(add(col_base, mul(16, byte(2, rec)))))";
+            format!("mulmod({col_a}, {col_b}, modulus)")
+        } else {
+            col_a.to_string()
+        };
+        let kind = if is_quad { "quadratic" } else { "linear   " };
+        let sign = if width == 16 {
+            "canonical"
+        } else if neg {
+            "negative "
+        } else {
+            "positive "
+        };
+        let label = format!("{kind} terms, coeff {width:2}B {sign} ({count} records)");
+        out.push_str(&format!(
+            "            // {label}\n\
+             \x20           {{ let rec_ptr := add(GKR_QTABLE_PTR(), {start}) let rec_end := add(rec_ptr, {})\n\
+             \x20           for {{ }} lt(rec_ptr, rec_end) {{ rec_ptr := add(rec_ptr, {stride}) }} {{\n\
+             \x20               let rec := mload(rec_ptr)\n\
+             \x20               let gate_ptr := add(gateval, mul(32, byte(0, rec)))\n\
+             \x20               mstore(gate_ptr, addmod(mload(gate_ptr), mulmod({coeff}, {value}, modulus), modulus))\n\
+             \x20           }} }}\n",
+            count * stride
+        ));
+    }
+    out.push_str("            }\n");
+    out
+}
+
 /// Fold 10 lookup columns into a β-Horner accumulator using 2-arg `gkr_lookrel_step`
 /// calls, so no call boundary materializes more than one column expression at a time.
 /// The prior 5-arg `gkr_lookrel_compress_half` forced solc to put all five column
@@ -420,7 +574,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             claim := sccl{i}(alpha)
             // SUMCHECK ROUNDS
             let eq_scale
-            // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+            // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
             ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
             
             // POINT CHECK
@@ -692,6 +846,15 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         // processes them): Some(offset) = a real output claim, None = a constraint gate (no
         // output, but still consumes a batching slot). Emitted as sccl{i} after the loop.
         let mut claim_slots: Vec<Option<usize>> = vec![];
+        // Layer-0 table-driven max-quadratic gates (size opt): collect every quad/linear term as
+        // a packed record (gate `slot`, column indices, coeff) instead of emitting it inline. The
+        // gate body becomes a single `mload(GATEVAL+32·slot)`; the terms are summed by compact
+        // bucket loops (emitted just before the Horner chunk calls). Only used for i == 0.
+        let mut quad_terms: Vec<QTerm> = vec![];
+        // Per-gate additive constant terms of the quadratic relations `(gate slot, value)`; only
+        // the nonzero ones are kept (they seed GATEVAL[slot] before the term bucket loops add).
+        let mut quad_gate_constant_terms: Vec<(u32, u128)> = vec![];
+        let mut quad_slot_counter: u32 = 0;
         // Buffer the gate sub-functions so they can be emitted at TOP LEVEL after the layer
         // (nested fns can't reuse ptr/alpha param names — Yul forbids shadowing).
         *YUL_BUFFER.get_or_init(|| std::sync::Mutex::new(None)).lock().unwrap() = Some(String::new());
@@ -751,6 +914,41 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     // GKRAddress::VirtualSetup(virtual_poly) => format!("VirtualSetup{setup:?}(x)")
                     _ => todo!("unexpected address {address:?} for layer {expected_layer}")
                 }
+            }
+            // Layer-0 table-driven quad gate: assign the gate a GATEVAL slot, collect each of its
+            // constant / linear / quadratic terms as a packed record (extracting the operand
+            // column index from the calldata expression), and — importantly — call
+            // gkraddress_to_calldata for every operand so the gate-input offsets are still recorded
+            // for the transcript "extras" the same way the inline path would. Returns the slot.
+            fn collect_quad_terms(
+                input: &NoFieldMaxQuadraticGKRRelation<Proth120>,
+                expected_layer: usize,
+                layer0_group_widths: (usize, usize, usize, usize),
+                running_max_group_offsets: &mut (usize, usize, usize, usize),
+                quad_terms: &mut Vec<QTerm>,
+                quad_gate_constant_terms: &mut Vec<(u32, u128)>,
+                slot_counter: &mut u32,
+            ) -> u32 {
+                let slot = *slot_counter;
+                *slot_counter += 1;
+                let NoFieldMaxQuadraticGKRRelation { quadratic_terms, linear_terms, constant } = input;
+                let constant_value = constant.to_u128();
+                if constant_value != 0 {
+                    quad_gate_constant_terms.push((slot, constant_value));
+                }
+                for (c, addr) in linear_terms.iter() {
+                    let d = gkraddress_to_calldata(addr, expected_layer, layer0_group_widths, running_max_group_offsets);
+                    quad_terms.push(QTerm { slot, a: d.1.calldataload_idx() as u32, b: None, coeff: c.to_u128() });
+                }
+                for (addr_a, inner) in quadratic_terms.iter() {
+                    let da = gkraddress_to_calldata(addr_a, expected_layer, layer0_group_widths, running_max_group_offsets);
+                    let a = da.1.calldataload_idx() as u32;
+                    for (c, addr_b) in inner.iter() {
+                        let db = gkraddress_to_calldata(addr_b, expected_layer, layer0_group_widths, running_max_group_offsets);
+                        quad_terms.push(QTerm { slot, a, b: Some(db.1.calldataload_idx() as u32), coeff: c.to_u128() });
+                    }
+                }
+                slot
             }
             // Returns the output's offset (index into the previous layer's claims array). The
             // caller pushes it into `claim_slots` so compute_claim (sccl{i}) can batch the
@@ -1102,17 +1300,26 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 }
                 // NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression } => {
                 NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
-                    let input = quadrel_to_calldata_inner(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     // Constraint gate: contributes a g slot (val==0 when satisfied) but no output
                     // claim — compute_claim skips it (advances the batching slot only).
                     claim_slots.push(None);
-                    // let expression = expression_to_calldata(expression, i, layer0_group_widths, &mut running_max_group_offsets);
-                    // println!("{relation_name}: 0 == {input}");
-                    yul_println!("
-                    \t{{  // {relation_name}: 0 == {input}
-                    \t    let gate := {input:x}
-                    \t    {pointcheck_update:x}
-                    \t}}");
+                    if i == 0 {
+                        // Table-driven: collect terms (which also records the gate-input offsets
+                        // for the transcript, via gkraddress_to_calldata) and emit a bare GATEVAL read.
+                        let slot = collect_quad_terms(input, i, layer0_group_widths, &mut running_max_group_offsets, &mut quad_terms, &mut quad_gate_constant_terms, &mut quad_slot_counter);
+                        yul_println!("
+                        \t{{  // EnforceSingleMaxQuadraticConstraint: gate value precomputed in gateval[{slot}] (see term table)
+                        \t    let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, {slot})))
+                        \t    {pointcheck_update:x}
+                        \t}}");
+                    } else {
+                        let input = quadrel_to_calldata_inner(input, i, layer0_group_widths, &mut running_max_group_offsets);
+                        yul_println!("
+                        \t{{  // {relation_name}: 0 == {input}
+                        \t    let gate := {input:x}
+                        \t    {pointcheck_update:x}
+                        \t}}");
+                    }
                 }
                 // (unified)
                 NoFieldGKRRelation::InitsOrTeardownsInitialPair { timestamp_and_value, setup, output, set_idxes } => {
@@ -1155,15 +1362,23 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}");
                 }
                 NoFieldGKRRelation::MaxQuadratic { input, output } => {
-                    let input = quadrel_to_calldata_inner(input, i, layer0_group_widths, &mut running_max_group_offsets);
                     let output = gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));
-                    // println!("{relation_name}: {input} = {output}");
-                    yul_println!("
-                    \t{{  // {relation_name}: {input} = {output}
-                    \t    let gate := {input:x}
-                    \t    {pointcheck_update:x}
-                    \t}}");
+                    if i == 0 {
+                        let slot = collect_quad_terms(input, i, layer0_group_widths, &mut running_max_group_offsets, &mut quad_terms, &mut quad_gate_constant_terms, &mut quad_slot_counter);
+                        yul_println!("
+                        \t{{  // MaxQuadratic: gate value precomputed in gateval[{slot}] (see term table); output claim {output}
+                        \t    let gate := mload(add(GKR_GATEVAL_PTR(), mul(32, {slot})))
+                        \t    {pointcheck_update:x}
+                        \t}}");
+                    } else {
+                        let input = quadrel_to_calldata_inner(input, i, layer0_group_widths, &mut running_max_group_offsets);
+                        yul_println!("
+                        \t{{  // {relation_name}: {input} = {output}
+                        \t    let gate := {input:x}
+                        \t    {pointcheck_update:x}
+                        \t}}");
+                    }
                 }
 
                 NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output }
@@ -1223,6 +1438,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         let layer_chunk_funcs = if !gates.is_empty() {
             yul_println!("            }}"); // close last chunk (still buffered)
             let funcs = YUL_BUFFER.get().unwrap().lock().unwrap().take().unwrap_or_default();
+            // Layer-0 size opt: fill GATEVAL[] from the packed term table (compact bucket loops,
+            // modulus in a stack local) BEFORE the Horner chunk calls read it. Emitted into the
+            // layer body (main output; YUL_BUFFER is drained above so yul_println! targets it).
+            if i == 0 && !quad_terms.is_empty() {
+                yul_println!("{}", emit_layer0_quad_table(&quad_terms, &quad_gate_constant_terms));
+            }
             for call in &chunk_calls {
                 yul_println!("            {call}");
             }
@@ -1404,9 +1625,9 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     let gate_mload_inner = Yul::mload(&123).0.replace("123", "idx");
     yul_println!("
         function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {{
-            // NB: need to inline GKR_CIRCUIT_LAYER_ROUNDS unfortunately
+            // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
             eq_scale := 1
-            for {{ let i := 0 }} lt(i, GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
+            for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
                 let w0 := calldataload(ptr)
                 let w1 := calldataload(add(ptr, 32))
                 let c0 := shr(128, w0)
@@ -1509,10 +1730,10 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
 
         function gkr_virtual_poly_compose_vars(len, skip) -> eval {{
             // let total := add(skip, len)
-            let max := sub(GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
+            let max := sub(__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS, skip) // exclusive
             let min := sub(max, len)
             // NO NEED FOR THIS CHECK, WE DO IT VIA RUST
-            // if gt(total, GKR_CIRCUIT_LAYER_ROUNDS) {{ // abort when bad
+            // if gt(total, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ // abort when bad
             //     min := max
             // }}
             for {{ let i := min }} lt(i, max) {{ i := add(i, 1) }} {{
@@ -1526,7 +1747,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             }}
         }}
         function gkr_virtual_poly_rangecheck(width) -> eval {{
-            eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
+            eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
         }}
 
         function gate_calldataload(idx) -> load {{
@@ -1573,5 +1794,12 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         }}
     ");
     let _ = DEBUG_ENABLE_DUMMY_CHECKS;
-    std::mem::take(&mut *yul_main_output().lock().unwrap())
+    let out = std::mem::take(&mut *yul_main_output().lock().unwrap());
+    // Modulus representation: the ~124-bit Proth120 P as a Solidity `constant` compiles to a
+    // PUSH16 rematerialized at EVERY mulmod/addmod/sub — ~1000+ times across the layer-0 gates,
+    // several KB of pure constant-push. P is already mirrored at the fixed heap slot P_PTR, so
+    // read it with `mload(P_PTR)` (PUSH1 + MLOAD, consumed immediately — no live stack slot, so
+    // no "stack too deep" in the deep gate sequences). Purely a size win; runtime value identical.
+    out.replace(", P)", ", mload(P_PTR))")
+        .replace("sub(P, ", "sub(mload(P_PTR), ")
 }
