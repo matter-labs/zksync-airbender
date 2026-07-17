@@ -172,7 +172,8 @@ Extra step (opt-in, runs last when invoked):
   malicious       Soundness-gap tests. Subcommand-aware: per_family runs the
                   malicious_proof generators + verifier malicious.rs (standalone —
                   the unified reject-tests are --skip'd here, so it no longer needs
-                  unified fixtures); unified runs unified_negative + generates and
+                  unified fixtures); unified runs unified_negative + the two-field
+                  mop single-cycle suite (two_field_mop_tests) + generates and
                   verifies the unified malicious proofs. The memory-heavy generators
                   run under --test-threads=1 to avoid OOM.
 
@@ -739,6 +740,12 @@ step_malicious() {
           "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
           -- --nocapture "${HEAVY_TEST_THREADS[@]}" unified_negative
+      run_step "Two-field mop single-cycle tests (Proth120 constraint layer)" \
+        run_prover_cargo \
+          "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
+          "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
+          "${ENCODING_PROVER_FEATURES[@]+"${ENCODING_PROVER_FEATURES[@]}"}" \
+          -- --nocapture two_field_mop_tests
       # Proof layer: corrupt the witness and PROVE it. Default features (no
       # PROVER_CARGO_FEATURE_ARGS) ⇒ no gkr_self_checks (the bad witness reaches
       # the prover) but proptest stays available, unlike per_family's

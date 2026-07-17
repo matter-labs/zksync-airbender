@@ -1,7 +1,9 @@
 use super::*;
 use crate::cs::circuit_trait::*;
 use crate::gkr_circuits::add_sub_family::AddSubLuiAuipcMopFamilyCircuitMask;
-use crate::gkr_circuits::utils::{montgomery_product_expr, update_intermediate_carry_value};
+use crate::gkr_circuits::utils::{
+    montgomery_product_expr, mop_two_field_decompose, update_intermediate_carry_value,
+};
 use crate::oracle::Placeholder;
 use crate::structured_expr::Expr;
 use crate::types::*;
@@ -20,7 +22,19 @@ fn word_from_u16_limbs_expr<F: PrimeField>(limbs: [Variable; 2], limb_shift: F) 
 /// requesting memory accesses internally. Non-Family-1 cycles have all
 /// `decoder.perform_*()` Booleans = 0 so every constraint here is multiplied
 /// by 0 and is trivially satisfied.
-pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
+///
+/// `MopF` is the field the `mop.rr` family operates over. When `F != MopF`
+/// (`two_field`) the mop.rr modulus is sourced from `MopF` and mulmod/fmamod are
+/// enforced by the unconditional integer-decomposition relation
+/// `x·y + is_fma·d·R̂ + Ĉp̂ − q̂·p̂ − m·R̂ = 0` (a spectator on non-mul rows, where
+/// the gated `q̂` pins `m` to a fixed field value); when `F == MopF` the previous
+/// single-field native path is taken unchanged. The discriminator is a `TypeId`
+/// comparison.
+pub fn apply_unified_add_sub_lui_auipc_mop_inner<
+    F: PrimeField,
+    MopF: PrimeField,
+    CS: Circuit<F>,
+>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     decoder: AddSubLuiAuipcMopFamilyCircuitMask,
@@ -39,8 +53,16 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
     // so we do NOT need to mask rd value
 
-    let modulus_low = F::from_u32_unchecked((F::CHARACTERISTICS_U32 as u16) as u32);
-    let modulus_high = F::from_u32_unchecked(((F::CHARACTERISTICS_U32 >> 16) as u16) as u32);
+    let two_field = std::any::TypeId::of::<F>() != std::any::TypeId::of::<MopF>();
+    if two_field {
+        assert!(
+            F::CHAR_BITS >= 68,
+            "circuit field too small for two-field mop"
+        );
+    }
+
+    let modulus_low = F::from_u32_unchecked((MopF::CHARACTERISTICS_U32 as u16) as u32);
+    let modulus_high = F::from_u32_unchecked(((MopF::CHARACTERISTICS_U32 >> 16) as u16) as u32);
 
     let carry_shift = F::from_u32_with_reduction(1 << 16);
 
@@ -72,6 +94,25 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
     let tri_clo_b = of_slots[2];
     let tri_chi_b = of_slots[3];
     let mulmod_intermediate_var = cs.add_named_variable("MULMOD intermediate value");
+
+    let (q_lo16_var, q_hi16_var, t_bit_vars) = if two_field {
+        let q_lo16 = cs.add_named_variable("mop.rr two-field quotient q_lo16");
+        let q_hi16 = cs.add_named_variable("mop.rr two-field quotient q_hi16");
+        cs.require_invariant(q_lo16, Invariant::RangeChecked { width: 16 });
+        cs.require_invariant(q_hi16, Invariant::RangeChecked { width: 16 });
+        let t0 = cs
+            .add_named_boolean_variable("mop.rr two-field quotient/k bit 0")
+            .expect_variable();
+        let t1 = cs
+            .add_named_boolean_variable("mop.rr two-field quotient/k bit 1")
+            .expect_variable();
+        let t2 = cs
+            .add_named_boolean_variable("mop.rr two-field quotient/k bit 2")
+            .expect_variable();
+        (Some(q_lo16), Some(q_hi16), Some([t0, t1, t2]))
+    } else {
+        (None, None, None)
+    };
 
     // Witness function - added before any constraints, so we can use debug machinery
     {
@@ -121,10 +162,10 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             let pc_u32 = placer.get_u32_from_u16_parts(pc_vars);
             let boolean_false = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
             let modulus_low = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
-                F::CHARACTERISTICS_U32 as u16,
+                MopF::CHARACTERISTICS_U32 as u16,
             );
             let modulus_constant = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
-                F::CHARACTERISTICS_U32 as u32,
+                MopF::CHARACTERISTICS_U32 as u32,
             );
             {
                 let is_add = placer.get_boolean(is_add_var);
@@ -196,10 +237,30 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 );
             let rd_read_u32 = placer.get_u32_from_u16_parts(rd_read_vars);
 
+            // Two-field mop.rr decomposition: computed ONCE per row when F ≠ MopF.
+            // Feeds addmod (`out_add`/`k_add`), submod (`out_sub`/`k_sub`) and mulmod/fmamod
+            // (`m_int`/`m_field`/`q`) below. `None` on the native path (all row classes disjoint).
+            let two_field_dec = if two_field {
+                let is_mulmod_m = placer.get_boolean(is_mulmod_var);
+                let is_fmamod_m = placer.get_boolean(is_fmamod_var);
+                let is_mul_like_m = is_mulmod_m.or(&is_fmamod_m);
+                Some(mop_two_field_decompose::<F, MopF, CS::WitnessPlacer>(
+                    &rs1_u32,
+                    &rs2_u32,
+                    &rd_read_u32,
+                    &is_fmamod_m,
+                    &is_mul_like_m,
+                ))
+            } else {
+                None
+            };
+
             // addmod
             {
                 let is_addmod = placer.get_boolean(is_addmod_var);
-                let addmod_result = {
+                let addmod_result = if let Some(dec) = &two_field_dec {
+                    dec.out_add.clone()
+                } else {
                     let mut addmod_f = rs1_f.clone();
                     addmod_f.add_assign(&rs2_f);
                     addmod_f.as_integer()
@@ -231,7 +292,9 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             // submod
             {
                 let is_submod = placer.get_boolean(is_submod_var);
-                let submod_result = {
+                let submod_result = if let Some(dec) = &two_field_dec {
+                    dec.out_sub.clone()
+                } else {
                     let mut submod_f = rs1_f.clone();
                     submod_f.sub_assign(&rs2_f);
                     submod_f.as_integer()
@@ -264,43 +327,31 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                 let is_mulmod = placer.get_boolean(is_mulmod_var);
                 let is_fmamod = placer.get_boolean(is_fmamod_var);
                 let is_mul_like = is_mulmod.or(&is_fmamod);
-                let op1 = if F::CHAR_BITS > 32 {
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
-                        F::ZERO,
-                    )
+
+                let mulmod_result = if let Some(dec) = &two_field_dec {
+                    dec.m_int.clone()
                 } else {
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
-                            rs1_u32,
-                        )
-                };
-                let op2 = if F::CHAR_BITS > 32 {
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
-                        F::ZERO,
-                    )
-                } else {
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                    let op1 = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                        rs1_u32,
+                    );
+                    let op2 = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                         rs2_u32,
-                    )
-                };
-                let rd_raw = if F::CHAR_BITS > 32 {
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(
-                        F::ZERO,
-                    )
-                } else {
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
+                    );
+                    let rd_raw = <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_raw_repr_with_reduction(
                         rd_read_u32,
-                    )
+                    );
+                    let mut mulmod_field = op1;
+                    mulmod_field.mul_assign(&op2);
+                    mulmod_field.add_assign_masked(&is_fmamod, &rd_raw);
+                    let mulmod_result = mulmod_field.into_raw_repr_reduced();
+                    placer.assign_field(
+                        mulmod_intermediate_var,
+                        &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
+                            mulmod_result.clone(),
+                        ),
+                    );
+                    mulmod_result
                 };
-                let mut mulmod_field = op1;
-                mulmod_field.mul_assign(&op2);
-                mulmod_field.add_assign_masked(&is_fmamod, &rd_raw);
-                let mulmod_result = mulmod_field.into_raw_repr_reduced();
-                placer.assign_field(
-                    mulmod_intermediate_var,
-                    &<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                        mulmod_result.clone(),
-                    ),
-                );
                 let mul_mod_low = mulmod_result.truncate();
                 out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
                     &is_mul_like,
@@ -325,6 +376,39 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
                     &modulus_low,
                     None,
                 );
+            }
+            if let Some(dec) = &two_field_dec {
+                let is_addmod_m = placer.get_boolean(is_addmod_var);
+                let is_submod_m = placer.get_boolean(is_submod_var);
+                let is_mulmod_m = placer.get_boolean(is_mulmod_var);
+                let is_fmamod_m = placer.get_boolean(is_fmamod_var);
+                let is_mul_like_m = is_mulmod_m.or(&is_fmamod_m);
+
+                placer.assign_u16(q_lo16_var.unwrap(), &dec.q_lo16);
+                placer.assign_u16(q_hi16_var.unwrap(), &dec.q_hi16);
+
+                let t_vars = t_bit_vars.unwrap();
+                for (i, &t_var) in t_vars.iter().enumerate() {
+                    let mut ti = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+                    ti = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                        &is_mul_like_m,
+                        &dec.q_top_bits[i],
+                        &ti,
+                    );
+                    ti = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                        &is_addmod_m,
+                        &dec.k_add_bits[i],
+                        &ti,
+                    );
+                    ti = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                        &is_submod_m,
+                        &dec.k_sub_bits[i],
+                        &ti,
+                    );
+                    placer.assign_mask(t_var, &ti);
+                }
+
+                placer.assign_field(mulmod_intermediate_var, &dec.m_field);
             }
             // non-determinism
             {
@@ -449,8 +533,44 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
         // MULMOD: use intermediate variable, and mix-in the FMA addend.
         // rs1*rs2*R⁻¹ + is_fmamod*rd_old = mulmod_intermediate.
-        if F::CHAR_BITS > 32 {
-            // NOTE: temporary fix
+        if two_field {
+            // Montgomery-aware two-field decomposition: ONE UNCONDITIONAL
+            // degree-2 constraint over the circuit field F,
+            //   x·y + is_fma·d·R + C·p − q·p − m·R = 0,
+            // with x = rs1, y = rs2, d = rd_read (fma addend), m = mulmod_intermediate_var, and
+            // C = R = 2^32.
+            let r_hat = F::from_u128_with_reduction(1u128 << 32);
+            let p_hat = F::from_u32_with_reduction(MopF::CHARACTERISTICS_U32);
+            let cp_hat =
+                F::from_u128_with_reduction((1u128 << 32) * (MopF::CHARACTERISTICS_U32 as u128));
+
+            let q_lo16_var = q_lo16_var.unwrap();
+            let q_hi16_var = q_hi16_var.unwrap();
+            let [t0, t1, t2] = t_bit_vars.unwrap();
+
+            let is_mul_like_e = Expr::from(is_mulmod) + Expr::from(is_fmamod);
+            let k_expr = Expr::var(t0)
+                + Expr::var(t1) * F::from_u32_with_reduction(2)
+                + Expr::var(t2) * F::from_u32_with_reduction(4);
+            let q_low_limbs = Expr::var(q_lo16_var) + Expr::var(q_hi16_var) * carry_shift;
+            let q_expr = q_low_limbs.clone() + k_expr.clone() * is_mul_like_e.clone() * r_hat;
+
+            cs.add_constraint_expr(
+                rs1.clone() * rs2.clone()
+                    + Expr::from(is_fmamod) * rd_read.clone() * r_hat
+                    + Expr::constant(cp_hat)
+                    - q_expr * p_hat
+                    - Expr::var(mulmod_intermediate_var) * r_hat,
+            );
+
+            cs.add_constraint_expr(q_low_limbs * (Expr::<F>::one() - is_mul_like_e.clone()));
+            cs.add_constraint_expr(
+                k_expr
+                    * (Expr::<F>::one()
+                        - is_mul_like_e
+                        - Expr::from(is_addmod)
+                        - Expr::from(is_submod)),
+            );
         } else {
             cs.add_constraint_expr(
                 montgomery_product_expr(rs1.clone(), rs2.clone())
@@ -461,11 +581,29 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
 
         // enforce field ops - all at once, as we know that flags are disjoint
         let is_mul_like = Expr::<F>::Sum(vec![Expr::from(is_mulmod), Expr::from(is_fmamod)]);
-        cs.add_constraint_expr(
-            (out.clone() - (rs1.clone() + rs2.clone())).mask(is_addmod)
-                + (out.clone() - (rs1.clone() - rs2)).mask(is_submod)
-                + (out - Expr::var(mulmod_intermediate_var)) * is_mul_like,
-        );
+        let mul_term = (out.clone() - Expr::var(mulmod_intermediate_var)) * is_mul_like;
+        if two_field {
+            let [t0, t1, t2] = t_bit_vars.unwrap();
+            let k_expr = Expr::var(t0)
+                + Expr::var(t1) * F::from_u32_with_reduction(2)
+                + Expr::var(t2) * F::from_u32_with_reduction(4);
+            let p_hat = F::from_u32_with_reduction(MopF::CHARACTERISTICS_U32);
+            let three_p_hat =
+                F::from_u128_with_reduction(3u128 * (MopF::CHARACTERISTICS_U32 as u128));
+            let k_p = k_expr * p_hat;
+            let addmod_term =
+                (rs1.clone() + rs2.clone() - k_p.clone() - out.clone()).mask(is_addmod);
+            let submod_term =
+                (rs1.clone() - rs2.clone() + Expr::constant(three_p_hat) - k_p - out.clone())
+                    .mask(is_submod);
+            cs.add_constraint_expr(addmod_term + submod_term + mul_term);
+        } else {
+            cs.add_constraint_expr(
+                (out.clone() - (rs1.clone() + rs2.clone())).mask(is_addmod)
+                    + (out.clone() - (rs1.clone() - rs2.clone())).mask(is_submod)
+                    + mul_term,
+            );
+        }
 
         // check normalization: borrow on (out - modulus) must be 1, i.e. out < modulus
         cs.add_constraint_expr((Expr::<F>::one() - Expr::from(carry)) * is_modular.clone());
