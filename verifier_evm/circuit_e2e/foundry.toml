@@ -1,8 +1,0 @@
-[profile.default]
-src = "."
-out = ".foundry/out"
-cache_path = ".foundry/cache"
-via_ir = false
-optimizer = true
-optimizer_runs = 1
-fs_permissions = [{ access = "read", path = "." }, { access = "read", path = "../whir/testdata" }]

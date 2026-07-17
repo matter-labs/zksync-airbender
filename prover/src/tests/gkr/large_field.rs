@@ -430,7 +430,7 @@ fn validate_packed_transcript_recipe() {
             "preimage keccak must equal commit_initial_u32 seed"
         );
         let hex: String = preimage.iter().map(|b| format!("{b:02x}")).collect();
-        let out = "../verifier_evm/whir/testdata/gkr_step1_preimage.hex";
+        let out = "../verifier_evm/debug_data/gkr_step1_preimage.hex";
         std::fs::write(out, &hex).expect("write step1 preimage fixture");
         println!(
             "[transcript] wrote {} preimage bytes to {out}",
@@ -588,7 +588,7 @@ fn capture_gkr_dim_reduce_reference() {
         }
         let hex: String = blob.iter().map(|b| format!("{b:02x}")).collect();
         std::fs::write(
-            "../verifier_evm/whir/testdata/gkr_step2_output_evals.hex",
+            "../verifier_evm/debug_data/gkr_step2_output_evals.hex",
             &hex,
         )
         .unwrap();
@@ -1825,7 +1825,7 @@ fn verify_dim_reduce_layers() {
         // fixture's preimage [seed:32] is authoritatively the GKR verifier's output — no guessing.
         let seed_hex: String = seed.0.iter().map(|b| format!("{b:02x}")).collect();
         std::fs::write(
-            "../verifier_evm/whir/testdata/gkr_whir_handoff_seed.hex",
+            "../verifier_evm/debug_data/gkr_whir_handoff_seed.hex",
             &seed_hex,
         )
         .unwrap();
@@ -1933,7 +1933,7 @@ fn verify_dim_reduce_layers() {
             }
             let hx: String = cd.iter().map(|b| format!("{b:02x}")).collect();
             std::fs::write(
-                "../verifier_evm/whir/testdata/proth120_whir_calldata_from_proof.hex",
+                "../verifier_evm/debug_data/proth120_whir_calldata_from_proof.hex",
                 &hx,
             )
             .unwrap();
@@ -1948,7 +1948,7 @@ fn verify_dim_reduce_layers() {
     // folding_steps*[c0..c3] then 10*[lsb0,lsb1], all field els BE16. Consumed by the
     // Solidity dim-reducing verifier's forge test.
     let hex: String = blob.iter().map(|b| format!("{b:02x}")).collect();
-    let path = "../verifier_evm/whir/testdata/gkr_dimreduce_data.hex";
+    let path = "../verifier_evm/debug_data/gkr_dimreduce_data.hex";
     std::fs::write(path, &hex).unwrap();
     println!(
         "[dimreduce-verify] wrote {} bytes of proof data to {path}",
@@ -1959,7 +1959,7 @@ fn verify_dim_reduce_layers() {
     // gkr.sol stream order: preimage(520) ‖ output-evals(2560) ‖ dim-reduce blob(20160) ‖
     // per-circuit-layer (coeffs ‖ group-offset evals). This is exactly what the ported
     // gkr.sol reads (transcript_init ‖ gkr_init ‖ gkr_compress ‖ gkr_circuit).
-    let td = "../verifier_evm/whir/testdata";
+    let td = "../verifier_evm/debug_data";
     let read_fixture = |name: &str| -> Vec<u8> {
         let h = std::fs::read_to_string(format!("{td}/{name}")).unwrap();
         (0..h.trim().len())
