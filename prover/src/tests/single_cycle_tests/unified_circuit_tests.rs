@@ -263,12 +263,12 @@ mod two_field_mop_tests {
     }
 
     fn expected_fmamod(rs1: u32, rs2: u32, rd_old: u32) -> u32 {
-        let a = <MopF as PrimeField>::from_raw_repr_with_reduction(rs1);
+        let mut a = <MopF as PrimeField>::from_raw_repr_with_reduction(rs1);
         let b = <MopF as PrimeField>::from_raw_repr_with_reduction(rs2);
-        let mut c = <MopF as PrimeField>::from_raw_repr_with_reduction(rd_old);
+        let c = <MopF as PrimeField>::from_raw_repr_with_reduction(rd_old);
 
-        Field::fused_mul_add_assign(&mut c, &a, &b);
-        c.as_u32_raw_repr_reduced()
+        Field::fused_mul_add_assign(&mut a, &b, &c);
+        a.as_u32_raw_repr_reduced()
     }
 
     fn build_two_field_cs(
@@ -370,11 +370,14 @@ mod two_field_mop_tests {
             .assign_field(var, &value);
     }
 
+    fn k_bit_name(i: usize) -> String {
+        format!("shared scratch bool[{}]", i + 2)
+    }
+
     fn read_k_bits(cs: &BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>) -> u32 {
         let mut k = 0u32;
         for i in 0..3 {
-            let b =
-                read_field(cs, &format!("mop.rr two-field quotient/k bit {i}")).as_u32_reduced();
+            let b = read_field(cs, &k_bit_name(i)).as_u32_reduced();
             k |= (b & 1) << i;
         }
         k
@@ -384,11 +387,7 @@ mod two_field_mop_tests {
         assert!(k < 8, "k must fit in three bits");
         for i in 0..3 {
             let bit = (k >> i) & 1;
-            write_field(
-                cs,
-                &format!("mop.rr two-field quotient/k bit {i}"),
-                F::from_u32_unchecked(bit),
-            );
+            write_field(cs, &k_bit_name(i), F::from_u32_unchecked(bit));
         }
     }
 
@@ -525,14 +524,6 @@ mod two_field_mop_tests {
         }
     }
 
-    fn p_over_r_hat() -> F {
-        let r_inv = Field::inverse(&F::from_u128_with_reduction(1u128 << 32))
-            .expect("R must be invertible in the circuit field");
-        let mut v = F::from_u32_with_reduction(BB_P);
-        Field::mul_assign(&mut v, &r_inv);
-        v
-    }
-
     fn write_modular_row_out(
         cs: &mut BasicAssembly<F, CSDebugWitnessEvaluator<F>, false>,
         out: u32,
@@ -600,9 +591,9 @@ mod two_field_mop_tests {
             "untampered mulmod twin must be satisfied"
         );
 
-        let mut q_lo16 = read_field(&cs, "mop.rr two-field quotient q_lo16");
+        let mut q_lo16 = read_field(&cs, "shared scratch var[0]");
         Field::add_assign(&mut q_lo16, &F::ONE); // q̂ += 1, no compensating m
-        write_field(&mut cs, "mop.rr two-field quotient q_lo16", q_lo16);
+        write_field(&mut cs, "shared scratch var[0]", q_lo16);
 
         assert!(
             !cs.is_satisfied(),
@@ -774,60 +765,6 @@ mod two_field_mop_tests {
         );
     }
 
-    #[test]
-    fn plain_add_quotient_limb_nonzero_rejected_by_split_gate() {
-        let (rs1, rs2) = (100u32, 50u32);
-        let mut cs = build_two_field_cs(encode_add(10, 11, 12), rs1, rs2, 0, rs1.wrapping_add(rs2));
-        assert!(
-            cs.is_satisfied(),
-            "untampered plain-ADD twin must be satisfied"
-        );
-        assert_eq!(
-            read_field(&cs, "mop.rr two-field quotient q_lo16").as_u32_reduced(),
-            0,
-            "honest q_lo16 must be 0 on a plain-ADD row"
-        );
-
-        let mut m_new = read_field(&cs, "MULMOD intermediate value");
-        Field::sub_assign(&mut m_new, &p_over_r_hat()); // m' = m − p·R̂⁻¹
-        write_field(&mut cs, "MULMOD intermediate value", m_new);
-        write_field(
-            &mut cs,
-            "mop.rr two-field quotient q_lo16",
-            F::from_u32_unchecked(1),
-        );
-
-        assert!(
-            !cs.is_satisfied(),
-            "nonzero q_lo16 on a plain-ADD row must be rejected by the split low-limb gate"
-        );
-    }
-
-    #[test]
-    fn plain_add_tbit_nonzero_rejected_by_split_gate() {
-        let (rs1, rs2) = (100u32, 50u32);
-        let mut cs = build_two_field_cs(encode_add(10, 11, 12), rs1, rs2, 0, rs1.wrapping_add(rs2));
-        assert!(
-            cs.is_satisfied(),
-            "untampered plain-ADD twin must be satisfied"
-        );
-        assert_eq!(
-            read_field(&cs, "mop.rr two-field quotient/k bit 0").as_u32_reduced(),
-            0,
-            "honest t0 must be 0 on a plain-ADD row"
-        );
-
-        write_field(
-            &mut cs,
-            "mop.rr two-field quotient/k bit 0",
-            F::from_u32_unchecked(1),
-        );
-
-        assert!(
-            !cs.is_satisfied(),
-            "nonzero t-bit on a plain-ADD row must be rejected by the split t-bit gate"
-        );
-    }
 
     #[test]
     fn out_of_range_q_invisible_to_arithmetic_checks() {
@@ -842,24 +779,24 @@ mod two_field_mop_tests {
 
         // Honest-witness sanity so a wrong vector/name fails loudly (k = 1, t = (1,0,0)).
         assert_eq!(
-            read_field(&cs, "mop.rr two-field quotient q_hi16").as_u32_reduced(),
+            read_field(&cs, "shared scratch var[1]").as_u32_reduced(),
             0,
             "honest q_hi16 must be 0 for the (p−1, p−1) vector"
         );
         assert_eq!(
-            read_field(&cs, "mop.rr two-field quotient/k bit 2").as_u32_reduced(),
+            read_field(&cs, "shared scratch bool[4]").as_u32_reduced(),
             0,
             "honest t2 must be 0 for the (p−1, p−1) vector"
         );
 
         // q_hi16 += 2^19  ⇒  q_hi16 = 2^19 ≥ 2^16 (out of RC-16 range).
-        let mut q_hi16 = read_field(&cs, "mop.rr two-field quotient q_hi16");
+        let mut q_hi16 = read_field(&cs, "shared scratch var[1]");
         Field::add_assign(&mut q_hi16, &F::from_u32_unchecked(1 << 19));
-        write_field(&mut cs, "mop.rr two-field quotient q_hi16", q_hi16);
+        write_field(&mut cs, "shared scratch var[1]", q_hi16);
         // t2 -= 2  ⇒  t2 = −2 (non-Boolean); Δq̂ = 2^35 − 2^35 = 0 keeps C1 satisfied.
-        let mut t2 = read_field(&cs, "mop.rr two-field quotient/k bit 2");
+        let mut t2 = read_field(&cs, "shared scratch bool[4]");
         Field::sub_assign(&mut t2, &F::from_u32_with_reduction(2));
-        write_field(&mut cs, "mop.rr two-field quotient/k bit 2", t2);
+        write_field(&mut cs, "shared scratch bool[4]", t2);
 
         assert!(
             cs.is_satisfied(),
@@ -867,5 +804,35 @@ mod two_field_mop_tests {
              arithmetic constraints — only the RC-16 / Booleanity LOOKUPS (not evaluated at the \
              single-cycle level) can reject it"
         );
+    }
+
+    const TRI_ADD_FUNCT7: u32 = 0x61;
+
+    #[test]
+    fn test_tri_add_proth120() {
+        let vectors: [(u32, u32, u32); 4] = [
+            (100, 50, 25),                           // no carries
+            (u32::MAX, 1, 0),                        // low+high carry chain (wrap to 0)
+            (u32::MAX, u32::MAX, u32::MAX),          // each limb carry hits 2
+            (0x1234_5678, 0x8765_4321, 0xFFFF_FFFF), // mixed
+        ];
+        for (rs1, rs2, rd_old) in vectors {
+            let expected = rs1.wrapping_add(rs2).wrapping_add(rd_old);
+            let (sat, out) = run_two_field_cycle(
+                encode_mop(TRI_ADD_FUNCT7, 10, 11, 12),
+                rs1,
+                rs2,
+                rd_old,
+                expected,
+            );
+            assert!(
+                sat,
+                "tri-add circuit unsatisfied for rs1={rs1} rs2={rs2} rd_old={rd_old}"
+            );
+            assert_eq!(
+                out, expected,
+                "tri-add rd must equal wrapping rs1+rs2+rd_old for rs1={rs1} rs2={rs2} rd_old={rd_old}"
+            );
+        }
     }
 }

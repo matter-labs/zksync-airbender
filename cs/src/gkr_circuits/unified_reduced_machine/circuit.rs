@@ -69,7 +69,7 @@ pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = UNIFIED_F1_NUM_FLAGS
 /// only inside that family's flag-gated constraints, hence unconstrained (free)
 /// on rows where the family is idle. Because at most one family fires per row,
 /// these slots can be ALIASED across families into one shared pool.
-pub(super) const F1_SCRATCH_BOOLS: usize = 4; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans. Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0.
+pub(super) const F1_SCRATCH_BOOLS: usize = 5; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans; two-field mop.rr reuses [2],[3],[4] for the q-top/k bits t0/t1/t2 (written only on is_mul_like/is_addmod/is_submod rows — disjoint from is_tri_add). Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0; [4]=sw-align bit_1 — and with F2's [4]=next_pc_bit_1.
 pub(super) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,final}_of (4) + next_pc_bit_1
 pub(super) const F3_SCRATCH_BOOLS: usize = 0;
 pub(super) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
@@ -89,7 +89,7 @@ const UNIFIED_SCRATCH_BOOL_COUNT: usize = const_max(
     const_max(F3_SCRATCH_BOOLS, F4_SCRATCH_BOOLS),
 );
 
-pub(super) const F1_SCRATCH_VARS: usize = 0;
+pub(super) const F1_SCRATCH_VARS: usize = 2; // two-field mop.rr quotient low limbs q_lo16, q_hi16 ([0],[1]); written only on is_mul_like rows and RC-16'd (unconditional, holds pool-wide since every family's value in [0],[1] is < 2^16). 0 on the single-field native path (F == MopF branch never touches these). Aliased with F2's [0]=comparison_result_is_zero,[1]=rs1_sign; F3's [0]=imm_sign_ext/trunc_shift,[1]=shift_output byte; F4's [0],[1]=ram_addr limbs.
 pub(super) const F2_SCRATCH_VARS: usize = 5; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source, rs2_sign
 pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points (xor-rotate reuses the rs2 split: rs2 aliases rd at decode)
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
@@ -363,6 +363,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, MopF: PrimeField, CS: Circ
         rs2_read_timestamp,
         shared_intermediate_reg,
         core::array::from_fn::<_, F1_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),
+        core::array::from_fn::<_, F1_SCRATCH_VARS, _>(|i| scratch_vars[i]),
     );
     let f2_lookups = apply_unified_jump_branch_slt_inner(
         cs,

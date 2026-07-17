@@ -10,7 +10,7 @@ use crate::types::*;
 use crate::witness_placer::*;
 use field::PrimeField;
 
-use super::circuit::F1_SCRATCH_BOOLS;
+use super::circuit::{F1_SCRATCH_BOOLS, F1_SCRATCH_VARS};
 
 fn word_from_u16_limbs_expr<F: PrimeField>(limbs: [Variable; 2], limb_shift: F) -> Expr<F> {
     Expr::var(limbs[0]) + Expr::var(limbs[1]) * limb_shift
@@ -27,9 +27,11 @@ fn word_from_u16_limbs_expr<F: PrimeField>(limbs: [Variable; 2], limb_shift: F) 
 /// (`two_field`) the mop.rr modulus is sourced from `MopF` and mulmod/fmamod are
 /// enforced by the unconditional integer-decomposition relation
 /// `x·y + is_fma·d·R̂ + Ĉp̂ − q̂·p̂ − m·R̂ = 0` (a spectator on non-mul rows, where
-/// the gated `q̂` pins `m` to a fixed field value); when `F == MopF` the previous
-/// single-field native path is taken unchanged. The discriminator is a `TypeId`
-/// comparison.
+/// the fully `is_mul_like`-masked `q̂` collapses to 0 and pins `m` to a fixed field
+/// value); when `F == MopF` the previous single-field native path is taken unchanged.
+/// The discriminator is a `TypeId` comparison. Because `q̂` is masked in full, the
+/// quotient limbs and q-top/k bits are committed as *shared scratch pool* slots
+/// (0 dedicated columns) rather than dedicated columns
 pub fn apply_unified_add_sub_lui_auipc_mop_inner<
     F: PrimeField,
     MopF: PrimeField,
@@ -48,6 +50,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
     intermediate_tmp: Register<F>,
     // Shared scratch-Boolean pool slots [0],[1] = carry / intermediate_carry.
     of_slots: [Boolean; F1_SCRATCH_BOOLS],
+    var_slots: [Variable; F1_SCRATCH_VARS],
 ) {
     // NOTE: by preprocessing if we have rd == 0 in any of the opcodes below, then
     // we have rs1 = x0, rs2 = x0 and imm = 0, and it's preprocessed into plain addition,
@@ -96,19 +99,15 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
     let mulmod_intermediate_var = cs.add_named_variable("MULMOD intermediate value");
 
     let (q_lo16_var, q_hi16_var, t_bit_vars) = if two_field {
-        let q_lo16 = cs.add_named_variable("mop.rr two-field quotient q_lo16");
-        let q_hi16 = cs.add_named_variable("mop.rr two-field quotient q_hi16");
+        let q_lo16 = var_slots[0];
+        let q_hi16 = var_slots[1];
         cs.require_invariant(q_lo16, Invariant::RangeChecked { width: 16 });
         cs.require_invariant(q_hi16, Invariant::RangeChecked { width: 16 });
-        let t0 = cs
-            .add_named_boolean_variable("mop.rr two-field quotient/k bit 0")
-            .expect_variable();
-        let t1 = cs
-            .add_named_boolean_variable("mop.rr two-field quotient/k bit 1")
-            .expect_variable();
-        let t2 = cs
-            .add_named_boolean_variable("mop.rr two-field quotient/k bit 2")
-            .expect_variable();
+        // Booleanity already holds pool-wide (the pool allocates these as Booleans), so we
+        // reuse the slots' variables directly rather than re-declaring Boolean columns.
+        let t0 = of_slots[2].expect_variable();
+        let t1 = of_slots[3].expect_variable();
+        let t2 = of_slots[4].expect_variable();
         (Some(q_lo16), Some(q_hi16), Some([t0, t1, t2]))
     } else {
         (None, None, None)
@@ -150,6 +149,13 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
             let mut tri_clo_b_value =
                 <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
             let mut tri_chi_b_value =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
+            let mut mop_t_values = [
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false),
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false),
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false),
+            ];
+            let mut writes_q_k_mask =
                 <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
 
             let imm_low = placer.get_u16(imm_vars[0]);
@@ -383,12 +389,12 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
                 let is_mulmod_m = placer.get_boolean(is_mulmod_var);
                 let is_fmamod_m = placer.get_boolean(is_fmamod_var);
                 let is_mul_like_m = is_mulmod_m.or(&is_fmamod_m);
+                let writes_q_k = is_mul_like_m.or(&is_addmod_m).or(&is_submod_m);
 
-                placer.assign_u16(q_lo16_var.unwrap(), &dec.q_lo16);
-                placer.assign_u16(q_hi16_var.unwrap(), &dec.q_hi16);
+                placer.conditionally_assign_u16(q_lo16_var.unwrap(), &is_mul_like_m, &dec.q_lo16);
+                placer.conditionally_assign_u16(q_hi16_var.unwrap(), &is_mul_like_m, &dec.q_hi16);
 
-                let t_vars = t_bit_vars.unwrap();
-                for (i, &t_var) in t_vars.iter().enumerate() {
+                for i in 0..3 {
                     let mut ti = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
                     ti = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
                         &is_mul_like_m,
@@ -405,8 +411,9 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
                         &dec.k_sub_bits[i],
                         &ti,
                     );
-                    placer.assign_mask(t_var, &ti);
+                    mop_t_values[i] = ti;
                 }
+                writes_q_k_mask = writes_q_k;
 
                 placer.assign_field(mulmod_intermediate_var, &dec.m_field);
             }
@@ -508,10 +515,28 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
                 &is_f1_active,
                 &u16_intermedaite_carry_value,
             );
-            // tri-add's two extra carry Booleans (only meaningful on tri-add rows).
             let is_tri_add_m = placer.get_boolean(is_tri_add_var);
-            placer.conditionally_assign_mask(tri_clo_b_var, &is_tri_add_m, &tri_clo_b_value);
-            placer.conditionally_assign_mask(tri_chi_b_var, &is_tri_add_m, &tri_chi_b_value);
+            if two_field {
+                let merged_mask = is_tri_add_m.or(&writes_q_k_mask);
+                let v_lo = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_tri_add_m,
+                    &tri_clo_b_value,
+                    &mop_t_values[0],
+                );
+                placer.conditionally_assign_mask(tri_clo_b_var, &merged_mask, &v_lo);
+                let v_hi = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
+                    &is_tri_add_m,
+                    &tri_chi_b_value,
+                    &mop_t_values[1],
+                );
+                placer.conditionally_assign_mask(tri_chi_b_var, &merged_mask, &v_hi);
+                // Slot [4] = t2: mop path only (no tri-add write), single write.
+                let [_, _, t2_var] = t_bit_vars.unwrap();
+                placer.conditionally_assign_mask(t2_var, &writes_q_k_mask, &mop_t_values[2]);
+            } else {
+                placer.conditionally_assign_mask(tri_clo_b_var, &is_tri_add_m, &tri_clo_b_value);
+                placer.conditionally_assign_mask(tri_chi_b_var, &is_tri_add_m, &tri_chi_b_value);
+            }
         };
         cs.set_values(value_fn);
     }
@@ -553,7 +578,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
                 + Expr::var(t1) * F::from_u32_with_reduction(2)
                 + Expr::var(t2) * F::from_u32_with_reduction(4);
             let q_low_limbs = Expr::var(q_lo16_var) + Expr::var(q_hi16_var) * carry_shift;
-            let q_expr = q_low_limbs.clone() + k_expr.clone() * is_mul_like_e.clone() * r_hat;
+            let q_expr = (q_low_limbs + k_expr * r_hat) * is_mul_like_e;
 
             cs.add_constraint_expr(
                 rs1.clone() * rs2.clone()
@@ -563,14 +588,6 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
                     - Expr::var(mulmod_intermediate_var) * r_hat,
             );
 
-            cs.add_constraint_expr(q_low_limbs * (Expr::<F>::one() - is_mul_like_e.clone()));
-            cs.add_constraint_expr(
-                k_expr
-                    * (Expr::<F>::one()
-                        - is_mul_like_e
-                        - Expr::from(is_addmod)
-                        - Expr::from(is_submod)),
-            );
         } else {
             cs.add_constraint_expr(
                 montgomery_product_expr(rs1.clone(), rs2.clone())

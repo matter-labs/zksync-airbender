@@ -235,7 +235,10 @@ pub(crate) fn mop_two_field_decompose<F: PrimeField, MopF: PrimeField, W: Witnes
     q_hi.add_assign(&q_cross_lo);
     q_hi.add_assign(&q_cross_hi); // q_hi < 8 (since q < 2^35)
 
-    // Gate q to 0 off mul-like rows (matches the DoF gate the constraints will impose).
+    // Gate q to 0 off mul-like rows, matching the fully `is_mul_like`-masked q̂ in the mul
+    // relation (`… − q̂·p̂ − …` with q̂ = (q_lo16 + q_hi16·2^16 + k·2^32)·is_mul_like): the
+    // witness q̂ collapses to 0 on non-mul rows exactly as the constraint does — there is no
+    // longer a separate DoF gate.
     let q_lo_g = U32Of::<F, W>::select(is_mul_like, &q_lo, &zero_u32);
     let q_hi_g = U32Of::<F, W>::select(is_mul_like, &q_hi, &zero_u32);
     let q_lo16 = q_lo_g.truncate();
