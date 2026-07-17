@@ -1662,6 +1662,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {{
             // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
             eq_scale := 1
+            let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
             for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
                 let w0 := calldataload(ptr)
                 let w1 := calldataload(add(ptr, 32))
@@ -1669,15 +1670,14 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 let c1 := and(w0, MASK)
                 let c2 := shr(128, w1)
                 let c3 := and(w1, MASK)
-                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, P)
-                let r := transcript_4to1_dual(w0, w1) // before-check draw is intentional; see HEURISTICS.md
+                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, modulus)
+                let r := transcript_4to1_dual(w0, w1, modulus) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-                if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
-                {check:x}
-                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, P), c2), r, P), c1), r, P), c0)
+                if mod(add(claim, sub(modulus, g0g1_scaled)), modulus) {{ revert(0, 0) }}
+                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, modulus), c2), r, modulus), c1), r, modulus), c0)
                 let z := mload(add(POINT_PTR(), mul(i, 32)))
-                let zr := mulmod(z, r, P)
-                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, P), add(z, r)))
+                let zr := mulmod(z, r, modulus)
+                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, modulus), add(z, r)))
                 mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }}

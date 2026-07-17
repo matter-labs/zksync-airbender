@@ -154,7 +154,7 @@ contract GKRVerifier {
             v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
         }
 
-        function transcript_4to1_dual(w0, w1) -> r {
+        function transcript_4to1_dual(w0, w1, modulus) -> r {
             // Proth120 recipe (validated in step1_test/GkrCompressYul): ABSORB the 4 coeffs
             // (seed = keccak(seed || w0 || w1)) THEN DRAW (seed = keccak(seed); r = top128 mod P).
             // The prior code drew straight from the absorb result (missing the draw keccak) — a
@@ -165,7 +165,7 @@ contract GKRVerifier {
             mstore(SEED_PTR(), seed)
             seed := keccak256(SEED_PTR(), 32)     // draw
             mstore(SEED_PTR(), seed)
-            r := mod(shr(128, seed), mload(P_PTR))
+            r := mod(shr(128, seed), modulus)
         }
 
         // alpha is the batching challenge needed right after checking outputs
@@ -357,6 +357,7 @@ contract GKRVerifier {
         }
 
         function sumcheck_rounds(ptr, claim, total_rounds) -> next_ptr, next_claim, eq_scale {
+            let modulus := mload(P_PTR)
             eq_scale := 1
             for { let i := 0 } lt(i, total_rounds) { i := add(i, 1) } {
                 let w0 := calldataload(ptr)
@@ -365,15 +366,15 @@ contract GKRVerifier {
                 let c1 := and(w0, MASK)
                 let c2 := shr(128, w1)
                 let c3 := and(w1, MASK)
-                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, mload(P_PTR))
-                let r := transcript_4to1_dual(w0, w1) // before-check draw is intentional; see HEURISTICS.md
+                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, modulus)
+                let r := transcript_4to1_dual(w0, w1, modulus) // before-check draw is intentional; see HEURISTICS.md
                 // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-                if mod(add(claim, sub(mload(P_PTR), g0g1_scaled)), mload(P_PTR)) {
+                if mod(add(claim, sub(modulus, g0g1_scaled)), modulus) {
                 revert(0, 0) }
-                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, mload(P_PTR)), c2), r, mload(P_PTR)), c1), r, mload(P_PTR)), c0)
+                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, modulus), c2), r, modulus), c1), r, modulus), c0)
                 let z := mload(add(POINT_PTR(), mul(i, 32)))
-                let zr := mulmod(z, r, mload(P_PTR))
-                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, mload(P_PTR)), add(z, r)))
+                let zr := mulmod(z, r, modulus)
+                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, modulus), add(z, r)))
                 mstore(add(POINT_PTR(), mul(i, 32)), r)
                 ptr := add(ptr, 64)
             }
@@ -389,6 +390,7 @@ contract GKRVerifier {
         // boundary permutation on the last layer), check g*eq_scale==claim, absorb the LSB lines,
         // draw r_last + next_batching, interpolate the next claims (sorted order), grow the point.
         function gkr_dr_final(cp, fs, batching, boundary, eq_scale, claim) -> ncp, nbatch {
+            let modulus := mload(P_PTR)
             let SI := GKR_EQ_PTR() // reuse eq scratch as the sorted-index array (10 slots)
             for { let li := 0 } lt(li, 10) { li := add(li, 1) } {
             mstore(add(SI, mul(li, 32)), li) }
@@ -408,25 +410,25 @@ contract GKRVerifier {
             let gb := 1
             for { let step := 0 } lt(step, 2) { step := add(step, 1) } {
                 let word := calldataload(add(cp, mul(mload(add(SI, mul(step, 32))), 32)))
-                g := add(mulmod(gb, mulmod(shr(128, word), and(word, MASK), mload(P_PTR)), mload(P_PTR)), g)
-                gb := mulmod(gb, batching, mload(P_PTR))
+                g := add(mulmod(gb, mulmod(shr(128, word), and(word, MASK), modulus), modulus), g)
+                gb := mulmod(gb, batching, modulus)
             }
             for { let pr := 0 } lt(pr, 3) { pr := add(pr, 1) } {
                 let wN := calldataload(add(cp, mul(mload(add(SI, mul(add(2, mul(pr, 2)), 32))), 32)))
                 let wD := calldataload(add(cp, mul(mload(add(SI, mul(add(3, mul(pr, 2)), 32))), 32)))
-                let num := add(mulmod(shr(128, wN), and(wD, MASK), mload(P_PTR)), mulmod(and(wN, MASK), shr(128, wD), mload(P_PTR)))
-                let den := mulmod(shr(128, wD), and(wD, MASK), mload(P_PTR))
-                g := add(mulmod(gb, num, mload(P_PTR)), g)
-                gb := mulmod(gb, batching, mload(P_PTR))
-                g := add(mulmod(gb, den, mload(P_PTR)), g)
-                gb := mulmod(gb, batching, mload(P_PTR))
+                let num := add(mulmod(shr(128, wN), and(wD, MASK), modulus), mulmod(and(wN, MASK), shr(128, wD), modulus))
+                let den := mulmod(shr(128, wD), and(wD, MASK), modulus)
+                g := add(mulmod(gb, num, modulus), g)
+                gb := mulmod(gb, batching, modulus)
+                g := add(mulmod(gb, den, modulus), g)
+                gb := mulmod(gb, batching, modulus)
             }
             for { let step := 8 } lt(step, 10) { step := add(step, 1) } {
                 let word := calldataload(add(cp, mul(mload(add(SI, mul(step, 32))), 32)))
-                g := add(mulmod(gb, mulmod(shr(128, word), and(word, MASK), mload(P_PTR)), mload(P_PTR)), g)
-                gb := mulmod(gb, batching, mload(P_PTR))
+                g := add(mulmod(gb, mulmod(shr(128, word), and(word, MASK), modulus), modulus), g)
+                gb := mulmod(gb, batching, modulus)
             }
-            if mod(add(mulmod(mod(g, mload(P_PTR)), eq_scale, mload(P_PTR)), sub(mload(P_PTR), claim)), mload(P_PTR)) {
+            if mod(add(mulmod(mod(g, modulus), eq_scale, modulus), sub(modulus, claim)), modulus) {
             revert(0, 0) }
             // absorb the 320 B of LSB lines (sorted transcript order), draw r_last + next_batching
             mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
@@ -435,16 +437,16 @@ contract GKRVerifier {
             mstore(SEED_PTR(), seed)
             seed := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), seed)
-            let r_last := mod(shr(128, seed), mload(P_PTR))
+            let r_last := mod(shr(128, seed), modulus)
             seed := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), seed)
-            nbatch := mod(shr(128, seed), mload(P_PTR))
+            nbatch := mod(shr(128, seed), modulus)
             mstore(add(POINT_PTR(), mul(fs, 32)), r_last)
             // next claims = interpolate lsb_sorted at r_last (no perm): a + (b-a)*r_last
             for { let li := 0 } lt(li, 10) { li := add(li, 1) } {
                 let word := calldataload(add(cp, mul(li, 32)))
                 let a := shr(128, word)
-                mstore(add(GKR_CLAIMS_PTR(), mul(li, 32)), add(a, mulmod(add(and(word, MASK), sub(mload(P_PTR), a)), r_last, mload(P_PTR))))
+                mstore(add(GKR_CLAIMS_PTR(), mul(li, 32)), add(a, mulmod(add(and(word, MASK), sub(modulus, a)), r_last, modulus)))
             }
             ncp := add(cp, 320)
         }
