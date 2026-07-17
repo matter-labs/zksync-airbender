@@ -234,6 +234,28 @@ pub fn construct_unit_order(
     projected_greedy(n_units, chain, &structure.value_units)
 }
 
+/// Construct a deterministic backward FRAGMENT order for `d`'s full-decomposition
+/// (`d.fragments.fragments`), via the SAME matching -> NN chain -> projected greedy
+/// pipeline as [`construct_unit_order`], but over the fragment-granular reuse graph
+/// from [`ReuseStructure::build_fragments`]. Returns a permutation of
+/// `0..d.fragments.fragments.len()`, suitable as the Task-5 fragment-lowering
+/// `order`. `canonical` is threaded through for signature parity with
+/// [`construct_unit_order`] (the fragment incidence itself is distilled-only).
+pub fn construct_fragment_order(
+    canonical: &DagLayer,
+    d: &DistilledLayer,
+    stable_domain: &BTreeMap<StableBwdSiteKey, SiteKey>,
+) -> Vec<usize> {
+    let n_fragments = d.fragments.fragments.len();
+    if n_fragments == 0 {
+        return Vec::new();
+    }
+    let structure = ReuseStructure::build_fragments(canonical, d, stable_domain);
+    let blocks = match_blocks(n_fragments, &structure.weighted_edges);
+    let chain = chain_blocks(blocks, &structure.weighted_edges);
+    projected_greedy(n_fragments, chain, &structure.value_units)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

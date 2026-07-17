@@ -103,6 +103,74 @@ impl ReuseStructure {
             value_units,
         }
     }
+
+    /// CS-M5a Task 7: fragment-granular sibling of [`build`](Self::build). Every
+    /// downstream stage is identical — only the incidence is keyed by the
+    /// distilled `FragmentTable`'s FRAGMENT index instead of the canonical
+    /// relation-unit index, so `weighted_edges` / `value_units` / `order` all
+    /// range over `0..d.fragments.fragments.len()`. `construct::construct_fragment_order`
+    /// then drives the SAME index-generic `match_blocks`/`chain_blocks`/
+    /// `projected_greedy` stages over this structure.
+    ///
+    /// `canonical` is accepted for signature parity with [`build`](Self::build)
+    /// (so the two are drop-in siblings for the Task-8/10 caller), but the
+    /// fragment incidence is a pure function of the DISTILLED layer: a fragment's
+    /// identity and its atoms both live only in `d`, unlike the term path whose
+    /// unit grouping had to be recovered from the canonical layer.
+    pub fn build_fragments(
+        canonical: &DagLayer,
+        d: &DistilledLayer,
+        stable_domain: &BTreeMap<StableBwdSiteKey, SiteKey>,
+    ) -> Self {
+        let _ = canonical; // incidence is distilled-only; see the doc above.
+
+        let mut values: BTreeMap<StableBwdExprKey, ValueReuse> = BTreeMap::new();
+        for (site_index, (stable, concrete)) in stable_domain.iter().enumerate() {
+            values
+                .entry(stable.value)
+                .and_modify(|value| value.site_indices.push(site_index))
+                .or_insert_with(|| ValueReuse {
+                    site_indices: vec![site_index],
+                    representative: concrete.value,
+                    units: Vec::new(),
+                    dram_cells: 0,
+                    width: 1,
+                });
+        }
+
+        attach_fragment_uses(d, &mut values);
+
+        let mut field_memo = vec![None; d.layer.exprs.len()];
+        let mut traffic_memo = vec![None; d.layer.exprs.len()];
+        for value in values.values_mut() {
+            value.width = expr_width(d, value.representative, &mut field_memo);
+            value.dram_cells =
+                cone_dram_cells(d, value.representative, &mut traffic_memo, &mut field_memo);
+        }
+
+        let edges = reuse_edges(&values);
+        let weighted_edges = edges
+            .iter()
+            .map(|(&(left, right), &weight)| ReuseEdge {
+                left,
+                right,
+                weight,
+            })
+            .collect();
+        let order = guided_order(d.fragments.fragments.len(), &edges);
+        let cache_priorities = interval_priorities(stable_domain.len(), &values, &order);
+        let value_units = values
+            .values()
+            .filter(|value| !value.units.is_empty())
+            .map(|value| (value.width, value.dram_cells, value.units.clone()))
+            .collect();
+        Self {
+            order,
+            cache_priorities,
+            weighted_edges,
+            value_units,
+        }
+    }
 }
 
 /// Recover exact canonical unit membership for stable canonical values. This is
@@ -158,6 +226,62 @@ fn attach_canonical_unit_uses(
                 .expect("target canonical value must have a reuse record")
                 .units
                 .push(unit_index);
+        }
+    }
+}
+
+/// CS-M5a Task 7: fragment-granular value incidence, the sibling of
+/// [`attach_canonical_unit_uses`]. For each distilled fragment, DFS its atom
+/// cones over the DISTILLED layer and record the fragment index against every
+/// stable value it reaches that is already in the reuse-value domain.
+///
+/// Two deliberate differences from the term-path walk:
+///  * It walks `d.layer` (the distilled cones the fragment atoms name), not the
+///    canonical layer — a fragment's identity lives only in `d.fragments`, so
+///    there is no canonical unit grouping to recover. Distilled `ExprId`s are
+///    mapped to their order-independent `StableBwdExprKey` via `d.stable_key`,
+///    which is exactly the domain the `values` map is keyed by.
+///  * It counts the ATOM NODE ITSELF as a use (the walk seeds from the atoms and
+///    checks them on pop). Fragment top atoms are servable values post-Task-5,
+///    and a value shared as one fragment's top atom and inside another
+///    fragment's cone is precisely the reuse the order must co-locate — so, unlike
+///    the term walk (whose batching-term tops are never in the value domain and
+///    thus fall out on their own), the tops here must NOT be skipped.
+///
+/// Fences need no explicit handling: same-layer cache roots were rebuilt into
+/// `Read(CacheOutput)` leaves during distillation (and `LookupValue` was erased
+/// to its query), so every distilled `Source` is a childless leaf and the DFS
+/// stops there naturally — mirroring the canonical walk's explicit fence cut.
+fn attach_fragment_uses(d: &DistilledLayer, values: &mut BTreeMap<StableBwdExprKey, ValueReuse>) {
+    for (frag_index, fragment) in d.fragments.fragments.iter().enumerate() {
+        let mut reached: BTreeSet<StableBwdExprKey> = BTreeSet::new();
+        let mut seen: HashSet<ExprId> = HashSet::new();
+        let mut work: Vec<ExprId> = fragment.atoms.clone();
+        while let Some(expr) = work.pop() {
+            if !seen.insert(expr) {
+                continue;
+            }
+            if let Some(key) = d.stable_key(expr) {
+                if values.contains_key(&key) {
+                    reached.insert(key);
+                }
+            }
+            match &d.layer.exprs[expr.0 as usize] {
+                Expr::Add(children) | Expr::Mul(children) => {
+                    work.extend(children.iter().copied());
+                }
+                // Distilled sources are leaves: Read/Constant/Challenge/VirtualSetup
+                // have no operands, fenced cache roots are already `Read` leaves, and
+                // `LookupValue` was erased to its query — nothing to descend.
+                Expr::Source(_) => {}
+            }
+        }
+        for key in reached {
+            values
+                .get_mut(&key)
+                .expect("reached value must have a reuse record (checked in-domain above)")
+                .units
+                .push(frag_index);
         }
     }
 }

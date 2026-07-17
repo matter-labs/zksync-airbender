@@ -15,10 +15,11 @@ mod common;
 
 use std::collections::HashMap;
 
-use common::{layers_with_bwd_roots, FIXTURES};
+use common::{layers_with_bwd_roots, load_layer, FIXTURES};
 use cs::gkr_compiler::dag_ir::BwdRegime;
 use gkr_eval_isa::bwd::compile::compile_distilled_fragments;
-use gkr_eval_isa::bwd::distill::distill;
+use gkr_eval_isa::bwd::construct::construct_fragment_order;
+use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain};
 use gkr_eval_isa::bwd::fragment::FactorKey;
 
 /// Multiset (count map) of a slice — the canonical order-independent comparison.
@@ -145,4 +146,69 @@ fn fragment_order_duplicate_index_panics() {
         }
     }
     panic!("no fixture/layer had >= 2 fragments — could not exercise the duplicate-order panic");
+}
+
+// ── CS-M5a Task 7: fragment-granular constructive order (`construct_fragment_order`) ─
+
+/// (7.1a) For every fixture × every bwd layer × Ext, `construct_fragment_order`
+/// returns a valid PERMUTATION of `0..d.fragments.fragments.len()`: same length,
+/// and the sorted order equals `0..n` (every fragment index present exactly once,
+/// none out of range or repeated). The fragment index space is the value the
+/// Task-5 lowering driver already validates as a permutation of `order`.
+#[test]
+fn fragment_order_is_permutation_all_fixtures() {
+    let mut checked = 0usize;
+    for &name in FIXTURES {
+        for (li, layer, cross) in layers_with_bwd_roots(name) {
+            let d = distill(&layer, BwdRegime::Ext, &cross, None);
+            let stable_domain = stable_distilled_site_domain(&d);
+            let n = d.fragments.fragments.len();
+
+            let order = construct_fragment_order(&layer, &d, &stable_domain);
+
+            assert_eq!(order.len(), n, "[{name} L{li} Ext] permutation length");
+            let mut sorted = order.clone();
+            sorted.sort_unstable();
+            assert_eq!(
+                sorted,
+                (0..n).collect::<Vec<usize>>(),
+                "[{name} L{li} Ext] order is not a permutation of 0..{n} (got {order:?})"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 0, "no distillable bwd layer — fixture enumeration broke");
+    println!("fragment_order_is_permutation_all_fixtures: {checked} layer instances held");
+}
+
+/// (7.1b) Determinism: two `construct_fragment_order` calls over the SAME distill
+/// are byte-equal (no wall-clock / hashmap-iteration-order dependence).
+#[test]
+fn fragment_order_is_deterministic() {
+    let (layer, cross) = load_layer("add_sub_lui_auipc_mop_layout_gkr.json", 0);
+    let d = distill(&layer, BwdRegime::Ext, &cross, None);
+    let stable_domain = stable_distilled_site_domain(&d);
+
+    let a = construct_fragment_order(&layer, &d, &stable_domain);
+    let b = construct_fragment_order(&layer, &d, &stable_domain);
+    assert_eq!(a, b, "construct_fragment_order must be deterministic on the same distill");
+}
+
+/// (7.1c) Non-vacuity: on bigint L0 Ext there IS fragment-level reuse to
+/// co-locate, so the constructed order MUST differ from identity. A constructor
+/// that always returned `0..n` would satisfy (a)/(b) trivially — this pins that
+/// the reuse structure actually MOVES fragments.
+#[test]
+fn fragment_order_moves_reuse() {
+    let (layer, cross) = load_layer("bigint_with_extended_control_layout_gkr.json", 0);
+    let d = distill(&layer, BwdRegime::Ext, &cross, None);
+    let stable_domain = stable_distilled_site_domain(&d);
+    let n = d.fragments.fragments.len();
+
+    let order = construct_fragment_order(&layer, &d, &stable_domain);
+    let identity: Vec<usize> = (0..n).collect();
+    assert_ne!(
+        order, identity,
+        "bigint L0 Ext ({n} fragments) has reuse to co-locate — constructed order must not be identity"
+    );
 }
