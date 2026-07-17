@@ -20,7 +20,7 @@ pub const STATE_SIZE: usize = 8;
 pub type Digest = [u32; STATE_SIZE];
 
 // Path-gather launch geometry packs STATE_SIZE-word digests into warps.
-const _: () = assert!(WARP_SIZE % STATE_SIZE as u32 == 0);
+const _: () = assert!(WARP_SIZE.is_multiple_of(STATE_SIZE as u32));
 
 /// Bounds-checked `usize` → `u32` narrowing for kernel launch parameters.
 pub(crate) fn checked_u32(value: usize) -> u32 {

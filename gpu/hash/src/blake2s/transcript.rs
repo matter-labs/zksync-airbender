@@ -99,8 +99,10 @@ pub fn transcript_commit_initial_chunked(
         num_chunks <= GKR_CHUNKED_COMMIT_MAX_CHUNKS,
         "transcript_commit_initial_chunked: {num_chunks} chunks exceeds GKR_CHUNKED_COMMIT_MAX_CHUNKS = {GKR_CHUNKED_COMMIT_MAX_CHUNKS}",
     );
-    let mut desc = GpuChunkedInputDesc::default();
-    desc.num_chunks = num_chunks as u32;
+    let mut desc = GpuChunkedInputDesc {
+        num_chunks: num_chunks as u32,
+        ..Default::default()
+    };
     for (i, (ptr, len)) in chunks.iter().enumerate() {
         desc.src_ptrs[i] = *ptr as u64;
         desc.chunk_lens[i] = *len;

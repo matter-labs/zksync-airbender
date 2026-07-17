@@ -34,7 +34,7 @@ fn verify_leaves(values: &[BF], results: &[Digest], log_rows_per_hash: u32) {
     let cols_count = values_len / (leaves_count << log_rows_per_hash);
     let rows_count = 1 << log_rows_per_hash;
     let domain_size = leaves_count << log_rows_per_hash;
-    for leaf_index in 0..leaves_count {
+    for (leaf_index, &actual) in results.iter().enumerate() {
         let mut input = vec![];
         for col in 0..cols_count {
             for row_slot in 0..rows_count {
@@ -66,7 +66,6 @@ fn verify_leaves(values: &[BF], results: &[Digest], log_rows_per_hash: u32) {
                 state.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
             }
         }
-        let actual = results[leaf_index];
         assert_eq!(expected, actual);
     }
 }

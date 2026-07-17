@@ -9,8 +9,9 @@
 //! blake2s-dependent GKR/WHIR protocol kernels that stay in `gpu_circuit_prover`
 //! (`ops::gkr_ops`) can `#include "hash.cuh"`.
 
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
+// The public launchers mirror their CUDA kernels' parameter lists; splitting
+// them into config structs would obscure the 1:1 Rust<->kernel correspondence.
+#![allow(clippy::too_many_arguments)]
 
 mod upstream;
 
