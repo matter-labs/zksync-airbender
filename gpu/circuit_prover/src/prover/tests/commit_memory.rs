@@ -15,7 +15,7 @@ fn test_commit_memory_matches_cpu() {
         "examples/basic_fibonacci/app.bin",
         "examples/basic_fibonacci/app.text",
         &[],
-        4,
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
         compiled_circuit,
     );
@@ -35,7 +35,7 @@ fn test_jump_branch_slt_commit_memory_matches_cpu() {
         "examples/hashed_fibonacci/app.bin",
         "examples/hashed_fibonacci/app.text",
         &[15, 1],
-        4, // jump_branch_slt default_pc_value_in_padding (== GPU PC_STEP)
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::JumpBranchSlt,
         compiled_circuit,
     );
@@ -55,7 +55,7 @@ fn test_shift_binop_commit_memory_matches_cpu() {
         "examples/hashed_fibonacci/app.bin",
         "examples/hashed_fibonacci/app.text",
         &[15, 1],
-        4,
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
         compiled_circuit,
     );

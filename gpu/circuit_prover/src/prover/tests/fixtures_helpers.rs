@@ -856,7 +856,7 @@ pub(super) fn prepare_basic_unrolled_fixture(
         build_config.circuit_type,
         compiled_circuit,
         buffer,
-        4, // add_sub default_pc_value_in_padding
+        common_constants::PC_STEP as u32, // add_sub default_pc_value_in_padding
         add_sub_lui_auipc_mod::witness_eval_fn,
         table_driver,
         ex.decoder_table_data,

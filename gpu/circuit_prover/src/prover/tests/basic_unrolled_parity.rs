@@ -134,7 +134,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
         decoder_table: decoder_table_data,
-        default_pc_value_in_padding: 4,
+        default_pc_value_in_padding: common_constants::PC_STEP as u32,
     };
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
         &add_sub_circuit,

@@ -137,7 +137,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
         decoder_table: decoder_table_data,
-        default_pc_value_in_padding: 4, // == GPU PC_STEP for jump_branch_slt
+        default_pc_value_in_padding: common_constants::PC_STEP as u32,
     };
     let mut table_driver = TableDriver::new();
     jump_branch_slt_table_driver_fn(&mut table_driver);
@@ -764,7 +764,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
         decoder_table: decoder_table_data,
-        default_pc_value_in_padding: 4,
+        default_pc_value_in_padding: common_constants::PC_STEP as u32,
     };
     let mut table_driver = TableDriver::new();
     shift_binop_table_driver_fn(&mut table_driver);
