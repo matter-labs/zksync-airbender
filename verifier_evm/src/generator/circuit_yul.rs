@@ -246,6 +246,27 @@ fn u32_lit(c: u32) -> Dual {
     Dual(format!("{c}"), yul_format!("{c}"))
 }
 
+/// Emit a `coeff · input` term into a gate/cache's non-canonical `add`-chain.
+///
+/// The generic form is `mulmod(coeff, input, P)` (product reduced < P). But the legacy
+/// Yul optimizer does NOT simplify `mulmod(1, x, P)`, so a coefficient of 1 would compile
+/// to a real MULMOD (PUSH 1, reconstruct P, MULMOD ≈ 8 bytes) at every occurrence — 395 of
+/// them across layer-0. When the coefficient is exactly 1 we emit the bare `input`.
+///
+/// This is exact, not an approximation: `input` here is always a single `shr(128, …)`
+/// calldata lane (< 2^128). Whether it lands in [0, P) or [P, 2^128) it flows into the
+/// surrounding `add`-chain whose result is canonicalized by the gate's trailing `mod(_, P)`
+/// (or, for accumulators, the next round's `mulmod(_, alpha, P)`). Sum stays far below
+/// 2^256, so the result is bit-identical mod P. The human-readable side is unchanged.
+fn scaled(c: &Dual, input: &Dual) -> Dual {
+    let display = format!("{c}{input}");
+    if c.1 .0 == "1" {
+        Dual(display, yul_format!("{input:x}"))
+    } else {
+        Dual(display, yul_format!("mulmod({c:x}, {input:x}, P)"))
+    }
+}
+
 /// Fold 10 lookup columns into a β-Horner accumulator using 2-arg `gkr_lookrel_step`
 /// calls, so no call boundary materializes more than one column expression at a time.
 /// The prior 5-arg `gkr_lookrel_compress_half` forced solc to put all five column
@@ -525,7 +546,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                         let linear = linear_terms.iter().map(|(c, addr)| {
                             let input = gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets);
                             let c = proth120_const_to_evm(c);
-                            Dual(format!("{c}{input}"), yul_format!("mulmod({c:x}, {input:x}, P)"))
+                            scaled(&c, &input)
                         }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or_else(|| Dual("0".to_string(), yul_format!("0")));
                         let constant = proth120_const_to_evm(constant);
                         Dual(format!("({constant} + {linear})"), yul_format!("add({constant:x}, {linear:x})"))
@@ -547,7 +568,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     let linear = linear_terms.iter().map(|(c, addr)| {
                         let read = gkraddress_to_calldata(addr, i, layer0_group_widths, &mut running_max_group_offsets);
                         let c = proth120_const_to_evm(c);
-                        Dual(format!("{c}{read}"), yul_format!("mulmod({c:x}, {read:x}, P)"))
+                        scaled(&c, &read)
                     }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or_else(|| Dual("0".to_string(), yul_format!("0")));
                     let constant = proth120_const_to_evm(constant);
                     let val = Dual(format!("{constant} + {linear}"), yul_format!("add({constant:x}, {linear:x})"));
@@ -814,7 +835,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                 let linear = linear_terms.iter().map(|(c, addr)| {
                     let input = gkraddress_to_calldata(addr, expected_layer, layer0_group_widths, running_max_group_offsets);
                     let c = proth120_const_to_evm(c);
-                    Dual(format!("{c}{input}"), yul_format!("mulmod({c:x}, {input:x}, P)"))
+                    scaled(&c, &input)
                 }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or(Dual("0".to_string(), yul_format!("0")));
                 let constant = proth120_const_to_evm(constant);
                 Dual(format!("{constant} + {linear}"), yul_format!("add({constant:x}, {linear:x})"))
@@ -830,14 +851,14 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     let inner = inner_terms.iter().map(|(c, address)| {
                         let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
                         let c = proth120_const_to_evm(c);
-                        Dual(format!("{c}{read}"), yul_format!("mulmod({c:x}, {read:x}, P)"))
+                        scaled(&c, &read)
                     }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or_else(zero);
                     Dual(format!("{read}({inner})"), yul_format!("mulmod({read:x}, {inner:x}, P)"))
                 }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or_else(zero);
                 let linear = linear_terms.iter().map(|(c, address)| {
                     let read = gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets);
                     let c = proth120_const_to_evm(c);
-                    Dual(format!("{c}{read}"), yul_format!("mulmod({c:x}, {read:x}, P)"))
+                    scaled(&c, &read)
                 }).reduce(|acc, el| Dual(format!("{acc} + {el}"), yul_format!("add({acc:x}, {el:x})"))).unwrap_or_else(zero);
                 let constant = proth120_const_to_evm(constant);
                 Dual(
