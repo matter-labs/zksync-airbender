@@ -192,11 +192,18 @@ fn bwd_backend_neutrality() {
             continue; // L0 has no backward roots for this fixture
         }
         let outcome = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
-        let traffic = outcome.stats.global + outcome.stats.fold_traffic;
-        let lanes = outcome.instrs;
-        let cert = outcome.certificate;
-        let entries_fnv = outcome.plan.as_ref().map(|p| p.entries_fnv);
-        let digest = program_digest(&outcome.compiled.program, &outcome.compiled.specials);
+        // CS-M5a Task 10 (RR resolution): pin the TERM pricing path via the TERM-FLOOR probe
+        // (`outcome.term_floor` = the lexicographic-min of {baseline, term-CS}, i.e. what the
+        // engine would ship if the fragment candidate did not exist) — NOT the shipped
+        // winner, which since Task 10 may be the fragment candidate. The pinned constants in
+        // `PINS` are UNCHANGED: this test keeps proving the term pricing path is byte-
+        // identical forever, independent of whether fragment now wins the shipped slot.
+        let floor = &outcome.term_floor;
+        let traffic = floor.compiled.stats_ext.global + floor.compiled.stats_ext.fold_traffic;
+        let lanes = floor.compiled.stats.program_lanes;
+        let cert = floor.certificate;
+        let entries_fnv = floor.plan_entries_fnv;
+        let digest = program_digest(&floor.compiled.program, &floor.compiled.specials);
 
         // Regeneration line — copy into `PINS`.
         println!(

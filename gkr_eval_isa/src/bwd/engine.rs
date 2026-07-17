@@ -31,19 +31,44 @@
 //! `budget`, or otherwise) also falls back — the engine NEVER panics on a schedule
 //! problem. The forward program is untouched: this is a bwd/new-module + test-only
 //! addition, so fwd byte-identity is inviolable by construction.
+//!
+//! ## CS-M5a Task 10: error-isolated fragment candidate with term floor
+//!
+//! The engine now evaluates TWO CS candidates as INDEPENDENT `Result`s and ships the
+//! lexicographic minimum of `{baseline} ∪ {successful candidates}`:
+//!
+//! * **term-CS** — the constructive-order + priced-greedy [`TermBackend`] pipeline above
+//!   (unchanged, byte-identical: `bwd_backend_neutrality` pins it);
+//! * **fragment-CS** — the full-decomposition [`FragmentBackend`] pipeline over the
+//!   canonical distillation: `construct_fragment_order` →
+//!   `coordinate_correct_frozen_with_backend` → `priced_rounds_with_backend` →
+//!   `backend.planned` ship → `certify`.
+//!
+//! Error isolation is genuine: each candidate is a `Result` consulted via `.ok()`, so one
+//! candidate's `Err` (e.g. a fragment pricing/compile failure on an R0 layer) NEVER
+//! discards the other candidate or the baseline. A certify-`Err` (or a divergent replay)
+//! marks the candidate infeasible via [`report_and_feasible`], and an infeasible candidate
+//! sorts AFTER the always-feasible baseline — so it can never ship (rejection, not panic).
+//! Ties prefer the earlier option (baseline over term over fragment): a candidate replaces
+//! the running best ONLY on a STRICT key improvement. `CsOutcome::fragment_order` is
+//! `Some` IFF the fragment candidate is the shipped winner (it strictly beat both the term
+//! candidate and the baseline).
 
 use std::collections::HashMap;
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ExprId, FieldKind, ReadPlace};
 
 use super::compile::{
-    compile_distilled_planned, compile_distilled_traced, BwdCompiledLayer, BwdTrafficStats,
+    compile_distilled_planned, compile_distilled_traced, BwdCompileBackend, BwdCompiledLayer,
+    BwdTrafficStats, FragmentBackend,
 };
-use super::construct::construct_unit_order;
+use super::construct::{construct_fragment_order, construct_unit_order};
 use super::distill::{distill, stable_distilled_site_domain, DistilledLayer};
-use super::fif::coordinate_correct_frozen;
+use super::fif::{coordinate_correct_frozen, coordinate_correct_frozen_with_backend};
 use super::plan::BwdOccurrencePlan;
-use super::price::{priced_rounds, LeafReclaimCounters, PRODUCTION_GAP_CAP, RECLAIM_N};
+use super::price::{
+    priced_rounds, priced_rounds_with_backend, LeafReclaimCounters, PRODUCTION_GAP_CAP, RECLAIM_N,
+};
 use super::trace::{certify, BwdCompileTrace, BwdEvent, CertificateReport};
 use crate::fwd::error::CompileError;
 
@@ -59,6 +84,28 @@ use crate::fwd::error::CompileError;
 /// below) the canonical baseline. When it is `true`, `compiled` is the canonical
 /// `decisions:None` baseline compile, `plan` is `None`, `unit_permutation` is the
 /// identity `0..n`, `pins` is empty, and `rounds`/`converged` are `0`/`false`.
+///
+/// The TERM-FLOOR probe [`CsOutcome::term_floor`] (CS-M5a Task 10, RR resolution) exposes
+/// the program the engine WOULD have shipped WITHOUT the fragment candidate — the
+/// lexicographic-min of `{baseline, term-CS}` — so `bwd_backend_neutrality` can keep
+/// byte-pinning the TERM pricing path (its constants stay literally unchanged) even when
+/// the fragment candidate wins the SHIPPED slot. `term_leaf_calls`/`fragment_leaf_calls`
+/// expose each candidate's priced-search cost independently of which one shipped, so the
+/// per-search `leaf_calls` guardrail applies PER CANDIDATE.
+/// CS-M5a Task 10 (RR resolution): the TERM-FLOOR program — the lexicographic-min of
+/// `{baseline, term-CS}`, i.e. what the engine would ship if the fragment candidate did not
+/// exist. Carries everything `bwd_backend_neutrality` needs to byte-check the TERM pricing
+/// path without regenerating its pinned constants: the compiled program + descriptor table
+/// (for the digest) and stats (`compiled`), the certificate counts (`certificate`), and the
+/// term-CS plan's `entries_fnv` (`plan_entries_fnv`, `None` when the baseline is the floor —
+/// the pre-fragment engine shipped the baseline there, whose `plan` was `None`).
+#[derive(Clone, Debug)]
+pub struct TermFloorProbe {
+    pub compiled: BwdCompiledLayer,
+    pub certificate: CertificateReport,
+    pub plan_entries_fnv: Option<u64>,
+}
+
 #[derive(Clone, Debug)]
 pub struct CsOutcome {
     pub unit_permutation: Vec<usize>,
@@ -71,6 +118,24 @@ pub struct CsOutcome {
     pub rounds: usize,
     pub converged: bool,
     pub fell_back_to_baseline: bool,
+    /// CS-M5a (Task 10): the constructed FRAGMENT order (`construct_fragment_order`, a
+    /// permutation of `0..d.fragments.fragments.len()`) IFF the fragment-CS candidate is
+    /// the shipped winner — `Some` ⟺ fragment shipped. `None` when the term-CS candidate or
+    /// the canonical baseline won. The value-parity gate reconstructs the fragment winner by
+    /// replaying `plan` through the fragment pipeline at this order.
+    pub fragment_order: Option<Vec<usize>>,
+    /// CS-M5a (Task 10, RR resolution): the TERM-FLOOR probe — the lexicographic-min of
+    /// `{baseline, term-CS}`, i.e. exactly what the engine would ship if the fragment
+    /// candidate did not exist. `bwd_backend_neutrality` compares against THIS so the term
+    /// pricing path stays byte-pinned regardless of the shipped winner.
+    pub term_floor: TermFloorProbe,
+    /// CS-M5a (Task 10, RR resolution): the term-CS candidate's priced-search `leaf_calls`
+    /// (`None` if that candidate errored out — no completed priced run). Guardrail scope:
+    /// the per-search `HARD_MAX` applies to this INDEPENDENTLY of the shipped winner.
+    pub term_leaf_calls: Option<usize>,
+    /// CS-M5a (Task 10, RR resolution): the fragment-CS candidate's priced-search
+    /// `leaf_calls` (`None` if that candidate errored out). Same per-search guardrail scope.
+    pub fragment_leaf_calls: Option<usize>,
     /// CS-M4 (Task 2): the priced run's leaf-reclaim counters (Task 2 populates only the
     /// residual-gap fields; the rest arrive in Tasks 3/4). Default (all `0`) on fallback.
     pub counters: LeafReclaimCounters,
@@ -114,12 +179,17 @@ fn report_and_feasible(
     }
 }
 
-/// The constructive CS path, all-or-nothing: on any compile error the caller falls
-/// back to the canonical baseline (`try_cs_path` propagates the `Err`). Returns the
-/// constructed permutation, the priced plan/pins/round-counters, and the SHIPPED
-/// compile with its certificate report + feasibility.
+/// One constructed CS candidate (term OR fragment), each computed as an INDEPENDENT
+/// `Result` (CS-M5a Task 10): on any compile/pricing/certify error the producer returns
+/// `Err`, and the caller consults it via `.ok()` so one candidate's failure never discards
+/// the other candidate or the baseline. Returns the constructed permutation, the priced
+/// plan/pins/round-counters, and the SHIPPED compile with its certificate report +
+/// feasibility. `fragment_order` is `Some` for the fragment candidate (its constructed
+/// fragment schedule order) and `None` for the term candidate — it flows into the shipped
+/// [`CsOutcome::fragment_order`] IFF this candidate wins.
 struct CsPath {
     unit_permutation: Vec<usize>,
+    fragment_order: Option<Vec<usize>>,
     plan: BwdOccurrencePlan,
     pins: Vec<ExprId>,
     compiled: BwdCompiledLayer,
@@ -135,6 +205,23 @@ struct CsPath {
     sum_quota: usize,
 }
 
+impl CsPath {
+    /// The lexicographic candidate key — the SAME `schedule_key(!feasible, traffic,
+    /// program_lanes)` used against the baseline. An infeasible candidate (certify-`Err`
+    /// or divergent replay marks `feasible=false`) sorts after the always-feasible
+    /// baseline, so it cannot ship.
+    fn key(&self) -> (bool, usize, usize) {
+        let traffic = self.compiled.stats_ext.global + self.compiled.stats_ext.fold_traffic;
+        schedule_key(!self.feasible, traffic, self.compiled.stats.program_lanes)
+    }
+}
+
+/// The constructive TERM CS path (CS-M5a Task 10: one of the two independent candidates).
+/// On any compile error it returns `Err`; the caller consults it via `.ok()`, so a term
+/// failure isolates to the term candidate alone (the fragment candidate and the baseline
+/// are unaffected). Returns the constructed unit permutation, the priced plan/pins/round-
+/// counters, and the SHIPPED compile with its certificate report + feasibility.
+#[allow(clippy::too_many_arguments)]
 fn try_cs_path(
     layer: &DagLayer,
     regime: BwdRegime,
@@ -161,6 +248,72 @@ fn try_cs_path(
 
     Ok(CsPath {
         unit_permutation: perm,
+        fragment_order: None,
+        plan: outcome.plan,
+        pins: outcome.pins,
+        compiled,
+        report,
+        feasible,
+        rounds: outcome.rounds,
+        converged: outcome.converged,
+        counters: outcome.counters,
+        saw_incomplete_round: outcome.saw_incomplete_round,
+        leaf_calls: outcome.leaf_calls,
+        base_compound_calls: outcome.base_compound_calls,
+        sum_g: outcome.sum_g,
+        sum_quota: outcome.sum_quota,
+    })
+}
+
+/// The FULL-DECOMPOSITION (fragment) CS path (CS-M5a Task 10) — the term-path sibling of
+/// [`try_cs_path`], evaluated as an INDEPENDENT `Result` over the SAME canonical
+/// distillation `d` (`distill(.., None)`). It never re-interns units (fragment mode is
+/// plan-driven, not order-permuted at the unit level); instead it carries the constructed
+/// FRAGMENT order through the [`FragmentBackend`], which the whole pricing stack (Task 6)
+/// is parameterized over. The pipeline is exactly the `fif.rs`-mandated fragment seed +
+/// priced greedy + ship + certify:
+///
+/// 1. `order = construct_fragment_order(...)` (Task 7);
+/// 2. `frozen0 = coordinate_correct_frozen_with_backend(d, budget, &FragmentBackend{order})`
+///    (Task 6 — the doc-mandated planned all-`Bypass` `lower==place==budget` seed);
+/// 3. `priced_rounds_with_backend(&FragmentBackend{order}, ..)` (Task 6);
+/// 4. `backend.planned(d, budget, &plan)` ship, then [`certify`] via
+///    [`report_and_feasible`] (certify-`Err` ⟹ `feasible=false` ⟹ cannot ship).
+///
+/// Any `Err` (a fragment pricing/compile failure — e.g. the known R0 `ExtCellMisaligned`
+/// on some Retain admissions) propagates out; the caller's `.ok()` isolates it so the term
+/// candidate and baseline are untouched.
+#[allow(clippy::too_many_arguments)]
+fn try_fragment_path(
+    layer: &DagLayer,
+    budget: usize,
+    d: &DistilledLayer,
+    multiplier: usize,
+    gap_cap: usize,
+    enforce_budget: bool,
+) -> Result<CsPath, CompileError> {
+    // (a) constructive FRAGMENT order off the canonical distillation's fragment-granular
+    // reuse structure — a permutation of `0..d.fragments.fragments.len()`.
+    let stable_domain = stable_distilled_site_domain(d);
+    let order = construct_fragment_order(layer, d, &stable_domain);
+    let backend = FragmentBackend { order: order.clone() };
+
+    // (b) coordinate-correct fragment freeze (NEVER a raw traced freeze), then the
+    // backend-parameterized compiler-in-the-loop priced greedy.
+    let frozen0 = coordinate_correct_frozen_with_backend(d, budget, &backend)?;
+    let outcome =
+        priced_rounds_with_backend(&backend, d, budget, frozen0, multiplier, gap_cap, enforce_budget)?;
+
+    // (c) recompile the returned plan to the SHIPPED fragment program, then certify it.
+    let (compiled, trace) = backend.planned(d, budget, &outcome.plan)?;
+    let (report, feasible) = report_and_feasible(&compiled, &trace);
+
+    Ok(CsPath {
+        // Fragment mode does not permute units; the shipped program is compiled from the
+        // canonical distillation. The identity keeps `unit_permutation` well-formed while
+        // `fragment_order` carries the fragment schedule the reconstruction replays.
+        unit_permutation: (0..d.unit_order.len()).collect(),
+        fragment_order: Some(order),
         plan: outcome.plan,
         pins: outcome.pins,
         compiled,
@@ -179,10 +332,14 @@ fn try_cs_path(
 
 /// Assemble the canonical-baseline `CsOutcome` (the non-regression fallback): identity
 /// permutation, no plan, no pins, and the baseline compile's own stats/instrs/report.
+#[allow(clippy::too_many_arguments)]
 fn baseline_outcome(
     n_units: usize,
     bl_c: BwdCompiledLayer,
     bl_report: CertificateReport,
+    term_floor: TermFloorProbe,
+    term_leaf_calls: Option<usize>,
+    fragment_leaf_calls: Option<usize>,
 ) -> CsOutcome {
     CsOutcome {
         unit_permutation: (0..n_units).collect(),
@@ -195,6 +352,11 @@ fn baseline_outcome(
         rounds: 0,
         converged: false,
         fell_back_to_baseline: true,
+        // Fragment candidate did not win (baseline floor): no stored order.
+        fragment_order: None,
+        term_floor,
+        term_leaf_calls,
+        fragment_leaf_calls,
         // No priced run happened on fallback (spec §5): counters/costs default to 0/false.
         counters: LeafReclaimCounters::default(),
         saw_incomplete_round: false,
@@ -265,8 +427,11 @@ pub fn cs_schedule_bwd_layer_research(
     let bl_traffic = bl_c.stats_ext.global + bl_c.stats_ext.fold_traffic;
     let bl_key = schedule_key(!bl_feasible, bl_traffic, bl_c.stats.program_lanes);
 
-    // ── run the CS path; fall back on any compile error ────────────────────────────
-    let cs = match try_cs_path(
+    // ── (2/3) the two INDEPENDENT CS candidates (CS-M5a Task 10) ───────────────────
+    // Each is a `Result` consulted via `.ok()`: a failure in one candidate NEVER discards
+    // the other candidate or the baseline (genuine error isolation). The term candidate is
+    // byte-identical to the pre-Task-10 pipeline (`bwd_backend_neutrality` pins it).
+    let term = try_cs_path(
         layer,
         regime,
         cross,
@@ -275,35 +440,89 @@ pub fn cs_schedule_bwd_layer_research(
         multiplier,
         gap_cap,
         enforce_budget,
-    ) {
-        Ok(cs) => cs,
-        Err(_) => return baseline_outcome(n_units, bl_c, bl_report),
+    )
+    .ok();
+    let fragment =
+        try_fragment_path(layer, budget, &bl_d, multiplier, gap_cap, enforce_budget).ok();
+
+    // Per-candidate priced-search cost (RR resolution): each search's `leaf_calls` is
+    // exposed independently of which candidate ships, so the per-search `HARD_MAX`
+    // guardrail keeps its per-search meaning across BOTH candidates. `None` iff that
+    // candidate errored out (no completed priced run).
+    let term_leaf_calls = term.as_ref().map(|t| t.leaf_calls);
+    let fragment_leaf_calls = fragment.as_ref().map(|f| f.leaf_calls);
+
+    // TERM FLOOR (RR resolution): the lexicographic-min of {baseline, term-CS} — exactly
+    // what the engine would ship if the fragment candidate did not exist. `bwd_backend_
+    // neutrality` byte-checks THIS, so the term pricing path stays pinned even when fragment
+    // wins the shipped slot. Built (cloned) BEFORE the selection consumes the candidates.
+    let term_floor = match &term {
+        Some(t) if t.key() < bl_key => TermFloorProbe {
+            compiled: t.compiled.clone(),
+            certificate: t.report.clone(),
+            plan_entries_fnv: Some(t.plan.entries_fnv),
+        },
+        _ => TermFloorProbe {
+            compiled: bl_c.clone(),
+            certificate: bl_report.clone(),
+            plan_entries_fnv: None,
+        },
     };
 
-    // ── non-regression: ship CS only if it STRICTLY beats the baseline key ─────────
-    let cs_traffic = cs.compiled.stats_ext.global + cs.compiled.stats_ext.fold_traffic;
-    let cs_instrs = cs.compiled.stats.program_lanes;
-    let cs_key = schedule_key(!cs.feasible, cs_traffic, cs_instrs);
-    if cs_key < bl_key {
-        CsOutcome {
-            unit_permutation: cs.unit_permutation,
-            plan: Some(cs.plan),
-            stats: cs.compiled.stats_ext,
-            instrs: cs_instrs,
-            compiled: cs.compiled,
-            pins: cs.pins,
-            certificate: cs.report,
-            rounds: cs.rounds,
-            converged: cs.converged,
-            fell_back_to_baseline: false,
-            counters: cs.counters,
-            saw_incomplete_round: cs.saw_incomplete_round,
-            leaf_calls: cs.leaf_calls,
-            base_compound_calls: cs.base_compound_calls,
-            sum_g: cs.sum_g,
-            sum_quota: cs.sum_quota,
+    // ── (4) ship the lexicographic-min of {baseline} ∪ {successful candidates} ─────
+    // Baseline is the floor (always feasible). A candidate replaces the running best ONLY
+    // on a STRICT key improvement, and the term candidate is consulted before the fragment
+    // candidate — so ties prefer baseline over term over fragment. `fragment_order` in the
+    // shipped outcome is `Some` IFF the fragment candidate strictly beat both the term
+    // candidate and the baseline (Some ⟺ fragment shipped).
+    let mut best_key = bl_key;
+    let mut winner: Option<CsPath> = None;
+    for cand in [term, fragment].into_iter().flatten() {
+        let k = cand.key();
+        if k < best_key {
+            best_key = k;
+            winner = Some(cand);
         }
-    } else {
-        baseline_outcome(n_units, bl_c, bl_report)
+    }
+
+    match winner {
+        Some(cs) => outcome_from_cspath(cs, term_floor, term_leaf_calls, fragment_leaf_calls),
+        None => {
+            baseline_outcome(n_units, bl_c, bl_report, term_floor, term_leaf_calls, fragment_leaf_calls)
+        }
+    }
+}
+
+/// Assemble the shipped `CsOutcome` from the winning [`CsPath`] (term or fragment).
+/// `fragment_order` flows straight through — it is `Some` exactly for a fragment winner —
+/// so `Some` ⟺ the fragment candidate shipped.
+fn outcome_from_cspath(
+    cs: CsPath,
+    term_floor: TermFloorProbe,
+    term_leaf_calls: Option<usize>,
+    fragment_leaf_calls: Option<usize>,
+) -> CsOutcome {
+    let instrs = cs.compiled.stats.program_lanes;
+    CsOutcome {
+        unit_permutation: cs.unit_permutation,
+        plan: Some(cs.plan),
+        stats: cs.compiled.stats_ext,
+        instrs,
+        compiled: cs.compiled,
+        pins: cs.pins,
+        certificate: cs.report,
+        rounds: cs.rounds,
+        converged: cs.converged,
+        fell_back_to_baseline: false,
+        fragment_order: cs.fragment_order,
+        term_floor,
+        term_leaf_calls,
+        fragment_leaf_calls,
+        counters: cs.counters,
+        saw_incomplete_round: cs.saw_incomplete_round,
+        leaf_calls: cs.leaf_calls,
+        base_compound_calls: cs.base_compound_calls,
+        sum_g: cs.sum_g,
+        sum_quota: cs.sum_quota,
     }
 }
