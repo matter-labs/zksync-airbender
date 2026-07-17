@@ -215,8 +215,6 @@ pub fn prove_delegation_blake<C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    println!("Will try to prove Blake delegation");
-
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path("blake2_with_extended_control"));
     let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -253,6 +251,7 @@ where
     let should_prove = !compute_only
         && circuit_in_filter(circuits_filter, "blake2_with_extended_control")
         && (prove_empty || !oracle.is_empty());
+    log_prove_decision("Blake delegation", should_prove, compute_only);
 
     let (memory_trace, proof) = prove_delegation_inner(
         &circuit,
@@ -296,8 +295,6 @@ pub fn prove_delegation_bigint<C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    println!("Will try to prove Bigint delegation");
-
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path("bigint_with_extended_control"));
     let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -334,6 +331,7 @@ where
     let should_prove = !compute_only
         && circuit_in_filter(circuits_filter, "bigint_with_extended_control")
         && (prove_empty || !oracle.is_empty());
+    log_prove_decision("Bigint delegation", should_prove, compute_only);
 
     let (memory_trace, proof) = prove_delegation_inner(
         &circuit,
@@ -377,8 +375,6 @@ pub fn prove_delegation_keccak<C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    println!("Will try to prove Keccak delegation");
-
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path("keccak_special5"));
     let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -415,6 +411,7 @@ where
     let should_prove = !compute_only
         && circuit_in_filter(circuits_filter, "keccak_special5")
         && (prove_empty || !oracle.is_empty());
+    log_prove_decision("Keccak delegation", should_prove, compute_only);
 
     let (memory_trace, proof) = prove_delegation_inner(
         &circuit,
@@ -460,8 +457,6 @@ pub fn prove_delegation_blake_g_function<C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    println!("Will try to prove Blake G-function delegation");
-
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path("blake2_g_function"));
     let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -500,6 +495,7 @@ where
     let should_prove = !compute_only
         && circuit_in_filter(circuits_filter, "blake2_g_function")
         && (prove_empty || !oracle.is_empty());
+    log_prove_decision("Blake G-function delegation", should_prove, compute_only);
 
     let (memory_trace, proof) = prove_delegation_inner(
         &circuit,

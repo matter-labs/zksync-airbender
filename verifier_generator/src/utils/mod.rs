@@ -78,7 +78,9 @@ fn collect_mem_expr_addrs(
     }
 }
 
-pub fn collect_sorted_unique_addrs<F: PrimeField>(layer: &GKRLayerDescription<F>) -> Vec<GKRAddress> {
+pub fn collect_sorted_unique_addrs<F: PrimeField>(
+    layer: &GKRLayerDescription<F>,
+) -> Vec<GKRAddress> {
     use std::collections::BTreeSet;
     let mut addrs = BTreeSet::new();
 

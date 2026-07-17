@@ -59,12 +59,12 @@ contract GKRVerifier {
     uint256 constant WHIR_Z_COORDS     = 26;         // 22 base + 4 packing extra coords
     uint256 constant WHIR_CAP          = 8;          // CAP (witness+setup base-oracle caps)
     // GKR->WHIR handoff (MergedAndPackedMemoryAndWitness, pack_log2=4). Base-layer at-point
-    // claims (dense in layer0's calldata eval block): mem++wit = 106 cols, setup = 10 cols.
-    // Merge folds each 2^pack_log2=16-chunk by the 4 packing coords: 106->7, 10->1.
+    // claims (dense in layer0's calldata eval block): mem++wit = 104 cols, setup = 10 cols.
+    // Merge folds each 2^pack_log2=16-chunk by the 4 packing coords: 104->7, 10->1.
     uint256 constant WHIR_PACK_LOG2    = 4;
-    uint256 constant WHIR_NUM_MEMWIT   = 106;        // memory_layout + witness_layout total widths
+    uint256 constant WHIR_NUM_MEMWIT   = 104;        // memory_layout + witness_layout total widths (38 + 66)
     uint256 constant WHIR_NUM_SETUP    = 10;         // generic_lookup_tables_width
-    uint256 constant WHIR_MERGED_MW    = 7;          // ceil(106/16)
+    uint256 constant WHIR_MERGED_MW    = 7;          // ceil(104/16)
     uint256 constant WHIR_BASE_Z_COORDS = 22;        // layer-0 folding point length
 
     fallback() external {
@@ -397,7 +397,7 @@ contract GKRVerifier {
         }
 
         // GKR→WHIR handoff: draw the 4 packing coords, merge the base-layer claims (mem++wit
-        // 106→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
+        // 104→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
         // opening, and mark_gkr_verified(keccak(preimage)) with preimage
         //   [seed:32][batching:16][opening:16][z = extra(4) ++ base_z(22) : 26·16][caps:2·CAP·32].
         function emit_gkr_mark(claim_v) {

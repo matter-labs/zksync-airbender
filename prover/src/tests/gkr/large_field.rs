@@ -238,7 +238,10 @@ fn validate_packed_transcript_recipe() {
     let mut seed = <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(
         &transcript_input,
     );
-    println!("[transcript] initial seed after commit = 0x{}", hex32(&seed.0));
+    println!(
+        "[transcript] initial seed after commit = 0x{}",
+        hex32(&seed.0)
+    );
 
     // The seed is exactly keccak256 of `transcript_input` as little-endian u32 bytes.
     // Emit that preimage as the EVM fixture (the Solidity `transcript_init` keccaks it),
@@ -273,12 +276,11 @@ fn validate_packed_transcript_recipe() {
     println!("[transcript] lookup pow_bits = {pow_bits_used}");
 
     const TOTAL: usize = 7; // GKRExternalChallenges::TOTAL_CHALLENGES
-    let (nonce, challenges) = draw_random_field_els_with_pow::<Proth120, Proth120, Keccak256Transcript>(
-        &mut seed,
-        TOTAL + 2,
-        pow_bits_used,
-        &worker,
-    );
+    let (nonce, challenges) = draw_random_field_els_with_pow::<
+        Proth120,
+        Proth120,
+        Keccak256Transcript,
+    >(&mut seed, TOTAL + 2, pow_bits_used, &worker);
 
     println!("[transcript] pow nonce = {nonce}");
     for (i, c) in challenges.iter().enumerate() {
@@ -357,14 +359,16 @@ fn capture_gkr_dim_reduce_reference() {
         evals_flattened.extend_from_slice(&vals[0]);
         evals_flattened.extend_from_slice(&vals[1]);
     }
-    println!("[dimreduce] output polys flattened = {} elems", evals_flattened.len());
+    println!(
+        "[dimreduce] output polys flattened = {} elems",
+        evals_flattened.len()
+    );
     commit_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, &evals_flattened);
 
-    let final_trace_size_log_2 = proof.final_explicit_evaluations[
-        proof.final_explicit_evaluations.keys().next().unwrap()
-    ][0]
-    .len()
-    .trailing_zeros() as usize;
+    let final_trace_size_log_2 = proof.final_explicit_evaluations
+        [proof.final_explicit_evaluations.keys().next().unwrap()][0]
+        .len()
+        .trailing_zeros() as usize;
     let num_challenges = final_trace_size_log_2 + 1;
     let mut challenges =
         draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, num_challenges);
@@ -385,8 +389,14 @@ fn capture_gkr_dim_reduce_reference() {
     let eq = eq_layers.last().unwrap();
     let mut claims: Vec<Proth120> = vec![];
     for (_out_ty, vals) in proof.final_explicit_evaluations.iter() {
-        claims.push(evaluate_with_precomputed_eq_ext::<Proth120>(&vals[0], &eq[..]));
-        claims.push(evaluate_with_precomputed_eq_ext::<Proth120>(&vals[1], &eq[..]));
+        claims.push(evaluate_with_precomputed_eq_ext::<Proth120>(
+            &vals[0],
+            &eq[..],
+        ));
+        claims.push(evaluate_with_precomputed_eq_ext::<Proth120>(
+            &vals[1],
+            &eq[..],
+        ));
     }
     for (i, c) in claims.iter().enumerate() {
         println!("[dimreduce] initial_claim[{i}] = 0x{:032x}", c.to_u128());
@@ -473,7 +483,10 @@ fn circuit_layer_g(
     perm_additive: Proth120,
     top_bits: &[u32],
     addr_shift: u32,
-    addr_to_idx: &impl Fn(&crate::cs::definitions::GKRAddress, &[crate::cs::definitions::GKRAddress]) -> usize,
+    addr_to_idx: &impl Fn(
+        &crate::cs::definitions::GKRAddress,
+        &[crate::cs::definitions::GKRAddress],
+    ) -> usize,
 ) -> Proth120 {
     use crate::cs::definitions::GKRAddress;
     use crate::cs::gkr_compiler::InitsOrTeardownsTimestampAndValue as ITV;
@@ -581,8 +594,12 @@ fn circuit_layer_g(
                 acc.add_assign(&mul(&bc0, &num));
                 acc.add_assign(&mul(&bc1, &den));
             }
-            R::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, .. }
-            | R::LookupUnbalancedPairWithMaterializedVectorInputs { input, remainder, .. } => {
+            R::LookupUnbalancedPairWithMaterializedBaseInputs {
+                input, remainder, ..
+            }
+            | R::LookupUnbalancedPairWithMaterializedVectorInputs {
+                input, remainder, ..
+            } => {
                 // LookupUnbalanced: r=remainder+γ; num=a*r+b, den=b*r
                 let a = ev(&input[0]);
                 let b = ev(&input[1]);
@@ -598,8 +615,7 @@ fn circuit_layer_g(
                 acc.add_assign(&mul(&bc0, &num));
                 acc.add_assign(&mul(&bc1, &den));
             }
-            R::EnforceSingleMaxQuadraticConstraint { input }
-            | R::MaxQuadratic { input, .. } => {
+            R::EnforceSingleMaxQuadraticConstraint { input } | R::MaxQuadratic { input, .. } => {
                 // val = constant + Σ_a evals[a]·(Σ coeff·evals[b]) + Σ coeff·evals[addr]
                 let bc = cb;
                 cb.mul_assign(&batching);
@@ -629,7 +645,7 @@ fn circuit_layer_g(
                 let side = |set_idx: usize, is_lhs: bool| -> E {
                     let mut result = perm_additive;
                     result.add_assign(&E::ONE); // ram_constant = 1
-                    // address low
+                                                // address low
                     let mut t = lin_challenges[0];
                     t.mul_assign(&ev(&setup[0]));
                     result.add_assign(&t);
@@ -637,7 +653,9 @@ fn circuit_layer_g(
                     let mut addr_hi = ev(&setup[1]);
                     let set_bits = top_bits[set_idx] << addr_shift;
                     if set_bits != 0 {
-                        addr_hi.add_assign(&<Proth120 as ::field::PrimeField>::from_u32_with_reduction(set_bits));
+                        addr_hi.add_assign(
+                            &<Proth120 as ::field::PrimeField>::from_u32_with_reduction(set_bits),
+                        );
                     }
                     let mut t = lin_challenges[1];
                     t.mul_assign(&addr_hi);
@@ -655,12 +673,9 @@ fn circuit_layer_g(
                         } else {
                             (rhs_timestamp, rhs_value)
                         };
-                        for (chal_idx, col) in [
-                            (2usize, ts[0]),
-                            (3, ts[1]),
-                            (4, value[0]),
-                            (5, value[1]),
-                        ] {
+                        for (chal_idx, col) in
+                            [(2usize, ts[0]), (3, ts[1]), (4, value[0]), (5, value[1])]
+                        {
                             let mut t = lin_challenges[chal_idx];
                             t.mul_assign(&ev(&GKRAddress::BaseLayerMemory(col)));
                             result.add_assign(&t);
@@ -704,9 +719,10 @@ fn verify_dim_reduce_layers() {
         .unwrap(),
     )
     .unwrap();
-    let proof: GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap> =
-        serde_json::from_reader(std::fs::File::open("unified_circuit_proof_proth120.json").unwrap())
-            .unwrap();
+    let proof: GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap> = serde_json::from_reader(
+        std::fs::File::open("unified_circuit_proof_proth120.json").unwrap(),
+    )
+    .unwrap();
 
     // ---- replay transcript through the GKR entry (STEP 1 + STEP 2a) ----
     let mut ti: Vec<u32> = vec![];
@@ -719,8 +735,7 @@ fn verify_dim_reduce_layers() {
         Some(proof.whir_proof.memory_commitment.commitment.cap.clone()).into_iter(),
         &mut ti,
     );
-    let mut seed =
-        <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&ti);
+    let mut seed = <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&ti);
     let pow = pow_bits::lookup_challenges_pow_bits(
         SecurityLevel::Sec80.security_bits(),
         pow_bits::lookup_identity_degree(&unified_circuit),
@@ -738,13 +753,19 @@ fn verify_dim_reduce_layers() {
         evals_flat.extend_from_slice(&v[1]);
     }
     commit_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, &evals_flat);
-    let final_trace_size_log_2 =
-        proof.final_explicit_evaluations.values().next().unwrap()[0].len().trailing_zeros() as usize;
-    let mut chs =
-        draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, final_trace_size_log_2 + 1);
+    let final_trace_size_log_2 = proof.final_explicit_evaluations.values().next().unwrap()[0]
+        .len()
+        .trailing_zeros() as usize;
+    let mut chs = draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(
+        &mut seed,
+        final_trace_size_log_2 + 1,
+    );
     let mut batching = chs.pop().unwrap();
     let mut point = chs; // eval_point (final_trace_size_log_2 coords)
-    let eq = make_eq_poly_in_full::<E>(&point, &worker).last().unwrap().clone();
+    let eq = make_eq_poly_in_full::<E>(&point, &worker)
+        .last()
+        .unwrap()
+        .clone();
     let mut claims: Vec<E> = vec![];
     for (_t, v) in proof.final_explicit_evaluations.iter() {
         claims.push(evaluate_with_precomputed_eq_ext::<E>(&v[0], &eq[..]));
@@ -820,7 +841,11 @@ fn verify_dim_reduce_layers() {
         }
         let siv = &proof.sumcheck_intermediate_values[&layer];
         let folding_steps = siv.sumcheck_num_rounds;
-        assert_eq!(folding_steps, point.len(), "layer {layer} folding_steps vs point");
+        assert_eq!(
+            folding_steps,
+            point.len(),
+            "layer {layer} folding_steps vs point"
+        );
 
         // initial claim = RLC(claims, batching)
         let mut claim = E::ZERO;
@@ -839,7 +864,8 @@ fn verify_dim_reduce_layers() {
             s.mul_assign(&eq_prefactor);
             assert_eq!(s, claim, "dim layer {layer} round {round} sumcheck check");
             commit_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, &c);
-            let r = draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, 1)[0];
+            let r =
+                draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, 1)[0];
             claim = horner(&c, &r);
             eq_prefactor = eqrp(&r, &point[round]);
             new_point.push(r);
@@ -941,7 +967,10 @@ fn verify_dim_reduce_layers() {
     );
     println!(
         "[dimreduce-verify] seed after dim-reducing = 0x{}",
-        seed.0.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        seed.0
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     );
 
     // ================= STEP 3: standard CIRCUIT layers (config_idx 3,2,1,0) =================
@@ -951,7 +980,10 @@ fn verify_dim_reduce_layers() {
     use crate::cs::definitions::GKRAddress;
     use crate::cs::gkr_compiler::NoFieldGKRRelation as R;
     let addr_to_idx = |addr: &GKRAddress, sorted: &[GKRAddress]| -> usize {
-        sorted.iter().position(|x| x == addr).expect("addr in sorted set")
+        sorted
+            .iter()
+            .position(|x| x == addr)
+            .expect("addr in sorted set")
     };
     let address_high_bits_shift: u32 = if !proof.inits_and_teardowns_top_bits.is_empty() {
         crate::gkr::high_bits_offset_for_inits_and_teardowns::<2>(unified_circuit.trace_len)
@@ -964,7 +996,11 @@ fn verify_dim_reduce_layers() {
         let layer = &unified_circuit.layers[config_idx];
         let siv = &proof.sumcheck_intermediate_values[&config_idx];
         let folding_steps = siv.sumcheck_num_rounds;
-        assert_eq!(folding_steps, point.len(), "circuit layer {config_idx} folding_steps vs point");
+        assert_eq!(
+            folding_steps,
+            point.len(),
+            "circuit layer {config_idx} folding_steps vs point"
+        );
 
         let gates: Vec<_> = layer
             .gates
@@ -1007,7 +1043,11 @@ fn verify_dim_reduce_layers() {
             let num_wit = unified_circuit.witness_layout.total_width;
             let group_idx = |addr: &GKRAddress| -> Option<usize> {
                 match addr {
-                    GKRAddress::InnerLayer { layer, offset } if *layer == config_idx && config_idx > 0 => Some(*offset),
+                    GKRAddress::InnerLayer { layer, offset }
+                        if *layer == config_idx && config_idx > 0 =>
+                    {
+                        Some(*offset)
+                    }
                     GKRAddress::BaseLayerMemory(o) if config_idx == 0 => Some(*o),
                     GKRAddress::BaseLayerWitness(o) if config_idx == 0 => Some(num_mem + *o),
                     GKRAddress::Setup(o) if config_idx == 0 => Some(num_mem + num_wit + *o),
@@ -1070,10 +1110,14 @@ fn verify_dim_reduce_layers() {
             let c = siv.internal_round_coefficients[round];
             let mut s = sum01(&c);
             s.mul_assign(&eq_prefactor);
-            assert_eq!(s, claim, "circuit layer {config_idx} round {round} sumcheck check");
+            assert_eq!(
+                s, claim,
+                "circuit layer {config_idx} round {round} sumcheck check"
+            );
             let cflat: Vec<E> = c.to_vec();
             commit_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, &cflat);
-            let r = draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, 1)[0];
+            let r =
+                draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, 1)[0];
             claim = horner(&c, &r);
             eq_prefactor = eqrp(&r, &point[round]);
             new_point.push(r);
@@ -1101,7 +1145,10 @@ fn verify_dim_reduce_layers() {
                 final_claim.to_u128(), g.to_u128(), final_eq.to_u128(), rhs.to_u128()
             );
         }
-        assert_eq!(rhs, final_claim, "circuit layer {config_idx} final-step check");
+        assert_eq!(
+            rhs, final_claim,
+            "circuit layer {config_idx} final-step check"
+        );
 
         // ---- absorb at-point evals (sorted order), draw next_batching ----
         commit_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, &evals);
@@ -1131,12 +1178,12 @@ fn verify_dim_reduce_layers() {
         // ---- cache-relation consistency: each cached (virtual) poly's at-point eval must
         // equal the linear/vector-lookup combination of its dependency at-point evals. ----
         {
+            use crate::cs::definitions::gkr::RamWordRepresentation as Val;
             use crate::cs::gkr_compiler::NoFieldGKRCacheRelation as CR;
             use crate::cs::gkr_compiler::{
                 CompiledAddressSpaceRelationStrict as ASpace, CompiledAddressStrict as Addr,
                 CompiledMemoryTimestamp as Ts,
             };
-            use crate::cs::definitions::gkr::RamWordRepresentation as Val;
             let fu = |x: u32| <Proth120 as ::field::PrimeField>::from_u32_with_reduction(x);
             let target_addrs: Vec<GKRAddress> = merged.keys().copied().collect();
             let claim_at = |addr: &GKRAddress| -> E {
@@ -1296,7 +1343,10 @@ fn verify_dim_reduce_layers() {
             };
             let target_addrs: Vec<GKRAddress> = merged.keys().copied().collect();
             let claim_at = |addr: &GKRAddress| -> Option<E> {
-                target_addrs.iter().position(|a| a == addr).map(|i| claims[i])
+                target_addrs
+                    .iter()
+                    .position(|a| a == addr)
+                    .map(|i| claims[i])
             };
             // range check: (Σ_{k<bits} 2^k·pt[n-1-k]) · Π_{k=bits..n} (1 - pt[n-1-k])
             let range_check = |bits: usize| -> E {
@@ -1316,7 +1366,10 @@ fn verify_dim_reduce_layers() {
                 result
             };
             let mut n_vs = 0usize;
-            for (poly, bits) in [(VSP::RangeCheck16Bits, 16usize), (VSP::RangeCheckTimestamp, 19)] {
+            for (poly, bits) in [
+                (VSP::RangeCheck16Bits, 16usize),
+                (VSP::RangeCheckTimestamp, 19),
+            ] {
                 if let Some(cached) = claim_at(&GKRAddress::VirtualSetup(poly)) {
                     assert_eq!(range_check(bits), cached, "layer 0 virtual-setup {poly:?}");
                     n_vs += 1;
@@ -1352,8 +1405,16 @@ fn verify_dim_reduce_layers() {
                     high_eval.add_assign(&t);
                     dbl(&mut prefactor);
                 }
-                assert_eq!(low_eval, lo.unwrap(), "layer 0 virtual-setup InitsAndTeardownsLow");
-                assert_eq!(high_eval, hi.unwrap(), "layer 0 virtual-setup InitsAndTeardownsHigh");
+                assert_eq!(
+                    low_eval,
+                    lo.unwrap(),
+                    "layer 0 virtual-setup InitsAndTeardownsLow"
+                );
+                assert_eq!(
+                    high_eval,
+                    hi.unwrap(),
+                    "layer 0 virtual-setup InitsAndTeardownsHigh"
+                );
                 n_vs += 2;
             }
             println!("[circuit-verify]   layer 0 virtual-setup checks: {n_vs}");
@@ -1371,7 +1432,10 @@ fn verify_dim_reduce_layers() {
 
     println!(
         "[circuit-verify] all circuit layers verified; seed = 0x{}",
-        seed.0.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        seed.0
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     );
 
     // ===== STEP 4: GKR→WHIR handoff — packed-commitment claims merge + WHIR batching =====
@@ -1386,7 +1450,9 @@ fn verify_dim_reduce_layers() {
         let num_wit = unified_circuit.witness_layout.total_width;
         let num_setup = unified_circuit.generic_lookup_tables_width;
         // mem ++ wit claims (column order), and setup claims
-        let mut mem_wit: Vec<E> = (0..num_mem).map(|i| get(GKRAddress::BaseLayerMemory(i))).collect();
+        let mut mem_wit: Vec<E> = (0..num_mem)
+            .map(|i| get(GKRAddress::BaseLayerMemory(i)))
+            .collect();
         mem_wit.extend((0..num_wit).map(|i| get(GKRAddress::BaseLayerWitness(i))));
         let setup_claims: Vec<E> = (0..num_setup).map(|i| get(GKRAddress::Setup(i))).collect();
 
@@ -1459,12 +1525,19 @@ fn verify_dim_reduce_layers() {
             "[whir-handoff] whir_batching_pow_bits={pow} nonce={nonce} (matches proof) whir_batching=0x{:032x}",
             whir_batching.to_u128()
         );
-        println!("[whir-handoff] batched_opening_value=0x{:032x}", batched.to_u128());
+        println!(
+            "[whir-handoff] batched_opening_value=0x{:032x}",
+            batched.to_u128()
+        );
         // The seed WHIR starts from IS the GKR verifier's transcript state at the handoff
         // (this test runs the full GKR verifier in simulation). Save it to a file so the WHIR
         // fixture's preimage [seed:32] is authoritatively the GKR verifier's output — no guessing.
         let seed_hex: String = seed.0.iter().map(|b| format!("{b:02x}")).collect();
-        std::fs::write("../verifier_evm/whir/testdata/gkr_whir_handoff_seed.hex", &seed_hex).unwrap();
+        std::fs::write(
+            "../verifier_evm/whir/testdata/gkr_whir_handoff_seed.hex",
+            &seed_hex,
+        )
+        .unwrap();
         println!("[whir-handoff] seed after batching draw = 0x{seed_hex}  (saved to gkr_whir_handoff_seed.hex)");
 
         // ---- serialize the WHIR verifier calldata from the REAL proof.whir_proof ----
@@ -1538,9 +1611,19 @@ fn verify_dim_reduce_layers() {
                     for qq in 0..queries[r] {
                         if r == 0 {
                             let mq = &wp.memory_commitment.queries[qq];
-                            push_base(&mut cd, &mq.leaf_values_concatenated, &mq.path, wp.memory_commitment.num_columns);
+                            push_base(
+                                &mut cd,
+                                &mq.leaf_values_concatenated,
+                                &mq.path,
+                                wp.memory_commitment.num_columns,
+                            );
                             let sq = &wp.setup_commitment.queries[qq];
-                            push_base(&mut cd, &sq.leaf_values_concatenated, &sq.path, wp.setup_commitment.num_columns);
+                            push_base(
+                                &mut cd,
+                                &sq.leaf_values_concatenated,
+                                &sq.path,
+                                wp.setup_commitment.num_columns,
+                            );
                         } else {
                             let q = &wp.intermediate_whir_oracles[r - 1].queries[qq];
                             push_leaf(&mut cd, &q.leaf_values_concatenated, &q.path);
@@ -1558,7 +1641,11 @@ fn verify_dim_reduce_layers() {
                 }
             }
             let hx: String = cd.iter().map(|b| format!("{b:02x}")).collect();
-            std::fs::write("../verifier_evm/whir/testdata/proth120_whir_calldata_from_proof.hex", &hx).unwrap();
+            std::fs::write(
+                "../verifier_evm/whir/testdata/proth120_whir_calldata_from_proof.hex",
+                &hx,
+            )
+            .unwrap();
             println!(
                 "[whir-handoff] wrote WHIR calldata from real proof: {} bytes (preimage plen={}, {} cols mem / {} setup)",
                 cd.len(), plen, wp.memory_commitment.num_columns, wp.setup_commitment.num_columns
@@ -1572,7 +1659,10 @@ fn verify_dim_reduce_layers() {
     let hex: String = blob.iter().map(|b| format!("{b:02x}")).collect();
     let path = "../verifier_evm/whir/testdata/gkr_dimreduce_data.hex";
     std::fs::write(path, &hex).unwrap();
-    println!("[dimreduce-verify] wrote {} bytes of proof data to {path}", blob.len());
+    println!(
+        "[dimreduce-verify] wrote {} bytes of proof data to {path}",
+        blob.len()
+    );
 
     // ===== CALLDATA SERIALIZER: assemble the full GKR-verifier calldata =====
     // gkr.sol stream order: preimage(520) ‖ output-evals(2560) ‖ dim-reduce blob(20160) ‖
@@ -1613,23 +1703,42 @@ fn inspect_packed_proof_structure() {
         serde_json::from_reader(src).expect("deserialize proof")
     };
 
-    println!("[proof] inits_and_teardowns_top_bits = {:?}", proof.inits_and_teardowns_top_bits);
-    println!("[proof] lookup_challenges_pow_nonce = {}", proof.lookup_challenges_pow_nonce);
-    println!("[proof] batched_proximity_check_pow_nonce = {}", proof.batched_proximity_check_pow_nonce);
+    println!(
+        "[proof] inits_and_teardowns_top_bits = {:?}",
+        proof.inits_and_teardowns_top_bits
+    );
+    println!(
+        "[proof] lookup_challenges_pow_nonce = {}",
+        proof.lookup_challenges_pow_nonce
+    );
+    println!(
+        "[proof] batched_proximity_check_pow_nonce = {}",
+        proof.batched_proximity_check_pow_nonce
+    );
     println!(
         "[proof] grand_product_accumulator_computed = 0x{:032x}",
         proof.grand_product_accumulator_computed.to_u128()
     );
 
-    println!("[proof] final_explicit_evaluations ({} outputs):", proof.final_explicit_evaluations.len());
+    println!(
+        "[proof] final_explicit_evaluations ({} outputs):",
+        proof.final_explicit_evaluations.len()
+    );
     for (out_ty, vals) in proof.final_explicit_evaluations.iter() {
-        println!("    {out_ty:?}: [{}, {}] elems", vals[0].len(), vals[1].len());
+        println!(
+            "    {out_ty:?}: [{}, {}] elems",
+            vals[0].len(),
+            vals[1].len()
+        );
     }
 
     println!(
         "[proof] sumcheck_intermediate_values: {} layers (keys {:?})",
         proof.sumcheck_intermediate_values.len(),
-        proof.sumcheck_intermediate_values.keys().collect::<Vec<_>>()
+        proof
+            .sumcheck_intermediate_values
+            .keys()
+            .collect::<Vec<_>>()
     );
     for (layer, v) in proof.sumcheck_intermediate_values.iter() {
         println!(
@@ -1666,7 +1775,10 @@ fn inspect_circuit_layer_relations() {
         .unwrap(),
     )
     .unwrap();
-    println!("[relations] {} standard layers", unified_circuit.layers.len());
+    println!(
+        "[relations] {} standard layers",
+        unified_circuit.layers.len()
+    );
     for (li, layer) in unified_circuit.layers.iter().enumerate() {
         let gates: Vec<_> = layer
             .gates
@@ -1676,7 +1788,11 @@ fn inspect_circuit_layer_relations() {
         let mut hist: std::collections::BTreeMap<String, usize> = Default::default();
         for g in &gates {
             let dbg = format!("{:?}", g.enforced_relation);
-            let name = dbg.split([' ', '{', '(']).next().unwrap_or(&dbg).to_string();
+            let name = dbg
+                .split([' ', '{', '('])
+                .next()
+                .unwrap_or(&dbg)
+                .to_string();
             *hist.entry(name).or_default() += 1;
         }
         println!(

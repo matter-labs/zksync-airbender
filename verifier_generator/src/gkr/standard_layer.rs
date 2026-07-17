@@ -1,5 +1,5 @@
-use prover::field::PrimeField;
 use proc_macro2::TokenStream;
+use prover::field::PrimeField;
 use quote::quote;
 
 use crate::field_wrapper::FieldWrapper;

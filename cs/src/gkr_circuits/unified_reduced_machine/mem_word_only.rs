@@ -1,6 +1,6 @@
 use super::*;
-use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
+use crate::structured_expr::Expr;
 use crate::types::*;
 use field::PrimeField;
 
@@ -68,22 +68,22 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     cs.require_invariant(memwrite_addr[0], Invariant::RangeChecked { width: 16 });
     cs.require_invariant(memwrite_addr[1], Invariant::RangeChecked { width: 16 });
 
-    let [readaddr_lo, readaddr_hi] = memread_addr.map(Term::from);
-    let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Term::from);
+    let [readaddr_lo, readaddr_hi] = memread_addr.map(Expr::<F>::var);
+    let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Expr::<F>::var);
 
     // memread_addr is a register slot for Families 1-3 (rs2) and Family 4 SW.
-    let memread_is_reg: Constraint<F> = Constraint::from(is_lw.toggle());
-    cs.add_constraint(
-        memread_is_reg.clone() * (readaddr_lo - Term::from(inputs.decoder_data.rs2_index)),
+    let memread_is_reg: Expr<F> = Expr::from(is_lw.toggle());
+    cs.add_constraint_expr(
+        memread_is_reg.clone() * (readaddr_lo - Expr::var(inputs.decoder_data.rs2_index)),
     );
-    cs.add_constraint(memread_is_reg * readaddr_hi);
+    cs.add_constraint_expr(memread_is_reg * readaddr_hi);
 
     // memwrite_addr is a register slot for Families 1-3 (rd) and Family 4 LW.
-    let memwrite_is_reg: Constraint<F> = Constraint::from(is_sw.toggle());
-    cs.add_constraint(
-        memwrite_is_reg.clone() * (writeaddr_lo - Term::from(inputs.decoder_data.rd_index)),
+    let memwrite_is_reg: Expr<F> = Expr::from(is_sw.toggle());
+    cs.add_constraint_expr(
+        memwrite_is_reg.clone() * (writeaddr_lo - Expr::var(inputs.decoder_data.rd_index)),
     );
-    cs.add_constraint(memwrite_is_reg * writeaddr_hi);
+    cs.add_constraint_expr(memwrite_is_reg * writeaddr_hi);
 
     apply_unified_mem_word_only_lw_sw_data_path(
         cs,
