@@ -1,28 +1,6 @@
 #!/bin/sh
 set -e
 
-SKIP_CHECK=0
-usage() {
-    echo "usage: $0 [--skip-check]" >&2
-}
-
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --skip-check)
-            SKIP_CHECK=1
-            shift
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            usage
-            exit 2
-            ;;
-    esac
-done
-
 out=$(mktemp)
 # Keep Cargo JSON so we can show only diagnostics whose spans touch parse.rs.
 # On failure, print those diagnostics to stderr so stats.sh can suppress normal
@@ -41,10 +19,6 @@ if [ -z "$exe" ]; then
 fi
 
 "$exe"
-
-if [ "$SKIP_CHECK" = 1 ]; then
-    exit 0
-fi
 
 work=$(mktemp -d -t parse-check.XXXXXX)
 trap 'rm -rf "$work"' EXIT INT TERM HUP

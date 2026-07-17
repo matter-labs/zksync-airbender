@@ -3,6 +3,18 @@ pragma solidity ^0.8.24;
 
 contract GKRVerifier {
     // ── Generic (used throughout) ───────────────────────────────────────────
+    // HEAP ORDER: challenges, point, gas, seed, init/circuit data (overlapping seed+32)
+    // MEMORY_CHALLS_PTR (7)
+    // LOGUP_CHALLS_PTR (2)
+    // POINT_PTR (24)
+    // GKR_INIT_GAS_PTR (1)
+    // GKR_MAIN_GAS_PTR (1)
+    // SEED_PTR (1)
+    // optional SEED_PTR + 32:
+    //    GKR_INIT/CIRCUIT 1 (1)
+    //    GKR_INIT/CIRCUIT 2 (1)
+    //    ..
+    uint256 constant MINIMUM_FREE_HEAP_PTR = 7588;
     uint256 constant P      = 0xffffffffffffffffffffffffffffff61; // 2^128 - 159
     uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits
     uint256 constant ROUNDS = 200;
@@ -33,22 +45,8 @@ contract GKRVerifier {
         // with larger shifts. Hash challenges use the earlier 16 hash bytes
         // first: shr(128, seed), then and(seed, MASK).
 
-        // HEAP ORDER: challenges, point, gas, seed, init/circuit data (overlapping seed+32)
-        // MEMORY_CHALLS_PTR (7)
-        // LOGUP_CHALLS_PTR (2)
-        // POINT_PTR (24)
-        // GKR_INIT_GAS_PTR (1)
-        // GKR_MAIN_GAS_PTR (1)
-        // SEED_PTR (1)
-        // optional SEED_PTR + 32:
-        //    GKR_INIT/CIRCUIT 1 (1)
-        //    GKR_INIT/CIRCUIT 2 (1)
-        //    ..
-        function MINIMUM_FREE_HEAP_PTR() -> ptr {
-            ptr := 7588
-        }
         function MEMORY_CHALLS_PTR() -> ptr {
-            ptr := MINIMUM_FREE_HEAP_PTR()
+            ptr := MINIMUM_FREE_HEAP_PTR
         }
         function LOGUP_CHALLS_PTR() -> ptr {
             ptr := add(MEMORY_CHALLS_PTR(), mul(32, 7))
@@ -594,7 +592,7 @@ contract GKRVerifier {
         }
 
         // SPILL OVERWRITE PREVENTION
-        if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR()) {
+        if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR) {
             revert(0, 0)
         }
 
