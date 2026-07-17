@@ -20,7 +20,7 @@ use crate::ops::blake2s::{
 use crate::ops::ntt::{
     bitreversed_monomials_to_natural_evals_multi_coset, hypercube_x1_msb_evals_to_x1_msb_monomials,
     lde_with_coset_range, log_size_supports_transposed_monomials,
-    transform_whir_leaves_from_ntt_in_place_multi_coset,
+    transform_whir_leaves_from_ntt_in_place_multi_coset, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
 };
 use crate::primitives::context::DeviceAllocation;
 #[cfg(test)]
@@ -1305,34 +1305,55 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
         None
     };
 
+    // L2 chunking doesn't help for whir stages where we use oneshot LDE kernels
+    // (log_n <= MAX_LOG_N_FOR_SINGLE_KERNEL_LDE).
+    // So the strategy is:
+    // If log_n > MAX_LOG_N_FOR_SINGLE_KERNEL_LDE, include NTTs in the chunked sequence.
+    // If log_n <= MAX_LOG_N_FOR_SINGLE_KERNEL_LDE, launch oneshot LDE kernel for all cosets,
+    // then do chunking for leaf transform and leaf commits.
+    let include_lde_in_l2_persistence_chain =
+        log_trace_len as usize > MAX_LOG_N_FOR_SINGLE_KERNEL_LDE;
     let total_cosets = 1 << natural_log_lde_factor;
-    // Default: no L2 chunking
-    let mut cosets_in_tile_chunk = total_cosets;
-    let mut num_streams = 1;
-    // Deactivate chunking for log_trace_len < 14 because it doesn't play well
-    // with the small dit kernels.
-    // TODO: extend chunk-friendly kernels to smaller sizes
-    let l2_bytes = device_properties.l2_cache_size_bytes;
+    // Trial-and-error-based heuristic that appears to give reasonable performance:
+    let l2_bytes_with_safety_margin = if include_lde_in_l2_persistence_chain {
+        // If we're chunking LDE, leaf transform, and leaf commitment, use 1/2 of L2.
+        device_properties.l2_cache_size_bytes >> 1
+    } else {
+        // If we're only chunking leaf transform and leaf commitment, use 1/4 of L2.
+        device_properties.l2_cache_size_bytes >> 2
+    };
     let single_bf_col_bytes = std::mem::size_of::<BF>() << log_trace_len;
     let single_coset_bytes = src_cols_per_coset * single_bf_col_bytes;
-    if log_trace_len >= 14 {
-        let half_l2_bytes = l2_bytes >> 1;
-        if single_coset_bytes > half_l2_bytes {
-            cosets_in_tile_chunk = 1;
+
+    let half_l2_bytes_with_safety_margin = l2_bytes_with_safety_margin >> 1;
+    let (mut cosets_in_tile_chunk, mut num_streams) =
+        if single_coset_bytes > half_l2_bytes_with_safety_margin {
+            (1, 1)
         } else {
-            let nearest = half_l2_bytes / single_coset_bytes;
+            let nearest = half_l2_bytes_with_safety_margin / single_coset_bytes;
             if nearest.is_power_of_two() {
-                cosets_in_tile_chunk = nearest;
-                num_streams = 2;
+                (nearest, 2)
             } else {
-                cosets_in_tile_chunk = nearest.next_power_of_two() >> 1;
-                num_streams = 2;
+                (nearest.next_power_of_two() >> 1, 2)
             }
-        }
-    }
+        };
 
     if total_cosets > cosets_in_tile_chunk {
         assert_eq!(total_cosets % cosets_in_tile_chunk, 0);
+    }
+
+    // There are two scenarios where chunking isn't beneficial.
+    //   - include_lde_in_l2_persistence_chain = false, transform_leaves_to_multilinear_coeffs = false
+    //       Here the only op eligible for chunking is leaf commitment.
+    //       A single-op "chain" makes no sense.
+    //   - The final production whir stage, where the total amount of data is much smaller.
+    // In these cases, we disable chunking by overriding the "chunk" to contain all cosets.
+    let is_last_production_whir_stage = (log_trace_len - log_values_per_leaf) == 1;
+    if (!include_lde_in_l2_persistence_chain && !transform_leaves_to_multilinear_coeffs)
+        || is_last_production_whir_stage
+    {
+        num_streams = 1;
+        cosets_in_tile_chunk = total_cosets;
     }
 
     let mut ntt_output_matrix = DeviceMatrixMut::new(ntt_output, trace_len);
@@ -1355,11 +1376,31 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
     let exec_stream = context.get_exec_stream();
     let side_stream = context.get_side_stream();
     let streams = [exec_stream, side_stream];
+
+    if !include_lde_in_l2_persistence_chain {
+        let scratch_opt = d_scratch.as_mut().map(|s| &mut s[..]);
+        lde_with_coset_range(
+            inputs_matrix,
+            ntt_output_matrix.slice_mut(),
+            log_trace_len as usize,
+            natural_log_lde_factor as usize,
+            total_cosets, // cosets_in_tile,
+            0,            // coset_index_base,
+            src_cols_per_coset,
+            occupancy_hint_numerator,
+            occupancy_hint_denominator,
+            ntt_ctx,
+            scratch_opt,
+            streams[0],
+            device_properties,
+        )?;
+    }
+
     if num_streams > 1 {
         occupancy_hint_numerator = 5;
         occupancy_hint_denominator = 8;
-        start_event.as_ref().unwrap().record(exec_stream)?;
-        side_stream.wait_event(
+        start_event.as_ref().unwrap().record(streams[0])?;
+        streams[1].wait_event(
             start_event.as_ref().unwrap(),
             CudaStreamWaitEventFlags::DEFAULT,
         )?;
@@ -1382,22 +1423,24 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
         for (i, &(coset_index_base_this_stream, cosets_in_tile, offset)) in
             helpers_per_stream.iter().enumerate()
         {
-            let scratch_opt = d_scratch.as_mut().map(|s| &mut s[..]);
-            lde_with_coset_range(
-                inputs_matrix,
-                &mut (ntt_output_matrix.slice_mut())[offset..],
-                log_trace_len as usize,
-                natural_log_lde_factor as usize,
-                cosets_in_tile,
-                coset_index_base_this_stream,
-                src_cols_per_coset,
-                occupancy_hint_numerator,
-                occupancy_hint_denominator,
-                ntt_ctx,
-                scratch_opt,
-                streams[i],
-                device_properties,
-            )?;
+            if include_lde_in_l2_persistence_chain {
+                let scratch_opt = d_scratch.as_mut().map(|s| &mut s[..]);
+                lde_with_coset_range(
+                    inputs_matrix,
+                    &mut (ntt_output_matrix.slice_mut())[offset..],
+                    log_trace_len as usize,
+                    natural_log_lde_factor as usize,
+                    cosets_in_tile,
+                    coset_index_base_this_stream,
+                    src_cols_per_coset,
+                    occupancy_hint_numerator,
+                    occupancy_hint_denominator,
+                    ntt_ctx,
+                    scratch_opt,
+                    streams[i],
+                    device_properties,
+                )?;
+            }
         }
         if transform_leaves_to_multilinear_coeffs {
             for (i, &(coset_index_base_this_stream, cosets_in_tile, _offset)) in

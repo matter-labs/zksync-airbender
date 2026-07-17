@@ -1441,6 +1441,8 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset(
     )
 }
 
+pub const MAX_LOG_N_FOR_SINGLE_KERNEL_LDE: usize = 13;
+
 /// Multi-coset forward NTT over a caller-selected coset range.
 ///
 /// `log_lde_factor` still describes the full LDE domain and therefore the
@@ -1470,7 +1472,7 @@ pub fn lde_with_coset_range(
         "num_cosets must be a power of 2 (got {num_cosets})"
     );
     // TODO: extend to smaller sizes when chunking-friendly kernels are done
-    if (log_n <= 18) && (log_n >= 14) {
+    if (log_n <= 18) && (log_n > MAX_LOG_N_FOR_SINGLE_KERNEL_LDE) {
         let result = lde_intermediate_size_with_coset_range(
             inputs_matrix,
             outputs,
