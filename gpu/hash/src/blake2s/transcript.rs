@@ -12,7 +12,7 @@ use super::STATE_SIZE;
 use gpu_core::primitives::field::E4;
 use gpu_core::primitives::utils::WARP_SIZE;
 
-cuda_kernel!(Blake2SPow, ab_blake2s_pow_kernel(seed: *const u32, bits_count: u32, max_nonce: u64, result: *mut u64));
+cuda_kernel!(Blake2sPow, ab_blake2s_pow_kernel(seed: *const u32, bits_count: u32, max_nonce: u64, result: *mut u64));
 
 /// Maximum number of input chunks the chunked transcript-commit kernel-arg
 /// descriptor can hold. The pre-WHIR transcript pack feeds 5 chunks
@@ -214,13 +214,13 @@ pub fn blake2s_pow(
     const BLOCK_SIZE: u32 = WARP_SIZE * 4;
     let device_id = get_device()?;
     let mpc = device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device_id)?;
-    let kernel_function = Blake2SPowFunction::default();
+    let kernel_function = Blake2sPowFunction::default();
     let max_blocks = max_active_blocks_per_multiprocessor(&kernel_function, BLOCK_SIZE as i32, 0)?;
     let num_blocks = (mpc * max_blocks) as u32;
     let config = CudaLaunchConfig::basic(num_blocks, BLOCK_SIZE, stream);
     let seed = seed.as_ptr();
     let result = result.as_mut_ptr();
-    let args = Blake2SPowArguments {
+    let args = Blake2sPowArguments {
         seed,
         bits_count,
         max_nonce: u64::MAX,

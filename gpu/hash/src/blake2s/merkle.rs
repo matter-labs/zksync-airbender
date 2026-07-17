@@ -10,7 +10,7 @@ use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
-use super::hash::hash_leaves;
+use super::hash::{hash_leaves, hash_leaves_multi_coset};
 use super::{checked_u32, Digest};
 
 cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32,));
@@ -283,7 +283,7 @@ pub fn build_merkle_tree_multi_coset(
     assert_ne!(layers_count, 0);
     assert!(cosets_in_tile >= 1);
     assert!(per_coset_leaves_count >= 1 << (layers_count - 1));
-    super::hash::hash_leaves_multi_coset(
+    hash_leaves_multi_coset(
         values,
         tree_backing,
         log_rows_per_hash,

@@ -279,7 +279,6 @@ pub fn gather_merkle_paths_full_for_queries(
         slab_dst.len(),
         query_indexes.len() * layers_count as usize * STATE_SIZE
     );
-    assert_eq!(WARP_SIZE % STATE_SIZE as u32, 0);
     let (grid_dim, block_dim) =
         get_grid_block_dims_for_threads_count(WARP_SIZE / STATE_SIZE as u32, indexes_count);
     let grid_dim = (grid_dim.x, layers_count);
@@ -495,11 +494,6 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
     GatherMerklePathsPartialForQueriesFromNttFunction::default().launch(&config, &args)
 }
 
-/// Maximum coset count the inline `gather_tree_caps_inline` kernel-arg
-/// descriptor can hold. Sized for headroom — production lde_factor is
-/// typically ≤ 4.
-const GKR_GATHER_TREE_CAPS_MAX_COSETS: usize = 32;
-
 /// Kernel-arg descriptor for `gather_tree_caps_inline`. Consolidated form:
 /// a single base pointer plus per-coset stride lets the kernel gather every
 /// per-coset cap region from one contiguous tree backing. The kernel folds
@@ -537,10 +531,11 @@ cuda_kernel!(
 );
 
 /// Maximum source addresses the `gather_e_addresses` kernel-arg descriptor can
-/// hold. See `gkr_address_audit_helpers::GKR_GATHER_MAX_ADDRESSES` in
+/// hold. Must match `GKR_GATHER_MAX_ADDRESSES` in `native/gather.cu`. See
+/// `gkr_address_audit_helpers::GKR_GATHER_MAX_ADDRESSES` in
 /// `gpu_circuit_prover` for the rationale; the audit panics if any future circuit
 /// exceeds this.
-pub const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
+pub(crate) const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
 
 /// Kernel-arg descriptor for `gather_e_addresses`. Inline form: passed by
 /// value as `__grid_constant__` data.
@@ -586,9 +581,8 @@ cuda_kernel!(
 /// so the destination layout matches the legacy stage1 ordering used by
 /// `read_per_coset_caps_synchronously`.
 ///
-/// Inline form of `gather_tree_caps`: the descriptor rides as kernel-arg
-/// data (`__grid_constant__`), so callers (e.g. `TraceHolder::commit_all`)
-/// avoid an H2D for the source pointer table.
+/// The descriptor rides as kernel-arg data (`__grid_constant__`), so callers
+/// (e.g. `TraceHolder::commit_all`) avoid an H2D for the source pointer table.
 pub fn gather_tree_caps_inline(
     base_ptr: *const u32,
     cap_words_per_coset: u32,
@@ -597,17 +591,10 @@ pub fn gather_tree_caps_inline(
     dst: &mut DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    assert!(log_lde_factor < 32);
     let coset_count = 1u32 << log_lde_factor;
     assert!(cap_words_per_coset > 0);
     assert!(stride_per_coset_in_u32_words >= cap_words_per_coset);
-    assert!(
-        (coset_count as usize) <= GKR_GATHER_TREE_CAPS_MAX_COSETS,
-        "gather_tree_caps descriptor has {} cosets; exceeds GKR_GATHER_TREE_CAPS_MAX_COSETS = {}. \
-         Raise the constant in gpu/hash/src/blake2s/gather.rs (and the matching native constant) \
-         if a future workload needs more.",
-        coset_count,
-        GKR_GATHER_TREE_CAPS_MAX_COSETS,
-    );
     assert_eq!(
         dst.len(),
         (coset_count as usize) * (cap_words_per_coset as usize),
@@ -643,7 +630,8 @@ pub fn gather_e_addresses(
     assert!(
         num_addresses <= GKR_GATHER_MAX_ADDRESSES,
         "gather descriptor has {} addresses; exceeds GKR_GATHER_MAX_ADDRESSES = {}. \
-         Raise the constant in gkr_address_audit.rs after re-running the audit.",
+         Raise the constant here, its mirror in native/gather.cu, and \
+         gpu_circuit_prover's audit-helper copy after re-running the audit.",
         num_addresses,
         GKR_GATHER_MAX_ADDRESSES,
     );
@@ -680,6 +668,9 @@ cuda_kernel!(
     )
 );
 
+/// Map raw query indexes to the tree-space indexes the verifier's
+/// `BaseFieldQuery.index` expects:
+/// `bitreverse(q & (lde - 1), log_lde) << coset_tree_size_log2 | q >> log_lde`.
 pub fn query_index_to_tree_index(
     d_query_indexes: &DeviceSlice<u32>,
     d_out: &mut DeviceSlice<u32>,

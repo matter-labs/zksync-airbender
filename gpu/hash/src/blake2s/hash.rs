@@ -62,6 +62,10 @@ cuda_kernel!(
 /// offset `coset * per_coset_results_stride_digests` inside `results`. The
 /// caller passes the full `results` backing and the kernel addresses each
 /// coset's leaves slab via the stride.
+///
+/// Production code reaches this only through `build_merkle_tree_multi_coset`;
+/// `pub` (hidden) for circuit_prover's whir/kernels parity tests.
+#[doc(hidden)]
 pub fn hash_leaves_multi_coset(
     values: &DeviceSlice<BF>,
     results: &mut DeviceSlice<Digest>,

@@ -65,7 +65,7 @@ helper, a build-dependency only).
   `ab_blake2s_pow_kernel` runs a non-deterministic search → silent proof-parity
   divergence that passes compile + breadth). Test helpers consumed by
   `circuit_prover`'s tests (`gather_leaf_rows`, `gather_merkle_paths_*`,
-  `build_merkle_tree`) are
+  `build_merkle_tree`, `hash_leaves_multi_coset`) are
   `#[doc(hidden)] pub`. The transcript parity test verifies against the host
   `prover::transcript::Blake2sTranscript`, so `prover` is a **dev-only** dep of
   `gpu_hash` (production + downstream stay `gpu_core`/`gpu_ops`-only).

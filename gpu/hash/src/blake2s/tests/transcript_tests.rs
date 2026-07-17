@@ -1,10 +1,6 @@
-use blake2s_u32::Blake2sState;
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::{BF, E4};
-
-type Blake2sTranscript =
-    prover::transcript::Blake2sTranscript<{ prover::definitions::USE_REDUCED_BLAKE2_ROUNDS }>;
 use rand::Rng;
 use serial_test::serial;
 #[cfg(feature = "deterministic_pow")]
@@ -12,8 +8,10 @@ use worker::Worker;
 
 use super::super::*;
 
-use super::{bitreverse_index, BLOCK_SIZE, USE_REDUCED_BLAKE2_ROUNDS};
-use crate::upstream::{Field, Seed};
+use super::{bitreverse_index, BLOCK_SIZE};
+use crate::upstream::{
+    draw_random_field_els, Blake2sState, Blake2sTranscript, Field, Seed, USE_REDUCED_BLAKE2_ROUNDS,
+};
 
 #[test]
 #[serial]
@@ -471,7 +469,6 @@ fn device_squeeze_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; 
 
 /// Helper: host `draw_random_field_els::<BF, E4>` returning challenges + final seed.
 fn host_draw_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; STATE_SIZE]) {
-    use prover::gkr::prover::transcript_utils::draw_random_field_els;
     let mut s = Seed(*seed);
     let challenges = draw_random_field_els::<BF, E4>(&mut s, count);
     (challenges, s.0)

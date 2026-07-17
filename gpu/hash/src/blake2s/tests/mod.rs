@@ -1,14 +1,13 @@
-use blake2s_u32::Blake2sState;
 use itertools::Itertools;
 use rand::Rng;
 
 use super::*;
+use crate::upstream::{Blake2sState, USE_REDUCED_BLAKE2_ROUNDS};
 
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::GetChunksCount;
 
-pub(crate) const BLOCK_SIZE: usize = 16;
-pub(super) const USE_REDUCED_BLAKE2_ROUNDS: bool = true;
+pub(super) const BLOCK_SIZE: usize = 16;
 
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
