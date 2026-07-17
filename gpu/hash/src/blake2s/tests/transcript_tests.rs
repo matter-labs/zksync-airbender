@@ -107,38 +107,12 @@ fn host_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
 
 #[test]
 #[serial]
-fn transcript_commit_parity_small() {
-    // 8 (seed) + 4 (input) = 12 words — fits in one block with padding.
-    let seed = [1, 2, 3, 4, 5, 6, 7, 8];
-    let input: Vec<u32> = (10..14).collect();
-    assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
-}
-
-#[test]
-#[serial]
-fn transcript_commit_parity_exact_block() {
-    // 8 + 8 = 16 words — exactly one full block.
-    let seed = [0xaa; STATE_SIZE];
-    let input: Vec<u32> = (0..8).collect();
-    assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
-}
-
-#[test]
-#[serial]
 fn transcript_commit_parity_two_blocks() {
-    // 8 + 12 = 20 words — two blocks (16 + 4). This is the typical backward
-    // sumcheck case: commit_field_els with 3 E4 elements.
+    // 8 + 12 = 20 words — two blocks (16 + 4). The load-bearing backward
+    // sumcheck case: commit_field_els with 3 E4 elements. Kept as an explicit
+    // named case; the randomized sweep below covers the other block counts.
     let seed = [0x42; STATE_SIZE];
     let input: Vec<u32> = (100..112).collect();
-    assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
-}
-
-#[test]
-#[serial]
-fn transcript_commit_parity_large() {
-    // 8 + 32 = 40 words — three blocks (16 + 16 + 8).
-    let seed = [0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe];
-    let input: Vec<u32> = (0..32).collect();
     assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
 }
 
@@ -199,54 +173,13 @@ fn device_commit_initial_chunked(chunks: &[Vec<u32>]) -> [u32; STATE_SIZE] {
 
 #[test]
 #[serial]
-fn transcript_commit_initial_chunked_parity_single_chunk() {
-    // One chunk only — must equal the single-buffer kernel.
-    let input: Vec<u32> = (10..30).collect();
-    let chunks = vec![input.clone()];
-    assert_eq!(
-        device_commit_initial_chunked(&chunks),
-        host_commit_initial(&input)
-    );
-}
-
-#[test]
-#[serial]
 fn transcript_commit_initial_chunked_parity_block_aligned_split() {
-    // Two chunks, split exactly on a block boundary (16 u32 words).
+    // Two chunks split exactly on a 16-word block boundary — the one edge the
+    // randomized sweep below almost never hits. Other chunk counts and
+    // mid-block splits (incl. the 5-chunk production pack shape) are covered
+    // by the randomized test.
     let total: Vec<u32> = (0..32).collect();
     let chunks = vec![total[..16].to_vec(), total[16..].to_vec()];
-    assert_eq!(
-        device_commit_initial_chunked(&chunks),
-        host_commit_initial(&total)
-    );
-}
-
-#[test]
-#[serial]
-fn transcript_commit_initial_chunked_parity_mid_block_split() {
-    // Two chunks split mid-block: chunk boundary should not affect the
-    // final digest because Blake2s streams 64-byte (= 16 u32) blocks.
-    let total: Vec<u32> = (0..40).collect();
-    let chunks = vec![total[..7].to_vec(), total[7..].to_vec()];
-    assert_eq!(
-        device_commit_initial_chunked(&chunks),
-        host_commit_initial(&total)
-    );
-}
-
-#[test]
-#[serial]
-fn transcript_commit_initial_chunked_parity_five_chunks() {
-    // Five chunks — matches the production transcript pack
-    // (canonical-top-bits + external_challenges + setup + memory + witness).
-    let total: Vec<u32> = (0..200).collect();
-    let chunks = vec![
-        total[..3].to_vec(),
-        total[3..31].to_vec(),
-        total[31..63].to_vec(),
-        total[63..127].to_vec(),
-        total[127..].to_vec(),
-    ];
     assert_eq!(
         device_commit_initial_chunked(&chunks),
         host_commit_initial(&total)
@@ -549,45 +482,13 @@ fn host_draw_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; STATE
 
 #[test]
 #[serial]
-fn transcript_squeeze_e4_parity_single() {
-    // 1 E4 = 4 u32 words, padded to 1 round (STATE_SIZE = 8).
-    let seed = [0x11; STATE_SIZE];
-    let (d_out, d_seed) = device_squeeze_e4(&seed, 1);
-    let (h_out, h_seed) = host_draw_e4(&seed, 1);
-    assert_eq!(d_out, h_out);
-    assert_eq!(d_seed, h_seed);
-}
-
-#[test]
-#[serial]
-fn transcript_squeeze_e4_parity_two_in_one_round() {
-    // 2 E4 = 8 u32 words, exactly 1 round. Both E4s drawn from the verbatim seed.
-    let seed = [0x22; STATE_SIZE];
-    let (d_out, d_seed) = device_squeeze_e4(&seed, 2);
-    let (h_out, h_seed) = host_draw_e4(&seed, 2);
-    assert_eq!(d_out, h_out);
-    assert_eq!(d_seed, h_seed);
-}
-
-#[test]
-#[serial]
 fn transcript_squeeze_e4_parity_three() {
-    // 3 E4 = 12 u32 words, padded to 16 = 2 rounds. Matches the initial lookup
-    // challenge draw in prove(): 3 E4 challenges off the seed.
+    // 3 E4 = 12 u32 words, padded to 16 = 2 rounds. The load-bearing case: the
+    // initial lookup challenge draw in prove() draws 3 E4 challenges off the
+    // seed. Other counts are covered by the randomized sweep below.
     let seed = [0xab; STATE_SIZE];
     let (d_out, d_seed) = device_squeeze_e4(&seed, 3);
     let (h_out, h_seed) = host_draw_e4(&seed, 3);
-    assert_eq!(d_out, h_out);
-    assert_eq!(d_seed, h_seed);
-}
-
-#[test]
-#[serial]
-fn transcript_squeeze_e4_parity_many_rounds() {
-    // 10 E4 = 40 u32 words, padded to 40 = 5 rounds.
-    let seed = [0xcd; STATE_SIZE];
-    let (d_out, d_seed) = device_squeeze_e4(&seed, 10);
-    let (h_out, h_seed) = host_draw_e4(&seed, 10);
     assert_eq!(d_out, h_out);
     assert_eq!(d_seed, h_seed);
 }

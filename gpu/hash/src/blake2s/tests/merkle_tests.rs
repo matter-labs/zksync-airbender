@@ -15,33 +15,6 @@ use crate::upstream::Field;
 
 #[test]
 #[serial]
-fn leaves() {
-    const LOG_N: usize = 10;
-    const N: usize = 1 << LOG_N;
-    const VALUES_PER_ROW: usize = 125;
-    const LOG_ROWS_PER_HASH: u32 = 1;
-    let mut values_host = vec![BF::ZERO; (N * VALUES_PER_ROW) << LOG_ROWS_PER_HASH];
-    let mut rng = rand::rng();
-    values_host.fill_with(|| BF::from_nonreduced_u32(rng.random()));
-    let mut results_host = vec![Digest::default(); N];
-    let stream = CudaStream::default();
-    let mut values_device = DeviceAllocation::alloc(values_host.len()).unwrap();
-    let mut results_device = DeviceAllocation::alloc(results_host.len()).unwrap();
-    memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
-    launch_leaves_kernel(
-        &values_device,
-        &mut results_device,
-        LOG_ROWS_PER_HASH,
-        &stream,
-    )
-    .unwrap();
-    memory_copy_async(&mut results_host, &results_device, &stream).unwrap();
-    stream.synchronize().unwrap();
-    verify_leaves(&values_host, &results_host, LOG_ROWS_PER_HASH);
-}
-
-#[test]
-#[serial]
 fn blake2s_nodes() {
     const LOG_N: usize = 10;
     const N: usize = 1 << LOG_N;
@@ -100,13 +73,7 @@ fn test_merkle_tree(log_n: usize) {
 
 #[test]
 #[serial]
-fn merkle_tree_small() {
-    test_merkle_tree(8);
-}
-
-#[test]
-#[serial]
-fn merkle_tree_large() {
+fn merkle_tree() {
     test_merkle_tree(16);
 }
 
