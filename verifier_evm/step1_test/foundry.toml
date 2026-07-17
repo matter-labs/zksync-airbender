@@ -1,8 +1,0 @@
-[profile.default]
-src = "."
-out = ".foundry/out"
-cache_path = ".foundry/cache"
-via_ir = true
-optimizer = true
-# read the prover-generated STEP-1 transcript fixture
-fs_permissions = [{ access = "read", path = "../whir/testdata" }]

@@ -635,6 +635,11 @@ where
         pow_nonces: vec![],
         final_monomials: vec![],
         whir_schedule: whir_schedule.clone(),
+        // GKR->WHIR handoff values (see WhirPolyCommitProof). `batched_opening` is filled once
+        // `batched_claim` is computed below.
+        batching_challenge: Some(batching_challenge),
+        original_evaluation_point: Some(original_evaluation_point.clone()),
+        batched_opening: None,
     };
 
     let mut final_poly_log2 = trace_len_log2;
@@ -753,6 +758,9 @@ where
             batched_claim.add_assign(&result);
         }
     }
+    // Record the initial batched opening (= the committed-state `batched_opening`) so a
+    // verifier-calldata serializer needn't recompute it from the transcript replay.
+    proof.batched_opening = Some(batched_claim);
     drop(mem_polys_claims);
     drop(wit_polys_claims);
     drop(setup_polys_claims);

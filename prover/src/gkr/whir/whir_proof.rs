@@ -100,6 +100,15 @@ pub struct WhirPolyCommitProof<
     pub pow_nonces: Vec<u64>,
     pub final_monomials: Vec<E>,
     pub whir_schedule: WhirSchedule,
+    // GKR->WHIR handoff values the prover records so a verifier-calldata serializer can build the
+    // committed-state preimage without replaying the GKR transcript (optional for back-compat with
+    // proofs serialized before these fields existed).
+    #[serde(default)]
+    pub batching_challenge: Option<E>,
+    #[serde(default)]
+    pub original_evaluation_point: Option<Vec<E>>,
+    #[serde(default)]
+    pub batched_opening: Option<E>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
