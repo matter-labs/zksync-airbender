@@ -171,11 +171,14 @@ fn superscript(idx: usize) -> String {
 }
 fn const_to_evm(c: &u32) -> Dual {
     assert!(*c < BabyBearField::ORDER, "we don't expect circuits with unreduced constants");
+    assert!(*c < (1 << 31));
     // first check if negative
     let (sign, modc, yul) = if *c > BabyBearField::ORDER / 2 {
         let modc = BabyBearField::ORDER - c;
+        assert!(modc < (1 << 30));
         ("-", modc, yul_format!("sub(P, {modc})"))
     } else { 
+        assert!(*c < (1 << 30));
         ("", *c, yul_format!("{c}"))
     };
     let normal = match modc {
@@ -416,21 +419,25 @@ fn main() {
                 let (running_max_memvar, running_max_witvar, running_max_setupvar, running_max_cachevar) = running_max_group_offsets;
                 match address {
                     InnerLayer { layer, offset } if *layer==expected_layer && expected_layer > 0 => {
+                        assert!(*offset < (1 << 7), "we expect inner layer offsets to be 7 bits, but we got {offset} for layer {expected_layer}");
                         Dual(format!("[{offset}]"), Yul::calldataload(offset))
                     },
                     GKRAddress::BaseLayerMemory(offset) if expected_layer == 0 => {
                         *running_max_memvar = *offset.max(running_max_memvar);
                         let calldata_offset = offset; // memory is first in calldata
+                        assert!(*calldata_offset < (1 << 7), "we expect inner layer offsets to be 7 bits, but we got {offset} for layer {expected_layer}");
                         Dual(format!("[{calldata_offset}]"), Yul::calldataload(calldata_offset))
                     },
                     GKRAddress::BaseLayerWitness(offset) if expected_layer == 0 => {
                         *running_max_witvar = *offset.max(running_max_witvar);
                         let calldata_offset = l0_memvars + offset; // witness is second in calldata
+                        assert!(calldata_offset < (1 << 7), "we expect inner layer offsets to be 7 bits, but we got {offset} for layer {expected_layer}");
                         Dual(format!("[{calldata_offset}]"), Yul::calldataload(&calldata_offset))
                     },
                     GKRAddress::Setup(offset) if expected_layer == 0 => {
                         *running_max_setupvar = *offset.max(running_max_setupvar);
                         let calldata_offset = l0_memvars + l0_witvars + offset; // setup is third in calldata
+                        assert!(calldata_offset < (1 << 7), "we expect inner layer offsets to be 7 bits, but we got {offset} for layer {expected_layer}");
                         Dual(format!("[{calldata_offset}]"), Yul::calldataload(&calldata_offset))
                     },
                     GKRAddress::Cached { layer, offset } if *layer==expected_layer && expected_layer == 0 => {
@@ -463,12 +470,17 @@ fn main() {
                 let (running_max_memvar, _running_max_witvar, _running_max_setupvar, _running_max_cachevar) = running_max_group_offsets;
                 let NoFieldSpecialMemoryContributionRelation { address_space, address, timestamp, value, timestamp_offset } = tuple;
                 let address_space = match address_space {
-                    CompiledAddressSpaceRelationStrict::Constant(c) => const_to_evm(c),
+                    CompiledAddressSpaceRelationStrict::Constant(c) => {
+                        assert!(*c <= 2, "we expect addr_space in [0,1,2] but got {c}");
+                        const_to_evm(c)
+                    },
                     CompiledAddressSpaceRelationStrict::IsRam(idx) => {
+                        assert!(*idx < (1 << 7), "we expect layer offsets to be 7 bits, but we got {idx} for layer0");
                         *running_max_memvar = *idx.max(running_max_memvar);
                         Dual(format!("[{idx}]"), Yul::calldataload(idx))
                     },
                     CompiledAddressSpaceRelationStrict::IsRegister(idx) => {
+                        assert!(*idx < (1 << 7), "we expect layer offsets to be 7 bits, but we got {idx} for layer0");
                         *running_max_memvar = *idx.max(running_max_memvar);
                         let var = Dual(format!("[{idx}]"), Yul::calldataload(idx));
                         let negvar = u128_to_neg(&var);
@@ -488,12 +500,15 @@ fn main() {
                         [c, zero]
                     },
                     CompiledAddressStrict::U16Space(idx) => {
+                        assert!(*idx < (1 << 7), "we expect layer offsets to be 7 bits, but we got {idx} for layer0");
                         *running_max_memvar = *idx.max(running_max_memvar);
                         let var = Dual(format!("[{idx}]"), Yul::calldataload(idx));
                         let zero = Dual(format!("0"), yul_format!("0"));
                         [var, zero]
                     },
                     CompiledAddressStrict::U32Space([low, high]) => {
+                        assert!(*low < (1 << 7), "we expect layer offsets to be 7 bits, but we got {low} for layer0");
+                        assert!(*high < (1 << 7), "we expect layer offsets to be 7 bits, but we got {high} for layer0");
                         *running_max_memvar = *low.max(running_max_memvar);
                         *running_max_memvar = *high.max(running_max_memvar);
                         let low = Dual(format!("[{low}]"), Yul::calldataload(low));
@@ -510,8 +525,11 @@ fn main() {
                         [zero1, zero2]
                     },
                     CompiledMemoryTimestamp::Normal([low, high]) => {
+                        assert!(*low < (1 << 7), "we expect layer offsets to be 7 bits, but we got {low} for layer0");
+                        assert!(*high < (1 << 7), "we expect layer offsets to be 7 bits, but we got {high} for layer0");
                         *running_max_memvar = *low.max(running_max_memvar);
                         *running_max_memvar = *high.max(running_max_memvar);
+                        assert!(*timestamp_offset < 4, "we expect timestamp_offset < 4 but got {timestamp:?}");
                         let timestamp_offset = const_to_evm(timestamp_offset);
                         let low = Dual(format!("[{low}]"), Yul::calldataload(low));
                         let high = Dual(format!("[{high}]"), Yul::calldataload(high));
@@ -525,6 +543,8 @@ fn main() {
                         [zero1, zero2]
                     },
                     RamWordRepresentation::U16Limbs([low, high]) => {
+                        assert!(*low < (1 << 7), "we expect layer offsets to be 7 bits, but we got {low} for layer0");
+                        assert!(*high < (1 << 7), "we expect layer offsets to be 7 bits, but we got {high} for layer0");
                         *running_max_memvar = *low.max(running_max_memvar);
                         *running_max_memvar = *high.max(running_max_memvar);
                         let low = Dual(format!("[{low}]"), Yul::calldataload(low));
@@ -532,6 +552,10 @@ fn main() {
                         [low, high]
                     },
                     RamWordRepresentation::U8Limbs([ll, lh, hl, hh]) => {
+                        assert!(*ll < (1 << 7), "we expect layer offsets to be 7 bits, but we got {ll} for layer0");
+                        assert!(*lh < (1 << 7), "we expect layer offsets to be 7 bits, but we got {lh} for layer0");
+                        assert!(*hl < (1 << 7), "we expect layer offsets to be 7 bits, but we got {hl} for layer0");
+                        assert!(*hh < (1 << 7), "we expect layer offsets to be 7 bits, but we got {hh} for layer0");
                         *running_max_memvar = *ll.max(running_max_memvar);
                         *running_max_memvar = *lh.max(running_max_memvar);
                         *running_max_memvar = *hl.max(running_max_memvar);
@@ -567,6 +591,14 @@ fn main() {
                         [zero1, zero2]
                     },
                     InitsOrTeardownsTimestampAndValue::Teardown { lhs_timestamp: [lhs_ts0, lhs_ts1], lhs_value: [lhs_val0, lhs_val1], rhs_timestamp: [rhs_ts0, rhs_ts1], rhs_value: [rhs_val0, rhs_val1] } => {
+                        assert!(*lhs_ts0 < (1 << 7), "we expect layer offsets to be 7 bits, but we got {lhs_ts0} for layer0");
+                        assert!(*lhs_ts1 < (1 << 7), "we expect layer offsets to be 7 bits, but we got {lhs_ts1} for layer0");
+                        assert!(*lhs_val0 < (1 << 7), "we expect layer offsets to be 7 bits, but we got {lhs_val0} for layer0");
+                        assert!(*lhs_val1 < (1 << 7), "we expect layer offsets to be 7 bits, but we got {lhs_val1} for layer0");
+                        assert!(*rhs_ts0 < (1 << 7), "we expect layer offsets to be 7 bits, but we got {rhs_ts0} for layer0");
+                        assert!(*rhs_ts1 < (1 << 7), "we expect layer offsets to be 7 bits, but we got {rhs_ts1} for layer0");
+                        assert!(*rhs_val0 < (1 << 7), "we expect layer offsets to be 7 bits, but we got {rhs_val0} for layer0");
+                        assert!(*rhs_val1 < (1 << 7), "we expect layer offsets to be 7 bits, but we got {rhs_val1} for layer0");
                         *running_max_memvar = *lhs_ts0.max(running_max_memvar);
                         *running_max_memvar = *lhs_ts1.max(running_max_memvar);
                         *running_max_memvar = *lhs_val0.max(running_max_memvar);
@@ -744,10 +776,11 @@ fn main() {
                     // println!("{relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}");
                     yul_println!("
                     \t{{  // {relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}
-                    \t    let den_out := mulmod({den:x}, add({logup_gamma:x}, {remainder:x}), P)
+                    \t    let den2 := add({logup_gamma:x}, {remainder:x})
+                    \t    let den_out := mulmod({den:x}, den2, P)
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
-                    \t    let num_out := add(mulmod({num:x}, add({logup_gamma:x}, {remainder:x}), P), {den:x})
+                    \t    let num_out := add(mulmod({num:x}, den2, P), {den:x})
                     \t    gate := num_out
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -807,10 +840,12 @@ fn main() {
                     // println!("{relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}");
                     yul_println!("
                     \t{{  // {relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}
-                    \t    let den_out := mulmod(add({logup_gamma:x}, {input:x}), add({logup_gamma:x}, {setup:x}), P)
+                    \t    let den1 := add({logup_gamma:x}, {input:x})
+                    \t    let den2 := add({logup_gamma:x}, {setup:x})
+                    \t    let den_out := mulmod(den1, den2, P)
                     \t    let gate := den_out
                     \t    {pointcheck_update:x}
-                    \t    let num_out := add(add({logup_gamma:x}, {setup:x}), sub(P, mulmod({multiplicity:x}, add({logup_gamma:x}, {input:x}), P)))
+                    \t    let num_out := add(den2, sub(P, mulmod({multiplicity:x}, den1, P)))
                     \t    gate := num_out
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -989,8 +1024,8 @@ fn main() {
         if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
         ")
     };
-    let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
-    let gate_mload_inner = Yul::mload(&123).0.replace("123", "idx");
+    let gate_calldataload_inner = Yul::calldataload(&1234567890).0.replace("1234567890", "idx");
+    let gate_mload_inner = Yul::mload(&1234567890).0.replace("1234567890", "idx");
     yul_println!("
         function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {{
             // NB: need to inline GKR_CIRCUIT_LAYER_ROUNDS unfortunately

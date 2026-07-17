@@ -144,18 +144,20 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 65, 63, 66, 64)
     
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [67]/[68] + 1/(δ + [69]) = [11]/[12]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 68)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 69))))), P)
+        let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 69)))))
+        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 68)))), den2, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 67)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 69))))), P), shr(128, calldataload(add(ptr, mul(16, 68)))))
+        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 67)))), den2, P), shr(128, calldataload(add(ptr, mul(16, 68)))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [48]/[49] + 1/(δ + [7]) = [9]/[10]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 7))))), P)
+        let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 7)))))
+        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 49)))), den2, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 7))))), P), shr(128, calldataload(add(ptr, mul(16, 49)))))
+        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 48)))), den2, P), shr(128, calldataload(add(ptr, mul(16, 49)))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -166,10 +168,11 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     acc := gate_aggregatelookuprationalpair(ptr, alpha, acc, 56, 54, 57, 55)
     
     {  // LookupUnbalancedPairWithMaterializedBaseInputs: [58]/[59] + 1/(δ + [60]) = [3]/[4]
-        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 59)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 60))))), P)
+        let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 60)))))
+        let den_out := mulmod(shr(128, calldataload(add(ptr, mul(16, 59)))), den2, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 60))))), P), shr(128, calldataload(add(ptr, mul(16, 59)))))
+        let num_out := add(mulmod(shr(128, calldataload(add(ptr, mul(16, 58)))), den2, P), shr(128, calldataload(add(ptr, mul(16, 59)))))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -590,10 +593,12 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [28]) - [101]/(δ + Cache(1)) = [61]/[62]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 28))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)))), P)
+        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 28)))))
+        let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1))))
+        let den_out := mulmod(den1, den2, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)))), sub(P, mulmod(shr(128, calldataload(add(ptr, mul(16, 101)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 28))))), P)))
+        let num_out := add(den2, sub(P, mulmod(shr(128, calldataload(add(ptr, mul(16, 101)))), den1, P)))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
@@ -642,10 +647,12 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, P), gate)
     }
     {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [85]) - [100]/(δ + Cache(0)) = [48]/[49]
-        let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 85))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)))), P)
+        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 85)))))
+        let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0))))
+        let den_out := mulmod(den1, den2, P)
         let gate := den_out
         acc := add(mulmod(acc, alpha, P), gate)
-        let num_out := add(add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)))), sub(P, mulmod(shr(128, calldataload(add(ptr, mul(16, 100)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(ptr, mul(16, 85))))), P)))
+        let num_out := add(den2, sub(P, mulmod(shr(128, calldataload(add(ptr, mul(16, 100)))), den1, P)))
         gate := num_out
         acc := add(mulmod(acc, alpha, P), gate)
     }
