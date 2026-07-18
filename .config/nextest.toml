@@ -10,10 +10,15 @@
 # workloads is still the job of .agents/bin/with_gpu_lock.sh; this group only
 # serializes tests within one nextest invocation.
 #
-# slow-timeout: a hung kernel previously wedged the whole suite and the GPU
-# lock with it. Under nextest each test is its own process, so a stuck test
-# is terminated after period * terminate-after and the rest of the run
-# proceeds.
+# Coverage of both classifications is drift-guarded by
+# gpu_core::serial_guard::tests::cpu_nextest_config_covers_all_gpu_crates.
+
+[profile.default]
+# A hang or failure must not silently truncate suite coverage: with the
+# gpu-serial group one test at a time, nextest's default fail-fast would
+# cancel every remaining GPU test on the first failure. Pass --fail-fast on
+# the command line when iterating.
+fail-fast = false
 
 [test-groups.gpu-serial]
 max-threads = 1
@@ -27,47 +32,34 @@ max-threads = 1
 filter = '(package(gpu_hash) | package(gpu_core) | package(gpu_ntt) | package(gpu_ops) | package(gpu_cub) | package(gpu_gkr_model) | package(gpu_circuit_prover) | package(gpu_execution_prover) | package(gpu_program_prover)) & test(/(^|::)cpu_/)'
 test-group = '@global'
 
+# slow-timeout: a hung kernel previously wedged the whole suite and the GPU
+# lock with it forever. Under nextest a stuck test is terminated after
+# period * terminate-after (20 min) and — with fail-fast off — the rest of
+# the run proceeds. The cap is sized for the heaviest legitimate #[ignore]d
+# proof/e2e tests, which run under the same override.
 [[profile.default.overrides]]
 filter = 'package(gpu_hash) | package(gpu_core) | package(gpu_ntt) | package(gpu_ops) | package(gpu_cub) | package(gpu_gkr_model) | package(gpu_circuit_prover) | package(gpu_execution_prover) | package(gpu_program_prover)'
 test-group = 'gpu-serial'
-slow-timeout = { period = "60s", terminate-after = 5 }
+slow-timeout = { period = "120s", terminate-after = 10 }
 
-# Non-GPU crates that use serial_test keep the dep for plain `cargo test`,
-# but its mutex is inert under nextest's processes — so each such package is
-# conservatively serialized within itself here (packages still run in
-# parallel with each other, matching what serial_test provided per test
-# binary). Remove a package's entry only after removing its #[serial] uses.
-
-[test-groups.prover-serial]
-max-threads = 1
-
-[test-groups.cs-serial]
-max-threads = 1
+# Non-GPU crates with live #[serial] usage keep the serial_test dep for plain
+# `cargo test`, but its mutex is inert under nextest's processes — so each
+# such package is conservatively serialized within itself here (packages
+# still run in parallel with each other, matching what serial_test provided
+# per test binary). Remove a package's entry only after removing its
+# #[serial] uses; conversely, a package with no #[serial] uses gets no entry
+# (cs, prover, and verifier_generator carried dead serial_test deps — both
+# the deps and their groups were dropped).
 
 [test-groups.riscv-transpiler-serial]
-max-threads = 1
-
-[test-groups.verifier-generator-serial]
 max-threads = 1
 
 [test-groups.prover-examples-serial]
 max-threads = 1
 
 [[profile.default.overrides]]
-filter = 'package(prover)'
-test-group = 'prover-serial'
-
-[[profile.default.overrides]]
-filter = 'package(cs)'
-test-group = 'cs-serial'
-
-[[profile.default.overrides]]
 filter = 'package(riscv_transpiler)'
 test-group = 'riscv-transpiler-serial'
-
-[[profile.default.overrides]]
-filter = 'package(verifier_generator)'
-test-group = 'verifier-generator-serial'
 
 [[profile.default.overrides]]
 filter = 'package(prover_examples)'
