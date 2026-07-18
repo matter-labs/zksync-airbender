@@ -196,18 +196,21 @@ fn test_execution_prover_unified() {
     assert_delegation_proofs_present(&result, DelegationCircuitType::Blake2WithCompression);
 }
 
+/// Every upstream `SecurityLevel` is currently GPU-supported; this fails the
+/// moment upstream adds a level the GPU stack does not handle, forcing an
+/// explicit decision instead of a silent `validate()` rejection at runtime.
 #[test]
-fn rejects_unsupported_security_level_in_configuration() {
-    let mut configuration = ExecutionProverConfiguration::default();
-    configuration.security_level = SecurityLevel::Sec100;
-
-    let err = ExecutionProver::with_configuration(configuration)
-        .err()
-        .expect("Sec100 should be rejected before GPU prover construction");
-
-    assert_eq!(err.requested, SecurityLevel::Sec100);
+fn all_security_levels_supported_in_configuration() {
     assert_eq!(
         ExecutionProverConfiguration::supported_security_levels(),
-        &[SecurityLevel::Sec80],
+        SecurityLevel::ALL,
     );
+    for &level in SecurityLevel::ALL {
+        let mut configuration = ExecutionProverConfiguration::default();
+        configuration.security_level = level;
+        assert!(
+            configuration.validate().is_ok(),
+            "{level:?} must pass configuration validation"
+        );
+    }
 }
