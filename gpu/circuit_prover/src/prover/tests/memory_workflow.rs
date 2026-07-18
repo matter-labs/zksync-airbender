@@ -35,7 +35,7 @@ pub(super) fn compile_mem_word_only_circuit_for_test(binary: &[u32]) -> GKRCircu
         },
         &|cs| mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        UnrolledMemoryCircuitType::LoadStoreWordOnly.get_domain_size_log2(),
+        UnrolledMemoryCircuitType::LoadStoreWordOnly.get_domain_size_log2() as usize,
     )
 }
 
@@ -51,7 +51,7 @@ pub(super) fn compile_mem_subword_only_circuit_for_test(binary: &[u32]) -> GKRCi
         },
         &|cs| mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        UnrolledMemoryCircuitType::LoadStoreSubwordOnly.get_domain_size_log2(),
+        UnrolledMemoryCircuitType::LoadStoreSubwordOnly.get_domain_size_log2() as usize,
     )
 }
 

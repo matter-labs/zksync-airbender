@@ -6,7 +6,7 @@ use super::*;
 fn run_basic_unrolled_workflow_input_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize =
+    const TRACE_LEN_LOG2: u32 =
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
@@ -98,7 +98,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
     );
     let num_calls =
         counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();

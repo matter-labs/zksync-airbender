@@ -9,7 +9,7 @@ use super::inits_and_teardowns::{
 #[ignore]
 fn run_unified_stagewise_parity_test() {
     type CountersT = DelegationsAndUnifiedCounters;
-    const TRACE_LEN_LOG2: usize = UnrolledCircuitType::Unified.get_domain_size_log2();
+    const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::Unified.get_domain_size_log2();
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
 
@@ -119,7 +119,7 @@ fn run_unified_stagewise_parity_test() {
     // Build inits-and-teardowns device and transfer.
     let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
         &sparse_inits_and_teardowns,
-        TRACE_LEN_LOG2 as u32,
+        TRACE_LEN_LOG2,
         num_unified_teardown_sets as u32,
     );
     let it_host = build_inits_and_teardowns_trace_host_for_test(

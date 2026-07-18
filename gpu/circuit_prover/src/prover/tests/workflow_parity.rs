@@ -6,8 +6,7 @@ use super::*;
 fn run_jump_branch_slt_workflow_input_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize =
-        UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2();
+    const TRACE_LEN_LOG2: u32 = UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
@@ -98,7 +97,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         &|cs| jump_branch_slt_table_addition_fn(cs),
         &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
     );
     let num_calls = counters.get_calls_to_circuit_family::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>();
     assert!(
@@ -650,8 +649,7 @@ fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
 fn run_shift_binop_cached_lookup_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize =
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2();
+    const TRACE_LEN_LOG2: u32 = UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
 
@@ -709,7 +707,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
         &|cs| shift_binop_table_addition_fn(cs),
         &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
     );
     let num_calls = counters.get_calls_to_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>();
     assert!(

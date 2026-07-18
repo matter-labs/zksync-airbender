@@ -19,37 +19,32 @@ use common_constants::delegation_types::{
     keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
 };
 
-const BIGINT_DOMAIN_SIZE_LOG2: usize =
-    <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2 as usize;
-const BLAKE_DOMAIN_SIZE_LOG2: usize =
-    <Blake2sWithCompressionDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2
-        as usize;
-const BLAKE_G_FUNCTION_DOMAIN_SIZE_LOG2: usize =
-    <Blake2sGFunctionDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2
-        as usize;
-const KECCAK_DOMAIN_SIZE_LOG2: usize = <KeccakSpecial5DelegationCircuit as DelegationCircuit<
-    BabyBearField,
->>::DOMAIN_SIZE_LOG2 as usize;
+const BIGINT_DOMAIN_SIZE_LOG2: u32 =
+    <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
+const BLAKE_DOMAIN_SIZE_LOG2: u32 =
+    <Blake2sWithCompressionDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
+const BLAKE_G_FUNCTION_DOMAIN_SIZE_LOG2: u32 =
+    <Blake2sGFunctionDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
+const KECCAK_DOMAIN_SIZE_LOG2: u32 =
+    <KeccakSpecial5DelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2;
 
-const ADD_SUB_DOMAIN_SIZE_LOG2: usize =
-    <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2
-        as usize;
+const ADD_SUB_DOMAIN_SIZE_LOG2: u32 =
+    <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
 // No live upstream DOMAIN_SIZE_LOG2 trait const exists for the unified
 // reduced-machine circuit, so hard-code 24 to match the CPU trace_len_log2
 // (pinned by tests::unified_domain_size_is_two_pow_24).
-const UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE_LOG2: usize = 24;
-const JUMP_BRANCH_DOMAIN_SIZE_LOG2: usize =
-    <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2 as usize;
-const SHIFT_BINARY_DOMAIN_SIZE_LOG2: usize =
-    <ShiftBinaryCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2 as usize;
-const LOAD_STORE_WORD_DOMAIN_SIZE_LOG2: usize =
-    <LoadStoreWordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2 as usize;
-const LOAD_STORE_SUBWORD_DOMAIN_SIZE_LOG2: usize =
-    <LoadStoreSubwordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2
-        as usize;
-const INITS_AND_TEARDOWNS_DOMAIN_SIZE_LOG2: usize = inits_and_teardowns::TRACE_LEN_LOG2 as usize;
-const MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2: usize =
-    <UnsignedMulDivCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2 as usize;
+const UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE_LOG2: u32 = 24;
+const JUMP_BRANCH_DOMAIN_SIZE_LOG2: u32 =
+    <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
+const SHIFT_BINARY_DOMAIN_SIZE_LOG2: u32 =
+    <ShiftBinaryCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
+const LOAD_STORE_WORD_DOMAIN_SIZE_LOG2: u32 =
+    <LoadStoreWordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+const LOAD_STORE_SUBWORD_DOMAIN_SIZE_LOG2: u32 =
+    <LoadStoreSubwordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+const INITS_AND_TEARDOWNS_DOMAIN_SIZE_LOG2: u32 = inits_and_teardowns::TRACE_LEN_LOG2;
+const MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2: u32 =
+    <UnsignedMulDivCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum CircuitType {
@@ -64,7 +59,7 @@ impl CircuitType {
     }
 
     #[inline(always)]
-    pub const fn get_domain_size_log2(&self) -> usize {
+    pub const fn get_domain_size_log2(&self) -> u32 {
         match self {
             Self::Delegation(delegation_type) => delegation_type.get_domain_size_log2(),
             Self::Unrolled(unrolled_type) => unrolled_type.get_domain_size_log2(),
@@ -101,7 +96,7 @@ impl DelegationCircuitType {
     }
 
     #[inline(always)]
-    pub const fn get_domain_size_log2(&self) -> usize {
+    pub const fn get_domain_size_log2(&self) -> u32 {
         match self {
             Self::BigIntWithControl => BIGINT_DOMAIN_SIZE_LOG2,
             Self::Blake2WithCompression => BLAKE_DOMAIN_SIZE_LOG2,
@@ -196,7 +191,7 @@ impl UnrolledCircuitType {
     }
 
     #[inline(always)]
-    pub const fn get_domain_size_log2(&self) -> usize {
+    pub const fn get_domain_size_log2(&self) -> u32 {
         match self {
             Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_DOMAIN_SIZE_LOG2,
             Self::Memory(circuit_type) => circuit_type.get_domain_size_log2(),
@@ -230,7 +225,7 @@ impl UnrolledMemoryCircuitType {
     }
 
     #[inline(always)]
-    pub const fn get_domain_size_log2(&self) -> usize {
+    pub const fn get_domain_size_log2(&self) -> u32 {
         match self {
             Self::LoadStoreSubwordOnly => LOAD_STORE_SUBWORD_DOMAIN_SIZE_LOG2,
             Self::LoadStoreWordOnly => LOAD_STORE_WORD_DOMAIN_SIZE_LOG2,
@@ -272,7 +267,7 @@ impl UnrolledNonMemoryCircuitType {
     }
 
     #[inline(always)]
-    pub const fn get_domain_size_log2(&self) -> usize {
+    pub const fn get_domain_size_log2(&self) -> u32 {
         match self {
             Self::AddSubLuiAuipcMop => ADD_SUB_DOMAIN_SIZE_LOG2,
             Self::JumpBranchSlt => JUMP_BRANCH_DOMAIN_SIZE_LOG2,

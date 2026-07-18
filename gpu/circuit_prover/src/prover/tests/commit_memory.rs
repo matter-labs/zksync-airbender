@@ -9,7 +9,7 @@ fn test_commit_memory_matches_cpu() {
         &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2(),
+        UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2() as usize,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
         "examples/basic_fibonacci/app.bin",
@@ -29,7 +29,7 @@ fn test_jump_branch_slt_commit_memory_matches_cpu() {
         &|cs| jump_branch_slt_table_addition_fn(cs),
         &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2(),
+        UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2() as usize,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
@@ -49,7 +49,7 @@ fn test_shift_binop_commit_memory_matches_cpu() {
         &|cs| shift_binop_table_addition_fn(cs),
         &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2(),
+        UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2() as usize,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",

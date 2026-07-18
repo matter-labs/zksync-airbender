@@ -10,7 +10,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     // layout and SSA forms, otherwise derived witness-gen functions may write into
     // invalid locations — so derive it from the circuit family's domain size
     // (mirrors the upstream `DOMAIN_SIZE_LOG2`) rather than hardcoding it.
-    const TRACE_LEN_LOG2: usize =
+    const TRACE_LEN_LOG2: u32 =
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
@@ -140,7 +140,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
     );
 
     let num_calls =

@@ -67,7 +67,7 @@ fn config_for_supported_level(
             )
         }
     };
-    config_for_security_level_under_pessimistic_conjecture(schedule_log_2, security_level)
+    config_for_security_level_under_pessimistic_conjecture(schedule_log_2 as usize, security_level)
 }
 
 /// PoW bit count for the lookup challenges (`lookup_alpha`, `lookup_additive`),
