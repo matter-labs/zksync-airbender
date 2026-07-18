@@ -5,9 +5,9 @@ Applies only to GPU-related code or commands that use the local GPU.
 - Run from the repository root.
 - If you touch a GPU crate, read that crate's `AGENTS.md`.
 - Use `.agents/bin/with_gpu_lock.sh` only for commands that execute local GPU work.
-- Do not lock CPU-only work such as `cargo build`, `cargo check`, `cargo test --no-run`, codegen, linting, dependency fetching, or log inspection.
-- For Rust tests, always split compile and run with `cargo test --no-run` first unless the user explicitly asks for a different flow or the command truly cannot be split.
-- Do not run `.agents/bin/with_gpu_lock.sh cargo test ...` directly for Rust tests when the test binary can be built first.
+- Do not lock CPU-only work such as `cargo build`, `cargo check`, `cargo nextest run --no-run`, codegen, linting, dependency fetching, or log inspection.
+- GPU-crate Rust tests run under **cargo-nextest**, not plain `cargo test`: the GPU crates carry no `#[serial]` annotations — their serialization lives in `.config/nextest.toml` (`gpu-serial` test group: one GPU test at a time, hung tests terminated after 5 min). Plain `cargo test -p <gpu crate>` runs tests concurrently in threads and races the GPU; if libtest is unavoidable, pass `-- --test-threads=1`.
+- For Rust tests, always split compile and run with `cargo nextest run --no-run` first unless the user explicitly asks for a different flow or the command truly cannot be split.
 - Split compile and run whenever possible so only the execution step holds the lock.
 - For compute-heavy GPU tests or prover runs, prefer `--release` by default. Use debug builds only for quick smoke checks, compile-only validation, or when the task explicitly needs debug assertions/symbols.
 - If a GPU command cannot be split cleanly, lock the whole command as a fallback.
@@ -16,29 +16,21 @@ Applies only to GPU-related code or commands that use the local GPU.
 - For local profiling output, default to ignored or temporary locations so the worktree stays clean.
 - Prefer an ignored repo-local directory under `target/` for profiler reports and other generated diagnostics, or `/tmp/...` when the output is only needed for ad hoc inspection.
 
-For Rust tests, build unlocked and have `.agents/bin/cargo_test_executables.py` print the locked command to run next. This is the default required workflow for Rust GPU tests:
+This is the default required workflow for Rust GPU tests — build unlocked, then run under the lock (the no-op cargo re-check nextest does under the lock is fast):
 
 ```bash
-cargo test -p <crate> <cargo_filter> --release --no-run --message-format=json \
-  | python3 .agents/bin/cargo_test_executables.py \
-      --print-run-command \
-      --test-name module::submodule::some_gpu_test
+# 1. Build (unlocked)
+cargo nextest run -p <crate> --release --no-run
+
+# 2. Run (locked)
+.agents/bin/with_gpu_lock.sh cargo nextest run -p <crate> --release <filter>
 ```
 
-When passing `--test-name`, use the full libtest name accepted by `--exact`. Do not pass a suffix such as just `some_gpu_test`; the helper validates the exact full test name against the built test binary and rejects partial matches.
+Filtering:
 
-For ignored tests, append the runner args explicitly:
+- Substring, like libtest: positional args (`... --release proof_matrix`).
+- Exact test: `-E 'test(=module::submodule::some_gpu_test)'`.
+- Ignored/e2e tests: append `--run-ignored only` (or `all` to include normal tests too).
+- Live stdout for one test: `--no-capture`.
 
-```bash
-cargo test -p <crate> <cargo_filter> --release --no-run --message-format=json \
-  | python3 .agents/bin/cargo_test_executables.py \
-      --print-run-command \
-      --test-name module::submodule::some_gpu_test \
-      --test-arg=--ignored
-```
-
-Example output:
-
-```bash
-.agents/bin/with_gpu_lock.sh target/release/deps/<test-binary> --exact module::submodule::some_gpu_test --nocapture
-```
+nextest serialization (the `gpu-serial` group in `.config/nextest.toml`) covers tests within one invocation only; the GPU lock covers everything else. The pre-nextest flow (`cargo test --no-run --message-format=json | cargo_test_executables.py`) is retired.

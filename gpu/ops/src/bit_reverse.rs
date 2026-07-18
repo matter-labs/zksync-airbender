@@ -212,7 +212,6 @@ mod tests {
     };
     use itertools::Itertools;
     use rand::rng;
-    use serial_test::serial;
 
     pub(crate) fn bit_reverse<T: BitReverse>(
         src: &(impl DeviceMatrixChunkImpl<T> + ?Sized),
@@ -292,37 +291,31 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn bit_reverse_bf() {
         test_bit_reverse::<BF>(false);
     }
 
     #[test]
-    #[serial]
     fn bit_reverse_in_place_bf() {
         test_bit_reverse::<BF>(true);
     }
 
     #[test]
-    #[serial]
     fn bit_reverse_b256() {
         test_bit_reverse::<[u32; 8]>(false);
     }
 
     #[test]
-    #[serial]
     fn bit_reverse_in_place_b256() {
         test_bit_reverse::<[u32; 8]>(true);
     }
 
     #[test]
-    #[serial]
     fn bit_reverse_e4() {
         test_bit_reverse::<E4>(false);
     }
 
     #[test]
-    #[serial]
     fn bit_reverse_in_place_e4() {
         test_bit_reverse::<E4>(true);
     }
@@ -333,7 +326,6 @@ mod tests {
     /// `final_monomials` bitreverse callback; if the E4 instantiation diverges
     /// from the host helper, this test surfaces it before the WHIR smoke runs.
     #[test]
-    #[serial]
     fn bit_reverse_e4_matches_host() {
         use fft::bitreverse_enumeration_inplace;
         const LOG_N: usize = 4;

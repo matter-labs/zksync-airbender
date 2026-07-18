@@ -3,7 +3,6 @@ use era_cudart::stream::CudaStream;
 
 use itertools::Itertools;
 use rand::Rng;
-use serial_test::serial;
 
 use super::super::*;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
@@ -14,7 +13,6 @@ use super::{leaf_source_row, random_digest, verify_leaves, verify_nodes};
 use crate::upstream::Field;
 
 #[test]
-#[serial]
 fn blake2s_nodes() {
     const LOG_N: usize = 10;
     const N: usize = 1 << LOG_N;
@@ -72,13 +70,11 @@ fn test_merkle_tree(log_n: usize) {
 }
 
 #[test]
-#[serial]
 fn merkle_tree() {
     test_merkle_tree(16);
 }
 
 #[test]
-#[serial]
 fn gather_leaf_rows() {
     const SRC_LOG_ROWS: usize = 12;
     const SRC_ROWS: usize = 1 << SRC_LOG_ROWS;
@@ -126,7 +122,6 @@ fn gather_leaf_rows() {
 }
 
 #[test]
-#[serial]
 fn gather_merkle_paths() {
     const LOG_LEAVES_COUNT: usize = 12;
     const INDEXES_COUNT: usize = 42;

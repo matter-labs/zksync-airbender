@@ -5,7 +5,6 @@ use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
 
-use serial_test::serial;
 use worker::Worker;
 
 use super::{
@@ -67,7 +66,6 @@ fn make_context() -> NttTestContext {
 const TEST_LOG_NS: &[usize] = &[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20];
 
 #[test]
-#[serial]
 fn characterize_cpu_hypercube_ordering() {
     let coeffs = vec![
         BF::new(3),
@@ -99,7 +97,6 @@ fn characterize_cpu_hypercube_ordering() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
     let context = make_context();
     let stream = context.get_exec_stream();
@@ -128,7 +125,6 @@ fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn hypercube_coeffs_natural_to_natural_evals_matches_cpu() {
     let context = make_context();
     let stream = context.get_exec_stream();
@@ -155,7 +151,6 @@ fn hypercube_coeffs_natural_to_natural_evals_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
     let context = make_context();
     let stream = context.get_exec_stream();
@@ -190,7 +185,6 @@ fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
     let worker = Worker::new();
     let context = make_context();
@@ -250,7 +244,6 @@ fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn transpose_monomials_naive_matches_cpu() {
     let context = make_context();
     let stream = context.get_exec_stream();
@@ -284,7 +277,6 @@ enum InOrOutOfPlace {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_hypercube_evals_to_monomials_2_pass_out_of_place() {
     run_evals_to_monomials(
         23..25,
@@ -298,7 +290,6 @@ fn test_hypercube_evals_to_monomials_2_pass_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_hypercube_evals_to_monomials_2_pass_in_place() {
     run_evals_to_monomials(
         23..25,
@@ -312,7 +303,6 @@ fn test_hypercube_evals_to_monomials_2_pass_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_out_of_place() {
     run_evals_to_monomials(
         23..25,
@@ -326,7 +316,6 @@ fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_out_of_place() 
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_in_place() {
     run_evals_to_monomials(
         23..25,
@@ -340,7 +329,6 @@ fn test_hypercube_evals_to_monomials_2_pass_transposed_monomials_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_hypercube_evals_to_monomials_3_pass_out_of_place() {
     run_evals_to_monomials(
         21..25,
@@ -354,7 +342,6 @@ fn test_hypercube_evals_to_monomials_3_pass_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_hypercube_evals_to_monomials_3_pass_in_place() {
     run_evals_to_monomials(
         21..25,
@@ -368,7 +355,6 @@ fn test_hypercube_evals_to_monomials_3_pass_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_out_of_place() {
     run_evals_to_monomials(
         21..25,
@@ -382,7 +368,6 @@ fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_out_of_place() 
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_in_place() {
     run_evals_to_monomials(
         21..25,
@@ -396,7 +381,6 @@ fn test_hypercube_evals_to_monomials_3_pass_transposed_monomials_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_evals_to_monomials_2_pass_out_of_place() {
     run_evals_to_monomials(
         23..25,
@@ -410,7 +394,6 @@ fn test_evals_to_monomials_2_pass_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_evals_to_monomials_2_pass_in_place() {
     run_evals_to_monomials(
         23..25,
@@ -424,7 +407,6 @@ fn test_evals_to_monomials_2_pass_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_evals_to_monomials_2_pass_transposed_monomials_out_of_place() {
     run_evals_to_monomials(
         23..25,
@@ -438,7 +420,6 @@ fn test_evals_to_monomials_2_pass_transposed_monomials_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_evals_to_monomials_2_pass_transposed_monomials_in_place() {
     run_evals_to_monomials(
         23..25,
@@ -452,7 +433,6 @@ fn test_evals_to_monomials_2_pass_transposed_monomials_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_evals_to_monomials_3_pass_out_of_place() {
     run_evals_to_monomials(
         21..25,
@@ -466,7 +446,6 @@ fn test_evals_to_monomials_3_pass_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_evals_to_monomials_3_pass_in_place() {
     run_evals_to_monomials(
         21..25,
@@ -480,7 +459,6 @@ fn test_evals_to_monomials_3_pass_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_evals_to_monomials_3_pass_transposed_monomials_out_of_place() {
     run_evals_to_monomials(
         21..25,
@@ -494,7 +472,6 @@ fn test_evals_to_monomials_3_pass_transposed_monomials_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_evals_to_monomials_3_pass_transposed_monomials_in_place() {
     run_evals_to_monomials(
         21..25,
@@ -508,7 +485,6 @@ fn test_evals_to_monomials_3_pass_transposed_monomials_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_monomials_to_evals_3_pass_out_of_place() {
     run_monomials_to_evals(
         21..25,
@@ -521,7 +497,6 @@ fn test_monomials_to_evals_3_pass_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_monomials_to_evals_3_pass_in_place() {
     run_monomials_to_evals(
         21..25,
@@ -534,7 +509,6 @@ fn test_monomials_to_evals_3_pass_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_monomials_to_evals_3_pass_transposed_monomials_out_of_place() {
     run_monomials_to_evals(
         21..25,
@@ -547,7 +521,6 @@ fn test_monomials_to_evals_3_pass_transposed_monomials_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_monomials_to_evals_3_pass_transposed_monomials_in_place() {
     run_monomials_to_evals(
         21..25,
@@ -560,7 +533,6 @@ fn test_monomials_to_evals_3_pass_transposed_monomials_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_monomials_to_evals_2_pass_out_of_place() {
     run_monomials_to_evals(
         23..25,
@@ -573,7 +545,6 @@ fn test_monomials_to_evals_2_pass_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_monomials_to_evals_2_pass_in_place() {
     run_monomials_to_evals(
         23..25,
@@ -586,7 +557,6 @@ fn test_monomials_to_evals_2_pass_in_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_monomials_to_evals_2_pass_transposed_monomials_out_of_place() {
     run_monomials_to_evals(
         23..25,
@@ -599,7 +569,6 @@ fn test_monomials_to_evals_2_pass_transposed_monomials_out_of_place() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
     run_monomials_to_evals(
         23..25,
@@ -726,7 +695,6 @@ macro_rules! compact_parity_test {
     ($name:ident, $log_n:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_compact_bitreversed_monomials_to_natural_evals_parity($log_n);
         }
@@ -945,7 +913,6 @@ macro_rules! multi_coset_parity_test {
     ($name:ident, $log_n:expr, $num_cosets:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_multi_coset_monomials_to_evals_parity($log_n, $num_cosets);
         }
@@ -956,7 +923,6 @@ macro_rules! multi_coset_range_parity_test {
     ($name:ident, $log_n:expr, $log_lde_factor:expr, $coset_index_base:expr, $num_cosets:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_multi_coset_monomials_to_evals_parity_for_range(
                 $log_n,
@@ -1155,7 +1121,6 @@ macro_rules! smem_packed_parity_test {
     ($name:ident, $log_n:expr, $log_ipb:expr, $num_cosets:expr, $num_cols:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_smem_packed_vs_compact_parity($log_n, $log_ipb, $num_cosets, $num_cols);
         }
@@ -1357,7 +1322,6 @@ macro_rules! streaming_v4_parity_test {
     ($name:ident, $log_n:expr, $num_cosets:expr, $num_cols:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_streaming_vs_compact_parity($log_n, 2, $num_cosets, $num_cols);
         }
@@ -1368,7 +1332,6 @@ macro_rules! streaming_v8_parity_test {
     ($name:ident, $log_n:expr, $num_cosets:expr, $num_cols:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_streaming_vs_compact_parity($log_n, 3, $num_cosets, $num_cols);
         }
@@ -1502,7 +1465,6 @@ macro_rules! subwarp_parity_test {
     ($name:ident, $log_n:expr, $log_ipb:expr, $num_cosets:expr, $num_cols:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_subwarp_vs_compact_parity($log_n, $log_ipb, $num_cosets, $num_cols);
         }
@@ -1626,7 +1588,6 @@ macro_rules! subwarp_per_stage_parity_test {
     ($name:ident, $log_n:expr, $log_ipb:expr, $num_cosets:expr, $num_cols:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_subwarp_vs_per_stage_parity($log_n, $log_ipb, $num_cosets, $num_cols);
         }

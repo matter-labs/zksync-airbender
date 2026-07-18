@@ -8,7 +8,6 @@ use fft::materialize_powers_serial_starting_with_one;
 
 use itertools::Itertools;
 
-use serial_test::serial;
 use worker::Worker;
 
 use super::*;
@@ -256,7 +255,6 @@ fn launch_generic_lookup_preprocessing(
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn setup_host_matches_flattened_cpu_setup_and_caps() {
     let trace_len = 1usize << 16;
     let lde_factor = 2usize;
@@ -306,7 +304,6 @@ fn setup_host_matches_flattened_cpu_setup_and_caps() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit() {
     let trace_len = 1usize << 10;
     let lde_factor = 2usize;
@@ -418,7 +415,6 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn bootstrap_storage_binds_setup_memory_and_witness_trace_holders() {
     let trace_len = 1usize << 10;
     let lde_factor = 2usize;
@@ -518,7 +514,6 @@ fn bootstrap_storage_binds_setup_memory_and_witness_trace_holders() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn bootstrap_storage_without_uploaded_setup_leaves_virtual_setup_unmaterialized() {
     let trace_len = 1usize << 19;
     let log_lde_factor = 1u32;
@@ -580,7 +575,6 @@ fn bootstrap_storage_without_uploaded_setup_leaves_virtual_setup_unmaterialized(
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn forward_setup_generic_lookup_fused_kernel_matches_expected_for_max_width() {
     let trace_len = 1usize << 10;
     let generic_lookup_width = GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS;
@@ -608,7 +602,6 @@ fn forward_setup_generic_lookup_fused_kernel_matches_expected_for_max_width() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn forward_setup_generic_lookup_fused_kernel_handles_single_column() {
     let trace_len = 1usize << 8;
     let generic_lookup_width = 1;
@@ -636,7 +629,6 @@ fn forward_setup_generic_lookup_fused_kernel_handles_single_column() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn forward_setup_schedule_generic_lookup_matches_cpu() {
     let trace_len = 1usize << 10;
     let generic_lookup_width = 4;

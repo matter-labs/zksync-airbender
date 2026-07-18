@@ -11,13 +11,11 @@ use era_cudart::memory::memory_copy_async;
 use crate::upstream::{
     materialize_virtual_inits_and_teardowns_base_address_setup_poly, GateArtifacts,
 };
-use serial_test::serial;
 use std::alloc::Global;
 use worker::Worker;
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn forward_cache_single_column_lookup_synthesizes_virtual_setup_values() {
     let context = make_test_context(256, 32);
     let mappings_range16 = [0u32, 1, 65_535, 65_536, 70_000, 42, 7, 2];
@@ -93,7 +91,6 @@ fn forward_cache_single_column_lookup_synthesizes_virtual_setup_values() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn materialize_inits_and_teardowns_initial_pair_matches_cpu_for_init_and_teardown() {
     let context = make_test_context(256, 32);
     let trace_len = 1usize << 14;
@@ -250,7 +247,6 @@ fn materialize_inits_and_teardowns_initial_pair_matches_cpu_for_init_and_teardow
 }
 
 #[test]
-#[serial]
 fn forward_layer_dispatch_and_launch_match_expected_outputs() {
     let context = make_test_context(256, 32);
     let trace_len = 8;
@@ -442,7 +438,6 @@ fn forward_layer_dispatch_and_launch_match_expected_outputs() {
 }
 
 #[test]
-#[serial]
 fn direct_no_cache_flat_forward_variants_match_expected_outputs() {
     let context = make_test_context(512, 64);
     let trace_len = 8;
@@ -761,7 +756,6 @@ fn direct_no_cache_flat_forward_variants_match_expected_outputs() {
 }
 
 #[test]
-#[serial]
 fn dimension_reducing_forward_tower_matches_reference() {
     let context = make_test_context(1024, 32);
     // initial_trace_log_2 = 11, final_trace_log_2 = 0 → 11 rounds total.

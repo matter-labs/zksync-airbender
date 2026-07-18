@@ -1,5 +1,4 @@
 use super::*;
-use serial_test::serial;
 use std::path::PathBuf;
 
 fn compiled_circuit_dir() -> PathBuf {
@@ -42,7 +41,6 @@ const CIRCUIT_BASENAMES: &[&str] = &[
 /// each round, all polys are ext-typed, and the class is always
 /// `ThisLayerInnerLayerWrite` (since `addr.layer == output_layer`).
 #[test]
-#[serial]
 fn tower_layout_covers_dim_reducing_outputs() {
     let dir = compiled_circuit_dir();
     let mut covered = 0;
@@ -131,7 +129,6 @@ fn tower_layout_covers_dim_reducing_outputs() {
 }
 
 #[test]
-#[serial]
 fn layout_matches_audit_for_all_circuits() {
     let dir = compiled_circuit_dir();
     let mut covered = 0;
@@ -191,7 +188,6 @@ fn layout_matches_audit_for_all_circuits() {
 }
 
 #[test]
-#[serial]
 fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
     use cs::gkr_compiler::NoFieldGKRRelation as R;
 
@@ -271,7 +267,6 @@ fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
 /// carry materialized base reads (regression: the unified circuit's
 /// `LookupUnbalancedPairWithMaterializedBaseInputs.remainder`).
 #[test]
-#[serial]
 fn normalize_leaves_no_scratch_mapped_inner_layer_reads() {
     let dir = compiled_circuit_dir();
     let mut covered = 0;
@@ -319,7 +314,6 @@ fn normalize_leaves_no_scratch_mapped_inner_layer_reads() {
 }
 
 #[test]
-#[serial]
 fn relation_outputs_classifies_known_variants() {
     // Spot-check the classification table against the dispatch in
     // forward.rs that distinguishes base vs ext insertion sites.

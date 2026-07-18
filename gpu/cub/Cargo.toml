@@ -21,7 +21,6 @@ era_cudart_sys = "=0.156.0"
 gpu_core = { workspace = true }
 itertools = "0.14"
 rand = "0.9"
-serial_test = "3"
 
 [build-dependencies]
 gpu_native_build = { workspace = true }

@@ -78,7 +78,6 @@ use riscv_transpiler::witness::{
     KeccakDelegationDestinationHolder, MemDestinationHolder, MemoryOpcodeTracingDataWithTimestamp,
     NonMemDestinationHolder, NonMemoryOpcodeTracingDataWithTimestamp, UnifiedDestinationHolder,
 };
-use serial_test::serial;
 use std::alloc::Global;
 use std::collections::BTreeMap;
 use std::ops::DerefMut;

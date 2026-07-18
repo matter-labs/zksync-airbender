@@ -135,7 +135,6 @@ mod tests {
     use super::*;
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
-    use serial_test::serial;
 
     fn assert_equal<T: PartialEq + core::fmt::Debug>((a, b): (T, T)) {
         assert_eq!(a, b);
@@ -169,25 +168,21 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn get_powers_by_val_bf() {
         test_get_powers::<BF>(true);
     }
 
     #[test]
-    #[serial]
     fn get_powers_by_ref_bf() {
         test_get_powers::<BF>(false);
     }
 
     #[test]
-    #[serial]
     fn get_powers_by_val_e4() {
         test_get_powers::<E4>(true);
     }
 
     #[test]
-    #[serial]
     fn get_powers_by_ref_e4() {
         test_get_powers::<E4>(false);
     }

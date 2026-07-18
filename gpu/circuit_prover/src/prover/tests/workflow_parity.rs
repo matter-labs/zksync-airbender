@@ -1,7 +1,6 @@
 use super::*;
 
 #[test]
-#[serial]
 #[ignore]
 fn run_jump_branch_slt_workflow_input_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
@@ -508,7 +507,6 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_load_store_word_only_workflow_input_parity_test() {
     let compiled_circuit =
@@ -527,7 +525,6 @@ fn run_load_store_word_only_workflow_input_parity_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_load_store_subword_only_workflow_input_parity_test() {
     let compiled_circuit =
@@ -546,7 +543,6 @@ fn run_load_store_subword_only_workflow_input_parity_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_bigint_delegation_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
@@ -556,7 +552,6 @@ fn run_bigint_delegation_workflow_input_parity_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_blake2_delegation_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
@@ -566,7 +561,6 @@ fn run_blake2_delegation_workflow_input_parity_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_keccak_special5_delegation_workflow_input_parity_test() {
     let compiled_circuit =
@@ -575,7 +569,6 @@ fn run_keccak_special5_delegation_workflow_input_parity_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_blake2_delegation_zero_call_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
@@ -585,7 +578,6 @@ fn run_blake2_delegation_zero_call_workflow_input_parity_test() {
 }
 
 #[test]
-#[serial]
 fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
     let BasicUnrolledAsyncBackwardFixture {
         context,
@@ -644,7 +636,6 @@ fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_shift_binop_cached_lookup_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;

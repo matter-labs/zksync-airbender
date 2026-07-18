@@ -1,7 +1,6 @@
 use super::*;
 
 #[test]
-#[serial]
 fn run_basic_unrolled_async_scheduler_smoke_test() {
     let BasicUnrolledAsyncBackwardFixture {
         context,
@@ -55,7 +54,6 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
 }
 
 #[test]
-#[serial]
 fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
     fn copy_device_values<T: Copy>(
         context: &ProverContext,
@@ -219,7 +217,6 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
 }
 
 #[test]
-#[serial]
 fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
     let BasicUnrolledAsyncBackwardFixture {
         context,
@@ -374,7 +371,6 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
 }
 
 #[test]
-#[serial]
 fn run_basic_unrolled_async_allocator_regression_test() {
     let BasicUnrolledAsyncBackwardFixture {
         context,
@@ -428,7 +424,6 @@ fn run_basic_unrolled_async_allocator_regression_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn forward_to_backward_handoff_releases_forward_scratch() {
     let (base, expected_cpu_proof) =
@@ -550,7 +545,6 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_basic_unrolled_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();
@@ -566,7 +560,6 @@ fn run_basic_unrolled_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_basic_unrolled_no_caches_test() {
     let (base, expected_cpu_proof) =
@@ -593,7 +586,6 @@ fn run_basic_unrolled_no_caches_test() {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();

@@ -3,7 +3,6 @@ use crate::upstream::{read_binary, SecurityLevel};
 use gpu_circuit_prover::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use gpu_core::primitives::machine_type::MachineType;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use serial_test::serial;
 
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {
     // Workspace-root-relative paths; crate is at gpu/execution_prover/, so two "..".
@@ -69,7 +68,6 @@ fn assert_delegation_proofs_present(result: &ProveResult, delegation_type: Deleg
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover() {
     // hashed_fibonacci's first ND read is `n` (register-only fibonacci
     // iterations — no memory accesses, so chunk-fill never fires
@@ -96,7 +94,6 @@ fn test_execution_prover() {
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover_commit_then_prove() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
@@ -129,7 +126,6 @@ fn test_execution_prover_commit_then_prove() {
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover_blake2_with_compression_delegation() {
     let result = commit_and_prove_binary(
         ExecutionKind::Unrolled,
@@ -152,7 +148,6 @@ fn test_execution_prover_blake2_with_compression_delegation() {
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover_blake2_g_function_delegation() {
     let result = commit_and_prove_binary(
         ExecutionKind::Unrolled,
@@ -175,7 +170,6 @@ fn test_execution_prover_blake2_g_function_delegation() {
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover_unified() {
     let result = commit_and_prove_binary(
         ExecutionKind::Unified,

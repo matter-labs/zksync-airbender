@@ -149,10 +149,18 @@ protocol kernels in its `gkr_ops`/`transcript`/`gather` submodules).
 
 - Minimum validation for any code change: `cargo check -p circuit_prover`
 - Build: `cargo build -p circuit_prover`
-- Test: `cargo test -p circuit_prover`
+- Test: `cargo nextest run -p circuit_prover` — GPU tests run under
+  cargo-nextest, not plain `cargo test`. The GPU crates carry no `#[serial]`
+  annotations; serialization comes from the `gpu-serial` test group in the
+  workspace [`.config/nextest.toml`](../../.config/nextest.toml) (one GPU test
+  at a time + hung-test termination). Plain `cargo test` runs tests
+  concurrently in threads and races the GPU; if libtest is unavoidable, pass
+  `-- --test-threads=1`.
 - Bench: `cargo bench -p circuit_prover`
-- For compute-heavy GPU tests or prover flows, use `cargo test -p circuit_prover --release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.
-- For Rust GPU tests, compile first with `cargo test --no-run`, then run the produced test binary under `.agents/bin/with_gpu_lock.sh`. Do not run locked `cargo test ...` directly when the binary can be built first.
+- For compute-heavy GPU tests or prover flows, use `--release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.
+- Compile first with `cargo nextest run --no-run`, then run under
+  `.agents/bin/with_gpu_lock.sh cargo nextest run …` so only the execution
+  step holds the GPU lock.
 
 ## Formatting
 

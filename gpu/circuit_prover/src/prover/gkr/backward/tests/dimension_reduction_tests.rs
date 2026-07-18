@@ -5,14 +5,12 @@ use crate::primitives::field::E4;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::CudaSlice;
 
-use serial_test::serial;
 use std::collections::BTreeMap;
 
 use super::{build_dimension_reducing_kernel_blueprints, sample_ext, successive_powers};
 use crate::upstream::{DimensionReducingInputOutput, Field, OutputType};
 
 #[test]
-#[serial]
 fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
     let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture();
     let context = &fixture.context;

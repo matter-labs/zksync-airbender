@@ -5,7 +5,6 @@ use era_cudart::memory::memory_copy_async;
 
 use itertools::Itertools;
 
-use serial_test::serial;
 use worker::Worker;
 
 use super::*;
@@ -296,7 +295,6 @@ fn assert_trace_holder_materialization_and_caps_match_cpu(log_rows_per_leaf: u32
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_lazy_coset_materialization_matches_cpu() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
@@ -354,7 +352,6 @@ fn trace_holder_lazy_coset_materialization_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_cosets_view_is_contiguous_in_coset_major_order() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
@@ -402,7 +399,6 @@ fn trace_holder_cosets_view_is_contiguous_in_coset_major_order() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_consolidated_cosets_matches_per_coset_views() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
@@ -458,7 +454,6 @@ fn trace_holder_consolidated_cosets_matches_per_coset_views() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_full_tree_view_is_contiguous_in_coset_major_order() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
@@ -507,7 +502,6 @@ fn trace_holder_full_tree_view_is_contiguous_in_coset_major_order() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_partial_tree_view_is_contiguous_in_coset_major_order() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
@@ -556,7 +550,6 @@ fn trace_holder_partial_tree_view_is_contiguous_in_coset_major_order() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_consolidated_tree_matches_per_coset_views() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
@@ -613,7 +606,6 @@ fn trace_holder_consolidated_tree_matches_per_coset_views() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_get_evaluations_returns_coset_zero_subrange() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
@@ -657,7 +649,6 @@ fn trace_holder_get_evaluations_returns_coset_zero_subrange() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_consolidated_partial_tree_matches_per_coset_views() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);
@@ -715,21 +706,18 @@ fn trace_holder_consolidated_partial_tree_matches_per_coset_views() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_materialization_matches_cpu_for_single_row_leafs() {
     assert_trace_holder_materialization_and_caps_match_cpu(0);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_materialization_matches_stage1_caps_for_grouped_leafs() {
     assert_trace_holder_materialization_and_caps_match_cpu(2);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn trace_holder_queries_match_across_tree_cache_modes() {
     let worker = Worker::new();
     let context = make_test_context(256, 32);

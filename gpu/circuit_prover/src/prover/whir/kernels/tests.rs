@@ -5,7 +5,6 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use field::{Field, Rand};
 use itertools::Itertools;
 use rand::rng;
-use serial_test::serial;
 
 fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
     use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
@@ -72,14 +71,12 @@ fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_partially_evaluate_monomials_by_ref_small() {
     run_partially_evaluate_monomials_by_ref(6);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_partially_evaluate_monomials_by_ref() {
     run_partially_evaluate_monomials_by_ref(23);
 }
@@ -183,7 +180,6 @@ fn run_blake2s_leaves_from_ntt_matches_pack_then_blake(
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_blake2s_leaves_from_ntt_small() {
     // packed_leaf_count = 32 (= warp size); 16 cosets fits comfortably in
     // unit-test memory while still exercising multi-coset behavior.
@@ -192,7 +188,6 @@ fn test_blake2s_leaves_from_ntt_small() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_blake2s_leaves_from_ntt_medium() {
     // packed_leaf_count = 256; warps fully within one coset.
     run_blake2s_leaves_from_ntt_matches_pack_then_blake(12, 6, 4, 0);
@@ -200,7 +195,6 @@ fn test_blake2s_leaves_from_ntt_medium() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_blake2s_leaves_from_ntt_large() {
     // packed_leaf_count = 1024; large enough for warp coalescing analysis.
     run_blake2s_leaves_from_ntt_matches_pack_then_blake(15, 8, 5, 0);
@@ -329,21 +323,18 @@ fn run_gather_leaves_for_queries_from_ntt_matches_packed(
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_gather_leaves_for_queries_from_ntt_small() {
     run_gather_leaves_for_queries_from_ntt_matches_packed(8, 4, 3);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_gather_leaves_for_queries_from_ntt_medium() {
     run_gather_leaves_for_queries_from_ntt_matches_packed(12, 6, 4);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn test_gather_leaves_for_queries_from_ntt_large() {
     run_gather_leaves_for_queries_from_ntt_matches_packed(15, 8, 5);
 }

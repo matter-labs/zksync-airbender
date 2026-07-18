@@ -5,7 +5,6 @@ use super::inits_and_teardowns::{
 };
 
 #[test]
-#[serial]
 #[ignore]
 fn run_unified_stagewise_parity_test() {
     type CountersT = DelegationsAndUnifiedCounters;

@@ -10,7 +10,6 @@ use gpu_execution_prover::{
     ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType,
 };
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use serial_test::serial;
 use setups::read_binary;
 
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {
@@ -28,7 +27,6 @@ fn test_artifact(relative_path: &str) -> std::path::PathBuf {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_base_layer_verify() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -90,7 +88,6 @@ fn test_program_prover_base_layer_verify() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_unified_base_layer_verify() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -143,7 +140,6 @@ fn test_program_prover_unified_base_layer_verify() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_unified_cpu_gpu_proof_diff() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -262,7 +258,6 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_cpu_gpu_proof_diff() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -477,7 +472,6 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_recursion_layer_verify() {
     use crate::upstream::{compute_end_params, native_verify_unrolled, FsvRecursionChain};
 
@@ -574,7 +568,6 @@ fn test_program_prover_recursion_layer_verify() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_recursive_pipeline() {
     let _ = env_logger::builder()
         .is_test(true)
@@ -598,7 +591,6 @@ fn test_program_prover_recursive_pipeline() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_recursive_pipeline_zksync_os() {
     let _ = env_logger::builder()
         .is_test(true)

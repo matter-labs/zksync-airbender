@@ -329,7 +329,6 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     type CountersT = DelegationsAndFamiliesCounters;
 

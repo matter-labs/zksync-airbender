@@ -109,6 +109,14 @@ from upstream library code (`full_statement_verifier::host_utils` /
 - **Benches** live in the owning kernel crate (`gpu_ntt`, `gpu_core`), behind a
   non-default `bench` feature; any bench `.cu` (only `gpu_core`'s `field.cu`)
   compiles **only** under that feature, never in normal/production builds.
+- **Tests run under cargo-nextest**, not plain `cargo test`. The GPU crates
+  carry no `#[serial]` annotations (and must not add a `serial_test` dep):
+  serialization is the `gpu-serial` test group in the workspace
+  `.config/nextest.toml` — one GPU test at a time within a run, hung tests
+  terminated instead of wedging the suite. Plain `cargo test -p <gpu crate>`
+  runs tests concurrently in threads and races the GPU; if libtest is
+  unavoidable, pass `-- --test-threads=1`. New GPU crates must be added to the
+  `gpu-serial` filter.
 
 ## Native code (CUDA/C++)
 

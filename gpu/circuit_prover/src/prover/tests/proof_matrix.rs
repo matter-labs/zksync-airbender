@@ -69,7 +69,6 @@ pub(super) fn run_profile(fixture: BasicUnrolledFixture) {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 #[ignore]
 fn run_add_sub_proof_parity_test() {
     run_proof_parity(prepare_basic_unrolled_proof_fixture());
@@ -78,21 +77,18 @@ fn run_add_sub_proof_parity_test() {
 /// Full-proof parity at Sec100, where the lookup-challenge and WHIR-batching
 /// PoWs are non-zero — exercises the on-device grinding + nonce path.
 #[test]
-#[serial]
 #[ignore]
 fn run_add_sub_proof_parity_test_sec100() {
     run_proof_parity(prepare_basic_unrolled_proof_fixture_sec100());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_add_sub_multi_schedule_test() {
     run_multi_schedule(prepare_basic_unrolled_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_add_sub_profile_test() {
     run_profile(prepare_basic_unrolled_profiling_fixture());
@@ -132,21 +128,18 @@ fn prepare_jump_branch_slt_profiling_fixture() -> BasicUnrolledFixture {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_jump_branch_slt_proof_parity_test() {
     run_proof_parity(prepare_jump_branch_slt_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_jump_branch_slt_multi_schedule_test() {
     run_multi_schedule(prepare_jump_branch_slt_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_jump_branch_slt_profile_test() {
     run_profile(prepare_jump_branch_slt_profiling_fixture());
@@ -186,21 +179,18 @@ fn prepare_shift_binop_profiling_fixture() -> BasicUnrolledFixture {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_shift_binop_proof_parity_test() {
     run_proof_parity(prepare_shift_binop_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_shift_binop_multi_schedule_test() {
     run_multi_schedule(prepare_shift_binop_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_shift_binop_profile_test() {
     run_profile(prepare_shift_binop_profiling_fixture());
@@ -240,21 +230,18 @@ fn prepare_mul_div_profiling_fixture() -> BasicUnrolledFixture {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_mul_div_proof_parity_test() {
     run_proof_parity(prepare_mul_div_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_mul_div_multi_schedule_test() {
     run_multi_schedule(prepare_mul_div_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_mul_div_profile_test() {
     run_profile(prepare_mul_div_profiling_fixture());
@@ -310,21 +297,18 @@ fn prepare_load_store_word_only_profiling_fixture() -> BasicUnrolledFixture {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_load_store_word_only_proof_parity_test() {
     run_proof_parity(prepare_load_store_word_only_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_load_store_word_only_multi_schedule_test() {
     run_multi_schedule(prepare_load_store_word_only_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_load_store_word_only_profile_test() {
     run_profile(prepare_load_store_word_only_profiling_fixture());
@@ -383,21 +367,18 @@ fn prepare_load_store_subword_only_profiling_fixture() -> BasicUnrolledFixture {
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_load_store_subword_only_proof_parity_test() {
     run_proof_parity(prepare_load_store_subword_only_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_load_store_subword_only_multi_schedule_test() {
     run_multi_schedule(prepare_load_store_subword_only_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_load_store_subword_only_profile_test() {
     run_profile(prepare_load_store_subword_only_profiling_fixture());
@@ -515,21 +496,18 @@ fn prepare_bigint_profiling_fixture() -> BasicUnrolledFixture {
 /// bigint delegation proof_parity: GPU proof == CPU reference, byte-identical.
 /// `#[ignore]`d as a heavy GPU test — run with `--ignored`.
 #[test]
-#[serial]
 #[ignore]
 fn run_bigint_proof_parity_test() {
     run_proof_parity(prepare_bigint_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_bigint_multi_schedule_test() {
     run_multi_schedule(prepare_bigint_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_bigint_profile_test() {
     run_profile(prepare_bigint_profiling_fixture());
@@ -618,21 +596,18 @@ fn prepare_keccak_special5_profiling_fixture() -> BasicUnrolledFixture {
 /// keccak_special5 delegation proof_parity: GPU proof == CPU reference,
 /// byte-identical. `#[ignore]`d as a heavy GPU test — run with `--ignored`.
 #[test]
-#[serial]
 #[ignore]
 fn run_keccak_special5_proof_parity_test() {
     run_proof_parity(prepare_keccak_special5_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_keccak_special5_multi_schedule_test() {
     run_multi_schedule(prepare_keccak_special5_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_keccak_special5_profile_test() {
     run_profile(prepare_keccak_special5_profiling_fixture());
@@ -740,21 +715,18 @@ fn prepare_blake2_with_compression_profiling_fixture() -> BasicUnrolledFixture {
 /// GPU proof == CPU reference, byte-identical. `#[ignore]`d as a heavy GPU test —
 /// run with `--ignored`.
 #[test]
-#[serial]
 #[ignore]
 fn run_blake2_with_compression_proof_parity_test() {
     run_proof_parity(prepare_blake2_with_compression_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_blake2_with_compression_multi_schedule_test() {
     run_multi_schedule(prepare_blake2_with_compression_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_blake2_with_compression_profile_test() {
     run_profile(prepare_blake2_with_compression_profiling_fixture());
@@ -851,21 +823,18 @@ fn prepare_blake2_g_function_profiling_fixture() -> BasicUnrolledFixture {
 /// byte-identical to the CPU reference (blake_g_function_calls = 80). `#[ignore]`d
 /// only because it is a heavy GPU test.
 #[test]
-#[serial]
 #[ignore]
 fn run_blake2_g_function_proof_parity_test() {
     run_proof_parity(prepare_blake2_g_function_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_blake2_g_function_multi_schedule_test() {
     run_multi_schedule(prepare_blake2_g_function_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_blake2_g_function_profile_test() {
     run_profile(prepare_blake2_g_function_profiling_fixture());
@@ -903,7 +872,6 @@ fn run_blake2_g_function_profile_test() {
 /// stream-ordered before it returns (asserted per-prove in `schedule_prove`) — so a
 /// single ~54 GiB peak fits the 64 GiB fixture arena even with both jobs live.
 #[test]
-#[serial]
 #[ignore]
 fn run_unified_multi_schedule_test() {
     let fixture = prepare_unified_proof_fixture();
@@ -963,7 +931,6 @@ fn run_unified_multi_schedule_test() {
 /// `run_unified_multi_schedule_test`; this test exists so unified has the same
 /// proof_parity / multi_schedule / profile trio as the other circuits.
 #[test]
-#[serial]
 #[ignore]
 fn run_unified_proof_parity_test() {
     run_proof_parity(prepare_unified_proof_fixture());
@@ -972,7 +939,6 @@ fn run_unified_proof_parity_test() {
 /// Unified circuit profile run (warmup + profiled prove, structure check only).
 /// Uses a no-CPU-reference fixture so it skips the expensive CPU unified prove.
 #[test]
-#[serial]
 #[ignore]
 fn run_unified_profile_test() {
     run_profile(prepare_unified_profiling_fixture());
@@ -1002,14 +968,12 @@ fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixtur
 // Regression guards for zero-width base-layer handling (width-0 witness):
 // initial transcript cap gating and WHIR base-cap gating.
 #[test]
-#[serial]
 #[ignore]
 fn run_inits_and_teardowns_proof_parity_test() {
     run_proof_parity(prepare_inits_and_teardowns_matrix_proof_fixture());
 }
 
 #[test]
-#[serial]
 #[ignore]
 fn run_inits_and_teardowns_multi_schedule_test() {
     run_multi_schedule(prepare_inits_and_teardowns_matrix_proof_fixture());
@@ -1018,7 +982,6 @@ fn run_inits_and_teardowns_multi_schedule_test() {
 // run_profile checks proof structure + peak memory only (no CPU comparison),
 // unlike the other two.
 #[test]
-#[serial]
 #[ignore]
 fn run_inits_and_teardowns_profile_test() {
     run_profile(prepare_inits_and_teardowns_matrix_profiling_fixture());

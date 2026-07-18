@@ -95,7 +95,6 @@ mod tests {
     use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
     use itertools::Itertools;
     use rand::rng;
-    use serial_test::serial;
 
     fn test_transpose<T: Transpose + Default + Copy + Clone + core::fmt::Debug + Eq + Rand>(
     ) -> CudaResult<()> {
@@ -130,7 +129,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn transpose_bf() {
         test_transpose::<BF>().unwrap();
     }
