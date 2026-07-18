@@ -364,7 +364,7 @@ fn operand_unit_sign(operand: Operand, layer: &DagLayer) -> Option<bool> {
     match operand {
         Operand::Unit { negative } => Some(negative),
         Operand::Source(value) | Operand::Resident(value) => unit_sign_expr(layer, value.expr),
-        Operand::Temp(_) => None,
+        Operand::Temp(_) | Operand::BackwardSpecial { .. } => None,
     }
 }
 
@@ -812,7 +812,7 @@ fn distribute_direct_sum_products(
 fn repeatable_factor(operand: Operand, layer: &DagLayer) -> bool {
     match operand {
         Operand::Resident(_) | Operand::Unit { .. } => true,
-        Operand::Temp(_) => false,
+        Operand::Temp(_) | Operand::BackwardSpecial { .. } => false,
         Operand::Source(value) => {
             if layer.resolutions.contains_key(&value.expr) {
                 return true;
@@ -1226,6 +1226,7 @@ fn operand_field(operand: Operand) -> FieldKind {
         Operand::Source(value) | Operand::Resident(value) => value.field,
         Operand::Temp(temp) => temp.field,
         Operand::Unit { .. } => FieldKind::Base,
+        Operand::BackwardSpecial { .. } => FieldKind::Ext,
     }
 }
 

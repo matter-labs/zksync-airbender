@@ -36,6 +36,7 @@ pub enum PlanInterpError {
     MissingDroppedResident(ValueFingerprint),
     CacheStoreValueMismatch(ValueFingerprint),
     LiveTempsAtEnd(Vec<TempId>),
+    BackwardSpecialRequiresBindings { desc: u16 },
 }
 
 /// Execute a symbolic plan for one row. Source values are resolved through the
@@ -199,6 +200,9 @@ impl Machine<'_> {
                     value.negate();
                 }
                 Ok(value)
+            }
+            Operand::BackwardSpecial { desc } => {
+                Err(PlanInterpError::BackwardSpecialRequiresBindings { desc })
             }
         }
     }

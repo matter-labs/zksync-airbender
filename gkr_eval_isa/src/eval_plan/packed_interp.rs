@@ -177,6 +177,9 @@ impl PackedMachine<'_> {
                 }
                 Ok(value)
             }
+            Operand::BackwardSpecial { desc } => {
+                Err(PlanInterpError::BackwardSpecialRequiresBindings { desc })
+            }
         }
     }
 

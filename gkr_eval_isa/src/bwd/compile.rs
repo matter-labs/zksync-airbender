@@ -548,7 +548,7 @@ pub fn compile_distilled_at_planned_lb(
 /// recipe, or an `AccInit` for an empty `c_init`, would be an orphan the value gate rejects.
 /// The interned descs land BEYOND `d.specials.len()` (the distilled table never holds a
 /// `Coefficient`/`AccInit`), so `bind`'s per-run `states` stay dense over `d.specials`.
-fn fragment_descs(d: &DistilledLayer) -> (BwdSpecialTable, Vec<Option<u16>>, Option<u16>) {
+pub(crate) fn fragment_descs(d: &DistilledLayer) -> (BwdSpecialTable, Vec<Option<u16>>, Option<u16>) {
     let mut specials = d.specials.clone();
     let acc_init_desc = if d.fragments.c_init.terms.is_empty() {
         None

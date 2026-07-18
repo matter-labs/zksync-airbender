@@ -5,6 +5,7 @@
 //! concrete placement before action-aware forward-VM binding.
 
 mod artifact;
+mod backward;
 mod concrete;
 mod fitness;
 mod genome;
@@ -21,6 +22,9 @@ pub use artifact::{
     EvaluationPass, ForwardActionProvenance, ForwardActionRecord, SearchProvenance,
     compile_circuit_with_evaluation_genomes, compile_layer_with_evaluation_genome,
     load_evaluation_genome_artifact, produce_searched_evaluation_genome_artifact,
+};
+pub use backward::{
+    BackwardEvaluationError, BackwardSymbolicEvaluation, elaborate_backward_fragments_uncached,
 };
 pub use concrete::{
     ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, ConcreteTerminal,
@@ -48,6 +52,7 @@ pub use search::{
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::fwd::isa::Sign;
+use crate::bwd::trace::{BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom};
 use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, FieldKind, Root, RootId, RootOrigin, SinkInfo, SourceKind, join,
 };
@@ -113,6 +118,9 @@ pub enum Operand {
     Temp(TempRef),
     /// Synthetic normalized field unit; it is never a DAG read or cache value.
     Unit { negative: bool },
+    /// Backward-only scalar-pure descriptor. It is always extension-field and
+    /// is bound only by the closed backward source path.
+    BackwardSpecial { desc: u16 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -522,6 +530,8 @@ fn elaborate_internal(
         trace_residency,
         pending_sinks,
         staged_demands: Vec::new(),
+        backward_demand: None,
+        backward_stream_reductions: None,
     };
     for &root_id in roots {
         elaborator.elaborate_root(root_id)?;
@@ -548,6 +558,79 @@ fn elaborate_internal(
                 .collect(),
         ));
     }
+    Ok(elaborator.plan)
+}
+
+/// Backward-only fragment driver. The public adapter validates and schedules
+/// fragments, then this keeps every expression cone on the established
+/// [`Elaborator::eval_expr`] walker with residency disabled.
+pub(super) fn elaborate_backward_fragments_driver(
+    layer: &DagLayer,
+    root_id: RootId,
+    expr_fields: &[FieldKind],
+    fragments: &[crate::bwd::fragment::FragmentSpec],
+    scheduled_fragments: &[usize],
+    coefficient_descs: &[Option<u16>],
+    acc_init_desc: Option<u16>,
+    budget_lanes: usize,
+    stream_reductions: bool,
+) -> Result<EvalPlan, PlanError> {
+    if expr_fields.len() != layer.exprs.len() {
+        return Err(PlanError::FieldCount {
+            expected: layer.exprs.len(),
+            actual: expr_fields.len(),
+        });
+    }
+    let root = layer
+        .roots
+        .get(root_id.0 as usize)
+        .ok_or(PlanError::RootOutOfBounds(root_id))?;
+    let fingerprints = structural_fingerprints(layer)?;
+    let root_key = root_key(root.expr, root, &fingerprints)?;
+    let mut elaborator = Elaborator {
+        layer,
+        expr_fields,
+        fingerprints,
+        plan: EvalPlan {
+            ops: Vec::new(),
+            budget_lanes,
+            sites: Vec::new(),
+            stats: PlanStats::default(),
+            attribution: BTreeMap::new(),
+            residency_events: Vec::new(),
+        },
+        next_temp: 0,
+        live_temps: HashMap::new(),
+        live_lanes: 0,
+        residents: BTreeMap::new(),
+        pinned: BTreeSet::new(),
+        resident_lanes: 0,
+        budget_lanes,
+        oracle: None,
+        trace_residency: false,
+        pending_sinks: BTreeMap::new(),
+        staged_demands: Vec::new(),
+        backward_demand: Some(BackwardDemandState {
+            schedule_pos: 0,
+            consumer_stack: Vec::new(),
+            events: Vec::new(),
+        }),
+        backward_stream_reductions: Some(stream_reductions),
+    };
+
+    // Mode selection is deliberately explicit. Both boundaries use the same
+    // symbolic cone walker; neither silently substitutes the other.
+    elaborator.elaborate_backward_fragments(
+        &root_key,
+        fragments,
+        scheduled_fragments,
+        coefficient_descs,
+        acc_init_desc,
+    )?;
+    if let Some((&id, _)) = elaborator.live_temps.iter().next() {
+        return Err(PlanError::LiveTempAtEnd(id));
+    }
+    debug_assert!(elaborator.residents.is_empty());
     Ok(elaborator.plan)
 }
 
@@ -702,6 +785,15 @@ struct StagedEntry {
     scope: PreferenceMap,
 }
 
+/// Closed backward demand bookkeeping. It deliberately lives on the shared
+/// elaborator rather than an observer trait so the backward adapter owns the
+/// exact demand context its later concrete binding path will consume.
+struct BackwardDemandState {
+    schedule_pos: u32,
+    consumer_stack: Vec<ExprId>,
+    events: Vec<BwdEvent>,
+}
+
 type PreferenceMap = BTreeMap<ValueFingerprint, f64>;
 
 struct Elaborator<'a, 'oracle> {
@@ -720,9 +812,54 @@ struct Elaborator<'a, 'oracle> {
     trace_residency: bool,
     pending_sinks: BTreeMap<ExprId, Vec<SinkObligation>>,
     staged_demands: Vec<(SiteId, StagedEntry)>,
+    backward_demand: Option<BackwardDemandState>,
+    backward_stream_reductions: Option<bool>,
 }
 
 impl Elaborator<'_, '_> {
+    fn elaborate_backward_fragments(
+        &mut self,
+        root: &RootKey,
+        fragments: &[crate::bwd::fragment::FragmentSpec],
+        scheduled_fragments: &[usize],
+        coefficient_descs: &[Option<u16>],
+        acc_init_desc: Option<u16>,
+    ) -> Result<(), PlanError> {
+        if let Some(desc) = acc_init_desc {
+            self.emit(EvalOp::AccInit(Operand::BackwardSpecial { desc }))?;
+        }
+        let mut seeded = acc_init_desc.is_some();
+        for (schedule_pos, &fragment_index) in scheduled_fragments.iter().enumerate() {
+            if let Some(state) = &mut self.backward_demand {
+                state.schedule_pos = schedule_pos as u32;
+            }
+            let fragment = &fragments[fragment_index];
+            debug_assert!(!fragment.atoms.is_empty());
+            let saved_total = if seeded {
+                Some(self.save_acc(FieldKind::Ext)?)
+            } else {
+                None
+            };
+            self.eval_expr(fragment.atoms[0], root, &[], &PreferenceMap::new())?;
+            for &atom in &fragment.atoms[1..] {
+                let product = self.save_acc(FieldKind::Ext)?;
+                self.eval_expr(atom, root, &[], &PreferenceMap::new())?;
+                self.emit(EvalOp::AccMul(Operand::Temp(product)))?;
+            }
+            if let Some(desc) = coefficient_descs[fragment_index] {
+                self.emit(EvalOp::AccMul(Operand::BackwardSpecial { desc }))?;
+            }
+            if let Some(total) = saved_total {
+                self.emit(EvalOp::AccAdd {
+                    sign: Sign::Plus,
+                    operand: Operand::Temp(total),
+                })?;
+            }
+            seeded = true;
+        }
+        self.emit(EvalOp::ReturnAcc { root: root.clone() })
+    }
+
     fn elaborate_root(&mut self, root_id: RootId) -> Result<(), PlanError> {
         let Some(root) = self.layer.roots.get(root_id.0 as usize) else {
             return Err(PlanError::RootOutOfBounds(root_id));
@@ -742,6 +879,17 @@ impl Elaborator<'_, '_> {
         path: &[PathStep],
         inherited: &PreferenceMap,
     ) -> Result<FieldKind, PlanError> {
+        if let Some(state) = &mut self.backward_demand {
+            state.events.push(BwdEvent::Serve {
+                fp: BwdFingerprint {
+                    term: state.schedule_pos,
+                    kind: BwdServeKind::Operand,
+                    value: expr,
+                    consumer: state.consumer_stack.last().copied(),
+                },
+                from: BwdServedFrom::Recomputed,
+            });
+        }
         if let Some(staged) = self.take_staged(expr, root, path) {
             self.plan.stats.cache_hits += 1;
             self.plan.attribution.entry(expr).or_default().resident_hits += 1;
@@ -939,6 +1087,85 @@ impl Elaborator<'_, '_> {
     }
 
     fn eval_reduction(
+        &mut self,
+        parent: ExprId,
+        operation: ReductionOp,
+        children: &[ExprId],
+        root: &RootKey,
+        path: &[PathStep],
+        scope: &PreferenceMap,
+    ) -> Result<(), PlanError> {
+        if let Some(state) = &mut self.backward_demand {
+            state.consumer_stack.push(parent);
+        }
+        let result = if self.backward_stream_reductions == Some(false) {
+            self.eval_reduction_prematerialized(parent, operation, children, root, path, scope)
+        } else {
+            self.eval_reduction_inner(parent, operation, children, root, path, scope)
+        };
+        if let Some(state) = &mut self.backward_demand {
+            let popped = state.consumer_stack.pop();
+            debug_assert_eq!(popped, Some(parent));
+        }
+        result
+    }
+
+    /// The legacy boundary: lower every child cone through `eval_expr`, stash
+    /// its resulting accumulator, then seed and fold the completed operands.
+    /// This is backward-only; forward elaboration keeps its incumbent path.
+    fn eval_reduction_prematerialized(
+        &mut self,
+        parent: ExprId,
+        operation: ReductionOp,
+        children: &[ExprId],
+        root: &RootKey,
+        path: &[PathStep],
+        scope: &PreferenceMap,
+    ) -> Result<(), PlanError> {
+        let children = effective_child_occurrences(
+            self.layer,
+            self.child_occurrences(parent, operation, children),
+            operation,
+        );
+        if children.is_empty() {
+            return Err(PlanError::EmptyReduction(parent));
+        }
+        self.plan
+            .attribution
+            .entry(parent)
+            .or_default()
+            .arithmetic_ops += children.len().saturating_sub(1)
+            + usize::from(operation == ReductionOp::Mul && product_unit_sign(self.layer, parent));
+
+        let mut operands = Vec::with_capacity(children.len());
+        for child in children {
+            let child_path = extended(path, child.step);
+            let field = self.eval_expr(child.expr, root, &child_path, scope)?;
+            operands.push((child.expr, self.save_acc(field)?));
+        }
+        let (first, first_temp) = operands.remove(0);
+        self.plan
+            .attribution
+            .entry(first)
+            .or_default()
+            .accumulator_seeds += 1;
+        self.emit(EvalOp::AccInit(Operand::Temp(first_temp)))?;
+        for (_, temp) in operands {
+            self.emit(match operation {
+                ReductionOp::Add => EvalOp::AccAdd {
+                    sign: Sign::Plus,
+                    operand: Operand::Temp(temp),
+                },
+                ReductionOp::Mul => EvalOp::AccMul(Operand::Temp(temp)),
+            })?;
+        }
+        if operation == ReductionOp::Mul && product_unit_sign(self.layer, parent) {
+            self.emit(EvalOp::AccNeg)?;
+        }
+        Ok(())
+    }
+
+    fn eval_reduction_inner(
         &mut self,
         parent: ExprId,
         operation: ReductionOp,
@@ -1802,7 +2029,7 @@ impl Elaborator<'_, '_> {
                 self.live_lanes -= width;
                 self.plan.stats.stash_loads += 1;
             }
-            Operand::Unit { .. } => {}
+            Operand::Unit { .. } | Operand::BackwardSpecial { .. } => {}
         }
         Ok(())
     }

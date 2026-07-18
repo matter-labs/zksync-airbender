@@ -84,6 +84,9 @@ pub enum ConcreteBindError {
         emitted: usize,
     },
     EncodeRoundtripMismatch,
+    BackwardSpecialRequiresBindings {
+        desc: u16,
+    },
 }
 
 impl From<BindError> for ConcreteBindError {
@@ -744,6 +747,9 @@ fn analyze_lifetimes(plan: &PackedEvalPlan) -> Result<LifetimeAnalysis, Concrete
         for operand in packed_operands(op) {
             match operand {
                 Operand::Source(_) | Operand::Unit { .. } => {}
+                Operand::BackwardSpecial { desc } => {
+                    return Err(ConcreteBindError::BackwardSpecialRequiresBindings { desc });
+                }
                 Operand::Resident(value) => {
                     let id = *residents
                         .get(&value.fingerprint)
@@ -1537,6 +1543,9 @@ impl Emitter<'_> {
                     Special::One as u16
                 },
             }),
+            Operand::BackwardSpecial { desc } => {
+                Err(ConcreteBindError::BackwardSpecialRequiresBindings { desc })
+            }
         }
     }
 
@@ -1546,6 +1555,9 @@ impl Emitter<'_> {
             Operand::Temp(_) => return Ok(()),
             Operand::Unit { negative } => {
                 return Err(ConcreteBindError::MultiplicationBySyntheticUnit { negative });
+            }
+            Operand::BackwardSpecial { desc } => {
+                return Err(ConcreteBindError::BackwardSpecialRequiresBindings { desc });
             }
         };
         if let Some(negative) = unit_sign_expr(self.layer, value.expr) {
@@ -1695,6 +1707,7 @@ fn operand_field(operand: Operand) -> OperandField {
         Operand::Source(value) | Operand::Resident(value) => value.field,
         Operand::Temp(temp) => temp.field,
         Operand::Unit { .. } => FieldKind::Base,
+        Operand::BackwardSpecial { .. } => FieldKind::Ext,
     })
 }
 
