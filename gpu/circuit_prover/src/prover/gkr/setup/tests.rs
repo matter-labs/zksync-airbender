@@ -537,9 +537,14 @@ fn bootstrap_storage_without_uploaded_setup_leaves_virtual_setup_unmaterialized(
         log_tree_cap_size,
         &context,
     );
+    // A real (single-column) witness: committing a zero-column holder is not
+    // a legal gpu_hash input (the kernel would emit raw init-state digests).
+    let witness_values = (0..trace_len)
+        .map(|i| BF::from_u32_unchecked(i as u32 + 7))
+        .collect_vec();
     let witness_trace_holder = materialize_trace_holder_from_values(
-        &[],
-        0,
+        &witness_values,
+        1,
         trace_len,
         log_lde_factor,
         log_rows_per_leaf,
