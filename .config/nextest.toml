@@ -4,10 +4,11 @@
 # they run in one serialized test group (nextest's process-per-test model
 # would otherwise run them concurrently — a serial_test in-process mutex
 # cannot serialize across processes, which is why the GPU crates carry no
-# #[serial] annotations: this group is their only serialization). Cross-
-# PROCESS exclusivity against other workloads is still the job of
-# .agents/bin/with_gpu_lock.sh; this group only serializes tests within one
-# nextest invocation.
+# #[serial] annotations). This group serializes nextest runs; plain
+# `cargo test` is covered by the pre-main `gpu_core::force_serial_libtest!()`
+# guard at every GPU crate root. Cross-PROCESS exclusivity against other
+# workloads is still the job of .agents/bin/with_gpu_lock.sh; this group only
+# serializes tests within one nextest invocation.
 #
 # slow-timeout: a hung kernel previously wedged the whole suite and the GPU
 # lock with it. Under nextest each test is its own process, so a stuck test

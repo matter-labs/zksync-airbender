@@ -12,10 +12,14 @@
 // scaffolding for stream-scheduled callbacks — see primitives/context.rs.
 #![allow(clippy::mut_from_ref)]
 
+mod serial_guard;
 mod upstream;
 
 pub mod allocator;
 pub mod primitives;
+
+#[cfg(test)]
+crate::force_serial_libtest!();
 
 #[cfg(feature = "bench")]
 pub mod bench;

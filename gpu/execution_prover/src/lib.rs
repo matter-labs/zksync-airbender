@@ -26,3 +26,6 @@ pub use prover::{
     BinaryHandle, CircuitArtifact, CommitMemoryResult, ExecutionKind, ExecutionProver,
     ExecutionProverConfiguration, ProgramArtifacts, ProveResult,
 };
+
+#[cfg(test)]
+gpu_core::force_serial_libtest!();

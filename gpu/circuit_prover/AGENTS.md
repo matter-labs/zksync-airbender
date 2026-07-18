@@ -153,9 +153,10 @@ protocol kernels in its `gkr_ops`/`transcript`/`gather` submodules).
   cargo-nextest, not plain `cargo test`. The GPU crates carry no `#[serial]`
   annotations; serialization comes from the `gpu-serial` test group in the
   workspace [`.config/nextest.toml`](../../.config/nextest.toml) (one GPU test
-  at a time + hung-test termination). Plain `cargo test` runs tests
-  concurrently in threads and races the GPU; if libtest is unavoidable, pass
-  `-- --test-threads=1`.
+  at a time + hung-test termination). Plain `cargo test` stays safe via the
+  pre-main `gpu_core::force_serial_libtest!()` guard at the crate root
+  (forces `RUST_TEST_THREADS=1`), but lacks hung-test termination — prefer
+  nextest.
 - Bench: `cargo bench -p circuit_prover`
 - For compute-heavy GPU tests or prover flows, use `--release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.
 - Compile first with `cargo nextest run --no-run`, then run under

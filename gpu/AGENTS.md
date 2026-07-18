@@ -113,10 +113,11 @@ from upstream library code (`full_statement_verifier::host_utils` /
   carry no `#[serial]` annotations (and must not add a `serial_test` dep):
   serialization is the `gpu-serial` test group in the workspace
   `.config/nextest.toml` — one GPU test at a time within a run, hung tests
-  terminated instead of wedging the suite. Plain `cargo test -p <gpu crate>`
-  runs tests concurrently in threads and races the GPU; if libtest is
-  unavoidable, pass `-- --test-threads=1`. New GPU crates must be added to the
-  `gpu-serial` filter.
+  terminated instead of wedging the suite. Plain `cargo test` stays safe via a
+  pre-main guard (`gpu_core::force_serial_libtest!()`, invoked at every GPU
+  crate root) that forces `RUST_TEST_THREADS=1` — but it lacks nextest's
+  hung-test termination, so prefer nextest. A new GPU crate must be added to
+  the `gpu-serial` filter AND invoke the guard.
 
 ## Native code (CUDA/C++)
 

@@ -16,3 +16,6 @@ pub mod ntt_twiddles;
 
 #[cfg(feature = "bench")]
 pub mod bench;
+
+#[cfg(test)]
+gpu_core::force_serial_libtest!();

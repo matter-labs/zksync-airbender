@@ -20,3 +20,6 @@ pub(crate) mod upstream;
 pub mod witness;
 
 pub use prover::config::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
+
+#[cfg(test)]
+gpu_core::force_serial_libtest!();

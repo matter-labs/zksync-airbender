@@ -14,3 +14,6 @@ pub use upstream::Setups;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+gpu_core::force_serial_libtest!();
