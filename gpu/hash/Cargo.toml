@@ -36,8 +36,9 @@ transcript = { workspace = true, features = ["deterministic_pow"] }
 # `prover::transcript::Blake2sTranscript` reference. Production `gpu_hash` depends
 # only on gpu_core (+ era_cudart) — this does not leak downstream.
 prover = { workspace = true, features = ["prover"] }
-itertools = "0.14"
-rand = "0.9"
+itertools = { workspace = true }
+# The workspace entry is default-features = false; tests need `rand::rng()`.
+rand = { workspace = true, features = ["thread_rng"] }
 serial_test = "3"
 
 [build-dependencies]
