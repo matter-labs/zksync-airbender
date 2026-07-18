@@ -35,7 +35,7 @@ pub(super) fn compile_mem_word_only_circuit_for_test(binary: &[u32]) -> GKRCircu
         },
         &|cs| mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        24,
+        UnrolledMemoryCircuitType::LoadStoreWordOnly.get_domain_size_log2(),
     )
 }
 
@@ -51,7 +51,7 @@ pub(super) fn compile_mem_subword_only_circuit_for_test(binary: &[u32]) -> GKRCi
         },
         &|cs| mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        24,
+        UnrolledMemoryCircuitType::LoadStoreSubwordOnly.get_domain_size_log2(),
     )
 }
 
@@ -73,11 +73,10 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
 ) {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
-    const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
 
-    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+    let trace_len: usize = compiled_circuit.trace_len;
+    let num_cycles_per_chunk: usize = trace_len;
     let worker = Worker::new_with_num_threads(8);
 
     let binary = read_test_words(binary_path);
@@ -113,7 +112,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         num_calls > 0,
         "expected selected workload to exercise the {family_label} family"
     );
-    assert!(num_calls < NUM_CYCLES_PER_CHUNK);
+    assert!(num_calls < num_cycles_per_chunk);
 
     let mut expected_final_state = state;
     expected_final_state.counters = Default::default();
@@ -171,7 +170,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     populate_table_driver(&mut table_driver, &binary);
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
         &compiled_circuit,
-        NUM_CYCLES_PER_CHUNK,
+        num_cycles_per_chunk,
         &oracle,
         &worker,
         None,
@@ -181,7 +180,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
         &compiled_circuit,
         witness_eval_fn,
-        NUM_CYCLES_PER_CHUNK,
+        num_cycles_per_chunk,
         &oracle,
         &table_driver,
         &worker,
@@ -298,7 +297,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         let first_mismatch = describe_first_trace_holder_column_mismatch(
             &stage1_output.memory_trace_holder,
             &full_trace.column_major_memory_trace,
-            NUM_CYCLES_PER_CHUNK,
+            num_cycles_per_chunk,
             &context,
         )
         .unwrap_or_else(|| "no flat-column mismatch found despite cap divergence".to_string());
@@ -320,7 +319,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
             &stage1_output.witness_trace_holder,
             &full_trace.column_major_witness_trace,
             generic_lookup_multiplicities_range.clone(),
-            NUM_CYCLES_PER_CHUNK,
+            num_cycles_per_chunk,
             &context,
         );
         assert!(
@@ -339,7 +338,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         let first_mismatch = describe_first_trace_holder_column_mismatch(
             &stage1_output.witness_trace_holder,
             &full_trace.column_major_witness_trace,
-            NUM_CYCLES_PER_CHUNK,
+            num_cycles_per_chunk,
             &context,
         )
         .unwrap_or_else(|| "no flat-column mismatch found despite cap divergence".to_string());

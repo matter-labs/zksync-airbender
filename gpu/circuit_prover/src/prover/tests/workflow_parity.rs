@@ -6,7 +6,8 @@ use super::*;
 fn run_jump_branch_slt_workflow_input_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
+    const TRACE_LEN_LOG2: usize =
+        UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
@@ -137,7 +138,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
         decoder_table: decoder_table_data,
-        default_pc_value_in_padding: 0,
+        default_pc_value_in_padding: common_constants::PC_STEP as u32,
     };
     let mut table_driver = TableDriver::new();
     jump_branch_slt_table_driver_fn(&mut table_driver);
@@ -649,7 +650,8 @@ fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
 fn run_shift_binop_cached_lookup_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
+    const TRACE_LEN_LOG2: usize =
+        UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
 
@@ -764,7 +766,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
         decoder_table: decoder_table_data,
-        default_pc_value_in_padding: 4,
+        default_pc_value_in_padding: common_constants::PC_STEP as u32,
     };
     let mut table_driver = TableDriver::new();
     shift_binop_table_driver_fn(&mut table_driver);

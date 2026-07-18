@@ -6,10 +6,12 @@ use super::*;
 fn run_basic_unrolled_stagewise_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    // NOTE: these constants must match with ones used in CS crate to produce
+    // NOTE: the trace length must match the one used in the CS crate to produce
     // layout and SSA forms, otherwise derived witness-gen functions may write into
-    // invalid locations
-    const TRACE_LEN_LOG2: usize = 24;
+    // invalid locations — so derive it from the circuit family's domain size
+    // (mirrors the upstream `DOMAIN_SIZE_LOG2`) rather than hardcoding it.
+    const TRACE_LEN_LOG2: usize =
+        UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
@@ -179,7 +181,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let oracle = NonMemoryCircuitOracle {
         inner: &buffer[..],
         decoder_table: decoder_table_data,
-        default_pc_value_in_padding: 4,
+        default_pc_value_in_padding: common_constants::PC_STEP as u32,
     };
 
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(

@@ -13,7 +13,7 @@ const UNIFIED_LAYOUT_PATH: &str = "cs/compiled_circuits/unified_reduced_machine_
 const UNIFIED_BINARY_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.bin";
 const UNIFIED_TEXT_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.text";
 
-const TRACE_LEN_LOG2: usize = 24;
+const TRACE_LEN_LOG2: usize = UnrolledCircuitType::Unified.get_domain_size_log2();
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
 // Delegation cycle counts mirror the (test-gated, hence inlined here) constants
@@ -839,7 +839,6 @@ fn prepare_unified_fixture(
 ) {
     type CountersT = DelegationsAndUnifiedCounters;
 
-    const TRACE_LEN_LOG2: usize = 24;
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
@@ -950,7 +949,7 @@ fn prepare_unified_fixture(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
             whir_schedule.base_lde_factor.trailing_zeros(),
-            1,
+            whir_schedule.whir_steps_schedule[0] as u32,
             whir_schedule.cap_size.trailing_zeros(),
             &context,
         )

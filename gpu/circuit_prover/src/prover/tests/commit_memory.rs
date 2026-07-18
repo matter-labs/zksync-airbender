@@ -9,13 +9,13 @@ fn test_commit_memory_matches_cpu() {
         &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        24,
+        UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2(),
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
         "examples/basic_fibonacci/app.bin",
         "examples/basic_fibonacci/app.text",
         &[],
-        4,
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
         compiled_circuit,
     );
@@ -29,13 +29,13 @@ fn test_jump_branch_slt_commit_memory_matches_cpu() {
         &|cs| jump_branch_slt_table_addition_fn(cs),
         &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        24,
+        UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2(),
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
         "examples/hashed_fibonacci/app.text",
         &[15, 1],
-        0,
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::JumpBranchSlt,
         compiled_circuit,
     );
@@ -49,13 +49,13 @@ fn test_shift_binop_commit_memory_matches_cpu() {
         &|cs| shift_binop_table_addition_fn(cs),
         &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        24,
+        UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2(),
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
         "examples/hashed_fibonacci/app.text",
         &[15, 1],
-        4,
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
         compiled_circuit,
     );
@@ -211,8 +211,6 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     use prover::gkr::prover::stages::stage1::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
-    const TRACE_LEN_LOG2: usize = 24;
-    const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
     const HOST_POOL_SIZE_MB: usize = 1024;
     const DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
@@ -313,7 +311,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let trace_len = compiled_circuit.trace_len;
     let cpu_memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
         &compiled_circuit,
-        NUM_CYCLES_PER_CHUNK,
+        compiled_circuit.trace_len,
         &oracle,
         &worker,
         None,
@@ -409,8 +407,6 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     use prover::gkr::prover::stages::stage1::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
-    const TRACE_LEN_LOG2: usize = 24;
-    const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
     const HOST_POOL_SIZE_MB: usize = 1024;
     const DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
@@ -456,7 +452,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         num_calls > 0,
         "selected workload must exercise family {FAMILY_IDX}",
     );
-    assert!(num_calls < NUM_CYCLES_PER_CHUNK);
+    assert!(num_calls < compiled_circuit.trace_len);
     let mut replay_state = snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = snapshotter
         .reads_buffer
@@ -511,7 +507,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let trace_len = compiled_circuit.trace_len;
     let cpu_memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
         &compiled_circuit,
-        NUM_CYCLES_PER_CHUNK,
+        compiled_circuit.trace_len,
         &oracle,
         &worker,
         None,
