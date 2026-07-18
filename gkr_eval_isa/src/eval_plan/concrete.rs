@@ -17,6 +17,7 @@ use crate::fwd::isa::{
 };
 use crate::fwd::source::{SpecialDescriptor, SpecialStrategy, lower_resolution};
 use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
+use crate::fwd::{disasm::disassemble_layer, error::CompileError, validate::validate_compiled};
 
 use super::{
     CacheStoreFrom, IdentityError, MaterializeFrom, Operand, PackedEvalOp, PackedEvalPlan, RootKey,
@@ -67,7 +68,9 @@ pub enum ConcreteBindError {
     RootIdentityMismatch {
         root: RootId,
     },
-    ReturnRootUnsupported,
+    DuplicateReturnAcc,
+    MixedForwardAndReturnTerminal,
+    Validation(CompileError),
     InstructionCountMismatch {
         predicted: usize,
         emitted: usize,
@@ -104,6 +107,12 @@ impl From<DecodeError> for ConcreteBindError {
 impl From<IdentityError> for ConcreteBindError {
     fn from(value: IdentityError) -> Self {
         Self::Identity(value)
+    }
+}
+
+impl From<CompileError> for ConcreteBindError {
+    fn from(value: CompileError) -> Self {
+        Self::Validation(value)
     }
 }
 
@@ -152,6 +161,82 @@ pub struct ConcreteEvalProgram {
     pub compiled: CompiledLayer,
     pub encoded: Vec<u16>,
     pub stats: ConcreteBindingStats,
+    pub terminal: ConcreteTerminal,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConcreteTerminal {
+    Forward,
+    ReturnAcc { root: RootKey },
+}
+
+/// Independently validate the forward instruction stream and its concrete
+/// terminal contract.
+pub fn validate_concrete_eval_program(
+    concrete: &ConcreteEvalProgram,
+    layer: &DagLayer,
+) -> Result<(), ConcreteBindError> {
+    validate_compiled(&concrete.compiled, layer)?;
+    match &concrete.terminal {
+        ConcreteTerminal::Forward => {
+            let expected = layer
+                .roots
+                .iter()
+                .enumerate()
+                .filter_map(|(index, root)| {
+                    root.materialize.is_some().then_some(RootId(index as u32))
+                })
+                .collect::<HashSet<_>>();
+            let actual = concrete
+                .compiled
+                .root_outputs
+                .iter()
+                .map(|(root, _)| *root)
+                .collect::<HashSet<_>>();
+            if actual.len() != concrete.compiled.root_outputs.len() || actual != expected {
+                return Err(ConcreteBindError::RootCountMismatch {
+                    expected: expected.len(),
+                    actual: actual.len(),
+                });
+            }
+        }
+        ConcreteTerminal::ReturnAcc { root } => {
+            if !concrete.compiled.root_outputs.is_empty() {
+                return Err(ConcreteBindError::MixedForwardAndReturnTerminal);
+            }
+            let fingerprints = structural_fingerprints(layer)?;
+            let matches = layer
+                .roots
+                .iter()
+                .enumerate()
+                .filter(|(index, candidate)| {
+                    candidate.materialize.is_none()
+                        && root_key(layer, &fingerprints, RootId(*index as u32)) == *root
+                })
+                .count();
+            if matches != 1 {
+                return Err(ConcreteBindError::RootCountMismatch {
+                    expected: 1,
+                    actual: matches,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Disassemble a concrete evaluation program and its non-ISA terminal.
+pub fn disassemble_concrete_eval_program(
+    title: &str,
+    concrete: &ConcreteEvalProgram,
+    layer: Option<&DagLayer>,
+) -> String {
+    let mut disassembly = disassemble_layer(title, &concrete.compiled, layer);
+    disassembly.push_str(match concrete.terminal {
+        ConcreteTerminal::Forward => "terminal = Forward\n",
+        ConcreteTerminal::ReturnAcc { .. } => "terminal = ReturnAcc\n",
+    });
+    disassembly
 }
 
 /// Bind symbolic sources, residents, temporaries, and sinks to the existing
@@ -328,6 +413,7 @@ fn bind_packed_plan_with_mode(
         temps: HashMap::new(),
         pending_roots,
         root_outputs: Vec::new(),
+        terminal: None,
         desc_by_expr: HashMap::new(),
     };
     for (index, op) in packed.ops.iter().enumerate() {
@@ -338,12 +424,42 @@ fn bind_packed_plan_with_mode(
         live.sort_by_key(|temp| temp.0);
         return Err(ConcreteBindError::LiveTempsAtEnd(live));
     }
-    if !emitter.pending_roots.is_empty() {
-        return Err(ConcreteBindError::RootCountMismatch {
-            expected: root_order.len(),
-            actual: root_order.len() - emitter.pending_roots.len(),
-        });
-    }
+    let terminal = match emitter.terminal.take() {
+        Some(root) => {
+            if !emitter.root_outputs.is_empty()
+                || emitter
+                    .pending_roots
+                    .iter()
+                    .any(|root_id| layer.roots[root_id.0 as usize].materialize.is_some())
+            {
+                return Err(ConcreteBindError::MixedForwardAndReturnTerminal);
+            }
+            if emitter.pending_roots.len() != 1 {
+                return Err(ConcreteBindError::RootCountMismatch {
+                    expected: root_order.len(),
+                    actual: root_order.len() - emitter.pending_roots.len(),
+                });
+            }
+            let root_id = *emitter
+                .pending_roots
+                .iter()
+                .next()
+                .expect("one pending root was checked above");
+            if root_key(layer, &emitter.fingerprints, root_id) != root {
+                return Err(ConcreteBindError::RootIdentityMismatch { root: root_id });
+            }
+            ConcreteTerminal::ReturnAcc { root }
+        }
+        None => {
+            if !emitter.pending_roots.is_empty() {
+                return Err(ConcreteBindError::RootCountMismatch {
+                    expected: root_order.len(),
+                    actual: root_order.len() - emitter.pending_roots.len(),
+                });
+            }
+            ConcreteTerminal::Forward
+        }
+    };
 
     let emitted_program = Program {
         instrs: emitter.instrs,
@@ -406,6 +522,7 @@ fn bind_packed_plan_with_mode(
             relocation_moves,
             placement,
         },
+        terminal,
     })
 }
 
@@ -1217,11 +1334,15 @@ struct Emitter<'a> {
     temps: HashMap<TempId, StorageId>,
     pending_roots: HashSet<RootId>,
     root_outputs: Vec<(RootId, RootOutput)>,
+    terminal: Option<RootKey>,
     desc_by_expr: HashMap<cs::gkr_compiler::dag_ir::ExprId, u16>,
 }
 
 impl Emitter<'_> {
     fn emit(&mut self, op_index: usize, op: &PackedEvalOp) -> Result<(), ConcreteBindError> {
+        if self.terminal.is_some() && !matches!(op, PackedEvalOp::ReturnAcc { .. }) {
+            return Err(ConcreteBindError::MixedForwardAndReturnTerminal);
+        }
         self.emit_relocations(op_index)?;
         match op {
             PackedEvalOp::AccInit(operand) => {
@@ -1340,7 +1461,11 @@ impl Emitter<'_> {
                 sink,
                 from,
             } => self.emit_commit(*root_id, root, sink, *from)?,
-            PackedEvalOp::ReturnAcc { .. } => return Err(ConcreteBindError::ReturnRootUnsupported),
+            PackedEvalOp::ReturnAcc { root } => {
+                if self.terminal.replace(root.clone()).is_some() {
+                    return Err(ConcreteBindError::DuplicateReturnAcc);
+                }
+            }
         }
         Ok(())
     }
@@ -1707,7 +1832,187 @@ fn tally_operand(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval_plan::PackedStats;
+    use crate::eval_plan::{PackConfig, PackedStats, elaborate_uncached, pack_plan};
+    use crate::fwd::interp::interpret_program_row_acc;
+    use cs::gkr_compiler::dag_ir::{
+        BatchingOrder, Bf, ChallengeRef, ChallengeResolver, DagLayer, Expr, ExprId, FieldKind,
+        LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root, RootId,
+        SourceId, SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
+    };
+    use field::Field;
+
+    struct UnusedResolver;
+
+    impl ReadResolver for UnusedResolver {
+        fn read(&self, _place: &ReadPlace, _row: usize) -> cs::gkr_compiler::dag_ir::Ext {
+            unreachable!("constant-only test layer does not read")
+        }
+    }
+
+    impl LookupResolver for UnusedResolver {
+        fn lookup(
+            &self,
+            _kind: &LookupValueKind,
+            _set_index: usize,
+            _evaluated_query: cs::gkr_compiler::dag_ir::Ext,
+            _row: usize,
+        ) -> Bf {
+            unreachable!("constant-only test layer does not look up")
+        }
+    }
+
+    impl VirtualSetupResolver for UnusedResolver {
+        fn virtual_setup(&self, _kind: &VirtualSetupKind, _row: usize) -> Bf {
+            unreachable!("constant-only test layer has no virtual setup")
+        }
+    }
+
+    impl ChallengeResolver for UnusedResolver {
+        fn challenge(&self, _reference: &ChallengeRef) -> cs::gkr_compiler::dag_ir::Ext {
+            unreachable!("constant-only test layer has no challenges")
+        }
+    }
+
+    static UNUSED_RESOLVER: UnusedResolver = UnusedResolver;
+
+    fn resolvers() -> Resolvers<'static> {
+        Resolvers {
+            read: &UNUSED_RESOLVER,
+            lookup: &UNUSED_RESOLVER,
+            virtual_setup: &UNUSED_RESOLVER,
+            challenge: &UNUSED_RESOLVER,
+        }
+    }
+
+    fn return_acc_layer(materialize_first_root: bool) -> DagLayer {
+        let roots = (0..if materialize_first_root { 2 } else { 1 })
+            .map(|index| Root {
+                expr: ExprId(0),
+                materialize: (index == 0 && materialize_first_root).then_some(SinkInfo {
+                    kind: SinkKind::Export { slot: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: None,
+            })
+            .collect();
+        DagLayer {
+            sources: vec![SourceInfo {
+                kind: SourceKind::Constant { value: 42 },
+            }],
+            exprs: vec![Expr::Source(SourceId(0))],
+            roots,
+            batching: BatchingOrder { roots: vec![] },
+            resolutions: Default::default(),
+        }
+    }
+
+    fn return_acc_packed(layer: &DagLayer, roots: &[RootId]) -> PackedEvalPlan {
+        let fields = vec![FieldKind::Base];
+        let plan = elaborate_uncached(layer, &fields, roots).unwrap();
+        pack_plan(&plan, layer, PackConfig::default()).unwrap()
+    }
+
+    #[test]
+    fn return_acc_binds_without_instruction() {
+        let layer = return_acc_layer(false);
+        let roots = [RootId(0)];
+        let packed = return_acc_packed(&layer, &roots);
+        let concrete = bind_packed_plan(&packed, &layer, &roots, 0, 4).unwrap();
+        let resolvers = resolvers();
+
+        assert!(matches!(
+            concrete.terminal,
+            ConcreteTerminal::ReturnAcc { .. }
+        ));
+        assert_eq!(
+            concrete.compiled.program.instrs.len(),
+            packed.stats.packed_instructions
+        );
+        assert_eq!(
+            decode(&concrete.encoded).unwrap(),
+            concrete.compiled.program
+        );
+        validate_concrete_eval_program(&concrete, &layer).unwrap();
+        assert_eq!(
+            interpret_program_row_acc(&concrete.compiled, &layer, &resolvers, 0).unwrap(),
+            eval_layer_expr(&layer, layer.roots[0].expr, 0, &resolvers)
+        );
+        assert!(
+            disassemble_concrete_eval_program("return", &concrete, Some(&layer))
+                .contains("terminal = ReturnAcc")
+        );
+    }
+
+    #[test]
+    fn return_acc_rejects_duplicate_terminal() {
+        let layer = return_acc_layer(false);
+        let roots = [RootId(0)];
+        let mut packed = return_acc_packed(&layer, &roots);
+        let terminal = packed
+            .ops
+            .iter()
+            .find(|op| matches!(op, PackedEvalOp::ReturnAcc { .. }))
+            .unwrap()
+            .clone();
+        packed.ops.push(terminal);
+
+        assert!(matches!(
+            bind_packed_plan(&packed, &layer, &roots, 0, 4),
+            Err(ConcreteBindError::DuplicateReturnAcc)
+        ));
+    }
+
+    #[test]
+    fn return_acc_rejects_mixed_commit() {
+        let layer = return_acc_layer(true);
+        let roots = [RootId(0), RootId(1)];
+        let packed = return_acc_packed(&layer, &roots);
+
+        assert!(matches!(
+            bind_packed_plan(&packed, &layer, &roots, 0, 4),
+            Err(ConcreteBindError::MixedForwardAndReturnTerminal)
+        ));
+    }
+
+    #[test]
+    fn return_acc_rejects_operations_after_terminal() {
+        let layer = return_acc_layer(false);
+        let roots = [RootId(0)];
+        let mut packed = return_acc_packed(&layer, &roots);
+        packed.ops.push(packed.ops[0].clone());
+
+        assert!(matches!(
+            bind_packed_plan(&packed, &layer, &roots, 0, 4),
+            Err(ConcreteBindError::MixedForwardAndReturnTerminal)
+        ));
+    }
+
+    #[test]
+    fn forward_validation_requires_all_materialized_outputs() {
+        let mut layer = return_acc_layer(true);
+        layer.roots.truncate(1);
+        let roots = [RootId(0)];
+        let packed = return_acc_packed(&layer, &roots);
+        let mut actions = HashMap::new();
+        actions.insert(RootId(0), ForwardAction::Compute);
+        let mut concrete = bind_packed_plan_with_actions(
+            &packed,
+            &layer,
+            &roots,
+            0,
+            4,
+            &actions,
+            &HashMap::new(),
+        )
+        .unwrap();
+        validate_concrete_eval_program(&concrete, &layer).unwrap();
+        concrete.compiled.root_outputs.clear();
+
+        assert!(matches!(
+            validate_concrete_eval_program(&concrete, &layer),
+            Err(ConcreteBindError::RootCountMismatch { .. })
+        ));
+    }
 
     #[test]
     fn concrete_store_reload_roundtrip_is_elided() {

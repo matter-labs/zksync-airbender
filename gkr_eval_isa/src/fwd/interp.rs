@@ -3,7 +3,7 @@
 use super::context::{CompiledLayer, DagForwardContext, OutputCell, RootOutput, RowOutputs};
 use super::error::InterpError;
 use super::isa::*;
-use cs::gkr_compiler::dag_ir::{eval_layer_expr, Bf, DagLayer, Ext, ReadPlace, Resolvers};
+use cs::gkr_compiler::dag_ir::{Bf, DagLayer, Ext, ReadPlace, Resolvers, eval_layer_expr};
 use field::{Field, FieldExtension, PrimeField};
 use std::collections::HashMap;
 
@@ -26,7 +26,30 @@ pub fn interpret_layer_row(
     r: &Resolvers<'_>,
     row: usize,
 ) -> Result<RowOutputs, InterpError> {
-    interpret_layer_row_impl(compiled, layer, r, &SpecialMode::Fold, row)
+    let (_, cells, globals) =
+        interpret_layer_row_impl(compiled, layer, r, &SpecialMode::Fold, row)?;
+    row_outputs(
+        compiled,
+        layer,
+        r,
+        &SpecialMode::Fold,
+        row,
+        &cells,
+        &globals,
+    )
+}
+
+/// Execute a compiled program and return its final accumulator value. This is
+/// used by evaluation-plan terminals that return the accumulator directly,
+/// without materializing it through a forward output instruction.
+pub fn interpret_program_row_acc(
+    compiled: &CompiledLayer,
+    layer: &DagLayer,
+    r: &Resolvers<'_>,
+    row: usize,
+) -> Result<Ext, InterpError> {
+    let (acc, _, _) = interpret_layer_row_impl(compiled, layer, r, &SpecialMode::Fold, row)?;
+    Ok(acc)
 }
 
 pub fn interpret_layer_row_with_peeks(
@@ -36,7 +59,9 @@ pub fn interpret_layer_row_with_peeks(
     peek: &dyn crate::fwd::peek::PeekResolver,
     row: usize,
 ) -> Result<RowOutputs, InterpError> {
-    interpret_layer_row_impl(compiled, layer, r, &SpecialMode::Peek(peek), row)
+    let mode = SpecialMode::Peek(peek);
+    let (_, cells, globals) = interpret_layer_row_impl(compiled, layer, r, &mode, row)?;
+    row_outputs(compiled, layer, r, &mode, row, &cells, &globals)
 }
 
 fn interpret_layer_row_impl(
@@ -45,7 +70,7 @@ fn interpret_layer_row_impl(
     r: &Resolvers<'_>,
     mode: &SpecialMode<'_>,
     row: usize,
-) -> Result<RowOutputs, InterpError> {
+) -> Result<(Ext, Vec<Ext>, HashMap<(u8, u16), Ext>), InterpError> {
     let ctx = &compiled.ctx;
     let mut acc = Ext::ZERO;
     // Tracked acc domain (spec §1.1): base until a Mov{Ext} AccFromSrc or a
@@ -110,6 +135,19 @@ fn interpret_layer_row_impl(
     // of the promote/domain rules is the validator's job (Task 3).
     let _ = acc_is_ext;
 
+    Ok((acc, cells, globals))
+}
+
+fn row_outputs(
+    compiled: &CompiledLayer,
+    layer: &DagLayer,
+    r: &Resolvers<'_>,
+    mode: &SpecialMode<'_>,
+    row: usize,
+    cells: &[Ext],
+    globals: &HashMap<(u8, u16), Ext>,
+) -> Result<RowOutputs, InterpError> {
+    let ctx = &compiled.ctx;
     let mut by_root = HashMap::new();
     for (rid, out) in &compiled.root_outputs {
         let v = match out {
@@ -121,7 +159,7 @@ fn interpret_layer_row_impl(
             // stable-storage operand (Global/Ldc/Special — never Smem, see
             // `copy_src_read_place`), so the field bit passed here is inert.
             RootOutput::Alias(op) => {
-                resolve(op, OperandField::Base, &cells, &globals, ctx, r, row, layer, mode)?
+                resolve(op, OperandField::Base, cells, globals, ctx, r, row, layer, mode)?
             }
         };
         by_root.insert(*rid, v);

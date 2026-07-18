@@ -23,8 +23,9 @@ pub use artifact::{
     load_evaluation_genome_artifact, produce_searched_evaluation_genome_artifact,
 };
 pub use concrete::{
-    ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, PlacementTelemetry,
-    bind_packed_plan, bind_packed_plan_with_actions,
+    ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, ConcreteTerminal,
+    PlacementTelemetry, bind_packed_plan, bind_packed_plan_with_actions,
+    disassemble_concrete_eval_program, validate_concrete_eval_program,
 };
 pub use fitness::{
     EvaluationGenome, EvaluationUnit, EvaluationUnitKey, FitnessError, PlacementStatus,
