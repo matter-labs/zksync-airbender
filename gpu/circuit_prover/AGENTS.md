@@ -147,19 +147,19 @@ protocol kernels in its `gkr_ops`/`transcript`/`gather` submodules).
 
 ## Build and Test
 
-- Minimum validation for any code change: `cargo check -p circuit_prover`
-- Build: `cargo build -p circuit_prover`
-- Test: two safe harnesses — `cargo nextest run -p circuit_prover` for
+- Minimum validation for any code change: `cargo check -p gpu_circuit_prover`
+- Build: `cargo build -p gpu_circuit_prover`
+- Test: two safe harnesses — `cargo nextest run -p gpu_circuit_prover` for
   unattended/full-suite runs (the `gpu-serial` group in the workspace
   [`.config/nextest.toml`](../../.config/nextest.toml) serializes GPU tests,
   terminates hung tests, and isolates sticky CUDA errors per process, at
-  ~220 ms CUDA-init per test), or plain `cargo test -p circuit_prover` as the
+  ~220 ms CUDA-init per test), or plain `cargo test -p gpu_circuit_prover` as the
   zero-overhead attended path (the pre-main
   `gpu_core::force_serial_libtest!()` guard at the crate root forces
   `RUST_TEST_THREADS=1`; no hung-test termination). The crate carries no
   `#[serial]` annotations. CPU-only tests may be named or moduled `cpu_*` to run
   parallel under nextest.
-- Bench: `cargo bench -p circuit_prover`
+- Bench: `cargo bench -p gpu_circuit_prover`
 - For compute-heavy GPU tests or prover flows, use `--release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.
 - Compile first with `cargo nextest run --no-run`, then run under
   `.agents/bin/with_gpu_lock.sh cargo nextest run …` so only the execution
