@@ -8,7 +8,7 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::CudaDeviceAttr;
 
-use super::STATE_SIZE;
+use super::{checked_u32, STATE_SIZE};
 use gpu_core::primitives::field::E4;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
@@ -130,7 +130,7 @@ pub fn transcript_commit(
     assert_eq!(seed.len(), STATE_SIZE);
     let seed_ptr = seed.as_mut_ptr();
     let input_ptr = input.as_ptr();
-    let input_len = input.len() as u32;
+    let input_len = checked_u32(input.len());
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = TranscriptCommitArguments::new(seed_ptr, input_ptr, input_len);
     TranscriptCommitFunction::default().launch(&config, &args)
@@ -156,7 +156,7 @@ pub fn transcript_squeeze(
     let seed_ptr = seed.as_mut_ptr();
     let output_ptr = output.as_mut_ptr();
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
-    let args = TranscriptSqueezeArguments::new(seed_ptr, output_ptr, output_len as u32);
+    let args = TranscriptSqueezeArguments::new(seed_ptr, output_ptr, checked_u32(output_len));
     TranscriptSqueezeFunction::default().launch(&config, &args)
 }
 

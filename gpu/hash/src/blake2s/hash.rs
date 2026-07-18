@@ -42,6 +42,7 @@ pub(super) fn hash_leaves(
     let count = results.len();
     let values = values.as_ptr();
     let results = results.as_mut_ptr();
+    assert!(log_rows_per_hash < 32);
     assert_eq!(values_len % (count << log_rows_per_hash), 0);
     let cols_count = checked_u32(values_len / (count << log_rows_per_hash));
     // Zero columns would emit the raw initialized state, not Blake2s(empty).
@@ -89,6 +90,7 @@ pub fn hash_leaves_multi_coset(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(cosets_in_tile >= 1);
+    assert!(log_rows_per_hash < 32);
     // Zero columns would emit the raw initialized state, not Blake2s(empty).
     assert!(cols_count >= 1);
     assert!(

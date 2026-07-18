@@ -111,6 +111,8 @@ pub fn gather_leaves_for_queries(
         num_oracles == 1 || num_oracles == 3,
         "gather_leaves_for_queries supports num_oracles in {{1, 3}}, got {num_oracles}"
     );
+    // Kernel-side addressing shifts by these logs in u32.
+    assert!(log_domain_size < 32);
     assert!(log_domain_size >= log_rows_per_leaf);
     let indexes_count = checked_u32(query_indexes.len());
     for (i, desc) in descs.iter().enumerate().skip(num_oracles as usize) {
@@ -739,6 +741,9 @@ pub fn query_index_to_tree_index(
     coset_tree_size_log2: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    // The kernel composes `bitrev(coset) << coset_tree_size_log2 | internal`
+    // in u32; a wider domain would silently truncate the tree index.
+    assert!(log_lde_factor + coset_tree_size_log2 <= 32);
     let n = d_query_indexes.len();
     assert_eq!(d_out.len(), n);
     let n = checked_u32(n);
