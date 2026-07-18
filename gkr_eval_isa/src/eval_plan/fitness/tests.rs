@@ -45,6 +45,8 @@ const CORPUS: &[(&str, &str)] = &[
     ("unsigned_mul_div", "unsigned_mul_div_layout_gkr.json"),
 ];
 
+const LANES_PER_CELL: usize = 4;
+
 fn compiled_circuit_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits")
 }
@@ -127,9 +129,18 @@ fn forward_adapter_corpus_parity() {
         });
 
         assert_eq!(
+            layout.layers.len(),
+            dag.layers.len(),
+            "{fixture}: layout layer count"
+        );
+        assert_eq!(
             committed.layout_variant,
             EvaluationLayoutVariant::WithCaches,
             "{fixture}: artifact variant"
+        );
+        assert_eq!(
+            committed.budget_lanes, 16,
+            "{fixture}: committed b16 budget"
         );
         assert_eq!(
             committed.layers.len(),
@@ -158,7 +169,8 @@ fn forward_adapter_corpus_parity() {
                 .collect::<Vec<_>>();
             let fields = expr_fields(layer, &cross);
 
-            for budget_lanes in [2, 3, 4] {
+            for budget_cells in [2, 3, 4] {
+                let budget_lanes = budget_cells * LANES_PER_CELL;
                 let old_context = PlanSearchContext::build_selected_with_units(
                     layer,
                     &fields,
@@ -184,22 +196,22 @@ fn forward_adapter_corpus_parity() {
                 let new_genome = EvaluationGenome::neutral(&new_context);
                 assert_eq!(
                     new_genome, old_genome,
-                    "{fixture} L{layer_index} b{budget_lanes}: neutral genome"
+                    "{fixture} L{layer_index} c{budget_cells}: neutral genome"
                 );
 
                 let old_score = old_context.score(&old_genome).unwrap();
                 let new_score = new_context.score(&new_genome).unwrap();
                 assert_eq!(
                     new_score.root_order, old_score.root_order,
-                    "{fixture} L{layer_index} b{budget_lanes}: root order"
+                    "{fixture} L{layer_index} c{budget_cells}: root order"
                 );
                 assert_eq!(
                     new_score.fitness, old_score.fitness,
-                    "{fixture} L{layer_index} b{budget_lanes}: fitness"
+                    "{fixture} L{layer_index} c{budget_cells}: fitness"
                 );
                 assert_eq!(
                     new_score.placement, old_score.placement,
-                    "{fixture} L{layer_index} b{budget_lanes}: placement"
+                    "{fixture} L{layer_index} c{budget_cells}: placement"
                 );
 
                 match (old_score.plan.as_ref(), new_score.plan.as_ref()) {
@@ -209,7 +221,7 @@ fn forward_adapter_corpus_parity() {
                         let new_packed = pack_plan(new_plan, layer, PackConfig::default()).unwrap();
                         assert_eq!(
                             new_packed, old_packed,
-                            "{fixture} L{layer_index} b{budget_lanes}: packed plan"
+                            "{fixture} L{layer_index} c{budget_cells}: packed plan"
                         );
                         let old_concrete = bind_packed_plan(
                             &old_packed,
@@ -229,64 +241,65 @@ fn forward_adapter_corpus_parity() {
                         .unwrap();
                         assert_eq!(
                             new_concrete.encoded, old_concrete.encoded,
-                            "{fixture} L{layer_index} b{budget_lanes}: encoded program"
+                            "{fixture} L{layer_index} c{budget_cells}: encoded program"
                         );
                     }
-                    _ => panic!("{fixture} L{layer_index} b{budget_lanes}: plan feasibility drift"),
+                    _ => panic!("{fixture} L{layer_index} c{budget_cells}: plan feasibility drift"),
+                }
+                if budget_cells == 4 {
+                    let compiled = compile_layer_with_evaluation_genome(
+                        circuit,
+                        layer,
+                        layout_layer,
+                        &layout.scratch_space_mapping,
+                        &cross,
+                        budget_lanes,
+                        committed_layer,
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!("{fixture} L{layer_index}: committed artifact: {error:?}")
+                    });
+                    assert_eq!(
+                        compiled.fitness, committed_layer.expected_fitness,
+                        "{fixture} L{layer_index}: fitness certificate"
+                    );
+                    assert_eq!(
+                        compiled.concrete.compiled.stats.program_lanes,
+                        committed_layer.expected_fitness.program_instructions,
+                        "{fixture} L{layer_index}: instruction certificate"
+                    );
+                    assert_eq!(
+                        compiled.concrete.stats.encoded_lanes,
+                        committed_layer.expected_fitness.encoded_lanes,
+                        "{fixture} L{layer_index}: encoding certificate"
+                    );
+                    assert_eq!(
+                        compiled.concrete.compiled.stats.dram_traffic,
+                        committed_layer.expected_fitness.dram_read_lanes,
+                        "{fixture} L{layer_index}: traffic certificate"
+                    );
+
+                    let adapter_context = PlanSearchContext::build_for_roots(
+                        layer,
+                        &fields,
+                        layout_layer.layer,
+                        budget_lanes,
+                        &compute_roots,
+                    )
+                    .unwrap();
+                    committed_layer
+                        .validate_against(circuit, &adapter_context, &actions)
+                        .unwrap_or_else(|error| {
+                            panic!("{fixture} L{layer_index}: domain certificates: {error:?}")
+                        });
+                    let artifact_score = adapter_context.score(&committed_layer.genome).unwrap();
+                    assert_eq!(
+                        artifact_score.fitness.arithmetic_ops,
+                        committed_layer.expected_fitness.arithmetic_ops,
+                        "{fixture} L{layer_index}: arithmetic certificate"
+                    );
                 }
             }
-
-            let compiled = compile_layer_with_evaluation_genome(
-                circuit,
-                layer,
-                layout_layer,
-                &layout.scratch_space_mapping,
-                &cross,
-                committed.budget_lanes,
-                committed_layer,
-            )
-            .unwrap_or_else(|error| {
-                panic!("{fixture} L{layer_index}: committed artifact: {error:?}")
-            });
-            assert_eq!(
-                compiled.fitness, committed_layer.expected_fitness,
-                "{fixture} L{layer_index}: fitness certificate"
-            );
-            assert_eq!(
-                compiled.concrete.compiled.stats.program_lanes,
-                committed_layer.expected_fitness.program_instructions,
-                "{fixture} L{layer_index}: instruction certificate"
-            );
-            assert_eq!(
-                compiled.concrete.stats.encoded_lanes,
-                committed_layer.expected_fitness.encoded_lanes,
-                "{fixture} L{layer_index}: encoding certificate"
-            );
-            assert_eq!(
-                compiled.concrete.compiled.stats.dram_traffic,
-                committed_layer.expected_fitness.dram_read_lanes,
-                "{fixture} L{layer_index}: traffic certificate"
-            );
-
-            let adapter_context = PlanSearchContext::build_for_roots(
-                layer,
-                &fields,
-                layout_layer.layer,
-                committed.budget_lanes,
-                &compute_roots,
-            )
-            .unwrap();
-            committed_layer
-                .validate_against(circuit, &adapter_context, &actions)
-                .unwrap_or_else(|error| {
-                    panic!("{fixture} L{layer_index}: domain certificates: {error:?}")
-                });
-            let artifact_score = adapter_context.score(&committed_layer.genome).unwrap();
-            assert_eq!(
-                artifact_score.fitness.arithmetic_ops,
-                committed_layer.expected_fitness.arithmetic_ops,
-                "{fixture} L{layer_index}: arithmetic certificate"
-            );
         }
     }
 }
