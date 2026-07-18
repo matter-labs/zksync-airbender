@@ -1,0 +1,64 @@
+# Workspace nextest configuration.
+#
+# GPU policy: every test in the GPU crates talks to the single local GPU, so
+# they run in one serialized test group (nextest's process-per-test model
+# would otherwise run them concurrently — a serial_test in-process mutex
+# cannot serialize across processes, which is why the GPU crates carry no
+# #[serial] annotations: this group is their only serialization). Cross-
+# PROCESS exclusivity against other workloads is still the job of
+# .agents/bin/with_gpu_lock.sh; this group only serializes tests within one
+# nextest invocation.
+#
+# slow-timeout: a hung kernel previously wedged the whole suite and the GPU
+# lock with it. Under nextest each test is its own process, so a stuck test
+# is terminated after period * terminate-after and the rest of the run
+# proceeds.
+
+[test-groups.gpu-serial]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = 'package(gpu_hash) | package(gpu_core) | package(gpu_ntt) | package(gpu_ops) | package(gpu_cub) | package(gpu_gkr_model) | package(gpu_circuit_prover) | package(gpu_execution_prover) | package(gpu_program_prover)'
+test-group = 'gpu-serial'
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+# Non-GPU crates that use serial_test keep the dep for plain `cargo test`,
+# but its mutex is inert under nextest's processes — so each such package is
+# conservatively serialized within itself here (packages still run in
+# parallel with each other, matching what serial_test provided per test
+# binary). Remove a package's entry only after removing its #[serial] uses.
+
+[test-groups.prover-serial]
+max-threads = 1
+
+[test-groups.cs-serial]
+max-threads = 1
+
+[test-groups.riscv-transpiler-serial]
+max-threads = 1
+
+[test-groups.verifier-generator-serial]
+max-threads = 1
+
+[test-groups.prover-examples-serial]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = 'package(prover)'
+test-group = 'prover-serial'
+
+[[profile.default.overrides]]
+filter = 'package(cs)'
+test-group = 'cs-serial'
+
+[[profile.default.overrides]]
+filter = 'package(riscv_transpiler)'
+test-group = 'riscv-transpiler-serial'
+
+[[profile.default.overrides]]
+filter = 'package(verifier_generator)'
+test-group = 'verifier-generator-serial'
+
+[[profile.default.overrides]]
+filter = 'package(prover_examples)'
+test-group = 'prover-examples-serial'
