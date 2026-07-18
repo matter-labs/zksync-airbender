@@ -24,3 +24,6 @@ pub mod transpose;
 // consumers.
 #[doc(hidden)]
 pub mod batch_inv;
+
+#[cfg(test)]
+gpu_core::force_serial_libtest!();

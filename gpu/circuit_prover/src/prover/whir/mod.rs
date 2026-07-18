@@ -398,7 +398,6 @@ pub(crate) mod tests {
     };
     use prover::utils::extension_field_from_base_coeffs;
     use rand::Rng;
-    use serial_test::serial;
     use worker::Worker;
 
     use super::*;
@@ -840,66 +839,56 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_lde_matches_cpu_small_sweep() {
         recursive_oracle_lde_matches_cpu_impl(&[6, 7, 8], &[2, 4, 8], false, true);
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_lde_matches_cpu_intermediate() {
         recursive_oracle_lde_matches_cpu_impl(&[17], &[32], false, false);
     }
 
     #[test]
-    #[serial]
     #[ignore]
     fn recursive_oracle_lde_matches_cpu_large() {
         recursive_oracle_lde_matches_cpu_impl(&[23], &[32], false, false);
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_lde_with_transform_matches_cpu_small_sweep() {
         recursive_oracle_lde_matches_cpu_impl(&[6, 7, 8, 9], &[2, 4, 8], true, true);
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_lde_with_transform_matches_cpu_intermediate() {
         recursive_oracle_lde_matches_cpu_impl(&[17], &[32], true, false);
     }
 
     #[test]
-    #[serial]
     #[ignore]
     fn recursive_oracle_lde_with_transform_matches_cpu_large() {
         recursive_oracle_lde_matches_cpu_impl(&[23], &[32], true, false);
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_caps_and_queries_match_cpu() {
         let monomial_coeffs = sample_monomial_coeffs(1 << 5);
         assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, false, false);
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_with_transform_caps_and_queries_match_cpu() {
         let monomial_coeffs = sample_monomial_coeffs(1 << 5);
         assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, false, true);
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_large_partial_cache_matches_cpu() {
         let monomial_coeffs = sample_monomial_coeffs(1 << 8);
         assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, true, false);
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_with_transform_large_partial_cache_matches_cpu() {
         let monomial_coeffs = sample_monomial_coeffs(1 << 8);
         assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, true, true);
@@ -1002,13 +991,11 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[serial]
     fn scheduled_recursive_oracle_caps_and_queries_match_cpu() {
         scheduled_recursive_oracle_caps_and_queries_match_cpu_impl(false);
     }
 
     #[test]
-    #[serial]
     fn scheduled_recursive_oracle_with_transform_caps_and_queries_match_cpu() {
         scheduled_recursive_oracle_caps_and_queries_match_cpu_impl(true);
     }
@@ -1050,19 +1037,16 @@ pub(crate) mod tests {
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_cache_mode_branch_selection() {
         recursive_oracle_cache_mode_branch_selection_impl(false);
     }
 
     #[test]
-    #[serial]
     fn recursive_oracle_with_transform_cache_mode_branch_selection() {
         recursive_oracle_cache_mode_branch_selection_impl(true);
     }
 
     #[test]
-    #[serial]
     fn recursive_query_leaf_and_path_helpers_match_combined_queries() {
         let context = make_test_context(256, 32);
         let monomial_coeffs = sample_monomial_coeffs(1 << 8);

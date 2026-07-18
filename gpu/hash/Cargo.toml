@@ -39,7 +39,6 @@ prover = { workspace = true, features = ["prover"] }
 itertools = { workspace = true }
 # The workspace entry is default-features = false; tests need `rand::rng()`.
 rand = { workspace = true, features = ["thread_rng"] }
-serial_test = "3"
 
 [build-dependencies]
 gpu_native_build = { workspace = true }

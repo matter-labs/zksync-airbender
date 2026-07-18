@@ -8,7 +8,6 @@ use crate::prover::gkr::GpuGKRStorage;
 use crate::prover::test_utils::make_test_context;
 
 #[test]
-#[serial_test::serial]
 fn consolidated_views_share_backing_and_offset() {
     let context = make_test_context(64, 1);
 
@@ -72,7 +71,6 @@ fn consolidated_views_share_backing_and_offset() {
 }
 
 #[test]
-#[serial_test::serial]
 fn allocate_base_view_panics_when_address_is_ext_typed() {
     let context = make_test_context(64, 1);
     let base_a = GKRAddress::InnerLayer {

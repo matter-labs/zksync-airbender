@@ -5,7 +5,6 @@ use std::alloc::Global;
 use crate::ops::powers::get_powers_by_val;
 use era_cudart::memory::memory_copy_async;
 
-use serial_test::serial;
 use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
@@ -20,7 +19,6 @@ use crate::upstream::{Blake2sU32MerkleTreeWithCap, ColumnMajorMerkleTreeConstruc
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn base_query_paths_match_cpu_tree() {
     let context = make_test_context(256, 32);
     let worker = Worker::new();
@@ -91,7 +89,6 @@ fn base_query_paths_match_cpu_tree() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn base_query_leaf_and_path_helpers_match_combined_queries() {
     let context = make_test_context(256, 32);
     let columns: Vec<Vec<BF>> = vec![
@@ -170,7 +167,6 @@ fn base_query_leaf_and_path_helpers_match_combined_queries() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_build_eq_values_preserves_large_eval_buffer() {
     let context = make_test_context(2048, 32);
     let trace_len = 1usize << 24;

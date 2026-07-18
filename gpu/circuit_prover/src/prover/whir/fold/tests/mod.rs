@@ -5,7 +5,6 @@ use std::alloc::Global;
 use era_cudart::memory::memory_copy_async;
 use fft::{bitreverse_enumeration_inplace, Twiddles};
 
-use serial_test::serial;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
@@ -102,7 +101,6 @@ fn evaluate_monomial_form_for_test(coeffs: &[E4], point: E4) -> E4 {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_special_three_point_eval_matches_cpu() {
     let context = make_test_context(256, 32);
     let mut state = GpuWhirState::new(8, &context).unwrap();
@@ -124,7 +122,6 @@ fn whir_special_three_point_eval_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_special_three_point_eval_large_matches_cpu() {
     let n = 1 << 16;
     let context = make_test_context(1024, 64);
@@ -147,7 +144,6 @@ fn whir_special_three_point_eval_large_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn scheduled_whir_special_three_point_eval_matches_cpu() {
     let context = make_test_context(256, 32);
     let mut state = GpuWhirState::new(8, &context).unwrap();
@@ -237,7 +233,6 @@ fn make_lde_trace_holder(
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_fold_helpers_match_cpu() {
     let context = make_test_context(256, 32);
     let mut state = GpuWhirState::new(8, &context).unwrap();
@@ -300,7 +295,6 @@ fn whir_fold_helpers_match_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_multi_step_fold_helpers_match_cpu() {
     let context = make_test_context(256, 32);
     let mut state = GpuWhirState::new(16, &context).unwrap();
@@ -375,7 +369,6 @@ fn whir_multi_step_fold_helpers_match_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_large_multi_step_fold_helpers_match_cpu() {
     const LOG_LEN: usize = 18;
     const LEN: usize = 1 << LOG_LEN;
@@ -485,14 +478,12 @@ fn run_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool) {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_evaluate_monomial_matches_cpu_small() {
     run_whir_evaluate_monomial_matches_cpu(8, true);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_evaluate_monomial_matches_cpu_large() {
     run_whir_evaluate_monomial_matches_cpu(8192, false);
 }
@@ -536,14 +527,12 @@ fn run_scheduled_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn scheduled_whir_evaluate_monomial_matches_cpu_small() {
     run_scheduled_whir_evaluate_monomial_matches_cpu(8, true);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn scheduled_whir_evaluate_monomial_matches_cpu_large() {
     run_scheduled_whir_evaluate_monomial_matches_cpu(8192, false);
 }
@@ -701,28 +690,24 @@ fn run_whir_initial_state_matches_cpu(
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_initial_state_matches_cpu_use_coset_0_for_batching_small() {
     run_whir_initial_state_matches_cpu(3, false, false);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_initial_state_matches_cpu_use_coset_0_for_batching_large() {
     run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, false, true);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_small() {
     run_whir_initial_state_matches_cpu(3, true, false);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
     run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true, true);
 }

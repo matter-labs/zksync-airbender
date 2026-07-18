@@ -11,7 +11,6 @@ use crate::upstream::{Field, GKRAddress, GKRInputs, VirtualSetupPoly};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
-use serial_test::serial;
 use std::sync::Arc;
 
 impl<B> GpuBaseFieldPoly<B> {
@@ -173,7 +172,6 @@ fn sample_ext(seed: u32) -> E4 {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn insert_get_try_get_and_purge_match_cpu_semantics() {
     let context = make_test_context(64, 8);
     let mut storage = GpuGKRStorage::<BF, E4>::default();
@@ -253,7 +251,6 @@ fn insert_get_try_get_and_purge_match_cpu_semantics() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn shared_views_support_subviews_and_drop_on_last_reference() {
     let context = make_test_context(64, 8);
     let baseline = context.get_used_mem_current();
@@ -289,7 +286,6 @@ fn shared_views_support_subviews_and_drop_on_last_reference() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn round_builders_allocate_and_reuse_scratch() {
     let context = make_test_context(64, 8);
     let baseline = context.get_used_mem_current();
@@ -556,7 +552,6 @@ fn round_builders_allocate_and_reuse_scratch() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn virtual_setup_sources_lower_to_synthetic_descriptors() {
     let context = make_test_context(64, 8);
     let mut storage = GpuGKRStorage::<BF, E4>::default();

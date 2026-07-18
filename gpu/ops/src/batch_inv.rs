@@ -90,7 +90,6 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::{Field, Rand};
     use rand::rng;
-    use serial_test::serial;
 
     fn assert_equal<T: PartialEq + core::fmt::Debug>((a, b): (T, T)) {
         assert_eq!(a, b);
@@ -124,13 +123,11 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn batch_inv_bf() {
         test_batch_inv::<BF>(false);
     }
 
     #[test]
-    #[serial]
     fn batch_inv_bf_in_place() {
         test_batch_inv::<BF>(true);
     }

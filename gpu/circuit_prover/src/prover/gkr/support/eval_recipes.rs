@@ -222,7 +222,6 @@ mod tests {
     use crate::prover::test_utils::make_test_context;
     use era_cudart::memory::memory_copy_async;
     use field::{Field, FieldExtension};
-    use serial_test::serial;
 
     fn sample_ext(seed: u32) -> E4 {
         E4::from_array_of_base([
@@ -234,7 +233,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn eval_recipes_reads_external_challenges_from_durable_e4_buffer() {
         let context = make_test_context(64, 8);
         let stream = context.get_exec_stream();

@@ -14,7 +14,6 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::{CudaSlice, CudaSliceMut};
 
 use crate::upstream::Field;
-use serial_test::serial;
 
 use super::{
     alloc_and_copy, copy_device_values, eq_values_for_suffix, fold_eq_values_cpu,
@@ -23,7 +22,6 @@ use super::{
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn pairwise_round0_kernel_matches_cpu() {
     let context = make_test_context(64, 8);
     let input_values = (0..8).map(|i| sample_ext(10 + i)).collect::<Vec<_>>();
@@ -130,7 +128,6 @@ fn pairwise_round0_kernel_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn lookup_round0_kernel_matches_cpu() {
     let context = make_test_context(64, 8);
     let input0_values = (0..8).map(|i| sample_ext(10 + i)).collect::<Vec<_>>();
@@ -282,7 +279,6 @@ fn lookup_round0_kernel_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn lookup_continuation_kernel_matches_cpu() {
     let context = make_test_context(64, 8);
     let prev0 = (0..16).map(|i| sample_ext(10 + i)).collect::<Vec<_>>();
@@ -396,7 +392,6 @@ fn lookup_continuation_kernel_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn pairwise_continuation_kernel_matches_cpu() {
     let context = make_test_context(64, 8);
     let prev = (0..16).map(|i| sample_ext(10 + i)).collect::<Vec<_>>();
@@ -471,7 +466,6 @@ fn pairwise_continuation_kernel_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn accumulator_eq_multiply_and_reduce_match_cpu() {
     let context = make_test_context(64, 8);
     let accumulator = vec![
@@ -518,7 +512,6 @@ fn accumulator_eq_multiply_and_reduce_match_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn pairwise_round0_kernel_accumulates_into_existing_buffer() {
     let context = make_test_context(64, 8);
     let input_values = (0..8).map(|i| sample_ext(10 + i)).collect::<Vec<_>>();
@@ -632,7 +625,6 @@ fn pairwise_round0_kernel_accumulates_into_existing_buffer() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn build_eq_values_from_point_matches_cpu() {
     let context = make_test_context(1024, 512);
 
@@ -679,7 +671,6 @@ fn build_eq_values_from_point_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn build_round0_eq_values_from_pairs_matches_cpu() {
     let context = make_test_context(1024, 512);
 
@@ -726,7 +717,6 @@ fn build_round0_eq_values_from_pairs_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn fold_eq_values_in_place_matches_cpu() {
     let context = make_test_context(1024, 512);
     let challenge_count = 23usize;
@@ -850,7 +840,6 @@ fn cpu_factored_eq_matches_eq_values_for_suffix() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn build_eq_factored_matches_cpu() {
     use rand::SeedableRng;
     let context = make_test_context(64, 8);
@@ -918,7 +907,6 @@ fn build_eq_factored_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn inline_eq_matches_cpu_factored() {
     use rand::SeedableRng;
     // Sized to fit the largest case (count = 23): `d_out` is 2^23 * 16 B =
@@ -966,7 +954,6 @@ fn inline_eq_matches_cpu_factored() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn fold_eq_high_group_matches_cpu() {
     use rand::SeedableRng;
     let context = make_test_context(1024, 512);
@@ -1017,7 +1004,6 @@ fn fold_eq_high_group_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn multi_round_fold_matches_cpu() {
     use rand::SeedableRng;
     let context = make_test_context(1024, 512);

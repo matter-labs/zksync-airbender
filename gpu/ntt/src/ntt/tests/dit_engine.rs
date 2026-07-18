@@ -23,7 +23,6 @@ use era_cudart::result::CudaResultWrap;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
 use fft::field_utils::domain_generator_for_size;
-use serial_test::serial;
 
 use super::make_context;
 use crate::ntt_twiddles::OMEGA_LOG_ORDER;
@@ -334,7 +333,6 @@ macro_rules! dit_single_parity_test {
     ($name:ident, $log_n:expr, $log_vpt:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_single_pass_parity($log_n, $log_vpt);
         }
@@ -763,7 +761,6 @@ macro_rules! dit_two_pass_parity_test {
     ($name:ident, $log_n:expr, $log_vpt:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             // single coset
             run_two_pass_parity($log_n, $log_vpt, 1, 1);
@@ -916,7 +913,6 @@ macro_rules! dit_fill_clean_parity_test {
     ($name:ident, $log_m:expr, $log_vpt:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_fill_clean_parity($log_m, $log_vpt);
         }
@@ -927,7 +923,6 @@ macro_rules! dit_fill_coupled_parity_test {
     ($name:ident, $log_n:expr, $log_vpt:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_fill_coupled_parity($log_n, $log_vpt);
         }
@@ -938,7 +933,6 @@ macro_rules! dit_fill_d_table_parity_test {
     ($name:ident, $log_n:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_fill_d_table_parity($log_n);
         }
@@ -990,7 +984,6 @@ dit_fill_d_table_parity_test!(dit_fill_d_table_13_parity, 13);
 // ===========================================================================
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn dit_context_triangle_precompute_parity() {
     use super::super::dit::{CLEAN_CONFIGS, COUPLED_CONFIGS};
     use crate::ntt_twiddles::DeviceContext;
@@ -1213,7 +1206,6 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn dit_launcher_two_pass_parity() {
     // Two-pass path (log_n=9, log_vpt=3 → two_pass since 9 > 3+5=8), multi-coset,
     // multi-column, back-to-back strided output (num_cols_per_coset = num_ntts).
@@ -1222,7 +1214,6 @@ fn dit_launcher_two_pass_parity() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn dit_launcher_single_pass_parity() {
     // Single-pass path (log_n=4, log_vpt=2 → cosets_per_block = 1024/4 = 256).
     // num_cosets=512 → grid = 512/256 = 2; multi-column, strided output.
@@ -1676,7 +1667,6 @@ mod bench_variants {
     // (13,3,K=8): grid = total/8. total=8 → grid=1; total=16 → grid=2.
     #[test]
     #[cfg(not(no_cuda))]
-    #[serial]
     fn two_pass_fixed_13_3_k8_parity() {
         run_two_pass_fixed_parity(13, 3, 8, 8); // grid=1, log_n+log_lde = 13+3 = 16 <= 27
         run_two_pass_fixed_parity(13, 3, 8, 16); // grid=2, log_n+log_lde = 13+4 = 17 <= 27
@@ -1685,7 +1675,6 @@ mod bench_variants {
     // (9,3,K=4): grid = total/4. total=4 → grid=1; total=8 → grid=2.
     #[test]
     #[cfg(not(no_cuda))]
-    #[serial]
     fn two_pass_fixed_9_3_k4_parity() {
         run_two_pass_fixed_parity(9, 3, 4, 4); // grid=1, log_n+log_lde = 9+2 = 11 <= 27
         run_two_pass_fixed_parity(9, 3, 4, 8); // grid=2, log_n+log_lde = 9+3 = 12 <= 27
@@ -1696,7 +1685,6 @@ mod bench_variants {
     //        grid=2,total=64 → cpb=8.
     #[test]
     #[cfg(not(no_cuda))]
-    #[serial]
     fn single_stream_8_3_parity() {
         run_single_stream_parity(8, 3, 1, 32); // grid*spb=4, 32/4=8 cpb; 8+5=13 <= 27
         run_single_stream_parity(8, 3, 2, 64); // grid*spb=8, 64/8=8 cpb; 8+6=14 <= 27
@@ -1707,7 +1695,6 @@ mod bench_variants {
     // (3,3): lanes=1, slots_per_block=128/1=128. grid=1,total=128 → cpb=1.
     #[test]
     #[cfg(not(no_cuda))]
-    #[serial]
     fn single_stream_3_3_parity() {
         run_single_stream_parity(3, 3, 1, 128); // grid*spb=128, 128/128=1 cpb; 3+7=10 <= 27
     }

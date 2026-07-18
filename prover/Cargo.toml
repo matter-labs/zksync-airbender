@@ -37,7 +37,6 @@ rand = { workspace = true, features = ["std", "thread_rng", "std_rng"]}
 bincode = { version = "1.3" }
 criterion = "0.5"
 hex = "*"
-serial_test = "3"
 proptest = "1"
 
 [[bench]]

@@ -166,7 +166,6 @@ impl From<&GKRMemoryLayout> for UnrolledMemoryLayout {
 mod tests {
     use super::*;
     use crate::upstream::GKRAddress;
-    use serial_test::serial;
 
     fn dummy_machine_state() -> cs::definitions::gkr::MachineStatePermutationDescription {
         cs::definitions::gkr::MachineStatePermutationDescription {
@@ -198,7 +197,6 @@ mod tests {
     #[should_panic(
         expected = "GKR memory layout must include machine_state for unrolled memory witness teardown"
     )]
-    #[serial]
     fn missing_machine_state_has_explicit_panic_message() {
         let layout = GKRMemoryLayout {
             ram_access_sets: Vec::new(),
@@ -218,7 +216,6 @@ mod tests {
     #[should_panic(
         expected = "GKR memory layout must include decoder_input for unrolled memory witness teardown"
     )]
-    #[serial]
     fn missing_decoder_input_has_explicit_panic_message() {
         let layout = GKRMemoryLayout {
             ram_access_sets: Vec::new(),

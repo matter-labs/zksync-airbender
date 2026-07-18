@@ -22,7 +22,7 @@ generic GPU workflow from [`../../../.agents/gpu_work.md`](../../../.agents/gpu_
 ## Profiling Test
 
 - Exact libtest name: `prover::tests::proof_matrix::run_add_sub_profile_test`
-- The profile tests (e.g. `run_add_sub_profile_test`) are `#[serial]` + `#[ignore]`; you MUST pass `--ignored` to run them.
+- The profile tests (e.g. `run_add_sub_profile_test`) are `#[ignore]`d; you MUST pass `--ignored` to run them. (The binary self-serializes via the pre-main `gpu_core::force_serial_libtest!()` guard — no `#[serial]` annotations exist anymore — and profiling runs a single test via `--exact` anyway.)
 - When using `--exact`, do not pass a suffix such as `run_add_sub_profile_test` or `tests::run_add_sub_profile_test`. Use the full libtest name above.
 - The current registered NVTX capture range in [`../src/prover/tests/proof_matrix.rs`](../src/prover/tests/proof_matrix.rs) (`run_profile`) uses:
   - domain `gpu_circuit_prover.tests`
@@ -38,7 +38,7 @@ Build unlocked and capture the test binary path for profiler wrappers:
 
 ```bash
 TEST_BINARY="$(
-  cargo test -p circuit_prover run_add_sub_profile_test --release --no-run --message-format=json \
+  cargo test -p gpu_circuit_prover run_add_sub_profile_test --release --no-run --message-format=json \
     | python3 .agents/bin/cargo_test_executables.py
 )"
 ```
@@ -46,7 +46,7 @@ TEST_BINARY="$(
 If you want the helper to validate the full test name and print the locked direct-run command, use:
 
 ```bash
-cargo test -p circuit_prover run_add_sub_profile_test --release --no-run --message-format=json \
+cargo test -p gpu_circuit_prover run_add_sub_profile_test --release --no-run --message-format=json \
   | python3 .agents/bin/cargo_test_executables.py \
       --print-run-command \
       --test-name prover::tests::proof_matrix::run_add_sub_profile_test

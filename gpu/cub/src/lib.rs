@@ -12,3 +12,6 @@
 mod upstream;
 
 pub mod cub;
+
+#[cfg(test)]
+gpu_core::force_serial_libtest!();

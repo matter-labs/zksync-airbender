@@ -15,3 +15,6 @@
 mod upstream;
 
 pub mod blake2s;
+
+#[cfg(test)]
+gpu_core::force_serial_libtest!();

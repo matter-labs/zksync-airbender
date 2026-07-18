@@ -2,7 +2,6 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::{BF, E4};
 use rand::Rng;
-use serial_test::serial;
 #[cfg(feature = "deterministic_pow")]
 use worker::Worker;
 
@@ -14,7 +13,6 @@ use crate::upstream::{
 };
 
 #[test]
-#[serial]
 fn pow() {
     const BITS_COUNT: u32 = 24;
     let h_seed = [42u32; STATE_SIZE];
@@ -42,7 +40,6 @@ fn pow() {
 // first-found nonces and the comparison is meaningless.
 #[cfg(feature = "deterministic_pow")]
 #[test]
-#[serial]
 fn pow_deterministic_matches_cpu_baseline() {
     let seeds = [
         Seed([0, 1, 2, 3, 4, 5, 6, 7]),
@@ -104,7 +101,6 @@ fn host_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
 }
 
 #[test]
-#[serial]
 fn transcript_commit_parity_two_blocks() {
     // 8 + 12 = 20 words — two blocks (16 + 4). The load-bearing backward
     // sumcheck case: commit_field_els with 3 E4 elements. Kept as an explicit
@@ -115,7 +111,6 @@ fn transcript_commit_parity_two_blocks() {
 }
 
 #[test]
-#[serial]
 fn transcript_commit_parity_randomized() {
     let mut rng = rand::rng();
     let stream = CudaStream::default();
@@ -170,7 +165,6 @@ fn device_commit_initial_chunked(chunks: &[Vec<u32>]) -> [u32; STATE_SIZE] {
 }
 
 #[test]
-#[serial]
 fn transcript_commit_initial_chunked_parity_block_aligned_split() {
     // Two chunks split exactly on a 16-word block boundary — the one edge the
     // randomized sweep below almost never hits. Other chunk counts and
@@ -185,7 +179,6 @@ fn transcript_commit_initial_chunked_parity_block_aligned_split() {
 }
 
 #[test]
-#[serial]
 fn transcript_commit_initial_chunked_parity_randomized() {
     let mut rng = rand::rng();
     for total_len in [1usize, 4, 8, 16, 17, 20, 32, 48, 64, 100, 128, 256, 512] {
@@ -218,7 +211,6 @@ fn transcript_commit_initial_chunked_parity_randomized() {
 }
 
 #[test]
-#[serial]
 fn gather_tree_caps_inline_parity() {
     let stream = CudaStream::default();
     // Consolidated form: one contiguous backing of length `coset_count * stride`;
@@ -269,7 +261,6 @@ fn gather_tree_caps_inline_parity() {
 }
 
 #[test]
-#[serial]
 fn gather_tree_caps_inline_stride_greater_than_cap_words() {
     let stream = CudaStream::default();
     // Production case: the cap region sits at the tail of each per-coset
@@ -323,7 +314,6 @@ fn gather_tree_caps_inline_stride_greater_than_cap_words() {
 }
 
 #[test]
-#[serial]
 fn gather_e_addresses_parity() {
     let stream = CudaStream::default();
     // Each address holds `elements_per_addr` E4 values; the kernel copies
@@ -385,7 +375,6 @@ fn host_squeeze(seed: &[u32; STATE_SIZE], output_len: usize) -> (Vec<u32>, [u32;
 }
 
 #[test]
-#[serial]
 fn transcript_squeeze_parity_one_round() {
     // 8 words = 1 round, seed unchanged, output = seed.
     let seed = [10, 20, 30, 40, 50, 60, 70, 80];
@@ -398,7 +387,6 @@ fn transcript_squeeze_parity_one_round() {
 }
 
 #[test]
-#[serial]
 fn transcript_squeeze_parity_two_rounds() {
     // 16 words = 2 rounds. Second round hashes the seed.
     let seed = [0xff; STATE_SIZE];
@@ -409,7 +397,6 @@ fn transcript_squeeze_parity_two_rounds() {
 }
 
 #[test]
-#[serial]
 fn transcript_squeeze_parity_many_rounds() {
     // 40 words = 5 rounds.
     let seed = [0x42; STATE_SIZE];
@@ -420,7 +407,6 @@ fn transcript_squeeze_parity_many_rounds() {
 }
 
 #[test]
-#[serial]
 fn transcript_commit_then_squeeze_parity() {
     // Simulates the backward sumcheck pattern: commit 3 E4 coefficients (12
     // words), then draw 1 E4 challenge (4 words, padded to 8 = 1 round).
@@ -475,7 +461,6 @@ fn host_draw_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; STATE
 }
 
 #[test]
-#[serial]
 fn transcript_squeeze_e4_parity_three() {
     // 3 E4 = 12 u32 words, padded to 16 = 2 rounds. The load-bearing case: the
     // initial lookup challenge draw in prove() draws 3 E4 challenges off the
@@ -488,7 +473,6 @@ fn transcript_squeeze_e4_parity_three() {
 }
 
 #[test]
-#[serial]
 fn transcript_squeeze_e4_parity_randomized() {
     let mut rng = rand::rng();
     for count in [1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17] {
