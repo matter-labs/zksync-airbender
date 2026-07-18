@@ -21,14 +21,15 @@ use common_constants::delegation_types::{
 
 const BIGINT_DOMAIN_SIZE_LOG2: usize =
     <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2 as usize;
-const BLAKE_DOMAIN_SIZE_LOG2: usize = <Blake2sWithCompressionDelegationCircuit as
-    DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2 as usize;
+const BLAKE_DOMAIN_SIZE_LOG2: usize =
+    <Blake2sWithCompressionDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2
+        as usize;
 const BLAKE_G_FUNCTION_DOMAIN_SIZE_LOG2: usize =
     <Blake2sGFunctionDelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2
         as usize;
-const KECCAK_DOMAIN_SIZE_LOG2: usize =
-    <KeccakSpecial5DelegationCircuit as DelegationCircuit<BabyBearField>>::DOMAIN_SIZE_LOG2
-        as usize;
+const KECCAK_DOMAIN_SIZE_LOG2: usize = <KeccakSpecial5DelegationCircuit as DelegationCircuit<
+    BabyBearField,
+>>::DOMAIN_SIZE_LOG2 as usize;
 
 const ADD_SUB_DOMAIN_SIZE_LOG2: usize =
     <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2
