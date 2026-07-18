@@ -120,7 +120,7 @@ EXTERN __global__ void ab_gather_merkle_paths_from_rows_kernel(const unsigned *i
 // Consolidated-tree form: a single base pointer + per-coset stride lets the
 // kernel gather all per-coset cap regions from one contiguous tree backing.
 // The kernel folds the natural→bit-reversed coset reindex inline so the
-// unified-cap destination layout matches the legacy stage1 ordering.
+// unified-cap destination is in bit-reversed coset order.
 struct gpu_gather_tree_caps_desc {
   u32 coset_count;
   u32 cap_words_per_coset;
@@ -133,19 +133,19 @@ static_assert(sizeof(gpu_gather_tree_caps_desc) == 24, "must mirror GpuGatherTre
 
 // Each block gathers one coset's cap region from a single contiguous backing:
 //   src[natural_idx] = base + natural_idx * stride
-//   dst[stage1_pos] = bitreverse(natural_idx, log_lde_factor) * cap_words
-// The bit-reversal preserves the legacy stage1 coset ordering used by the
-// per-coset readers (e.g. read_per_coset_caps_synchronously).
+//   dst[bitrev_pos] = bitreverse(natural_idx, log_lde_factor) * cap_words
+// The bit-reversal yields the cap order the prover-side per-coset readers
+// expect.
 EXTERN __global__ void ab_gather_tree_caps_inline_kernel(__grid_constant__ const gpu_gather_tree_caps_desc desc, u32 *dst) {
   const unsigned natural_idx = blockIdx.x;
   if (natural_idx >= desc.coset_count)
     return;
-  unsigned stage1_pos = 0;
+  unsigned bitrev_pos = 0;
   for (unsigned b = 0; b < desc.log_lde_factor; ++b) {
-    stage1_pos |= ((natural_idx >> b) & 1u) << (desc.log_lde_factor - 1u - b);
+    bitrev_pos |= ((natural_idx >> b) & 1u) << (desc.log_lde_factor - 1u - b);
   }
   const u32 *src = reinterpret_cast<const u32 *>(desc.base_ptr) + natural_idx * desc.stride_per_coset_in_u32_words;
-  u32 *coset_dst = dst + stage1_pos * desc.cap_words_per_coset;
+  u32 *coset_dst = dst + bitrev_pos * desc.cap_words_per_coset;
   for (unsigned i = threadIdx.x; i < desc.cap_words_per_coset; i += blockDim.x) {
     coset_dst[i] = src[i];
   }
@@ -171,8 +171,8 @@ static_assert(sizeof(gpu_gather_e_addresses_desc) <= 32u * 1024u, "gpu_gather_e_
 // is a u64 carrying the device pointer to address i's `elements_per_addr`
 // E4 values. dst[i*elements_per_addr .. (i+1)*elements_per_addr] receives
 // that address's data. Internally copies `elements_per_addr * 4` u32 words
-// per address (each E4 is 16 bytes / 4 u32 words). Replaces the per-address
-// `memory_copy_async` loop in the backward schedulers with a single launch.
+// per address (each E4 is 16 bytes / 4 u32 words). One launch replaces a
+// per-address copy loop.
 EXTERN __global__ void ab_gather_e_addresses_kernel(__grid_constant__ const gpu_gather_e_addresses_desc desc, u32 *dst) {
   const unsigned addr_idx = blockIdx.x;
   if (addr_idx >= desc.num_addresses)
@@ -261,8 +261,8 @@ EXTERN __global__ void ab_gather_leaves_for_queries_kernel(const u32 num_oracles
 
 // Sibling of `ab_gather_leaves_for_queries_kernel` for the WHIR oracle's
 // natural-multi-coset NTT cosets backing. The existing kernel reads `cosets[q
-// & lde_mask * stride + col * domain_size + src_row]`; with WHIR's old
-// TraceHolder shape (log_lde_factor = 0, log_rows_per_leaf = 0) this
+// & lde_mask * stride + col * domain_size + src_row]`; with WHIR's
+// single-packed-coset shape (log_lde_factor = 0, log_rows_per_leaf = 0) this
 // collapsed to `cosets[col * total_leaf_count + q]` against the packed
 // cosets backing. The new kernel reverses pack's full transform — coset
 // bit-reverse, within-leaf value-slot bit-reverse, column reshape — so it
@@ -305,10 +305,9 @@ EXTERN __global__ void ab_gather_leaves_for_queries_from_ntt_kernel(const bf *nt
 // consolidated tree backing, resolving the per-coset segment via
 // `coset = q & lde_mask`. The consolidated backing stores cosets in NATURAL
 // order (coset c occupies
-// `[c * stride_per_coset_in_digests, (c+1) * stride_per_coset_in_digests)`),
-// matching `CosetsHolder::Full`/`TreesHolder::Full` indexing in
-// `prover/trace/holder/mod.rs`. `stride_per_coset_in_digests` is the per-coset
-// tree size in `Digest` items (= `2 * leaves_count` for Full mode); the kernel
+// `[c * stride_per_coset_in_digests, (c+1) * stride_per_coset_in_digests)`).
+// `stride_per_coset_in_digests` is the per-coset full-tree size in `Digest`
+// items (= `2 * leaves_count`); the kernel
 // multiplies by `STATE_SIZE` internally to index into the `u32` view of the
 // backing. `log_leaves_count` is per-coset, not whole tree.
 //   slab[q * layers_count * STATE_SIZE + layer * STATE_SIZE + word]
@@ -344,8 +343,8 @@ EXTERN __global__ void ab_gather_merkle_paths_full_for_queries_kernel(const u32 
 // Per-oracle consolidated partial-tree backing: coset `c` lives at
 //   base_digests + c * stride_per_coset_in_digests digests
 // (multiplied by STATE_SIZE for the u32 view). `stride_per_coset_in_digests`
-// matches `1 << (log_total_leaves_count + 1 - LOG_WARP_SIZE)` (= per-coset
-// partial-tree length in digests for `TreesHolder::Partial`).
+// matches `1 << (log_total_leaves_count + 1 - LOG_WARP_SIZE)` (= the full
+// per-coset partial-tree slab length in digests).
 //
 // Thread mapping: gridDim.x = indexes_count, blockDim.x = WARP_SIZE. The oracle
 // dimension uses gridDim.y. Oracles with columns_count == 0 are skipped.
@@ -420,7 +419,7 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u
 // `ab_gather_leaves_for_queries_from_ntt_kernel`; the upper layers come from
 // the partial-tree backing as in the packed-layout sibling.
 //
-// Single oracle, single TraceHolder coset (WHIR oracle uses TraceHolder
+// Single oracle, single packed coset (the WHIR oracle tree has
 // `log_lde_factor = 0`, `log_rows_per_leaf = 0`). Grid: gridDim.x =
 // indexes_count, blockDim.x = WARP_SIZE.
 EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kernel(const bf *ntt_output, const u32 *partial_tree, u32 *slab_dst,
@@ -434,7 +433,7 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kerne
     return;
 
   const unsigned q = query_indexes[idx];
-  // TraceHolder log_lde_factor == 0 ⇒ query_index == q.
+  // The WHIR oracle tree has log_lde_factor == 0 ⇒ query_index == q.
   const unsigned query_index = q;
 
   const unsigned index_lane = (query_index & ~WARP_MASK) | lane_idx;

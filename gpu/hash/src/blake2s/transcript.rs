@@ -185,7 +185,7 @@ pub fn transcript_squeeze_e4(
 /// challenges — the `from_raw_repr_with_reduction` half of `draw_random_field_els*`,
 /// WITHOUT touching a seed. `raw` must hold at least `count * 4` words; PoW-gated
 /// draws pass a slice starting at word 1 to honor the skip-first-word convention of
-/// `draw_random_field_els_with_pow`. Pair it with a preceding `transcript_squeeze`
+/// the host `draw_random_field_els_with_pow`. Pair it with a preceding `transcript_squeeze`
 /// (which advances the seed over the padded raw words) to implement the pow-aware
 /// challenge draw.
 pub fn reduce_raw_words_to_e4(

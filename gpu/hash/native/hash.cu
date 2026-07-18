@@ -101,8 +101,8 @@ EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u3
 // coset_in_tile), column-major within coset. Address:
 // `ntt_output[src_row + src_col * trace_len]`.
 //
-// `results` is the flat tree backing for the WHIR oracle (TraceHolder
-// `log_lde_factor = 0`); digest at flat-tree leaf `idx` lives at
+// `results` is the flat tree backing for the WHIR oracle (a single packed
+// coset, `log_lde_factor = 0`); digest at flat-tree leaf `idx` lives at
 // `results[idx * STATE_SIZE]`.
 //
 // Output position derivation: pack writes the natural-coset `coset_in_tile`'s

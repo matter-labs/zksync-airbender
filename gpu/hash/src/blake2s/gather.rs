@@ -1,7 +1,7 @@
 //! Query-time gathering: leaf values, Merkle paths, and tree caps.
 //!
 //! The `*_for_queries` slab-write variants feed the proof slab's per-query
-//! layout that `parse_whir_proof` consumes:
+//! layout that `gpu_circuit_prover`'s proof parsing consumes:
 //! - `query_indices` (`u32`): tree-space index per query.
 //! - `query_leaves` (`BF`): row-major per query, `[v0c0, v0c1, ..., v(V-1)c(C-1)]`.
 //! - `query_paths` (`u32`): query-major, `[layer0_d, layer1_d, ..., layer(L-1)_d]`
@@ -93,7 +93,7 @@ cuda_kernel!(
 ///
 /// `descs[i]` for `i >= num_oracles` (and any active slot with
 /// `columns_count == 0`) is skipped. `log_domain_size` is shared across all
-/// active oracles (asserted upstream — see WHIR fold schedule). `cosets_ptr`
+/// active oracles (the caller asserts this). `cosets_ptr`
 /// and `slab_dst_ptr` must stay valid until the launched kernel completes on
 /// `stream` (stream-ordered reclamation — freeing after this launch is
 /// scheduled on the same stream — satisfies this); this wrapper does not
@@ -256,11 +256,10 @@ cuda_kernel!(
 ///
 /// The consolidated tree backing stores cosets in NATURAL order: coset `c`
 /// occupies `consolidated_tree[c * stride_per_coset_in_digests ..
-/// (c + 1) * stride_per_coset_in_digests]`. For Full mode,
-/// `stride_per_coset_in_digests = 2 * leaves_count` (= `1 << (log_leaves_count
-/// + 1)`), matching `TreesHolder::Full` indexing in
-/// `prover/trace/holder/mod.rs`. `log_leaves_count` is per-coset (NOT whole
-/// tree); the wrapper derives it from `stride_per_coset_in_digests`.
+/// (c + 1) * stride_per_coset_in_digests]`, where each per-coset slab is a
+/// full tree: `stride_per_coset_in_digests = 2 * leaves_count`
+/// (= `1 << (log_leaves_count + 1)`). `log_leaves_count` is per-coset (NOT
+/// whole tree); the wrapper derives it from `stride_per_coset_in_digests`.
 pub fn gather_merkle_paths_full_for_queries(
     query_indexes: &DeviceSlice<u32>,
     log_lde_factor: u32,
@@ -400,8 +399,8 @@ cuda_kernel!(
 ///
 /// `descs[i]` for `i >= num_oracles` (and any active slot with
 /// `columns_count == 0`) is skipped. `log_rows_per_leaf` and
-/// `log_total_leaves_count` are shared across all active oracles (asserted
-/// upstream — see WHIR fold schedule). The `cosets_ptr`, `partial_tree_ptr`,
+/// `log_total_leaves_count` are shared across all active oracles (the caller
+/// asserts this). The `cosets_ptr`, `partial_tree_ptr`,
 /// and `slab_dst_ptr` fields must stay valid until the launched kernel
 /// completes on `stream` (stream-ordered reclamation satisfies this); this
 /// wrapper does not retain references.
@@ -426,7 +425,8 @@ pub fn gather_merkle_paths_partial_for_queries(
     // per-coset root and read outside the partial tree.
     assert!(layers_count <= log_total_leaves_count);
     let indexes_count = checked_u32(query_indexes.len());
-    // Per-coset partial-tree length in digests for `TreesHolder::Partial`.
+    // Per-coset partial-tree slab length in digests: the full pyramid above
+    // the LOG_WARP_SIZE warp-hashed bottom layers.
     let stride_per_coset_in_digests = 1u32 << (log_total_leaves_count + 1 - LOG_WARP_SIZE);
     for (i, desc) in descs.iter().enumerate() {
         if i >= num_oracles as usize {
@@ -481,8 +481,8 @@ cuda_kernel!(
 /// multi-coset NTT cosets backing. The packed-layout sibling
 /// (`gather_merkle_paths_partial_for_queries`) is parameterized to support
 /// three GKR oracles and reads its cosets backing with packed-leaf addressing;
-/// this variant hard-codes single-oracle + single-TraceHolder-coset (WHIR
-/// oracle's `log_lde_factor = 0`, `log_rows_per_leaf = 0`) and reads via the
+/// this variant hard-codes single-oracle + single-packed-coset (the WHIR
+/// oracle's tree has `log_lde_factor = 0`, `log_rows_per_leaf = 0`) and reads via the
 /// pack-inverse used by `gather_leaves_for_queries_from_ntt`.
 pub fn gather_merkle_paths_partial_for_queries_from_ntt(
     ntt_output: &DeviceSlice<BF>,
@@ -519,7 +519,7 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
     assert!(natural_log_lde_factor + log_src_cols_per_coset < 32);
     let required_ntt_bf = (trace_len as usize) << (natural_log_lde_factor + log_src_cols_per_coset);
     assert!(ntt_output.len() >= required_ntt_bf);
-    // Full partial-tree pyramid (`TreesHolder::Partial` slab), in u32 words.
+    // Full partial-tree pyramid slab, in u32 words.
     let required_partial_tree =
         (1usize << (log_total_leaves_count + 1 - LOG_WARP_SIZE)) * STATE_SIZE;
     assert!(partial_tree.len() >= required_partial_tree);
@@ -552,9 +552,8 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
 /// Kernel-arg descriptor for `gather_tree_caps_inline`. Consolidated form:
 /// a single base pointer plus per-coset stride lets the kernel gather every
 /// per-coset cap region from one contiguous tree backing. The kernel folds
-/// the natural→bit-reversed coset reindex (`stage1_pos = bitreverse(
-/// natural_idx, log_lde_factor)`) so the destination layout matches the
-/// legacy stage1 ordering.
+/// the natural→bit-reversed coset reindex so the destination is in
+/// bit-reversed coset order — the cap order downstream readers expect.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 struct GpuGatherTreeCapsDesc {
@@ -637,11 +636,10 @@ cuda_kernel!(
 /// `dst[0..coset_count * cap_words_per_coset]`. Per-coset source segments
 /// are at stride `stride_per_coset_in_u32_words`. The kernel writes coset
 /// `natural_idx` to `dst[bitreverse(natural_idx, log_lde_factor) * cap_words..]`
-/// so the destination layout matches the legacy stage1 ordering used by
-/// `read_per_coset_caps_synchronously`.
+/// — the bit-reversed cap order downstream readers expect.
 ///
 /// The descriptor rides as kernel-arg data (`__grid_constant__`), so callers
-/// (e.g. `TraceHolder::commit_all`) avoid an H2D for the source pointer table.
+/// avoid an H2D for the source pointer table.
 /// `base_ptr` must stay valid until the launched kernel completes on `stream`
 /// (stream-ordered reclamation satisfies this).
 pub fn gather_tree_caps_inline(

@@ -254,14 +254,14 @@ fn gather_tree_caps_inline_parity() {
         memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
         stream.synchronize().unwrap();
         for natural_idx in 0..coset_count {
-            let stage1_pos = bitreverse_index(natural_idx, log_lde_factor);
+            let bitrev_pos = bitreverse_index(natural_idx, log_lde_factor);
             let actual =
-                &h_dst[stage1_pos * cap_words_per_coset..(stage1_pos + 1) * cap_words_per_coset];
+                &h_dst[bitrev_pos * cap_words_per_coset..(bitrev_pos + 1) * cap_words_per_coset];
             let expected =
                 &h_source[natural_idx * stride..natural_idx * stride + cap_words_per_coset];
             assert_eq!(
                 actual, expected,
-                "gather mismatch for natural_idx {natural_idx} -> stage1_pos {stage1_pos} \
+                "gather mismatch for natural_idx {natural_idx} -> bitrev_pos {bitrev_pos} \
                  (cap_words={cap_words_per_coset}, count={coset_count})"
             );
         }
@@ -310,14 +310,14 @@ fn gather_tree_caps_inline_stride_greater_than_cap_words() {
     memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
     stream.synchronize().unwrap();
     for natural_idx in 0..coset_count {
-        let stage1_pos = bitreverse_index(natural_idx, log_lde_factor);
+        let bitrev_pos = bitreverse_index(natural_idx, log_lde_factor);
         let actual =
-            &h_dst[stage1_pos * cap_words_per_coset..(stage1_pos + 1) * cap_words_per_coset];
+            &h_dst[bitrev_pos * cap_words_per_coset..(bitrev_pos + 1) * cap_words_per_coset];
         let tail = (natural_idx + 1) * stride - cap_words_per_coset;
         let expected = &h_source[tail..tail + cap_words_per_coset];
         assert_eq!(
             actual, expected,
-            "stride-aware gather mismatch for natural_idx {natural_idx} -> stage1_pos {stage1_pos}"
+            "stride-aware gather mismatch for natural_idx {natural_idx} -> bitrev_pos {bitrev_pos}"
         );
     }
 }
