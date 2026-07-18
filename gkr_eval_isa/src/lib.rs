@@ -3,5 +3,6 @@
 //! optimizer (`schedule_search`) that drives its cache/residency decisions.
 
 pub mod bwd;
+pub mod eval_plan;
 pub mod fwd;
 pub mod schedule_search;

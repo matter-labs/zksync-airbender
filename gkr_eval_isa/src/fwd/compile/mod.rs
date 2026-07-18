@@ -131,7 +131,7 @@ fn sink_to_backing(sink: &SinkInfo, this_layer: usize) -> (BackingKey, usize) {
 /// `fallback` covers a map miss (defensive; a valid circuit's map contains
 /// every cross-layer-read place) and must match what the caller labels the
 /// instruction with, so slot keying and instruction field bits agree.
-fn read_place_operand_field(
+pub(crate) fn read_place_operand_field(
     place: &ReadPlace,
     cross: &HashMap<ReadPlace, FieldKind>,
     fallback: OperandField,
@@ -159,7 +159,7 @@ fn read_place_operand_field(
 /// producer root already materialized `src_addr`'s value into this backing, so reading it
 /// as a `Global` operand is value-identical to (and the structural equivalent of) the
 /// pre-shared-`ExprId` `Read{src_addr}` source the alias used to carry.
-fn copy_src_read_place(addr: GKRAddress) -> Option<ReadPlace> {
+pub(crate) fn copy_src_read_place(addr: GKRAddress) -> Option<ReadPlace> {
     match addr {
         GKRAddress::BaseLayerWitness(column) => Some(ReadPlace::BaseLayerWitness { column }),
         GKRAddress::BaseLayerMemory(column) => Some(ReadPlace::BaseLayerMemory { column }),
