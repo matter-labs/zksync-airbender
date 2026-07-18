@@ -464,7 +464,7 @@ where
         let mut d_values =
             context.alloc::<E>(extras_plan.sources.len(), AllocationPlacement::BestFit)?;
         let d_values_e4 = unsafe { d_values.transmute_mut::<E4>() };
-        crate::ops::blake2s::gather_e_addresses(&src_ptrs, d_values_e4, 1, stream)?;
+        crate::ops::blake2s::gather_e_addresses(&src_ptrs, d_values_e4, stream)?;
         let d_values_u32 = unsafe { d_values.transmute::<u32>() };
         crate::ops::blake2s::transcript_commit(final_device_seed, d_values_u32, stream)?;
         extras_values_device = Some(d_values);

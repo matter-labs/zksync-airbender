@@ -4,7 +4,7 @@
 //! Built on `gpu_core` (allocator + primitives + base CUDA headers). Owns its
 //! own device-linked CUDA archive (`native/`). `bit_reverse` is generic over
 //! element *size*, so it carries no hashing/digest vocabulary; the blake2s
-//! digest (`DG`) instantiation lives in `gpu_hash`, binding the 32-byte kernel
+//! digest (`Digest = [u32; 8]`) instantiation lives in `gpu_hash`, binding the 32-byte kernel
 //! defined here via cross-crate link propagation.
 
 #![allow(incomplete_features)]

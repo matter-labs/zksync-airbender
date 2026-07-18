@@ -1150,7 +1150,7 @@ where
                     last_evals_len,
                 )
             };
-            crate::ops::blake2s::gather_e_addresses(&src_ptrs, dst, 2, stream)?;
+            crate::ops::blake2s::gather_e_addresses(&src_ptrs, dst, stream)?;
         }
 
         // Slab destination for the degree-1 `final_step_evaluations` (BTreeMap

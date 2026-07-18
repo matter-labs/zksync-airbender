@@ -57,7 +57,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     // pow_bits == 0 the nonce is 0 (the host `search_pow` also returns 0), but
     // the seed is STILL advanced by the commit below.
     if pow_bits > 0 {
-        blake2s_pow(device_seed, pow_bits, u64::MAX, nonce_slab_dst, stream)?;
+        blake2s_pow(device_seed, pow_bits, nonce_slab_dst, stream)?;
     } else {
         // SAFETY: `memory_set_async` is byte-granular; zeroing the 8-byte
         // `u64` slab slot through a `u8` view writes the canonical all-zero
@@ -121,9 +121,9 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
 ///
 /// 1. (`pow_bits > 0`) `blake2s_pow` searches a nonce against `device_seed`, written
 ///    into `nonce_slab_dst`; otherwise the slot is set to the canonical `nonce = 0`.
-/// 2. (`pow_bits > 0`) `transcript_commit(device_seed, [nonce_lo, nonce_hi])` advances
-///    the seed to the post-`verify_pow` state. At `pow_bits == 0` the host `verify_pow`
-///    is a no-op, so the seed is NOT advanced — matching `search_pow` at 0 bits.
+/// 2. `transcript_commit(device_seed, [nonce_lo, nonce_hi])` advances the seed to the
+///    post-`verify_pow` state — ALWAYS, including at `pow_bits == 0`: the host
+///    `verify_pow` hashes `seed || nonce` and updates the seed for every bit count.
 /// 3. `transcript_squeeze` draws `(count*4 + 1)` raw words padded to `STATE_SIZE`
 ///    (the `+1` is the PoW header word), advancing the seed; `reduce_raw_words_to_e4`
 ///    then skips that header word (`&raw[1..]`) and reduces the rest into the `count`
@@ -147,7 +147,7 @@ pub(crate) fn schedule_draw_e4_challenges_with_pow(
     // PoW search (GPU) → nonce into the slab slot. For pow_bits == 0 we emulate
     // nonce = 0 (the host `search_pow` also returns nonce 0 there).
     if pow_bits > 0 {
-        blake2s_pow(device_seed, pow_bits, u64::MAX, nonce_slab_dst, stream)?;
+        blake2s_pow(device_seed, pow_bits, nonce_slab_dst, stream)?;
     } else {
         // SAFETY: `memory_set_async` is byte-granular; zeroing the 8-byte `u64`
         // slab slot through a `u8` view writes the canonical all-zero nonce = 0.

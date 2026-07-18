@@ -51,22 +51,25 @@ helper, a build-dependency only).
   helpers consumed by `circuit_prover`'s tests (`batch_inv`, `set_by_ref`,
   `get_powers_by_val`) are `#[doc(hidden)] pub`, not `#[cfg(test)]` — a
   dependency's `cfg(test)` items are invisible to consumers.
-- **`gpu_hash`** = blake2s hashing + Merkle (`blake2s/mod.rs`) + `gather` +
-  `transcript` (Fiat-Shamir commit/squeeze/PoW), with its own `gpu_hash_native`
+- **`gpu_hash`** = blake2s hashing (`blake2s/hash.rs`) + Merkle
+  (`blake2s/merkle.rs`) + `gather` + `transcript` (Fiat-Shamir
+  commit/squeeze/PoW), re-exported flat as `blake2s::*`, with its own `gpu_hash_native`
   (`native/hash.cu`, `gather.cu`). It **exports `hash.cuh`'s include dir** via
   `links = "gpu_hash_native"` → `circuit_prover` reads `DEP_GPU_HASH_NATIVE_INCLUDE`
   so the blake2s-dependent kernels that stayed there (`gkr_ops.cu`, `leaves.cu`)
-  resolve `#include "hash.cuh"`. Deps: `gpu_core` + `gpu_ops`. The GKR/WHIR
+  resolve `#include "hash.cuh"`. Dep: `gpu_core` (`gpu_ops` is dev-only test
+  setup). The GKR/WHIR
   **protocol** kernels live in **`ops::gkr_ops`** (in `circuit_prover`), not
   `ops/blake2s/`. PoW determinism is feature-propagated:
   `gpu_hash` has a `deterministic_pow` feature → `AB_DETERMINISTIC_POW` in its
   CMake, enabled by `circuit_prover/deterministic_pow` (without it the moved
   `ab_blake2s_pow_kernel` runs a non-deterministic search → silent proof-parity
   divergence that passes compile + breadth). Test helpers consumed by
-  `circuit_prover`'s tests (`gather_leaf_rows`, `gather_merkle_paths_*`) are
+  `circuit_prover`'s tests (`gather_leaf_rows`, `gather_merkle_paths_*`,
+  `build_merkle_tree`, `hash_leaves_multi_coset`) are
   `#[doc(hidden)] pub`. The transcript parity test verifies against the host
   `prover::transcript::Blake2sTranscript`, so `prover` is a **dev-only** dep of
-  `gpu_hash` (production + downstream stay `gpu_core`/`gpu_ops`-only).
+  `gpu_hash` (production stays `gpu_core`-only).
 - **`gpu_cub`** = the CUB-library wrappers (`device_reduce`/segmented,
   `device_radix_sort`, `device_run_length_encode` + `CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2`)
   with its own `gpu_cub_native` (`native/`: the 4 `.cu` + cub-local `common.cuh`,

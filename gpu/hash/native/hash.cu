@@ -2,6 +2,43 @@
 
 namespace airbender::hash {
 
+// Hash one 64-byte block (2 adjacent digests) into a single output digest.
+DEVICE_FORCEINLINE void hash_two_digests(const digest *in2, digest *out) {
+  digest state;
+  digest block[2];
+  block[0] = load_cs(in2);
+  block[1] = load_cs(in2 + 1);
+  initialize(state.words);
+  u32 t = 0;
+  compress<true>(state.words, t, reinterpret_cast<const u32 *>(block), BLOCK_SIZE);
+  store_cs(out, state);
+}
+
+// One transcript squeeze round: seed_io <- Blake2s(seed_io), in place.
+DEVICE_FORCEINLINE void advance_seed(u32 seed_io[STATE_SIZE]) {
+  u32 state[STATE_SIZE];
+  initialize(state);
+  u32 block[BLOCK_SIZE] = {};
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    block[i] = seed_io[i];
+  u32 t = 0;
+  compress<true>(state, t, block, STATE_SIZE);
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    seed_io[i] = state[i];
+}
+
+// Reduce 4 raw squeeze u32 words into one E4 challenge, matching the host
+// `draw_random_field_els*` reduction (`from_raw_repr_with_reduction` per limb).
+DEVICE_FORCEINLINE e4 reduce_4_words_to_e4(const u32 *src) {
+  const bf c0 = bf::from_raw_repr_with_reduction(src[0]);
+  const bf c1 = bf::from_raw_repr_with_reduction(src[1]);
+  const bf c2 = bf::from_raw_repr_with_reduction(src[2]);
+  const bf c3 = bf::from_raw_repr_with_reduction(src[3]);
+  return e4(e2(c0, c1), e2(c2, c3));
+}
+
 EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, const unsigned log_rows_count, const unsigned cols_count,
                                                 const unsigned count) {
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -16,22 +53,9 @@ EXTERN __global__ void ab_blake2s_leaves_kernel(const bf *values, u32 *results, 
     return col < cols_count ? bf::into_raw_u32(load_cs(values + row + col * domain_size)) : 0;
   };
   digest state;
-  u32 block[BLOCK_SIZE];
   initialize(state.words);
   u32 t = 0;
-  const unsigned values_count = cols_count << log_rows_count;
-  unsigned offset = 0;
-  while (offset < values_count) {
-    const unsigned remaining = values_count - offset;
-    const bool is_final_block = remaining <= BLOCK_SIZE;
-#pragma unroll
-    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
-      block[i] = read(offset);
-    if (is_final_block)
-      compress<true>(state.words, t, block, remaining);
-    else
-      compress<false>(state.words, t, block, BLOCK_SIZE);
-  }
+  absorb_stream(state.words, t, cols_count << log_rows_count, read);
   // Single 256-bit aligned store: STG.E.ENL2.256 on sm_100+ / 2× STG.E.128 on older arch.
   store_cs(reinterpret_cast<digest *>(results) + gid, state);
 }
@@ -62,22 +86,9 @@ EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u3
     return col < cols_count ? bf::into_raw_u32(load_cs(values + row + col * domain_size)) : 0;
   };
   digest state;
-  u32 block[BLOCK_SIZE];
   initialize(state.words);
   u32 t = 0;
-  const unsigned values_count = cols_count << log_rows_count;
-  unsigned offset = 0;
-  while (offset < values_count) {
-    const unsigned remaining = values_count - offset;
-    const bool is_final_block = remaining <= BLOCK_SIZE;
-#pragma unroll
-    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
-      block[i] = read(offset);
-    if (is_final_block)
-      compress<true>(state.words, t, block, remaining);
-    else
-      compress<false>(state.words, t, block, BLOCK_SIZE);
-  }
+  absorb_stream(state.words, t, cols_count << log_rows_count, read);
   store_cs(results_d, state);
 }
 
@@ -90,8 +101,8 @@ EXTERN __global__ void ab_blake2s_leaves_multi_coset_kernel(const bf *values, u3
 // coset_in_tile), column-major within coset. Address:
 // `ntt_output[src_row + src_col * trace_len]`.
 //
-// `results` is the flat tree backing for the WHIR oracle (TraceHolder
-// `log_lde_factor = 0`); digest at flat-tree leaf `idx` lives at
+// `results` is the flat tree backing for the WHIR oracle (a single packed
+// coset, `log_lde_factor = 0`); digest at flat-tree leaf `idx` lives at
 // `results[idx * STATE_SIZE]`.
 //
 // Output position derivation: pack writes the natural-coset `coset_in_tile`'s
@@ -131,22 +142,9 @@ EXTERN __global__ void ab_blake2s_leaves_from_ntt_multi_coset_kernel(const bf *n
   };
 
   digest state;
-  u32 block[BLOCK_SIZE];
   initialize(state.words);
   u32 t = 0;
-  const unsigned values_count = cols_count;
-  unsigned offset = 0;
-  while (offset < values_count) {
-    const unsigned remaining = values_count - offset;
-    const bool is_final_block = remaining <= BLOCK_SIZE;
-#pragma unroll
-    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
-      block[i] = read(offset);
-    if (is_final_block)
-      compress<true>(state.words, t, block, remaining);
-    else
-      compress<false>(state.words, t, block, BLOCK_SIZE);
-  }
+  absorb_stream(state.words, t, cols_count, read);
   store_cs(results_d, state);
 }
 
@@ -154,18 +152,10 @@ EXTERN __global__ void ab_blake2s_nodes_kernel(const u32 *values, u32 *results, 
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
   if (gid >= count)
     return;
-  // Input block = 64 B = 2 digests; address is 64-aligned, so load via two 256-bit ops
-  // (LDG.E.ENL2.256 on sm_100+ / 2× LDG.E.128 on older) instead of 16× LDG.E.
-  const digest *values_d = reinterpret_cast<const digest *>(values) + gid * 2;
-  digest *results_d = reinterpret_cast<digest *>(results) + gid;
-  digest state;
-  digest block[2];
-  block[0] = load_cs(values_d);
-  block[1] = load_cs(values_d + 1);
-  initialize(state.words);
-  u32 t = 0;
-  compress<true>(state.words, t, reinterpret_cast<const u32 *>(block), BLOCK_SIZE);
-  store_cs(results_d, state);
+  // Input block = 64 B = 2 digests; address is 64-aligned, so hash_two_digests
+  // loads via two 256-bit ops (LDG.E.ENL2.256 on sm_100+ / 2× LDG.E.128 on
+  // older) instead of 16× LDG.E.
+  hash_two_digests(reinterpret_cast<const digest *>(values) + gid * 2, reinterpret_cast<digest *>(results) + gid);
 }
 
 // Multi-coset nodes kernel: hashes `(1 << log_per_coset_count) *
@@ -183,14 +173,7 @@ EXTERN __global__ void ab_blake2s_nodes_multi_coset_kernel(const u32 *values, u3
   // Each leaf pair is 2 adjacent digests (64 B), 64-aligned at every (coset, gid).
   const digest *values_d = reinterpret_cast<const digest *>(values) + static_cast<size_t>(coset) * per_coset_values_stride_digests + gid * 2;
   digest *results_d = reinterpret_cast<digest *>(results) + static_cast<size_t>(coset) * per_coset_results_stride_digests + gid;
-  digest state;
-  digest block[2];
-  block[0] = load_cs(values_d);
-  block[1] = load_cs(values_d + 1);
-  initialize(state.words);
-  u32 t = 0;
-  compress<true>(state.words, t, reinterpret_cast<const u32 *>(block), BLOCK_SIZE);
-  store_cs(results_d, state);
+  hash_two_digests(values_d, results_d);
 }
 
 EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
@@ -234,11 +217,10 @@ EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_cou
 // round-trips.
 // ---------------------------------------------------------------------------
 
-// Mirror of `GpuChunkedInputDesc` in gpu/circuit_prover/src/ops/blake2s.rs. Holds the
+// Mirror of `GpuChunkedInputDesc` in gpu/hash/src/blake2s/transcript.rs. Holds the
 // per-launch chunk source pointer table inline as kernel-arg data so the
 // chunked-commit kernel reads `num_chunks` contiguous u32 buffers without an
-// auxiliary device allocation. Replaces the host-side concat-into-d_transcript_input
-// pack in `prove()`.
+// auxiliary device allocation.
 constexpr unsigned GKR_CHUNKED_COMMIT_MAX_CHUNKS = 8;
 
 struct gpu_chunked_input_desc {
@@ -248,10 +230,13 @@ struct gpu_chunked_input_desc {
   u32 chunk_lens[GKR_CHUNKED_COMMIT_MAX_CHUNKS];
 };
 
+static_assert(sizeof(gpu_chunked_input_desc) == 8 + 12 * GKR_CHUNKED_COMMIT_MAX_CHUNKS,
+              "must mirror GpuChunkedInputDesc in gpu/hash/src/blake2s/transcript.rs");
+
 // commit_initial_chunked: seed_out = Blake2s(chunk_0 || chunk_1 || ... || chunk_{N-1}).
-// Identical Blake2s state evolution to `ab_transcript_commit_initial_kernel` for
-// the same logical concatenation — Blake2s streams 64-byte (= 16 u32) blocks, so
-// chunk boundaries that fall mid-block are handled transparently.
+// Blake2s streams 64-byte (= 16 u32) blocks, so chunk boundaries that fall
+// mid-block are handled transparently and the digest matches a single-buffer
+// commit over the same logical concatenation.
 EXTERN __global__ void ab_transcript_commit_initial_chunked_kernel(__grid_constant__ const gpu_chunked_input_desc desc, u32 *seed_out) {
   u32 state[STATE_SIZE];
   initialize(state);
@@ -286,51 +271,6 @@ EXTERN __global__ void ab_transcript_commit_initial_chunked_kernel(__grid_consta
           block[i] = 0;
         block_offset = 0;
       }
-    }
-  }
-
-  // Zero-pad and finalize.
-  for (unsigned i = block_offset; i < BLOCK_SIZE; i++)
-    block[i] = 0;
-  compress<true>(state, t, block, block_offset);
-
-#pragma unroll
-  for (unsigned i = 0; i < STATE_SIZE; i++)
-    seed_out[i] = state[i];
-}
-
-// commit_initial: seed_out = Blake2s(input). Mirrors host `Transcript::commit_initial(input)` —
-// no prior seed; the entire `input` block is absorbed from the IV.
-// seed_out: STATE_SIZE u32 words, written with the resulting seed.
-// input:    input_len u32 words to absorb.
-EXTERN __global__ void ab_transcript_commit_initial_kernel(u32 *seed_out, const u32 *input, const unsigned input_len) {
-  u32 state[STATE_SIZE];
-  initialize(state);
-  u32 t = 0;
-  u32 block[BLOCK_SIZE];
-#pragma unroll
-  for (unsigned i = 0; i < BLOCK_SIZE; i++)
-    block[i] = 0;
-
-  unsigned block_offset = 0;
-  unsigned remaining = input_len;
-  const u32 *src = input;
-
-  while (remaining > 0) {
-    const unsigned space = BLOCK_SIZE - block_offset;
-    const unsigned n = remaining < space ? remaining : space;
-    for (unsigned i = 0; i < n; i++)
-      block[block_offset + i] = src[i];
-    block_offset += n;
-    src += n;
-    remaining -= n;
-
-    if (block_offset == BLOCK_SIZE && remaining > 0) {
-      compress<false>(state, t, block, BLOCK_SIZE);
-#pragma unroll
-      for (unsigned i = 0; i < BLOCK_SIZE; i++)
-        block[i] = 0;
-      block_offset = 0;
     }
   }
 
@@ -407,20 +347,10 @@ EXTERN __global__ void ab_transcript_squeeze_kernel(u32 *seed_io, u32 *output, c
 
   const unsigned num_rounds = output_len / STATE_SIZE;
   for (unsigned round = 1; round < num_rounds; round++) {
-    u32 state[STATE_SIZE];
-    initialize(state);
-    u32 block[BLOCK_SIZE] = {};
+    advance_seed(seed_io);
 #pragma unroll
     for (unsigned i = 0; i < STATE_SIZE; i++)
-      block[i] = seed_io[i];
-    u32 t = 0;
-    compress<true>(state, t, block, STATE_SIZE);
-
-#pragma unroll
-    for (unsigned i = 0; i < STATE_SIZE; i++) {
-      seed_io[i] = state[i];
-      output[round * STATE_SIZE + i] = state[i];
-    }
+      output[round * STATE_SIZE + i] = seed_io[i];
   }
 }
 
@@ -449,31 +379,14 @@ EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_
   for (unsigned round = 0; round < num_rounds; round++) {
     if (round > 0) {
       // Advance seed by Blake2s(seed) and refill raw_chunk.
-      u32 state[STATE_SIZE];
-      initialize(state);
-      u32 block[BLOCK_SIZE] = {};
+      advance_seed(seed_io);
 #pragma unroll
       for (unsigned i = 0; i < STATE_SIZE; i++)
-        block[i] = seed_io[i];
-      u32 t = 0;
-      compress<true>(state, t, block, STATE_SIZE);
-#pragma unroll
-      for (unsigned i = 0; i < STATE_SIZE; i++) {
-        seed_io[i] = state[i];
-        raw_chunk[i] = state[i];
-      }
+        raw_chunk[i] = seed_io[i];
     }
     // Consume raw_chunk 4 u32s at a time → 1 E4 challenge.
-    for (unsigned slot = 0; slot < STATE_SIZE / 4 && emitted < count; slot++) {
-      const u32 *src = &raw_chunk[slot * 4];
-      const bf c0 = bf::from_raw_repr_with_reduction(src[0]);
-      const bf c1 = bf::from_raw_repr_with_reduction(src[1]);
-      const bf c2 = bf::from_raw_repr_with_reduction(src[2]);
-      const bf c3 = bf::from_raw_repr_with_reduction(src[3]);
-      const e4 ch = e4(e2(c0, c1), e2(c2, c3));
-      output_e4[emitted] = ch;
-      emitted++;
-    }
+    for (unsigned slot = 0; slot < STATE_SIZE / 4 && emitted < count; slot++)
+      output_e4[emitted++] = reduce_4_words_to_e4(&raw_chunk[slot * 4]);
   }
 }
 
@@ -489,12 +402,7 @@ EXTERN __global__ void ab_reduce_raw_words_to_e4_kernel(const u32 *raw, e4 *outp
   const unsigned gid = threadIdx.x + blockIdx.x * blockDim.x;
   if (gid >= count)
     return;
-  const u32 *src = &raw[gid * 4];
-  const bf c0 = bf::from_raw_repr_with_reduction(src[0]);
-  const bf c1 = bf::from_raw_repr_with_reduction(src[1]);
-  const bf c2 = bf::from_raw_repr_with_reduction(src[2]);
-  const bf c3 = bf::from_raw_repr_with_reduction(src[3]);
-  output_e4[gid] = e4(e2(c0, c1), e2(c2, c3));
+  output_e4[gid] = reduce_4_words_to_e4(&raw[gid * 4]);
 }
 
 } // namespace airbender::hash

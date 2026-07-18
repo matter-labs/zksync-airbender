@@ -105,6 +105,7 @@ impl CudaArchive {
             println!("cargo::warning=CUDA Toolkit version {cuda_version} detected. This crate is only tested with CUDA Toolkit versions 12.* and 13.*.");
         }
 
+        println!("cargo:rerun-if-env-changed=CUDAARCHS");
         let cudaarchs = env::var("CUDAARCHS").unwrap_or_else(|_| "native".to_string());
         let mut config = cmake::Config::new("native");
         config.profile("Release");

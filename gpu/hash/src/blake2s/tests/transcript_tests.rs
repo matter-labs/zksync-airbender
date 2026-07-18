@@ -1,8 +1,6 @@
-use blake2s_u32::Blake2sState;
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
-
-type Blake2sTranscript =
-    prover::transcript::Blake2sTranscript<{ prover::definitions::USE_REDUCED_BLAKE2_ROUNDS }>;
+use era_cudart::stream::CudaStream;
+use gpu_core::primitives::field::{BF, E4};
 use rand::Rng;
 use serial_test::serial;
 #[cfg(feature = "deterministic_pow")]
@@ -10,8 +8,10 @@ use worker::Worker;
 
 use super::super::*;
 
-use super::{bitreverse_index, BLOCK_SIZE, USE_REDUCED_BLAKE2_ROUNDS};
-use crate::upstream::{Field, Seed};
+use super::{bitreverse_index, BLOCK_SIZE};
+use crate::upstream::{
+    draw_random_field_els, Blake2sState, Blake2sTranscript, Field, Seed, USE_REDUCED_BLAKE2_ROUNDS,
+};
 
 #[test]
 #[serial]
@@ -23,7 +23,7 @@ fn pow() {
     let mut d_result = DeviceAllocation::alloc(1).unwrap();
     let stream = CudaStream::default();
     memory_copy_async(&mut d_seed, &h_seed, &stream).unwrap();
-    blake2s_pow(&d_seed, BITS_COUNT, u64::MAX, &mut d_result[0], &stream).unwrap();
+    blake2s_pow(&d_seed, BITS_COUNT, &mut d_result[0], &stream).unwrap();
     memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
     stream.synchronize().unwrap();
     let mut state = Blake2sState::new();
@@ -36,6 +36,10 @@ fn pow() {
     assert!(digest[0].leading_zeros() >= BITS_COUNT);
 }
 
+// Feature-gated: run with `--features deterministic_pow` (not part of the
+// default suite). The CPU reference is kept deterministic via the dev-dep
+// `transcript/deterministic_pow` feature; without it both sides return
+// first-found nonces and the comparison is meaningless.
 #[cfg(feature = "deterministic_pow")]
 #[test]
 #[serial]
@@ -58,7 +62,7 @@ fn pow_deterministic_matches_cpu_baseline() {
             let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
             let mut d_result = DeviceAllocation::alloc(1).unwrap();
             memory_copy_async(&mut d_seed, &seed.0, &stream).unwrap();
-            blake2s_pow(&d_seed, pow_bits, u64::MAX, &mut d_result[0], &stream).unwrap();
+            blake2s_pow(&d_seed, pow_bits, &mut d_result[0], &stream).unwrap();
             memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
             stream.synchronize().unwrap();
             assert_eq!(
@@ -101,38 +105,12 @@ fn host_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
 
 #[test]
 #[serial]
-fn transcript_commit_parity_small() {
-    // 8 (seed) + 4 (input) = 12 words — fits in one block with padding.
-    let seed = [1, 2, 3, 4, 5, 6, 7, 8];
-    let input: Vec<u32> = (10..14).collect();
-    assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
-}
-
-#[test]
-#[serial]
-fn transcript_commit_parity_exact_block() {
-    // 8 + 8 = 16 words — exactly one full block.
-    let seed = [0xaa; STATE_SIZE];
-    let input: Vec<u32> = (0..8).collect();
-    assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
-}
-
-#[test]
-#[serial]
 fn transcript_commit_parity_two_blocks() {
-    // 8 + 12 = 20 words — two blocks (16 + 4). This is the typical backward
-    // sumcheck case: commit_field_els with 3 E4 elements.
+    // 8 + 12 = 20 words — two blocks (16 + 4). The load-bearing backward
+    // sumcheck case: commit_field_els with 3 E4 elements. Kept as an explicit
+    // named case; the randomized sweep below covers the other block counts.
     let seed = [0x42; STATE_SIZE];
     let input: Vec<u32> = (100..112).collect();
-    assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
-}
-
-#[test]
-#[serial]
-fn transcript_commit_parity_large() {
-    // 8 + 32 = 40 words — three blocks (16 + 16 + 8).
-    let seed = [0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe];
-    let input: Vec<u32> = (0..32).collect();
     assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
 }
 
@@ -193,54 +171,13 @@ fn device_commit_initial_chunked(chunks: &[Vec<u32>]) -> [u32; STATE_SIZE] {
 
 #[test]
 #[serial]
-fn transcript_commit_initial_chunked_parity_single_chunk() {
-    // One chunk only — must equal the single-buffer kernel.
-    let input: Vec<u32> = (10..30).collect();
-    let chunks = vec![input.clone()];
-    assert_eq!(
-        device_commit_initial_chunked(&chunks),
-        host_commit_initial(&input)
-    );
-}
-
-#[test]
-#[serial]
 fn transcript_commit_initial_chunked_parity_block_aligned_split() {
-    // Two chunks, split exactly on a block boundary (16 u32 words).
+    // Two chunks split exactly on a 16-word block boundary — the one edge the
+    // randomized sweep below almost never hits. Other chunk counts and
+    // mid-block splits (incl. the 5-chunk production pack shape) are covered
+    // by the randomized test.
     let total: Vec<u32> = (0..32).collect();
     let chunks = vec![total[..16].to_vec(), total[16..].to_vec()];
-    assert_eq!(
-        device_commit_initial_chunked(&chunks),
-        host_commit_initial(&total)
-    );
-}
-
-#[test]
-#[serial]
-fn transcript_commit_initial_chunked_parity_mid_block_split() {
-    // Two chunks split mid-block: chunk boundary should not affect the
-    // final digest because Blake2s streams 64-byte (= 16 u32) blocks.
-    let total: Vec<u32> = (0..40).collect();
-    let chunks = vec![total[..7].to_vec(), total[7..].to_vec()];
-    assert_eq!(
-        device_commit_initial_chunked(&chunks),
-        host_commit_initial(&total)
-    );
-}
-
-#[test]
-#[serial]
-fn transcript_commit_initial_chunked_parity_five_chunks() {
-    // Five chunks — matches the production transcript pack
-    // (canonical-top-bits + external_challenges + setup + memory + witness).
-    let total: Vec<u32> = (0..200).collect();
-    let chunks = vec![
-        total[..3].to_vec(),
-        total[3..31].to_vec(),
-        total[31..63].to_vec(),
-        total[63..127].to_vec(),
-        total[127..].to_vec(),
-    ];
     assert_eq!(
         device_commit_initial_chunked(&chunks),
         host_commit_initial(&total)
@@ -306,7 +243,6 @@ fn gather_tree_caps_inline_parity() {
             DeviceAllocation::alloc(coset_count * cap_words_per_coset).unwrap();
         super::gather_tree_caps_inline(
             d_source.as_ptr(),
-            coset_count as u32,
             cap_words_per_coset as u32,
             stride as u32,
             log_lde_factor,
@@ -318,14 +254,14 @@ fn gather_tree_caps_inline_parity() {
         memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
         stream.synchronize().unwrap();
         for natural_idx in 0..coset_count {
-            let stage1_pos = bitreverse_index(natural_idx, log_lde_factor);
+            let bitrev_pos = bitreverse_index(natural_idx, log_lde_factor);
             let actual =
-                &h_dst[stage1_pos * cap_words_per_coset..(stage1_pos + 1) * cap_words_per_coset];
+                &h_dst[bitrev_pos * cap_words_per_coset..(bitrev_pos + 1) * cap_words_per_coset];
             let expected =
                 &h_source[natural_idx * stride..natural_idx * stride + cap_words_per_coset];
             assert_eq!(
                 actual, expected,
-                "gather mismatch for natural_idx {natural_idx} -> stage1_pos {stage1_pos} \
+                "gather mismatch for natural_idx {natural_idx} -> bitrev_pos {bitrev_pos} \
                  (cap_words={cap_words_per_coset}, count={coset_count})"
             );
         }
@@ -363,7 +299,6 @@ fn gather_tree_caps_inline_stride_greater_than_cap_words() {
     let base = unsafe { d_source.as_ptr().add(tail_offset) };
     super::gather_tree_caps_inline(
         base,
-        coset_count as u32,
         cap_words_per_coset as u32,
         stride as u32,
         log_lde_factor,
@@ -375,14 +310,14 @@ fn gather_tree_caps_inline_stride_greater_than_cap_words() {
     memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
     stream.synchronize().unwrap();
     for natural_idx in 0..coset_count {
-        let stage1_pos = bitreverse_index(natural_idx, log_lde_factor);
+        let bitrev_pos = bitreverse_index(natural_idx, log_lde_factor);
         let actual =
-            &h_dst[stage1_pos * cap_words_per_coset..(stage1_pos + 1) * cap_words_per_coset];
+            &h_dst[bitrev_pos * cap_words_per_coset..(bitrev_pos + 1) * cap_words_per_coset];
         let tail = (natural_idx + 1) * stride - cap_words_per_coset;
         let expected = &h_source[tail..tail + cap_words_per_coset];
         assert_eq!(
             actual, expected,
-            "stride-aware gather mismatch for natural_idx {natural_idx} -> stage1_pos {stage1_pos}"
+            "stride-aware gather mismatch for natural_idx {natural_idx} -> bitrev_pos {bitrev_pos}"
         );
     }
 }
@@ -410,8 +345,7 @@ fn gather_e_addresses_parity() {
         let src_ptrs: Vec<u64> = d_sources.iter().map(|d| d.as_ptr() as u64).collect();
         let mut d_dst: DeviceAllocation<E4> =
             DeviceAllocation::alloc(num_addresses * elements_per_addr).unwrap();
-        super::gather_e_addresses(&src_ptrs[..], &mut d_dst, elements_per_addr as u32, &stream)
-            .unwrap();
+        super::gather_e_addresses(&src_ptrs[..], &mut d_dst, &stream).unwrap();
         let mut h_dst_words: Vec<u32> = vec![0u32; num_addresses * elements_per_addr * 4];
         let d_dst_as_u32 = unsafe { d_dst.transmute::<u32>() };
         memory_copy_async(&mut h_dst_words[..], d_dst_as_u32, &stream).unwrap();
@@ -535,7 +469,6 @@ fn device_squeeze_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; 
 
 /// Helper: host `draw_random_field_els::<BF, E4>` returning challenges + final seed.
 fn host_draw_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; STATE_SIZE]) {
-    use prover::gkr::prover::transcript_utils::draw_random_field_els;
     let mut s = Seed(*seed);
     let challenges = draw_random_field_els::<BF, E4>(&mut s, count);
     (challenges, s.0)
@@ -543,45 +476,13 @@ fn host_draw_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; STATE
 
 #[test]
 #[serial]
-fn transcript_squeeze_e4_parity_single() {
-    // 1 E4 = 4 u32 words, padded to 1 round (STATE_SIZE = 8).
-    let seed = [0x11; STATE_SIZE];
-    let (d_out, d_seed) = device_squeeze_e4(&seed, 1);
-    let (h_out, h_seed) = host_draw_e4(&seed, 1);
-    assert_eq!(d_out, h_out);
-    assert_eq!(d_seed, h_seed);
-}
-
-#[test]
-#[serial]
-fn transcript_squeeze_e4_parity_two_in_one_round() {
-    // 2 E4 = 8 u32 words, exactly 1 round. Both E4s drawn from the verbatim seed.
-    let seed = [0x22; STATE_SIZE];
-    let (d_out, d_seed) = device_squeeze_e4(&seed, 2);
-    let (h_out, h_seed) = host_draw_e4(&seed, 2);
-    assert_eq!(d_out, h_out);
-    assert_eq!(d_seed, h_seed);
-}
-
-#[test]
-#[serial]
 fn transcript_squeeze_e4_parity_three() {
-    // 3 E4 = 12 u32 words, padded to 16 = 2 rounds. Matches the initial lookup
-    // challenge draw in prove(): 3 E4 challenges off the seed.
+    // 3 E4 = 12 u32 words, padded to 16 = 2 rounds. The load-bearing case: the
+    // initial lookup challenge draw in prove() draws 3 E4 challenges off the
+    // seed. Other counts are covered by the randomized sweep below.
     let seed = [0xab; STATE_SIZE];
     let (d_out, d_seed) = device_squeeze_e4(&seed, 3);
     let (h_out, h_seed) = host_draw_e4(&seed, 3);
-    assert_eq!(d_out, h_out);
-    assert_eq!(d_seed, h_seed);
-}
-
-#[test]
-#[serial]
-fn transcript_squeeze_e4_parity_many_rounds() {
-    // 10 E4 = 40 u32 words, padded to 40 = 5 rounds.
-    let seed = [0xcd; STATE_SIZE];
-    let (d_out, d_seed) = device_squeeze_e4(&seed, 10);
-    let (h_out, h_seed) = host_draw_e4(&seed, 10);
     assert_eq!(d_out, h_out);
     assert_eq!(d_seed, h_seed);
 }

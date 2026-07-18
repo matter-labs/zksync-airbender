@@ -19,22 +19,26 @@ deterministic_pow = []
 
 [dependencies]
 gpu_core = { workspace = true }
-gpu_ops = { workspace = true }
-field = { workspace = true }
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
 
 [dev-dependencies]
-gpu_core = { workspace = true }
+# Test setup only (`simple::set_to_zero`); production gpu_hash does not use gpu_ops.
+gpu_ops = { workspace = true }
+field = { workspace = true }
 worker = { workspace = true }
 blake2s_u32 = { workspace = true }
-transcript = { workspace = true }
+# `deterministic_pow` keeps the CPU `search_pow` reference deterministic so the
+# feature-gated GPU parity test compares like against like (cargo cannot enable
+# dev-dep features from the [features] table).
+transcript = { workspace = true, features = ["deterministic_pow"] }
 # Dev-only: the transcript parity test verifies the GPU kernels against the host
-# `prover::transcript::Blake2sTranscript` reference. Production `gpu_hash` and all
-# downstream crates depend only on gpu_core/gpu_ops — this does not leak.
+# `prover::transcript::Blake2sTranscript` reference. Production `gpu_hash` depends
+# only on gpu_core (+ era_cudart) — this does not leak downstream.
 prover = { workspace = true, features = ["prover"] }
-itertools = "0.14"
-rand = "0.9"
+itertools = { workspace = true }
+# The workspace entry is default-features = false; tests need `rand::rng()`.
+rand = { workspace = true, features = ["thread_rng"] }
 serial_test = "3"
 
 [build-dependencies]

@@ -510,7 +510,7 @@ where
                     last_evals_len,
                 )
             };
-            crate::ops::blake2s::gather_e_addresses(&src_ptrs, dst, 4, stream)?;
+            crate::ops::blake2s::gather_e_addresses(&src_ptrs, dst, stream)?;
         }
 
         // Slab destination for the `[E;2]` LSB lines = `final_step_evaluations`

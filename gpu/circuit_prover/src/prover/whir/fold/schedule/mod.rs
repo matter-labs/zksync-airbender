@@ -320,11 +320,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
          -> (
             [crate::ops::blake2s::OracleGatherDesc; 3],
             [crate::ops::blake2s::OraclePartialPathDesc; 3],
-            u32,
         ) {
             let mut leaves = [crate::ops::blake2s::OracleGatherDesc::default(); 3];
             let mut paths = [crate::ops::blake2s::OraclePartialPathDesc::default(); 3];
-            let mut common_stride: Option<u32> = None;
             for (i, holder) in holders.iter().enumerate() {
                 if holder.columns_count == 0 {
                     continue;
@@ -333,11 +331,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 let tree = holder
                     .get_consolidated_tree()
                     .expect("base oracles run with TreesCacheMode::CachePartial");
-                let stride = (tree.len() / (1usize << holder.log_lde_factor)) as u32;
-                match common_stride {
-                    None => common_stride = Some(stride),
-                    Some(s) => debug_assert_eq!(s, stride),
-                }
                 leaves[i] = crate::ops::blake2s::OracleGatherDesc {
                     cosets_ptr: cosets.as_ptr() as u64,
                     columns_count: holder.columns_count as u32,
@@ -352,7 +345,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     slab_dst_ptr: slab_ptrs[i * 2 + 1],
                 };
             }
-            (leaves, paths, common_stride.unwrap_or(0))
+            (leaves, paths)
         };
         // SAFETY: layout returns disjoint slab regions for each oracle's
         // leaves and paths; the six destinations are pairwise non-aliasing.
@@ -406,7 +399,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             setup_leaves_ptr,
             setup_paths_ptr,
         ];
-        let (leaves_descs, paths_descs, stride_per_coset_in_digests) = base_oracle_descs(
+        let (leaves_descs, paths_descs) = base_oracle_descs(
             [
                 &*memory_trace_holder,
                 &*witness_trace_holder,
@@ -434,7 +427,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             log_lde_factor_base,
             base_log_rows_per_leaf,
             base_log_total_leaves_count,
-            stride_per_coset_in_digests,
             base_layers_count,
             device_query_indexes_for_base,
             stream,
