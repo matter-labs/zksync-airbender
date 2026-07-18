@@ -296,11 +296,13 @@ impl UnrolledNonMemoryCircuitType {
 
     /// Final-PC value substituted into padding rows of the memory columns.
     /// Must equal the `PC_STEP` the CPU setups pass to
-    /// `make_setup_for_non_mem_circuit` for every family — the GPU proof-parity
-    /// fixtures thread THIS value into their CPU oracle, so a stale entry here
-    /// is invisible to the parity suite (it diverged for JumpBranchSlt until
-    /// the gpu_program_prover base-layer verify e2e caught it) — hence the arms
-    /// reference the upstream constant directly instead of a literal.
+    /// `make_setup_for_non_mem_circuit` for every family. The GPU test fixtures
+    /// anchor their CPU oracles to `common_constants::PC_STEP` directly — NOT
+    /// to this accessor — so a stale arm here diverges from the fixtures and
+    /// the parity suite catches it. Keep that separation: threading this
+    /// accessor into a CPU oracle makes the GPU-vs-CPU comparison tautological
+    /// (fixtures once did exactly that, and a stale JumpBranchSlt value stayed
+    /// invisible until the gpu_program_prover base-layer verify e2e caught it).
     #[inline(always)]
     pub const fn get_default_pc_value_in_padding(&self) -> u32 {
         match self {

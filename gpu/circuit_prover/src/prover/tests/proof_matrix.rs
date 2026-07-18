@@ -159,7 +159,7 @@ fn run_jump_branch_slt_profile_test() {
 fn prepare_shift_binop_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
-        4,
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
         SHIFT_BINOP_LAYOUT_PATH,
         shift_binop_mod::witness_eval_fn,
@@ -175,7 +175,7 @@ fn prepare_shift_binop_proof_fixture() -> BasicUnrolledProofFixture {
 fn prepare_shift_binop_profiling_fixture() -> BasicUnrolledFixture {
     prepare_unrolled_non_memory_proof_fixture::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
-        4,
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
         SHIFT_BINOP_LAYOUT_PATH,
         shift_binop_mod::witness_eval_fn,
@@ -213,7 +213,7 @@ fn run_shift_binop_profile_test() {
 fn prepare_mul_div_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<MUL_DIV_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
-        4,
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::MulDivUnsigned,
         UNSIGNED_MUL_DIV_LAYOUT_PATH,
         unsigned_mul_div_mod::witness_eval_fn,
@@ -229,7 +229,7 @@ fn prepare_mul_div_proof_fixture() -> BasicUnrolledProofFixture {
 fn prepare_mul_div_profiling_fixture() -> BasicUnrolledFixture {
     prepare_unrolled_non_memory_proof_fixture::<MUL_DIV_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
-        4,
+        common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::MulDivUnsigned,
         UNSIGNED_MUL_DIV_LAYOUT_PATH,
         unsigned_mul_div_mod::witness_eval_fn,
