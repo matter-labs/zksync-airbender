@@ -376,37 +376,28 @@ pub(crate) fn physical_traffic_events(
     Some(events)
 }
 
-/// Retain only source-resolution traffic anchors that correspond to operands
-/// physically present in the final post-peephole program. Matching by value
-/// and width preserves the elaborator's Serve/TrafficRead timing while the
-/// final instruction scan remains the authority for which reads survived.
+/// Preserve the source-resolution traffic anchors only when their complete
+/// `(value, width)` multiset exactly matches the final post-peephole program.
+/// Partial retention would make duplicate occurrences ambiguous, so any
+/// missing or extra physical read fails closed.
 pub(crate) fn retain_physical_traffic_events(
     ordered_events: Vec<BwdEvent>,
     physical_events: &[BwdEvent],
 ) -> Option<Vec<BwdEvent>> {
-    let mut remaining = BTreeMap::<(ExprId, u32), usize>::new();
+    let mut anchored = BTreeMap::<(ExprId, u32), usize>::new();
+    for event in &ordered_events {
+        if let BwdEvent::TrafficRead { value, cells } = event {
+            *anchored.entry((*value, *cells)).or_default() += 1;
+        }
+    }
+    let mut physical = BTreeMap::<(ExprId, u32), usize>::new();
     for event in physical_events {
         let BwdEvent::TrafficRead { value, cells } = event else {
             return None;
         };
-        *remaining.entry((*value, *cells)).or_default() += 1;
+        *physical.entry((*value, *cells)).or_default() += 1;
     }
-
-    let mut retained = Vec::with_capacity(ordered_events.len());
-    for event in ordered_events {
-        let BwdEvent::TrafficRead { value, cells } = event else {
-            retained.push(event);
-            continue;
-        };
-        let Some(count) = remaining.get_mut(&(value, cells)) else {
-            continue;
-        };
-        if *count != 0 {
-            *count -= 1;
-            retained.push(event);
-        }
-    }
-    remaining.values().all(|&count| count == 0).then_some(retained)
+    (anchored == physical).then_some(ordered_events)
 }
 
 // ── frozen demand (Task 2) ──────────────────────────────────────────────────
@@ -662,5 +653,63 @@ pub fn certify(c: &BwdCompiledLayer, trace: &BwdCompileTrace) -> Result<Certific
         Ok(report)
     } else {
         Err(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom,
+        retain_physical_traffic_events,
+    };
+    use cs::gkr_compiler::dag_ir::ExprId;
+
+    #[test]
+    fn physical_traffic_reconciliation_requires_every_duplicate_anchor() {
+        let value = ExprId(7);
+        let read = BwdEvent::TrafficRead { value, cells: 4 };
+        let ordered = vec![
+            BwdEvent::Serve {
+                fp: BwdFingerprint {
+                    term: 0,
+                    kind: BwdServeKind::Operand,
+                    value,
+                    consumer: Some(ExprId(11)),
+                },
+                from: BwdServedFrom::Recomputed,
+            },
+            read,
+            BwdEvent::Serve {
+                fp: BwdFingerprint {
+                    term: 1,
+                    kind: BwdServeKind::Operand,
+                    value,
+                    consumer: Some(ExprId(12)),
+                },
+                from: BwdServedFrom::Recomputed,
+            },
+            read,
+        ];
+        let physical = vec![read, read];
+
+        assert_eq!(
+            retain_physical_traffic_events(ordered.clone(), &physical),
+            Some(ordered.clone()),
+            "both duplicate anchors must survive in their original Serve order"
+        );
+        for removed in 0..physical.len() {
+            let mut missing = physical.clone();
+            missing.remove(removed);
+            assert!(
+                retain_physical_traffic_events(ordered.clone(), &missing).is_none(),
+                "removing physical duplicate occurrence {removed} must fail closed"
+            );
+        }
+        let mut extra = physical;
+        extra.push(read);
+        assert!(
+            retain_physical_traffic_events(ordered, &extra).is_none(),
+            "an extra physical duplicate occurrence must fail closed"
+        );
     }
 }
