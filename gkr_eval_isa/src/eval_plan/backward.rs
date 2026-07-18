@@ -147,16 +147,156 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
 
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
-        RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
+        BatchingOrder, Bf, BwdRegime, ChallengeRef, ChallengeResolver, ClaimInfo, DagLayer, Expr,
+        ExprId, Ext, LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root,
+        RootGroup, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
+        VirtualSetupResolver, eval_layer_expr, eval_layer_root,
     };
+    use field::{Field, FieldExtension, PrimeField};
 
     use crate::bwd::distill::{DistilledLayer, distill};
     use crate::bwd::fragment::FragmentTable;
     use crate::bwd::source::BwdSpecial;
 
     use super::{BackwardEvaluationError, elaborate_backward_fragments_uncached};
-    use crate::eval_plan::{ConcreteBindError, EvalOp, Operand, bind_packed_plan};
+    use crate::eval_plan::{ConcreteBindError, EvalOp, Operand, TempId, bind_packed_plan};
+
+    fn ext(value: u32) -> Ext {
+        <Ext as FieldExtension<Bf>>::from_base(Bf::from_u32_with_reduction(value))
+    }
+
+    struct BackwardTestResolver;
+
+    impl ReadResolver for BackwardTestResolver {
+        fn read(&self, _place: &ReadPlace, row: usize) -> Ext {
+            ext(17 + row as u32)
+        }
+    }
+
+    impl LookupResolver for BackwardTestResolver {
+        fn lookup(
+            &self,
+            _kind: &LookupValueKind,
+            _set_index: usize,
+            _evaluated_query: Ext,
+            _row: usize,
+        ) -> Bf {
+            Bf::ZERO
+        }
+    }
+
+    impl VirtualSetupResolver for BackwardTestResolver {
+        fn virtual_setup(&self, _kind: &VirtualSetupKind, _row: usize) -> Bf {
+            Bf::ZERO
+        }
+    }
+
+    impl ChallengeResolver for BackwardTestResolver {
+        fn challenge(&self, _reference: &ChallengeRef) -> Ext {
+            ext(11)
+        }
+    }
+
+    static BACKWARD_TEST_RESOLVER: BackwardTestResolver = BackwardTestResolver;
+
+    fn backward_test_resolvers() -> Resolvers<'static> {
+        Resolvers {
+            read: &BACKWARD_TEST_RESOLVER,
+            lookup: &BACKWARD_TEST_RESOLVER,
+            virtual_setup: &BACKWARD_TEST_RESOLVER,
+            challenge: &BACKWARD_TEST_RESOLVER,
+        }
+    }
+
+    fn backward_plan_acc(out: &super::BackwardSymbolicEvaluation, d: &DistilledLayer) -> Ext {
+        let resolvers = backward_test_resolvers();
+        let mut acc = None;
+        let mut temps = HashMap::new();
+        let mut returned = None;
+
+        for op in &out.plan.ops {
+            match op {
+                EvalOp::AccInit(operand) => {
+                    acc = Some(backward_operand(*operand, out, d, &resolvers, &mut temps));
+                }
+                EvalOp::AccAdd { sign, operand } => {
+                    let rhs = backward_operand(*operand, out, d, &resolvers, &mut temps);
+                    let acc = acc.as_mut().expect("accumulator must be initialized");
+                    match sign {
+                        crate::fwd::isa::Sign::Plus => acc.add_assign(&rhs),
+                        crate::fwd::isa::Sign::Minus => acc.sub_assign(&rhs),
+                    };
+                }
+                EvalOp::AccMul(operand) => {
+                    let rhs = backward_operand(*operand, out, d, &resolvers, &mut temps);
+                    acc.as_mut()
+                        .expect("accumulator must be initialized")
+                        .mul_assign(&rhs);
+                }
+                EvalOp::AccFma { sign, lhs, rhs } => {
+                    let mut product = backward_operand(*lhs, out, d, &resolvers, &mut temps);
+                    product.mul_assign(&backward_operand(*rhs, out, d, &resolvers, &mut temps));
+                    let acc = acc.as_mut().expect("accumulator must be initialized");
+                    match sign {
+                        crate::fwd::isa::Sign::Plus => acc.add_assign(&product),
+                        crate::fwd::isa::Sign::Minus => acc.sub_assign(&product),
+                    };
+                }
+                EvalOp::AccNeg => {
+                    acc.as_mut()
+                        .expect("accumulator must be initialized")
+                        .negate();
+                }
+                EvalOp::SaveAcc(temp) => {
+                    assert!(
+                        temps
+                            .insert(temp.id, acc.expect("accumulator must be initialized"))
+                            .is_none(),
+                        "temporary must be unique"
+                    );
+                }
+                EvalOp::ReturnAcc { .. } => {
+                    returned = Some(acc.expect("terminal must have an accumulator"));
+                }
+                EvalOp::CacheStore { .. } | EvalOp::CacheDrop(_) | EvalOp::Commit { .. } => {
+                    panic!("uncached backward plan must not contain cache or commit operations")
+                }
+            }
+        }
+
+        returned.expect("plan must return its accumulator")
+    }
+
+    fn backward_operand(
+        operand: Operand,
+        out: &super::BackwardSymbolicEvaluation,
+        d: &DistilledLayer,
+        resolvers: &Resolvers<'_>,
+        temps: &mut HashMap<TempId, Ext>,
+    ) -> Ext {
+        match operand {
+            Operand::Source(value) => eval_layer_expr(&d.layer, value.expr, 3, resolvers),
+            Operand::Temp(temp) => temps.remove(&temp.id).expect("temporary must be live"),
+            Operand::Unit { negative } => {
+                let mut value = Ext::ONE;
+                if negative {
+                    value.negate();
+                }
+                value
+            }
+            Operand::BackwardSpecial { desc } => match out.specials.get(desc) {
+                Some(BwdSpecial::AccInit) => d.fragments.c_init.evaluate(&d.layer, resolvers),
+                Some(BwdSpecial::Coefficient { fragment }) => d.fragments.fragments
+                    [*fragment as usize]
+                    .recipe
+                    .evaluate(&d.layer, resolvers),
+                other => {
+                    panic!("backward descriptor {desc} is not a coefficient source: {other:?}")
+                }
+            },
+            Operand::Resident(_) => panic!("uncached backward plan must not use residents"),
+        }
+    }
 
     fn read_src(column: usize) -> SourceInfo {
         SourceInfo {
@@ -246,6 +386,11 @@ mod tests {
             streamed.plan.stats.dram_read_lanes
         );
         assert_ne!(out.plan.ops, streamed.plan.ops);
+        let legacy_acc = backward_plan_acc(&out, &d);
+        let streamed_acc = backward_plan_acc(&streamed, &d);
+        assert_eq!(legacy_acc, streamed_acc);
+        let resolvers = backward_test_resolvers();
+        assert_eq!(legacy_acc, eval_layer_root(&d.layer, d.root, 3, &resolvers));
 
         let mut reversed = identity;
         reversed.reverse();
