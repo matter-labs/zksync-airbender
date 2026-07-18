@@ -191,7 +191,7 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
             whir_schedule.whir_steps_lde_factors.clone(),
             whir_schedule.whir_pow_schedule.clone(),
             whir_schedule.cap_size,
-            compiled_circuit.trace_len.trailing_zeros() as usize,
+            compiled_circuit.trace_len.trailing_zeros(),
             true, // use_hypercube_evals_for_batching
             proof_slab,
             proof_layout,

@@ -44,7 +44,7 @@ pub(crate) struct GpuWhirExtensionOracle {
     trace_holder: TraceHolder<BF>,
     values_per_leaf: usize,
     lde_factor: usize,
-    trace_len_log2: usize,
+    trace_len_log2: u32,
     packed_leaf_count: usize,
 }
 
@@ -150,11 +150,11 @@ impl GpuWhirExtensionOracle {
             "recursive WHIR oracles require LDE factor > 1"
         );
 
-        let trace_len_log2 = trace_len.trailing_zeros() as usize;
+        let trace_len_log2 = trace_len.trailing_zeros();
         let log_lde_factor = lde_factor.trailing_zeros() as u32;
         let log_values_per_leaf = values_per_leaf.trailing_zeros() as u32;
         let log_tree_cap_size = tree_cap_size.trailing_zeros();
-        assert!(trace_len_log2 >= log_values_per_leaf as usize);
+        assert!(trace_len_log2 >= log_values_per_leaf);
         let packed_leaf_count = trace_len / values_per_leaf;
         let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
@@ -182,7 +182,7 @@ impl GpuWhirExtensionOracle {
             CapTarget::OwnAllocation => {
                 trace_holder.whir_lde_and_commit_all(
                     &inputs_matrix,
-                    trace_len_log2 as u32,
+                    trace_len_log2,
                     log_lde_factor,
                     log_values_per_leaf,
                     EXT4_DEGREE,
@@ -194,7 +194,7 @@ impl GpuWhirExtensionOracle {
                 trace_holder.whir_lde_and_commit_all_into(
                     &inputs_matrix,
                     dst_u32,
-                    trace_len_log2 as u32,
+                    trace_len_log2,
                     log_lde_factor,
                     log_values_per_leaf,
                     EXT4_DEGREE,
@@ -276,7 +276,7 @@ impl GpuWhirExtensionOracle {
         self.trace_holder.schedule_query_leaves_into_from_ntt(
             slab_indices_view,
             slab_leaves_dst_bf,
-            self.trace_len_log2 as u32,
+            self.trace_len_log2,
             natural_log_lde_factor,
             log_values_per_leaf,
             LOG_SRC_COLS_PER_COSET,
@@ -286,7 +286,7 @@ impl GpuWhirExtensionOracle {
             .schedule_query_merkle_paths_into_from_ntt(
                 slab_indices_view,
                 slab_paths_dst,
-                self.trace_len_log2 as u32,
+                self.trace_len_log2,
                 natural_log_lde_factor,
                 log_values_per_leaf,
                 LOG_SRC_COLS_PER_COSET,
@@ -339,7 +339,7 @@ impl GpuWhirExtensionOracle {
             self.trace_holder.schedule_query_leaves_into_from_ntt(
                 &device_tree_index,
                 &mut d_leafs[..],
-                self.trace_len_log2 as u32,
+                self.trace_len_log2,
                 natural_log_lde_factor,
                 log_values_per_leaf,
                 LOG_SRC_COLS_PER_COSET,
@@ -355,7 +355,7 @@ impl GpuWhirExtensionOracle {
             const LOG_SRC_COLS_PER_COSET: u32 = 2;
             self.trace_holder.get_query_merkle_paths_from_ntt(
                 &device_tree_index,
-                self.trace_len_log2 as u32,
+                self.trace_len_log2,
                 natural_log_lde_factor,
                 log_values_per_leaf,
                 LOG_SRC_COLS_PER_COSET,
@@ -548,7 +548,7 @@ pub(crate) mod tests {
                 self.trace_holder.schedule_query_leaves_into_from_ntt(
                     &device_tree_index,
                     &mut d_leafs[..],
-                    self.trace_len_log2 as u32,
+                    self.trace_len_log2,
                     natural_log_lde_factor,
                     log_values_per_leaf,
                     LOG_SRC_COLS_PER_COSET,
@@ -564,7 +564,7 @@ pub(crate) mod tests {
                 const LOG_SRC_COLS_PER_COSET: u32 = 2;
                 self.trace_holder.get_query_merkle_paths_from_ntt(
                     &device_tree_index,
-                    self.trace_len_log2 as u32,
+                    self.trace_len_log2,
                     natural_log_lde_factor,
                     log_values_per_leaf,
                     LOG_SRC_COLS_PER_COSET,
@@ -661,7 +661,7 @@ pub(crate) mod tests {
         twiddles: &Twiddles<BF, Global>,
         lde_factor: usize,
     ) -> Vec<(Box<[E4]>, BF)> {
-        let trace_len_log2 = monomial_coeffs.len().trailing_zeros() as usize;
+        let trace_len_log2 = monomial_coeffs.len().trailing_zeros();
         let next_root =
             domain_generator_for_size::<BF>(((1 << trace_len_log2) * lde_factor) as u64);
         let root_powers =
@@ -678,7 +678,7 @@ pub(crate) mod tests {
                 bitreverse_enumeration_inplace(&mut evals[..]);
                 fft::naive::serial_ct_ntt_bitreversed_to_natural(
                     &mut evals[..],
-                    trace_len_log2 as u32,
+                    trace_len_log2,
                     selected_twiddles,
                 );
                 (evals.into_boxed_slice(), offset)

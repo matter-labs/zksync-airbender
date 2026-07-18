@@ -429,13 +429,13 @@ fn run_basic_unrolled_stagewise_parity_test() {
         );
     }
 
-    let final_trace_size_log_2 = 4;
+    let final_trace_size_log_2 = 4u32;
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(
             &mut gkr_storage,
             &add_sub_circuit,
             trace_len.trailing_zeros() as usize,
-            final_trace_size_log_2,
+            final_trace_size_log_2 as usize,
             &worker,
         );
     let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
@@ -526,7 +526,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     commit_field_els::<BF, E4>(&mut gpu_seed, &gpu_evals_flattened);
     assert_eq!(gpu_seed, seed_after_cpu_explicit_commit);
 
-    let num_challenges = final_trace_size_log_2 + 1;
+    let num_challenges = (final_trace_size_log_2 + 1) as usize;
     let mut challenges = draw_random_field_els::<BF, E4>(&mut seed, num_challenges);
     let expected_challenges = challenges.clone();
     let mut gpu_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, num_challenges);
@@ -979,7 +979,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             &whir_schedule,
             &twiddles,
             seed.clone(),
-            trace_len.trailing_zeros() as usize,
+            trace_len.trailing_zeros(),
             &worker,
             &context,
         )

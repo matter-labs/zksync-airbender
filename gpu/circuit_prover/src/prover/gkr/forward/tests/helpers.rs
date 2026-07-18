@@ -124,8 +124,8 @@ pub(super) fn attach_test_dim_reducing_tower_layout(
     storage: &mut GpuGKRStorage<BF, E4>,
     initial_layer_idx: usize,
     initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
-    initial_trace_log_2: usize,
-    final_trace_log_2: usize,
+    initial_trace_log_2: u32,
+    final_trace_log_2: u32,
 ) {
     use crate::prover::gkr::gkr_address_audit::AddressClass;
     use crate::prover::gkr::storage_layout::{
@@ -134,7 +134,7 @@ pub(super) fn attach_test_dim_reducing_tower_layout(
 
     let trace_len = 1usize << initial_trace_log_2;
     let total_rounds = initial_trace_log_2.saturating_sub(final_trace_log_2);
-    let total_layers = initial_layer_idx + total_rounds + 1;
+    let total_layers = initial_layer_idx + total_rounds as usize + 1;
     let mut layers = vec![GpuGKRLayerLayout::default(); total_layers];
 
     // Register the test fixture inputs at `initial_layer_idx`. The test

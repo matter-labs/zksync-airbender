@@ -11,7 +11,7 @@ use crate::prover::proof_layout::{
 /// CPU reference.
 fn build_whir_only_proof_layout_inputs(
     whir_schedule: &WhirSchedule,
-    initial_trace_size_log_2: usize,
+    initial_trace_size_log_2: u32,
     memory_holder: &TraceHolder<BF>,
     witness_holder: &TraceHolder<BF>,
     setup_holder: &TraceHolder<BF>,
@@ -30,7 +30,7 @@ fn build_whir_only_proof_layout_inputs(
     );
     let initial_values_per_leaf = 1usize << whir_schedule.whir_steps_schedule[0];
     let tree_cap_size = whir_schedule.cap_size;
-    let tree_cap_log2 = tree_cap_size.trailing_zeros() as usize;
+    let tree_cap_log2 = tree_cap_size.trailing_zeros();
     let initial_query_count = whir_schedule.whir_queries_schedule[0];
 
     let base_layer_dims = |holder: &TraceHolder<BF>| -> WhirBaseLayerDims {
@@ -55,11 +55,11 @@ fn build_whir_only_proof_layout_inputs(
     let mut folded_trace_len_log2 = initial_trace_size_log_2;
     let mut intermediate = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
     for (oracle_idx, &lde_factor) in whir_schedule.whir_steps_lde_factors.iter().enumerate() {
-        folded_trace_len_log2 -= whir_schedule.whir_steps_schedule[oracle_idx];
+        folded_trace_len_log2 -= whir_schedule.whir_steps_schedule[oracle_idx] as u32;
         let values_per_leaf_log2 = whir_schedule.whir_steps_schedule[oracle_idx + 1];
-        let path_len = folded_trace_len_log2 + lde_factor.trailing_zeros() as usize
-            - values_per_leaf_log2
-            - tree_cap_log2;
+        let path_len = (folded_trace_len_log2 + lde_factor.trailing_zeros()
+            - values_per_leaf_log2 as u32
+            - tree_cap_log2) as usize;
         intermediate.push(WhirIntermediateDims {
             cap_digest_count: tree_cap_size,
             query_count: whir_schedule.whir_queries_schedule[oracle_idx + 1],
@@ -69,7 +69,7 @@ fn build_whir_only_proof_layout_inputs(
     }
 
     let total_folding_steps = whir_schedule.whir_steps_schedule.iter().sum::<usize>();
-    let final_monomials_len = 1usize << (initial_trace_size_log_2 - total_folding_steps);
+    let final_monomials_len = 1usize << (initial_trace_size_log_2 - total_folding_steps as u32);
     let whir = WhirDims {
         setup: base_layer_dims(setup_holder),
         memory: base_layer_dims(memory_holder),
@@ -104,7 +104,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     whir_schedule: &WhirSchedule,
     twiddles: &Twiddles<BF, Global>,
     mut transcript_seed: Seed,
-    trace_len_log2: usize,
+    trace_len_log2: u32,
     worker: &Worker,
     context: &ProverContext,
 ) -> WhirPolyCommitProof<BF, E4, DefaultTreeConstructor> {
@@ -284,7 +284,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             );
         }
     }
-    poly_size_log2 -= num_initial_folding_rounds;
+    poly_size_log2 -= num_initial_folding_rounds as u32;
 
     let first_lde_factor = whir_steps_lde_factors.next().unwrap();
     let next_folding_steps = *whir_steps_schedule.peek().unwrap();
@@ -406,8 +406,8 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         gpu_initial_round_checkpoint.transcript_seed, transcript_seed,
         "initial WHIR transcript seed diverged before PoW",
     );
-    let rs_domain_log2 = trace_len_log2 + original_lde_factor.trailing_zeros() as usize;
-    let query_domain_log2 = rs_domain_log2 - num_initial_folding_rounds;
+    let rs_domain_log2 = trace_len_log2 + original_lde_factor.trailing_zeros();
+    let query_domain_log2 = rs_domain_log2 - num_initial_folding_rounds as u32;
     let query_domain_size = 1u64 << query_domain_log2;
     let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
     let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
@@ -482,8 +482,8 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         let num_folding_steps = whir_steps_schedule.next().unwrap();
         let num_queries = whir_queries_schedule.next().unwrap();
         let pow_bits = whir_pow_schedule.next().unwrap();
-        let rs_domain_log2 = poly_size_log2 + cpu_rs_oracle.cosets.len().trailing_zeros() as usize;
-        let query_domain_log2 = rs_domain_log2 - num_folding_steps;
+        let rs_domain_log2 = poly_size_log2 + cpu_rs_oracle.cosets.len().trailing_zeros();
+        let query_domain_log2 = rs_domain_log2 - num_folding_steps as u32;
         let mut folding_challenges_in_round = Vec::with_capacity(num_folding_steps);
         for _ in 0..num_folding_steps {
             let (f0, f1, f_half) =
@@ -499,7 +499,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             fold_evaluation_form_for_test(&mut sumchecked_poly_evaluation_form, folding_challenge);
             fold_evaluation_form_for_test(&mut eq_poly, folding_challenge);
         }
-        poly_size_log2 -= num_folding_steps;
+        poly_size_log2 -= num_folding_steps as u32;
 
         let lde_factor = whir_steps_lde_factors.next().unwrap();
         let next_folding_steps = *whir_steps_schedule.peek().unwrap();
@@ -615,8 +615,8 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     let final_folding_steps = whir_steps_schedule.next().unwrap();
     let final_queries = whir_queries_schedule.next().unwrap();
     let final_pow_bits = whir_pow_schedule.next().unwrap();
-    let rs_domain_log2 = poly_size_log2 + cpu_rs_oracle.cosets.len().trailing_zeros() as usize;
-    let query_domain_log2 = rs_domain_log2 - final_folding_steps;
+    let rs_domain_log2 = poly_size_log2 + cpu_rs_oracle.cosets.len().trailing_zeros();
+    let query_domain_log2 = rs_domain_log2 - final_folding_steps as u32;
     let mut folding_challenges_in_round = Vec::with_capacity(final_folding_steps);
     for _ in 0..final_folding_steps {
         let (f0, f1, f_half) =

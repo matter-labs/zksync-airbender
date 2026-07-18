@@ -11,7 +11,7 @@ pub(crate) fn build_proof_layout_inputs<E>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     external_challenges: &prover::gkr::prover::GKRExternalChallenges<BF, E>,
     whir_schedule: &WhirSchedule,
-    final_trace_size_log_2: usize,
+    final_trace_size_log_2: u32,
     memory_geometry: ProofLayoutBaseLayerGeometry,
     witness_geometry: ProofLayoutBaseLayerGeometry,
     setup_geometry: ProofLayoutBaseLayerGeometry,
@@ -29,7 +29,7 @@ where
     // L-1's `claim_idx` lookup. The clone is paid once per proof.
     let compiled_circuit =
         crate::prover::gkr::transform::normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
-    let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros() as usize;
+    let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros();
     let dimension_reducing_inputs = crate::prover::gkr::backward::derive_dimension_reducing_inputs(
         compiled_circuit.layers.len(),
         &compiled_circuit.global_output_map,
@@ -52,7 +52,7 @@ where
             &main_layer_outputs,
         );
     assert!(initial_trace_size_log_2 >= final_trace_size_log_2);
-    let num_dim_reducing_layers = initial_trace_size_log_2 - final_trace_size_log_2;
+    let num_dim_reducing_layers = (initial_trace_size_log_2 - final_trace_size_log_2) as usize;
     let num_main_layers = compiled_circuit.layers.len();
     assert_eq!(
         dimension_reducing_inputs.len(),
@@ -102,7 +102,7 @@ where
     let mut backward_layers = Vec::with_capacity(num_dim_reducing_layers + num_main_layers);
     for slot in 0..num_dim_reducing_layers {
         let layer_idx = num_main_layers + num_dim_reducing_layers - 1 - slot;
-        let sumcheck_num_rounds = final_trace_size_log_2 + slot;
+        let sumcheck_num_rounds = final_trace_size_log_2 as usize + slot;
         let io_map = dimension_reducing_inputs
             .get(&layer_idx)
             .unwrap_or_else(|| {
@@ -131,7 +131,7 @@ where
     for layer_idx in (0..num_main_layers).rev() {
         backward_layers.push(BackwardLayerDims {
             layer_idx,
-            sumcheck_num_rounds: initial_trace_size_log_2,
+            sumcheck_num_rounds: initial_trace_size_log_2 as usize,
             final_step_eval_addresses: main_layer_input_addresses_per_layer[layer_idx].clone(),
             // Main-layer final step sends the single at-point evaluation; the
             // last coord is fixed in-loop at `last_r`.
@@ -158,7 +158,7 @@ where
     );
     let initial_values_per_leaf = 1usize << whir_schedule.whir_steps_schedule[0];
     let tree_cap_size = whir_schedule.cap_size;
-    let tree_cap_log2 = tree_cap_size.trailing_zeros() as usize;
+    let tree_cap_log2 = tree_cap_size.trailing_zeros();
     let initial_query_count = whir_schedule.whir_queries_schedule[0];
 
     let base_layer_dims = |g: ProofLayoutBaseLayerGeometry| -> WhirBaseLayerDims {
@@ -188,11 +188,11 @@ where
     let mut folded_trace_len_log2 = initial_trace_size_log_2;
     let mut intermediate = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
     for (oracle_idx, &lde_factor) in whir_schedule.whir_steps_lde_factors.iter().enumerate() {
-        folded_trace_len_log2 -= whir_schedule.whir_steps_schedule[oracle_idx];
+        folded_trace_len_log2 -= whir_schedule.whir_steps_schedule[oracle_idx] as u32;
         let values_per_leaf_log2 = whir_schedule.whir_steps_schedule[oracle_idx + 1];
-        let path_len = folded_trace_len_log2 + lde_factor.trailing_zeros() as usize
-            - values_per_leaf_log2
-            - tree_cap_log2;
+        let path_len = (folded_trace_len_log2 + lde_factor.trailing_zeros()
+            - values_per_leaf_log2 as u32
+            - tree_cap_log2) as usize;
         intermediate.push(WhirIntermediateDims {
             cap_digest_count: tree_cap_size,
             query_count: whir_schedule.whir_queries_schedule[oracle_idx + 1],
@@ -208,10 +208,10 @@ where
     // populates `WhirPolyCommitProof::final_monomials` from it.
     let total_folding_steps = whir_schedule.whir_steps_schedule.iter().sum::<usize>();
     assert!(
-        initial_trace_size_log_2 >= total_folding_steps,
+        initial_trace_size_log_2 as usize >= total_folding_steps,
         "whir_steps_schedule sum {total_folding_steps} exceeds initial_trace_size_log_2 {initial_trace_size_log_2}",
     );
-    let final_monomials_len = 1usize << (initial_trace_size_log_2 - total_folding_steps);
+    let final_monomials_len = 1usize << (initial_trace_size_log_2 as usize - total_folding_steps);
     let whir = WhirDims {
         setup: base_layer_dims(setup_geometry),
         memory: base_layer_dims(memory_geometry),

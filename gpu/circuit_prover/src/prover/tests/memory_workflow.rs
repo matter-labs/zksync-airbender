@@ -73,7 +73,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
 ) {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
     let trace_len: usize = compiled_circuit.trace_len;
     let num_cycles_per_chunk: usize = trace_len;
@@ -466,7 +466,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
             &mut gkr_storage,
             &compiled_circuit,
             trace_len.trailing_zeros() as usize,
-            FINAL_TRACE_SIZE_LOG_2,
+            FINAL_TRACE_SIZE_LOG_2 as usize,
             &worker,
         );
     let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];

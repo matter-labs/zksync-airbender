@@ -319,13 +319,13 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
         );
     }
 
-    let final_trace_size_log_2 = 4;
+    let final_trace_size_log_2 = 4u32;
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(
             &mut gkr_storage,
             &compiled_circuit,
             trace_len.trailing_zeros() as usize,
-            final_trace_size_log_2,
+            final_trace_size_log_2 as usize,
             &worker,
         );
     let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];

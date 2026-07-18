@@ -125,7 +125,7 @@ pub(super) fn schedule_pow_and_query_indexes_phase(
     num_queries: usize,
     pow_bits: u32,
     pow_round_idx: usize,
-    query_domain_log2: usize,
+    query_domain_log2: u32,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     pow_round_state: &mut Vec<PowAndQueryIndexesState>,

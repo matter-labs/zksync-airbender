@@ -171,7 +171,7 @@ pub(super) fn finish_proof_fixture(
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
 ) {
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     // Match the production-sized arena. Every consumer either runs a full
     // GPU prove on this context or hands the context off into a downstream
@@ -581,7 +581,7 @@ pub(super) fn finish_proof_fixture_memory(
     BasicUnrolledFixture,
     Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
 ) {
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
 
@@ -1052,7 +1052,7 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
 
     commit_field_els::<BF, E4>(&mut seed, &gpu_evals_flattened);
     let mut challenges =
-        draw_random_field_els::<BF, E4>(&mut seed, base.final_trace_size_log_2 + 1);
+        draw_random_field_els::<BF, E4>(&mut seed, (base.final_trace_size_log_2 + 1) as usize);
     let batching_challenge = challenges.pop().unwrap();
     let evaluation_point = challenges;
 

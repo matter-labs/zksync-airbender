@@ -41,7 +41,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     device_seed: &mut DeviceSlice<u32>,
     num_queries: usize,
     pow_bits: u32,
-    query_domain_log2: usize,
+    query_domain_log2: u32,
     nonce_slab_dst: &mut DeviceVariable<u64>,
     context: &ProverContext,
 ) -> CudaResult<PowAndQueryIndexesState> {
@@ -93,7 +93,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     // + 1` already lands on a multiple of 8, advancing the transcript past the
     // CPU and diverging every subsequent Fiat-Shamir challenge (e.g. the WHIR
     // delinearization challenge) for that round.
-    let query_bits = num_queries * query_domain_log2;
+    let query_bits = num_queries * query_domain_log2 as usize;
     let required_words = query_bits.div_ceil(32);
     let padded_words = (required_words + 1).next_multiple_of(STATE_SIZE);
     let mut d_raw_bits: DeviceAllocation<u32> =

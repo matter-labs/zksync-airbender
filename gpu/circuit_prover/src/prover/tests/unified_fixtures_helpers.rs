@@ -600,7 +600,7 @@ where
     O: cs::oracle::Oracle<BF>,
     W: crate::prover::trace::tracing_data::DelegationTracingDataHostSource,
 {
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
@@ -723,7 +723,7 @@ pub(super) fn prepare_delegation_profiling_fixture<W>(
 where
     W: crate::prover::trace::tracing_data::DelegationTracingDataHostSource,
 {
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
@@ -839,7 +839,7 @@ fn prepare_unified_fixture(
 ) {
     type CountersT = DelegationsAndUnifiedCounters;
 
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();

@@ -44,7 +44,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
     prover_config: &ProverConfig,
-    final_trace_size_log_2: usize,
+    final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {

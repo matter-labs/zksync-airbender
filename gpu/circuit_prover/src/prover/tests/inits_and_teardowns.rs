@@ -115,7 +115,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     type CountersT = DelegationsAndFamiliesCounters;
 
     const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::InitsAndTeardowns.get_domain_size_log2();
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
     let trace_len = 1usize << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
@@ -334,7 +334,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     type CountersT = DelegationsAndFamiliesCounters;
 
     const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::InitsAndTeardowns.get_domain_size_log2();
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
     let trace_len = 1usize << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
@@ -638,7 +638,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
                 &mut gkr_storage,
                 &compiled_circuit,
                 trace_len.trailing_zeros() as usize,
-                FINAL_TRACE_SIZE_LOG_2,
+                FINAL_TRACE_SIZE_LOG_2 as usize,
                 &worker,
             );
         let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];

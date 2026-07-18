@@ -448,13 +448,13 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         );
     }
 
-    let final_trace_size_log_2 = 4;
+    let final_trace_size_log_2 = 4u32;
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(
             &mut gkr_storage,
             &jump_branch_slt_circuit,
             trace_len.trailing_zeros() as usize,
-            final_trace_size_log_2,
+            final_trace_size_log_2 as usize,
             &worker,
         );
     let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
@@ -651,7 +651,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
 
     const TRACE_LEN_LOG2: u32 = UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
@@ -949,7 +949,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
             &mut gkr_storage,
             &shift_binop_circuit,
             trace_len.trailing_zeros() as usize,
-            FINAL_TRACE_SIZE_LOG_2,
+            FINAL_TRACE_SIZE_LOG_2 as usize,
             &worker,
         );
     let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
