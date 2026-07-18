@@ -13,7 +13,10 @@ use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SI
 use super::hash::{hash_leaves, hash_leaves_multi_coset};
 use super::{checked_u32, Digest};
 
-cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32,));
+cuda_kernel!(
+    Nodes,
+    ab_blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32)
+);
 
 pub(super) fn hash_nodes(
     values: &DeviceSlice<Digest>,

@@ -14,7 +14,10 @@ use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SI
 
 // `seed` is `*const u64` to match the kernel's four 64-bit loads (the wrapper
 // asserts the 8-byte alignment this implies).
-cuda_kernel!(Blake2sPow, ab_blake2s_pow_kernel(seed: *const u64, bits_count: u32, max_nonce: u64, result: *mut u64));
+cuda_kernel!(
+    Blake2sPow,
+    ab_blake2s_pow_kernel(seed: *const u64, bits_count: u32, max_nonce: u64, result: *mut u64)
+);
 
 /// Maximum number of input chunks the chunked transcript-commit kernel-arg
 /// descriptor can hold. The pre-WHIR transcript pack feeds 5 chunks
