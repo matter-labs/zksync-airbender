@@ -54,7 +54,7 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
     compiled_circuit: &GKRCircuitArtifact<BF>,
     external_challenges: &GKRExternalChallenges<BF, E4>,
     prover_config: &ProverConfig,
-    final_trace_size_log_2: usize,
+    final_trace_size_log_2: u32,
     whir_schedule: &WhirSchedule,
     bundle: BundleDeviceRefs<'_, 'a>,
     tracing_data_transfer: Option<&TracingDataTransfer<'a, A>>,

@@ -114,8 +114,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 ) {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = UnrolledCircuitType::InitsAndTeardowns.get_domain_size_log2();
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::InitsAndTeardowns.get_domain_size_log2();
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
     let trace_len = 1usize << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
@@ -158,7 +158,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     let num_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
         &sparse_inits_and_teardowns,
-        TRACE_LEN_LOG2 as u32,
+        TRACE_LEN_LOG2,
         num_sets as u32,
     );
     let mut it_columns = Vec::with_capacity(num_sets);
@@ -176,7 +176,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
     }
     ram.collect_inits_and_teardowns_into_columns::<BF, _>(
         &worker,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
         0,
         &mut it_columns,
     );
@@ -333,8 +333,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
 fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize = UnrolledCircuitType::InitsAndTeardowns.get_domain_size_log2();
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::InitsAndTeardowns.get_domain_size_log2();
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
     let trace_len = 1usize << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
@@ -375,7 +375,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     let num_init_and_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
         &sparse_inits_and_teardowns,
-        TRACE_LEN_LOG2 as u32,
+        TRACE_LEN_LOG2,
         num_init_and_teardown_sets as u32,
     );
     let mut inits_and_teardowns_columns = Vec::with_capacity(num_init_and_teardown_sets);
@@ -393,7 +393,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     }
     ram.collect_inits_and_teardowns_into_columns::<BF, _>(
         &worker,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
         0,
         &mut inits_and_teardowns_columns,
     );
@@ -638,7 +638,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
                 &mut gkr_storage,
                 &compiled_circuit,
                 trace_len.trailing_zeros() as usize,
-                FINAL_TRACE_SIZE_LOG_2,
+                FINAL_TRACE_SIZE_LOG_2 as usize,
                 &worker,
             );
         let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];

@@ -6,8 +6,7 @@ use super::*;
 fn run_jump_branch_slt_workflow_input_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize =
-        UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2();
+    const TRACE_LEN_LOG2: u32 = UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
@@ -98,7 +97,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         &|cs| jump_branch_slt_table_addition_fn(cs),
         &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
     );
     let num_calls = counters.get_calls_to_circuit_family::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>();
     assert!(
@@ -449,13 +448,13 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         );
     }
 
-    let final_trace_size_log_2 = 4;
+    let final_trace_size_log_2 = 4u32;
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(
             &mut gkr_storage,
             &jump_branch_slt_circuit,
             trace_len.trailing_zeros() as usize,
-            final_trace_size_log_2,
+            final_trace_size_log_2 as usize,
             &worker,
         );
     let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
@@ -650,10 +649,9 @@ fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
 fn run_shift_binop_cached_lookup_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize =
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2();
+    const TRACE_LEN_LOG2: u32 = UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
@@ -709,7 +707,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
         &|cs| shift_binop_table_addition_fn(cs),
         &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
     );
     let num_calls = counters.get_calls_to_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>();
     assert!(
@@ -951,7 +949,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
             &mut gkr_storage,
             &shift_binop_circuit,
             trace_len.trailing_zeros() as usize,
-            FINAL_TRACE_SIZE_LOG_2,
+            FINAL_TRACE_SIZE_LOG_2 as usize,
             &worker,
         );
     let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];

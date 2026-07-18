@@ -241,7 +241,7 @@ pub(crate) fn schedule_forward_pass<E>(
     // trivial (dummy) unified chunks. Values feed only constant terms in the
     // i&t initial-pair materialization; plan structure is invariant to them.
     inits_and_teardowns_top_bits: &[u32],
-    final_trace_size_log_2: usize,
+    final_trace_size_log_2: u32,
     output_evaluations_slab: Option<ForwardOutputSlabTarget<E>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
@@ -287,7 +287,7 @@ where
     let storage_layout = std::sync::Arc::new(
         crate::prover::gkr::storage_layout::GpuGKRStorageLayout::from_artifact_with_tower(
             &compiled_circuit,
-            final_trace_size_log_2,
+            final_trace_size_log_2 as usize,
         ),
     );
     storage.set_layout(storage_layout);
@@ -352,7 +352,7 @@ where
             &mut storage,
             compiled_circuit.layers.len(),
             compiled_circuit.global_output_map.clone(),
-            trace_len.trailing_zeros() as usize,
+            trace_len.trailing_zeros(),
             final_trace_size_log_2,
             output_evaluations_slab,
             &mut tracing_ranges,

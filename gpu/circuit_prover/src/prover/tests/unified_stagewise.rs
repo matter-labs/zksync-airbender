@@ -9,7 +9,7 @@ use super::inits_and_teardowns::{
 #[ignore]
 fn run_unified_stagewise_parity_test() {
     type CountersT = DelegationsAndUnifiedCounters;
-    const TRACE_LEN_LOG2: usize = UnrolledCircuitType::Unified.get_domain_size_log2();
+    const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::Unified.get_domain_size_log2();
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let worker = Worker::new_with_num_threads(8);
 
@@ -119,7 +119,7 @@ fn run_unified_stagewise_parity_test() {
     // Build inits-and-teardowns device and transfer.
     let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
         &sparse_inits_and_teardowns,
-        TRACE_LEN_LOG2 as u32,
+        TRACE_LEN_LOG2,
         num_unified_teardown_sets as u32,
     );
     let it_host = build_inits_and_teardowns_trace_host_for_test(
@@ -342,13 +342,13 @@ fn run_unified_stagewise_parity_test() {
         );
     }
 
-    let final_trace_size_log_2 = 4;
+    let final_trace_size_log_2 = 4u32;
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(
             &mut gkr_storage,
             &compiled_circuit,
             trace_len.trailing_zeros() as usize,
-            final_trace_size_log_2,
+            final_trace_size_log_2 as usize,
             &worker,
         );
     let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
@@ -409,7 +409,7 @@ fn run_unified_stagewise_parity_test() {
     commit_field_els::<BF, E4>(&mut gpu_seed, &gpu_evals_flattened);
     assert_eq!(gpu_seed, seed_after_cpu_explicit_commit);
 
-    let num_challenges = final_trace_size_log_2 + 1;
+    let num_challenges = (final_trace_size_log_2 + 1) as usize;
     let mut challenges = draw_random_field_els::<BF, E4>(&mut seed, num_challenges);
     let expected_challenges = challenges.clone();
     let mut gpu_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, num_challenges);

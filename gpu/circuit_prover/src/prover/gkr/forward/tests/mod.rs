@@ -767,8 +767,8 @@ fn dimension_reducing_forward_tower_matches_reference() {
     // initial_trace_log_2 = 11, final_trace_log_2 = 0 → 11 rounds total.
     // With log_block = 8: one 8-round body launch (grid 2^3 = 8) + one 3-round tail launch
     // (grid 1, parallel streams). Exercises both body and tail code paths.
-    let initial_trace_log_2 = 11usize;
-    let final_trace_log_2 = 0usize;
+    let initial_trace_log_2 = 11u32;
+    let final_trace_log_2 = 0u32;
     let initial_trace_len = 1usize << initial_trace_log_2;
     let current_layer_idx = 3usize;
 
@@ -881,7 +881,10 @@ fn dimension_reducing_forward_tower_matches_reference() {
     context.get_exec_stream().synchronize().unwrap();
 
     let total_rounds = initial_trace_log_2 - final_trace_log_2;
-    assert_eq!(final_layer_idx, current_layer_idx + total_rounds - 1);
+    assert_eq!(
+        final_layer_idx,
+        current_layer_idx + total_rounds as usize - 1
+    );
 
     // Walk every intermediate layer and compare against a fresh CPU reduction.
     let mut expected_read = read_values.clone();
@@ -900,7 +903,7 @@ fn dimension_reducing_forward_tower_matches_reference() {
         expected_generic = expected_lookup_pair_reduction(&expected_generic.0, &expected_generic.1);
 
         let layer_description = dim_reducing_inputs
-            .get(&(current_layer_idx + round_idx))
+            .get(&(current_layer_idx + round_idx as usize))
             .expect("dim reducing description present for round");
 
         let permutation_outputs = &layer_description[&OutputType::PermutationProduct].output;

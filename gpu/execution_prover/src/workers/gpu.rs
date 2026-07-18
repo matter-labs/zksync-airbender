@@ -358,7 +358,7 @@ fn enqueue_phase_two<'a>(
     let prover_config =
         gpu_circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
             .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
-    let final_trace_size_log_2 = 4usize;
+    let final_trace_size_log_2 = 4u32;
     let compiled_circuit_arc = state.precomputations.compiled_circuit.clone();
 
     let job = match inputs {

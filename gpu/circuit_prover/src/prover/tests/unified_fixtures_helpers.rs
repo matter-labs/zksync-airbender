@@ -13,7 +13,7 @@ const UNIFIED_LAYOUT_PATH: &str = "cs/compiled_circuits/unified_reduced_machine_
 const UNIFIED_BINARY_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.bin";
 const UNIFIED_TEXT_PATH: &str = "examples/multi_family_smoke/app_blake2_g_function.text";
 
-const TRACE_LEN_LOG2: usize = UnrolledCircuitType::Unified.get_domain_size_log2();
+const TRACE_LEN_LOG2: u32 = UnrolledCircuitType::Unified.get_domain_size_log2();
 const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
 // Delegation cycle counts mirror the (test-gated, hence inlined here) constants
@@ -129,7 +129,7 @@ pub(super) fn build_unified_full_trace_for_test(
     }
     ram.collect_inits_and_teardowns_into_columns::<BF, _>(
         worker,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
         0,
         &mut unified_inits_and_teardowns,
     );
@@ -600,7 +600,7 @@ where
     O: cs::oracle::Oracle<BF>,
     W: crate::prover::trace::tracing_data::DelegationTracingDataHostSource,
 {
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
@@ -723,7 +723,7 @@ pub(super) fn prepare_delegation_profiling_fixture<W>(
 where
     W: crate::prover::trace::tracing_data::DelegationTracingDataHostSource,
 {
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
@@ -839,7 +839,7 @@ fn prepare_unified_fixture(
 ) {
     type CountersT = DelegationsAndUnifiedCounters;
 
-    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
     let device_allocator_arena_bytes: usize = 64usize << 30;
     let device_allocator_block_log_size = default_fixture_device_allocator_block_log_size();
@@ -960,7 +960,7 @@ fn prepare_unified_fixture(
     // Sparse i/t triples -> page-based GPU wire format -> transfer host.
     let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
         &sparse_inits_and_teardowns,
-        TRACE_LEN_LOG2 as u32,
+        TRACE_LEN_LOG2,
         num_unified_teardown_sets as u32,
     );
     let inits_and_teardowns_host = build_inits_and_teardowns_trace_host_for_test(

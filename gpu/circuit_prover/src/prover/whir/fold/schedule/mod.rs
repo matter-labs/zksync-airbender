@@ -33,7 +33,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     whir_steps_lde_factors: Vec<usize>,
     whir_pow_schedule: Vec<u32>,
     tree_cap_size: usize,
-    trace_len_log2: usize,
+    trace_len_log2: u32,
     use_hypercube_evals_for_batching: bool,
     // slab + layout thread through so WHIR sub-phases route proof fields
     // (`pow_nonces`, caps, evals, queries, ood_samples, sumcheck_polys,
@@ -43,12 +43,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     context: &ProverContext,
 ) -> CudaResult<GpuWhirFoldScheduledExecution> {
     let trace_len = 1usize << trace_len_log2;
-    assert_eq!(memory_trace_holder.log_domain_size as usize, trace_len_log2);
-    assert_eq!(
-        witness_trace_holder.log_domain_size as usize,
-        trace_len_log2
-    );
-    assert_eq!(setup_trace_holder.log_domain_size as usize, trace_len_log2);
+    assert_eq!(memory_trace_holder.log_domain_size, trace_len_log2);
+    assert_eq!(witness_trace_holder.log_domain_size, trace_len_log2);
+    assert_eq!(setup_trace_holder.log_domain_size, trace_len_log2);
     assert_eq!(
         1usize << memory_trace_holder.log_lde_factor,
         original_lde_factor
@@ -226,7 +223,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             Range::new("gkr.whir.base_round.0.pow_and_query_indexes")?;
         pow_and_query_indexes_range.start(stream)?;
         let query_domain_log2 =
-            trace_len_log2 + original_lde_factor.trailing_zeros() as usize - num_folding_steps;
+            trace_len_log2 + original_lde_factor.trailing_zeros() - num_folding_steps as u32;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         schedule_pow_and_query_indexes_phase(
@@ -540,8 +537,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let pow_and_query_indexes_name = format!("{round_name}.pow_and_query_indexes");
         let pow_and_query_indexes_range = Range::new(&*pow_and_query_indexes_name)?;
         pow_and_query_indexes_range.start(stream)?;
-        let query_domain_log2 = state.current_len.trailing_zeros() as usize
-            + oracle_to_query.lde_factor().trailing_zeros() as usize;
+        let query_domain_log2 =
+            state.current_len.trailing_zeros() + oracle_to_query.lde_factor().trailing_zeros();
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         schedule_pow_and_query_indexes_phase(
@@ -700,7 +697,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         // equal `1 << (trace_len_log2 - sum(whir_steps_schedule))`.
         assert_eq!(
             state.current_len,
-            1usize << (trace_len_log2 - total_sumcheck_polys),
+            1usize << (trace_len_log2 - total_sumcheck_polys as u32),
             "WHIR final-fold current_len must match slab final_monomials_len",
         );
         // Transpose writes the pre-bitreverse
@@ -760,8 +757,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         }
 
         let mut oracle_to_query = rs_oracle.take().unwrap();
-        let query_domain_log2 = state.current_len.trailing_zeros() as usize
-            + oracle_to_query.lde_factor().trailing_zeros() as usize;
+        let query_domain_log2 =
+            state.current_len.trailing_zeros() + oracle_to_query.lde_factor().trailing_zeros();
         let pow_and_query_indexes_range = Range::new("gkr.whir.final_round.pow_and_query_indexes")?;
         pow_and_query_indexes_range.start(stream)?;
         schedule_pow_and_query_indexes_phase(

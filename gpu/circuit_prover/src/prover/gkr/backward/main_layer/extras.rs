@@ -227,8 +227,8 @@ where
 pub(crate) fn derive_dimension_reducing_inputs(
     initial_layer_idx: usize,
     initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
-    initial_trace_log_2: usize,
-    final_trace_log_2: usize,
+    initial_trace_log_2: u32,
+    final_trace_log_2: u32,
 ) -> BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>> {
     let mut result: BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>> =
         BTreeMap::new();

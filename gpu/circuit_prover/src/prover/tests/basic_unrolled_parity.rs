@@ -6,7 +6,7 @@ use super::*;
 fn run_basic_unrolled_workflow_input_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: usize =
+    const TRACE_LEN_LOG2: u32 =
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
@@ -98,7 +98,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        TRACE_LEN_LOG2,
+        TRACE_LEN_LOG2 as usize,
     );
     let num_calls =
         counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
@@ -443,13 +443,13 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         );
     }
 
-    let final_trace_size_log_2 = 4;
+    let final_trace_size_log_2 = 4u32;
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(
             &mut gkr_storage,
             &add_sub_circuit,
             trace_len.trailing_zeros() as usize,
-            final_trace_size_log_2,
+            final_trace_size_log_2 as usize,
             &worker,
         );
     let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];

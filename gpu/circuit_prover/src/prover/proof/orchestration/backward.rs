@@ -40,7 +40,7 @@ pub(in crate::prover::proof) fn prepare_backward_handoff(
     forward_output: GpuGKRForwardOutput<BF, E4>,
     forward_setup: GpuGKRForwardSetup<E4>,
     mut d_seed: DeviceAllocation<u32>,
-    final_trace_size_log_2: usize,
+    final_trace_size_log_2: u32,
     context: &ProverContext,
 ) -> CudaResult<ForwardToBackwardHandoff> {
     let stream = context.get_exec_stream();
@@ -71,7 +71,7 @@ pub(in crate::prover::proof) fn prepare_backward_handoff(
             .transmute::<u32>()
     };
     crate::ops::blake2s::transcript_commit(&mut d_seed, d_flat_evals_u32, stream)?;
-    let num_challenges = final_trace_size_log_2 + 1;
+    let num_challenges = (final_trace_size_log_2 + 1) as usize;
     let mut d_evaluation_point_and_batching: DeviceAllocation<E4> =
         context.alloc(num_challenges, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_squeeze_e4(
@@ -98,7 +98,7 @@ pub(in crate::prover::proof) fn prepare_backward_handoff(
     // scalars for the host-side workflow_state mirror.
     let poly_len = 1usize << final_trace_size_log_2;
     let mut eq_group_tables_for_init: DeviceAllocation<E4> = context.alloc(
-        eq_group_tables_len(final_trace_size_log_2).max(1),
+        eq_group_tables_len(final_trace_size_log_2 as usize).max(1),
         AllocationPlacement::Top,
     )?;
     let mut eq_values_for_init: DeviceAllocation<E4> =
@@ -106,7 +106,7 @@ pub(in crate::prover::proof) fn prepare_backward_handoff(
     launch_build_eq_values_from_point::<E4>(
         d_evaluation_point_and_batching.as_ptr(),
         0,
-        final_trace_size_log_2,
+        final_trace_size_log_2 as usize,
         eq_group_tables_for_init.as_mut_ptr(),
         eq_values_for_init.as_mut_ptr(),
         poly_len,

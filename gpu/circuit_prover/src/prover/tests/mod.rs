@@ -444,7 +444,7 @@ fn schedule_forward_pass<E>(
     forward_setup: &mut super::gkr::setup::GpuGKRForwardSetup<E>,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     external_challenges: &GKRExternalChallenges<BF, E>,
-    final_trace_size_log_2: usize,
+    final_trace_size_log_2: u32,
     context: &ProverContext,
 ) -> CudaResult<super::gkr::forward::GpuGKRForwardOutput<BF, E>>
 where
@@ -489,7 +489,7 @@ pub(crate) struct BasicUnrolledFixture {
     pub(crate) compiled_circuit: GKRCircuitArtifact<BF>,
     pub(crate) external_challenges: GKRExternalChallenges<BF, E4>,
     pub(crate) prover_config: ProverConfig,
-    pub(crate) final_trace_size_log_2: usize,
+    pub(crate) final_trace_size_log_2: u32,
     /// GPU setup (preprocessed) trace host. `None` for the standalone
     /// inits-and-teardowns circuit, which has a zero-width setup layout
     /// (`witness_layout.total_width == 0`) and is proven with `setup = None`
