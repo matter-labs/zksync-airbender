@@ -62,6 +62,11 @@ pub struct BwdOccurrencePlan {
     pub entries: Vec<PlanEntry>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PlanReplayError {
+    RetainWithoutNextServe { entry: usize, value: ExprId },
+}
+
 /// A live replay of a [`BwdOccurrencePlan`] against an actual serve stream:
 /// the fail-closed fingerprint matcher plus the retention-interval tracker.
 pub(crate) struct PlanRun {
@@ -81,6 +86,14 @@ pub(crate) struct PlanRun {
 
 impl PlanRun {
     pub fn new(plan: &BwdOccurrencePlan) -> Self {
+        Self::try_new(plan).unwrap_or_else(|error| match error {
+            PlanReplayError::RetainWithoutNextServe { entry, value } => panic!(
+                "plan-construction bug: Retain entry at index {entry} for value {value:?} has no next serve"
+            ),
+        })
+    }
+
+    pub fn try_new(plan: &BwdOccurrencePlan) -> Result<Self, PlanReplayError> {
         let entries = plan.entries.clone();
 
         // Precompute, per value, its ascending occurrence list, and record
@@ -98,24 +111,25 @@ impl PlanRun {
         for (i, e) in entries.iter().enumerate() {
             if e.action == PlanAction::Retain {
                 let occurrences = &by_value[&e.fp.value];
-                assert!(
-                    slot_of[i] + 1 < occurrences.len(),
-                    "plan-construction bug: Retain entry at index {i} for value {:?} has no next serve",
-                    e.fp.value,
-                );
+                if slot_of[i] + 1 >= occurrences.len() {
+                    return Err(PlanReplayError::RetainWithoutNextServe {
+                        entry: i,
+                        value: e.fp.value,
+                    });
+                }
             }
         }
 
         let value_cursor = by_value.keys().map(|&v| (v, 0usize)).collect();
 
-        PlanRun {
+        Ok(PlanRun {
             entries,
             pos: 0,
             diverged: None,
             by_value,
             value_cursor,
             retained: BTreeMap::new(),
-        }
+        })
     }
 
     /// The entry index of `value`'s next entry after `pos` (`pos` must be the

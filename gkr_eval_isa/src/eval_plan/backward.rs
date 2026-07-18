@@ -4,6 +4,7 @@ use cs::gkr_compiler::dag_ir::{BwdRegime, Expr, ExprId, FieldKind, expr_field, j
 
 use crate::bwd::compile::{BwdCompiledLayer, fragment_descs, tally_bwd_program};
 use crate::bwd::distill::DistilledLayer;
+use crate::bwd::plan::{BwdOccurrencePlan, PlanReplayError, PlanRun, plan_entries_fnv};
 use crate::bwd::source::BwdSpecialTable;
 use crate::bwd::trace::{
     BwdCompileTrace, BwdEvent, certify, live_profile, physical_traffic_events, plan_epoch_fragment,
@@ -11,9 +12,9 @@ use crate::bwd::trace::{
 };
 
 use super::{
-    ConcreteBindError, ConcreteEvalProgram, ConcreteTerminal, EvalPlan, PackConfig, PackError,
-    PackedEvalPlan, PlanError, concrete::bind_backward_packed_plan,
-    elaborate_backward_fragments_driver, pack_plan,
+    BackwardReplay, ConcreteBindError, ConcreteEvalProgram, ConcreteTerminal, EvalPlan, PackConfig,
+    PackError, PackedEvalPlan, PlanError, concrete::bind_backward_packed_plan,
+    elaborate_backward_fragments_driver, elaborate_backward_fragments_replayed_driver, pack_plan,
 };
 
 /// Symbolic backward evaluation before descriptor binding. The special table is
@@ -58,6 +59,22 @@ pub enum BackwardEvaluationError {
         concrete: usize,
         traced: usize,
     },
+    MalformedReplayPlan {
+        entry: usize,
+        value: ExprId,
+    },
+    StaleReplayEpoch {
+        expected: u64,
+        actual: u64,
+    },
+    ReplayEntriesFingerprintMismatch,
+    ReplayDiverged {
+        at_entry: usize,
+    },
+    ReplayNotFullyConsumed {
+        at_entry: usize,
+    },
+    ReplayInfeasible,
 }
 
 impl From<PlanError> for BackwardEvaluationError {
@@ -111,6 +128,61 @@ pub fn elaborate_backward_fragments_uncached(
     })
 }
 
+fn elaborate_backward_fragments_replayed(
+    d: &DistilledLayer,
+    plan: &BwdOccurrencePlan,
+    order: Option<&[usize]>,
+    budget_cells: usize,
+) -> Result<BackwardSymbolicEvaluation, BackwardEvaluationError> {
+    let fragments = &d.fragments.fragments;
+    if d.fragments.c_init.terms.is_empty() && fragments.is_empty() {
+        return Err(BackwardEvaluationError::EmptyFragmentDecomposition);
+    }
+    let scheduled_fragments = validate_fragment_order(order, fragments.len())?;
+    let budget_lanes = budget_cells
+        .checked_mul(4)
+        .ok_or(BackwardEvaluationError::BudgetCellsOverflow { budget_cells })?;
+    let expected_epoch = plan_epoch_fragment(d, budget_lanes, plan.stream_reductions);
+    if plan.epoch != expected_epoch {
+        return Err(BackwardEvaluationError::StaleReplayEpoch {
+            expected: expected_epoch,
+            actual: plan.epoch,
+        });
+    }
+    if plan.entries_fnv != plan_entries_fnv(&plan.entries) {
+        return Err(BackwardEvaluationError::ReplayEntriesFingerprintMismatch);
+    }
+    let run = PlanRun::try_new(plan).map_err(|error| match error {
+        PlanReplayError::RetainWithoutNextServe { entry, value } => {
+            BackwardEvaluationError::MalformedReplayPlan { entry, value }
+        }
+    })?;
+    let domain = plan.entries.iter().map(|entry| entry.fp.value).collect();
+    let mut replay = BackwardReplay::new(run, domain);
+    let (specials, coefficient_descs, acc_init_desc) = fragment_descs(d);
+    let expr_fields = backward_expr_fields(d);
+    let (eval_plan, demand_events) = elaborate_backward_fragments_replayed_driver(
+        &d.layer,
+        d.root,
+        &expr_fields,
+        fragments,
+        &scheduled_fragments,
+        &coefficient_descs,
+        acc_init_desc,
+        budget_lanes,
+        plan.stream_reductions,
+        &mut replay,
+    )
+    .map_err(map_replay_plan_error)?;
+    let packed = pack_plan(&eval_plan, &d.layer, PackConfig::default())?;
+    Ok(BackwardSymbolicEvaluation {
+        plan: eval_plan,
+        packed,
+        specials,
+        demand_events,
+    })
+}
+
 /// Compile the full backward fragment decomposition through the shared packed
 /// evaluation pipeline. The selected reduction mode is explicit and this
 /// entry never retries with a different mode.
@@ -122,6 +194,25 @@ pub fn compile_backward_fragments_uncached(
 ) -> Result<CompiledBackwardEvaluation, BackwardEvaluationError> {
     let symbolic =
         elaborate_backward_fragments_uncached(d, order, budget_cells, stream_reductions)?;
+    compile_backward_symbolic(d, symbolic, stream_reductions, false)
+}
+
+pub fn compile_backward_fragments_replayed(
+    d: &DistilledLayer,
+    plan: &BwdOccurrencePlan,
+    order: Option<&[usize]>,
+    budget_cells: usize,
+) -> Result<CompiledBackwardEvaluation, BackwardEvaluationError> {
+    let symbolic = elaborate_backward_fragments_replayed(d, plan, order, budget_cells)?;
+    compile_backward_symbolic(d, symbolic, plan.stream_reductions, true)
+}
+
+fn compile_backward_symbolic(
+    d: &DistilledLayer,
+    symbolic: BackwardSymbolicEvaluation,
+    stream_reductions: bool,
+    replayed: bool,
+) -> Result<CompiledBackwardEvaluation, BackwardEvaluationError> {
     let budget_lanes = symbolic.plan.budget_lanes;
     let bound = bind_backward_packed_plan(
         &symbolic.packed,
@@ -130,7 +221,13 @@ pub fn compile_backward_fragments_uncached(
         budget_lanes,
         &d.leaf_descs,
     )
-    .map_err(map_concrete_error)?;
+    .map_err(|error| {
+        if replayed && matches!(error, ConcreteBindError::PlacementFailed { .. }) {
+            BackwardEvaluationError::ReplayInfeasible
+        } else {
+            map_concrete_error(error)
+        }
+    })?;
     let ConcreteEvalProgram {
         compiled: forward,
         encoded,
@@ -221,6 +318,21 @@ pub fn compile_backward_fragments_uncached(
     })
 }
 
+fn map_replay_plan_error(error: PlanError) -> BackwardEvaluationError {
+    match error {
+        PlanError::ReplayDiverged { at_entry } => {
+            BackwardEvaluationError::ReplayDiverged { at_entry }
+        }
+        PlanError::ReplayNotFullyConsumed { at_entry } => {
+            BackwardEvaluationError::ReplayNotFullyConsumed { at_entry }
+        }
+        PlanError::ReplayInfeasible | PlanError::BudgetExceeded { .. } => {
+            BackwardEvaluationError::ReplayInfeasible
+        }
+        other => BackwardEvaluationError::Plan(other),
+    }
+}
+
 fn map_concrete_error(error: ConcreteBindError) -> BackwardEvaluationError {
     match error {
         ConcreteBindError::UnboundBackwardSource(expr) => {
@@ -309,14 +421,16 @@ mod tests {
     };
     use field::{Field, FieldExtension, PrimeField};
 
-    use crate::bwd::distill::{DistilledLayer, distill};
+    use crate::bwd::distill::{DistilledLayer, distill, distilled_site_domain};
     use crate::bwd::fragment::{FragmentSpec, FragmentTable, MergedRecipe, ProductRecipe};
+    use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
     use crate::bwd::source::BwdSpecial;
     use crate::bwd::trace::{BwdEvent, BwdServeKind};
 
     use super::{
-        BackwardEvaluationError, compile_backward_fragments_uncached,
-        elaborate_backward_fragments_driver, elaborate_backward_fragments_uncached,
+        BackwardEvaluationError, compile_backward_fragments_replayed,
+        compile_backward_fragments_uncached, elaborate_backward_fragments_driver,
+        elaborate_backward_fragments_uncached,
     };
     use crate::eval_plan::{ConcreteBindError, EvalOp, Operand, TempId, bind_packed_plan};
 
@@ -511,6 +625,120 @@ mod tests {
             resolutions: BTreeMap::new(),
         };
         distill(&layer, BwdRegime::Ext, &HashMap::new(), None)
+    }
+
+    fn replay_plan(d: &DistilledLayer) -> BwdOccurrencePlan {
+        let compiled = compile_backward_fragments_uncached(d, None, 4, false).unwrap();
+        let domain = distilled_site_domain(d)
+            .into_iter()
+            .map(|site| site.value)
+            .collect::<std::collections::BTreeSet<_>>();
+        let entries = compiled
+            .trace
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                BwdEvent::Serve { fp, .. } if domain.contains(&fp.value) => Some(PlanEntry {
+                    fp: *fp,
+                    action: PlanAction::Bypass,
+                }),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            entries.len() >= 2,
+            "fixture must expose replayable domain serves"
+        );
+        BwdOccurrencePlan {
+            epoch: compiled.trace.epoch,
+            entries_fnv: plan_entries_fnv(&entries),
+            stream_reductions: compiled.trace.stream_reductions,
+            entries,
+        }
+    }
+
+    #[test]
+    fn replay_rejects_stale_epoch() {
+        let d = backward_fixture();
+        let mut plan = replay_plan(&d);
+        plan.epoch ^= 1;
+
+        assert!(matches!(
+            compile_backward_fragments_replayed(&d, &plan, None, 4),
+            Err(BackwardEvaluationError::StaleReplayEpoch { .. })
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_bad_entries_fingerprint() {
+        let d = backward_fixture();
+        let mut plan = replay_plan(&d);
+        plan.entries_fnv ^= 1;
+
+        assert!(matches!(
+            compile_backward_fragments_replayed(&d, &plan, None, 4),
+            Err(BackwardEvaluationError::ReplayEntriesFingerprintMismatch)
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_reordered_entries() {
+        let d = backward_fixture();
+        let mut plan = replay_plan(&d);
+        plan.entries.swap(0, 1);
+        plan.entries_fnv = plan_entries_fnv(&plan.entries);
+
+        assert!(matches!(
+            compile_backward_fragments_replayed(&d, &plan, None, 4),
+            Err(BackwardEvaluationError::ReplayDiverged { at_entry: 0 })
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_truncated_entries() {
+        let d = backward_fixture();
+        let mut plan = replay_plan(&d);
+        let at_entry = plan.entries.len() - 1;
+        plan.entries.pop();
+        plan.entries_fnv = plan_entries_fnv(&plan.entries);
+
+        assert!(matches!(
+            compile_backward_fragments_replayed(&d, &plan, None, 4),
+            Err(BackwardEvaluationError::ReplayDiverged { at_entry: at }) if at == at_entry
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_appended_entries() {
+        let d = backward_fixture();
+        let mut plan = replay_plan(&d);
+        let at_entry = plan.entries.len();
+        plan.entries.push(*plan.entries.last().unwrap());
+        plan.entries_fnv = plan_entries_fnv(&plan.entries);
+
+        assert!(matches!(
+            compile_backward_fragments_replayed(&d, &plan, None, 4),
+            Err(BackwardEvaluationError::ReplayNotFullyConsumed { at_entry: at })
+                if at == at_entry
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_terminal_retain() {
+        let d = backward_fixture();
+        let mut plan = replay_plan(&d);
+        let entry = plan.entries.len() - 1;
+        let value = plan.entries[entry].fp.value;
+        plan.entries[entry].action = PlanAction::Retain;
+        plan.entries_fnv = plan_entries_fnv(&plan.entries);
+
+        assert!(matches!(
+            compile_backward_fragments_replayed(&d, &plan, None, 4),
+            Err(BackwardEvaluationError::MalformedReplayPlan {
+                entry: actual_entry,
+                value: actual_value,
+            }) if actual_entry == entry && actual_value == value
+        ));
     }
 
     fn assert_single_uncached_terminal(out: &super::BackwardSymbolicEvaluation) {

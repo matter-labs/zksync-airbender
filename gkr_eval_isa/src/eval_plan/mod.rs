@@ -25,7 +25,8 @@ pub use artifact::{
 };
 pub use backward::{
     BackwardEvaluationError, BackwardSymbolicEvaluation, CompiledBackwardEvaluation,
-    compile_backward_fragments_uncached, elaborate_backward_fragments_uncached,
+    compile_backward_fragments_replayed, compile_backward_fragments_uncached,
+    elaborate_backward_fragments_uncached,
 };
 pub use concrete::{
     ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, ConcreteTerminal,
@@ -52,8 +53,9 @@ pub use search::{
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use crate::fwd::isa::Sign;
+use crate::bwd::plan::{PlanAction, PlanRun};
 use crate::bwd::trace::{BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom};
+use crate::fwd::isa::Sign;
 use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, FieldKind, Root, RootId, RootOrigin, SinkInfo, SourceKind, join,
 };
@@ -362,6 +364,13 @@ pub enum PlanError {
         budget_lanes: usize,
         required_transient_lanes: usize,
     },
+    ReplayDiverged {
+        at_entry: usize,
+    },
+    ReplayNotFullyConsumed {
+        at_entry: usize,
+    },
+    ReplayInfeasible,
 }
 
 impl From<IdentityError> for PlanError {
@@ -527,7 +536,7 @@ fn elaborate_internal(
         pinned: BTreeSet::new(),
         resident_lanes: 0,
         budget_lanes,
-        oracle,
+        cache_policy: oracle.map_or(ElaborationCachePolicy::None, ElaborationCachePolicy::Ranked),
         trace_residency,
         pending_sinks,
         staged_demands: Vec::new(),
@@ -576,6 +585,59 @@ pub(super) fn elaborate_backward_fragments_driver(
     budget_lanes: usize,
     stream_reductions: bool,
 ) -> Result<(EvalPlan, Vec<BwdEvent>), PlanError> {
+    elaborate_backward_fragments_with_policy(
+        layer,
+        root_id,
+        expr_fields,
+        fragments,
+        scheduled_fragments,
+        coefficient_descs,
+        acc_init_desc,
+        budget_lanes,
+        stream_reductions,
+        None,
+    )
+}
+
+pub(super) fn elaborate_backward_fragments_replayed_driver(
+    layer: &DagLayer,
+    root_id: RootId,
+    expr_fields: &[FieldKind],
+    fragments: &[crate::bwd::fragment::FragmentSpec],
+    scheduled_fragments: &[usize],
+    coefficient_descs: &[Option<u16>],
+    acc_init_desc: Option<u16>,
+    budget_lanes: usize,
+    stream_reductions: bool,
+    replay: &mut BackwardReplay,
+) -> Result<(EvalPlan, Vec<BwdEvent>), PlanError> {
+    elaborate_backward_fragments_with_policy(
+        layer,
+        root_id,
+        expr_fields,
+        fragments,
+        scheduled_fragments,
+        coefficient_descs,
+        acc_init_desc,
+        budget_lanes,
+        stream_reductions,
+        Some(replay),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn elaborate_backward_fragments_with_policy(
+    layer: &DagLayer,
+    root_id: RootId,
+    expr_fields: &[FieldKind],
+    fragments: &[crate::bwd::fragment::FragmentSpec],
+    scheduled_fragments: &[usize],
+    coefficient_descs: &[Option<u16>],
+    acc_init_desc: Option<u16>,
+    budget_lanes: usize,
+    stream_reductions: bool,
+    replay: Option<&mut BackwardReplay>,
+) -> Result<(EvalPlan, Vec<BwdEvent>), PlanError> {
     if expr_fields.len() != layer.exprs.len() {
         return Err(PlanError::FieldCount {
             expected: layer.exprs.len(),
@@ -607,7 +669,10 @@ pub(super) fn elaborate_backward_fragments_driver(
         pinned: BTreeSet::new(),
         resident_lanes: 0,
         budget_lanes,
-        oracle: None,
+        cache_policy: replay.map_or(
+            ElaborationCachePolicy::None,
+            ElaborationCachePolicy::BackwardReplay,
+        ),
         trace_residency: false,
         pending_sinks: BTreeMap::new(),
         staged_demands: Vec::new(),
@@ -628,6 +693,7 @@ pub(super) fn elaborate_backward_fragments_driver(
         coefficient_descs,
         acc_init_desc,
     )?;
+    elaborator.finish_backward_replay()?;
     if let Some((&id, _)) = elaborator.live_temps.iter().next() {
         return Err(PlanError::LiveTempAtEnd(id));
     }
@@ -800,6 +866,25 @@ struct BackwardDemandState {
     events: Vec<BwdEvent>,
 }
 
+pub(super) struct BackwardReplay {
+    run: PlanRun,
+    /// Values named by the incumbent occurrence stream. Shared-only demands
+    /// remain ordinary Bypass demands and do not become cross-engine divergence.
+    domain: BTreeSet<ExprId>,
+}
+
+impl BackwardReplay {
+    pub(super) fn new(run: PlanRun, domain: BTreeSet<ExprId>) -> Self {
+        Self { run, domain }
+    }
+}
+
+enum ElaborationCachePolicy<'a> {
+    None,
+    Ranked(&'a mut dyn CacheOracle),
+    BackwardReplay(&'a mut BackwardReplay),
+}
+
 type PreferenceMap = BTreeMap<ValueFingerprint, f64>;
 
 struct Elaborator<'a, 'oracle> {
@@ -814,7 +899,7 @@ struct Elaborator<'a, 'oracle> {
     pinned: BTreeSet<ValueFingerprint>,
     resident_lanes: usize,
     budget_lanes: usize,
-    oracle: Option<&'oracle mut dyn CacheOracle>,
+    cache_policy: ElaborationCachePolicy<'oracle>,
     trace_residency: bool,
     pending_sinks: BTreeMap<ExprId, Vec<SinkObligation>>,
     staged_demands: Vec<(SiteId, StagedEntry)>,
@@ -866,6 +951,35 @@ impl Elaborator<'_, '_> {
         self.emit(EvalOp::ReturnAcc { root: root.clone() })
     }
 
+    fn finish_backward_replay(&mut self) -> Result<(), PlanError> {
+        if !matches!(
+            &self.cache_policy,
+            ElaborationCachePolicy::BackwardReplay(_)
+        ) {
+            return Ok(());
+        }
+        self.replay_drop_expired()?;
+        let at_entry = {
+            let ElaborationCachePolicy::BackwardReplay(replay) = &mut self.cache_policy else {
+                unreachable!()
+            };
+            replay.run.finish();
+            replay.run.diverged()
+        };
+        if let Some(at_entry) = at_entry {
+            self.backward_demand
+                .as_mut()
+                .expect("backward replay always records demand events")
+                .events
+                .push(BwdEvent::Diverge { at_entry });
+            return Err(PlanError::ReplayNotFullyConsumed { at_entry });
+        }
+        if !self.residents.is_empty() {
+            return Err(PlanError::ReplayInfeasible);
+        }
+        Ok(())
+    }
+
     fn elaborate_root(&mut self, root_id: RootId) -> Result<(), PlanError> {
         let Some(root) = self.layer.roots.get(root_id.0 as usize) else {
             return Err(PlanError::RootOutOfBounds(root_id));
@@ -885,7 +999,7 @@ impl Elaborator<'_, '_> {
         path: &[PathStep],
         inherited: &PreferenceMap,
     ) -> Result<FieldKind, PlanError> {
-        self.record_backward_demand(expr);
+        self.record_backward_demand(expr)?;
         if let Some(staged) = self.take_staged(expr, root, path) {
             self.plan.stats.cache_hits += 1;
             self.plan.attribution.entry(expr).or_default().resident_hits += 1;
@@ -898,27 +1012,73 @@ impl Elaborator<'_, '_> {
         self.eval_entered_expr(expr, root, path, &scope)
     }
 
-    fn record_backward_demand(&mut self, expr: ExprId) {
-        if let Some(state) = &mut self.backward_demand {
-            state.events.push(BwdEvent::Serve {
-                fp: BwdFingerprint {
-                    term: state.schedule_pos,
-                    kind: BwdServeKind::Operand,
-                    value: expr,
-                    consumer: state.consumer_stack.last().copied(),
+    fn record_backward_demand(&mut self, expr: ExprId) -> Result<(), PlanError> {
+        let Some(state) = &self.backward_demand else {
+            return Ok(());
+        };
+        let fp = BwdFingerprint {
+            term: state.schedule_pos,
+            kind: BwdServeKind::Operand,
+            value: expr,
+            consumer: state.consumer_stack.last().copied(),
+        };
+        let fingerprint = self.fingerprint(expr);
+        let resident = self.residents.contains_key(&fingerprint);
+        self.backward_demand
+            .as_mut()
+            .expect("checked Some above")
+            .events
+            .push(BwdEvent::Serve {
+                fp,
+                from: if resident {
+                    BwdServedFrom::Resident
+                } else {
+                    BwdServedFrom::Recomputed
                 },
-                from: BwdServedFrom::Recomputed,
             });
+
+        let ElaborationCachePolicy::BackwardReplay(replay) = &mut self.cache_policy else {
+            return Ok(());
+        };
+        if !replay.domain.contains(&expr) {
+            return Ok(());
         }
+        let action = replay.run.on_serve(&fp);
+        if let Some(at_entry) = replay.run.diverged() {
+            self.backward_demand
+                .as_mut()
+                .expect("backward replay always records demand events")
+                .events
+                .push(BwdEvent::Diverge { at_entry });
+            return Err(PlanError::ReplayDiverged { at_entry });
+        }
+        if action == PlanAction::Retain && resident {
+            let closes_at = replay
+                .run
+                .retention(expr)
+                .expect("a matched Retain has an open interval");
+            if let Some(entry) = self.residents.get_mut(&fingerprint) {
+                entry.priority = closes_at as f64;
+            }
+        }
+        Ok(())
     }
 
     fn source_operand(&mut self, value: ValueRef) -> Operand {
+        self.record_source_traffic(value);
+        Operand::Source(value)
+    }
+
+    fn record_source_traffic(&mut self, value: ValueRef) {
         let traffic_cells = match &self.layer.exprs[value.expr.0 as usize] {
             Expr::Source(source)
                 if matches!(
                     self.layer.sources[source.0 as usize].kind,
                     SourceKind::Read { .. }
-                ) => Some(field_lanes(value.field) as u32),
+                ) =>
+            {
+                Some(field_lanes(value.field) as u32)
+            }
             _ => None,
         };
         if let (Some(cells), Some(state)) = (traffic_cells, &mut self.backward_demand) {
@@ -927,7 +1087,6 @@ impl Elaborator<'_, '_> {
                 cells,
             });
         }
-        Operand::Source(value)
     }
 
     fn push_backward_consumer(&mut self, expr: ExprId) {
@@ -953,10 +1112,12 @@ impl Elaborator<'_, '_> {
         let hit = self.residents.contains_key(&self.fingerprint(expr));
         let (site, scope) = self.enter_site(expr, root, path, inherited)?;
         if !hit {
-            let staging = self
-                .oracle
-                .as_deref_mut()
-                .map_or_else(Vec::new, |oracle| oracle.stage_before(&site));
+            let staging = match &mut self.cache_policy {
+                ElaborationCachePolicy::Ranked(oracle) => oracle.stage_before(&site),
+                ElaborationCachePolicy::None | ElaborationCachePolicy::BackwardReplay(_) => {
+                    Vec::new()
+                }
+            };
             self.stage_requested(expr, &site, root, &scope, staging)?;
         }
         Ok((site, scope))
@@ -1183,7 +1344,20 @@ impl Elaborator<'_, '_> {
             + usize::from(operation == ReductionOp::Mul && product_unit_sign(self.layer, parent));
 
         let mut need_memo = HashMap::new();
+        let avoid_fused_product_seed = matches!(
+            &self.cache_policy,
+            ElaborationCachePolicy::BackwardReplay(_)
+        ) && operation == ReductionOp::Add
+            && children.iter().any(|child| {
+                self.direct_single_product(child.expr).is_none()
+                    && !self.direct_binary_product(child.expr)
+            });
         let first_index = (0..children.len())
+            .filter(|&index| {
+                !avoid_fused_product_seed
+                    || (self.direct_single_product(children[index].expr).is_none()
+                        && !self.direct_binary_product(children[index].expr))
+            })
             .min_by_key(|&index| {
                 (
                     self.transient_need_with_first(
@@ -1207,7 +1381,27 @@ impl Elaborator<'_, '_> {
         let mut acc_field = self.eval_expr(first.expr, root, &first_path, scope)?;
         for child in children {
             let child_path = extended(path, child.step);
-            if self.is_direct(child.expr) {
+            if matches!(
+                &self.cache_policy,
+                ElaborationCachePolicy::BackwardReplay(_)
+            ) && operation == ReductionOp::Add
+                && self.direct_single_product(child.expr).is_some()
+            {
+                self.fold_or_signed_single_product(
+                    child.expr,
+                    root,
+                    &child_path,
+                    scope,
+                    acc_field,
+                )?;
+            } else if matches!(
+                &self.cache_policy,
+                ElaborationCachePolicy::BackwardReplay(_)
+            ) && operation == ReductionOp::Add
+                && self.direct_binary_product(child.expr)
+            {
+                self.fold_or_fma_product(child.expr, root, &child_path, scope, acc_field)?;
+            } else if self.is_direct(child.expr) {
                 self.fold_direct(child.expr, operation, root, &child_path, scope)?;
             } else {
                 let saved = self.save_acc(acc_field)?;
@@ -1350,7 +1544,9 @@ impl Elaborator<'_, '_> {
                     acc_field,
                 )?;
             } else if operation == ReductionOp::Add && self.direct_binary_product(child.expr) {
-                if self.oracle.is_none() && !self.pending_sinks.contains_key(&child.expr) {
+                if matches!(&self.cache_policy, ElaborationCachePolicy::None)
+                    && !self.pending_sinks.contains_key(&child.expr)
+                {
                     self.emit_ready_fma(child.expr, root, &child_path)?;
                 } else {
                     self.fold_or_fma_product(child.expr, root, &child_path, scope, acc_field)?;
@@ -1465,7 +1661,7 @@ impl Elaborator<'_, '_> {
         path: &[PathStep],
         inherited: &PreferenceMap,
     ) -> Result<(), PlanError> {
-        self.record_backward_demand(expr);
+        self.record_backward_demand(expr)?;
         let staged = self.take_staged(expr, root, path);
         let scope = if let Some(staged) = &staged {
             staged.scope.clone()
@@ -1518,7 +1714,7 @@ impl Elaborator<'_, '_> {
         root: &RootKey,
         path: &[PathStep],
     ) -> Result<(), PlanError> {
-        self.record_backward_demand(product);
+        self.record_backward_demand(product)?;
         self.plan
             .attribution
             .entry(product)
@@ -1538,7 +1734,7 @@ impl Elaborator<'_, '_> {
         self.push_backward_consumer(product);
         for child in product_children {
             let child_path = extended(path, child.step);
-            self.record_backward_demand(child.expr);
+            self.record_backward_demand(child.expr)?;
             self.record_site(child.expr, root, &child_path);
             let value = self.value_ref(child.expr);
             self.materialize(child.expr, MaterializeFrom::Source(value))?;
@@ -1564,7 +1760,7 @@ impl Elaborator<'_, '_> {
         inherited: &PreferenceMap,
         acc_field: FieldKind,
     ) -> Result<(), PlanError> {
-        self.record_backward_demand(product);
+        self.record_backward_demand(product)?;
         let (_site, product_scope) = self.enter_and_stage(product, root, path, inherited)?;
         let product_value = self.value_ref(product);
         if product_scope.contains_key(&product_value.fingerprint)
@@ -1588,9 +1784,17 @@ impl Elaborator<'_, '_> {
             .or_default()
             .signed_add_fusions += 1;
         let child_path = extended(path, child.step);
-        self.push_backward_consumer(product);
+        let preserve_product_consumer = !matches!(
+            &self.cache_policy,
+            ElaborationCachePolicy::BackwardReplay(_)
+        );
+        if preserve_product_consumer {
+            self.push_backward_consumer(product);
+        }
         let prepared = self.prepare_fma_operand(child.expr, root, &child_path, &product_scope)?;
-        self.pop_backward_consumer(product);
+        if preserve_product_consumer {
+            self.pop_backward_consumer(product);
+        }
         self.emit(EvalOp::AccAdd {
             sign,
             operand: prepared.operand,
@@ -1612,7 +1816,7 @@ impl Elaborator<'_, '_> {
         inherited: &PreferenceMap,
         acc_field: FieldKind,
     ) -> Result<(), PlanError> {
-        self.record_backward_demand(product);
+        self.record_backward_demand(product)?;
         let (_site, product_scope) = self.enter_and_stage(product, root, path, inherited)?;
         let product_value = self.value_ref(product);
         if product_scope.contains_key(&product_value.fingerprint)
@@ -1642,7 +1846,13 @@ impl Elaborator<'_, '_> {
         );
         debug_assert_eq!(product_children.len(), 2);
         let mut prepared = Vec::with_capacity(2);
-        self.push_backward_consumer(product);
+        let preserve_product_consumer = !matches!(
+            &self.cache_policy,
+            ElaborationCachePolicy::BackwardReplay(_)
+        );
+        if preserve_product_consumer {
+            self.push_backward_consumer(product);
+        }
         for child in product_children {
             let child_path = extended(path, child.step);
             prepared.push(self.prepare_fma_operand(
@@ -1652,7 +1862,9 @@ impl Elaborator<'_, '_> {
                 &product_scope,
             )?);
         }
-        self.pop_backward_consumer(product);
+        if preserve_product_consumer {
+            self.pop_backward_consumer(product);
+        }
 
         self.emit(EvalOp::AccFma {
             sign: if product_unit_sign(self.layer, product) {
@@ -1687,7 +1899,7 @@ impl Elaborator<'_, '_> {
         path: &[PathStep],
         inherited: &PreferenceMap,
     ) -> Result<PreparedOperand, PlanError> {
-        self.record_backward_demand(expr);
+        self.record_backward_demand(expr)?;
         let scope = if let Some(staged) = self.take_staged(expr, root, path) {
             staged.scope
         } else {
@@ -1832,30 +2044,50 @@ impl Elaborator<'_, '_> {
     ) -> Result<(SiteId, PreferenceMap), PlanError> {
         let site = self.record_site(expr, root, path);
         let hit = self.residents.contains_key(&site.value);
-        let mut scope = inherited.clone();
-        if let Some(oracle) = self.oracle.as_deref_mut() {
-            let resident_values: Vec<ValueRef> =
-                self.residents.values().map(|entry| entry.value).collect();
-            let pinned_values: Vec<ValueFingerprint> = self.pinned.iter().copied().collect();
-            let response = oracle.desired_after(
-                &site,
-                CacheStateView {
-                    residents: &resident_values,
-                    pinned: &pinned_values,
-                    resident_lanes: self.resident_lanes,
-                    transient_lanes: self.live_lanes,
-                    budget_lanes: self.budget_lanes,
-                },
-            );
-            for preference in response {
-                if !preference.priority.is_finite() {
-                    return Err(PlanError::InvalidPriority {
-                        site: Box::new(site),
-                        priority: preference.priority,
-                    });
+        let mut scope = if matches!(
+            &self.cache_policy,
+            ElaborationCachePolicy::BackwardReplay(_)
+        ) {
+            PreferenceMap::new()
+        } else {
+            inherited.clone()
+        };
+        match &mut self.cache_policy {
+            ElaborationCachePolicy::Ranked(oracle) => {
+                let resident_values: Vec<ValueRef> =
+                    self.residents.values().map(|entry| entry.value).collect();
+                let pinned_values: Vec<ValueFingerprint> = self.pinned.iter().copied().collect();
+                let response = oracle.desired_after(
+                    &site,
+                    CacheStateView {
+                        residents: &resident_values,
+                        pinned: &pinned_values,
+                        resident_lanes: self.resident_lanes,
+                        transient_lanes: self.live_lanes,
+                        budget_lanes: self.budget_lanes,
+                    },
+                );
+                for preference in response {
+                    if !preference.priority.is_finite() {
+                        return Err(PlanError::InvalidPriority {
+                            site: Box::new(site),
+                            priority: preference.priority,
+                        });
+                    }
+                    merge_priority(&mut scope, preference.value, preference.priority);
                 }
-                merge_priority(&mut scope, preference.value, preference.priority);
             }
+            ElaborationCachePolicy::BackwardReplay(replay) => {
+                for entry in self.residents.values() {
+                    if let Some(closes_at) = replay.run.retention(entry.value.expr) {
+                        scope.insert(entry.value.fingerprint, closes_at as f64);
+                    }
+                }
+                if let Some(closes_at) = replay.run.retention(expr) {
+                    scope.insert(site.value, closes_at as f64);
+                }
+            }
+            ElaborationCachePolicy::None => {}
         }
         if self.trace_residency {
             self.plan.residency_events.push(PlanResidencyEvent {
@@ -1873,6 +2105,20 @@ impl Elaborator<'_, '_> {
     /// accumulator or is a directly-copyable source. Unavailable requested
     /// values are not fabricated retroactively.
     fn realize_exit(
+        &mut self,
+        preferences: &PreferenceMap,
+        current: Option<(ValueRef, CacheStoreFrom)>,
+    ) -> Result<(), PlanError> {
+        if matches!(
+            &self.cache_policy,
+            ElaborationCachePolicy::BackwardReplay(_)
+        ) {
+            return self.realize_replay_exit(current);
+        }
+        self.realize_ranked_exit(preferences, current)
+    }
+
+    fn realize_ranked_exit(
         &mut self,
         preferences: &PreferenceMap,
         current: Option<(ValueRef, CacheStoreFrom)>,
@@ -1974,6 +2220,140 @@ impl Elaborator<'_, '_> {
         Ok(())
     }
 
+    fn realize_replay_exit(
+        &mut self,
+        current: Option<(ValueRef, CacheStoreFrom)>,
+    ) -> Result<(), PlanError> {
+        self.replay_drop_expired()?;
+
+        let Some((value, from)) = current else {
+            return Ok(());
+        };
+        let closes_at = match &self.cache_policy {
+            ElaborationCachePolicy::BackwardReplay(replay) => replay.run.retention(value.expr),
+            ElaborationCachePolicy::None | ElaborationCachePolicy::Ranked(_) => unreachable!(),
+        };
+        let Some(closes_at) = closes_at else {
+            return Ok(());
+        };
+        if let Some(entry) = self.residents.get_mut(&value.fingerprint) {
+            entry.priority = closes_at as f64;
+            return Ok(());
+        }
+
+        let need = field_lanes(value.field);
+        if !self.replay_evict_expired_to_fit(need)? {
+            if let Some(state) = &mut self.backward_demand {
+                state.events.push(BwdEvent::Refuse {
+                    value: value.expr,
+                    need: need as u32,
+                });
+            }
+            return Err(PlanError::ReplayInfeasible);
+        }
+        self.emit(EvalOp::CacheStore { value, from })?;
+        self.plan
+            .attribution
+            .entry(value.expr)
+            .or_default()
+            .cache_stores += 1;
+        self.resident_lanes += need;
+        self.residents.insert(
+            value.fingerprint,
+            ResidentEntry {
+                value,
+                priority: closes_at as f64,
+            },
+        );
+        if let Some(state) = &mut self.backward_demand {
+            state.events.push(BwdEvent::Admit {
+                value: value.expr,
+                width: need as u8,
+            });
+        }
+        self.update_peak();
+        Ok(())
+    }
+
+    fn replay_drop_expired(&mut self) -> Result<(), PlanError> {
+        let mut victims = {
+            let ElaborationCachePolicy::BackwardReplay(replay) = &self.cache_policy else {
+                unreachable!()
+            };
+            self.residents
+                .iter()
+                .filter(|(fingerprint, entry)| {
+                    !self.pinned.contains(fingerprint)
+                        && replay.run.retention(entry.value.expr).is_none()
+                })
+                .map(|(&fingerprint, entry)| {
+                    (
+                        replay.run.remaining(entry.value.expr) != 0,
+                        entry.priority as usize,
+                        entry.value.expr,
+                        fingerprint,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        victims.sort();
+        for (_, _, _, fingerprint) in victims {
+            self.drop_replay_resident(fingerprint)?;
+        }
+        Ok(())
+    }
+
+    fn replay_evict_expired_to_fit(&mut self, extra_lanes: usize) -> Result<bool, PlanError> {
+        loop {
+            if self
+                .resident_lanes
+                .saturating_add(self.live_lanes)
+                .saturating_add(extra_lanes)
+                <= self.budget_lanes
+            {
+                return Ok(true);
+            }
+            let victim = {
+                let ElaborationCachePolicy::BackwardReplay(replay) = &self.cache_policy else {
+                    unreachable!()
+                };
+                self.residents
+                    .iter()
+                    .filter(|(fingerprint, entry)| {
+                        !self.pinned.contains(fingerprint)
+                            && replay.run.retention(entry.value.expr).is_none()
+                    })
+                    .min_by_key(|(fingerprint, entry)| {
+                        (
+                            replay.run.remaining(entry.value.expr) != 0,
+                            entry.priority as usize,
+                            entry.value.expr,
+                            **fingerprint,
+                        )
+                    })
+                    .map(|(&fingerprint, _)| fingerprint)
+            };
+            let Some(victim) = victim else {
+                return Ok(false);
+            };
+            self.drop_replay_resident(victim)?;
+        }
+    }
+
+    fn drop_replay_resident(&mut self, fingerprint: ValueFingerprint) -> Result<(), PlanError> {
+        let Some(value) = self.residents.get(&fingerprint).map(|entry| entry.value) else {
+            return Ok(());
+        };
+        self.drop_resident(fingerprint)?;
+        if let Some(state) = &mut self.backward_demand {
+            state.events.push(BwdEvent::Evict {
+                value: value.expr,
+                expired: true,
+            });
+        }
+        Ok(())
+    }
+
     fn drop_resident(&mut self, fingerprint: ValueFingerprint) -> Result<(), PlanError> {
         debug_assert!(
             !self.pinned.contains(&fingerprint),
@@ -1996,6 +2376,15 @@ impl Elaborator<'_, '_> {
     }
 
     fn ensure_transient_capacity(&mut self, extra_lanes: usize) -> Result<(), PlanError> {
+        if matches!(
+            &self.cache_policy,
+            ElaborationCachePolicy::BackwardReplay(_)
+        ) {
+            return self
+                .replay_evict_expired_to_fit(extra_lanes)?
+                .then_some(())
+                .ok_or(PlanError::ReplayInfeasible);
+        }
         while self
             .resident_lanes
             .saturating_add(self.live_lanes)
@@ -2065,6 +2454,7 @@ impl Elaborator<'_, '_> {
             EvalOp::CacheStore { value, from } => {
                 self.plan.stats.cache_stores += 1;
                 if *from == CacheStoreFrom::Source {
+                    self.record_source_traffic(*value);
                     self.count_operand(Operand::Source(*value))?;
                 }
             }
@@ -2072,6 +2462,7 @@ impl Elaborator<'_, '_> {
             EvalOp::Commit { from, .. } => {
                 self.plan.stats.commits += 1;
                 if let MaterializeFrom::Source(value) = from {
+                    self.record_source_traffic(*value);
                     self.count_operand(Operand::Source(*value))?;
                 }
             }

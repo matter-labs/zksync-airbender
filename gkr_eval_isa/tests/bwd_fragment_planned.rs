@@ -51,14 +51,18 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use common::{assert_bwd_value_parity, layers_with_bwd_roots, FIXTURES};
+use common::{FIXTURES, assert_bwd_value_parity, layers_with_bwd_roots};
 use cs::gkr_compiler::dag_ir::{BwdRegime, Expr, ExprId};
-use gkr_eval_isa::bwd::compile::{compile_distilled_fragments_planned, FragmentBackend};
+use gkr_eval_isa::bwd::compile::{
+    BwdCompiledLayer, FragmentBackend, compile_distilled_fragments_planned,
+};
 use gkr_eval_isa::bwd::construct::construct_fragment_order;
-use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain, DistilledLayer};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, distill, stable_distilled_site_domain};
 use gkr_eval_isa::bwd::fif::coordinate_correct_frozen_with_backend;
-use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
-use gkr_eval_isa::bwd::trace::{certify, BwdCompileTrace, BwdEvent, BwdServedFrom, FrozenDemand};
+use gkr_eval_isa::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
+use gkr_eval_isa::bwd::trace::{BwdCompileTrace, BwdEvent, BwdServedFrom, FrozenDemand, certify};
+use gkr_eval_isa::eval_plan::{CompiledBackwardEvaluation, compile_backward_fragments_replayed};
+use gkr_eval_isa::fwd::encode::{decode, encode};
 
 const BUDGET: usize = 16;
 
@@ -83,7 +87,10 @@ fn all_bypass_plan(frozen: &FrozenDemand) -> BwdOccurrencePlan {
     let entries: Vec<PlanEntry> = frozen
         .domain_serves
         .iter()
-        .map(|&(fp, _from)| PlanEntry { fp, action: PlanAction::Bypass })
+        .map(|&(fp, _from)| PlanEntry {
+            fp,
+            action: PlanAction::Bypass,
+        })
         .collect();
     BwdOccurrencePlan {
         epoch: frozen.epoch,
@@ -108,13 +115,19 @@ fn with_retain_at(base: &BwdOccurrencePlan, pos: usize) -> BwdOccurrencePlan {
 // ── event probes on a returned trace ───────────────────────────────────────────
 
 fn diverged(t: &BwdCompileTrace) -> bool {
-    t.events.iter().any(|e| matches!(e, BwdEvent::Diverge { .. }))
+    t.events
+        .iter()
+        .any(|e| matches!(e, BwdEvent::Diverge { .. }))
 }
 fn refused(t: &BwdCompileTrace, v: ExprId) -> bool {
-    t.events.iter().any(|e| matches!(e, BwdEvent::Refuse { value, .. } if *value == v))
+    t.events
+        .iter()
+        .any(|e| matches!(e, BwdEvent::Refuse { value, .. } if *value == v))
 }
 fn admitted(t: &BwdCompileTrace, v: ExprId) -> bool {
-    t.events.iter().any(|e| matches!(e, BwdEvent::Admit { value, .. } if *value == v))
+    t.events
+        .iter()
+        .any(|e| matches!(e, BwdEvent::Admit { value, .. } if *value == v))
 }
 /// The load-bearing non-vacuity signal: the retained value was actually served FROM its
 /// resident cell (the plan-mode resident-hit arm of `lower_bwd_top_atom` fired). A refused
@@ -123,6 +136,93 @@ fn served_resident(t: &BwdCompileTrace, v: ExprId) -> bool {
     t.events.iter().any(
         |e| matches!(e, BwdEvent::Serve { fp, from: BwdServedFrom::Resident } if fp.value == v),
     )
+}
+
+fn backward_dram(compiled: &BwdCompiledLayer) -> usize {
+    compiled.stats_ext.global + compiled.stats_ext.fold_traffic
+}
+
+fn assert_shared_replay(
+    ctx: &str,
+    old: &BwdCompiledLayer,
+    new: &CompiledBackwardEvaluation,
+    d: &DistilledLayer,
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+) {
+    assert_eq!(decode(&new.encoded).unwrap(), new.compiled.program, "{ctx}");
+    assert_bwd_value_parity(&new.compiled, d, layer);
+    assert!(
+        backward_dram(&new.compiled) <= backward_dram(old),
+        "{ctx}: shared replay DRAM traffic regressed"
+    );
+    assert!(!diverged(&new.trace), "{ctx}: shared replay diverged");
+    eprintln!(
+        "{ctx}: instructions incumbent={} shared={} encoded_lanes incumbent={} shared={}",
+        old.program.instrs.len(),
+        new.compiled.program.instrs.len(),
+        encode(&old.program).unwrap().len(),
+        new.encoded.len(),
+    );
+}
+
+fn assert_retains_realized(ctx: &str, plan: &BwdOccurrencePlan, trace: &BwdCompileTrace) {
+    let mut cursor = 0usize;
+    let serve_positions = plan
+        .entries
+        .iter()
+        .map(|entry| {
+            let relative = trace.events[cursor..]
+                .iter()
+                .position(|event| matches!(event, BwdEvent::Serve { fp, .. } if *fp == entry.fp))
+                .unwrap_or_else(|| {
+                    panic!("[{ctx}] no realized Serve for ordered plan entry {entry:?}")
+                });
+            let position = cursor + relative;
+            cursor = position + 1;
+            position
+        })
+        .collect::<Vec<_>>();
+
+    for (entry_index, entry) in plan.entries.iter().enumerate() {
+        if entry.action != PlanAction::Retain {
+            continue;
+        }
+        let close_index = plan.entries[entry_index + 1..]
+            .iter()
+            .position(|later| later.fp.value == entry.fp.value)
+            .map(|relative| entry_index + 1 + relative)
+            .expect("an accepted Retain has a later occurrence");
+        let opening = serve_positions[entry_index];
+        let closing = serve_positions[close_index];
+        let opening_from = match trace.events[opening] {
+            BwdEvent::Serve { from, .. } => from,
+            _ => unreachable!(),
+        };
+        assert!(
+            matches!(
+                trace.events[closing],
+                BwdEvent::Serve {
+                    fp,
+                    from: BwdServedFrom::Resident,
+                } if fp.value == entry.fp.value
+            ),
+            "[{ctx}] Retain at entry {entry_index} did not produce a later resident Serve"
+        );
+        assert!(
+            !trace.events[opening..=closing].iter().any(
+                |event| matches!(event, BwdEvent::Refuse { value, .. } if *value == entry.fp.value)
+            ),
+            "[{ctx}] Retain at entry {entry_index} was refused"
+        );
+        if opening_from == BwdServedFrom::Recomputed {
+            assert!(
+                trace.events[opening + 1..closing].iter().any(
+                    |event| matches!(event, BwdEvent::Admit { value, .. } if *value == entry.fp.value)
+                ),
+                "[{ctx}] miss-side Retain at entry {entry_index} did not admit before its hit"
+            );
+        }
+    }
 }
 
 /// The three properties every planned fragment program in this gate must satisfy:
@@ -164,8 +264,7 @@ fn assert_clean_certified_and_valued(
 /// fail-closed matcher cannot EOF-diverge (a compound retention would need the
 /// `compound_batch_plan` suppressed-stream machinery, out of scope here).
 fn is_leaf(d: &DistilledLayer, v: ExprId) -> bool {
-    d.layer.resolutions.contains_key(&v)
-        || matches!(d.layer.exprs[v.0 as usize], Expr::Source(_))
+    d.layer.resolutions.contains_key(&v) || matches!(d.layer.exprs[v.0 as usize], Expr::Source(_))
 }
 
 /// Deterministic `Retain` candidates over `base`'s entries: for each DOMAIN LEAF value with
@@ -242,6 +341,10 @@ fn try_retain(
             layer,
             certify_exact,
         );
+        let new = compile_backward_fragments_replayed(d, &plan, Some(order), 4)
+            .unwrap_or_else(|e| panic!("[{ctx}] shared Retain replay {v:?}: {e:?}"));
+        assert_shared_replay(&format!("{ctx} Retain {v:?}"), &c, &new, d, layer);
+        assert_retains_realized(&format!("{ctx} Retain {v:?}"), &plan, &new.trace);
         return Some((v, pos));
     }
     None
@@ -288,7 +391,9 @@ fn fragment_planned_replay_and_retention_gate() {
                 let frozen0 = coordinate_correct_frozen_with_backend(
                     &d,
                     BUDGET,
-                    &FragmentBackend { order: order.clone() },
+                    &FragmentBackend {
+                        order: order.clone(),
+                    },
                 )
                 .unwrap_or_else(|e| panic!("[{ctx}] coordinate_correct_frozen (fragment): {e:?}"));
 
@@ -305,6 +410,9 @@ fn fragment_planned_replay_and_retention_gate() {
                     &layer,
                     certify_exact,
                 );
+                let new0 = compile_backward_fragments_replayed(&d, &bypass_plan, Some(&order), 4)
+                    .unwrap_or_else(|e| panic!("[{ctx}] shared all-Bypass replay: {e:?}"));
+                assert_shared_replay(&format!("{ctx} all-Bypass"), &c0, &new0, &d, &layer);
 
                 // 4. Retain non-vacuity.
                 if !retain_candidates(&d, &bypass_plan).is_empty() {
@@ -352,7 +460,10 @@ fn fragment_planned_replay_and_retention_gate() {
         bigint_pin.0, bigint_pin.1, blake2_pin.0, blake2_pin.1
     );
 
-    assert!(instances > 0, "no layer instances exercised — enumeration broke");
+    assert!(
+        instances > 0,
+        "no layer instances exercised — enumeration broke"
+    );
     assert!(
         ext_clean_retains > 0,
         "no Ext layer realized a clean Retain anywhere — the plan-mode resident-hit / \
@@ -360,7 +471,10 @@ fn fragment_planned_replay_and_retention_gate() {
     );
 
     // The unconditional pins: silent skip-all is the failure this gate exists to catch.
-    assert!(bigint_pin.0, "bigint L0 Ext was never reached — the pin cannot be vacuously green");
+    assert!(
+        bigint_pin.0,
+        "bigint L0 Ext was never reached — the pin cannot be vacuously green"
+    );
     assert!(
         bigint_pin.1,
         "PIN FAILED: bigint L0 Ext could not realize any Retain within {MAX_TRIALS} trials"
