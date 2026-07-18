@@ -119,13 +119,21 @@ from upstream library code (`full_statement_verifier::host_utils` /
     sticky errors don't cascade. Cost: ~220 ms CUDA init per test process.
   - **plain `cargo test`** — fast path for attended, iterative, filtered
     runs: a pre-main guard (`gpu_core::force_serial_libtest!()` at every GPU
-    crate root) forces `RUST_TEST_THREADS=1`, so it is serialized and safe
-    with zero per-test overhead — but a hung kernel wedges the run and a
-    sticky CUDA error poisons the remaining tests' shared context.
+    crate root) forces `RUST_TEST_THREADS=1`, fail-closed: an inherited env
+    value is overridden and a parallel `--test-threads` flag aborts the
+    binary (set `AB_GPU_TESTS_ALLOW_PARALLEL=1` to deliberately bypass).
+    Zero per-test overhead — but a hung kernel wedges the run and a sticky
+    CUDA error poisons the remaining tests' shared context.
+  - The guard covers lib unit tests only (where GPU tests live by
+    convention). A `tests/` integration target must invoke the macro at its
+    own crate root, and GPU doctests must stay `ignore`/`no_run` — rustdoc
+    runs doctests in parallel and nextest never runs them.
   - Tests in a module or test named `cpu_*` are declared GPU-free: nextest runs them
     in parallel outside `gpu-serial` (see the override in `.config/nextest.toml`).
   - A new GPU crate must be added to the `gpu-serial` filter AND invoke the
-    guard.
+    guard — enforced by the
+    `gpu_core::serial_guard::tests::cpu_nextest_config_covers_all_gpu_crates`
+    drift guard.
 
 ## Native code (CUDA/C++)
 

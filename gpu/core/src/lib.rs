@@ -12,7 +12,8 @@
 // scaffolding for stream-scheduled callbacks — see primitives/context.rs.
 #![allow(clippy::mut_from_ref)]
 
-mod serial_guard;
+#[doc(hidden)]
+pub mod serial_guard;
 mod upstream;
 
 pub mod allocator;
