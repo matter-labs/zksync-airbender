@@ -194,7 +194,7 @@ fn test_execution_prover_unified() {
 /// moment upstream adds a level the GPU stack does not handle, forcing an
 /// explicit decision instead of a silent `validate()` rejection at runtime.
 #[test]
-fn all_security_levels_supported_in_configuration() {
+fn cpu_all_security_levels_supported_in_configuration() {
     assert_eq!(
         ExecutionProverConfiguration::supported_security_levels(),
         SecurityLevel::ALL,

@@ -9,7 +9,7 @@ Applies only to GPU-related code or commands that use the local GPU.
 - GPU-crate Rust tests have **two safe harnesses** (the crates carry no `#[serial]` annotations):
   - **cargo-nextest** — use for unattended, full-suite, or milestone runs: `.config/nextest.toml`'s `gpu-serial` group serializes GPU tests, terminates hung tests after 5 min (a hung kernel no longer wedges the suite + GPU lock), and gives each test a fresh CUDA context (sticky errors don't cascade). Costs ~220 ms CUDA init per test.
   - **plain `cargo test`** — use for attended, iterative, filtered runs: the pre-main guard (`gpu_core::force_serial_libtest!()`) forces `RUST_TEST_THREADS=1`, so it is serialized and safe with zero per-test overhead; downside is no hung-test termination and a shared CUDA context.
-  - Tests in `cpu_*` modules are declared GPU-free and run parallel under nextest (config override).
+  - Tests in `cpu_*` modules (or `cpu_*`-named tests) are declared GPU-free and run parallel under nextest (config override).
 - For Rust tests, always split compile and run with `cargo nextest run --no-run` first unless the user explicitly asks for a different flow or the command truly cannot be split.
 - Split compile and run whenever possible so only the execution step holds the lock.
 - For compute-heavy GPU tests or prover runs, prefer `--release` by default. Use debug builds only for quick smoke checks, compile-only validation, or when the task explicitly needs debug assertions/symbols.

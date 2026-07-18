@@ -157,7 +157,7 @@ protocol kernels in its `gkr_ops`/`transcript`/`gather` submodules).
   zero-overhead attended path (the pre-main
   `gpu_core::force_serial_libtest!()` guard at the crate root forces
   `RUST_TEST_THREADS=1`; no hung-test termination). The crate carries no
-  `#[serial]` annotations. CPU-only tests may live in `cpu_*` modules to run
+  `#[serial]` annotations. CPU-only tests may be named or moduled `cpu_*` to run
   parallel under nextest.
 - Bench: `cargo bench -p circuit_prover`
 - For compute-heavy GPU tests or prover flows, use `--release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.

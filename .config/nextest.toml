@@ -18,8 +18,8 @@
 [test-groups.gpu-serial]
 max-threads = 1
 
-# CPU-only opt-out: tests in a module whose name starts with `cpu_` never
-# touch the GPU (convention — the test author asserts this by the name), so
+# CPU-only opt-out: tests in a module or test whose name starts with `cpu_`
+# never touch the GPU (convention — the test author asserts this by the name), so
 # they run in the default parallel group and skip both serialization and the
 # per-process CUDA-init cost. First match wins: this override must stay above
 # the gpu-serial one.

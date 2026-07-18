@@ -122,7 +122,7 @@ from upstream library code (`full_statement_verifier::host_utils` /
     crate root) forces `RUST_TEST_THREADS=1`, so it is serialized and safe
     with zero per-test overhead — but a hung kernel wedges the run and a
     sticky CUDA error poisons the remaining tests' shared context.
-  - Tests in a module named `cpu_*` are declared GPU-free: nextest runs them
+  - Tests in a module or test named `cpu_*` are declared GPU-free: nextest runs them
     in parallel outside `gpu-serial` (see the override in `.config/nextest.toml`).
   - A new GPU crate must be added to the `gpu-serial` filter AND invoke the
     guard.
