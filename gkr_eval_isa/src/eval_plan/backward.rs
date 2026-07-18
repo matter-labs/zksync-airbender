@@ -7,6 +7,7 @@ use crate::bwd::distill::DistilledLayer;
 use crate::bwd::source::BwdSpecialTable;
 use crate::bwd::trace::{
     BwdCompileTrace, BwdEvent, certify, live_profile, physical_traffic_events, plan_epoch_fragment,
+    retain_physical_traffic_events,
 };
 
 use super::{
@@ -160,17 +161,16 @@ pub fn compile_backward_fragments_uncached(
         stats_ext,
     };
 
-    let mut events = symbolic.demand_events.clone();
-    events.extend(
-        physical_traffic_events(
-            &d.layer,
-            &compiled.program,
-            &compiled.specials,
-            &d.leaf_descs,
-            &compiled.backings,
-        )
-        .ok_or(BackwardEvaluationError::TrafficSourceMapping)?,
-    );
+    let physical_events = physical_traffic_events(
+        &d.layer,
+        &compiled.program,
+        &compiled.specials,
+        &d.leaf_descs,
+        &compiled.backings,
+    )
+    .ok_or(BackwardEvaluationError::TrafficSourceMapping)?;
+    let events = retain_physical_traffic_events(symbolic.demand_events.clone(), &physical_events)
+        .ok_or(BackwardEvaluationError::TrafficSourceMapping)?;
     let trace = BwdCompileTrace {
         epoch: plan_epoch_fragment(d, budget_lanes, stream_reductions),
         budget: budget_lanes,
@@ -886,6 +886,46 @@ mod tests {
             assert!(serves.iter().any(|fp| {
                 fp.term == term as u32 && fp.value == *child && fp.consumer == Some(product)
             }));
+        }
+    }
+
+    #[test]
+    fn backward_trace_interleaves_physical_reads_with_matching_serves() {
+        let d = backward_fixture();
+
+        let out = compile_backward_fragments_uncached(&d, None, 4, true).unwrap();
+        let events = &out.trace.events;
+        let traffic_positions = events
+            .iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                matches!(event, BwdEvent::TrafficRead { .. }).then_some(index)
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            traffic_positions.len() > 1,
+            "fixture must perform multiple reads"
+        );
+        assert!(
+            traffic_positions[0]
+                < events
+                    .iter()
+                    .rposition(|event| matches!(event, BwdEvent::Serve { .. }))
+                    .expect("fixture must record serves"),
+            "physical reads must not be appended after the complete serve stream"
+        );
+        for position in traffic_positions {
+            let BwdEvent::TrafficRead { value, .. } = events[position] else {
+                unreachable!()
+            };
+            assert!(
+                matches!(
+                    events.get(position.wrapping_sub(1)),
+                    Some(BwdEvent::Serve { fp, .. }) if fp.value == value
+                ),
+                "traffic for {value:?} must immediately follow its matching serve"
+            );
         }
     }
 }

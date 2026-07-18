@@ -376,6 +376,39 @@ pub(crate) fn physical_traffic_events(
     Some(events)
 }
 
+/// Retain only source-resolution traffic anchors that correspond to operands
+/// physically present in the final post-peephole program. Matching by value
+/// and width preserves the elaborator's Serve/TrafficRead timing while the
+/// final instruction scan remains the authority for which reads survived.
+pub(crate) fn retain_physical_traffic_events(
+    ordered_events: Vec<BwdEvent>,
+    physical_events: &[BwdEvent],
+) -> Option<Vec<BwdEvent>> {
+    let mut remaining = BTreeMap::<(ExprId, u32), usize>::new();
+    for event in physical_events {
+        let BwdEvent::TrafficRead { value, cells } = event else {
+            return None;
+        };
+        *remaining.entry((*value, *cells)).or_default() += 1;
+    }
+
+    let mut retained = Vec::with_capacity(ordered_events.len());
+    for event in ordered_events {
+        let BwdEvent::TrafficRead { value, cells } = event else {
+            retained.push(event);
+            continue;
+        };
+        let Some(count) = remaining.get_mut(&(value, cells)) else {
+            continue;
+        };
+        if *count != 0 {
+            *count -= 1;
+            retained.push(event);
+        }
+    }
+    remaining.values().all(|&count| count == 0).then_some(retained)
+}
+
 // ── frozen demand (Task 2) ──────────────────────────────────────────────────
 
 /// The frozen all-recompute demand stream D0. Built once from a traced

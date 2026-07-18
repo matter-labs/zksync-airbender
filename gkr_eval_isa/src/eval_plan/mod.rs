@@ -912,6 +912,24 @@ impl Elaborator<'_, '_> {
         }
     }
 
+    fn source_operand(&mut self, value: ValueRef) -> Operand {
+        let traffic_cells = match &self.layer.exprs[value.expr.0 as usize] {
+            Expr::Source(source)
+                if matches!(
+                    self.layer.sources[source.0 as usize].kind,
+                    SourceKind::Read { .. }
+                ) => Some(field_lanes(value.field) as u32),
+            _ => None,
+        };
+        if let (Some(cells), Some(state)) = (traffic_cells, &mut self.backward_demand) {
+            state.events.push(BwdEvent::TrafficRead {
+                value: value.expr,
+                cells,
+            });
+        }
+        Operand::Source(value)
+    }
+
     fn push_backward_consumer(&mut self, expr: ExprId) {
         if let Some(state) = &mut self.backward_demand {
             state.consumer_stack.push(expr);
@@ -1090,11 +1108,13 @@ impl Elaborator<'_, '_> {
         if let Some(negative) = unit_sign_expr(self.layer, expr) {
             self.emit(EvalOp::AccInit(Operand::Unit { negative }))?;
         } else if self.layer.resolutions.contains_key(&expr) {
-            self.emit(EvalOp::AccInit(Operand::Source(value)))?;
+            let operand = self.source_operand(value);
+            self.emit(EvalOp::AccInit(operand))?;
         } else {
             match self.layer.exprs[expr.0 as usize].clone() {
                 Expr::Source(_) => {
-                    self.emit(EvalOp::AccInit(Operand::Source(value)))?;
+                    let operand = self.source_operand(value);
+                    self.emit(EvalOp::AccInit(operand))?;
                 }
                 Expr::Add(children) => {
                     self.eval_reduction(expr, ReductionOp::Add, &children, root, path, scope)?;
@@ -1472,7 +1492,7 @@ impl Elaborator<'_, '_> {
             }
             Operand::Resident(value)
         } else if self.is_source_like(expr) {
-            Operand::Source(value)
+            self.source_operand(value)
         } else {
             return Err(PlanError::ExpectedSource(expr));
         };
@@ -1522,7 +1542,7 @@ impl Elaborator<'_, '_> {
             self.record_site(child.expr, root, &child_path);
             let value = self.value_ref(child.expr);
             self.materialize(child.expr, MaterializeFrom::Source(value))?;
-            operands.push(Operand::Source(value));
+            operands.push(self.source_operand(value));
         }
         self.pop_backward_consumer(product);
         self.emit(EvalOp::AccFma {
@@ -1691,7 +1711,7 @@ impl Elaborator<'_, '_> {
             self.pinned.insert(value.fingerprint);
             Operand::Resident(value)
         } else if self.is_source_like(expr) {
-            Operand::Source(value)
+            self.source_operand(value)
         } else {
             return Err(PlanError::ExpectedSource(expr));
         };
