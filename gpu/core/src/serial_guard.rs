@@ -137,6 +137,23 @@ mod tests {
                      root — its tests would run in parallel under plain cargo test"
                 );
             }
+            // Integration-test targets are separate crates that do NOT
+            // inherit the lib's #[cfg(test)] guard: each top-level file must
+            // invoke the macro itself.
+            if let Ok(entries) = std::fs::read_dir(dir.join("tests")) {
+                for entry in entries {
+                    let path = entry.unwrap().path();
+                    if path.extension().is_some_and(|e| e == "rs") {
+                        let src = std::fs::read_to_string(&path).unwrap();
+                        assert!(
+                            src.contains("force_serial_libtest!"),
+                            "integration-test target {path:?} does not invoke \
+                             gpu_core::force_serial_libtest!() at its root — it is not \
+                             covered by {name}'s lib guard"
+                        );
+                    }
+                }
+            }
         }
         assert!(
             crates_seen >= 9,
