@@ -15,6 +15,7 @@ use std::hash::{Hash, Hasher};
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
 
+use crate::fwd::binding::BackingTable;
 use crate::fwd::isa::{DstLine, Instr, OperandField, OperandLine, Program};
 
 use super::compile::{spine_terms, BwdCompiledLayer};
@@ -307,6 +308,72 @@ pub fn live_profile(p: &Program) -> Vec<usize> {
         }
     }
     occ
+}
+
+/// Reconstruct the concrete compiler's real DRAM reads from the realized
+/// instruction stream. This scan happens after concrete peepholes, so each
+/// event names an operand the final encoded program physically reads.
+pub(crate) fn physical_traffic_events(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    program: &Program,
+    specials: &BwdSpecialTable,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+    backings: &BackingTable,
+) -> Option<Vec<BwdEvent>> {
+    let desc_to_leaf: BTreeMap<u16, ExprId> =
+        leaf_descs.iter().map(|(&leaf, &desc)| (desc, leaf)).collect();
+    let mut events = Vec::new();
+    let mut record = |operand: OperandLine, field: OperandField| -> Option<()> {
+        let (value, cells) = match operand {
+            OperandLine::Global { slot, col } => {
+                let place = backings.slot_col_to_read_place(slot, col)?;
+                let value = layer.exprs.iter().enumerate().find_map(|(index, expr)| {
+                    let Expr::Source(source) = expr else {
+                        return None;
+                    };
+                    match &layer.sources[source.0 as usize].kind {
+                        SourceKind::Read { place: candidate } if *candidate == place => {
+                            Some(ExprId(index as u32))
+                        }
+                        _ => None,
+                    }
+                })?;
+                let cells = match field {
+                    OperandField::Base => 1,
+                    OperandField::Ext => 4,
+                };
+                (value, cells)
+            }
+            OperandLine::Special { desc } => match specials.get(desc) {
+                Some(BwdSpecial::FoldSource { origin }) if !origin.is_vs() => {
+                    (*desc_to_leaf.get(&desc)?, 4)
+                }
+                _ => return Some(()),
+            },
+            OperandLine::Smem { .. } | OperandLine::Ldc { .. } => return Some(()),
+        };
+        events.push(BwdEvent::TrafficRead { value, cells });
+        Some(())
+    };
+
+    for instr in &program.instrs {
+        match instr {
+            Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
+                for &operand in operands {
+                    record(operand, *field)?;
+                }
+            }
+            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+                for &(lhs, rhs) in pairs {
+                    record(lhs, *field_lhs)?;
+                    record(rhs, *field_rhs)?;
+                }
+            }
+            Instr::Mov { field, src: Some(operand), .. } => record(*operand, *field)?,
+            Instr::Mov { src: None, .. } => {}
+        }
+    }
+    Some(events)
 }
 
 // ── frozen demand (Task 2) ──────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkInfo, SinkKind, SourceKind,
@@ -87,6 +87,8 @@ pub enum ConcreteBindError {
     BackwardSpecialRequiresBindings {
         desc: u16,
     },
+    UnboundBackwardSource(ExprId),
+    BackwardCommit,
 }
 
 impl From<BindError> for ConcreteBindError {
@@ -354,6 +356,14 @@ enum PlacementMode {
     Exact,
 }
 
+#[derive(Clone, Copy)]
+enum ConcreteSourceMode<'a> {
+    Forward,
+    Backward {
+        leaf_descs: &'a BTreeMap<ExprId, u16>,
+    },
+}
+
 fn bind_packed_plan_with_mode(
     packed: &PackedEvalPlan,
     layer: &DagLayer,
@@ -362,10 +372,48 @@ fn bind_packed_plan_with_mode(
     budget_lanes: usize,
     placement_mode: PlacementMode,
 ) -> Result<ConcreteEvalProgram, ConcreteBindError> {
+    bind_packed_plan_with_source_mode(
+        packed,
+        layer,
+        root_order,
+        this_layer,
+        budget_lanes,
+        placement_mode,
+        ConcreteSourceMode::Forward,
+    )
+}
+
+pub(super) fn bind_backward_packed_plan(
+    packed: &PackedEvalPlan,
+    layer: &DagLayer,
+    root: RootId,
+    budget_lanes: usize,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+) -> Result<ConcreteEvalProgram, ConcreteBindError> {
+    bind_packed_plan_with_source_mode(
+        packed,
+        layer,
+        &[root],
+        0,
+        budget_lanes,
+        PlacementMode::Exact,
+        ConcreteSourceMode::Backward { leaf_descs },
+    )
+}
+
+fn bind_packed_plan_with_source_mode(
+    packed: &PackedEvalPlan,
+    layer: &DagLayer,
+    root_order: &[RootId],
+    this_layer: usize,
+    budget_lanes: usize,
+    placement_mode: PlacementMode,
+    source_mode: ConcreteSourceMode<'_>,
+) -> Result<ConcreteEvalProgram, ConcreteBindError> {
     if budget_lanes == 0 || budget_lanes > MAX_CELL as usize {
         return Err(ConcreteBindError::BudgetOutOfRange(budget_lanes));
     }
-    let lifetimes = analyze_lifetimes(packed)?;
+    let lifetimes = analyze_lifetimes(packed, source_mode)?;
     let peak_live_lanes = peak_live_lanes(&lifetimes.intervals);
     let fixed_mode = if matches!(placement_mode, PlacementMode::Exact) {
         PlacementMode::Exact
@@ -418,6 +466,7 @@ fn bind_packed_plan_with_mode(
         root_outputs: Vec::new(),
         terminal: None,
         desc_by_expr: HashMap::new(),
+        source_mode,
     };
     for (index, op) in packed.ops.iter().enumerate() {
         emitter.emit(index, op)?;
@@ -496,7 +545,9 @@ fn bind_packed_plan_with_mode(
         return Err(ConcreteBindError::EncodeRoundtripMismatch);
     }
     let compile_stats = tally_program(&program, &emitter.ctx, peak_live_lanes);
-    if compile_stats.dram_traffic != packed.stats.dram_read_lanes {
+    if matches!(source_mode, ConcreteSourceMode::Forward)
+        && compile_stats.dram_traffic != packed.stats.dram_read_lanes
+    {
         return Err(ConcreteBindError::DramTrafficMismatch {
             predicted: packed.stats.dram_read_lanes,
             emitted: compile_stats.dram_traffic,
@@ -736,7 +787,10 @@ struct LifetimeAnalysis {
     definition_at: HashMap<usize, StorageId>,
 }
 
-fn analyze_lifetimes(plan: &PackedEvalPlan) -> Result<LifetimeAnalysis, ConcreteBindError> {
+fn analyze_lifetimes(
+    plan: &PackedEvalPlan,
+    source_mode: ConcreteSourceMode<'_>,
+) -> Result<LifetimeAnalysis, ConcreteBindError> {
     let mut intervals = Vec::<Interval>::new();
     let mut definition_at = HashMap::new();
     let mut residents = HashMap::<ValueFingerprint, StorageId>::new();
@@ -748,7 +802,9 @@ fn analyze_lifetimes(plan: &PackedEvalPlan) -> Result<LifetimeAnalysis, Concrete
             match operand {
                 Operand::Source(_) | Operand::Unit { .. } => {}
                 Operand::BackwardSpecial { desc } => {
-                    return Err(ConcreteBindError::BackwardSpecialRequiresBindings { desc });
+                    if matches!(source_mode, ConcreteSourceMode::Forward) {
+                        return Err(ConcreteBindError::BackwardSpecialRequiresBindings { desc });
+                    }
                 }
                 Operand::Resident(value) => {
                     let id = *residents
@@ -1342,6 +1398,7 @@ struct Emitter<'a> {
     root_outputs: Vec<(RootId, RootOutput)>,
     terminal: Option<RootKey>,
     desc_by_expr: HashMap<cs::gkr_compiler::dag_ir::ExprId, u16>,
+    source_mode: ConcreteSourceMode<'a>,
 }
 
 impl Emitter<'_> {
@@ -1466,7 +1523,12 @@ impl Emitter<'_> {
                 root,
                 sink,
                 from,
-            } => self.emit_commit(*root_id, root, sink, *from)?,
+            } => {
+                if matches!(self.source_mode, ConcreteSourceMode::Backward { .. }) {
+                    return Err(ConcreteBindError::BackwardCommit);
+                }
+                self.emit_commit(*root_id, root, sink, *from)?;
+            }
             PackedEvalOp::ReturnAcc { root } => {
                 if self.terminal.replace(root.clone()).is_some() {
                     return Err(ConcreteBindError::DuplicateReturnAcc);
@@ -1543,9 +1605,12 @@ impl Emitter<'_> {
                     Special::One as u16
                 },
             }),
-            Operand::BackwardSpecial { desc } => {
-                Err(ConcreteBindError::BackwardSpecialRequiresBindings { desc })
-            }
+            Operand::BackwardSpecial { desc } => match self.source_mode {
+                ConcreteSourceMode::Forward => {
+                    Err(ConcreteBindError::BackwardSpecialRequiresBindings { desc })
+                }
+                ConcreteSourceMode::Backward { .. } => Ok(OperandLine::Special { desc }),
+            },
         }
     }
 
@@ -1556,9 +1621,12 @@ impl Emitter<'_> {
             Operand::Unit { negative } => {
                 return Err(ConcreteBindError::MultiplicationBySyntheticUnit { negative });
             }
-            Operand::BackwardSpecial { desc } => {
-                return Err(ConcreteBindError::BackwardSpecialRequiresBindings { desc });
-            }
+            Operand::BackwardSpecial { desc } => match self.source_mode {
+                ConcreteSourceMode::Forward => {
+                    return Err(ConcreteBindError::BackwardSpecialRequiresBindings { desc });
+                }
+                ConcreteSourceMode::Backward { .. } => return Ok(()),
+            },
         };
         if let Some(negative) = unit_sign_expr(self.layer, value.expr) {
             return Err(if negative {
@@ -1571,7 +1639,14 @@ impl Emitter<'_> {
     }
 
     fn bind_source(&mut self, value: ValueRef) -> Result<OperandLine, ConcreteBindError> {
-        if let Some(strategy) = self.layer.resolutions.get(&value.expr) {
+        if let ConcreteSourceMode::Backward { leaf_descs } = self.source_mode
+            && let Some(&desc) = leaf_descs.get(&value.expr)
+        {
+            return Ok(OperandLine::Special { desc });
+        }
+        if matches!(self.source_mode, ConcreteSourceMode::Forward)
+            && let Some(strategy) = self.layer.resolutions.get(&value.expr)
+        {
             let desc =
                 self.intern_descriptor(value.expr, lower_resolution(strategy, value.expr))?;
             return Ok(OperandLine::Special { desc });
@@ -1607,6 +1682,9 @@ impl Emitter<'_> {
                 OperandLine::Ldc { sub, idx }
             }
             SourceKind::VirtualSetup { kind } => {
+                if matches!(self.source_mode, ConcreteSourceMode::Backward { .. }) {
+                    return Err(ConcreteBindError::UnboundBackwardSource(value.expr));
+                }
                 let descriptor = SpecialDescriptor {
                     strategy: SpecialStrategy::VirtualSetup { kind: kind.clone() },
                     origin_expr: value.expr,
@@ -1616,7 +1694,12 @@ impl Emitter<'_> {
                 }
             }
             SourceKind::LookupValue { .. } => {
-                return Err(ConcreteBindError::UncoveredLookup(value));
+                return Err(match self.source_mode {
+                    ConcreteSourceMode::Forward => ConcreteBindError::UncoveredLookup(value),
+                    ConcreteSourceMode::Backward { .. } => {
+                        ConcreteBindError::UnboundBackwardSource(value.expr)
+                    }
+                });
             }
         })
     }
@@ -2236,7 +2319,8 @@ mod tests {
             stats: PackedStats::default(),
         };
 
-        let lifetimes = analyze_lifetimes(&plan).expect("valid resident lifetime");
+        let lifetimes =
+            analyze_lifetimes(&plan, ConcreteSourceMode::Forward).expect("valid resident lifetime");
         assert_eq!(lifetimes.intervals.len(), 1);
         assert_eq!(lifetimes.intervals[0].start, 0);
         assert_eq!(lifetimes.intervals[0].end, 2);

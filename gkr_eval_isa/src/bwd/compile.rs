@@ -1147,7 +1147,7 @@ fn width_of(field: OperandField) -> usize {
 /// `special_reads` AND in the search-facing `BwdTrafficStats` (4 cells/use,
 /// role-neutral). A VS-origin `FoldSource` uses the O(k) multilinear closed form
 /// (Task 7): compute-only, zero DRAM, so it adds `fold_uses` but no `fold_traffic`.
-fn tally_bwd_program(
+pub(crate) fn tally_bwd_program(
     program: &Program,
     specials: &BwdSpecialTable,
 ) -> (CompileStats, BwdTrafficStats) {

@@ -24,7 +24,8 @@ pub use artifact::{
     load_evaluation_genome_artifact, produce_searched_evaluation_genome_artifact,
 };
 pub use backward::{
-    BackwardEvaluationError, BackwardSymbolicEvaluation, elaborate_backward_fragments_uncached,
+    BackwardEvaluationError, BackwardSymbolicEvaluation, CompiledBackwardEvaluation,
+    compile_backward_fragments_uncached, elaborate_backward_fragments_uncached,
 };
 pub use concrete::{
     ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, ConcreteTerminal,
@@ -574,7 +575,7 @@ pub(super) fn elaborate_backward_fragments_driver(
     acc_init_desc: Option<u16>,
     budget_lanes: usize,
     stream_reductions: bool,
-) -> Result<EvalPlan, PlanError> {
+) -> Result<(EvalPlan, Vec<BwdEvent>), PlanError> {
     if expr_fields.len() != layer.exprs.len() {
         return Err(PlanError::FieldCount {
             expected: layer.exprs.len(),
@@ -631,7 +632,12 @@ pub(super) fn elaborate_backward_fragments_driver(
         return Err(PlanError::LiveTempAtEnd(id));
     }
     debug_assert!(elaborator.residents.is_empty());
-    Ok(elaborator.plan)
+    let demand_events = elaborator
+        .backward_demand
+        .take()
+        .expect("backward fragment elaboration always has demand bookkeeping")
+        .events;
+    Ok((elaborator.plan, demand_events))
 }
 
 struct ChildOccurrence {
@@ -879,6 +885,20 @@ impl Elaborator<'_, '_> {
         path: &[PathStep],
         inherited: &PreferenceMap,
     ) -> Result<FieldKind, PlanError> {
+        self.record_backward_demand(expr);
+        if let Some(staged) = self.take_staged(expr, root, path) {
+            self.plan.stats.cache_hits += 1;
+            self.plan.attribution.entry(expr).or_default().resident_hits += 1;
+            self.emit(EvalOp::AccInit(Operand::Resident(staged.value)))?;
+            self.pinned.remove(&staged.value.fingerprint);
+            self.realize_exit(&staged.scope, Some((staged.value, CacheStoreFrom::Acc)))?;
+            return Ok(staged.value.field);
+        }
+        let (_site, scope) = self.enter_and_stage(expr, root, path, inherited)?;
+        self.eval_entered_expr(expr, root, path, &scope)
+    }
+
+    fn record_backward_demand(&mut self, expr: ExprId) {
         if let Some(state) = &mut self.backward_demand {
             state.events.push(BwdEvent::Serve {
                 fp: BwdFingerprint {
@@ -890,16 +910,19 @@ impl Elaborator<'_, '_> {
                 from: BwdServedFrom::Recomputed,
             });
         }
-        if let Some(staged) = self.take_staged(expr, root, path) {
-            self.plan.stats.cache_hits += 1;
-            self.plan.attribution.entry(expr).or_default().resident_hits += 1;
-            self.emit(EvalOp::AccInit(Operand::Resident(staged.value)))?;
-            self.pinned.remove(&staged.value.fingerprint);
-            self.realize_exit(&staged.scope, Some((staged.value, CacheStoreFrom::Acc)))?;
-            return Ok(staged.value.field);
+    }
+
+    fn push_backward_consumer(&mut self, expr: ExprId) {
+        if let Some(state) = &mut self.backward_demand {
+            state.consumer_stack.push(expr);
         }
-        let (_site, scope) = self.enter_and_stage(expr, root, path, inherited)?;
-        self.eval_entered_expr(expr, root, path, &scope)
+    }
+
+    fn pop_backward_consumer(&mut self, expr: ExprId) {
+        if let Some(state) = &mut self.backward_demand {
+            let popped = state.consumer_stack.pop();
+            debug_assert_eq!(popped, Some(expr));
+        }
     }
 
     fn enter_and_stage(
@@ -1110,8 +1133,10 @@ impl Elaborator<'_, '_> {
         result
     }
 
-    /// The legacy boundary: lower every child cone through `eval_expr`, stash
-    /// its resulting accumulator, then seed and fold the completed operands.
+    /// The legacy boundary: keep one running partial and evaluate the
+    /// highest-pressure child first. Direct leaves fold without a stash;
+    /// compound children use one partial-accumulator stash. This preserves the
+    /// incumbent convention that the accumulator is outside the smem budget.
     /// This is backward-only; forward elaboration keeps its incumbent path.
     fn eval_reduction_prematerialized(
         &mut self,
@@ -1122,7 +1147,7 @@ impl Elaborator<'_, '_> {
         path: &[PathStep],
         scope: &PreferenceMap,
     ) -> Result<(), PlanError> {
-        let children = effective_child_occurrences(
+        let mut children = effective_child_occurrences(
             self.layer,
             self.child_occurrences(parent, operation, children),
             operation,
@@ -1137,31 +1162,50 @@ impl Elaborator<'_, '_> {
             .arithmetic_ops += children.len().saturating_sub(1)
             + usize::from(operation == ReductionOp::Mul && product_unit_sign(self.layer, parent));
 
-        let mut operands = Vec::with_capacity(children.len());
-        for child in children {
-            let child_path = extended(path, child.step);
-            let field = self.eval_expr(child.expr, root, &child_path, scope)?;
-            operands.push((child.expr, self.save_acc(field)?));
-        }
-        let (first, first_temp) = operands.remove(0);
+        let mut need_memo = HashMap::new();
+        let first_index = (0..children.len())
+            .min_by_key(|&index| {
+                (
+                    self.transient_need_with_first(
+                        &children,
+                        operation,
+                        scope,
+                        index,
+                        &mut need_memo,
+                    ),
+                    std::cmp::Reverse(index),
+                )
+            })
+            .expect("a non-empty reduction has an accumulator seed");
+        let first = children.remove(first_index);
         self.plan
             .attribution
-            .entry(first)
+            .entry(first.expr)
             .or_default()
             .accumulator_seeds += 1;
-        self.emit(EvalOp::AccInit(Operand::Temp(first_temp)))?;
-        for (_, temp) in operands {
-            self.emit(match operation {
-                ReductionOp::Add => EvalOp::AccAdd {
-                    sign: Sign::Plus,
-                    operand: Operand::Temp(temp),
-                },
-                ReductionOp::Mul => EvalOp::AccMul(Operand::Temp(temp)),
-            })?;
+        let first_path = extended(path, first.step);
+        let mut acc_field = self.eval_expr(first.expr, root, &first_path, scope)?;
+        for child in children {
+            let child_path = extended(path, child.step);
+            if self.is_direct(child.expr) {
+                self.fold_direct(child.expr, operation, root, &child_path, scope)?;
+            } else {
+                let saved = self.save_acc(acc_field)?;
+                self.eval_expr(child.expr, root, &child_path, scope)?;
+                self.emit(match operation {
+                    ReductionOp::Add => EvalOp::AccAdd {
+                        sign: Sign::Plus,
+                        operand: Operand::Temp(saved),
+                    },
+                    ReductionOp::Mul => EvalOp::AccMul(Operand::Temp(saved)),
+                })?;
+            }
+            acc_field = join(acc_field, self.field(child.expr));
         }
         if operation == ReductionOp::Mul && product_unit_sign(self.layer, parent) {
             self.emit(EvalOp::AccNeg)?;
         }
+        debug_assert_eq!(acc_field, self.field(parent));
         Ok(())
     }
 
@@ -1401,6 +1445,7 @@ impl Elaborator<'_, '_> {
         path: &[PathStep],
         inherited: &PreferenceMap,
     ) -> Result<(), PlanError> {
+        self.record_backward_demand(expr);
         let staged = self.take_staged(expr, root, path);
         let scope = if let Some(staged) = &staged {
             staged.scope.clone()
@@ -1453,6 +1498,7 @@ impl Elaborator<'_, '_> {
         root: &RootKey,
         path: &[PathStep],
     ) -> Result<(), PlanError> {
+        self.record_backward_demand(product);
         self.plan
             .attribution
             .entry(product)
@@ -1469,13 +1515,16 @@ impl Elaborator<'_, '_> {
         );
         debug_assert_eq!(product_children.len(), 2);
         let mut operands = Vec::with_capacity(2);
+        self.push_backward_consumer(product);
         for child in product_children {
             let child_path = extended(path, child.step);
+            self.record_backward_demand(child.expr);
             self.record_site(child.expr, root, &child_path);
             let value = self.value_ref(child.expr);
             self.materialize(child.expr, MaterializeFrom::Source(value))?;
             operands.push(Operand::Source(value));
         }
+        self.pop_backward_consumer(product);
         self.emit(EvalOp::AccFma {
             sign: if product_unit_sign(self.layer, product) {
                 Sign::Minus
@@ -1495,6 +1544,7 @@ impl Elaborator<'_, '_> {
         inherited: &PreferenceMap,
         acc_field: FieldKind,
     ) -> Result<(), PlanError> {
+        self.record_backward_demand(product);
         let (_site, product_scope) = self.enter_and_stage(product, root, path, inherited)?;
         let product_value = self.value_ref(product);
         if product_scope.contains_key(&product_value.fingerprint)
@@ -1518,7 +1568,9 @@ impl Elaborator<'_, '_> {
             .or_default()
             .signed_add_fusions += 1;
         let child_path = extended(path, child.step);
+        self.push_backward_consumer(product);
         let prepared = self.prepare_fma_operand(child.expr, root, &child_path, &product_scope)?;
+        self.pop_backward_consumer(product);
         self.emit(EvalOp::AccAdd {
             sign,
             operand: prepared.operand,
@@ -1540,6 +1592,7 @@ impl Elaborator<'_, '_> {
         inherited: &PreferenceMap,
         acc_field: FieldKind,
     ) -> Result<(), PlanError> {
+        self.record_backward_demand(product);
         let (_site, product_scope) = self.enter_and_stage(product, root, path, inherited)?;
         let product_value = self.value_ref(product);
         if product_scope.contains_key(&product_value.fingerprint)
@@ -1569,6 +1622,7 @@ impl Elaborator<'_, '_> {
         );
         debug_assert_eq!(product_children.len(), 2);
         let mut prepared = Vec::with_capacity(2);
+        self.push_backward_consumer(product);
         for child in product_children {
             let child_path = extended(path, child.step);
             prepared.push(self.prepare_fma_operand(
@@ -1578,6 +1632,7 @@ impl Elaborator<'_, '_> {
                 &product_scope,
             )?);
         }
+        self.pop_backward_consumer(product);
 
         self.emit(EvalOp::AccFma {
             sign: if product_unit_sign(self.layer, product) {
@@ -1612,6 +1667,7 @@ impl Elaborator<'_, '_> {
         path: &[PathStep],
         inherited: &PreferenceMap,
     ) -> Result<PreparedOperand, PlanError> {
+        self.record_backward_demand(expr);
         let scope = if let Some(staged) = self.take_staged(expr, root, path) {
             staged.scope
         } else {

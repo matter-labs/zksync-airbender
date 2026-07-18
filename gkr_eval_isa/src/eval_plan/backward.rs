@@ -1,13 +1,17 @@
 //! Closed symbolic adapter for normalized backward fragments.
 
-use cs::gkr_compiler::dag_ir::{Expr, ExprId, FieldKind, expr_field, join};
+use cs::gkr_compiler::dag_ir::{BwdRegime, Expr, ExprId, FieldKind, expr_field, join};
 
-use crate::bwd::compile::fragment_descs;
+use crate::bwd::compile::{BwdCompiledLayer, fragment_descs, tally_bwd_program};
 use crate::bwd::distill::DistilledLayer;
 use crate::bwd::source::BwdSpecialTable;
+use crate::bwd::trace::{
+    BwdCompileTrace, BwdEvent, certify, live_profile, physical_traffic_events, plan_epoch_fragment,
+};
 
 use super::{
-    EvalPlan, PackConfig, PackError, PackedEvalPlan, PlanError,
+    ConcreteBindError, ConcreteEvalProgram, ConcreteTerminal, EvalPlan, PackConfig, PackError,
+    PackedEvalPlan, PlanError, concrete::bind_backward_packed_plan,
     elaborate_backward_fragments_driver, pack_plan,
 };
 
@@ -19,6 +23,14 @@ pub struct BackwardSymbolicEvaluation {
     pub plan: EvalPlan,
     pub packed: PackedEvalPlan,
     pub specials: BwdSpecialTable,
+    pub(crate) demand_events: Vec<BwdEvent>,
+}
+
+pub struct CompiledBackwardEvaluation {
+    pub symbolic: BackwardSymbolicEvaluation,
+    pub compiled: BwdCompiledLayer,
+    pub encoded: Vec<u16>,
+    pub trace: BwdCompileTrace,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +45,18 @@ pub enum BackwardEvaluationError {
         fragment_count: usize,
     },
     EmptyFragmentDecomposition,
+    Concrete(ConcreteBindError),
+    UnboundBackwardSource(ExprId),
+    BackwardCommit,
+    UnexpectedTerminal,
+    ForwardDescriptorLeak,
+    TrafficSourceMapping,
+    TrafficCertificateMismatch {
+        symbolic: usize,
+        packed: usize,
+        concrete: usize,
+        traced: usize,
+    },
 }
 
 impl From<PlanError> for BackwardEvaluationError {
@@ -66,7 +90,7 @@ pub fn elaborate_backward_fragments_uncached(
         .ok_or(BackwardEvaluationError::BudgetCellsOverflow { budget_cells })?;
     let (specials, coefficient_descs, acc_init_desc) = fragment_descs(d);
     let expr_fields = backward_expr_fields(d);
-    let plan = elaborate_backward_fragments_driver(
+    let (plan, demand_events) = elaborate_backward_fragments_driver(
         &d.layer,
         d.root,
         &expr_fields,
@@ -82,7 +106,129 @@ pub fn elaborate_backward_fragments_uncached(
         plan,
         packed,
         specials,
+        demand_events,
     })
+}
+
+/// Compile the full backward fragment decomposition through the shared packed
+/// evaluation pipeline. The selected reduction mode is explicit and this
+/// entry never retries with a different mode.
+pub fn compile_backward_fragments_uncached(
+    d: &DistilledLayer,
+    order: Option<&[usize]>,
+    budget_cells: usize,
+    stream_reductions: bool,
+) -> Result<CompiledBackwardEvaluation, BackwardEvaluationError> {
+    let symbolic =
+        elaborate_backward_fragments_uncached(d, order, budget_cells, stream_reductions)?;
+    let budget_lanes = symbolic.plan.budget_lanes;
+    let bound = bind_backward_packed_plan(
+        &symbolic.packed,
+        &d.layer,
+        d.root,
+        budget_lanes,
+        &d.leaf_descs,
+    )
+    .map_err(map_concrete_error)?;
+    let ConcreteEvalProgram {
+        compiled: forward,
+        encoded,
+        terminal,
+        ..
+    } = bound;
+    if !matches!(terminal, ConcreteTerminal::ReturnAcc { .. }) {
+        return Err(BackwardEvaluationError::UnexpectedTerminal);
+    }
+    if forward.ctx.specials.len() != 0 {
+        return Err(BackwardEvaluationError::ForwardDescriptorLeak);
+    }
+
+    let program = forward.program;
+    let specials = symbolic.specials.clone();
+    let live = live_profile(&program);
+    let max_live_lanes = live.iter().copied().max().unwrap_or(0);
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials);
+    stats.max_live_cells = max_live_lanes;
+    let compiled = BwdCompiledLayer {
+        program,
+        specials,
+        backings: forward.ctx.backings,
+        consts: forward.ctx.consts,
+        challenges: forward.ctx.challenges,
+        budget: budget_lanes,
+        stats,
+        stats_ext,
+    };
+
+    let mut events = symbolic.demand_events.clone();
+    events.extend(
+        physical_traffic_events(
+            &d.layer,
+            &compiled.program,
+            &compiled.specials,
+            &d.leaf_descs,
+            &compiled.backings,
+        )
+        .ok_or(BackwardEvaluationError::TrafficSourceMapping)?,
+    );
+    let trace = BwdCompileTrace {
+        epoch: plan_epoch_fragment(d, budget_lanes, stream_reductions),
+        budget: budget_lanes,
+        stream_reductions,
+        events,
+        free: live
+            .into_iter()
+            .map(|occupied| budget_lanes.saturating_sub(occupied))
+            .collect(),
+    };
+
+    let symbolic_traffic = symbolic.plan.stats.dram_read_lanes;
+    let packed_traffic = symbolic.packed.stats.dram_read_lanes;
+    let concrete_traffic = compiled.stats_ext.global + compiled.stats_ext.fold_traffic;
+    let traced_traffic = trace
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            BwdEvent::TrafficRead { cells, .. } => Some(*cells as usize),
+            _ => None,
+        })
+        .sum();
+    if symbolic_traffic != packed_traffic
+        || packed_traffic != concrete_traffic
+        || concrete_traffic != traced_traffic
+    {
+        return Err(BackwardEvaluationError::TrafficCertificateMismatch {
+            symbolic: symbolic_traffic,
+            packed: packed_traffic,
+            concrete: concrete_traffic,
+            traced: traced_traffic,
+        });
+    }
+    if d.regime == BwdRegime::Ext && certify(&compiled, &trace).is_err() {
+        return Err(BackwardEvaluationError::TrafficCertificateMismatch {
+            symbolic: symbolic_traffic,
+            packed: packed_traffic,
+            concrete: concrete_traffic,
+            traced: traced_traffic,
+        });
+    }
+
+    Ok(CompiledBackwardEvaluation {
+        symbolic,
+        compiled,
+        encoded,
+        trace,
+    })
+}
+
+fn map_concrete_error(error: ConcreteBindError) -> BackwardEvaluationError {
+    match error {
+        ConcreteBindError::UnboundBackwardSource(expr) => {
+            BackwardEvaluationError::UnboundBackwardSource(expr)
+        }
+        ConcreteBindError::BackwardCommit => BackwardEvaluationError::BackwardCommit,
+        other => BackwardEvaluationError::Concrete(other),
+    }
 }
 
 fn validate_fragment_order(
@@ -106,8 +252,16 @@ fn validate_fragment_order(
 fn backward_expr_fields(d: &DistilledLayer) -> Vec<FieldKind> {
     let defaults: Vec<_> = (0..d.layer.exprs.len())
         .map(|index| {
-            expr_field(&d.layer.exprs, &d.layer.sources, ExprId(index as u32))
-                .expect("distilled layers preserve valid expression fields")
+            let expr = ExprId(index as u32);
+            match &d.layer.exprs[index] {
+                Expr::Source(_) => expr_field(&d.layer.exprs, &d.layer.sources, expr)
+                    .unwrap_or_else(|place| {
+                        *d.cross_fields.get(&place).unwrap_or_else(|| {
+                            panic!("distilled layer is missing the field for {place:?}")
+                        })
+                    }),
+                Expr::Add(_) | Expr::Mul(_) => FieldKind::Base,
+            }
         })
         .collect();
     let mut fields = vec![None; d.layer.exprs.len()];
@@ -147,18 +301,23 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
 
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, Bf, BwdRegime, ChallengeRef, ChallengeResolver, ClaimInfo, DagLayer, Expr,
-        ExprId, Ext, LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root,
-        RootGroup, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
-        VirtualSetupResolver, eval_layer_expr, eval_layer_root,
+        BatchingOrder, Bf, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef,
+        ChallengeResolver, ClaimInfo, DagLayer, Expr, ExprId, Ext, FieldKind, LookupResolver,
+        LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root, RootGroup, RootOrigin, RootSlot,
+        SourceId, SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
+        eval_layer_root,
     };
     use field::{Field, FieldExtension, PrimeField};
 
     use crate::bwd::distill::{DistilledLayer, distill};
-    use crate::bwd::fragment::FragmentTable;
+    use crate::bwd::fragment::{FragmentSpec, FragmentTable, MergedRecipe, ProductRecipe};
     use crate::bwd::source::BwdSpecial;
+    use crate::bwd::trace::{BwdEvent, BwdServeKind};
 
-    use super::{BackwardEvaluationError, elaborate_backward_fragments_uncached};
+    use super::{
+        BackwardEvaluationError, compile_backward_fragments_uncached,
+        elaborate_backward_fragments_driver, elaborate_backward_fragments_uncached,
+    };
     use crate::eval_plan::{ConcreteBindError, EvalOp, Operand, TempId, bind_packed_plan};
 
     fn ext(value: u32) -> Ext {
@@ -434,6 +593,47 @@ mod tests {
     }
 
     #[test]
+    fn backward_uncached_binds_coefficient_specials() {
+        let d = backward_fixture();
+
+        let out = compile_backward_fragments_uncached(&d, None, 4, false).unwrap();
+
+        assert!(
+            out.compiled
+                .program
+                .instrs
+                .iter()
+                .any(|instruction| match instruction {
+                    crate::fwd::isa::Instr::Mov {
+                        src: Some(crate::fwd::isa::OperandLine::Special { desc }),
+                        ..
+                    } => matches!(out.compiled.specials.get(*desc), Some(BwdSpecial::AccInit)),
+                    _ => false,
+                })
+        );
+        assert!(
+            out.compiled
+                .program
+                .instrs
+                .iter()
+                .any(|instruction| match instruction {
+                    crate::fwd::isa::Instr::Mul { operands, .. } =>
+                        operands.iter().any(|operand| {
+                            matches!(
+                                operand,
+                                crate::fwd::isa::OperandLine::Special { desc }
+                                    if matches!(
+                                        out.compiled.specials.get(*desc),
+                                        Some(BwdSpecial::Coefficient { .. })
+                                    )
+                            )
+                        }),
+                    _ => false,
+                })
+        );
+    }
+
+    #[test]
     fn backward_uncached_rejects_invalid_order() {
         let d = backward_fixture();
         assert!(matches!(
@@ -454,5 +654,238 @@ mod tests {
             elaborate_backward_fragments_uncached(&d, None, 4, false),
             Err(BackwardEvaluationError::EmptyFragmentDecomposition)
         ));
+    }
+
+    #[test]
+    fn backward_uncached_infers_cross_layer_read_field() {
+        let place = ReadPlace::CacheOutput {
+            layer: 0,
+            offset: 0,
+        };
+        let layer = DagLayer {
+            sources: vec![SourceInfo {
+                kind: SourceKind::Read {
+                    place: place.clone(),
+                },
+            }],
+            exprs: vec![Expr::Source(SourceId(0))],
+            batching: BatchingOrder {
+                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+            },
+            roots: vec![claim_only_root(ExprId(0), 0)],
+            resolutions: BTreeMap::new(),
+        };
+        let cross = HashMap::from([(place, FieldKind::Ext)]);
+        let d = distill(&layer, BwdRegime::R0, &cross, None);
+
+        let out = compile_backward_fragments_uncached(&d, None, 4, false).unwrap();
+        let EvalOp::AccInit(Operand::Source(value)) = out.symbolic.plan.ops[0] else {
+            panic!("single read fragment must initialize from its source")
+        };
+        assert_eq!(value.field, FieldKind::Ext);
+    }
+
+    #[test]
+    fn backward_legacy_reduction_keeps_final_child_in_accumulator() {
+        let sources = (0..5)
+            .map(|column| SourceInfo {
+                kind: SourceKind::Read {
+                    place: ReadPlace::CacheOutput {
+                        layer: 0,
+                        offset: column,
+                    },
+                },
+            })
+            .collect::<Vec<_>>();
+        let mut exprs = (0..5)
+            .map(|source| Expr::Source(SourceId(source)))
+            .collect::<Vec<_>>();
+        exprs.push(Expr::Add((0..5).map(ExprId).collect()));
+        let layer = DagLayer {
+            sources,
+            exprs,
+            batching: BatchingOrder {
+                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+            },
+            roots: vec![claim_only_root(ExprId(5), 0)],
+            resolutions: BTreeMap::new(),
+        };
+        let cross = (0..5)
+            .map(|offset| (ReadPlace::CacheOutput { layer: 0, offset }, FieldKind::Ext))
+            .collect();
+        let mut d = distill(&layer, BwdRegime::R0, &cross, None);
+        let root_expr = d.layer.roots[d.root.0 as usize].expr;
+        d.fragments = FragmentTable {
+            fragments: vec![FragmentSpec {
+                atoms: vec![root_expr],
+                recipe: MergedRecipe {
+                    terms: vec![ProductRecipe::default()],
+                },
+            }],
+            c_init: MergedRecipe::default(),
+        };
+
+        let out = compile_backward_fragments_uncached(&d, None, 4, false).unwrap();
+
+        assert!(out.compiled.stats.max_live_cells <= 16);
+    }
+
+    #[test]
+    fn backward_legacy_reduction_evaluates_deep_cone_before_stash() {
+        let challenge = || SourceInfo {
+            kind: SourceKind::Challenge {
+                reference: ChallengeRef {
+                    key: ChallengeKey::ClaimBatching,
+                    power: ChallengePower::One,
+                },
+            },
+        };
+        let sources = vec![
+            challenge(),
+            SourceInfo {
+                kind: SourceKind::Constant { value: 1 },
+            },
+            SourceInfo {
+                kind: SourceKind::VirtualSetup {
+                    kind: VirtualSetupKind::InitsAndTeardownsLow,
+                },
+            },
+            challenge(),
+            SourceInfo {
+                kind: SourceKind::VirtualSetup {
+                    kind: VirtualSetupKind::InitsAndTeardownsHigh,
+                },
+            },
+            challenge(),
+            SourceInfo {
+                kind: SourceKind::Constant { value: 1024 },
+            },
+        ];
+        let exprs = vec![
+            Expr::Source(SourceId(0)),
+            Expr::Source(SourceId(1)),
+            Expr::Source(SourceId(2)),
+            Expr::Source(SourceId(3)),
+            Expr::Mul(vec![ExprId(2), ExprId(3)]),
+            Expr::Source(SourceId(4)),
+            Expr::Source(SourceId(5)),
+            Expr::Mul(vec![ExprId(5), ExprId(6)]),
+            Expr::Add(vec![ExprId(0), ExprId(1), ExprId(4), ExprId(7)]),
+            Expr::Source(SourceId(6)),
+            Expr::Add(vec![ExprId(5), ExprId(9)]),
+            Expr::Mul(vec![ExprId(6), ExprId(10)]),
+            Expr::Add(vec![ExprId(0), ExprId(1), ExprId(4), ExprId(11)]),
+        ];
+        let root_expr = ExprId(12);
+        let layer = DagLayer {
+            sources,
+            exprs,
+            batching: BatchingOrder {
+                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+            },
+            roots: vec![claim_only_root(root_expr, 0)],
+            resolutions: BTreeMap::new(),
+        };
+        let fields = vec![
+            FieldKind::Ext,
+            FieldKind::Base,
+            FieldKind::Base,
+            FieldKind::Ext,
+            FieldKind::Ext,
+            FieldKind::Base,
+            FieldKind::Ext,
+            FieldKind::Ext,
+            FieldKind::Ext,
+            FieldKind::Base,
+            FieldKind::Base,
+            FieldKind::Ext,
+            FieldKind::Ext,
+        ];
+        let fragments = [FragmentSpec {
+            atoms: vec![root_expr],
+            recipe: MergedRecipe {
+                terms: vec![ProductRecipe::default()],
+            },
+        }];
+
+        let out = elaborate_backward_fragments_driver(
+            &layer,
+            cs::gkr_compiler::dag_ir::RootId(0),
+            &fields,
+            &fragments,
+            &[0],
+            &[None],
+            Some(0),
+            16,
+            false,
+        );
+
+        assert!(out.is_ok(), "legacy reduction should fit b16: {out:?}");
+    }
+
+    #[test]
+    fn backward_trace_names_fused_product_consumers() {
+        let layer = DagLayer {
+            sources: (0..4).map(read_src).collect(),
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Source(SourceId(2)),
+                Expr::Source(SourceId(3)),
+                Expr::Mul(vec![ExprId(2), ExprId(3)]),
+                Expr::Add(vec![ExprId(1), ExprId(4)]),
+                Expr::Mul(vec![ExprId(0), ExprId(5)]),
+            ],
+            batching: BatchingOrder {
+                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+            },
+            roots: vec![claim_only_root(ExprId(6), 0)],
+            resolutions: BTreeMap::new(),
+        };
+        let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let (term, add) = d
+            .fragments
+            .fragments
+            .iter()
+            .enumerate()
+            .flat_map(|(term, fragment)| fragment.atoms.iter().map(move |&atom| (term, atom)))
+            .find(|(_, atom)| matches!(d.layer.exprs[atom.0 as usize], Expr::Add(_)))
+            .expect("the opaque product keeps its nested add atom");
+        let Expr::Add(add_children) = &d.layer.exprs[add.0 as usize] else {
+            unreachable!()
+        };
+        let product = *add_children
+            .iter()
+            .find(|child| matches!(d.layer.exprs[child.0 as usize], Expr::Mul(_)))
+            .expect("the nested add has a direct binary product");
+        let Expr::Mul(product_children) = &d.layer.exprs[product.0 as usize] else {
+            unreachable!()
+        };
+
+        let out = compile_backward_fragments_uncached(&d, None, 4, true).unwrap();
+        let serves = out
+            .trace
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                BwdEvent::Serve { fp, .. } => Some(*fp),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert!(serves.iter().any(|fp| {
+            fp.term == term as u32
+                && fp.kind == BwdServeKind::Operand
+                && fp.value == add
+                && fp.consumer.is_none()
+        }));
+        assert!(serves.iter().any(|fp| {
+            fp.term == term as u32 && fp.value == product && fp.consumer == Some(add)
+        }));
+        for child in product_children {
+            assert!(serves.iter().any(|fp| {
+                fp.term == term as u32 && fp.value == *child && fp.consumer == Some(product)
+            }));
+        }
     }
 }

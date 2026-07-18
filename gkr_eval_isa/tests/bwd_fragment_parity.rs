@@ -1,21 +1,14 @@
-//! Task 4 (CS-M5a): the fragment-mode G1 parity gate (red, by design).
+//! Task 4 (CS-M5a): the shared fragment-plan parity gate.
 //!
 //! Mirrors `bwd_value_parity.rs`'s corpus sweep EXACTLY (same 12 pinned
 //! Global-Constraints fixtures × every distillable layer × regime {R0, Ext} ×
 //! role × round × sampled row × policy, `BUDGET = 16`,
 //! `CacheConsistentResolvers`, orphan/roundtrip/value-parity assertions via
 //! the shared [`common::assert_bwd_value_parity`]), but compiles each
-//! distilled layer through the CS-M5a full-decomposition fragment driver
-//! (`compile_distilled_fragments`, Task 5) instead of the spine-accumulation
-//! driver (`compile_distilled`). This file and `bwd_value_parity.rs` are
-//! separate test binaries and share ONLY `common::` plumbing, so this corpus
-//! gate can be extended independently of G1.
-//!
-//! `compile_distilled_fragments` does not exist yet (Task 5, `bwd/compile.rs`,
-//! signature `compile_distilled_fragments(d: &DistilledLayer, budget: usize,
-//! order: Option<&[usize]>) -> Result<BwdCompiledLayer, CompileError>`) — this
-//! file is the TDD gate Task 5 turns green. Everything else here is intended
-//! to compile and pass unmodified once that one function lands.
+//! distilled layer through both the incumbent CS-M5a full-decomposition
+//! fragment driver and the shared evaluation-plan compiler. This file and
+//! `bwd_value_parity.rs` are separate test binaries and share ONLY `common::`
+//! plumbing, so this corpus gate can be extended independently of G1.
 //!
 //! # Order value-neutrality (the second pass)
 //!
@@ -43,9 +36,12 @@ use std::collections::BTreeSet;
 
 use common::{load_fixture, schedule_stem, CacheConsistentResolvers};
 use cs::gkr_compiler::dag_ir::{bwd_roots, lower_dag, validate, BwdRegime};
-use gkr_eval_isa::bwd::compile::compile_distilled_fragments;
+use gkr_eval_isa::bwd::compile::{BwdCompiledLayer, compile_distilled_fragments_traced};
 use gkr_eval_isa::bwd::distill::distill;
+use gkr_eval_isa::bwd::trace::BwdEvent;
+use gkr_eval_isa::eval_plan::compile_backward_fragments_uncached;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
+use gkr_eval_isa::fwd::encode::{decode, encode};
 use gkr_eval_isa::fwd::error::CompileError;
 
 /// The 12 pinned Global-Constraints fixtures — same list as `bwd_value_parity.rs`
@@ -80,6 +76,10 @@ const PINNED_SKIPPED_DECODER: &[&str] = &[];
 const PINNED_B16_INFEASIBLE: &[&str] = &[];
 
 const BUDGET: usize = 16;
+
+fn backward_dram(compiled: &BwdCompiledLayer) -> usize {
+    compiled.stats_ext.global + compiled.stats_ext.fold_traffic
+}
 
 // ── The gate ────────────────────────────────────────────────────────────────
 
@@ -117,44 +117,95 @@ fn bwd_fragment_parity_all_fixtures() {
                 let ctx = format!("{stem} L{li} {regime:?}");
 
                 // Pass 1: identity fragment order (`order: None`).
-                let c = match compile_distilled_fragments(&d, BUDGET, None) {
+                let (old, old_trace) = match compile_distilled_fragments_traced(&d, BUDGET, None) {
                     Ok(c) => c,
                     Err(CompileError::BudgetBelowFloor { floor, .. }) => {
                         floor_retries.insert(format!("{stem}[L{li}][{regime:?}] floor={floor}"));
-                        compile_distilled_fragments(&d, floor, None).unwrap_or_else(|e| {
+                        compile_distilled_fragments_traced(&d, floor, None).unwrap_or_else(|e| {
                             panic!("[{ctx}] compile (identity order) at floor {floor}: {e:?}")
                         })
                     }
-                    Err(e) => panic!("[{ctx}] compile_distilled_fragments (identity order): {e:?}"),
+                    Err(e) => panic!(
+                        "[{ctx}] compile_distilled_fragments_traced (identity order): {e:?}"
+                    ),
                 };
+                let new = compile_backward_fragments_uncached(
+                    &d,
+                    None,
+                    4,
+                    old_trace.stream_reductions,
+                )
+                .unwrap_or_else(|e| panic!("[{ctx}] shared compile (identity order): {e:?}"));
                 match regime {
                     BwdRegime::R0 => interpreted_r0 += 1,
                     BwdRegime::Ext => interpreted_ext += 1,
                 }
 
-                // The shared sweep: encode/decode roundtrip, no orphan descriptors, and
-                // interp(program) == oracle across round × role × row (all policies
-                // bit-identical), oracled over the RAW canonical `layer`.
-                common::assert_bwd_value_parity(&c, &d, layer);
+                assert_eq!(decode(&new.encoded).unwrap(), new.compiled.program, "{ctx}");
+                assert!(
+                    backward_dram(&new.compiled) <= backward_dram(&old),
+                    "{ctx}: new DRAM traffic regressed"
+                );
+                assert!(new.trace.events.iter().all(|event| !matches!(
+                    event,
+                    BwdEvent::Admit { .. } | BwdEvent::Evict { .. } | BwdEvent::Refuse { .. }
+                )));
+                common::assert_bwd_value_parity(&new.compiled, &d, layer);
+                eprintln!(
+                    "{ctx}: instructions old={} new={} encoded_lanes old={} new={}",
+                    old.program.instrs.len(),
+                    new.compiled.program.instrs.len(),
+                    encode(&old.program).unwrap().len(),
+                    new.encoded.len(),
+                );
 
                 // Pass 2: the SAME distilled layer, fragment order REVERSED — order
                 // value-neutrality. Fragment accumulation is a field sum, so any
                 // visitation order must reproduce the identical accumulator.
                 let rev: Vec<usize> = (0..d.fragments.fragments.len()).rev().collect::<Vec<_>>();
-                let c_rev = match compile_distilled_fragments(&d, BUDGET, Some(&rev)) {
+                let (old_rev, old_rev_trace) =
+                    match compile_distilled_fragments_traced(&d, BUDGET, Some(&rev)) {
                     Ok(c) => c,
                     Err(CompileError::BudgetBelowFloor { floor, .. }) => {
                         floor_retries
                             .insert(format!("{stem}[L{li}][{regime:?}][rev] floor={floor}"));
-                        compile_distilled_fragments(&d, floor, Some(&rev)).unwrap_or_else(|e| {
-                            panic!("[{ctx}] compile (reversed order) at floor {floor}: {e:?}")
-                        })
+                        compile_distilled_fragments_traced(&d, floor, Some(&rev))
+                            .unwrap_or_else(|e| {
+                                panic!("[{ctx}] compile (reversed order) at floor {floor}: {e:?}")
+                            })
                     }
-                    Err(e) => {
-                        panic!("[{ctx}] compile_distilled_fragments (reversed order): {e:?}")
-                    }
+                    Err(e) => panic!(
+                        "[{ctx}] compile_distilled_fragments_traced (reversed order): {e:?}"
+                    ),
                 };
-                common::assert_bwd_value_parity(&c_rev, &d, layer);
+                let new_rev = compile_backward_fragments_uncached(
+                    &d,
+                    Some(&rev),
+                    4,
+                    old_rev_trace.stream_reductions,
+                )
+                .unwrap_or_else(|e| panic!("[{ctx}] shared compile (reversed order): {e:?}"));
+                assert_eq!(
+                    decode(&new_rev.encoded).unwrap(),
+                    new_rev.compiled.program,
+                    "{ctx} reversed"
+                );
+                assert!(
+                    backward_dram(&new_rev.compiled) <= backward_dram(&old_rev),
+                    "{ctx} reversed: new DRAM traffic regressed"
+                );
+                assert!(new_rev.trace.events.iter().all(|event| !matches!(
+                    event,
+                    BwdEvent::Admit { .. } | BwdEvent::Evict { .. } | BwdEvent::Refuse { .. }
+                )));
+                common::assert_bwd_value_parity(&new_rev.compiled, &d, layer);
+                eprintln!(
+                    "{ctx} reversed: instructions old={} new={} encoded_lanes old={} new={}",
+                    old_rev.program.instrs.len(),
+                    new_rev.compiled.program.instrs.len(),
+                    encode(&old_rev.program).unwrap().len(),
+                    new_rev.encoded.len(),
+                );
             }
         }
     }
