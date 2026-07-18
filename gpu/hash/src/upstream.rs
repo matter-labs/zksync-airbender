@@ -1,6 +1,6 @@
 //! Upstream re-export manifest for `gpu_hash`.
 //!
-//! Production code is `gpu_core`/`gpu_ops`-only. The test suites verify the GPU
+//! Production code is `gpu_core`-only. The test suites verify the GPU
 //! kernels against host references — the `field` trait, the host blake2s
 //! (`blake2s_u32`), and the host Fiat-Shamir transcript (`transcript::Seed` +
 //! `prover`'s `Blake2sTranscript` and challenge-draw helpers). All are dev-only,

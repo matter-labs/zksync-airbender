@@ -18,10 +18,11 @@ using namespace ::airbender::primitives::field;
   v[c] = v[c] + v[d];                                                                                                                                          \
   v[b] = ROTR32(v[b] ^ v[c], 7);
 
-// 7-round reduced Blake2s. Must match the host prover's USE_REDUCED_BLAKE2
-// (prover::definitions): both sides hash the same transcript, so this is a
-// cross-language parity constant, not a tunable. SIGMAS below stays the full
-// 10-round schedule; only the first ROUNDS rows are consumed.
+// 7-round reduced Blake2s. Must match the host prover's
+// USE_REDUCED_BLAKE2_ROUNDS (prover::definitions): both sides hash the same
+// transcript, so this is a cross-language parity constant, not a tunable.
+// SIGMAS below stays the full 10-round schedule; only the first ROUNDS rows
+// are consumed.
 constexpr unsigned ROUNDS = 7;
 constexpr unsigned STATE_SIZE = 8;
 constexpr unsigned BLOCK_SIZE = 16;

@@ -12,6 +12,15 @@ use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SI
 
 use super::{checked_u32, Digest};
 
+/// Host mirror of the kernel-side `bitreverse_low_bits`.
+fn bitreverse_low_bits(value: u32, num_bits: u32) -> u32 {
+    if num_bits == 0 {
+        0
+    } else {
+        value.reverse_bits() >> (32 - num_bits)
+    }
+}
+
 cuda_kernel!(
     Leaves,
     ab_blake2s_leaves_kernel(
@@ -23,7 +32,7 @@ cuda_kernel!(
     )
 );
 
-pub(crate) fn hash_leaves(
+pub(super) fn hash_leaves(
     values: &DeviceSlice<BF>,
     results: &mut DeviceSlice<Digest>,
     log_rows_per_hash: u32,
@@ -35,6 +44,8 @@ pub(crate) fn hash_leaves(
     let results = results.as_mut_ptr();
     assert_eq!(values_len % (count << log_rows_per_hash), 0);
     let cols_count = checked_u32(values_len / (count << log_rows_per_hash));
+    // Zero columns would emit the raw initialized state, not Blake2s(empty).
+    assert!(cols_count >= 1);
     let count = checked_u32(count);
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
@@ -78,6 +89,8 @@ pub fn hash_leaves_multi_coset(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(cosets_in_tile >= 1);
+    // Zero columns would emit the raw initialized state, not Blake2s(empty).
+    assert!(cols_count >= 1);
     assert!(
         per_coset_leaves_count.is_power_of_two(),
         "per_coset_leaves_count must be a power of two (got {per_coset_leaves_count})"
@@ -133,10 +146,11 @@ cuda_kernel!(
 
 /// Hashes `cosets_in_tile * per_coset_leaves_count` WHIR leaves in one launch,
 /// reading the natural multi-coset NTT output directly and writing digests at
-/// the flat-tree leaf positions. The output tree backing layout: digest for
+/// the GLOBAL flat-tree leaf positions (not tile-relative): the digest for
 /// natural coset `C`, leaf `i` lives at
-/// `results[(bitreverse(C, log_lde_factor) * per_coset_leaves_count + i) *
-/// STATE_SIZE]`.
+/// `results[bitreverse(C, log_lde_factor) * per_coset_leaves_count + i]`, so
+/// `results` must cover the largest bit-reversed slot the tile touches
+/// (asserted below) — pass the full leaves backing, not a tile-sized slice.
 ///
 /// `ntt_output` logical shape: rows = `trace_len`, cols =
 /// `cosets_in_tile * src_cols_per_coset`, coset-major outer (`col /
@@ -156,11 +170,17 @@ pub fn hash_leaves_from_ntt_multi_coset(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(cosets_in_tile >= 1);
+    assert!(log_lde_factor < 32);
     assert!(
         per_coset_leaves_count.is_power_of_two(),
         "per_coset_leaves_count must be a power of two (got {per_coset_leaves_count})"
     );
-    assert!(src_cols_per_coset >= 1);
+    // The kernel decomposes read offsets with mask/shift (`__ffs`-derived log),
+    // which silently mis-maps inputs for non-power-of-two column counts.
+    assert!(
+        src_cols_per_coset.is_power_of_two(),
+        "src_cols_per_coset must be a power of two (got {src_cols_per_coset})"
+    );
     assert!(trace_len.is_power_of_two());
     assert!(trace_len >= 1 << log_values_per_leaf);
     let log_per_coset_count = per_coset_leaves_count.trailing_zeros();
@@ -176,8 +196,20 @@ pub fn hash_leaves_from_ntt_multi_coset(
     );
     let required_ntt_bf = (trace_len as usize) * (src_cols_per_coset as usize) * cosets_in_tile;
     assert!(ntt_output.len() >= required_ntt_bf);
-    assert!(results.len() >= total_count as usize);
     assert!(coset_index_base as usize + cosets_in_tile <= 1usize << log_lde_factor);
+    // The kernel writes at global bit-reversed coset slots; `results` must
+    // reach the end of the highest slot this tile writes.
+    let max_bitrev_coset = (0..cosets_in_tile as u32)
+        .map(|i| bitreverse_low_bits(coset_index_base + i, log_lde_factor))
+        .max()
+        .unwrap();
+    let required_results = (max_bitrev_coset as usize + 1) * per_coset_leaves_count;
+    assert!(
+        results.len() >= required_results,
+        "results len {} < {} required by the tile's highest bit-reversed coset slot",
+        results.len(),
+        required_results,
+    );
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, total_count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = LeavesFromNttMultiCosetArguments::new(

@@ -129,7 +129,7 @@ struct gpu_gather_tree_caps_desc {
   unsigned long long base_ptr;
 };
 
-static_assert(sizeof(gpu_gather_tree_caps_desc) <= 32u * 1024u, "gpu_gather_tree_caps_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_gather_tree_caps_desc) == 24, "must mirror GpuGatherTreeCapsDesc in gpu/hash/src/blake2s/gather.rs");
 
 // Each block gathers one coset's cap region from a single contiguous backing:
 //   src[natural_idx] = base + natural_idx * stride
@@ -162,6 +162,7 @@ struct gpu_gather_e_addresses_desc {
   unsigned long long src_ptrs[GKR_GATHER_MAX_ADDRESSES];
 };
 
+static_assert(sizeof(gpu_gather_e_addresses_desc) == 8 + 8 * GKR_GATHER_MAX_ADDRESSES, "must mirror GpuGatherEAddressesDesc in gpu/hash/src/blake2s/gather.rs");
 static_assert(sizeof(gpu_gather_e_addresses_desc) <= 32u * 1024u, "gpu_gather_e_addresses_desc must fit under the 32 KB inline kernel-arg ceiling");
 
 // Gather E4 evaluations from N source buffers (one per address) into one
@@ -221,7 +222,7 @@ struct gpu_oracle_gather_desc {
   unsigned long long slab_dst_ptr; // bf*, slab destination for this oracle
 };
 
-static_assert(sizeof(gpu_oracle_gather_desc) <= 32u * 1024u, "gpu_oracle_gather_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_oracle_gather_desc) == 24, "must mirror OracleGatherDesc in gpu/hash/src/blake2s/gather.rs");
 
 EXTERN __global__ void ab_gather_leaves_for_queries_kernel(const u32 num_oracles, __grid_constant__ const gpu_oracle_gather_desc desc0,
                                                            __grid_constant__ const gpu_oracle_gather_desc desc1,
@@ -356,7 +357,7 @@ struct gpu_oracle_partial_path_desc {
   unsigned long long slab_dst_ptr; // u32*, slab destination for this oracle
 };
 
-static_assert(sizeof(gpu_oracle_partial_path_desc) <= 32u * 1024u, "gpu_oracle_partial_path_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_oracle_partial_path_desc) == 32, "must mirror OraclePartialPathDesc in gpu/hash/src/blake2s/gather.rs");
 
 EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u32 num_oracles, __grid_constant__ const gpu_oracle_partial_path_desc desc0,
                                                                          __grid_constant__ const gpu_oracle_partial_path_desc desc1,

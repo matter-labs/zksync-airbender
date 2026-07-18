@@ -230,6 +230,9 @@ struct gpu_chunked_input_desc {
   u32 chunk_lens[GKR_CHUNKED_COMMIT_MAX_CHUNKS];
 };
 
+static_assert(sizeof(gpu_chunked_input_desc) == 8 + 12 * GKR_CHUNKED_COMMIT_MAX_CHUNKS,
+              "must mirror GpuChunkedInputDesc in gpu/hash/src/blake2s/transcript.rs");
+
 // commit_initial_chunked: seed_out = Blake2s(chunk_0 || chunk_1 || ... || chunk_{N-1}).
 // Blake2s streams 64-byte (= 16 u32) blocks, so chunk boundaries that fall
 // mid-block are handled transparently and the digest matches a single-buffer

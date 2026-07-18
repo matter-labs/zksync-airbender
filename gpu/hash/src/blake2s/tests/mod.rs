@@ -7,7 +7,7 @@ use crate::upstream::{Blake2sState, USE_REDUCED_BLAKE2_ROUNDS};
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::GetChunksCount;
 
-pub(super) const BLOCK_SIZE: usize = 16;
+const BLOCK_SIZE: usize = 16;
 
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {

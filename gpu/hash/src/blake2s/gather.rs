@@ -48,6 +48,12 @@ pub struct OracleGatherDesc {
     pub slab_dst_ptr: u64,
 }
 
+const _: () = {
+    // Exact mirror of `gpu_oracle_gather_desc` in native/gather.cu — layout
+    // drift silently breaks the by-value kernel ABI.
+    assert!(std::mem::size_of::<OracleGatherDesc>() == 24);
+};
+
 impl OracleGatherDesc {
     /// Defense against caller misuse: unused desc slots must be zeroed.
     fn assert_inactive(&self, i: usize) {
@@ -88,8 +94,10 @@ cuda_kernel!(
 /// `descs[i]` for `i >= num_oracles` (and any active slot with
 /// `columns_count == 0`) is skipped. `log_domain_size` is shared across all
 /// active oracles (asserted upstream — see WHIR fold schedule). `cosets_ptr`
-/// and `slab_dst_ptr` must point at valid device memory for the duration of
-/// the call; this wrapper does not retain references.
+/// and `slab_dst_ptr` must stay valid until the launched kernel completes on
+/// `stream` (stream-ordered reclamation — freeing after this launch is
+/// scheduled on the same stream — satisfies this); this wrapper does not
+/// retain references.
 pub fn gather_leaves_for_queries(
     descs: &[OracleGatherDesc; 3],
     num_oracles: u32,
@@ -184,16 +192,25 @@ pub fn gather_leaves_for_queries_from_ntt(
         log_lde_factor >= 1,
         "WHIR oracle requires log_lde_factor >= 1"
     );
+    assert!(log_lde_factor + log_src_cols_per_coset < 32);
     assert!(log_packed_leaf_count + log_values_per_leaf <= trace_len.trailing_zeros());
     assert_eq!(
         trace_len,
         1u32 << (log_packed_leaf_count + log_values_per_leaf),
         "trace_len must equal packed_leaf_count * values_per_leaf"
     );
+    // Queries can hit any natural coset, so the kernel may read the whole
+    // consolidated NTT backing: trace_len rows x (lde_factor * src_cols) cols.
+    let required_ntt_bf = (trace_len as usize) << (log_lde_factor + log_src_cols_per_coset);
+    assert!(ntt_output.len() >= required_ntt_bf);
     let indexes_len = query_indexes.len();
     assert!(indexes_len <= u32::MAX as usize);
     let indexes_count = indexes_len as u32;
     let dst_cols = (1u32 << log_src_cols_per_coset) << log_values_per_leaf;
+    assert!(
+        dst_cols <= 65535,
+        "dst_cols {dst_cols} exceeds the CUDA grid-Y limit"
+    );
     assert!(slab_dst.len() >= indexes_len * (dst_cols as usize));
     // One thread per (query, col_in_leaf). Block dim x is a warp-multiple so
     // adjacent threads share the same col_in_leaf and read consecutive query
@@ -323,8 +340,15 @@ pub struct OraclePartialPathDesc {
     pub _pad: u32,
     /// `u32*` slab destination for this oracle. Layout is query-major:
     /// `slab[q * layers_count * STATE_SIZE + layer * STATE_SIZE + word]`.
+    /// Must be 32-byte aligned (the bottom path layers are digest stores).
     pub slab_dst_ptr: u64,
 }
+
+const _: () = {
+    // Exact mirror of `gpu_oracle_partial_path_desc` in native/gather.cu —
+    // layout drift silently breaks the by-value kernel ABI.
+    assert!(std::mem::size_of::<OraclePartialPathDesc>() == 32);
+};
 
 impl OraclePartialPathDesc {
     /// Defense against caller misuse: unused desc slots must be zeroed.
@@ -376,8 +400,9 @@ cuda_kernel!(
 /// `columns_count == 0`) is skipped. `log_rows_per_leaf` and
 /// `log_total_leaves_count` are shared across all active oracles (asserted
 /// upstream — see WHIR fold schedule). The `cosets_ptr`, `partial_tree_ptr`,
-/// and `slab_dst_ptr` fields must point at valid device memory for the
-/// duration of the call; this wrapper does not retain references.
+/// and `slab_dst_ptr` fields must stay valid until the launched kernel
+/// completes on `stream` (stream-ordered reclamation satisfies this); this
+/// wrapper does not retain references.
 pub fn gather_merkle_paths_partial_for_queries(
     descs: &[OraclePartialPathDesc; 3],
     num_oracles: u32,
@@ -394,11 +419,24 @@ pub fn gather_merkle_paths_partial_for_queries(
     );
     assert!(layers_count >= LOG_WARP_SIZE);
     assert!(log_total_leaves_count >= LOG_WARP_SIZE);
+    // The upper-tree walk starts at log_total_leaves_count - LOG_WARP_SIZE
+    // digests and halves per layer; deeper requests would underflow past the
+    // per-coset root and read outside the partial tree.
+    assert!(layers_count <= log_total_leaves_count);
     let indexes_count = checked_u32(query_indexes.len());
     // Per-coset partial-tree length in digests for `TreesHolder::Partial`.
     let stride_per_coset_in_digests = 1u32 << (log_total_leaves_count + 1 - LOG_WARP_SIZE);
-    for (i, desc) in descs.iter().enumerate().skip(num_oracles as usize) {
-        desc.assert_inactive(i);
+    for (i, desc) in descs.iter().enumerate() {
+        if i >= num_oracles as usize {
+            desc.assert_inactive(i);
+        } else if desc.columns_count != 0 {
+            // The bottom path layers are written as 32-byte digest stores.
+            assert_eq!(
+                desc.slab_dst_ptr % 32,
+                0,
+                "oracle {i} slab_dst_ptr must be 32-byte aligned"
+            );
+        }
     }
     let grid_dim = (indexes_count, num_oracles);
     let block_dim = WARP_SIZE;
@@ -460,6 +498,10 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
 ) -> CudaResult<()> {
     assert!(layers_count >= LOG_WARP_SIZE);
     assert!(log_total_leaves_count >= LOG_WARP_SIZE);
+    // The upper-tree walk starts at log_total_leaves_count - LOG_WARP_SIZE
+    // digests and halves per layer; deeper requests would underflow past the
+    // root and read outside the partial tree.
+    assert!(layers_count <= log_total_leaves_count);
     assert_eq!(
         log_total_leaves_count,
         log_packed_leaf_count + natural_log_lde_factor,
@@ -470,6 +512,17 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
         1u32 << (log_packed_leaf_count + log_values_per_leaf),
         "trace_len must equal packed_leaf_count * values_per_leaf"
     );
+    // Queries can hit any natural coset, so the kernel may read the whole
+    // consolidated NTT backing.
+    assert!(natural_log_lde_factor + log_src_cols_per_coset < 32);
+    let required_ntt_bf = (trace_len as usize) << (natural_log_lde_factor + log_src_cols_per_coset);
+    assert!(ntt_output.len() >= required_ntt_bf);
+    // Full partial-tree pyramid (`TreesHolder::Partial` slab), in u32 words.
+    let required_partial_tree =
+        (1usize << (log_total_leaves_count + 1 - LOG_WARP_SIZE)) * STATE_SIZE;
+    assert!(partial_tree.len() >= required_partial_tree);
+    // The bottom path layers are written as 32-byte digest stores.
+    assert_eq!(slab_dst.as_ptr() as usize % 32, 0);
     let indexes_len = query_indexes.len();
     assert!(indexes_len <= u32::MAX as usize);
     let indexes_count = indexes_len as u32;
@@ -504,21 +557,23 @@ pub fn gather_merkle_paths_partial_for_queries_from_ntt(
 #[derive(Clone, Copy, Default)]
 struct GpuGatherTreeCapsDesc {
     /// Number of source cosets to gather (= `1 << log_lde_factor`).
-    pub coset_count: u32,
+    coset_count: u32,
     /// Number of u32 words gathered per source coset.
-    pub cap_words_per_coset: u32,
+    cap_words_per_coset: u32,
     /// Stride between per-coset segments in the source backing, in u32 words.
     /// The kernel reads `base_ptr + natural_idx * stride_per_coset_in_u32_words`
     /// for coset `natural_idx`.
-    pub stride_per_coset_in_u32_words: u32,
+    stride_per_coset_in_u32_words: u32,
     /// `log2(coset_count)`. Used to bit-reverse `natural_idx` into the
     /// destination cap-region slot.
-    pub log_lde_factor: u32,
+    log_lde_factor: u32,
     /// Source backing base pointer treated as `const u32 *`.
-    pub base_ptr: u64,
+    base_ptr: u64,
 }
 
 const _: () = {
+    // Exact mirror of `gpu_gather_tree_caps_desc` in native/gather.cu.
+    assert!(std::mem::size_of::<GpuGatherTreeCapsDesc>() == 24);
     assert!(
         std::mem::size_of::<GpuGatherTreeCapsDesc>() <= 32 * 1024,
         "GpuGatherTreeCapsDesc must fit under the 32 KB inline kernel-arg ceiling"
@@ -535,7 +590,7 @@ cuda_kernel!(
 /// `gkr_address_audit_helpers::GKR_GATHER_MAX_ADDRESSES` in
 /// `gpu_circuit_prover` for the rationale; the audit panics if any future circuit
 /// exceeds this.
-pub(crate) const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
+const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
 
 /// Kernel-arg descriptor for `gather_e_addresses`. Inline form: passed by
 /// value as `__grid_constant__` data.
@@ -543,12 +598,12 @@ pub(crate) const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
 #[derive(Clone, Copy)]
 struct GpuGatherEAddressesDesc {
     /// Number of populated entries in `src_ptrs`.
-    pub num_addresses: u32,
+    num_addresses: u32,
     /// Number of E4 elements gathered per source address.
-    pub elements_per_addr: u32,
+    elements_per_addr: u32,
     /// Source device pointers (one per address). Each is treated as a
     /// `const u32 *` referring to `elements_per_addr * 4` u32 words.
-    pub src_ptrs: [u64; GKR_GATHER_MAX_ADDRESSES],
+    src_ptrs: [u64; GKR_GATHER_MAX_ADDRESSES],
 }
 
 impl Default for GpuGatherEAddressesDesc {
@@ -562,6 +617,8 @@ impl Default for GpuGatherEAddressesDesc {
 }
 
 const _: () = {
+    // Exact mirror of `gpu_gather_e_addresses_desc` in native/gather.cu.
+    assert!(std::mem::size_of::<GpuGatherEAddressesDesc>() == 8 + 8 * GKR_GATHER_MAX_ADDRESSES);
     assert!(
         std::mem::size_of::<GpuGatherEAddressesDesc>() <= 32 * 1024,
         "GpuGatherEAddressesDesc must fit under the 32 KB inline kernel-arg ceiling"
@@ -583,6 +640,8 @@ cuda_kernel!(
 ///
 /// The descriptor rides as kernel-arg data (`__grid_constant__`), so callers
 /// (e.g. `TraceHolder::commit_all`) avoid an H2D for the source pointer table.
+/// `base_ptr` must stay valid until the launched kernel completes on `stream`
+/// (stream-ordered reclamation satisfies this).
 pub fn gather_tree_caps_inline(
     base_ptr: *const u32,
     cap_words_per_coset: u32,
@@ -618,8 +677,10 @@ pub fn gather_tree_caps_inline(
 /// count is derived as `dst.len() / src_ptrs.len()`. The caller orders
 /// `src_ptrs` (host slice) to match the desired output address sequence
 /// (typically the BTreeMap key order of the per-layer transcript inputs). The
-/// pointer table is passed by value as kernel-arg data; production callers must
-/// respect `GKR_GATHER_MAX_ADDRESSES`.
+/// pointer table is passed by value as kernel-arg data; the pointed-to
+/// allocations must stay valid until the launched kernel completes on
+/// `stream` (stream-ordered reclamation satisfies this). Production callers
+/// must respect `GKR_GATHER_MAX_ADDRESSES`.
 pub fn gather_e_addresses(
     src_ptrs: &[u64],
     dst: &mut DeviceSlice<E4>,
@@ -833,12 +894,18 @@ pub fn gather_merkle_paths_from_rows(
 ) -> CudaResult<()> {
     let values_len = values.len();
     assert_eq!(values_len % cols_count, 0);
-    let log_rows_count = (values_len / cols_count).trailing_zeros();
+    let rows_count = values_len / cols_count;
+    assert!(rows_count.is_power_of_two());
+    let log_rows_count = rows_count.trailing_zeros();
+    assert!(log_rows_count >= log_rows_per_leaf);
     let indexes_count = checked_u32(indexes.len());
     assert!(layers_count >= LOG_WARP_SIZE);
     assert_eq!(indexes.len() * layers_count as usize, merkle_paths.len());
     let cols_count = checked_u32(cols_count);
     let log_total_leaves_count = log_rows_count - log_rows_per_leaf;
+    assert!(layers_count <= log_total_leaves_count);
+    // Full partial-tree pyramid (in digests) backing the upper-layer walk.
+    assert!(tree_bottom.len() >= 1usize << (log_total_leaves_count + 1 - LOG_WARP_SIZE));
     let config = CudaLaunchConfig::basic(indexes_count, WARP_SIZE, stream);
     let indexes = indexes.as_ptr();
     let values = values.as_ptr();

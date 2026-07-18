@@ -121,9 +121,9 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
 ///
 /// 1. (`pow_bits > 0`) `blake2s_pow` searches a nonce against `device_seed`, written
 ///    into `nonce_slab_dst`; otherwise the slot is set to the canonical `nonce = 0`.
-/// 2. (`pow_bits > 0`) `transcript_commit(device_seed, [nonce_lo, nonce_hi])` advances
-///    the seed to the post-`verify_pow` state. At `pow_bits == 0` the host `verify_pow`
-///    is a no-op, so the seed is NOT advanced — matching `search_pow` at 0 bits.
+/// 2. `transcript_commit(device_seed, [nonce_lo, nonce_hi])` advances the seed to the
+///    post-`verify_pow` state — ALWAYS, including at `pow_bits == 0`: the host
+///    `verify_pow` hashes `seed || nonce` and updates the seed for every bit count.
 /// 3. `transcript_squeeze` draws `(count*4 + 1)` raw words padded to `STATE_SIZE`
 ///    (the `+1` is the PoW header word), advancing the seed; `reduce_raw_words_to_e4`
 ///    then skips that header word (`&raw[1..]`) and reduces the rest into the `count`

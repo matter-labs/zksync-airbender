@@ -15,7 +15,7 @@ use super::{checked_u32, Digest};
 
 cuda_kernel!(Nodes, ab_blake2s_nodes_kernel(values: *const Digest, results: *mut Digest, count: u32,));
 
-pub(crate) fn hash_nodes(
+pub(super) fn hash_nodes(
     values: &DeviceSlice<Digest>,
     results: &mut DeviceSlice<Digest>,
     stream: &CudaStream,
@@ -32,6 +32,8 @@ pub(crate) fn hash_nodes(
     NodesFunction::default().launch(&config, &args)
 }
 
+/// Hash `layers_count` node layers up from the `values` layer, writing each
+/// successive (halving) layer contiguously into `results`.
 pub fn build_merkle_tree_nodes(
     values: &DeviceSlice<Digest>,
     results: &mut DeviceSlice<Digest>,
@@ -119,12 +121,25 @@ fn launch_nodes_kernel_multi_coset_separate(
     output_per_coset_count: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let last_src_end = (cosets_in_tile - 1) * per_coset_src_stride_digests
-        + src_offset_in_coset
-        + output_per_coset_count * 2;
-    let last_dst_end = (cosets_in_tile - 1) * per_coset_dst_stride_digests
-        + dst_offset_in_coset
-        + output_per_coset_count;
+    // Per-coset containment: each coset's read/write window must fit inside
+    // its own slab — the aggregate end checks below cannot see a window that
+    // spills into the next coset's slab.
+    let src_window_end = src_offset_in_coset
+        .checked_add(output_per_coset_count * 2)
+        .expect("src window overflow");
+    let dst_window_end = dst_offset_in_coset
+        .checked_add(output_per_coset_count)
+        .expect("dst window overflow");
+    assert!(src_window_end <= per_coset_src_stride_digests);
+    assert!(dst_window_end <= per_coset_dst_stride_digests);
+    let last_src_end = (cosets_in_tile - 1)
+        .checked_mul(per_coset_src_stride_digests)
+        .and_then(|x| x.checked_add(src_window_end))
+        .expect("src extent overflow");
+    let last_dst_end = (cosets_in_tile - 1)
+        .checked_mul(per_coset_dst_stride_digests)
+        .and_then(|x| x.checked_add(dst_window_end))
+        .expect("dst extent overflow");
     assert!(src_backing.len() >= last_src_end);
     assert!(dst_backing.len() >= last_dst_end);
     let src_ptr = unsafe { src_backing.as_ptr().add(src_offset_in_coset) };
@@ -155,22 +170,39 @@ fn launch_nodes_kernel_multi_coset_at_offsets(
     output_per_coset_count: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    // Validate the largest in-tree offsets stay within the backing.
-    let last_src_end = (cosets_in_tile - 1) * per_coset_stride_digests
-        + src_offset_in_coset
-        + output_per_coset_count * 2;
-    let last_dst_end = (cosets_in_tile - 1) * per_coset_stride_digests
-        + dst_offset_in_coset
-        + output_per_coset_count;
+    // Per-coset containment: each coset's read/write window must fit inside
+    // its own slab — the aggregate end checks below cannot see a window that
+    // spills into the next coset's slab.
+    let src_window_end = src_offset_in_coset
+        .checked_add(output_per_coset_count * 2)
+        .expect("src window overflow");
+    let dst_window_end = dst_offset_in_coset
+        .checked_add(output_per_coset_count)
+        .expect("dst window overflow");
+    assert!(src_window_end <= per_coset_stride_digests);
+    assert!(dst_window_end <= per_coset_stride_digests);
+    // Same-backing launch: the write window must not overlap the read window
+    // within a slab (containment above already separates distinct cosets).
+    assert!(
+        dst_offset_in_coset >= src_window_end || src_offset_in_coset >= dst_window_end,
+        "src/dst windows overlap within the per-coset slab"
+    );
+    let last_src_end = (cosets_in_tile - 1)
+        .checked_mul(per_coset_stride_digests)
+        .and_then(|x| x.checked_add(src_window_end))
+        .expect("src extent overflow");
+    let last_dst_end = (cosets_in_tile - 1)
+        .checked_mul(per_coset_stride_digests)
+        .and_then(|x| x.checked_add(dst_window_end))
+        .expect("dst extent overflow");
     assert!(backing.len() >= last_src_end);
     assert!(backing.len() >= last_dst_end);
     // SAFETY: both src and dst pointers derive from a single &mut to
-    // `backing`, offset per coset by the same stride. The kernel reads pairs
-    // at src_ptr + coset * stride and writes single digests at dst_ptr +
-    // coset * stride; src and dst regions across all cosets are disjoint (a
-    // digest is never overwritten before it is read) and per-thread regions
-    // never overlap. The shared borrow is cast away only to construct the
-    // kernel arg.
+    // `backing`, offset per coset by the same stride. The containment asserts
+    // above confine every coset's read window and write window to its own
+    // slab, and the disjointness assert proves the two windows never overlap
+    // within a slab — so no digest is read and written concurrently. The
+    // shared borrow is cast away only to construct the kernel arg.
     let base = backing.as_mut_ptr();
     let src_ptr = unsafe { base.add(src_offset_in_coset) } as *const Digest;
     let dst_ptr = unsafe { base.add(dst_offset_in_coset) };
@@ -190,7 +222,7 @@ fn launch_nodes_kernel_multi_coset_at_offsets(
 /// `per_coset_tree_stride_digests` per tree. The first layer reads from
 /// `initial_src_offset_in_coset` (typically the leaves layer at offset 0) and
 /// writes to `initial_src_offset_in_coset + initial_src_layer_count_per_coset`.
-pub(crate) fn build_merkle_tree_nodes_multi_coset(
+fn build_merkle_tree_nodes_multi_coset(
     tree_backing: &mut DeviceSlice<Digest>,
     layers_count: u32,
     cosets_in_tile: usize,
