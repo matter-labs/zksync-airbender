@@ -18,6 +18,15 @@
 [test-groups.gpu-serial]
 max-threads = 1
 
+# CPU-only opt-out: tests in a module whose name starts with `cpu_` never
+# touch the GPU (convention — the test author asserts this by the name), so
+# they run in the default parallel group and skip both serialization and the
+# per-process CUDA-init cost. First match wins: this override must stay above
+# the gpu-serial one.
+[[profile.default.overrides]]
+filter = '(package(gpu_hash) | package(gpu_core) | package(gpu_ntt) | package(gpu_ops) | package(gpu_cub) | package(gpu_gkr_model) | package(gpu_circuit_prover) | package(gpu_execution_prover) | package(gpu_program_prover)) & test(/(^|::)cpu_/)'
+test-group = '@global'
+
 [[profile.default.overrides]]
 filter = 'package(gpu_hash) | package(gpu_core) | package(gpu_ntt) | package(gpu_ops) | package(gpu_cub) | package(gpu_gkr_model) | package(gpu_circuit_prover) | package(gpu_execution_prover) | package(gpu_program_prover)'
 test-group = 'gpu-serial'

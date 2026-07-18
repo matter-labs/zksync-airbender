@@ -109,15 +109,23 @@ from upstream library code (`full_statement_verifier::host_utils` /
 - **Benches** live in the owning kernel crate (`gpu_ntt`, `gpu_core`), behind a
   non-default `bench` feature; any bench `.cu` (only `gpu_core`'s `field.cu`)
   compiles **only** under that feature, never in normal/production builds.
-- **Tests run under cargo-nextest**, not plain `cargo test`. The GPU crates
-  carry no `#[serial]` annotations (and must not add a `serial_test` dep):
-  serialization is the `gpu-serial` test group in the workspace
-  `.config/nextest.toml` — one GPU test at a time within a run, hung tests
-  terminated instead of wedging the suite. Plain `cargo test` stays safe via a
-  pre-main guard (`gpu_core::force_serial_libtest!()`, invoked at every GPU
-  crate root) that forces `RUST_TEST_THREADS=1` — but it lacks nextest's
-  hung-test termination, so prefer nextest. A new GPU crate must be added to
-  the `gpu-serial` filter AND invoke the guard.
+- **Testing: two safe harnesses, pick by situation.** The GPU crates carry no
+  `#[serial]` annotations (and must not add a `serial_test` dep — its mutex is
+  in-process and inert under nextest).
+  - **cargo-nextest** — default for unattended, full-suite, and milestone
+    runs: the `gpu-serial` test group in the workspace `.config/nextest.toml`
+    runs one GPU test at a time, terminates hung tests instead of wedging the
+    suite (and the GPU lock), and gives each test a fresh CUDA context so
+    sticky errors don't cascade. Cost: ~220 ms CUDA init per test process.
+  - **plain `cargo test`** — fast path for attended, iterative, filtered
+    runs: a pre-main guard (`gpu_core::force_serial_libtest!()` at every GPU
+    crate root) forces `RUST_TEST_THREADS=1`, so it is serialized and safe
+    with zero per-test overhead — but a hung kernel wedges the run and a
+    sticky CUDA error poisons the remaining tests' shared context.
+  - Tests in a module named `cpu_*` are declared GPU-free: nextest runs them
+    in parallel outside `gpu-serial` (see the override in `.config/nextest.toml`).
+  - A new GPU crate must be added to the `gpu-serial` filter AND invoke the
+    guard.
 
 ## Native code (CUDA/C++)
 

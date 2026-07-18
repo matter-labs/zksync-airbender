@@ -6,7 +6,10 @@ Applies only to GPU-related code or commands that use the local GPU.
 - If you touch a GPU crate, read that crate's `AGENTS.md`.
 - Use `.agents/bin/with_gpu_lock.sh` only for commands that execute local GPU work.
 - Do not lock CPU-only work such as `cargo build`, `cargo check`, `cargo nextest run --no-run`, codegen, linting, dependency fetching, or log inspection.
-- GPU-crate Rust tests run under **cargo-nextest**, not plain `cargo test`: the GPU crates carry no `#[serial]` annotations — their serialization lives in `.config/nextest.toml` (`gpu-serial` test group: one GPU test at a time, hung tests terminated after 5 min). Plain `cargo test -p <gpu crate>` stays safe via a pre-main guard at every GPU crate root (`gpu_core::force_serial_libtest!()` forces `RUST_TEST_THREADS=1`), but it lacks nextest's hung-test termination — prefer nextest.
+- GPU-crate Rust tests have **two safe harnesses** (the crates carry no `#[serial]` annotations):
+  - **cargo-nextest** — use for unattended, full-suite, or milestone runs: `.config/nextest.toml`'s `gpu-serial` group serializes GPU tests, terminates hung tests after 5 min (a hung kernel no longer wedges the suite + GPU lock), and gives each test a fresh CUDA context (sticky errors don't cascade). Costs ~220 ms CUDA init per test.
+  - **plain `cargo test`** — use for attended, iterative, filtered runs: the pre-main guard (`gpu_core::force_serial_libtest!()`) forces `RUST_TEST_THREADS=1`, so it is serialized and safe with zero per-test overhead; downside is no hung-test termination and a shared CUDA context.
+  - Tests in `cpu_*` modules are declared GPU-free and run parallel under nextest (config override).
 - For Rust tests, always split compile and run with `cargo nextest run --no-run` first unless the user explicitly asks for a different flow or the command truly cannot be split.
 - Split compile and run whenever possible so only the execution step holds the lock.
 - For compute-heavy GPU tests or prover runs, prefer `--release` by default. Use debug builds only for quick smoke checks, compile-only validation, or when the task explicitly needs debug assertions/symbols.
@@ -32,5 +35,12 @@ Filtering:
 - Exact test: `-E 'test(=module::submodule::some_gpu_test)'`.
 - Ignored/e2e tests: append `--run-ignored only` (or `all` to include normal tests too).
 - Live stdout for one test: `--no-capture`.
+
+The libtest fast path uses the same build-unlocked/run-locked split:
+
+```bash
+cargo test -p <crate> --release --no-run
+.agents/bin/with_gpu_lock.sh cargo test -p <crate> --release <filter>
+```
 
 `with_gpu_lock.sh` remains mandatory and unchanged: nextest's `gpu-serial` serialization covers tests within one invocation only — cross-session GPU exclusivity is still exclusively the lock's job. The only retired piece is the `cargo_test_executables.py` helper, which existed to locate the built test-binary path so the locked command could be the raw binary; with nextest the locked command is `with_gpu_lock.sh cargo nextest run ...` (after the unlocked `--no-run` prebuild, the cargo re-check it does under the lock is a ~1s no-op).
