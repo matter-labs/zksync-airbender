@@ -194,7 +194,43 @@ impl<'a> PlanSearchContext<'a> {
         budget_lanes: usize,
         roots: Option<&[RootId]>,
     ) -> Result<Self, FitnessError> {
-        let mut units = forward_evaluation_units(layer)?;
+        Self::build_selected_with_units_inner(
+            layer,
+            expr_fields,
+            this_layer,
+            budget_lanes,
+            roots,
+            adapt_forward_relations(layer)?,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn build_selected_with_units(
+        layer: &'a DagLayer,
+        expr_fields: &[FieldKind],
+        this_layer: usize,
+        budget_lanes: usize,
+        roots: Option<&[RootId]>,
+        units: Vec<EvaluationUnit>,
+    ) -> Result<Self, FitnessError> {
+        Self::build_selected_with_units_inner(
+            layer,
+            expr_fields,
+            this_layer,
+            budget_lanes,
+            roots,
+            units,
+        )
+    }
+
+    fn build_selected_with_units_inner(
+        layer: &'a DagLayer,
+        expr_fields: &[FieldKind],
+        this_layer: usize,
+        budget_lanes: usize,
+        roots: Option<&[RootId]>,
+        mut units: Vec<EvaluationUnit>,
+    ) -> Result<Self, FitnessError> {
         let mut selected_roots = roots.map_or_else(
             || {
                 layer
@@ -490,7 +526,7 @@ fn infeasible_evaluation(
     }
 }
 
-pub fn forward_evaluation_units(layer: &DagLayer) -> Result<Vec<EvaluationUnit>, FitnessError> {
+pub fn adapt_forward_relations(layer: &DagLayer) -> Result<Vec<EvaluationUnit>, FitnessError> {
     let fingerprints = structural_fingerprints(layer)
         .map_err(PlanError::from)
         .map_err(FitnessError::Plan)?;
@@ -530,6 +566,9 @@ pub fn forward_evaluation_units(layer: &DagLayer) -> Result<Vec<EvaluationUnit>,
     units.sort_by(unit_cmp);
     Ok(units)
 }
+
+#[cfg(test)]
+mod tests;
 
 fn reachable_exprs(layer: &DagLayer, roots: &[RootId]) -> HashSet<ExprId> {
     let mut reachable = HashSet::new();

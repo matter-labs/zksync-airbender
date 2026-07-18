@@ -29,7 +29,7 @@ pub use concrete::{
 };
 pub use fitness::{
     EvaluationGenome, EvaluationUnit, EvaluationUnitKey, FitnessError, PlacementStatus,
-    PlanFitness, PlanSearchContext, ScoredEvaluation, fitness_key, forward_evaluation_units,
+    PlanFitness, PlanSearchContext, ScoredEvaluation, adapt_forward_relations, fitness_key,
 };
 pub use genome::{
     GenomeOracle, GenomeOracleError, StagingPair, StructuralSiteIndex, ValueCostProfile,
@@ -3026,7 +3026,7 @@ mod tests {
         };
         let layer = layer_with_roots(arena, vec![cache_root, atom_root, claim_only]);
 
-        let units = forward_evaluation_units(&layer).unwrap();
+        let units = adapt_forward_relations(&layer).unwrap();
 
         assert_eq!(units.len(), 1);
         assert_eq!(units[0].roots, vec![RootId(1)]);
