@@ -21,7 +21,7 @@ use crate::eval_plan::budget_lanes_from_cells;
 
 use super::{
     BackwardScore, BackwardSearchError, RoundProfile, SourceCost, SourceOriginKind, SourceRoundUse,
-    StaticMaterialization, build_static_materialization, miss_cost,
+    StaticMaterialization, build_static_materialization, miss_cost, native_read_cost,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -43,6 +43,8 @@ pub struct BackwardDemand {
     pub fp: BwdFingerprint,
     pub expr: ExprId,
     pub source_desc: Option<u16>,
+    pub instruction: usize,
+    pub physical_ordinal: usize,
     pub width_lanes: u8,
     pub gap_capacity_lanes: u8,
     pub miss_cost: SourceCost,
@@ -201,6 +203,9 @@ fn build_problem_from_compiled(
         &compiled.compiled.backings,
         DirectTopCorrection::None,
     );
+    let frozen = frozen.ok_or(BackwardSearchError::PagingCertificateMismatch {
+        observable: "frozen physical traffic",
+    })?;
     let plan = bypass_plan(
         &frozen.domain_serves,
         compiled.trace.epoch,
@@ -216,11 +221,14 @@ fn build_problem_from_compiled(
         &replayed.compiled.backings,
         DirectTopCorrection::None,
     );
+    let frozen = frozen.ok_or(BackwardSearchError::PagingCertificateMismatch {
+        observable: "frozen replay physical traffic",
+    })?;
     let fields =
         validate_and_resolve_backward(d).map_err(BackwardSearchError::BackwardEvaluation)?;
     let stable_sites = stable_distilled_site_domain(d);
-    let mut instants: BTreeMap<ExprId, VecDeque<usize>> = frozen
-        .leaf_instants
+    let mut accesses: BTreeMap<ExprId, VecDeque<(usize, usize)>> = frozen
+        .leaf_accesses
         .into_iter()
         .map(|(expr, positions)| (expr, positions.into()))
         .collect();
@@ -250,7 +258,7 @@ fn build_problem_from_compiled(
         *occurrence = occurrence
             .checked_add(1)
             .ok_or(BackwardSearchError::CostOverflow)?;
-        let position = instants
+        let (instruction, physical_ordinal) = accesses
             .get_mut(&fp.value)
             .and_then(VecDeque::pop_front)
             .ok_or(BackwardSearchError::MissingLeafInstant { expr: fp.value })?;
@@ -258,16 +266,22 @@ fn build_problem_from_compiled(
             FieldKind::Base => 1,
             FieldKind::Ext => 4,
         };
-        let miss_cost = source_desc
-            .and_then(|desc| source_costs.get(&desc).copied())
-            .unwrap_or_else(|| raw_read_cost(width_lanes));
+        let miss_cost = match source_desc {
+            Some(desc) => source_costs
+                .get(&desc)
+                .copied()
+                .ok_or(BackwardSearchError::MissingSourceRound { desc, round: 0 })?,
+            None => native_read_cost(fields[fp.value.0 as usize], &round_profiles)?,
+        };
         positioned.push((
-            position,
+            instruction,
             BackwardDemand {
                 key,
                 fp: *fp,
                 expr: fp.value,
                 source_desc,
+                instruction,
+                physical_ordinal,
                 width_lanes,
                 gap_capacity_lanes: 0,
                 miss_cost,
@@ -278,6 +292,7 @@ fn build_problem_from_compiled(
     positioned.sort_by(|(left_pos, left), (right_pos, right)| {
         left_pos
             .cmp(right_pos)
+            .then_with(|| left.physical_ordinal.cmp(&right.physical_ordinal))
             .then_with(|| left.key.cmp(&right.key))
     });
     let positions: Vec<usize> = positioned.iter().map(|(position, _)| *position).collect();
@@ -669,13 +684,6 @@ fn structural_source_occurrences(d: &DistilledLayer, source: ExprId) -> usize {
         .flat_map(|fragment| fragment.atoms.iter().copied())
         .map(|atom| count(d, atom, source))
         .sum()
-}
-
-fn raw_read_cost(width_lanes: u8) -> SourceCost {
-    SourceCost {
-        plain_read_bytes: u128::from(width_lanes) * 4,
-        ..SourceCost::default()
-    }
 }
 
 fn score_compiled(compiled: &CompiledBackwardEvaluation, ordinal: usize) -> BackwardScore {

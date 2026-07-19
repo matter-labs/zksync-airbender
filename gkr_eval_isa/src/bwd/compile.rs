@@ -944,7 +944,7 @@ pub trait BwdCompileBackend {
         d: &DistilledLayer,
         c: &BwdCompiledLayer,
         t: &BwdCompileTrace,
-    ) -> FrozenDemand;
+    ) -> Option<FrozenDemand>;
 }
 
 /// The spine-accumulation (TERM) backend: delegates to the existing
@@ -974,7 +974,7 @@ impl BwdCompileBackend for TermBackend {
         d: &DistilledLayer,
         c: &BwdCompiledLayer,
         t: &BwdCompileTrace,
-    ) -> FrozenDemand {
+    ) -> Option<FrozenDemand> {
         freeze_demand_with(
             d,
             t,
@@ -1015,7 +1015,7 @@ impl BwdCompileBackend for FragmentBackend {
         d: &DistilledLayer,
         c: &BwdCompiledLayer,
         t: &BwdCompileTrace,
-    ) -> FrozenDemand {
+    ) -> Option<FrozenDemand> {
         freeze_demand_with(
             d,
             t,

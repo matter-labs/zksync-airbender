@@ -316,6 +316,7 @@ pub fn live_profile(p: &Program) -> Vec<usize> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PositionedPhysicalTrafficEvent {
     pub instruction: usize,
+    pub physical_ordinal: usize,
     pub event: BwdEvent,
 }
 
@@ -359,8 +360,10 @@ pub(crate) fn positioned_physical_traffic_events(
             },
             OperandLine::Smem { .. } | OperandLine::Ldc { .. } => return Some(()),
         };
+        let physical_ordinal = events.len();
         events.push(PositionedPhysicalTrafficEvent {
             instruction,
+            physical_ordinal,
             event: BwdEvent::TrafficRead { value, cells },
         });
         Some(())
@@ -458,6 +461,7 @@ pub struct FrozenDemand {
     pub domain_serves: Vec<(BwdFingerprint, BwdServedFrom)>,
     pub free: Vec<usize>,
     pub leaf_instants: BTreeMap<ExprId, Vec<usize>>,
+    pub leaf_accesses: BTreeMap<ExprId, Vec<(usize, usize)>>,
     pub nondomain_gather_cells: usize,
 }
 
@@ -479,6 +483,11 @@ pub enum DirectTopCorrection {
     None,
 }
 
+fn checked_add_gather_cells(total: &mut usize, cells: u32) -> Option<()> {
+    *total = total.checked_add(cells as usize)?;
+    Some(())
+}
+
 /// Task 2 (CS-M0): freeze the all-recompute demand stream D0 from a traced bwd
 /// compile — `d`'s site domain filters `trace`'s `Serve` events into
 /// `domain_serves` and gates `leaf_instants` through the authoritative physical
@@ -491,7 +500,7 @@ pub fn freeze_demand(
     program: &Program,
     specials: &BwdSpecialTable,
     backings: &BackingTable,
-) -> FrozenDemand {
+) -> Option<FrozenDemand> {
     freeze_demand_with(
         d,
         trace,
@@ -513,7 +522,7 @@ pub fn freeze_demand_with(
     specials: &BwdSpecialTable,
     backings: &BackingTable,
     correction: DirectTopCorrection,
-) -> FrozenDemand {
+) -> Option<FrozenDemand> {
     let domain_values: BTreeSet<ExprId> =
         distilled_site_domain(d).into_iter().map(|site| site.value).collect();
 
@@ -540,9 +549,9 @@ pub fn freeze_demand_with(
         &d.leaf_descs,
         backings,
     )
-    .expect("a compiled backward program has fully mapped physical traffic");
+    ?;
     let mut nondomain_gather_cells = 0usize;
-    let mut leaf_traffic = BTreeMap::<ExprId, Vec<(usize, u32)>>::new();
+    let mut leaf_traffic = BTreeMap::<ExprId, Vec<(usize, usize, u32)>>::new();
     for positioned in physical {
         let BwdEvent::TrafficRead { value, cells } = positioned.event else {
             unreachable!("the physical traffic scan emits only TrafficRead events");
@@ -551,9 +560,9 @@ pub fn freeze_demand_with(
             leaf_traffic
                 .entry(value)
                 .or_default()
-                .push((positioned.instruction, cells));
+                .push((positioned.instruction, positioned.physical_ordinal, cells));
         } else {
-            nondomain_gather_cells += cells as usize;
+            checked_add_gather_cells(&mut nondomain_gather_cells, cells)?;
         }
     }
 
@@ -591,37 +600,47 @@ pub fn freeze_demand_with(
                 if let Some((min_at, _)) = traffic
                     .iter()
                     .enumerate()
-                    .min_by_key(|&(_, &(position, _))| position)
+                    .min_by_key(|&(_, &(position, ordinal, _))| (position, ordinal))
                 {
-                    let (_, cells) = traffic.remove(min_at);
-                    nondomain_gather_cells += cells as usize;
+                    let (_, _, cells) = traffic.remove(min_at);
+                    checked_add_gather_cells(&mut nondomain_gather_cells, cells)?;
                 }
             }
         }
     }
 
     let leaf_instants = leaf_traffic
+        .iter()
+        .filter_map(|(&value, traffic)| {
+            (!traffic.is_empty())
+                .then(|| (value, traffic.iter().map(|&(position, _, _)| position).collect()))
+        })
+        .collect();
+    let leaf_accesses = leaf_traffic
         .into_iter()
         .filter_map(|(value, traffic)| {
-            (!traffic.is_empty()).then_some((
-                value,
-                traffic
-                    .into_iter()
-                    .map(|(position, _)| position)
-                    .collect(),
-            ))
+            (!traffic.is_empty()).then(|| {
+                (
+                    value,
+                    traffic
+                        .into_iter()
+                        .map(|(instruction, ordinal, _)| (instruction, ordinal))
+                        .collect(),
+                )
+            })
         })
         .collect();
 
-    FrozenDemand {
+    Some(FrozenDemand {
         epoch: trace.epoch,
         stream_reductions: trace.stream_reductions,
         budget: trace.budget,
         domain_serves,
         free: trace.free.clone(),
         leaf_instants,
+        leaf_accesses,
         nondomain_gather_cells,
-    }
+    })
 }
 
 // ── certificate (Task 6) ────────────────────────────────────────────────────
@@ -682,9 +701,16 @@ pub fn certify(c: &BwdCompiledLayer, trace: &BwdCompileTrace) -> Result<Certific
 mod tests {
     use super::{
         BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom,
-        retain_physical_traffic_events,
+        checked_add_gather_cells, retain_physical_traffic_events,
     };
     use cs::gkr_compiler::dag_ir::ExprId;
+
+    #[test]
+    fn nondomain_gather_accumulation_reports_overflow() {
+        let mut total = usize::MAX;
+        assert_eq!(checked_add_gather_cells(&mut total, 1), None);
+        assert_eq!(total, usize::MAX);
+    }
 
     #[test]
     fn physical_traffic_reconciliation_requires_every_duplicate_anchor() {

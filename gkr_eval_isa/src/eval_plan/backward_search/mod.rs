@@ -6,6 +6,7 @@ pub mod pager;
 pub mod problem;
 pub mod replay;
 
+pub(crate) use materialization::native_read_cost;
 pub use materialization::{
     SourceOriginKind, SourceRoundUse, StaticMaterialization, build_static_materialization,
     miss_cost,
@@ -214,6 +215,9 @@ pub enum BackwardSearchError {
     },
     PlacementIntegrationFailure,
     PagingReplayDiverged {
+        at_entry: usize,
+    },
+    PagingReplayIncomplete {
         at_entry: usize,
     },
     PagingReplayRefused {

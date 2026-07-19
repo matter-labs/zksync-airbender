@@ -1769,7 +1769,9 @@ pub fn priced_rounds_with_backend(
         base_compound_calls += c_compiles;
 
         // (3) re-freeze on the best compound compile's ACTUAL trace (realized suppression).
-        let observed = backend.freeze(d, &cbatch_c, &cbatch_trace);
+        let observed = backend
+            .freeze(d, &cbatch_c, &cbatch_trace)
+            .ok_or(CompileError::FrozenDemandFailure)?;
 
         // CS-M4 Task 2 (spec §5): accrue THIS round's leaf-search credit BEFORE the
         // reclaim. `G_r` (realized leaf gaps) is known only now (post re-freeze), so

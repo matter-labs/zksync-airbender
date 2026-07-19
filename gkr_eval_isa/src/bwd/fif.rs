@@ -245,13 +245,17 @@ pub fn coordinate_correct_frozen_with_backend(
 ) -> Result<FrozenDemand, CompileError> {
     // Step 1a: harvest budget-independent domain-serve fingerprints (any regime).
     let (ft_c, ft_trace) = backend.traced(d, budget)?;
-    let frozen_ft = backend.freeze(d, &ft_c, &ft_trace);
+    let frozen_ft = backend
+        .freeze(d, &ft_c, &ft_trace)
+        .ok_or(CompileError::FrozenDemandFailure)?;
 
     // Step 1b: re-freeze in the coordinate system the planned replay actually uses —
     // the zero-retention `lower==place==budget` program.
     let bootstrap = all_bypass_plan(&frozen_ft);
     let (bypass_c, bypass_trace) = backend.planned(d, budget, &bootstrap)?;
-    Ok(backend.freeze(d, &bypass_c, &bypass_trace))
+    backend
+        .freeze(d, &bypass_c, &bypass_trace)
+        .ok_or(CompileError::FrozenDemandFailure)
 }
 
 /// A copy of `frozen` with its per-instant free envelope capped at `cap` cells

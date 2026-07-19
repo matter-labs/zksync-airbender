@@ -53,6 +53,7 @@ pub enum CompileError {
     /// `validate_circuit_schedule` (or `load_committed_schedule` I/O/parse) failed;
     /// the wrapped message is the validator's/serde's own diagnostic.
     InvalidSchedule(String),
+    FrozenDemandFailure,
     Bind(BindError),
     Encode(EncodeError),
 }

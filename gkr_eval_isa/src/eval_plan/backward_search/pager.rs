@@ -611,6 +611,8 @@ mod tests {
             },
             expr,
             source_desc: Some(expr.0 as u16),
+            instruction: position,
+            physical_ordinal: position,
             width_lanes,
             gap_capacity_lanes,
             miss_cost: SourceCost {

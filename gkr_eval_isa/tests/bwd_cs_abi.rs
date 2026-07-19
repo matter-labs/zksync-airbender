@@ -102,7 +102,7 @@ fn frozen_domain_serves(
     budget: usize,
 ) -> (Vec<(BwdFingerprint, BwdServedFrom)>, bool) {
     let (c, trace) = compile_distilled_traced(d, budget, None).expect("traced baseline compile");
-    let f = freeze_demand(d, &trace, &c.program, &c.specials, &c.backings);
+    let f = freeze_demand(d, &trace, &c.program, &c.specials, &c.backings).unwrap();
     (f.domain_serves, f.stream_reductions)
 }
 
@@ -154,6 +154,7 @@ fn planned_domain_froms(
     t: &BwdCompileTrace,
 ) -> Vec<BwdServedFrom> {
     freeze_demand(d, t, &c.program, &c.specials, &c.backings)
+        .unwrap()
         .domain_serves
         .into_iter()
         .map(|(_, from)| from)

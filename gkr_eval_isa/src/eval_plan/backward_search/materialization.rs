@@ -151,6 +151,40 @@ pub fn miss_cost(
     Ok(total)
 }
 
+pub(crate) fn native_read_cost(
+    field: FieldKind,
+    rounds: &[RoundProfile],
+) -> Result<SourceCost, BackwardSearchError> {
+    validate_rounds(rounds)?;
+    let rows = rounds.iter().try_fold(0u128, |total, profile| {
+        total
+            .checked_add(u128::from(profile.rows))
+            .ok_or(BackwardSearchError::CostOverflow)
+    })?;
+    let width_cells = match field {
+        FieldKind::Base => 1u128,
+        FieldKind::Ext => (EXT_BYTES / CELL_BYTES) as u128,
+    };
+    let plain_read_bytes = rows
+        .checked_mul(3)
+        .and_then(|elements| elements.checked_mul(width_cells))
+        .and_then(|cells| cells.checked_mul(CELL_BYTES as u128))
+        .ok_or(BackwardSearchError::CostOverflow)?;
+    let role_combine_adds = rows
+        .checked_mul(2)
+        .ok_or(BackwardSearchError::CostOverflow)?;
+    let mut ops = SourceOpCost::default();
+    match field {
+        FieldKind::Base => ops.bf_add = role_combine_adds,
+        FieldKind::Ext => ops.ext_add = role_combine_adds,
+    }
+    Ok(SourceCost {
+        plain_read_bytes,
+        ops,
+        ..SourceCost::default()
+    })
+}
+
 fn validate_rounds(rounds: &[RoundProfile]) -> Result<(), BackwardSearchError> {
     for profiles in rounds.windows(2) {
         if profiles[0].round.checked_add(1) != Some(profiles[1].round) {

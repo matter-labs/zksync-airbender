@@ -382,6 +382,10 @@ pub enum PlanError {
     ReplayNotFullyConsumed {
         at_entry: usize,
     },
+    ReplayRefused {
+        value: ExprId,
+        need: usize,
+    },
     ReplayInfeasible,
 }
 
@@ -2738,7 +2742,10 @@ impl Elaborator<'_, '_> {
                     need: need as u32,
                 });
             }
-            return Err(PlanError::ReplayInfeasible);
+            return Err(PlanError::ReplayRefused {
+                value: value.expr,
+                need,
+            });
         }
         self.emit(EvalOp::CacheStore { value, from })?;
         self.plan
@@ -5182,10 +5189,10 @@ mod tests {
     }
 
     #[test]
-    fn replay_action_retain_refusal_is_typed_infeasible() {
+    fn replay_action_retain_refusal_is_typed_refusal() {
         assert!(matches!(
             replay_source_fixture(&[PlanAction::Retain, PlanAction::Bypass], 0),
-            Err(PlanError::ReplayInfeasible)
+            Err(PlanError::ReplayRefused { .. })
         ));
     }
 

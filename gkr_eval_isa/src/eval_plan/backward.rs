@@ -149,7 +149,14 @@ pub enum BackwardEvaluationError {
     ReplayNotFullyConsumed {
         at_entry: usize,
     },
-    ReplayInfeasible,
+    ReplayRefused {
+        value: ExprId,
+        need: usize,
+    },
+    ReplayPlacementFailed {
+        budget_lanes: usize,
+        peak_live_lanes: usize,
+    },
 }
 
 impl From<PlanError> for BackwardEvaluationError {
@@ -296,13 +303,7 @@ fn compile_backward_symbolic(
         budget_lanes,
         &d.leaf_descs,
     )
-    .map_err(|error| {
-        if replayed && matches!(error, ConcreteBindError::PlacementFailed { .. }) {
-            BackwardEvaluationError::ReplayInfeasible
-        } else {
-            map_concrete_error(error)
-        }
-    })?;
+    .map_err(|error| map_compile_concrete_error(error, replayed))?;
     let ConcreteEvalProgram {
         compiled: forward,
         encoded,
@@ -394,6 +395,20 @@ fn compile_backward_symbolic(
     })
 }
 
+fn map_compile_concrete_error(error: ConcreteBindError, replayed: bool) -> BackwardEvaluationError {
+    match error {
+        ConcreteBindError::PlacementFailed {
+            budget_lanes,
+            peak_live_lanes,
+            ..
+        } if replayed => BackwardEvaluationError::ReplayPlacementFailed {
+            budget_lanes,
+            peak_live_lanes,
+        },
+        other => map_concrete_error(other),
+    }
+}
+
 fn map_replay_plan_error(error: PlanError) -> BackwardEvaluationError {
     match error {
         PlanError::ReplayDiverged { at_entry } => {
@@ -402,8 +417,8 @@ fn map_replay_plan_error(error: PlanError) -> BackwardEvaluationError {
         PlanError::ReplayNotFullyConsumed { at_entry } => {
             BackwardEvaluationError::ReplayNotFullyConsumed { at_entry }
         }
-        PlanError::ReplayInfeasible | PlanError::BudgetExceeded { .. } => {
-            BackwardEvaluationError::ReplayInfeasible
+        PlanError::ReplayRefused { value, need } => {
+            BackwardEvaluationError::ReplayRefused { value, need }
         }
         other => BackwardEvaluationError::Plan(other),
     }
@@ -739,9 +754,43 @@ mod tests {
     use super::{
         BackwardEvaluationError, compile_backward_fragments_replayed,
         compile_backward_fragments_uncached, elaborate_backward_fragments_driver,
-        elaborate_backward_fragments_uncached,
+        elaborate_backward_fragments_uncached, map_compile_concrete_error, map_replay_plan_error,
     };
-    use crate::eval_plan::{ConcreteBindError, EvalOp, Operand, TempId, bind_packed_plan};
+    use crate::eval_plan::{
+        ConcreteBindError, EvalOp, Operand, PlacementTelemetry, PlanError, TempId, bind_packed_plan,
+    };
+
+    #[test]
+    fn symbolic_retain_refusal_survives_backward_error_adapter() {
+        assert_eq!(
+            map_replay_plan_error(PlanError::ReplayRefused {
+                value: ExprId(9),
+                need: 4,
+            }),
+            BackwardEvaluationError::ReplayRefused {
+                value: ExprId(9),
+                need: 4,
+            }
+        );
+    }
+
+    #[test]
+    fn replayed_concrete_placement_failure_survives_backward_error_adapter() {
+        assert_eq!(
+            map_compile_concrete_error(
+                ConcreteBindError::PlacementFailed {
+                    budget_lanes: 4,
+                    peak_live_lanes: 8,
+                    telemetry: PlacementTelemetry::default(),
+                },
+                true,
+            ),
+            BackwardEvaluationError::ReplayPlacementFailed {
+                budget_lanes: 4,
+                peak_live_lanes: 8,
+            }
+        );
+    }
 
     fn ext(value: u32) -> Ext {
         <Ext as FieldExtension<Bf>>::from_base(Bf::from_u32_with_reduction(value))
