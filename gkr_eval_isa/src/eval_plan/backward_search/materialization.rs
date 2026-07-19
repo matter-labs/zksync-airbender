@@ -271,11 +271,16 @@ fn read_cost(
             let leaves = 1u128
                 .checked_shl(depth as u32)
                 .ok_or(BackwardSearchError::CostOverflow)?;
-            cost.lazy_read_bytes = role_elements
+            let read_bytes = role_elements
                 .checked_mul(origin_width_cells)
                 .and_then(|bytes| bytes.checked_mul(CELL_BYTES as u128))
                 .and_then(|bytes| bytes.checked_mul(leaves))
                 .ok_or(BackwardSearchError::CostOverflow)?;
+            if depth == 0 {
+                cost.plain_read_bytes = read_bytes;
+            } else {
+                cost.lazy_read_bytes = read_bytes;
+            }
             cost.ops = fold_element_ops(field, depth)?.checked_scale(role_elements)?;
         }
     }
@@ -448,5 +453,21 @@ mod tests {
         assert_eq!(cost.ops.ext_add, 50);
         assert_eq!(cost.ops.ext_mul, 0);
         assert_eq!(cost.lazy_read_bytes, 240);
+    }
+
+    #[test]
+    fn depth_zero_read_uses_plain_native_width_cost() {
+        let cost = lazy_fold_cost(1, 0, 10).expect("cost fits");
+        assert_eq!(
+            cost,
+            SourceCost {
+                plain_read_bytes: 120,
+                ops: SourceOpCost {
+                    ext_add: 20,
+                    ..SourceOpCost::default()
+                },
+                ..SourceCost::default()
+            }
+        );
     }
 }
