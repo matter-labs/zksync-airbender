@@ -383,8 +383,9 @@ impl DitTriangles {
 // ---------------------------------------------------------------------------
 // Production single-pass = the STREAMING kernel (guarded grid-stride + delta
 // walk), unified with two-pass on the streaming/diagonal launch. 7-arg ABI
-// (runtime num_cosets, no d-table). The static `ab_dit_single_*` wrappers still
-// exist in native for the parity tests, but the launcher no longer uses them.
+// (runtime num_cosets, no d-table). These are the SOLE single-pass symbols: the
+// single-pass parity tests now target them directly too (the static
+// `ab_dit_single_*` wrappers were removed).
 cuda_kernel!(pub(crate) AbDitSingleStream33, ab_dit_single_stream_3_3(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
 cuda_kernel!(pub(crate) AbDitSingleStream43, ab_dit_single_stream_4_3(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
 cuda_kernel!(pub(crate) AbDitSingleStream53, ab_dit_single_stream_5_3(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));

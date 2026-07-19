@@ -1,12 +1,14 @@
 //! End-to-end GPU parity harness for the vendored DIT NTT engine bring-up
 //! kernels (`gpu/ntt/native/dit_kernels_extern.cu`).
 //!
-//! Covers all 12 single-pass configs:
-//!   v8 (LOG_VPT=3): LOG_N ∈ {3,4,5,6,7,8}  → ab_dit_single_{3..8}_3
-//!   v4 (LOG_VPT=2): LOG_N ∈ {2,3,4,5,6,7}  → ab_dit_single_{2..7}_2
+//! Covers all 12 single-pass configs against the PRODUCTION streaming kernels:
+//!   v8 (LOG_VPT=3): LOG_N ∈ {3,4,5,6,7,8}  → ab_dit_single_stream_{3..8}_3
+//!   v4 (LOG_VPT=2): LOG_N ∈ {2,3,4,5,6,7}  → ab_dit_single_stream_{2..7}_2
 //!
-//! Every config is validated against the `bitreversed_monomials_to_natural_evals`
-//! oracle across ALL cosets emitted by a single grid=1 launch.
+//! Every config is validated against the independent compact/per-stage oracle
+//! across ALL cosets the streaming kernel emits. The streaming kernel takes
+//! `num_cosets` as a runtime guard bound and grid-strides the coset walk, so the
+//! grid is free (the test uses a small deterministic grid).
 //!
 //! Architecture notes:
 //!  - The per-stage butterfly triangle (`tw_clean`) is computed in Rust and
@@ -35,34 +37,42 @@ use gpu_core::primitives::field::BaseField;
 type BF = BaseField;
 
 // ---------------------------------------------------------------------------
-// Kernel bindings — one `cuda_kernel!` type shared by all single-pass symbols
-// (they all have identical signatures), then one `dit_single!(sym)` per symbol.
+// Single-pass kernel bindings — the SUBJECT is the production streaming kernel
+// `ab_dit_single_stream_<N>_<V>` (7-arg ABI), the same symbols the launcher
+// drives in `crate::ntt::dit`. We re-bind them with a test-local `cuda_kernel!`
+// type (one shared type for all 12 — identical signatures — then one
+// `dit_single_stream_hot!(sym)` per symbol) rather than importing the launcher's
+// bindings, because that macro's generated `Function` newtype has a private
+// tuple field that only its declaring module can construct. Multiple `extern "C"`
+// declarations of one kernel symbol across modules resolve to the same device
+// function at link time (the bench section relies on the same pattern).
 // ---------------------------------------------------------------------------
 cuda_kernel!(
-    DitSingle,
-    dit_single,
+    DitSingleStreamHot,
+    dit_single_stream_hot,
     monomials_bitrev: *const BF,
     tw_clean: *const BF,
     out_natural: *mut BF,
     cfp_0: u32,
     coset_step: u32,
+    num_cosets: u32,
     coset_out_stride: u32,
 );
 
 // v8 family (LOG_VPT=3), LOG_N 3..8
-dit_single!(ab_dit_single_3_3);
-dit_single!(ab_dit_single_4_3);
-dit_single!(ab_dit_single_5_3);
-dit_single!(ab_dit_single_6_3);
-dit_single!(ab_dit_single_7_3);
-dit_single!(ab_dit_single_8_3);
+dit_single_stream_hot!(ab_dit_single_stream_3_3);
+dit_single_stream_hot!(ab_dit_single_stream_4_3);
+dit_single_stream_hot!(ab_dit_single_stream_5_3);
+dit_single_stream_hot!(ab_dit_single_stream_6_3);
+dit_single_stream_hot!(ab_dit_single_stream_7_3);
+dit_single_stream_hot!(ab_dit_single_stream_8_3);
 // v4 family (LOG_VPT=2), LOG_N 2..7
-dit_single!(ab_dit_single_2_2);
-dit_single!(ab_dit_single_3_2);
-dit_single!(ab_dit_single_4_2);
-dit_single!(ab_dit_single_5_2);
-dit_single!(ab_dit_single_6_2);
-dit_single!(ab_dit_single_7_2);
+dit_single_stream_hot!(ab_dit_single_stream_2_2);
+dit_single_stream_hot!(ab_dit_single_stream_3_2);
+dit_single_stream_hot!(ab_dit_single_stream_4_2);
+dit_single_stream_hot!(ab_dit_single_stream_5_2);
+dit_single_stream_hot!(ab_dit_single_stream_6_2);
+dit_single_stream_hot!(ab_dit_single_stream_7_2);
 
 // ---------------------------------------------------------------------------
 // Rust port of the deleted C++ host builder `build_clean_triangle<LOG_M,LOG_VPT>`
@@ -141,12 +151,15 @@ fn build_clean_triangle(log_m: u32, log_vpt: u32) -> Vec<BF> {
 // Geometry helpers
 // ---------------------------------------------------------------------------
 
-/// Number of cosets emitted by a single grid=1 single-pass launch.
+/// Coset count for the streaming single-pass parity sweep.
 ///
-/// SLOTS_PER_BLOCK = NUM_WARPS * NTTS_PER_WARP = 4 * (32 / LANES)
-/// where LANES = 1 << (log_n - log_vpt).
-/// num_cosets = SLOTS_PER_BLOCK * K = 4 * (32 / LANES) * 8
-///            = 1 << (10 - (log_n - log_vpt))
+/// The streaming kernel takes `num_cosets` as a runtime guard bound (the grid is
+/// free), so this count is a test choice, not a kernel-imposed emission. We keep
+/// the harness's historical multi-coset sweep `2^(10 - (log_n - log_vpt))` — it
+/// is always a power of two and keeps `log_n + log_lde_factor <= 27` for every
+/// config, giving each coset-walk meaningful multi-coset coverage while leaving
+/// the oracle mapping (coset `cc` at `out[cc*N]`, twist `cc*coset_step`)
+/// unchanged.
 fn single_pass_num_cosets(log_n: u32, log_vpt: u32) -> usize {
     1usize << (10 - (log_n - log_vpt))
 }
@@ -155,9 +168,10 @@ fn single_pass_num_cosets(log_n: u32, log_vpt: u32) -> usize {
 // Parameterized parity helper
 // ---------------------------------------------------------------------------
 
-/// Core single-pass parity check. Builds the triangle, runs the kernel on GPU,
-/// and compares ALL emitted cosets against the oracle.
-fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
+/// Core single-pass parity check. Builds the clean triangle, runs the production
+/// streaming kernel `ab_dit_single_stream_<N>_<V>` on GPU, and compares ALL
+/// emitted cosets against the independent compact/per-stage oracle.
+fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
     let n: usize = 1 << log_n;
     let num_cosets = single_pass_num_cosets(log_n, log_vpt);
     // log_lde_factor satisfies num_cosets = 2^log_lde_factor.
@@ -188,10 +202,15 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
     memory_copy_async(&mut tw_clean_dev, &tw_clean_host, stream).unwrap();
 
     {
-        let grid_dim: Dim3 = 1u32.into();
+        // Production single-pass geometry: block = NUM_WARPS*32 = 128 threads;
+        // dynamic smem = clean-triangle bytes (< 48 KB for every config, so no
+        // `cudaFuncSetAttribute` opt-in). The grid is FREE — the kernel's guarded
+        // grid-stride loop covers [0, num_cosets) exactly once for ANY grid >= 1
+        // (production sizes it by occupancy waves). We use a small fixed grid of
+        // 4 blocks so the coset-walk wrap is exercised deterministically.
+        let grid_dim: Dim3 = 4u32.into();
         let block_dim: Dim3 = (4u32 * 32u32).into(); // 128 threads = 4 warps
         let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-        // All single-pass configs are < 48 KB — no cudaFuncSetAttribute needed.
         config.dynamic_smem_bytes =
             clean_triangle_count(log_n, log_vpt) * std::mem::size_of::<BF>();
 
@@ -200,29 +219,34 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
         let out_ptr = (&mut out_dev[..]).as_mut_ptr();
         // coset_out_stride = N keeps the contiguous-output expectation.
         let coset_out_stride: u32 = 1u32 << log_n;
-        let args = DitSingleArguments::new(
+        // 7-arg streaming ABI: runtime `num_cosets` (the grid-stride guard bound),
+        // no d-table.
+        let args = DitSingleStreamHotArguments::new(
             mono_ptr,
             tw_ptr,
             out_ptr,
             cfp_0,
             coset_step,
+            num_cosets as u32,
             coset_out_stride,
         );
 
-        // Dispatch to the correct kernel symbol for this (log_n, log_vpt).
+        // Dispatch to the production streaming symbol for this (log_n, log_vpt).
+        // All stream symbols share the ABI, so each wraps the shared
+        // `DitSingleStreamHotFunction` newtype.
         let result = match (log_n, log_vpt) {
-            (3, 3) => DitSingleFunction(ab_dit_single_3_3).launch(&config, &args),
-            (4, 3) => DitSingleFunction(ab_dit_single_4_3).launch(&config, &args),
-            (5, 3) => DitSingleFunction(ab_dit_single_5_3).launch(&config, &args),
-            (6, 3) => DitSingleFunction(ab_dit_single_6_3).launch(&config, &args),
-            (7, 3) => DitSingleFunction(ab_dit_single_7_3).launch(&config, &args),
-            (8, 3) => DitSingleFunction(ab_dit_single_8_3).launch(&config, &args),
-            (2, 2) => DitSingleFunction(ab_dit_single_2_2).launch(&config, &args),
-            (3, 2) => DitSingleFunction(ab_dit_single_3_2).launch(&config, &args),
-            (4, 2) => DitSingleFunction(ab_dit_single_4_2).launch(&config, &args),
-            (5, 2) => DitSingleFunction(ab_dit_single_5_2).launch(&config, &args),
-            (6, 2) => DitSingleFunction(ab_dit_single_6_2).launch(&config, &args),
-            (7, 2) => DitSingleFunction(ab_dit_single_7_2).launch(&config, &args),
+            (3, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_3_3).launch(&config, &args),
+            (4, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_4_3).launch(&config, &args),
+            (5, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_5_3).launch(&config, &args),
+            (6, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_6_3).launch(&config, &args),
+            (7, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_7_3).launch(&config, &args),
+            (8, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_8_3).launch(&config, &args),
+            (2, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_2_2).launch(&config, &args),
+            (3, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_3_2).launch(&config, &args),
+            (4, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_4_2).launch(&config, &args),
+            (5, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_5_2).launch(&config, &args),
+            (6, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_6_2).launch(&config, &args),
+            (7, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_7_2).launch(&config, &args),
             _ => panic!("unsupported single-pass config (log_n={log_n}, log_vpt={log_vpt})"),
         };
         result.unwrap();
@@ -320,7 +344,7 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
     }
 
     println!(
-        "DIT single-pass parity PASS: log_n={log_n}, log_vpt={log_vpt}, \
+        "DIT single-pass stream parity PASS: log_n={log_n}, log_vpt={log_vpt}, \
          num_cosets={num_cosets} (all match the oracle)"
     );
 }
@@ -329,30 +353,30 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
 // Per-config test functions — clear failure attribution in the test runner.
 // ---------------------------------------------------------------------------
 
-macro_rules! dit_single_parity_test {
+macro_rules! dit_single_stream_parity_test {
     ($name:ident, $log_n:expr, $log_vpt:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
         fn $name() {
-            run_single_pass_parity($log_n, $log_vpt);
+            run_single_pass_stream_parity($log_n, $log_vpt);
         }
     };
 }
 
 // v8 family (LOG_VPT=3)
-dit_single_parity_test!(dit_single_3_3_parity, 3, 3);
-dit_single_parity_test!(dit_single_4_3_parity, 4, 3);
-dit_single_parity_test!(dit_single_5_3_parity, 5, 3);
-dit_single_parity_test!(dit_single_6_3_parity, 6, 3);
-dit_single_parity_test!(dit_single_7_3_parity, 7, 3);
-dit_single_parity_test!(dit_single_8_3_parity, 8, 3);
+dit_single_stream_parity_test!(dit_single_stream_3_3_parity, 3, 3);
+dit_single_stream_parity_test!(dit_single_stream_4_3_parity, 4, 3);
+dit_single_stream_parity_test!(dit_single_stream_5_3_parity, 5, 3);
+dit_single_stream_parity_test!(dit_single_stream_6_3_parity, 6, 3);
+dit_single_stream_parity_test!(dit_single_stream_7_3_parity, 7, 3);
+dit_single_stream_parity_test!(dit_single_stream_8_3_parity, 8, 3);
 // v4 family (LOG_VPT=2)
-dit_single_parity_test!(dit_single_2_2_parity, 2, 2);
-dit_single_parity_test!(dit_single_3_2_parity, 3, 2);
-dit_single_parity_test!(dit_single_4_2_parity, 4, 2); // was the original test
-dit_single_parity_test!(dit_single_5_2_parity, 5, 2);
-dit_single_parity_test!(dit_single_6_2_parity, 6, 2);
-dit_single_parity_test!(dit_single_7_2_parity, 7, 2);
+dit_single_stream_parity_test!(dit_single_stream_2_2_parity, 2, 2);
+dit_single_stream_parity_test!(dit_single_stream_3_2_parity, 3, 2);
+dit_single_stream_parity_test!(dit_single_stream_4_2_parity, 4, 2);
+dit_single_stream_parity_test!(dit_single_stream_5_2_parity, 5, 2);
+dit_single_stream_parity_test!(dit_single_stream_6_2_parity, 6, 2);
+dit_single_stream_parity_test!(dit_single_stream_7_2_parity, 7, 2);
 
 // ===========================================================================
 // TWO-PASS family
@@ -1493,7 +1517,7 @@ mod bench_variants {
     }
 
     // -----------------------------------------------------------------------
-    // single_stream parity. Body mirrors `run_single_pass_parity` but with
+    // single_stream parity. Body mirrors `run_single_pass_stream_parity` but with
     // `num_cosets = total` and the streaming geometry: 4 warps (128 threads),
     // `slots_per_block = 128 / lanes`, `cosets_per_block = total / (grid *
     // slots_per_block)`. NO d-table; smem = clean-triangle bytes (same as
