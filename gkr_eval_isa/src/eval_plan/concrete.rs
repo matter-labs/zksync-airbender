@@ -184,29 +184,39 @@ pub fn validate_concrete_eval_program(
     validate_compiled(&concrete.compiled, layer)?;
     match &concrete.terminal {
         ConcreteTerminal::Forward => {
-            let expected = layer
-                .roots
-                .iter()
-                .enumerate()
-                .filter_map(|(index, root)| {
-                    root.materialize.is_some().then_some(RootId(index as u32))
-                })
-                .collect::<HashSet<_>>();
-            let actual = concrete
-                .compiled
-                .root_outputs
-                .iter()
-                .map(|(root, _)| *root)
-                .collect::<HashSet<_>>();
-            if actual.len() != concrete.compiled.root_outputs.len() || actual != expected {
-                return Err(ConcreteBindError::RootCountMismatch {
-                    expected: expected.len(),
-                    actual: actual.len(),
+            let expected = concrete.compiled.ctx.actions.len();
+            let actual = concrete.compiled.root_outputs.len() + concrete.compiled.skipped.len();
+            let mut classified = HashSet::with_capacity(actual);
+            let outputs_match_actions =
+                concrete.compiled.root_outputs.iter().all(|(root, output)| {
+                    classified.insert(*root)
+                        && matches!(
+                            (concrete.compiled.ctx.actions.get(root), output),
+                            (Some(ForwardAction::Compute), RootOutput::Cell(_))
+                                | (Some(ForwardAction::CopyAlias { .. }), RootOutput::Alias(_))
+                        )
                 });
+            let skipped_match_actions = concrete.compiled.skipped.iter().all(|root| {
+                classified.insert(*root)
+                    && matches!(
+                        concrete.compiled.ctx.actions.get(root),
+                        Some(ForwardAction::SkipScratchPrefill)
+                    )
+            });
+            if actual != expected
+                || classified.len() != expected
+                || !outputs_match_actions
+                || !skipped_match_actions
+            {
+                return Err(ConcreteBindError::RootCountMismatch { expected, actual });
             }
         }
         ConcreteTerminal::ReturnAcc { root } => {
-            if !concrete.compiled.root_outputs.is_empty() {
+            if !concrete.compiled.ctx.actions.is_empty()
+                || !concrete.compiled.ctx.cache_loc.is_empty()
+                || !concrete.compiled.root_outputs.is_empty()
+                || !concrete.compiled.skipped.is_empty()
+            {
                 return Err(ConcreteBindError::MixedForwardAndReturnTerminal);
             }
             let fingerprints = structural_fingerprints(layer)?;
@@ -280,6 +290,9 @@ pub fn bind_packed_plan_with_actions(
     cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
 ) -> Result<ConcreteEvalProgram, ConcreteBindError> {
     let mut concrete = bind_packed_plan(packed, layer, root_order, this_layer, budget_lanes)?;
+    if !actions.is_empty() && !matches!(concrete.terminal, ConcreteTerminal::Forward) {
+        return Err(ConcreteBindError::MixedForwardAndReturnTerminal);
+    }
     concrete.compiled.ctx.actions = actions.clone();
     concrete.compiled.ctx.cross_layer_fields = cross_layer_fields.clone();
 
@@ -1930,6 +1943,7 @@ mod tests {
     use super::*;
     use crate::eval_plan::{PackConfig, PackedStats, elaborate_uncached, pack_plan};
     use crate::fwd::interp::interpret_program_row_acc;
+    use cs::definitions::GKRAddress;
     use cs::gkr_compiler::dag_ir::{
         BatchingOrder, Bf, ChallengeRef, ChallengeResolver, DagLayer, Expr, ExprId, FieldKind,
         LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root, RootId,
@@ -2084,6 +2098,20 @@ mod tests {
     }
 
     #[test]
+    fn return_acc_rejects_cache_location_metadata() {
+        let layer = return_acc_layer(false);
+        let roots = [RootId(0)];
+        let packed = return_acc_packed(&layer, &roots);
+        let mut concrete = bind_packed_plan(&packed, &layer, &roots, 0, 4).unwrap();
+        concrete.compiled.ctx.cache_loc.insert(RootId(0), (0, 0));
+
+        assert_eq!(
+            validate_concrete_eval_program(&concrete, &layer),
+            Err(ConcreteBindError::MixedForwardAndReturnTerminal)
+        );
+    }
+
+    #[test]
     fn forward_validation_requires_all_materialized_outputs() {
         let mut layer = return_acc_layer(true);
         layer.roots.truncate(1);
@@ -2091,16 +2119,9 @@ mod tests {
         let packed = return_acc_packed(&layer, &roots);
         let mut actions = HashMap::new();
         actions.insert(RootId(0), ForwardAction::Compute);
-        let mut concrete = bind_packed_plan_with_actions(
-            &packed,
-            &layer,
-            &roots,
-            0,
-            4,
-            &actions,
-            &HashMap::new(),
-        )
-        .unwrap();
+        let mut concrete =
+            bind_packed_plan_with_actions(&packed, &layer, &roots, 0, 4, &actions, &HashMap::new())
+                .unwrap();
         validate_concrete_eval_program(&concrete, &layer).unwrap();
         concrete.compiled.root_outputs.clear();
 
@@ -2108,6 +2129,123 @@ mod tests {
             validate_concrete_eval_program(&concrete, &layer),
             Err(ConcreteBindError::RootCountMismatch { .. })
         ));
+    }
+
+    fn bind_single_forward_action(action: ForwardAction) -> (DagLayer, ConcreteEvalProgram) {
+        let mut layer = return_acc_layer(true);
+        layer.roots.truncate(1);
+        let roots = if action == ForwardAction::Compute {
+            vec![RootId(0)]
+        } else {
+            Vec::new()
+        };
+        let packed = return_acc_packed(&layer, &roots);
+        let actions = HashMap::from([(RootId(0), action)]);
+        let concrete =
+            bind_packed_plan_with_actions(&packed, &layer, &roots, 0, 4, &actions, &HashMap::new())
+                .unwrap();
+        (layer, concrete)
+    }
+
+    #[test]
+    fn forward_validation_accepts_compute_action() {
+        let (layer, concrete) = bind_single_forward_action(ForwardAction::Compute);
+
+        validate_concrete_eval_program(&concrete, &layer).unwrap();
+        assert!(matches!(
+            concrete.compiled.root_outputs.as_slice(),
+            [(RootId(0), RootOutput::Cell(_))]
+        ));
+        assert!(concrete.compiled.skipped.is_empty());
+    }
+
+    #[test]
+    fn forward_validation_accepts_copy_alias_action() {
+        let (layer, concrete) = bind_single_forward_action(ForwardAction::CopyAlias {
+            src_addr: GKRAddress::BaseLayerWitness(0),
+            dst_addr: GKRAddress::BaseLayerWitness(1),
+        });
+
+        validate_concrete_eval_program(&concrete, &layer).unwrap();
+        assert!(matches!(
+            concrete.compiled.root_outputs.as_slice(),
+            [(RootId(0), RootOutput::Alias(_))]
+        ));
+        assert!(concrete.compiled.skipped.is_empty());
+    }
+
+    #[test]
+    fn forward_validation_accepts_skip_scratch_prefill_action() {
+        let (layer, concrete) = bind_single_forward_action(ForwardAction::SkipScratchPrefill);
+
+        validate_concrete_eval_program(&concrete, &layer).unwrap();
+        assert!(concrete.compiled.root_outputs.is_empty());
+        assert_eq!(concrete.compiled.skipped, vec![RootId(0)]);
+    }
+
+    #[test]
+    fn forward_validation_rejects_duplicate_root_classification() {
+        let (layer, mut concrete) = bind_single_forward_action(ForwardAction::SkipScratchPrefill);
+        concrete.compiled.skipped.push(RootId(0));
+
+        assert!(matches!(
+            validate_concrete_eval_program(&concrete, &layer),
+            Err(ConcreteBindError::RootCountMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn forward_validation_rejects_overlapping_root_categories() {
+        let (layer, mut concrete) = bind_single_forward_action(ForwardAction::CopyAlias {
+            src_addr: GKRAddress::BaseLayerWitness(0),
+            dst_addr: GKRAddress::BaseLayerWitness(1),
+        });
+        concrete.compiled.skipped.push(RootId(0));
+
+        assert!(matches!(
+            validate_concrete_eval_program(&concrete, &layer),
+            Err(ConcreteBindError::RootCountMismatch { .. })
+        ));
+    }
+
+    fn assert_return_acc_rejects_forward_action(action: ForwardAction) {
+        let layer = return_acc_layer(false);
+        let roots = [RootId(0)];
+        let packed = return_acc_packed(&layer, &roots);
+        let mut concrete = bind_packed_plan(&packed, &layer, &roots, 0, 4).unwrap();
+        concrete
+            .compiled
+            .ctx
+            .actions
+            .insert(RootId(0), action.clone());
+        assert!(matches!(
+            validate_concrete_eval_program(&concrete, &layer),
+            Err(ConcreteBindError::MixedForwardAndReturnTerminal)
+        ));
+
+        let actions = HashMap::from([(RootId(0), action)]);
+        assert!(matches!(
+            bind_packed_plan_with_actions(&packed, &layer, &roots, 0, 4, &actions, &HashMap::new(),),
+            Err(ConcreteBindError::MixedForwardAndReturnTerminal)
+        ));
+    }
+
+    #[test]
+    fn return_acc_rejects_compute_action() {
+        assert_return_acc_rejects_forward_action(ForwardAction::Compute);
+    }
+
+    #[test]
+    fn return_acc_rejects_copy_alias_action() {
+        assert_return_acc_rejects_forward_action(ForwardAction::CopyAlias {
+            src_addr: GKRAddress::BaseLayerWitness(0),
+            dst_addr: GKRAddress::BaseLayerWitness(1),
+        });
+    }
+
+    #[test]
+    fn return_acc_rejects_skip_scratch_prefill_action() {
+        assert_return_acc_rejects_forward_action(ForwardAction::SkipScratchPrefill);
     }
 
     #[test]
