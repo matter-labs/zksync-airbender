@@ -158,7 +158,9 @@ pub fn solve_exact_paging(
             if demand.has_next && !retain_fits {
                 bypass.refused_retains = checked_increment(bypass.refused_retains)?;
             }
-            merge_candidate(&mut next, base_residents.clone(), bypass, &mut telemetry)?;
+            if live_without_demand <= demand.gap_capacity_lanes {
+                merge_candidate(&mut next, base_residents.clone(), bypass, &mut telemetry)?;
+            }
 
             if retain_fits {
                 let mut retained = base_residents;
@@ -325,8 +327,12 @@ mod tests {
             ext_stream(),
             mixed_stream(),
             changing_capacity_stream(),
+            shrinking_capacity_stream(),
         ] {
-            let exact = solved(solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap());
+            let exact = solved(
+                &demands,
+                solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap(),
+            );
             let brute = exhaustive(&demands).expect("tiny stream has a solution");
             assert_eq!(exact.objective, brute.objective);
             assert_eq!(exact.actions, brute.actions);
@@ -335,7 +341,11 @@ mod tests {
 
     #[test]
     fn bypass_wins_equal_cost_and_no_retention_optimum() {
-        let exact = solved(solve_exact_paging(&equal_cost_stream(), MAX_PAGER_STATES).unwrap());
+        let demands = equal_cost_stream();
+        let exact = solved(
+            &demands,
+            solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap(),
+        );
         assert_eq!(
             exact.actions,
             vec![PagingAction::Bypass; exact.actions.len()]
@@ -344,9 +354,32 @@ mod tests {
 
     #[test]
     fn one_demand_can_close_and_reopen_while_other_residents_remain() {
-        let exact = solved(solve_exact_paging(&reopen_stream(), MAX_PAGER_STATES).unwrap());
+        let demands = reopen_stream();
+        let exact = solved(
+            &demands,
+            solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap(),
+        );
         assert_eq!(exact.telemetry.peak_live_lanes, 5);
         assert_eq!(exact.refused_retains, 0);
+    }
+
+    #[test]
+    fn bypass_rejects_unrelated_resident_over_shrunk_gap_capacity() {
+        let demands = shrinking_capacity_stream();
+        let exact = solved(
+            &demands,
+            solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap(),
+        );
+        assert_eq!(exact.actions, vec![PagingAction::Bypass; 3]);
+        assert_eq!(
+            exact.objective,
+            PagingObjective {
+                dram_bytes: 207,
+                primitive_source_ops: 41,
+                admissions: 0,
+                evictions: 0,
+            }
+        );
     }
 
     #[test]
@@ -357,11 +390,22 @@ mod tests {
         ));
     }
 
-    fn solved(outcome: PagerOutcome) -> ExactPagingPlan {
-        match outcome {
+    fn solved(demands: &[BackwardDemand], outcome: PagerOutcome) -> ExactPagingPlan {
+        let plan = match outcome {
             PagerOutcome::Solved(plan) => plan,
             capped => panic!("expected a solved paging plan, got {capped:?}"),
+        };
+        assert_eq!(plan.live_lanes_after.len(), demands.len());
+        for (position, (&live_lanes, demand)) in
+            plan.live_lanes_after.iter().zip(demands).enumerate()
+        {
+            assert!(
+                live_lanes <= demand.gap_capacity_lanes,
+                "position {position} leaves {live_lanes} lanes live against capacity {}",
+                demand.gap_capacity_lanes,
+            );
         }
+        plan
     }
 
     fn exhaustive(demands: &[BackwardDemand]) -> Option<ExactPagingPlan> {
@@ -406,9 +450,7 @@ mod tests {
                         }
                     }
                     PagingAction::Retain => {
-                        if !demand.has_next
-                            || live_without_demand + demand.width_lanes > demand.gap_capacity_lanes
-                        {
+                        if !demand.has_next {
                             legal = false;
                             break;
                         }
@@ -418,6 +460,10 @@ mod tests {
                 }
                 actions.push(action);
                 let live_lanes = resident_lanes(&residents, &widths);
+                if live_lanes > demand.gap_capacity_lanes {
+                    legal = false;
+                    break;
+                }
                 live_lanes_after.push(live_lanes);
             }
 
@@ -489,6 +535,10 @@ mod tests {
             (1, 1, 1, 8, 1),
             (2, 1, 0, 7, 1),
         ])
+    }
+
+    fn shrinking_capacity_stream() -> Vec<BackwardDemand> {
+        stream(&[(0, 4, 4, 100, 20), (1, 1, 1, 7, 1), (0, 4, 0, 100, 20)])
     }
 
     fn equal_cost_stream() -> Vec<BackwardDemand> {
