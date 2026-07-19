@@ -310,20 +310,27 @@ pub fn live_profile(p: &Program) -> Vec<usize> {
     occ
 }
 
-/// Reconstruct the concrete compiler's real DRAM reads from the realized
-/// instruction stream. This scan happens after concrete peepholes, so each
-/// event names an operand the final encoded program physically reads.
-pub(crate) fn physical_traffic_events(
+/// Reconstruct the concrete compiler's real DRAM reads and instruction positions
+/// from the realized instruction stream. This is the single post-peephole operand
+/// scan used by both frozen demand construction and replay certification.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PositionedPhysicalTrafficEvent {
+    pub instruction: usize,
+    pub event: BwdEvent,
+}
+
+pub(crate) fn positioned_physical_traffic_events(
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     program: &Program,
     specials: &BwdSpecialTable,
     leaf_descs: &BTreeMap<ExprId, u16>,
     backings: &BackingTable,
-) -> Option<Vec<BwdEvent>> {
+) -> Option<Vec<PositionedPhysicalTrafficEvent>> {
     let desc_to_leaf: BTreeMap<u16, ExprId> =
         leaf_descs.iter().map(|(&leaf, &desc)| (desc, leaf)).collect();
     let mut events = Vec::new();
-    let mut record = |operand: OperandLine, field: OperandField| -> Option<()> {
+    let mut record =
+        |instruction: usize, operand: OperandLine, field: OperandField| -> Option<()> {
         let (value, cells) = match operand {
             OperandLine::Global { slot, col } => {
                 let place = backings.slot_col_to_read_place(slot, col)?;
@@ -352,28 +359,50 @@ pub(crate) fn physical_traffic_events(
             },
             OperandLine::Smem { .. } | OperandLine::Ldc { .. } => return Some(()),
         };
-        events.push(BwdEvent::TrafficRead { value, cells });
+        events.push(PositionedPhysicalTrafficEvent {
+            instruction,
+            event: BwdEvent::TrafficRead { value, cells },
+        });
         Some(())
     };
 
-    for instr in &program.instrs {
+    for (instruction, instr) in program.instrs.iter().enumerate() {
         match instr {
             Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
                 for &operand in operands {
-                    record(operand, *field)?;
+                    record(instruction, operand, *field)?;
                 }
             }
             Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
                 for &(lhs, rhs) in pairs {
-                    record(lhs, *field_lhs)?;
-                    record(rhs, *field_rhs)?;
+                    record(instruction, lhs, *field_lhs)?;
+                    record(instruction, rhs, *field_rhs)?;
                 }
             }
-            Instr::Mov { field, src: Some(operand), .. } => record(*operand, *field)?,
+            Instr::Mov { field, src: Some(operand), .. } => {
+                record(instruction, *operand, *field)?
+            }
             Instr::Mov { src: None, .. } => {}
         }
     }
     Some(events)
+}
+
+pub(crate) fn physical_traffic_events(
+    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    program: &Program,
+    specials: &BwdSpecialTable,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+    backings: &BackingTable,
+) -> Option<Vec<BwdEvent>> {
+    positioned_physical_traffic_events(layer, program, specials, leaf_descs, backings).map(
+        |events| {
+            events
+                .into_iter()
+                .map(|positioned| positioned.event)
+                .collect()
+        },
+    )
 }
 
 /// Preserve the source-resolution traffic anchors only when their complete
@@ -411,9 +440,9 @@ pub(crate) fn retain_physical_traffic_events(
 /// `domain_serves` is `trace`'s `Serve` events filtered to values in
 /// [`distilled_site_domain`] — the matcher and every planner act ONLY on this
 /// filtered stream; non-domain serves carry no actions. `leaf_instants[v]` gives
-/// each DOMAIN leaf `v`'s final-program instruction indices at which a
-/// READ-origin `FoldSource` operand uses `v` — the FiF gap model's demand
-/// instants. `free` is `trace.free`, the per-instruction spare-lane envelope.
+/// each DOMAIN leaf `v`'s final-program instruction indices at which a real
+/// `Global` or READ-origin `FoldSource` operand uses `v` — the FiF gap model's
+/// demand instants. `free` is `trace.free`, the per-instruction spare-lane envelope.
 ///
 /// Fan-out-1 leaves and direct top-level read terms are real DRAM traffic with
 /// program gathers but NO domain serve (`distilled_site_domain` excludes them) —
@@ -430,47 +459,6 @@ pub struct FrozenDemand {
     pub free: Vec<usize>,
     pub leaf_instants: BTreeMap<ExprId, Vec<usize>>,
     pub nondomain_gather_cells: usize,
-}
-
-/// Program-position scan of READ-origin `FoldSource` operand uses, keyed by the
-/// distilled leaf's `ExprId` (via `leaf_descs`) instead of the origin's Debug
-/// identity — the `ExprId` space `freeze_demand` and its callers already key
-/// everything else on (`BwdFingerprint::value`, `SiteKey::value`). Same operand
-/// walk and VS-origin exclusion as `read_origin_positions_keyed`
-/// (`tests/bwd_batching_headroom.rs:231`), just re-keyed to `ExprId`.
-fn read_origin_positions_by_leaf(
-    program: &Program,
-    specials: &BwdSpecialTable,
-    leaf_descs: &BTreeMap<ExprId, u16>,
-) -> BTreeMap<ExprId, Vec<usize>> {
-    // `leaf_descs` is injective in practice (canonicalized rebuild: two distinct
-    // leaves never share one origin), so this reversal is unambiguous; a later
-    // entry overwriting an earlier one under the same desc would only mask a
-    // canonicalization break upstream, not something this scan can detect.
-    let desc_to_leaf: BTreeMap<u16, ExprId> =
-        leaf_descs.iter().map(|(&leaf, &desc)| (desc, leaf)).collect();
-
-    let mut out: BTreeMap<ExprId, Vec<usize>> = BTreeMap::new();
-    for (idx, instr) in program.instrs.iter().enumerate() {
-        let ops: Vec<&OperandLine> = match instr {
-            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => operands.iter().collect(),
-            Instr::Fma { pairs, .. } => pairs.iter().flat_map(|(l, r)| [l, r]).collect(),
-            Instr::Mov { src: Some(op), .. } => vec![op],
-            Instr::Mov { src: None, .. } => vec![],
-        };
-        for op in ops {
-            if let OperandLine::Special { desc } = op {
-                if let Some(BwdSpecial::FoldSource { origin }) = specials.get(*desc) {
-                    if !origin.is_vs() {
-                        if let Some(&leaf) = desc_to_leaf.get(desc) {
-                            out.entry(leaf).or_default().push(idx);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    out
 }
 
 /// Whether [`freeze_demand_with`] applies the DIRECT-TOP-LEVEL-READ correction (CS-M5a
@@ -493,17 +481,25 @@ pub enum DirectTopCorrection {
 
 /// Task 2 (CS-M0): freeze the all-recompute demand stream D0 from a traced bwd
 /// compile — `d`'s site domain filters `trace`'s `Serve` events into
-/// `domain_serves` and gates `leaf_instants` (via a program scan of `program`
-/// keyed through `specials`), with everything outside the domain folded into
-/// `nondomain_gather_cells`. The TERM-driver compat entry: applies the direct-top
-/// correction (see [`freeze_demand_with`]).
+/// `domain_serves` and gates `leaf_instants` through the authoritative physical
+/// traffic scan, with everything outside the domain folded into
+/// `nondomain_gather_cells`. The TERM-driver entry applies the direct-top correction
+/// (see [`freeze_demand_with`]).
 pub fn freeze_demand(
     d: &DistilledLayer,
     trace: &BwdCompileTrace,
     program: &Program,
     specials: &BwdSpecialTable,
+    backings: &BackingTable,
 ) -> FrozenDemand {
-    freeze_demand_with(d, trace, program, specials, DirectTopCorrection::Term)
+    freeze_demand_with(
+        d,
+        trace,
+        program,
+        specials,
+        backings,
+        DirectTopCorrection::Term,
+    )
 }
 
 /// CS-M5a Task 6: [`freeze_demand`] parameterized over the [`DirectTopCorrection`] the
@@ -515,6 +511,7 @@ pub fn freeze_demand_with(
     trace: &BwdCompileTrace,
     program: &Program,
     specials: &BwdSpecialTable,
+    backings: &BackingTable,
     correction: DirectTopCorrection,
 ) -> FrozenDemand {
     let domain_values: BTreeSet<ExprId> =
@@ -536,18 +533,29 @@ pub fn freeze_demand_with(
     // emit none, see `BwdEvent::TrafficRead`'s doc), so summing the non-domain
     // ones here is precisely "non-domain READ-origin gathers + Global reads of
     // non-domain values".
-    let mut nondomain_gather_cells: usize = trace
-        .events
-        .iter()
-        .filter_map(|e| match e {
-            BwdEvent::TrafficRead { value, cells } if !domain_values.contains(value) => {
-                Some(*cells as usize)
-            }
-            _ => None,
-        })
-        .sum();
-
-    let mut leaf_instants = read_origin_positions_by_leaf(program, specials, &d.leaf_descs);
+    let physical = positioned_physical_traffic_events(
+        &d.layer,
+        program,
+        specials,
+        &d.leaf_descs,
+        backings,
+    )
+    .expect("a compiled backward program has fully mapped physical traffic");
+    let mut nondomain_gather_cells = 0usize;
+    let mut leaf_traffic = BTreeMap::<ExprId, Vec<(usize, u32)>>::new();
+    for positioned in physical {
+        let BwdEvent::TrafficRead { value, cells } = positioned.event else {
+            unreachable!("the physical traffic scan emits only TrafficRead events");
+        };
+        if domain_values.contains(&value) {
+            leaf_traffic
+                .entry(value)
+                .or_default()
+                .push((positioned.instruction, cells));
+        } else {
+            nondomain_gather_cells += cells as usize;
+        }
+    }
 
     if let DirectTopCorrection::Term = correction {
         // DOCUMENTED OFFSET RULE: the driver's per-spine-term loop
@@ -579,17 +587,31 @@ pub fn freeze_demand_with(
             if !matches!(d.layer.exprs[term.0 as usize], Expr::Source(_)) {
                 continue;
             }
-            if let Some(positions) = leaf_instants.get_mut(&term) {
-                if let Some((min_at, _)) = positions.iter().enumerate().min_by_key(|&(_, &p)| p) {
-                    positions.remove(min_at);
-                    nondomain_gather_cells += 4; // FoldSource gathers are always Ext (4 cells).
+            if let Some(traffic) = leaf_traffic.get_mut(&term) {
+                if let Some((min_at, _)) = traffic
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|&(_, &(position, _))| position)
+                {
+                    let (_, cells) = traffic.remove(min_at);
+                    nondomain_gather_cells += cells as usize;
                 }
             }
         }
     }
 
-    leaf_instants.retain(|_, positions| !positions.is_empty());
-    leaf_instants.retain(|v, _| domain_values.contains(v));
+    let leaf_instants = leaf_traffic
+        .into_iter()
+        .filter_map(|(value, traffic)| {
+            (!traffic.is_empty()).then_some((
+                value,
+                traffic
+                    .into_iter()
+                    .map(|(position, _)| position)
+                    .collect(),
+            ))
+        })
+        .collect();
 
     FrozenDemand {
         epoch: trace.epoch,

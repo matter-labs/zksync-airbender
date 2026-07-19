@@ -102,7 +102,7 @@ fn frozen_domain_serves(
     budget: usize,
 ) -> (Vec<(BwdFingerprint, BwdServedFrom)>, bool) {
     let (c, trace) = compile_distilled_traced(d, budget, None).expect("traced baseline compile");
-    let f = freeze_demand(d, &trace, &c.program, &c.specials);
+    let f = freeze_demand(d, &trace, &c.program, &c.specials, &c.backings);
     (f.domain_serves, f.stream_reductions)
 }
 
@@ -148,8 +148,16 @@ fn any_admit(t: &BwdCompileTrace) -> bool {
 }
 /// The `from` of each DOMAIN serve of the PLANNED compile, in order (re-frozen off the
 /// planned trace) — lets a test read the realized residency decisions per occurrence.
-fn planned_domain_froms(d: &DistilledLayer, c_program: &gkr_eval_isa::fwd::isa::Program, specials: &gkr_eval_isa::bwd::source::BwdSpecialTable, t: &BwdCompileTrace) -> Vec<BwdServedFrom> {
-    freeze_demand(d, t, c_program, specials).domain_serves.into_iter().map(|(_, from)| from).collect()
+fn planned_domain_froms(
+    d: &DistilledLayer,
+    c: &gkr_eval_isa::bwd::compile::BwdCompiledLayer,
+    t: &BwdCompileTrace,
+) -> Vec<BwdServedFrom> {
+    freeze_demand(d, t, &c.program, &c.specials, &c.backings)
+        .domain_serves
+        .into_iter()
+        .map(|(_, from)| from)
+        .collect()
 }
 
 // ── §4 regression cases ─────────────────────────────────────────────────────────
@@ -200,7 +208,7 @@ fn bypass_on_resident_serves_then_releases() {
     );
     let (c, t) = compile_distilled_planned(&d, budget, &plan).expect("planned");
     assert_eq!(diverge_at(&t), None);
-    let froms = planned_domain_froms(&d, &c.program, &c.specials, &t);
+    let froms = planned_domain_froms(&d, &c, &t);
     assert_eq!(froms[0], BwdServedFrom::Recomputed, "serve 1 recomputes then admits");
     assert_eq!(froms[1], BwdServedFrom::Resident, "serve 2 is a resident free hit");
     assert_eq!(froms[2], BwdServedFrom::Recomputed, "serve 3 recomputes (slot released at 2)");

@@ -975,7 +975,14 @@ impl BwdCompileBackend for TermBackend {
         c: &BwdCompiledLayer,
         t: &BwdCompileTrace,
     ) -> FrozenDemand {
-        freeze_demand_with(d, t, &c.program, &c.specials, DirectTopCorrection::Term)
+        freeze_demand_with(
+            d,
+            t,
+            &c.program,
+            &c.specials,
+            &c.backings,
+            DirectTopCorrection::Term,
+        )
     }
 }
 
@@ -1009,7 +1016,14 @@ impl BwdCompileBackend for FragmentBackend {
         c: &BwdCompiledLayer,
         t: &BwdCompileTrace,
     ) -> FrozenDemand {
-        freeze_demand_with(d, t, &c.program, &c.specials, DirectTopCorrection::None)
+        freeze_demand_with(
+            d,
+            t,
+            &c.program,
+            &c.specials,
+            &c.backings,
+            DirectTopCorrection::None,
+        )
     }
 }
 

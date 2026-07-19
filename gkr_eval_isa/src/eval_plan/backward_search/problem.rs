@@ -55,6 +55,7 @@ pub struct BackwardSearchProblem {
     pub leaf_domain: Vec<StableLeafDemandKey>,
     pub constructive_order: Vec<StableFragmentKey>,
     pub selected_order: Vec<StableFragmentKey>,
+    pub(crate) selected_order_indices: Vec<usize>,
     pub demands: Vec<BackwardDemand>,
     pub all_domain_serves: Vec<BwdFingerprint>,
     pub budget_cells: usize,
@@ -63,6 +64,8 @@ pub struct BackwardSearchProblem {
     pub epoch: u64,
     pub materialization: StaticMaterialization,
     pub fixed_cost: SourceCost,
+    pub(crate) round_profiles: Vec<RoundProfile>,
+    pub(crate) source_round_uses: Vec<SourceRoundUse>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -111,7 +114,8 @@ pub fn build_backward_search_problem(
     let stable_sites = stable_distilled_site_domain(d);
     let constructive = construct_fragment_order(canonical, d, &stable_sites);
     validate_and_resolve_backward(d).map_err(BackwardSearchError::BackwardEvaluation)?;
-    let (materialization, fixed_cost, source_costs) = source_model(d, trace_len)?;
+    let (materialization, fixed_cost, source_costs, round_profiles, source_round_uses) =
+        source_model(d, trace_len)?;
 
     let false_eval = mode_compile(d, &constructive, budget_cells, false, 0)?;
     let true_eval = mode_compile(d, &constructive, budget_cells, true, 1)?;
@@ -132,6 +136,8 @@ pub fn build_backward_search_problem(
         materialization,
         fixed_cost,
         source_costs,
+        round_profiles,
+        source_round_uses,
         compiled,
     )?;
     let classification = classify_problem(&problem);
@@ -151,7 +157,8 @@ fn build_problem_for_order(
         ))?;
     let fragment_keys = stable_fragment_keys(d)?;
     validate_and_resolve_backward(d).map_err(BackwardSearchError::BackwardEvaluation)?;
-    let (materialization, fixed_cost, source_costs) = source_model(d, 1)?;
+    let (materialization, fixed_cost, source_costs, round_profiles, source_round_uses) =
+        source_model(d, 1)?;
     let compiled =
         compile_backward_fragments_uncached(d, Some(order), budget_cells, stream_reductions)
             .map_err(BackwardSearchError::BackwardEvaluation)?;
@@ -165,6 +172,8 @@ fn build_problem_for_order(
         materialization,
         fixed_cost,
         source_costs,
+        round_profiles,
+        source_round_uses,
         compiled,
     )
 }
@@ -180,6 +189,8 @@ fn build_problem_from_compiled(
     materialization: StaticMaterialization,
     fixed_cost: SourceCost,
     source_costs: BTreeMap<u16, SourceCost>,
+    round_profiles: Vec<RoundProfile>,
+    source_round_uses: Vec<SourceRoundUse>,
     compiled: CompiledBackwardEvaluation,
 ) -> Result<BackwardSearchProblem, BackwardSearchError> {
     let frozen = freeze_demand_with(
@@ -187,6 +198,7 @@ fn build_problem_from_compiled(
         &compiled.trace,
         &compiled.compiled.program,
         &compiled.compiled.specials,
+        &compiled.compiled.backings,
         DirectTopCorrection::None,
     );
     let plan = bypass_plan(
@@ -201,6 +213,7 @@ fn build_problem_from_compiled(
         &replayed.trace,
         &replayed.compiled.program,
         &replayed.compiled.specials,
+        &replayed.compiled.backings,
         DirectTopCorrection::None,
     );
     let fields =
@@ -297,6 +310,7 @@ fn build_problem_from_compiled(
         leaf_domain,
         constructive_order: selected_order.clone(),
         selected_order,
+        selected_order_indices: order.to_vec(),
         demands,
         all_domain_serves: frozen.domain_serves.into_iter().map(|(fp, _)| fp).collect(),
         budget_cells,
@@ -305,6 +319,8 @@ fn build_problem_from_compiled(
         epoch: plan_epoch_fragment(d, budget_lanes, stream_reductions),
         materialization,
         fixed_cost,
+        round_profiles,
+        source_round_uses,
     })
 }
 
@@ -538,7 +554,16 @@ fn bypass_plan(
 fn source_model(
     d: &DistilledLayer,
     trace_len: usize,
-) -> Result<(StaticMaterialization, SourceCost, BTreeMap<u16, SourceCost>), BackwardSearchError> {
+) -> Result<
+    (
+        StaticMaterialization,
+        SourceCost,
+        BTreeMap<u16, SourceCost>,
+        Vec<RoundProfile>,
+        Vec<SourceRoundUse>,
+    ),
+    BackwardSearchError,
+> {
     let rounds = round_profiles(trace_len)?;
     let uses = source_round_uses(d, &rounds)?;
     let materialization = build_static_materialization(&uses, &rounds)?;
@@ -565,6 +590,8 @@ fn source_model(
         materialization.clone(),
         materialization.fixed_writes,
         source_costs,
+        rounds,
+        uses,
     ))
 }
 

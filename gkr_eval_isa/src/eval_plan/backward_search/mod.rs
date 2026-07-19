@@ -4,6 +4,7 @@ use crate::eval_plan::backward::BackwardEvaluationError;
 pub mod materialization;
 pub mod pager;
 pub mod problem;
+pub mod replay;
 
 pub use materialization::{
     SourceOriginKind, SourceRoundUse, StaticMaterialization, build_static_materialization,
@@ -12,6 +13,10 @@ pub use materialization::{
 pub use pager::{
     ExactPagingPlan, PagerOutcome, PagingAction, PagingObjective, PagingTelemetry,
     solve_exact_paging,
+};
+pub use replay::{
+    CertifiedBackwardCandidate, PagingCertificate, compile_and_certify_paging,
+    occurrence_plan_from_paging,
 };
 
 pub const MAX_PAGER_STATES: usize = 250_000;
@@ -196,5 +201,44 @@ pub enum BackwardSearchError {
     MissingStableSite,
     MissingLeafInstant {
         expr: cs::gkr_compiler::dag_ir::ExprId,
+    },
+    PagingActionCount {
+        expected: usize,
+        actual: usize,
+    },
+    PagingActionUnderflow {
+        serve: usize,
+    },
+    PagingActionLeftover {
+        remaining: usize,
+    },
+    PlacementIntegrationFailure,
+    PagingReplayDiverged {
+        at_entry: usize,
+    },
+    PagingReplayRefused {
+        count: usize,
+    },
+    PagingSourceAccessMismatch {
+        predicted_reads: u64,
+        realized_reads: u64,
+        predicted_width_lanes: u64,
+        realized_width_lanes: u64,
+    },
+    PagingReadCostMismatch {
+        predicted: SourceCost,
+        realized: SourceCost,
+    },
+    PagingWriteCostMismatch {
+        predicted: SourceCost,
+        realized: SourceCost,
+    },
+    PagingOccupancyMismatch {
+        position: usize,
+        predicted: usize,
+        realized: usize,
+    },
+    PagingCertificateMismatch {
+        observable: &'static str,
     },
 }

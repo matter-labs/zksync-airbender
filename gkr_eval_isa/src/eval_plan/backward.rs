@@ -36,6 +36,7 @@ pub struct CompiledBackwardEvaluation {
     pub compiled: BwdCompiledLayer,
     pub encoded: Vec<u16>,
     pub trace: BwdCompileTrace,
+    pub binding_stats: super::ConcreteBindingStats,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -305,8 +306,8 @@ fn compile_backward_symbolic(
     let ConcreteEvalProgram {
         compiled: forward,
         encoded,
+        stats: binding_stats,
         terminal,
-        ..
     } = bound;
     if !matches!(terminal, ConcreteTerminal::ReturnAcc { .. }) {
         return Err(BackwardEvaluationError::UnexpectedTerminal);
@@ -389,6 +390,7 @@ fn compile_backward_symbolic(
         compiled,
         encoded,
         trace,
+        binding_stats,
     })
 }
 

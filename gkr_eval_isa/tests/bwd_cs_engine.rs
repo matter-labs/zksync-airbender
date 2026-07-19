@@ -63,15 +63,15 @@ fn trace_terms_are_monotone() {
     }
 }
 
-/// Leaf demand instants (DOMAIN leaves only): k-th FoldSource use in the program
+/// Leaf demand instants (DOMAIN leaves only): k-th physical read in the program
 /// == k-th Recomputed serve of that leaf in the trace (per-leaf counts must agree
-/// exactly). Non-domain gathers are accounted in nondomain_gather_cells instead.
+/// exactly). Non-domain reads are accounted in nondomain_gather_cells instead.
 #[test]
 fn frozen_leaf_instants_align_with_serves() {
     for (li, layer, cross) in layers_with_bwd_roots("add_sub_lui_auipc_mop_layout_gkr.json") {
         let d = distill(&layer, BwdRegime::Ext, &cross, None);
         let (c, trace) = compile_distilled_traced(&d, 16, None).unwrap();
-        let frozen = freeze_demand(&d, &trace, &c.program, &c.specials);
+        let frozen = freeze_demand(&d, &trace, &c.program, &c.specials, &c.backings);
         assert_eq!(frozen.epoch, trace.epoch);
         for (v, instants) in &frozen.leaf_instants {
             let serves = frozen.domain_serves.iter()
@@ -135,7 +135,13 @@ fn leaf_plan_beats_baseline_on_shared_leaf() {
 
     let (baseline_c, baseline_trace) =
         compile_distilled_traced(&d, BUDGET, None).expect("baseline traced compile @ b16");
-    let frozen = freeze_demand(&d, &baseline_trace, &baseline_c.program, &baseline_c.specials);
+    let frozen = freeze_demand(
+        &d,
+        &baseline_trace,
+        &baseline_c.program,
+        &baseline_c.specials,
+        &baseline_c.backings,
+    );
     let plan = plan_leaves(&frozen);
 
     let (planned_c, _planned_trace) =
@@ -281,7 +287,7 @@ fn coordinate_correct_baseline(
 ) -> gkr_eval_isa::bwd::compile::BwdCompiledLayer {
     use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanEntry};
     let (ft_c, ft_trace) = compile_distilled_traced(d, budget, None).expect("baseline traced");
-    let frozen = freeze_demand(d, &ft_trace, &ft_c.program, &ft_c.specials);
+    let frozen = freeze_demand(d, &ft_trace, &ft_c.program, &ft_c.specials, &ft_c.backings);
     let entries: Vec<PlanEntry> = frozen
         .domain_serves
         .iter()
@@ -632,7 +638,7 @@ fn compound_batch_prediction_realized() {
     let diverge = t.events.iter().find(|e| matches!(e, BwdEvent::Diverge { .. }));
     assert!(diverge.is_none(), "compound batch diverged (Task-4 machinery?): {diverge:?}");
 
-    let observed = freeze_demand(&d, &t, &c.program, &c.specials);
+    let observed = freeze_demand(&d, &t, &c.program, &c.specials, &c.backings);
     let predicted: Vec<_> = plan.entries.iter().map(|e| e.fp).collect();
     let realized: Vec<_> = observed.domain_serves.iter().map(|(fp, _)| *fp).collect();
     assert_eq!(predicted, realized, "predicted suppressed stream != observed re-frozen stream");
@@ -1469,7 +1475,7 @@ fn terminal_normalize_cleans_stage_b_stranded_retain() {
     let frozen0 = coordinate_correct_frozen(&dq, bud);
     let base0 = compound_batch_plan(&frozen0, &BTreeSet::new());
     let (bc0, bt0) = compile_distilled_planned(&dq, bud, &base0).unwrap();
-    let observed = freeze_demand(&dq, &bt0, &bc0.program, &bc0.specials);
+    let observed = freeze_demand(&dq, &bt0, &bc0.program, &bc0.specials, &bc0.backings);
     let base = compound_batch_plan(&observed, &BTreeSet::new());
     let (bc, bt) = compile_distilled_planned(&dq, bud, &base).unwrap();
     let mut tb2 = TrialBudget { available: 1 << 20, ..Default::default() };
