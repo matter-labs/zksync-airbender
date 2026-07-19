@@ -1393,9 +1393,10 @@ pub fn lde_intermediate_size_with_coset_range(
         .launch(&config_pass2, &args_pass2)
 }
 
-/// Multi-coset variant of `bitreversed_monomials_to_natural_evals`.
+/// Forward NTT from bitreversed monomials to natural-order evaluations across
+/// the full multi-coset LDE.
 ///
-/// Runs the same forward NTT across the full power-of-two LDE: all
+/// Runs the forward NTT across the full power-of-two LDE: all
 /// `num_cosets = 1 << log_lde_factor` cosets, starting at coset 0. Use
 /// [`lde_with_coset_range`] to process a caller-selected power-of-two
 /// coset subrange.
@@ -1707,65 +1708,6 @@ fn bitreversed_monomials_to_natural_evals_multi_coset_impl(
         )?;
     }
     Ok(())
-}
-
-#[allow(dead_code)]
-pub fn bitreversed_monomials_to_natural_evals(
-    inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
-    outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
-    log_n: usize,
-    log_lde_factor: usize,
-    coset_index: usize,
-    transposed_monomials: bool,
-    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
-    d_table_scratch: Option<&mut DeviceSlice<BF>>,
-    stream: &CudaStream,
-    device_properties: &DeviceProperties,
-) -> CudaResult<()> {
-    // The LDE domain must fit in BabyBear's 2-adicity. Multi-stage kernels'
-    // coset-shift path computes `bitrev(row, log_n) * coset_factor_power`
-    // (with `coset_factor_power = coset_index << (OMEGA_LOG_ORDER - log_n -
-    // log_lde_factor)`) and looks it up in `ab_ntt_forward_powers`, which
-    // decodes exponents in `[0, 2^OMEGA_LOG_ORDER)`. `log_n + log_lde_factor
-    // > OMEGA_LOG_ORDER` would also imply a negative shift in
-    // `coset_factor_power`, which is undefined.
-    assert!(
-        log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize,
-        "log_n ({log_n}) + log_lde_factor ({log_lde_factor}) > OMEGA_LOG_ORDER ({OMEGA_LOG_ORDER})",
-    );
-    assert!(coset_index < (1usize << log_lde_factor));
-    let cols = inputs_matrix.cols();
-    match super::select_ntt_strategy(
-        super::NttDirection::Forward,
-        log_n,
-        cols,
-        1,
-        device_properties,
-    ) {
-        Ok(strategy) => dispatch_strategy(
-            inputs_matrix,
-            outputs_matrix,
-            log_n,
-            log_lde_factor,
-            coset_index,
-            transposed_monomials,
-            ntt_ctx,
-            d_table_scratch,
-            stream,
-            &strategy,
-            device_properties,
-        ),
-        Err(super::NttStrategyError::LogNBelowSupported {
-            log_n: bad_log_n,
-            min_supported,
-        }) => {
-            unreachable!(
-                "bitreversed_monomials_to_natural_evals called with log_n={bad_log_n} \
-                 below MIN_SUPPORTED_LOG_N={min_supported}; log_n=0 is the only \
-                 unsupported size (identity NTT = host memcpy, handled by callers)"
-            )
-        }
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -498,10 +498,7 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
     use super::ntt::{
         monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
     };
-    use super::{
-        bitreversed_monomials_to_natural_evals, bitreversed_monomials_to_natural_evals_multi_coset,
-        lde_with_coset_range,
-    };
+    use super::{bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range};
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 
@@ -575,13 +572,23 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
     }
 
     {
-        // ORACLE: an INDEPENDENT baseline. For the DIT range (log_n in [2, 13])
-        // the subject's multi-coset entry routes to the DIT engine, so we must
-        // NOT use `bitreversed_monomials_to_natural_evals` there (it now routes
-        // to DIT too — circular). Instead call the compact kernels DIRECTLY:
-        // log_n <= 12 -> 1-pass compact; log_n == 13 -> 2-pass-compact-initial.
-        // Both read twiddles from `__constant__` tables (NOT DitTriangles). For
-        // log_n > 13 (no DIT) the existing single-coset entry stays independent.
+        // ORACLE: an INDEPENDENT per-coset baseline. For the DIT range (log_n in
+        // [2, 13]) the subject's multi-coset entry routes to the DIT engine, so we
+        // must NOT re-enter the DIT path here (that would be circular). The
+        // reference mirrors the routing the deleted single-coset entry used:
+        //   log_n in [8, 12]  -> 1-pass compact called DIRECTLY;
+        //   log_n in [13, 20] -> 2-pass-compact-initial called DIRECTLY (a
+        //                        different family from the intermediate/2pc-batched
+        //                        candidate — independent for the range tests);
+        //   log_n in [2, 7] / [21, 23] -> `lde_with_coset_range` at num_cosets=1,
+        //                        which declines the DIT single-pass divisibility
+        //                        gate (num_cosets=1) and, for log_n <= 13, never
+        //                        takes the lde-intermediate fast path — so it
+        //                        dispatches through the strategy to a single-coset
+        //                        subwarp/compact (log_n 2-7) or 3-pass (log_n
+        //                        21-23) launch, independent of the batched subject.
+        // The compact/2pc kernels read twiddles from `__constant__` tables (NOT
+        // DitTriangles).
         let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
         let reference_slice = &mut reference_device[..];
         for coset_offset in 0..num_cosets {
@@ -589,13 +596,13 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
             let chunk_start = coset_offset * cols_size;
             let chunk_end = chunk_start + cols_size;
             let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
-            let mut ref_chunk = DeviceMatrixChunkMut::new(
-                &mut reference_slice[chunk_start..chunk_end],
-                stride,
-                0,
-                n,
-            );
             if (8..=12).contains(&log_n) {
+                let mut ref_chunk = DeviceMatrixChunkMut::new(
+                    &mut reference_slice[chunk_start..chunk_end],
+                    stride,
+                    0,
+                    n,
+                );
                 monomials_to_evals_compact_1_pass(
                     &inputs_matrix,
                     &mut ref_chunk,
@@ -609,7 +616,13 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                     stream,
                 )
                 .unwrap();
-            } else if log_n == 13 {
+            } else if (13..=20).contains(&log_n) {
+                let mut ref_chunk = DeviceMatrixChunkMut::new(
+                    &mut reference_slice[chunk_start..chunk_end],
+                    stride,
+                    0,
+                    n,
+                );
                 monomials_to_evals_2_pass_compact_initial(
                     &inputs_matrix,
                     &mut ref_chunk,
@@ -625,13 +638,16 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                 )
                 .unwrap();
             } else {
-                bitreversed_monomials_to_natural_evals(
+                lde_with_coset_range(
                     &inputs_matrix,
-                    &mut ref_chunk,
+                    &mut reference_slice[chunk_start..chunk_end],
                     log_n,
                     log_lde_factor,
+                    1,
                     coset_index,
-                    false,
+                    NUM_COLS,
+                    1,
+                    1,
                     context.device_context(),
                     None,
                     stream,
@@ -1142,9 +1158,7 @@ fn run_streaming_vs_compact_parity(
     use super::ntt::{
         monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
     };
-    use super::{
-        bitreversed_monomials_to_natural_evals, bitreversed_monomials_to_natural_evals_multi_coset,
-    };
+    use super::{bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range};
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
     let _ = log_vpt;
@@ -1217,13 +1231,13 @@ fn run_streaming_vs_compact_parity(
             let chunk_start = coset_index * cols_size;
             let chunk_end = chunk_start + cols_size;
             let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
-            let mut ref_chunk = DeviceMatrixChunkMut::new(
-                &mut reference_slice[chunk_start..chunk_end],
-                stride,
-                0,
-                n,
-            );
             if (8..=12).contains(&log_n) {
+                let mut ref_chunk = DeviceMatrixChunkMut::new(
+                    &mut reference_slice[chunk_start..chunk_end],
+                    stride,
+                    0,
+                    n,
+                );
                 monomials_to_evals_compact_1_pass(
                     &inputs_matrix,
                     &mut ref_chunk,
@@ -1238,6 +1252,12 @@ fn run_streaming_vs_compact_parity(
                 )
                 .unwrap();
             } else if log_n == 13 {
+                let mut ref_chunk = DeviceMatrixChunkMut::new(
+                    &mut reference_slice[chunk_start..chunk_end],
+                    stride,
+                    0,
+                    n,
+                );
                 monomials_to_evals_2_pass_compact_initial(
                     &inputs_matrix,
                     &mut ref_chunk,
@@ -1253,16 +1273,22 @@ fn run_streaming_vs_compact_parity(
                 )
                 .unwrap();
             } else {
-                // log_n <= 7: single-coset never routes to DIT (no two-pass below
-                // log_n 8; single-pass needs num_cosets >> 1), so the strategy
-                // entry is an independent (subwarp/compact) baseline.
-                bitreversed_monomials_to_natural_evals(
+                // log_n <= 7: the single-coset multi-coset entry at num_cosets=1.
+                // `lde_with_coset_range` with num_cosets=1 declines the DIT
+                // single-pass divisibility gate and (log_n <= 13) never takes the
+                // lde-intermediate fast path, so it dispatches through the strategy
+                // to a single-coset subwarp/compact launch — an independent baseline
+                // that never re-enters the DIT engine under test.
+                lde_with_coset_range(
                     &inputs_matrix,
-                    &mut ref_chunk,
+                    &mut reference_slice[chunk_start..chunk_end],
                     log_n,
                     log_lde_factor,
+                    1,
                     coset_index,
-                    false,
+                    num_cols,
+                    1,
+                    1,
                     context.device_context(),
                     None,
                     stream,

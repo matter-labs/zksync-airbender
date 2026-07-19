@@ -43,8 +43,8 @@ mod ntt;
 mod strategy;
 #[allow(dead_code)]
 pub use ntt::{
-    bitreversed_monomials_to_natural_evals, bitreversed_monomials_to_natural_evals_multi_coset,
-    lde_with_coset_range, natural_evals_to_bitreversed_monomials, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
+    bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range,
+    natural_evals_to_bitreversed_monomials, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
 };
 #[cfg(test)]
 pub use ntt::{

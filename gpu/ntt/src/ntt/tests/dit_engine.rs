@@ -261,29 +261,35 @@ fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
     let mut ref_out_dev = context.alloc(n).unwrap();
     memory_copy_async(&mut monomials_ref_dev, &monomials_host, stream).unwrap();
 
-    // Oracle: call the compact 1-pass kernel DIRECTLY (not via
-    // `bitreversed_monomials_to_natural_evals`, which now routes the DIT range
-    // to the engine under test — that would be circular). Compact reads twiddles
-    // from `__constant__` tables, so it is a true independent baseline. All
-    // single-pass configs have log_n <= 8 (<= 12), so 1-pass compact applies.
+    // Oracle: an INDEPENDENT baseline that never re-enters the DIT engine under
+    // test. For log_n 8 the compact 1-pass kernel is called DIRECTLY (reads
+    // `__constant__` tables, not DitTriangles); for log_n <= 7 a num_cosets=1
+    // `lde_with_coset_range` routes through the strategy to a subwarp/compact
+    // launch (the DIT single-pass gate declines at num_cosets=1). All single-pass
+    // configs have log_n <= 8.
     let oracle_coset_factor_shift = OMEGA_LOG_ORDER - log_n - log_lde_factor;
     let device_props = context.get_device_properties();
     for cc in 0..num_cosets {
         {
             let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
-            let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
             // compact 1-pass only supports log_n in [4, 12]. For log_n <= 7 the
-            // single-coset strategy entry is an independent baseline (it never
-            // routes to DIT at num_cosets=1: no two-pass below log_n 8, and
-            // single-pass needs num_cosets >> 1); log_n 8 uses 1-pass compact.
+            // single-coset multi-coset entry at num_cosets=1 is an independent
+            // baseline: `lde_with_coset_range` at num_cosets=1 declines the DIT
+            // single-pass divisibility gate and (log_n <= 13) never takes the
+            // lde-intermediate fast path, so it routes AWAY from the DIT engine
+            // under test to a subwarp/compact single-coset launch; log_n 8 uses
+            // 1-pass compact called directly.
             if log_n <= 7 {
-                super::super::ntt::bitreversed_monomials_to_natural_evals(
+                super::super::ntt::lde_with_coset_range(
                     &inputs_matrix,
-                    &mut outputs_matrix,
+                    &mut ref_out_dev[..],
                     log_n as usize,
                     log_lde_factor as usize,
+                    1,
                     cc,
-                    false,
+                    1,
+                    1,
+                    1,
                     context.device_context(),
                     None,
                     stream,
@@ -291,6 +297,7 @@ fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
                 )
                 .unwrap();
             } else {
+                let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
                 super::super::ntt::monomials_to_evals_compact_1_pass(
                     &inputs_matrix,
                     &mut outputs_matrix,
@@ -385,8 +392,8 @@ dit_single_stream_parity_test!(dit_single_stream_7_2_parity, 7, 2);
 //   v8 (LOG_VPT=3): LOG_N ∈ {9,10,11,12,13} → ab_dit_two_pass_{9..13}_3
 //   v4 (LOG_VPT=2): LOG_N ∈ {8,9,10,11,12}  → ab_dit_two_pass_{8..12}_2
 //
-// Each config is exercised against the `bitreversed_monomials_to_natural_evals`
-// oracle across pow2-divisor grid shapes: grid=1 (one block does all cosets), a
+// Each config is exercised against an independent compact-kernel oracle across
+// pow2-divisor grid shapes: grid=1 (one block does all cosets), a
 // mid grid (grid = coset_count / 2), and grid = coset_count (one coset per
 // block). The kernel processes EXACTLY `cosets_per_block = coset_count / grid`
 // cosets per block, so `grid` MUST be a power-of-two divisor of the coset count
@@ -684,12 +691,11 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
     let mut ref_out_dev = context.alloc(n).unwrap();
     memory_copy_async(&mut monomials_ref_dev, &monomials_host, stream).unwrap();
 
-    // Oracle: call the compact path DIRECTLY (not via
-    // `bitreversed_monomials_to_natural_evals`, which now routes the DIT range
-    // to the engine under test — that would be circular). Compact reads twiddles
-    // from `__constant__` tables, so it is a true independent baseline. The
-    // two-pass DIT range is log_n in [8, 13]: log_n <= 12 → 1-pass compact;
-    // log_n == 13 → 2-pass-compact-initial.
+    // Oracle: call the compact path DIRECTLY — an independent baseline that never
+    // re-enters the DIT engine under test. Compact reads twiddles from
+    // `__constant__` tables (not DitTriangles). The two-pass DIT range is log_n
+    // in [8, 13]: log_n <= 12 → 1-pass compact; log_n == 13 →
+    // 2-pass-compact-initial.
     let oracle_coset_factor_shift = OMEGA_LOG_ORDER - log_n - log_lde_factor;
     for ci in 0..total as usize {
         {
@@ -1067,8 +1073,8 @@ fn dit_context_triangle_precompute_parity() {
 // ===========================================================================
 // Production launcher (`monomials_to_evals_dit`) parity.
 //
-// Exercises the launcher end-to-end vs the `bitreversed_monomials_to_natural_evals`
-// oracle across BOTH paths (single-pass, two-pass) AND the strided/multi-column
+// Exercises the launcher end-to-end vs an independent compact-kernel oracle
+// across BOTH paths (single-pass, two-pass) AND the strided/multi-column
 // output layout enabled by the `coset_out_stride` ABI change. The launcher
 // borrows the precomputed triangles from the `DeviceContext` and fills the
 // two-pass d-table at runtime, so this covers the full production code path
@@ -1153,9 +1159,8 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
     stream.synchronize().unwrap();
 
     // --- Reference (ORACLE) path: compact 1-pass kernel, called DIRECTLY -----
-    // Not via `bitreversed_monomials_to_natural_evals` (which now routes the DIT
-    // range to the engine under test — that would be circular). Compact reads
-    // twiddles from `__constant__` tables, an independent baseline. Both
+    // An independent baseline that never re-enters the DIT engine under test:
+    // compact reads twiddles from `__constant__` tables (not DitTriangles). Both
     // launcher configs (log_n 9 two-pass, log_n 4 single-pass) have log_n <= 12,
     // so 1-pass compact applies.
     let mut monomials_ref_dev = context.alloc(n).unwrap();
@@ -1612,15 +1617,22 @@ mod bench_variants {
         for cc in 0..num_cosets {
             {
                 let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
-                let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
+                // For log_n <= 7 the single-coset multi-coset entry at num_cosets=1
+                // is an independent baseline: `lde_with_coset_range` at num_cosets=1
+                // declines the DIT single-pass divisibility gate and (log_n <= 13)
+                // never takes the lde-intermediate fast path, so it routes AWAY from
+                // the DIT engine under test; log_n 8 uses 1-pass compact directly.
                 if log_n <= 7 {
-                    super::super::super::ntt::bitreversed_monomials_to_natural_evals(
+                    super::super::super::ntt::lde_with_coset_range(
                         &inputs_matrix,
-                        &mut outputs_matrix,
+                        &mut ref_out_dev[..],
                         log_n as usize,
                         log_lde_factor as usize,
+                        1,
                         cc,
-                        false,
+                        1,
+                        1,
+                        1,
                         context.device_context(),
                         None,
                         stream,
@@ -1628,6 +1640,8 @@ mod bench_variants {
                     )
                     .unwrap();
                 } else {
+                    let mut outputs_matrix =
+                        DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
                     super::super::super::ntt::monomials_to_evals_compact_1_pass(
                         &inputs_matrix,
                         &mut outputs_matrix,
