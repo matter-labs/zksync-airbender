@@ -20,6 +20,7 @@ use gkr_eval_isa::fwd::isa::{Instr, OperandField, OperandLine, Program};
 
 const WINDOW_COLUMNS: usize = 128;
 const MAX_WINDOWS: usize = 64;
+const EXPECTED_MAX_WINDOWS: usize = 12;
 
 /// The field component is needed only for logical output/cache matrices; the
 /// four base-only backing families never have an extension-field matrix.
@@ -337,6 +338,10 @@ fn source_window_corpus_census() {
     }
 
     println!("corpus maximum: {maximum} source windows (cap {MAX_WINDOWS})");
+    assert_eq!(
+        maximum, EXPECTED_MAX_WINDOWS,
+        "source-window corpus maximum drifted"
+    );
     println!(
         "backward coverage: {backward_fixture_entries} fixtures, {backward_bearing_layers} bearing layers, {backward_rootless_layers} rootless layers, {backward_programs} programs"
     );
