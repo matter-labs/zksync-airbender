@@ -47,6 +47,7 @@ mod forward;
 mod inverse;
 mod kernels;
 mod lde;
+mod shared;
 mod strategy;
 pub use dispatch::natural_evals_to_bitreversed_monomials;
 #[cfg(test)]

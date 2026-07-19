@@ -1,12 +1,12 @@
 #![allow(non_snake_case)]
 
 use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
-use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
 use super::kernels::*;
+use super::shared;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
 };
@@ -31,13 +31,7 @@ pub(crate) fn evals_to_monomials_3_pass(
     let n = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
-    // __pipeline_memcpy_asyncs in the kernel require 16 byte alignment
-    assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
     assert!(columns_per_launch >= 1);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -145,13 +139,7 @@ pub(crate) fn evals_to_monomials_2_pass(
     let n = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
-    // __pipeline_memcpy_asyncs in the kernel require 16 byte alignment
-    assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
     assert!(columns_per_launch >= 1);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -205,15 +193,7 @@ pub(crate) fn evals_to_monomials_2_pass(
                 "NTT 2-pass evals->monomials kernels are only generated for log_n in 23..=24"
             ),
         };
-        let func_ptr = function.as_ptr();
-        unsafe {
-            cudaFuncSetAttribute(
-                func_ptr,
-                CudaFuncAttribute::MaxDynamicSharedMemorySize,
-                smem_bytes as i32,
-            )
-            .wrap()?;
-        }
+        shared::set_max_dynamic_smem(&function, smem_bytes)?;
         function.launch(&config, &args)?;
         let bf_vals_per_block = 1 << 14; // 16384
         let smem_twiddles_per_block = 1 << 13; // 8192
@@ -233,15 +213,7 @@ pub(crate) fn evals_to_monomials_2_pass(
             0,
         );
         let function = EvalsToMonomialsFinalFunction(ab_evals_to_monomials_last_14_stages_kernel);
-        let func_ptr = function.as_ptr();
-        unsafe {
-            cudaFuncSetAttribute(
-                func_ptr,
-                CudaFuncAttribute::MaxDynamicSharedMemorySize,
-                smem_bytes as i32,
-            )
-            .wrap()?;
-        }
+        shared::set_max_dynamic_smem(&function, smem_bytes)?;
         function.launch(&config, &args)?;
         col_start += cols_in_chunk;
     }

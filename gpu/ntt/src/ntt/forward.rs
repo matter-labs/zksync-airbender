@@ -1,12 +1,12 @@
 #![allow(non_snake_case)]
 
 use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
-use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
 use super::kernels::*;
+use super::shared;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
 };
@@ -40,27 +40,17 @@ pub(crate) fn monomials_to_evals_3_pass(
     let n = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
-    assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
     assert!(columns_per_launch >= 1);
     assert!(cosets_per_launch >= 1 && cosets_per_launch <= num_cosets);
     assert!(num_cosets.is_power_of_two());
     assert!(cosets_per_launch.is_power_of_two());
     let num_ntts = inputs_matrix.cols();
-    assert!(
-        num_cols_per_coset >= num_ntts,
-        "num_cols_per_coset ({num_cols_per_coset}) < num_ntts ({num_ntts})",
-    );
-    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset + num_ntts;
-    assert!(
-        outputs_matrix.cols() >= max_col_offset_exclusive,
-        "outputs_matrix.cols() = {} < {}",
+    shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
-        max_col_offset_exclusive,
+        num_cosets,
+        num_cols_per_coset,
+        num_ntts,
     );
     let log_cosets_in_tile = cosets_per_launch.trailing_zeros() as i32;
     let initial_function = match log_n {
@@ -215,16 +205,8 @@ pub(crate) fn monomials_to_evals_compact_1_pass(
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
     let num_ntts = inputs_matrix.cols();
-    assert!(
-        num_cols_per_coset >= num_ntts,
-        "num_cols_per_coset ({num_cols_per_coset}) < num_ntts ({num_ntts})",
-    );
-    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset + num_ntts;
-    assert!(
-        outputs_matrix.cols() >= max_col_offset_exclusive,
-        "outputs_matrix.cols() = {} < {} (num_cosets={}, stride={}, num_ntts={})",
+    shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
-        max_col_offset_exclusive,
         num_cosets,
         num_cols_per_coset,
         num_ntts,
@@ -253,15 +235,7 @@ pub(crate) fn monomials_to_evals_compact_1_pass(
     // For LOG_N <= 12 the per-block smem (<= 16 KB) is under the default cap
     // and the `cudaFuncSetAttribute` call is a no-op; we apply it
     // unconditionally to keep the launch path uniform.
-    let func_ptr = function.as_ptr();
-    unsafe {
-        cudaFuncSetAttribute(
-            func_ptr,
-            CudaFuncAttribute::MaxDynamicSharedMemorySize,
-            smem_bytes as i32,
-        )
-        .wrap()?;
-    }
+    shared::set_max_dynamic_smem(&function, smem_bytes)?;
     let mut col_start = 0usize;
     while col_start < num_ntts {
         let cols_in_chunk = (num_ntts - col_start).min(columns_per_launch);
@@ -332,10 +306,6 @@ pub(crate) fn monomials_to_evals_subwarp(
     assert_eq!(outputs_matrix.rows(), n);
     let num_ntts = inputs_matrix.cols();
     assert!(
-        num_cols_per_coset >= num_ntts,
-        "num_cols_per_coset ({num_cols_per_coset}) < num_ntts ({num_ntts})",
-    );
-    assert!(
         num_ntts.is_power_of_two(),
         "subwarp NTT requires num_ntts to be a power of 2 (got {num_ntts})"
     );
@@ -347,12 +317,8 @@ pub(crate) fn monomials_to_evals_subwarp(
         workload % instances_per_block == 0,
         "workload ({workload}) not divisible by instances_per_block ({instances_per_block})",
     );
-    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset + num_ntts;
-    assert!(
-        outputs_matrix.cols() >= max_col_offset_exclusive,
-        "outputs_matrix.cols() = {} < {} (num_cosets={}, stride={}, num_ntts={})",
+    shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
-        max_col_offset_exclusive,
         num_cosets,
         num_cols_per_coset,
         num_ntts,
@@ -462,10 +428,6 @@ pub(crate) fn monomials_to_evals_smem_packed(
     assert_eq!(outputs_matrix.rows(), n);
     let num_ntts = inputs_matrix.cols();
     assert!(
-        num_cols_per_coset >= num_ntts,
-        "num_cols_per_coset ({num_cols_per_coset}) < num_ntts ({num_ntts})",
-    );
-    assert!(
         num_ntts.is_power_of_two(),
         "smem-packed NTT requires num_ntts to be a power of 2 (got {num_ntts})"
     );
@@ -477,12 +439,8 @@ pub(crate) fn monomials_to_evals_smem_packed(
         workload % instances_per_block == 0,
         "workload ({workload}) not divisible by instances_per_block ({instances_per_block})",
     );
-    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset + num_ntts;
-    assert!(
-        outputs_matrix.cols() >= max_col_offset_exclusive,
-        "outputs_matrix.cols() = {} < {} (num_cosets={}, stride={}, num_ntts={})",
+    shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
-        max_col_offset_exclusive,
         num_cosets,
         num_cols_per_coset,
         num_ntts,
@@ -509,17 +467,9 @@ pub(crate) fn monomials_to_evals_smem_packed(
             "smem-packed kernels exist only for (log_n, log_ipb) in {{(6,3), (7,2), (8,1)}}, got ({log_n}, {log_instances_per_block})"
         ),
     };
-    let func_ptr = function.as_ptr();
     // smem is <= 8 KB for all supported (log_n, log_ipb); the unconditional
     // setattr keeps the launch path uniform with the compact 1-pass kernel.
-    unsafe {
-        cudaFuncSetAttribute(
-            func_ptr,
-            CudaFuncAttribute::MaxDynamicSharedMemorySize,
-            smem_bytes as i32,
-        )
-        .wrap()?;
-    }
+    shared::set_max_dynamic_smem(&function, smem_bytes)?;
     let input_stride = inputs_matrix.stride();
     let input_offset = inputs_matrix.offset();
     let output_stride = outputs_matrix.stride();
@@ -593,12 +543,7 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
     let n = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
-    assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
     let log_k = log_n - 8;
     let k_vals = 1usize << log_k;
     let smem_bytes_pass1 = k_vals * size_of::<BF>();
@@ -616,16 +561,11 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
         _ => unreachable!("log_k = log_n - 8 in [5, 12] for the 2-pass compact range"),
     };
     let num_ntts = inputs_matrix.cols();
-    assert!(
-        num_cols_per_coset >= num_ntts,
-        "num_cols_per_coset ({num_cols_per_coset}) < num_ntts ({num_ntts})",
-    );
-    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset + num_ntts;
-    assert!(
-        outputs_matrix.cols() >= max_col_offset_exclusive,
-        "outputs_matrix.cols() = {} < {}",
+    shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
-        max_col_offset_exclusive,
+        num_cosets,
+        num_cols_per_coset,
+        num_ntts,
     );
     let log_cosets_in_tile = cosets_per_launch.trailing_zeros() as i32;
     let inputs_slice = inputs_matrix.slice();
@@ -736,13 +676,7 @@ pub(crate) fn monomials_to_evals_2_pass(
     let n = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
-    // __pipeline_memcpy_asyncs in the kernel require 16 byte alignment
-    assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
     assert!(columns_per_launch >= 1);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -791,15 +725,7 @@ pub(crate) fn monomials_to_evals_2_pass(
         );
         let function =
             MonomialsToEvalsInitialFunction(ab_monomials_to_evals_first_14_stages_kernel);
-        let func_ptr = function.as_ptr();
-        unsafe {
-            cudaFuncSetAttribute(
-                func_ptr,
-                CudaFuncAttribute::MaxDynamicSharedMemorySize,
-                smem_bytes as i32,
-            )
-            .wrap()?;
-        }
+        shared::set_max_dynamic_smem(&function, smem_bytes)?;
         function.launch(&config, &args)?;
         let bf_vals_per_block = 1 << 14; // 16384
         let smem_bytes = bf_vals_per_block * size_of::<BF>();
@@ -824,15 +750,7 @@ pub(crate) fn monomials_to_evals_2_pass(
                 "NTT 2-pass final-stage kernels are only generated for final_stages in {{9, 10}} (log_n in {{23, 24}})"
             ),
         };
-        let func_ptr = function.as_ptr();
-        unsafe {
-            cudaFuncSetAttribute(
-                func_ptr,
-                CudaFuncAttribute::MaxDynamicSharedMemorySize,
-                smem_bytes as i32,
-            )
-            .wrap()?;
-        }
+        shared::set_max_dynamic_smem(&function, smem_bytes)?;
         function.launch(&config, &args)?;
         col_start += cols_in_chunk;
     }

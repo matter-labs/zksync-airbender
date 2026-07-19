@@ -37,10 +37,11 @@ use std::collections::HashMap;
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
 use era_cudart::memory::DeviceAllocation;
-use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
+
+use super::shared;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::device_structures::{DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl};
 use gpu_core::primitives::field::BaseField;
@@ -478,16 +479,8 @@ pub(crate) fn monomials_to_evals_dit(
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
     let num_ntts = inputs_matrix.cols();
-    assert!(
-        num_cols_per_coset >= num_ntts,
-        "num_cols_per_coset ({num_cols_per_coset}) < num_ntts ({num_ntts})",
-    );
-    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset + num_ntts;
-    assert!(
-        outputs_matrix.cols() >= max_col_offset_exclusive,
-        "outputs_matrix.cols() = {} < {} (num_cosets={}, stride={}, num_ntts={})",
+    shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
-        max_col_offset_exclusive,
         num_cosets,
         num_cols_per_coset,
         num_ntts,
@@ -533,14 +526,7 @@ pub(crate) fn monomials_to_evals_dit(
         // rule is identical for both VPT. The guarded grid-stride loop covers any
         // remaining cosets, so `grid` need not divide num_cosets.
         let func = two_pass_func(log_n, log_vpt);
-        unsafe {
-            cudaFuncSetAttribute(
-                func.as_ptr(),
-                CudaFuncAttribute::MaxDynamicSharedMemorySize,
-                smem as i32,
-            )
-            .wrap()?;
-        }
+        shared::set_max_dynamic_smem(&func, smem)?;
         let occ = era_cudart::occupancy::max_active_blocks_per_multiprocessor(
             &func,
             block_dim as i32,
