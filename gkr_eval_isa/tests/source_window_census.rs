@@ -10,7 +10,7 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 
 use common::load_dag_sched;
-use cs::gkr_compiler::dag_ir::{bwd_roots, lower_dag, validate, BwdRegime, FieldKind, ReadPlace};
+use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind, ReadPlace, bwd_roots, lower_dag, validate};
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
 use gkr_eval_isa::eval_plan::compile_backward_fragments_uncached;
