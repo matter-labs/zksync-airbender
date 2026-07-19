@@ -77,6 +77,14 @@ const BLAKE2_EXT: &str = "blake2_with_extended_control_layout_gkr.json";
 /// fails loudly rather than being masked.
 const MAX_TRIALS: usize = 8;
 
+#[derive(Default)]
+struct RetainRejections {
+    incumbent_compile_r0: usize,
+    incumbent_diverged: usize,
+    incumbent_refused: usize,
+    incumbent_unrealized: usize,
+}
+
 // ── plan builders (all built FROM the frozen snapshot, never hand-derived) ─────
 
 /// The all-`Bypass` plan over `frozen`'s domain serves, carrying `frozen`'s (fragment)
@@ -314,7 +322,7 @@ fn try_retain(
     base: &BwdOccurrencePlan,
     certify_exact: bool,
     trials: &mut usize,
-    errs: &mut usize,
+    rejected: &mut RetainRejections,
 ) -> Option<(ExprId, usize)> {
     for (v, pos) in retain_candidates(d, base).into_iter().take(MAX_TRIALS) {
         *trials += 1;
@@ -322,15 +330,29 @@ fn try_retain(
         let (c, t) = match compile_distilled_fragments_planned(d, BUDGET, &plan, Some(order)) {
             Ok(ct) => ct,
             Err(_) => {
-                *errs += 1;
+                assert_eq!(
+                    d.regime,
+                    BwdRegime::R0,
+                    "only the known R0 placement class may reject an incumbent Retain trial"
+                );
+                rejected.incumbent_compile_r0 += 1;
                 continue; // did not compile cleanly — try the next candidate
             }
         };
 
         // Realized? An admitted value served from residency, with no refusal — the
         // plan-mode resident-hit + source-admit arms genuinely fired for `v`.
-        if diverged(&t) || refused(&t, v) || !admitted(&t, v) || !served_resident(&t, v) {
-            continue; // not realized (or refused): try the next candidate
+        if diverged(&t) {
+            rejected.incumbent_diverged += 1;
+            continue;
+        }
+        if refused(&t, v) {
+            rejected.incumbent_refused += 1;
+            continue;
+        }
+        if !admitted(&t, v) || !served_resident(&t, v) {
+            rejected.incumbent_unrealized += 1;
+            continue;
         }
 
         assert_clean_certified_and_valued(
@@ -342,7 +364,7 @@ fn try_retain(
             certify_exact,
         );
         let new = compile_backward_fragments_replayed(d, &plan, Some(order), 4)
-            .unwrap_or_else(|e| panic!("[{ctx}] shared Retain replay {v:?}: {e:?}"));
+            .unwrap_or_else(|error| panic!("[{ctx}] shared Retain replay {v:?}: {error:?}"));
         assert_shared_replay(&format!("{ctx} Retain {v:?}"), &c, &new, d, layer);
         assert_retains_realized(&format!("{ctx} Retain {v:?}"), &plan, &new.trace);
         return Some((v, pos));
@@ -357,7 +379,7 @@ fn fragment_planned_replay_and_retention_gate() {
     let mut instances = 0usize; // (fixture, layer, regime) instances exercised
     let mut clean_retains = 0usize; // instances with a clean+realized Retain
     let mut retain_trials = 0usize; // total Retain compiles attempted
-    let mut retain_errs = 0usize; // trials that did not compile (R0 ExtCellMisaligned)
+    let mut retain_rejections = RetainRejections::default();
     let mut with_candidates = 0usize; // instances that had ≥1 leaf retain candidate
     let mut ext_clean_retains = 0usize; // Ext-regime clean+realized retains
 
@@ -411,7 +433,7 @@ fn fragment_planned_replay_and_retention_gate() {
                     certify_exact,
                 );
                 let new0 = compile_backward_fragments_replayed(&d, &bypass_plan, Some(&order), 4)
-                    .unwrap_or_else(|e| panic!("[{ctx}] shared all-Bypass replay: {e:?}"));
+                    .unwrap_or_else(|error| panic!("[{ctx}] shared all-Bypass replay: {error:?}"));
                 assert_shared_replay(&format!("{ctx} all-Bypass"), &c0, &new0, &d, &layer);
 
                 // 4. Retain non-vacuity.
@@ -426,7 +448,7 @@ fn fragment_planned_replay_and_retention_gate() {
                     &bypass_plan,
                     certify_exact,
                     &mut retain_trials,
-                    &mut retain_errs,
+                    &mut retain_rejections,
                 );
                 if let Some((v, pos)) = retained {
                     clean_retains += 1;
@@ -452,8 +474,13 @@ fn fragment_planned_replay_and_retention_gate() {
         "fragment_planned_replay_and_retention_gate: {instances} layer instances \
          (all-Bypass planned: no-diverge + Ext-exact-cert + oracle-parity); \
          {with_candidates} had leaf retain candidates; {clean_retains} realized a clean \
-         Retain ({ext_clean_retains} in Ext) over {retain_trials} trials ({retain_errs} \
-         R0 compile-errs skipped)"
+         Retain ({ext_clean_retains} in Ext) over {retain_trials} trials; rejected: \
+         r0-incumbent-compile={} incumbent-diverged={} \
+         incumbent-refused={} incumbent-unrealized={}",
+        retain_rejections.incumbent_compile_r0,
+        retain_rejections.incumbent_diverged,
+        retain_rejections.incumbent_refused,
+        retain_rejections.incumbent_unrealized,
     );
     println!(
         "pins — bigint L0 Ext: reached={} retained={}; blake2_ext L0 Ext: reached={} retained={}",

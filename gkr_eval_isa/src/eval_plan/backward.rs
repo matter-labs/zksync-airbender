@@ -3,7 +3,7 @@
 use cs::gkr_compiler::dag_ir::{BwdRegime, Expr, ExprId, FieldKind, expr_field, join};
 
 use crate::bwd::compile::{BwdCompiledLayer, fragment_descs, tally_bwd_program};
-use crate::bwd::distill::DistilledLayer;
+use crate::bwd::distill::{DistilledLayer, distilled_site_domain};
 use crate::bwd::plan::{BwdOccurrencePlan, PlanReplayError, PlanRun, plan_entries_fnv};
 use crate::bwd::source::BwdSpecialTable;
 use crate::bwd::trace::{
@@ -157,7 +157,15 @@ fn elaborate_backward_fragments_replayed(
             BackwardEvaluationError::MalformedReplayPlan { entry, value }
         }
     })?;
-    let domain = plan.entries.iter().map(|entry| entry.fp.value).collect();
+    // Replay eligibility is a property of the distilled program, never of the
+    // caller-supplied entries. This is the same domain filter used by
+    // `FrozenDemand`: every actual shared-elaborator serve for one of these
+    // values must advance the matcher, including when the caller deleted all
+    // entries for that value (or deleted the complete stream).
+    let domain = distilled_site_domain(d)
+        .into_iter()
+        .map(|site| site.value)
+        .collect();
     let mut replay = BackwardReplay::new(run, domain);
     let (specials, coefficient_descs, acc_init_desc) = fragment_descs(d);
     let expr_fields = backward_expr_fields(d);
@@ -627,6 +635,41 @@ mod tests {
         distill(&layer, BwdRegime::Ext, &HashMap::new(), None)
     }
 
+    fn backward_two_domain_values_fixture() -> DistilledLayer {
+        let roots = vec![
+            claim_only_root(ExprId(0), 0),
+            claim_only_root(ExprId(1), 1),
+            claim_only_root(ExprId(5), 2),
+            claim_only_root(ExprId(3), 3),
+        ];
+        let layer = DagLayer {
+            sources: vec![
+                read_src(0),
+                read_src(1),
+                read_src(2),
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 7 },
+                },
+            ],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Source(SourceId(2)),
+                Expr::Source(SourceId(3)),
+                Expr::Add(vec![ExprId(1), ExprId(2)]),
+                Expr::Mul(vec![ExprId(0), ExprId(4)]),
+            ],
+            batching: BatchingOrder {
+                roots: (0..roots.len())
+                    .map(|i| cs::gkr_compiler::dag_ir::RootId(i as u32))
+                    .collect(),
+            },
+            roots,
+            resolutions: BTreeMap::new(),
+        };
+        distill(&layer, BwdRegime::Ext, &HashMap::new(), None)
+    }
+
     fn replay_plan(d: &DistilledLayer) -> BwdOccurrencePlan {
         let compiled = compile_backward_fragments_uncached(d, None, 4, false).unwrap();
         let domain = distilled_site_domain(d)
@@ -705,6 +748,38 @@ mod tests {
         assert!(matches!(
             compile_backward_fragments_replayed(&d, &plan, None, 4),
             Err(BackwardEvaluationError::ReplayDiverged { at_entry: at }) if at == at_entry
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_all_entries_for_one_value_removed() {
+        let d = backward_two_domain_values_fixture();
+        let mut plan = replay_plan(&d);
+        let removed = plan.entries[0].fp.value;
+        plan.entries.retain(|entry| entry.fp.value != removed);
+        assert!(
+            !plan.entries.is_empty(),
+            "fixture must retain another replay-domain value"
+        );
+        plan.entries_fnv = plan_entries_fnv(&plan.entries);
+
+        assert!(matches!(
+            compile_backward_fragments_replayed(&d, &plan, None, 4),
+            Err(BackwardEvaluationError::ReplayDiverged { at_entry: 0 })
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_empty_entries_for_nonempty_actual_stream() {
+        let d = backward_fixture();
+        let mut plan = replay_plan(&d);
+        assert!(!plan.entries.is_empty());
+        plan.entries.clear();
+        plan.entries_fnv = plan_entries_fnv(&plan.entries);
+
+        assert!(matches!(
+            compile_backward_fragments_replayed(&d, &plan, None, 4),
+            Err(BackwardEvaluationError::ReplayDiverged { at_entry: 0 })
         ));
     }
 
