@@ -6,6 +6,7 @@
 
 mod artifact;
 mod backward;
+pub mod backward_search;
 mod concrete;
 mod fitness;
 mod genome;
