@@ -1006,6 +1006,16 @@ mod host_oracle {
         run_host_oracle_forward_parity(19, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_19u64);
     }
 
+    // log_n 15: the ONLY oracle for the 2pc-compact-initial first_7 kernel
+    // (`ab_monomials_to_evals_first_7_stages_compact_kernel`). Each stage-count
+    // is a DISTINCT compile-time kernel; the multi-coset entry routes log_n 15 to
+    // `MonomialsToEvalsFirstCompact { stages: log_n - 8 = 7 }` (DIT tops out at
+    // 13, so no DIT and no lde fast path is taken here).
+    #[test]
+    fn host_oracle_2pc_log_n_15_multi_coset_matches() {
+        run_host_oracle_forward_parity(15, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_15u64);
+    }
+
     // LDE-intermediate fast path (`ab_lde_first_{6..10}_stages_kernel` +
     // `noninitial_8`) via `lde_with_coset_range`. log_n 14 and 18 lie in
     // (13, 18], so the fast path is taken unconditionally.
@@ -1024,6 +1034,29 @@ mod host_oracle {
     #[test]
     fn host_oracle_lde_intermediate_log_n_18_matches() {
         run_host_oracle_forward_parity(18, 5, 16, 16, 2, Route::LdeWithCosetRange, 0x1de_18u64);
+    }
+
+    // log_n 15/16/17: the ONLY oracles for the fast-path first_7/8/9 kernels
+    // (`ab_lde_first_{7,8,9}_stages_kernel`, K = log_n - 8). log_n in (13, 18]
+    // takes the lde-intermediate fast path unconditionally, and each stage-count
+    // is a DISTINCT compile-time kernel, so 14/18 do not exercise 7/8/9. The
+    // coset tile scales down with log_n (matching 14 -> 64 and 18 -> 16) so the
+    // fast-path grid builder does not over-split the tile at occupancy 1/1; each
+    // uses the upper coset half, so the nonzero coset_index_base exercises the
+    // coset-factor shift.
+    #[test]
+    fn host_oracle_lde_intermediate_log_n_15_matches() {
+        run_host_oracle_forward_parity(15, 7, 64, 64, 2, Route::LdeWithCosetRange, 0x1de_15u64);
+    }
+
+    #[test]
+    fn host_oracle_lde_intermediate_log_n_16_matches() {
+        run_host_oracle_forward_parity(16, 6, 32, 32, 2, Route::LdeWithCosetRange, 0x1de_16u64);
+    }
+
+    #[test]
+    fn host_oracle_lde_intermediate_log_n_17_matches() {
+        run_host_oracle_forward_parity(17, 5, 16, 16, 2, Route::LdeWithCosetRange, 0x1de_17u64);
     }
 }
 
