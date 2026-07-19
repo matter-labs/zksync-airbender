@@ -38,18 +38,23 @@ pub fn ntt_pass_selection(log_n: usize, device_properties: &DeviceProperties) ->
 #[cfg(test)]
 mod tests;
 
+mod dispatch;
 pub(crate) mod dit;
-mod ntt;
+mod forward;
+mod inverse;
+mod kernels;
+mod lde;
 mod strategy;
 #[allow(dead_code)]
-pub use ntt::{
-    bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range,
-    natural_evals_to_bitreversed_monomials, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
-};
+pub use dispatch::natural_evals_to_bitreversed_monomials;
 #[cfg(test)]
-pub use ntt::{
-    evals_to_monomials_2_pass, evals_to_monomials_3_pass, monomials_to_evals_2_pass,
-    monomials_to_evals_3_pass,
+pub use forward::{monomials_to_evals_2_pass, monomials_to_evals_3_pass};
+#[cfg(test)]
+pub use inverse::{evals_to_monomials_2_pass, evals_to_monomials_3_pass};
+#[allow(dead_code)]
+pub use lde::{
+    bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range,
+    MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
 };
 #[allow(dead_code)]
 pub use strategy::{

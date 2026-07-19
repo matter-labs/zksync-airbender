@@ -495,7 +495,7 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
     coset_index_base: usize,
     num_cosets: usize,
 ) {
-    use super::ntt::{
+    use super::forward::{
         monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
     };
     use super::{bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range};
@@ -803,7 +803,7 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_23_cosets_2, 23, 2
 // GPU-serialized nextest group (a `cpu_` path segment opts a test OUT of it).
 #[cfg(not(no_cuda))]
 mod host_oracle {
-    use super::super::ntt::monomials_to_evals_2_pass_compact_initial;
+    use super::super::forward::monomials_to_evals_2_pass_compact_initial;
     use super::super::{bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range};
     use super::helpers::host_forward_ntt_single_coset;
     use super::make_context;
@@ -1026,7 +1026,7 @@ fn run_smem_packed_vs_compact_parity(
     num_cosets: usize,
     num_cols: usize,
 ) {
-    use super::ntt::{monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed};
+    use super::forward::{monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed};
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 
@@ -1155,7 +1155,7 @@ fn run_streaming_vs_compact_parity(
     num_cosets: usize,
     num_cols: usize,
 ) {
-    use super::ntt::{
+    use super::forward::{
         monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
     };
     use super::{bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range};
@@ -1380,7 +1380,7 @@ fn run_subwarp_vs_compact_parity(
     num_cosets: usize,
     num_cols: usize,
 ) {
-    use super::ntt::{monomials_to_evals_compact_1_pass, monomials_to_evals_subwarp};
+    use super::forward::{monomials_to_evals_compact_1_pass, monomials_to_evals_subwarp};
     use crate::ntt_twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 
@@ -1499,7 +1499,7 @@ fn run_subwarp_vs_host_parity(
     num_cosets: usize,
     num_cols: usize,
 ) {
-    use super::ntt::monomials_to_evals_subwarp;
+    use super::forward::monomials_to_evals_subwarp;
     use super::OMEGA_LOG_ORDER;
     use fft::precompute_twiddles_for_fft;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};

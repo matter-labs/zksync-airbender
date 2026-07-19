@@ -280,7 +280,7 @@ fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
             // under test to a subwarp/compact single-coset launch; log_n 8 uses
             // 1-pass compact called directly.
             if log_n <= 7 {
-                super::super::ntt::lde_with_coset_range(
+                super::super::lde::lde_with_coset_range(
                     &inputs_matrix,
                     &mut ref_out_dev[..],
                     log_n as usize,
@@ -298,7 +298,7 @@ fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
                 .unwrap();
             } else {
                 let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
-                super::super::ntt::monomials_to_evals_compact_1_pass(
+                super::super::forward::monomials_to_evals_compact_1_pass(
                     &inputs_matrix,
                     &mut outputs_matrix,
                     log_n as usize,
@@ -702,7 +702,7 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
             let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
             let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
             if log_n <= 12 {
-                super::super::ntt::monomials_to_evals_compact_1_pass(
+                super::super::forward::monomials_to_evals_compact_1_pass(
                     &inputs_matrix,
                     &mut outputs_matrix,
                     log_n as usize,
@@ -716,7 +716,7 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
                 )
                 .unwrap();
             } else {
-                super::super::ntt::monomials_to_evals_2_pass_compact_initial(
+                super::super::forward::monomials_to_evals_2_pass_compact_initial(
                     &inputs_matrix,
                     &mut outputs_matrix,
                     log_n as usize,
@@ -1174,7 +1174,7 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
             {
                 let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
                 let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
-                super::super::ntt::monomials_to_evals_compact_1_pass(
+                super::super::forward::monomials_to_evals_compact_1_pass(
                     &inputs_matrix,
                     &mut outputs_matrix,
                     log_n as usize,
@@ -1448,7 +1448,7 @@ mod bench_variants {
                 let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
                 let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
                 if log_n <= 12 {
-                    super::super::super::ntt::monomials_to_evals_compact_1_pass(
+                    super::super::super::forward::monomials_to_evals_compact_1_pass(
                         &inputs_matrix,
                         &mut outputs_matrix,
                         log_n as usize,
@@ -1462,7 +1462,7 @@ mod bench_variants {
                     )
                     .unwrap();
                 } else {
-                    super::super::super::ntt::monomials_to_evals_2_pass_compact_initial(
+                    super::super::super::forward::monomials_to_evals_2_pass_compact_initial(
                         &inputs_matrix,
                         &mut outputs_matrix,
                         log_n as usize,
@@ -1623,7 +1623,7 @@ mod bench_variants {
                 // never takes the lde-intermediate fast path, so it routes AWAY from
                 // the DIT engine under test; log_n 8 uses 1-pass compact directly.
                 if log_n <= 7 {
-                    super::super::super::ntt::lde_with_coset_range(
+                    super::super::super::lde::lde_with_coset_range(
                         &inputs_matrix,
                         &mut ref_out_dev[..],
                         log_n as usize,
@@ -1642,7 +1642,7 @@ mod bench_variants {
                 } else {
                     let mut outputs_matrix =
                         DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
-                    super::super::super::ntt::monomials_to_evals_compact_1_pass(
+                    super::super::super::forward::monomials_to_evals_compact_1_pass(
                         &inputs_matrix,
                         &mut outputs_matrix,
                         log_n as usize,
