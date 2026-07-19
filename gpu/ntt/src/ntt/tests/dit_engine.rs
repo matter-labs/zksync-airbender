@@ -24,7 +24,7 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResultWrap;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
-use fft::field_utils::domain_generator_for_size;
+use crate::upstream::domain_generator_for_size;
 
 use super::make_context;
 use crate::ntt_twiddles::OMEGA_LOG_ORDER;

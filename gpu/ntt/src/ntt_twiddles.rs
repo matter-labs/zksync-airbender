@@ -5,10 +5,10 @@ use era_cudart::stream::CudaStream;
 use era_cudart_sys::cuda_struct_and_stub;
 
 use crate::ntt::dit::DitTriangles;
-use fft::bitreverse_enumeration_inplace;
-use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
 
-use crate::upstream::Field;
+use crate::upstream::{
+    bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,
+};
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::memcpy_to_symbol;
 

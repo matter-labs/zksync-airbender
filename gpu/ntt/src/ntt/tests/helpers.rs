@@ -2,10 +2,12 @@ use era_cudart::memory::{memory_copy_async, CudaHostAllocFlags, DeviceAllocation
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
-use fft::utils::bitreverse_enumeration_inplace;
 use fft::{
     ifft_natural_to_natural, precompute_twiddles_for_fft, serial_ct_ntt_bitreversed_to_natural,
+};
+
+use crate::upstream::{
+    bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
 };
 
 use rand::Rng;
