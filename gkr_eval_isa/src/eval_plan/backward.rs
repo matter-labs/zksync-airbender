@@ -15,8 +15,9 @@ use crate::bwd::trace::{
 
 use super::{
     BackwardReplay, ConcreteBindError, ConcreteEvalProgram, ConcreteTerminal, EvalPlan, PackConfig,
-    PackError, PackedEvalPlan, PlanError, concrete::bind_backward_packed_plan,
-    elaborate_backward_fragments_driver, elaborate_backward_fragments_replayed_driver, pack_plan,
+    PackError, PackedEvalPlan, PlanError, budget_lanes_from_cells,
+    concrete::bind_backward_packed_plan, elaborate_backward_fragments_driver,
+    elaborate_backward_fragments_replayed_driver, pack_plan,
 };
 
 /// Symbolic backward evaluation before descriptor binding. The special table is
@@ -41,7 +42,7 @@ pub struct CompiledBackwardEvaluation {
 pub enum BackwardEvaluationError {
     Plan(PlanError),
     Pack(PackError),
-    BudgetCellsOverflow {
+    BudgetCellsOutOfRange {
         budget_cells: usize,
     },
     InvalidFragmentOrder {
@@ -174,9 +175,8 @@ pub fn elaborate_backward_fragments_uncached(
     let expr_fields = validate_and_resolve_backward(d)?;
     let fragments = &d.fragments.fragments;
     let scheduled_fragments = validate_fragment_order(order, fragments.len())?;
-    let budget_lanes = budget_cells
-        .checked_mul(4)
-        .ok_or(BackwardEvaluationError::BudgetCellsOverflow { budget_cells })?;
+    let budget_lanes = budget_lanes_from_cells(budget_cells)
+        .ok_or(BackwardEvaluationError::BudgetCellsOutOfRange { budget_cells })?;
     let (specials, coefficient_descs, acc_init_desc) = fragment_descs(d);
     let (plan, demand_events) = elaborate_backward_fragments_driver(
         &d.layer,
@@ -207,9 +207,8 @@ fn elaborate_backward_fragments_replayed(
     let expr_fields = validate_and_resolve_backward(d)?;
     let fragments = &d.fragments.fragments;
     let scheduled_fragments = validate_fragment_order(order, fragments.len())?;
-    let budget_lanes = budget_cells
-        .checked_mul(4)
-        .ok_or(BackwardEvaluationError::BudgetCellsOverflow { budget_cells })?;
+    let budget_lanes = budget_lanes_from_cells(budget_cells)
+        .ok_or(BackwardEvaluationError::BudgetCellsOutOfRange { budget_cells })?;
     let expected_epoch = plan_epoch_fragment(d, budget_lanes, plan.stream_reductions);
     if plan.epoch != expected_epoch {
         return Err(BackwardEvaluationError::StaleReplayEpoch {
@@ -733,6 +732,7 @@ mod tests {
     use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
     use crate::bwd::source::BwdSpecial;
     use crate::bwd::trace::{BwdEvent, BwdServeKind};
+    use crate::fwd::isa::MAX_CELL;
 
     use super::{
         BackwardEvaluationError, compile_backward_fragments_replayed,
@@ -778,6 +778,28 @@ mod tests {
     }
 
     static BACKWARD_TEST_RESOLVER: BackwardTestResolver = BackwardTestResolver;
+
+    #[test]
+    fn backward_boundaries_reject_invalid_cell_budgets() {
+        let d = backward_fixture();
+        let replay = replay_plan(&d);
+        let invalid = [0, MAX_CELL as usize / 4 + 1, usize::MAX];
+
+        for budget_cells in invalid {
+            assert!(matches!(
+                compile_backward_fragments_uncached(&d, None, budget_cells, false),
+                Err(BackwardEvaluationError::BudgetCellsOutOfRange {
+                    budget_cells: actual,
+                }) if actual == budget_cells
+            ));
+            assert!(matches!(
+                compile_backward_fragments_replayed(&d, &replay, None, budget_cells),
+                Err(BackwardEvaluationError::BudgetCellsOutOfRange {
+                    budget_cells: actual,
+                }) if actual == budget_cells
+            ));
+        }
+    }
 
     fn backward_test_resolvers() -> Resolvers<'static> {
         Resolvers {

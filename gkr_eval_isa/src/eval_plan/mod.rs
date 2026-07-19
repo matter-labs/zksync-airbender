@@ -55,12 +55,23 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::bwd::plan::{PlanAction, PlanRun};
 use crate::bwd::trace::{BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom};
-use crate::fwd::isa::Sign;
+use crate::fwd::isa::{MAX_CELL, Sign};
 use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, FieldKind, Root, RootId, RootOrigin, SinkInfo, SourceKind, join,
 };
 
 const BABYBEAR_NEG_ONE: u32 = 0x7800_0001 - 1;
+
+pub(crate) const LANES_PER_STORAGE_CELL: usize = 4;
+
+pub(crate) fn budget_lanes_from_cells(budget_cells: usize) -> Option<usize> {
+    if budget_cells == 0 {
+        return None;
+    }
+    budget_cells
+        .checked_mul(LANES_PER_STORAGE_CELL)
+        .filter(|&budget_lanes| budget_lanes <= MAX_CELL as usize)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ReductionOp {
@@ -3103,12 +3114,22 @@ mod tests {
 
     use crate::fwd::context::{ForwardAction, RootOutput};
     use crate::fwd::interp::interpret_layer_row;
-    use crate::fwd::isa::{Instr, OperandLine};
+    use crate::fwd::isa::{Instr, MAX_CELL, OperandLine};
 
     use crate::bwd::fragment::{FragmentSpec, MergedRecipe};
     use crate::bwd::plan::{BwdOccurrencePlan, PlanEntry, plan_entries_fnv};
 
     use super::*;
+
+    #[test]
+    fn cell_budget_conversion_is_checked_and_lane_exact() {
+        assert_eq!(budget_lanes_from_cells(2), Some(8));
+        assert_eq!(budget_lanes_from_cells(3), Some(12));
+        assert_eq!(budget_lanes_from_cells(4), Some(16));
+        assert_eq!(budget_lanes_from_cells(0), None);
+        assert_eq!(budget_lanes_from_cells(MAX_CELL as usize / 4 + 1), None,);
+        assert_eq!(budget_lanes_from_cells(usize::MAX), None);
+    }
 
     fn read(arena: &mut ArenaBuilder, column: usize) -> ExprId {
         let source = arena.intern_source(SourceKind::Read {
