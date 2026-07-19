@@ -100,8 +100,12 @@ from upstream library code (`full_statement_verifier::host_utils` /
   are all `<crate>_native` (e.g. `gpu_ntt_native`); the nvtx C lib is
   `gpu_core_nvtx`. Cross-crate header includes propagate via `links` +
   `DEP_<X>_NATIVE_INCLUDE`, auto-forwarded by the helper. The shared CUDA build
-  logic (CMake config, link directives, `no_cuda` handling) lives in
-  `native_build/`; edit it there for behavior that should apply to all kernel crates.
+  logic lives in `native_build/` — the `CudaArchive` helper (CMake configure,
+  link directives, `no_cuda` handling) plus `cmake/ab_cuda_target.cmake`, the
+  `ab_cuda_configure_target` function that every kernel-crate `CMakeLists.txt`
+  includes for the common target configuration (properties, flags, and the
+  gated `ENABLE_LINEINFO` / `ENABLE_BUILD_DIAG` diagnostics); edit it there for
+  behavior that should apply to all kernel crates.
 - **C++ namespace = owning crate:** `airbender::hash` (gpu_hash), `airbender::cub`
   (gpu_cub), `airbender::ntt` (gpu_ntt), `airbender::ops::*` (gpu_ops),
   `airbender::primitives::*` (gpu_core); `circuit_prover`'s own kernels are
