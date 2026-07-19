@@ -142,7 +142,6 @@ struct ForwardAdapterState {
     seed_fitness: Vec<PlanFitness>,
     telemetry: SearchTelemetry,
     guided_order: Vec<bool>,
-    guided_trials: Option<Vec<GuidedTrial>>,
 }
 
 struct ForwardSearchAdapter<'a, 'ctx> {
@@ -156,6 +155,7 @@ impl SearchAdapter for ForwardSearchAdapter<'_, '_> {
     type Score = ForwardScore;
     type Evaluation = ScoredEvaluation;
     type Error = FitnessError;
+    type GuidedTrial = GuidedTrial;
 
     fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error> {
         Ok(vec![
@@ -229,43 +229,38 @@ impl SearchAdapter for ForwardSearchAdapter<'_, '_> {
             .collect()
     }
 
-    fn guided_neighbors(
+    fn guided_trials(
         &self,
-        best: &Self::Genome,
-        evaluation: &Self::Evaluation,
-    ) -> Vec<Self::Genome> {
-        let trials = {
-            let mut state = self.state.lock().expect("forward search adapter lock");
-            if state.guided_trials.is_none() {
-                let trials = guided_trials(self.context, evaluation, best);
-                state.guided_order = trials
-                    .iter()
-                    .map(|trial| matches!(trial, GuidedTrial::Order { .. }))
-                    .collect();
-                state.guided_trials = Some(trials);
-            }
-            state
-                .guided_trials
-                .as_ref()
-                .expect("guided trials were initialized")
-                .clone()
-        };
-        let neighbors = trials
-            .into_iter()
-            .map(|trial| {
-                let mut genome = best.clone();
-                match trial {
-                    GuidedTrial::Order { moving, anchor } => {
-                        move_unit_after(&mut genome.root_order_key, moving, anchor);
-                    }
-                    GuidedTrial::Cache { index, target } => {
-                        genome.cache_priority[index] = target;
-                    }
-                }
-                genome
-            })
+        pre_guided_best: &Self::Genome,
+        pre_guided_evaluation: &Self::Evaluation,
+    ) -> Vec<Self::GuidedTrial> {
+        let trials = guided_trials(self.context, pre_guided_evaluation, pre_guided_best);
+        self.state
+            .lock()
+            .expect("forward search adapter lock")
+            .guided_order = trials
+            .iter()
+            .map(|trial| matches!(trial, GuidedTrial::Order { .. }))
             .collect();
-        neighbors
+        trials
+    }
+
+    fn apply_guided_trial(
+        &self,
+        trial: &Self::GuidedTrial,
+        live_best: &Self::Genome,
+        _live_evaluation: &Self::Evaluation,
+    ) -> Self::Genome {
+        let mut genome = live_best.clone();
+        match trial {
+            GuidedTrial::Order { moving, anchor } => {
+                move_unit_after(&mut genome.root_order_key, *moving, *anchor);
+            }
+            GuidedTrial::Cache { index, target } => {
+                genome.cache_priority[*index] = *target;
+            }
+        }
+        genome
     }
 }
 

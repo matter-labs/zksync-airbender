@@ -3,6 +3,7 @@ pub(crate) trait SearchAdapter: Sync {
     type Score: Clone + Ord + Send;
     type Evaluation: Send;
     type Error: Send;
+    type GuidedTrial: Send;
 
     fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error>;
     fn parent_eligible(&self, score: &Self::Score) -> bool;
@@ -17,11 +18,17 @@ pub(crate) trait SearchAdapter: Sync {
         &self,
         candidates: &[(usize, Self::Genome)],
     ) -> Vec<Result<(Self::Score, Self::Evaluation), Self::Error>>;
-    fn guided_neighbors(
+    fn guided_trials(
         &self,
-        best: &Self::Genome,
-        evaluation: &Self::Evaluation,
-    ) -> Vec<Self::Genome>;
+        pre_guided_best: &Self::Genome,
+        pre_guided_evaluation: &Self::Evaluation,
+    ) -> Vec<Self::GuidedTrial>;
+    fn apply_guided_trial(
+        &self,
+        trial: &Self::GuidedTrial,
+        live_best: &Self::Genome,
+        live_evaluation: &Self::Evaluation,
+    ) -> Self::Genome;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,6 +48,7 @@ pub(crate) struct SearchDriverConfig {
     pub seed: u64,
 }
 
+#[derive(Debug)]
 pub(crate) struct SearchDriverOutcome<G, S, E> {
     pub best_genome: G,
     pub best_score: S,
@@ -186,14 +194,12 @@ pub(crate) fn run_search_driver<A: SearchAdapter>(
     }
 
     let mut best = best.expect("nonempty seeds always select an incumbent");
-    let guided_candidates = if config.guided_evaluations == 0 {
-        0
+    let guided_trials = if config.guided_evaluations == 0 {
+        Vec::new()
     } else {
-        adapter
-            .guided_neighbors(&best.genome, &best.evaluation)
-            .len()
-            .min(config.guided_evaluations)
+        adapter.guided_trials(&best.genome, &best.evaluation)
     };
+    let guided_candidates = guided_trials.len().min(config.guided_evaluations);
     let mut guided_cursor = 0usize;
     let mut guided_improvement_ordinals = Vec::new();
     while next_ordinal < config.evaluations {
@@ -210,11 +216,11 @@ pub(crate) fn run_search_driver<A: SearchAdapter>(
         let candidates = (0..batch_len)
             .map(|_| {
                 let genome = if use_guided {
-                    let genome = adapter
-                        .guided_neighbors(&best.genome, &best.evaluation)
-                        .into_iter()
-                        .nth(guided_cursor)
-                        .expect("guided neighbor count is stable during search");
+                    let genome = adapter.apply_guided_trial(
+                        &guided_trials[guided_cursor],
+                        &best.genome,
+                        &best.evaluation,
+                    );
                     guided_cursor += 1;
                     genome
                 } else {
@@ -348,7 +354,7 @@ pub(crate) struct StableRng {
 }
 
 impl StableRng {
-    fn new(seed: u64) -> Self {
+    pub(crate) fn new(seed: u64) -> Self {
         let state = seed ^ 0x9e37_79b9_7f4a_7c15;
         Self {
             // Xorshift's all-zero state is absorbing.
@@ -416,6 +422,7 @@ mod tests {
         type Score = i32;
         type Evaluation = ();
         type Error = ();
+        type GuidedTrial = i32;
 
         fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error> {
             Ok(vec![0, 10])
@@ -459,12 +466,21 @@ mod tests {
                 .collect()
         }
 
-        fn guided_neighbors(
+        fn guided_trials(
             &self,
             _best: &Self::Genome,
             _evaluation: &Self::Evaluation,
-        ) -> Vec<Self::Genome> {
+        ) -> Vec<Self::GuidedTrial> {
             vec![1, -1]
+        }
+
+        fn apply_guided_trial(
+            &self,
+            trial: &Self::GuidedTrial,
+            _best: &Self::Genome,
+            _evaluation: &Self::Evaluation,
+        ) -> Self::Genome {
+            *trial
         }
     }
 
@@ -530,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn guided_neighbors_precede_guided_random_fill() {
+    fn guided_trials_precede_guided_random_fill() {
         let adapter = ToyAdapter::new(true);
         let outcome = run_search_driver(
             &adapter,
@@ -550,6 +566,337 @@ mod tests {
                 .into_inner()
                 .expect("toy candidate trace lock"),
             vec![(0, 0), (1, 10), (2, 1), (3, -1), (4, 71)],
+        );
+    }
+
+    struct ChangingGuidedAdapter {
+        enumerations: Mutex<usize>,
+        candidates: Mutex<Vec<(usize, i32)>>,
+    }
+
+    impl SearchAdapter for ChangingGuidedAdapter {
+        type Genome = i32;
+        type Score = i32;
+        type Evaluation = i32;
+        type Error = ();
+        type GuidedTrial = i32;
+
+        fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error> {
+            Ok(vec![0])
+        }
+
+        fn parent_eligible(&self, _score: &Self::Score) -> bool {
+            true
+        }
+
+        fn population_fill_seed(
+            &self,
+            seeds: &[Self::Genome],
+            _seed_scores: &[Self::Score],
+            _population_len: usize,
+        ) -> Self::Genome {
+            seeds[0]
+        }
+
+        fn mutate(&self, genome: &mut Self::Genome, _rng: &mut StableRng) {
+            *genome = -100;
+        }
+
+        fn score_batch(
+            &self,
+            candidates: &[(usize, Self::Genome)],
+        ) -> Vec<Result<(Self::Score, Self::Evaluation), Self::Error>> {
+            self.candidates
+                .lock()
+                .expect("changing guided trace lock")
+                .extend_from_slice(candidates);
+            candidates
+                .iter()
+                .map(|(_, genome)| Ok(((30 - genome).abs(), *genome)))
+                .collect()
+        }
+
+        fn guided_trials(
+            &self,
+            pre_guided_best: &Self::Genome,
+            pre_guided_evaluation: &Self::Evaluation,
+        ) -> Vec<Self::GuidedTrial> {
+            *self
+                .enumerations
+                .lock()
+                .expect("guided enumeration counter lock") += 1;
+            assert_eq!(pre_guided_best, pre_guided_evaluation);
+            if *pre_guided_best == 0 {
+                vec![10, 20]
+            } else {
+                vec![99]
+            }
+        }
+
+        fn apply_guided_trial(
+            &self,
+            trial: &Self::GuidedTrial,
+            live_best: &Self::Genome,
+            live_evaluation: &Self::Evaluation,
+        ) -> Self::Genome {
+            assert_eq!(live_best, live_evaluation);
+            live_best + trial
+        }
+    }
+
+    #[test]
+    fn guided_descriptors_are_frozen_once_and_applied_to_live_incumbent() {
+        let adapter = ChangingGuidedAdapter {
+            enumerations: Mutex::new(0),
+            candidates: Mutex::new(Vec::new()),
+        };
+        let outcome = run_search_driver(
+            &adapter,
+            SearchDriverConfig {
+                population: 1,
+                evaluations: 4,
+                guided_evaluations: 3,
+                score_batch: 1,
+                seed: 0,
+            },
+        )
+        .expect("run changing-guided search");
+
+        assert_eq!(outcome.best_genome, 30);
+        assert_eq!(outcome.guided_improvement_ordinals, vec![1, 2]);
+        assert_eq!(
+            adapter
+                .enumerations
+                .into_inner()
+                .expect("guided enumeration counter lock"),
+            1,
+        );
+        assert_eq!(
+            adapter
+                .candidates
+                .into_inner()
+                .expect("changing guided trace lock"),
+            vec![(0, 0), (1, 10), (2, 30), (3, -100)],
+        );
+    }
+
+    #[derive(Clone, Copy)]
+    enum EdgeMode {
+        Normal,
+        EmptySeeds,
+        SeedError,
+        ScoreError,
+        ShortBatch,
+        PositionalResults,
+        IneligibleLowerScore,
+        AllIneligible,
+    }
+
+    struct EdgeAdapter(EdgeMode);
+
+    impl SearchAdapter for EdgeAdapter {
+        type Genome = i32;
+        type Score = i32;
+        type Evaluation = ();
+        type Error = &'static str;
+        type GuidedTrial = ();
+
+        fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error> {
+            if matches!(self.0, EdgeMode::SeedError) {
+                return Err("seed failed");
+            }
+            Ok(match self.0 {
+                EdgeMode::EmptySeeds => Vec::new(),
+                EdgeMode::PositionalResults => vec![100, 200],
+                EdgeMode::IneligibleLowerScore => vec![0, 1],
+                _ => vec![0, 10],
+            })
+        }
+
+        fn parent_eligible(&self, score: &Self::Score) -> bool {
+            match self.0 {
+                EdgeMode::IneligibleLowerScore => *score >= 0,
+                EdgeMode::AllIneligible => false,
+                _ => true,
+            }
+        }
+
+        fn population_fill_seed(
+            &self,
+            seeds: &[Self::Genome],
+            _seed_scores: &[Self::Score],
+            _population_len: usize,
+        ) -> Self::Genome {
+            seeds[0]
+        }
+
+        fn mutate(&self, _genome: &mut Self::Genome, _rng: &mut StableRng) {}
+
+        fn score_batch(
+            &self,
+            candidates: &[(usize, Self::Genome)],
+        ) -> Vec<Result<(Self::Score, Self::Evaluation), Self::Error>> {
+            match self.0 {
+                EdgeMode::ScoreError => vec![Err("score failed"); candidates.len()],
+                EdgeMode::ShortBatch => Vec::new(),
+                EdgeMode::PositionalResults => candidates
+                    .iter()
+                    .enumerate()
+                    .map(|(position, _)| Ok((if position == 0 { 10 } else { 0 }, ())))
+                    .collect(),
+                EdgeMode::IneligibleLowerScore => candidates
+                    .iter()
+                    .map(|(_, genome)| Ok((if *genome == 0 { 0 } else { -1 }, ())))
+                    .collect(),
+                EdgeMode::AllIneligible => candidates
+                    .iter()
+                    .map(|(_, genome)| Ok((-genome.abs() - 1, ())))
+                    .collect(),
+                _ => candidates
+                    .iter()
+                    .map(|(_, genome)| Ok((genome.abs(), ())))
+                    .collect(),
+            }
+        }
+
+        fn guided_trials(
+            &self,
+            _best: &Self::Genome,
+            _evaluation: &Self::Evaluation,
+        ) -> Vec<Self::GuidedTrial> {
+            Vec::new()
+        }
+
+        fn apply_guided_trial(
+            &self,
+            _trial: &Self::GuidedTrial,
+            best: &Self::Genome,
+            _evaluation: &Self::Evaluation,
+        ) -> Self::Genome {
+            *best
+        }
+    }
+
+    fn edge_config() -> SearchDriverConfig {
+        SearchDriverConfig {
+            population: 2,
+            evaluations: 2,
+            guided_evaluations: 0,
+            score_batch: 2,
+            seed: 0,
+        }
+    }
+
+    #[test]
+    fn empty_seeds_are_rejected() {
+        assert_eq!(
+            run_search_driver(&EdgeAdapter(EdgeMode::EmptySeeds), edge_config()).unwrap_err(),
+            super::SearchDriverError::EmptySeeds,
+        );
+    }
+
+    #[test]
+    fn invalid_configuration_and_budget_edges_are_rejected() {
+        let adapter = EdgeAdapter(EdgeMode::Normal);
+        for (config, message) in [
+            (
+                SearchDriverConfig {
+                    population: 0,
+                    ..edge_config()
+                },
+                "population must be positive",
+            ),
+            (
+                SearchDriverConfig {
+                    evaluations: 0,
+                    ..edge_config()
+                },
+                "evaluations must be positive",
+            ),
+            (
+                SearchDriverConfig {
+                    guided_evaluations: 3,
+                    ..edge_config()
+                },
+                "guided evaluations exceed total evaluations",
+            ),
+            (
+                SearchDriverConfig {
+                    score_batch: 0,
+                    ..edge_config()
+                },
+                "score batch must be positive",
+            ),
+            (
+                SearchDriverConfig {
+                    evaluations: 1,
+                    ..edge_config()
+                },
+                "evaluations must cover every seed",
+            ),
+            (
+                SearchDriverConfig {
+                    evaluations: 2,
+                    guided_evaluations: 1,
+                    ..edge_config()
+                },
+                "evolutionary evaluations must cover every seed",
+            ),
+        ] {
+            assert_eq!(
+                run_search_driver(&adapter, config).unwrap_err(),
+                super::SearchDriverError::InvalidConfig(message),
+            );
+        }
+    }
+
+    #[test]
+    fn adapter_errors_and_wrong_batch_lengths_are_reported() {
+        assert_eq!(
+            run_search_driver(&EdgeAdapter(EdgeMode::SeedError), edge_config()).unwrap_err(),
+            super::SearchDriverError::Adapter("seed failed"),
+        );
+        assert_eq!(
+            run_search_driver(&EdgeAdapter(EdgeMode::ScoreError), edge_config()).unwrap_err(),
+            super::SearchDriverError::Adapter("score failed"),
+        );
+        assert_eq!(
+            run_search_driver(&EdgeAdapter(EdgeMode::ShortBatch), edge_config()).unwrap_err(),
+            super::SearchDriverError::ScoreBatchLength {
+                expected: 2,
+                actual: 0,
+            },
+        );
+    }
+
+    #[test]
+    fn batch_results_remain_positionally_associated_with_ordinals() {
+        let outcome = run_search_driver(&EdgeAdapter(EdgeMode::PositionalResults), edge_config())
+            .expect("run positional result search");
+        assert_eq!(outcome.best_genome, 200);
+        assert_eq!(outcome.best_ordinal, 1);
+    }
+
+    #[test]
+    fn ineligible_lower_score_does_not_replace_incumbent() {
+        let outcome =
+            run_search_driver(&EdgeAdapter(EdgeMode::IneligibleLowerScore), edge_config())
+                .expect("run ineligible result search");
+        assert_eq!(outcome.best_genome, 0);
+        assert_eq!(outcome.best_score, 0);
+        assert_eq!(outcome.best_ordinal, 0);
+
+        let error = run_search_driver(
+            &EdgeAdapter(EdgeMode::AllIneligible),
+            SearchDriverConfig {
+                evaluations: 3,
+                ..edge_config()
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            super::SearchDriverError::InvalidConfig("adapter produced no parent-eligible seeds",),
         );
     }
 }

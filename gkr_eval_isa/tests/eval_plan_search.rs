@@ -728,13 +728,18 @@ fn forward_search_observable_pins() {
             .expect("capture selected add_sub layer zero artifact");
     let artifact_bytes =
         serde_json::to_vec(&selected_artifact).expect("serialize selected artifact");
+    let artifact_digest = pin_digest(&artifact_bytes);
+    assert_eq!(artifact_bytes.len(), 2301);
+    assert_eq!(artifact_digest, 0xec0c_fb25_c726_1db3);
     println!(
         "ARTIFACT-BYTES len={} fnv={:016x}",
         artifact_bytes.len(),
-        pin_digest(&artifact_bytes),
+        artifact_digest,
     );
     sequence.extend_from_slice(&artifact_bytes);
-    println!("DIGEST {:016x}", pin_digest(&sequence));
+    let sequence_digest = pin_digest(&sequence);
+    assert_eq!(sequence_digest, 0xcfd0_9b81_2aad_09f0);
+    println!("DIGEST {sequence_digest:016x}");
 }
 
 #[test]

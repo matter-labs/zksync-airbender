@@ -17,6 +17,18 @@ mod packed_interp;
 mod search;
 mod search_driver;
 
+#[cfg(test)]
+mod search_driver_visibility_tests {
+    use super::search_driver::StableRng;
+
+    #[test]
+    fn stable_rng_constructor_is_visible_to_sibling_modules() {
+        let mut first = StableRng::new(17);
+        let mut second = StableRng::new(17);
+        assert_eq!(first.next_u64(), second.next_u64());
+    }
+}
+
 pub use artifact::{
     CompiledEvaluationCircuit, CompiledEvaluationLayer, DomainCertificate, EvaluationArtifactError,
     EvaluationCompileError, EvaluationGenomeArtifact, EvaluationGenomeCircuitArtifact,
