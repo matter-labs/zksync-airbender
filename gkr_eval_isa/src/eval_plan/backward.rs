@@ -1,6 +1,8 @@
 //! Closed symbolic adapter for normalized backward fragments.
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, Expr, ExprId, FieldKind, expr_field, join};
+use cs::gkr_compiler::dag_ir::{
+    BwdRegime, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceId, SourceKind, join, source_field,
+};
 
 use crate::bwd::compile::{BwdCompiledLayer, fragment_descs, tally_bwd_program};
 use crate::bwd::distill::{DistilledLayer, distilled_site_domain};
@@ -47,6 +49,77 @@ pub enum BackwardEvaluationError {
         fragment_count: usize,
     },
     EmptyFragmentDecomposition,
+    InvalidBackwardRoot {
+        root: RootId,
+        root_count: usize,
+    },
+    InvalidRootExpression {
+        root: RootId,
+        expr: ExprId,
+        expression_count: usize,
+    },
+    InvalidExpressionSource {
+        expr: ExprId,
+        source: SourceId,
+        source_count: usize,
+    },
+    InvalidExpressionChild {
+        expr: ExprId,
+        child_index: usize,
+        child: ExprId,
+        expression_count: usize,
+    },
+    InvalidLookupQuery {
+        expr: ExprId,
+        source: SourceId,
+        query: ExprId,
+        expression_count: usize,
+    },
+    CyclicExpression {
+        expr: ExprId,
+    },
+    MissingCrossLayerField {
+        expr: ExprId,
+        place: ReadPlace,
+    },
+    EmptyFragmentAtoms {
+        fragment: usize,
+    },
+    InvalidFragmentAtom {
+        fragment: usize,
+        atom_index: usize,
+        atom: ExprId,
+        expression_count: usize,
+    },
+    UnresolvedFragmentAtom {
+        fragment: usize,
+        atom_index: usize,
+        atom: ExprId,
+    },
+    InvalidFragmentRecipeFactor {
+        fragment: usize,
+        term: usize,
+        factor_index: usize,
+        factor: ExprId,
+        expression_count: usize,
+    },
+    UnresolvedFragmentRecipeFactor {
+        fragment: usize,
+        term: usize,
+        factor_index: usize,
+        factor: ExprId,
+    },
+    InvalidAccInitFactor {
+        term: usize,
+        factor_index: usize,
+        factor: ExprId,
+        expression_count: usize,
+    },
+    UnresolvedAccInitFactor {
+        term: usize,
+        factor_index: usize,
+        factor: ExprId,
+    },
     Concrete(ConcreteBindError),
     UnboundBackwardSource(ExprId),
     BackwardCommit,
@@ -98,16 +171,13 @@ pub fn elaborate_backward_fragments_uncached(
     budget_cells: usize,
     stream_reductions: bool,
 ) -> Result<BackwardSymbolicEvaluation, BackwardEvaluationError> {
+    let expr_fields = validate_and_resolve_backward(d)?;
     let fragments = &d.fragments.fragments;
-    if d.fragments.c_init.terms.is_empty() && fragments.is_empty() {
-        return Err(BackwardEvaluationError::EmptyFragmentDecomposition);
-    }
     let scheduled_fragments = validate_fragment_order(order, fragments.len())?;
     let budget_lanes = budget_cells
         .checked_mul(4)
         .ok_or(BackwardEvaluationError::BudgetCellsOverflow { budget_cells })?;
     let (specials, coefficient_descs, acc_init_desc) = fragment_descs(d);
-    let expr_fields = backward_expr_fields(d);
     let (plan, demand_events) = elaborate_backward_fragments_driver(
         &d.layer,
         d.root,
@@ -134,10 +204,8 @@ fn elaborate_backward_fragments_replayed(
     order: Option<&[usize]>,
     budget_cells: usize,
 ) -> Result<BackwardSymbolicEvaluation, BackwardEvaluationError> {
+    let expr_fields = validate_and_resolve_backward(d)?;
     let fragments = &d.fragments.fragments;
-    if d.fragments.c_init.terms.is_empty() && fragments.is_empty() {
-        return Err(BackwardEvaluationError::EmptyFragmentDecomposition);
-    }
     let scheduled_fragments = validate_fragment_order(order, fragments.len())?;
     let budget_lanes = budget_cells
         .checked_mul(4)
@@ -168,7 +236,6 @@ fn elaborate_backward_fragments_replayed(
         .collect();
     let mut replay = BackwardReplay::new(run, domain);
     let (specials, coefficient_descs, acc_init_desc) = fragment_descs(d);
-    let expr_fields = backward_expr_fields(d);
     let (eval_plan, demand_events) = elaborate_backward_fragments_replayed_driver(
         &d.layer,
         d.root,
@@ -369,26 +436,256 @@ fn validate_fragment_order(
     Ok(order.to_vec())
 }
 
-fn backward_expr_fields(d: &DistilledLayer) -> Vec<FieldKind> {
-    let defaults: Vec<_> = (0..d.layer.exprs.len())
-        .map(|index| {
-            let expr = ExprId(index as u32);
-            match &d.layer.exprs[index] {
-                Expr::Source(_) => expr_field(&d.layer.exprs, &d.layer.sources, expr)
-                    .unwrap_or_else(|place| {
-                        *d.cross_fields.get(&place).unwrap_or_else(|| {
-                            panic!("distilled layer is missing the field for {place:?}")
-                        })
-                    }),
-                Expr::Add(_) | Expr::Mul(_) => FieldKind::Base,
-            }
-        })
-        .collect();
-    let mut fields = vec![None; d.layer.exprs.len()];
-    for index in 0..d.layer.exprs.len() {
-        backward_expr_field(ExprId(index as u32), d, &defaults, &mut fields);
+fn validate_and_resolve_backward(
+    d: &DistilledLayer,
+) -> Result<Vec<FieldKind>, BackwardEvaluationError> {
+    let root_count = d.layer.roots.len();
+    if d.root.0 as usize >= root_count {
+        return Err(BackwardEvaluationError::InvalidBackwardRoot {
+            root: d.root,
+            root_count,
+        });
     }
-    fields.into_iter().map(Option::unwrap).collect()
+
+    let expression_count = d.layer.exprs.len();
+    for (index, root) in d.layer.roots.iter().enumerate() {
+        if root.expr.0 as usize >= expression_count {
+            return Err(BackwardEvaluationError::InvalidRootExpression {
+                root: RootId(index as u32),
+                expr: root.expr,
+                expression_count,
+            });
+        }
+    }
+
+    if d.fragments.c_init.terms.is_empty() && d.fragments.fragments.is_empty() {
+        return Err(BackwardEvaluationError::EmptyFragmentDecomposition);
+    }
+
+    let defaults = backward_expr_defaults(d)?;
+    validate_expression_acyclic(d)?;
+    let expr_fields = backward_expr_fields(d, &defaults)?;
+    let scalar_pure = backward_scalar_purity(d);
+    for (fragment_index, fragment) in d.fragments.fragments.iter().enumerate() {
+        if fragment.atoms.is_empty() {
+            return Err(BackwardEvaluationError::EmptyFragmentAtoms {
+                fragment: fragment_index,
+            });
+        }
+        for (atom_index, &atom) in fragment.atoms.iter().enumerate() {
+            if atom.0 as usize >= expression_count {
+                return Err(BackwardEvaluationError::InvalidFragmentAtom {
+                    fragment: fragment_index,
+                    atom_index,
+                    atom,
+                    expression_count,
+                });
+            }
+            if d.stable_key(atom).is_none() {
+                return Err(BackwardEvaluationError::UnresolvedFragmentAtom {
+                    fragment: fragment_index,
+                    atom_index,
+                    atom,
+                });
+            }
+        }
+        for (term, recipe) in fragment.recipe.terms.iter().enumerate() {
+            for (factor_index, &factor) in recipe.factors.iter().enumerate() {
+                if factor.0 as usize >= expression_count {
+                    return Err(BackwardEvaluationError::InvalidFragmentRecipeFactor {
+                        fragment: fragment_index,
+                        term,
+                        factor_index,
+                        factor,
+                        expression_count,
+                    });
+                }
+                if !recipe_factor_resolves(d, &scalar_pure, factor) {
+                    return Err(BackwardEvaluationError::UnresolvedFragmentRecipeFactor {
+                        fragment: fragment_index,
+                        term,
+                        factor_index,
+                        factor,
+                    });
+                }
+            }
+        }
+    }
+    for (term, recipe) in d.fragments.c_init.terms.iter().enumerate() {
+        for (factor_index, &factor) in recipe.factors.iter().enumerate() {
+            if factor.0 as usize >= expression_count {
+                return Err(BackwardEvaluationError::InvalidAccInitFactor {
+                    term,
+                    factor_index,
+                    factor,
+                    expression_count,
+                });
+            }
+            if !recipe_factor_resolves(d, &scalar_pure, factor) {
+                return Err(BackwardEvaluationError::UnresolvedAccInitFactor {
+                    term,
+                    factor_index,
+                    factor,
+                });
+            }
+        }
+    }
+    Ok(expr_fields)
+}
+
+fn recipe_factor_resolves(d: &DistilledLayer, scalar_pure: &[bool], factor: ExprId) -> bool {
+    if !scalar_pure[factor.0 as usize] {
+        return false;
+    }
+    if d.stable_key(factor).is_some() {
+        return true;
+    }
+    let Expr::Source(source) = d.layer.exprs[factor.0 as usize] else {
+        return false;
+    };
+    matches!(
+        &d.layer.sources[source.0 as usize].kind,
+        SourceKind::Constant { .. } | SourceKind::Challenge { .. }
+    )
+}
+
+fn backward_scalar_purity(d: &DistilledLayer) -> Vec<bool> {
+    fn resolve(d: &DistilledLayer, expr: ExprId, memo: &mut [Option<bool>]) -> bool {
+        if let Some(pure) = memo[expr.0 as usize] {
+            return pure;
+        }
+        let pure = match &d.layer.exprs[expr.0 as usize] {
+            Expr::Source(source) => matches!(
+                &d.layer.sources[source.0 as usize].kind,
+                SourceKind::Constant { .. } | SourceKind::Challenge { .. }
+            ),
+            Expr::Add(children) | Expr::Mul(children) => {
+                children.iter().all(|&child| resolve(d, child, memo))
+            }
+        };
+        memo[expr.0 as usize] = Some(pure);
+        pure
+    }
+
+    let mut memo = vec![None; d.layer.exprs.len()];
+    (0..d.layer.exprs.len())
+        .map(|index| resolve(d, ExprId(index as u32), &mut memo))
+        .collect()
+}
+
+fn backward_expr_defaults(d: &DistilledLayer) -> Result<Vec<FieldKind>, BackwardEvaluationError> {
+    let expression_count = d.layer.exprs.len();
+    let source_count = d.layer.sources.len();
+    let mut defaults = Vec::with_capacity(expression_count);
+    for (index, node) in d.layer.exprs.iter().enumerate() {
+        let expr = ExprId(index as u32);
+        let default =
+            match node {
+                Expr::Source(source) => {
+                    let Some(source_info) = d.layer.sources.get(source.0 as usize) else {
+                        return Err(BackwardEvaluationError::InvalidExpressionSource {
+                            expr,
+                            source: *source,
+                            source_count,
+                        });
+                    };
+                    if let SourceKind::LookupValue { query, .. } = &source_info.kind {
+                        if query.0 as usize >= expression_count {
+                            return Err(BackwardEvaluationError::InvalidLookupQuery {
+                                expr,
+                                source: *source,
+                                query: *query,
+                                expression_count,
+                            });
+                        }
+                    }
+                    match source_field(&source_info.kind) {
+                        Ok(field) => field,
+                        Err(place) => d.cross_fields.get(&place).copied().ok_or(
+                            BackwardEvaluationError::MissingCrossLayerField { expr, place },
+                        )?,
+                    }
+                }
+                Expr::Add(children) | Expr::Mul(children) => {
+                    for (child_index, &child) in children.iter().enumerate() {
+                        if child.0 as usize >= expression_count {
+                            return Err(BackwardEvaluationError::InvalidExpressionChild {
+                                expr,
+                                child_index,
+                                child,
+                                expression_count,
+                            });
+                        }
+                    }
+                    FieldKind::Base
+                }
+            };
+        defaults.push(default);
+    }
+    Ok(defaults)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum ExpressionVisit {
+    New,
+    Active,
+    Done,
+}
+
+fn validate_expression_acyclic(d: &DistilledLayer) -> Result<(), BackwardEvaluationError> {
+    fn visit(
+        d: &DistilledLayer,
+        expr: ExprId,
+        state: &mut [ExpressionVisit],
+    ) -> Result<(), BackwardEvaluationError> {
+        match state[expr.0 as usize] {
+            ExpressionVisit::Done => return Ok(()),
+            ExpressionVisit::Active => {
+                return Err(BackwardEvaluationError::CyclicExpression { expr });
+            }
+            ExpressionVisit::New => {}
+        }
+        state[expr.0 as usize] = ExpressionVisit::Active;
+        match &d.layer.exprs[expr.0 as usize] {
+            Expr::Source(source) => {
+                if let SourceKind::LookupValue { query, .. } =
+                    &d.layer.sources[source.0 as usize].kind
+                {
+                    visit(d, *query, state)?;
+                }
+            }
+            Expr::Add(children) | Expr::Mul(children) => {
+                for &child in children {
+                    visit(d, child, state)?;
+                }
+            }
+        }
+        state[expr.0 as usize] = ExpressionVisit::Done;
+        Ok(())
+    }
+
+    let mut state = vec![ExpressionVisit::New; d.layer.exprs.len()];
+    for index in 0..d.layer.exprs.len() {
+        visit(d, ExprId(index as u32), &mut state)?;
+    }
+    Ok(())
+}
+
+fn backward_expr_fields(
+    d: &DistilledLayer,
+    defaults: &[FieldKind],
+) -> Result<Vec<FieldKind>, BackwardEvaluationError> {
+    let mut fields = vec![None; d.layer.exprs.len()];
+    let mut resolved = Vec::with_capacity(d.layer.exprs.len());
+    for index in 0..d.layer.exprs.len() {
+        resolved.push(backward_expr_field(
+            ExprId(index as u32),
+            d,
+            defaults,
+            &mut fields,
+        )?);
+    }
+    Ok(resolved)
 }
 
 fn backward_expr_field(
@@ -396,24 +693,26 @@ fn backward_expr_field(
     d: &DistilledLayer,
     defaults: &[FieldKind],
     fields: &mut [Option<FieldKind>],
-) -> FieldKind {
+) -> Result<FieldKind, BackwardEvaluationError> {
     if let Some(field) = fields[expr.0 as usize] {
-        return field;
+        return Ok(field);
     }
     let field = if let Some(&field) = d.field_overrides.get(&expr) {
         field
     } else {
         match &d.layer.exprs[expr.0 as usize] {
             Expr::Source(_) => defaults[expr.0 as usize],
-            Expr::Add(children) | Expr::Mul(children) => children
-                .iter()
-                .map(|&child| backward_expr_field(child, d, defaults, fields))
-                .reduce(join)
-                .unwrap_or(defaults[expr.0 as usize]),
+            Expr::Add(children) | Expr::Mul(children) => {
+                let mut field = defaults[expr.0 as usize];
+                for &child in children {
+                    field = join(field, backward_expr_field(child, d, defaults, fields)?);
+                }
+                field
+            }
         }
     };
     fields[expr.0 as usize] = Some(field);
-    field
+    Ok(field)
 }
 
 #[cfg(test)]
@@ -698,6 +997,366 @@ mod tests {
             stream_reductions: compiled.trace.stream_reductions,
             entries,
         }
+    }
+
+    fn malformed_uncached_error(d: &DistilledLayer) -> BackwardEvaluationError {
+        match std::panic::catch_unwind(|| elaborate_backward_fragments_uncached(d, None, 4, false))
+        {
+            Ok(Err(error)) => error,
+            Ok(Ok(_)) => panic!("malformed backward layer unexpectedly elaborated"),
+            Err(_) => panic!("malformed backward layer panicked instead of returning an error"),
+        }
+    }
+
+    fn malformed_replayed_error(
+        d: &DistilledLayer,
+        plan: &BwdOccurrencePlan,
+    ) -> BackwardEvaluationError {
+        match std::panic::catch_unwind(|| compile_backward_fragments_replayed(d, plan, None, 4)) {
+            Ok(Err(error)) => error,
+            Ok(Ok(_)) => panic!("malformed backward layer unexpectedly replayed"),
+            Err(_) => panic!("malformed backward replay panicked instead of returning an error"),
+        }
+    }
+
+    fn synthesized_expr(d: &DistilledLayer) -> ExprId {
+        (0..d.layer.exprs.len())
+            .map(|index| ExprId(index as u32))
+            .find(|&expr| d.stable_key(expr).is_none())
+            .expect("fixture must contain a synthesized batching factor")
+    }
+
+    fn stable_read_expr(d: &DistilledLayer) -> ExprId {
+        (0..d.layer.exprs.len())
+            .map(|index| ExprId(index as u32))
+            .find(|&expr| {
+                d.stable_key(expr).is_some()
+                    && matches!(
+                        d.layer.exprs[expr.0 as usize],
+                        Expr::Source(source)
+                            if matches!(
+                                &d.layer.sources[source.0 as usize].kind,
+                                SourceKind::Read { .. }
+                            )
+                    )
+            })
+            .expect("fixture must contain a stable canonical Read expression")
+    }
+
+    #[test]
+    fn malformed_backward_empty_fragment_atoms_returns_attributable_error() {
+        let mut d = backward_fixture();
+        d.fragments.fragments[0].atoms.clear();
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            "EmptyFragmentAtoms { fragment: 0 }"
+        );
+    }
+
+    #[test]
+    fn malformed_backward_invalid_fragment_atom_returns_attributable_error() {
+        let mut d = backward_fixture();
+        let expression_count = d.layer.exprs.len();
+        let atom = ExprId(expression_count as u32);
+        d.fragments.fragments[0].atoms[0] = atom;
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!(
+                "InvalidFragmentAtom {{ fragment: 0, atom_index: 0, atom: {atom:?}, expression_count: {expression_count} }}"
+            )
+        );
+    }
+
+    #[test]
+    fn malformed_backward_invalid_fragment_recipe_factor_returns_attributable_error() {
+        let mut d = backward_fixture();
+        let expression_count = d.layer.exprs.len();
+        let factor = ExprId(expression_count as u32);
+        d.fragments.fragments[0].recipe = MergedRecipe {
+            terms: vec![ProductRecipe {
+                factors: vec![factor],
+            }],
+        };
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!(
+                "InvalidFragmentRecipeFactor {{ fragment: 0, term: 0, factor_index: 0, factor: {factor:?}, expression_count: {expression_count} }}"
+            )
+        );
+    }
+
+    #[test]
+    fn malformed_backward_invalid_c_init_factor_returns_attributable_error() {
+        let mut d = backward_fixture();
+        let expression_count = d.layer.exprs.len();
+        let factor = ExprId(expression_count as u32);
+        d.fragments.c_init = MergedRecipe {
+            terms: vec![ProductRecipe {
+                factors: vec![factor],
+            }],
+        };
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!(
+                "InvalidAccInitFactor {{ term: 0, factor_index: 0, factor: {factor:?}, expression_count: {expression_count} }}"
+            )
+        );
+    }
+
+    #[test]
+    fn malformed_backward_missing_cross_layer_field_returns_attributable_error() {
+        let mut d = backward_fixture();
+        let place = ReadPlace::CacheOutput {
+            layer: 9,
+            offset: 4,
+        };
+        d.layer.sources[0].kind = SourceKind::Read {
+            place: place.clone(),
+        };
+        let expr = d
+            .layer
+            .exprs
+            .iter()
+            .position(|node| matches!(node, Expr::Source(SourceId(0))))
+            .map(|index| ExprId(index as u32))
+            .expect("fixture must reference source zero");
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!("MissingCrossLayerField {{ expr: {expr:?}, place: {place:?} }}")
+        );
+    }
+
+    #[test]
+    fn malformed_backward_invalid_root_returns_attributable_error() {
+        let mut d = backward_fixture();
+        let root_count = d.layer.roots.len();
+        d.root = cs::gkr_compiler::dag_ir::RootId(root_count as u32);
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!(
+                "InvalidBackwardRoot {{ root: {:?}, root_count: {root_count} }}",
+                d.root
+            )
+        );
+    }
+
+    #[test]
+    fn malformed_backward_invalid_root_expression_returns_attributable_error() {
+        let mut d = backward_fixture();
+        let expression_count = d.layer.exprs.len();
+        let expr = ExprId(expression_count as u32);
+        d.layer.roots[d.root.0 as usize].expr = expr;
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!(
+                "InvalidRootExpression {{ root: {:?}, expr: {expr:?}, expression_count: {expression_count} }}",
+                d.root
+            )
+        );
+    }
+
+    #[test]
+    fn malformed_backward_invalid_expression_references_return_attributable_errors() {
+        let mut invalid_source = backward_fixture();
+        let source_count = invalid_source.layer.sources.len();
+        let expr = ExprId(0);
+        let source = SourceId(source_count as u32);
+        invalid_source.layer.exprs[0] = Expr::Source(source);
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&invalid_source)),
+            format!(
+                "InvalidExpressionSource {{ expr: {expr:?}, source: {source:?}, source_count: {source_count} }}"
+            )
+        );
+
+        let mut invalid_child = backward_fixture();
+        let expression_count = invalid_child.layer.exprs.len();
+        let child = ExprId(expression_count as u32);
+        let (parent_index, children) = invalid_child
+            .layer
+            .exprs
+            .iter_mut()
+            .enumerate()
+            .find_map(|(index, node)| match node {
+                Expr::Add(children) if !children.is_empty() => Some((index, children)),
+                _ => None,
+            })
+            .expect("fixture must contain a non-empty add");
+        children[0] = child;
+        let parent = ExprId(parent_index as u32);
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&invalid_child)),
+            format!(
+                "InvalidExpressionChild {{ expr: {parent:?}, child_index: 0, child: {child:?}, expression_count: {expression_count} }}"
+            )
+        );
+    }
+
+    #[test]
+    fn malformed_backward_invalid_lookup_query_returns_attributable_error() {
+        let mut d = backward_fixture();
+        let expression_count = d.layer.exprs.len();
+        let query = ExprId(expression_count as u32);
+        let source = SourceId(0);
+        d.layer.sources[source.0 as usize].kind = SourceKind::LookupValue {
+            kind: LookupValueKind::RangeCheck16Index,
+            set_index: 0,
+            query,
+        };
+        let expr = d
+            .layer
+            .exprs
+            .iter()
+            .position(|node| matches!(node, Expr::Source(actual) if *actual == source))
+            .map(|index| ExprId(index as u32))
+            .expect("fixture must reference source zero");
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!(
+                "InvalidLookupQuery {{ expr: {expr:?}, source: {source:?}, query: {query:?}, expression_count: {expression_count} }}"
+            )
+        );
+    }
+
+    #[test]
+    fn malformed_backward_expression_cycle_returns_attributable_error() {
+        let mut d = backward_fixture();
+        let (parent_index, children) = d
+            .layer
+            .exprs
+            .iter_mut()
+            .enumerate()
+            .find_map(|(index, node)| match node {
+                Expr::Add(children) if !children.is_empty() => Some((index, children)),
+                _ => None,
+            })
+            .expect("fixture must contain a non-empty add");
+        let expr = ExprId(parent_index as u32);
+        children[0] = expr;
+        d.field_overrides.insert(expr, FieldKind::Ext);
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!("CyclicExpression {{ expr: {expr:?} }}")
+        );
+    }
+
+    #[test]
+    fn malformed_backward_unresolved_fragment_atom_returns_attributable_error() {
+        let mut d = backward_fixture();
+        let atom = synthesized_expr(&d);
+        d.fragments.fragments[0].atoms[0] = atom;
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!("UnresolvedFragmentAtom {{ fragment: 0, atom_index: 0, atom: {atom:?} }}")
+        );
+    }
+
+    #[test]
+    fn malformed_backward_unresolved_recipe_factors_return_attributable_errors() {
+        let mut fragment = backward_fixture();
+        let fragment_factor = synthesized_expr(&fragment);
+        let Expr::Source(fragment_source) = fragment.layer.exprs[fragment_factor.0 as usize] else {
+            panic!("synthesized factor must be a source")
+        };
+        fragment.layer.sources[fragment_source.0 as usize].kind = SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 99 },
+        };
+        fragment.fragments.fragments[0].recipe = MergedRecipe {
+            terms: vec![ProductRecipe {
+                factors: vec![fragment_factor],
+            }],
+        };
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&fragment)),
+            format!(
+                "UnresolvedFragmentRecipeFactor {{ fragment: 0, term: 0, factor_index: 0, factor: {fragment_factor:?} }}"
+            )
+        );
+
+        let mut c_init = backward_fixture();
+        let c_init_factor = synthesized_expr(&c_init);
+        let Expr::Source(c_init_source) = c_init.layer.exprs[c_init_factor.0 as usize] else {
+            panic!("synthesized factor must be a source")
+        };
+        c_init.layer.sources[c_init_source.0 as usize].kind = SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 100 },
+        };
+        for fragment in &mut c_init.fragments.fragments {
+            fragment.recipe = MergedRecipe {
+                terms: vec![ProductRecipe::default()],
+            };
+        }
+        c_init.fragments.c_init = MergedRecipe {
+            terms: vec![ProductRecipe {
+                factors: vec![c_init_factor],
+            }],
+        };
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&c_init)),
+            format!(
+                "UnresolvedAccInitFactor {{ term: 0, factor_index: 0, factor: {c_init_factor:?} }}"
+            )
+        );
+    }
+
+    #[test]
+    fn malformed_backward_stable_read_recipe_factor_in_fragment_returns_error() {
+        let mut d = backward_fixture();
+        let factor = stable_read_expr(&d);
+        d.fragments.fragments[0].recipe = MergedRecipe {
+            terms: vec![ProductRecipe {
+                factors: vec![factor],
+            }],
+        };
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!(
+                "UnresolvedFragmentRecipeFactor {{ fragment: 0, term: 0, factor_index: 0, factor: {factor:?} }}"
+            )
+        );
+    }
+
+    #[test]
+    fn malformed_backward_stable_read_recipe_factor_in_c_init_returns_error() {
+        let mut d = backward_fixture();
+        let factor = stable_read_expr(&d);
+        d.fragments.c_init = MergedRecipe {
+            terms: vec![ProductRecipe {
+                factors: vec![factor],
+            }],
+        };
+
+        assert_eq!(
+            format!("{:?}", malformed_uncached_error(&d)),
+            format!("UnresolvedAccInitFactor {{ term: 0, factor_index: 0, factor: {factor:?} }}")
+        );
+    }
+
+    #[test]
+    fn malformed_backward_replayed_boundary_uses_shared_validation() {
+        let mut d = backward_fixture();
+        let plan = replay_plan(&d);
+        let expression_count = d.layer.exprs.len();
+        let atom = ExprId(expression_count as u32);
+        d.fragments.fragments[0].atoms[0] = atom;
+
+        assert_eq!(
+            format!("{:?}", malformed_replayed_error(&d, &plan)),
+            format!(
+                "InvalidFragmentAtom {{ fragment: 0, atom_index: 0, atom: {atom:?}, expression_count: {expression_count} }}"
+            )
+        );
     }
 
     #[test]
