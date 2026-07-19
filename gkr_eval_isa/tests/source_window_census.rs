@@ -245,6 +245,9 @@ fn source_window_corpus_census() {
     let mut maximum = 0usize;
     let mut forward_programs = 0usize;
     let mut backward_programs = 0usize;
+    let mut backward_fixture_entries = 0usize;
+    let mut backward_bearing_layers = 0usize;
+    let mut backward_rootless_layers = 0usize;
 
     println!("{:<62} {:>7}", "program", "windows");
     for name in FORWARD_FIXTURES {
@@ -269,14 +272,22 @@ fn source_window_corpus_census() {
     }
 
     for name in BACKWARD_FIXTURES {
+        backward_fixture_entries += 1;
         let artifact = common::load_fixture(name);
         let dag = lower_dag(&artifact).unwrap_or_else(|error| panic!("{name}: lower_dag: {error}"));
         validate(&dag).unwrap_or_else(|error| panic!("{name}: validate: {error}"));
         let cross = build_cross_layer_field_map(&dag);
+        let mut fixture_bearing_layers = 0usize;
+        let mut fixture_rootless_layers = 0usize;
         for (layer, canonical) in dag.layers.iter().enumerate() {
             if bwd_roots(canonical).is_empty() {
+                fixture_rootless_layers += 1;
+                backward_rootless_layers += 1;
+                println!("{name} L{layer:<3} rootless");
                 continue;
             }
+            fixture_bearing_layers += 1;
+            backward_bearing_layers += 1;
             for regime in [BwdRegime::R0, BwdRegime::Ext] {
                 let distilled = distill(canonical, regime, &cross, None);
                 assert!(
@@ -311,12 +322,41 @@ fn source_window_corpus_census() {
                 );
             }
         }
+        println!(
+            "{name}: backward-bearing layers={fixture_bearing_layers}, rootless layers={fixture_rootless_layers}"
+        );
+        assert_eq!(
+            fixture_bearing_layers + fixture_rootless_layers,
+            dag.layers.len(),
+            "{name}: every layer must be explicitly classified for backward coverage"
+        );
+        assert!(
+            fixture_bearing_layers > 0,
+            "{name}: fixture unexpectedly contains no backward-bearing layers"
+        );
     }
 
     println!("corpus maximum: {maximum} source windows (cap {MAX_WINDOWS})");
+    println!(
+        "backward coverage: {backward_fixture_entries} fixtures, {backward_bearing_layers} bearing layers, {backward_rootless_layers} rootless layers, {backward_programs} programs"
+    );
     assert!(forward_programs > 0, "forward corpus contained no programs");
     assert!(
         backward_programs > 0,
         "backward corpus contained no programs"
+    );
+    assert_eq!(BACKWARD_FIXTURES.len(), 12, "backward fixture list drifted");
+    assert_eq!(
+        backward_fixture_entries,
+        BACKWARD_FIXTURES.len(),
+        "every pinned backward fixture must be processed"
+    );
+    assert_eq!(
+        backward_bearing_layers, 57,
+        "backward-bearing layer census drifted"
+    );
+    assert_eq!(
+        backward_programs, 114,
+        "every backward-bearing layer must compile in R0 and Ext"
     );
 }
