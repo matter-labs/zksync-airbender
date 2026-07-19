@@ -155,7 +155,7 @@ fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
 }
 
 // Independent host oracle for the FORWARD hypercube launcher family
-// (`hypercube_coeffs_bitrev_to_bitrev_evals`, consumed by circuit_prover's
+// (`hypercube_coeffs_bitrev_to_bitrev_evals`, consumed by gpu_circuit_prover's
 // whir fold). It is the exact inverse of the line-above
 // `hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu` oracle chain:
 // the input is bitreversed coefficients, and the pure-CPU expected side is

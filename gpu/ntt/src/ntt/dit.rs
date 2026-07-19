@@ -398,7 +398,7 @@ impl DitTriangles {
 // ---------------------------------------------------------------------------
 // Hot-kernel bindings — the new ABI (trailing `coset_out_stride: u32`). One
 // `pub(crate)` single-arm `cuda_kernel!` per symbol so each is crate-visible.
-// Single-pass: `(mono, tw_clean, out, cfp_0, coset_step, coset_out_stride)`.
+// Single-pass: `(mono, tw_clean, out, cfp_0, coset_step, num_cosets, coset_out_stride)`.
 // ---------------------------------------------------------------------------
 // Production single-pass = the STREAMING kernel (guarded grid-stride + delta
 // walk), unified with two-pass on the streaming/diagonal launch. 7-arg ABI
