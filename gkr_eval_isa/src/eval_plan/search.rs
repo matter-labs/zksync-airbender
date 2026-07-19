@@ -1,5 +1,10 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::sync::Mutex;
 
+use super::search_driver::{
+    SearchAdapter, SearchDriverConfig, SearchDriverError, StableRng, run_search_driver,
+};
 use super::{
     EvaluationGenome, FitnessError, PlacementStatus, PlanFitness, PlanSearchContext,
     ScoredEvaluation, ValueFingerprint,
@@ -105,11 +110,163 @@ impl SearchTelemetry {
     }
 }
 
-#[derive(Clone)]
-struct Candidate {
-    genome: EvaluationGenome,
+#[derive(Clone, Copy, Debug)]
+struct ForwardScore {
     fitness: PlanFitness,
-    ordinal: usize,
+    parent_eligible: bool,
+}
+
+impl PartialEq for ForwardScore {
+    fn eq(&self, other: &Self) -> bool {
+        self.fitness == other.fitness
+    }
+}
+
+impl Eq for ForwardScore {}
+
+impl PartialOrd for ForwardScore {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ForwardScore {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.fitness.cmp(&other.fitness)
+    }
+}
+
+#[derive(Default)]
+struct ForwardAdapterState {
+    incumbent_fitness: Option<PlanFitness>,
+    seed_fitness: Vec<PlanFitness>,
+    telemetry: SearchTelemetry,
+    guided_order: Vec<bool>,
+    guided_trials: Option<Vec<GuidedTrial>>,
+}
+
+struct ForwardSearchAdapter<'a, 'ctx> {
+    context: &'a PlanSearchContext<'ctx>,
+    cache_mutations: usize,
+    state: Mutex<ForwardAdapterState>,
+}
+
+impl SearchAdapter for ForwardSearchAdapter<'_, '_> {
+    type Genome = EvaluationGenome;
+    type Score = ForwardScore;
+    type Evaluation = ScoredEvaluation;
+    type Error = FitnessError;
+
+    fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error> {
+        Ok(vec![
+            EvaluationGenome::neutral(self.context),
+            EvaluationGenome::retentive(self.context),
+        ])
+    }
+
+    fn parent_eligible(&self, score: &Self::Score) -> bool {
+        score.parent_eligible
+    }
+
+    fn population_fill_seed(
+        &self,
+        seeds: &[Self::Genome],
+        seed_scores: &[Self::Score],
+        population_len: usize,
+    ) -> Self::Genome {
+        if seed_scores[1].parent_eligible && population_len & 1 != 0 {
+            seeds[1].clone()
+        } else {
+            seeds[0].clone()
+        }
+    }
+
+    fn mutate(&self, genome: &mut Self::Genome, rng: &mut StableRng) {
+        mutate(genome, self.cache_mutations, rng);
+    }
+
+    fn score_batch(
+        &self,
+        candidates: &[(usize, Self::Genome)],
+    ) -> Vec<Result<(Self::Score, Self::Evaluation), Self::Error>> {
+        let mut state = self.state.lock().expect("forward search adapter lock");
+        candidates
+            .iter()
+            .map(|(ordinal, genome)| {
+                let scored = if *ordinal < 2 {
+                    self.context.score(genome)
+                } else {
+                    self.context.score_for_search(
+                        genome,
+                        state
+                            .incumbent_fitness
+                            .expect("neutral seed establishes incumbent fitness"),
+                    )
+                }?;
+                state.telemetry.record(&scored);
+                if *ordinal < 2 {
+                    state.seed_fitness.push(scored.fitness);
+                }
+                let parent_eligible =
+                    *ordinal == 0 || scored.placement == PlacementStatus::Concrete;
+                if state.incumbent_fitness.is_none()
+                    || (parent_eligible
+                        && scored.fitness
+                            < state
+                                .incumbent_fitness
+                                .expect("checked incumbent fitness is present"))
+                {
+                    state.incumbent_fitness = Some(scored.fitness);
+                }
+                Ok((
+                    ForwardScore {
+                        fitness: scored.fitness,
+                        parent_eligible,
+                    },
+                    scored,
+                ))
+            })
+            .collect()
+    }
+
+    fn guided_neighbors(
+        &self,
+        best: &Self::Genome,
+        evaluation: &Self::Evaluation,
+    ) -> Vec<Self::Genome> {
+        let trials = {
+            let mut state = self.state.lock().expect("forward search adapter lock");
+            if state.guided_trials.is_none() {
+                let trials = guided_trials(self.context, evaluation, best);
+                state.guided_order = trials
+                    .iter()
+                    .map(|trial| matches!(trial, GuidedTrial::Order { .. }))
+                    .collect();
+                state.guided_trials = Some(trials);
+            }
+            state
+                .guided_trials
+                .as_ref()
+                .expect("guided trials were initialized")
+                .clone()
+        };
+        let neighbors = trials
+            .into_iter()
+            .map(|trial| {
+                let mut genome = best.clone();
+                match trial {
+                    GuidedTrial::Order { moving, anchor } => {
+                        move_unit_after(&mut genome.root_order_key, moving, anchor);
+                    }
+                    GuidedTrial::Cache { index, target } => {
+                        genome.cache_priority[index] = target;
+                    }
+                }
+                genome
+            })
+            .collect();
+        neighbors
+    }
 }
 
 /// Deterministic sparse-mutation evolutionary search.
@@ -129,25 +286,6 @@ pub fn mutation_search(
     config: MutationSearchConfig,
 ) -> Result<MutationSearchOutcome, MutationSearchError> {
     validate_config(config)?;
-    let neutral = EvaluationGenome::neutral(context);
-    let neutral_scored = context.score(&neutral)?;
-    let mut telemetry = SearchTelemetry::default();
-    telemetry.record(&neutral_scored);
-    let neutral_fitness = neutral_scored.fitness;
-    let retentive = EvaluationGenome::retentive(context);
-    let retentive_scored = context.score(&retentive)?;
-    telemetry.record(&retentive_scored);
-    let retentive_fitness = retentive_scored.fitness;
-    let mut best_genome = neutral.clone();
-    let mut best = neutral_scored;
-    let mut population = vec![Candidate {
-        genome: neutral.clone(),
-        fitness: neutral_fitness,
-        ordinal: 0,
-    }];
-    let mut evaluations = 1usize;
-    let mut next_ordinal = 1usize;
-    let mut rng = StableRng::new(config.seed);
     let guided_budget = if config.evaluations >= 128 {
         // Once a concrete incumbent exists, replay attribution is substantially
         // denser signal than sparse random mutation: one guided evaluation can
@@ -165,105 +303,64 @@ pub fn mutation_search(
     } else {
         0
     };
+    let adapter = ForwardSearchAdapter {
+        context,
+        cache_mutations: config.cache_mutations,
+        state: Mutex::new(ForwardAdapterState::default()),
+    };
+    let outcome = run_search_driver(
+        &adapter,
+        SearchDriverConfig {
+            population: config.population,
+            evaluations: config.evaluations,
+            guided_evaluations: guided_budget,
+            score_batch: 1,
+            seed: config.seed,
+        },
+    )
+    .map_err(|error| match error {
+        SearchDriverError::Adapter(error) => MutationSearchError::Fitness(error),
+        SearchDriverError::InvalidConfig(message) => MutationSearchError::InvalidConfig(message),
+        SearchDriverError::EmptySeeds => {
+            MutationSearchError::InvalidConfig("forward search adapter produced no seeds")
+        }
+        SearchDriverError::ScoreBatchLength { .. } => {
+            MutationSearchError::InvalidConfig("forward score batch returned the wrong length")
+        }
+    })?;
+    let mut best_genome = outcome.best_genome;
+    let mut best = outcome.best_evaluation;
+    let evaluations = outcome.evaluations;
+    let state = adapter
+        .state
+        .into_inner()
+        .expect("forward search adapter lock");
+    let [neutral_fitness, retentive_fitness] = state
+        .seed_fitness
+        .try_into()
+        .expect("forward adapter always evaluates two seeds");
+    let mut telemetry = state.telemetry;
+    telemetry.guided_evaluations = guided_budget;
+    telemetry.guided_order_evaluations = state
+        .guided_order
+        .iter()
+        .take(outcome.guided_candidates)
+        .filter(|guided_order| **guided_order)
+        .count();
+    telemetry.guided_improvements = outcome.guided_improvement_ordinals.len();
     let evolutionary_limit = config.evaluations - guided_budget;
-
-    if evaluations < config.evaluations {
-        if retentive_fitness < best.fitness {
-            best_genome = retentive.clone();
-            best = retentive_scored;
-        }
-        if !retentive_fitness.infeasible {
-            population.push(Candidate {
-                genome: retentive.clone(),
-                fitness: retentive_fitness,
-                ordinal: next_ordinal,
-            });
-        }
-        evaluations += 1;
-        next_ordinal += 1;
-    }
-
-    while population.len() < config.population && evaluations < evolutionary_limit {
-        let mut genome = if !retentive_fitness.infeasible && population.len() & 1 != 0 {
-            retentive.clone()
-        } else {
-            neutral.clone()
-        };
-        mutate(&mut genome, config.cache_mutations, &mut rng);
-        let scored = context.score_for_search(&genome, best.fitness)?;
-        telemetry.record(&scored);
-        let fitness = scored.fitness;
-        evaluations += 1;
-        if scored.placement == PlacementStatus::Concrete && fitness < best.fitness {
-            best_genome = genome.clone();
-            best = scored;
-        }
-        population.push(Candidate {
-            genome,
-            fitness,
-            ordinal: next_ordinal,
-        });
-        next_ordinal += 1;
-    }
-    rank_and_truncate(&mut population, config.population);
-
-    while evaluations < evolutionary_limit {
-        let parent = tournament(&population, &mut rng).genome.clone();
-        let mut genome = parent;
-        mutate(&mut genome, config.cache_mutations, &mut rng);
-        let scored = context.score_for_search(&genome, best.fitness)?;
-        telemetry.record(&scored);
-        let fitness = scored.fitness;
-        evaluations += 1;
-        if scored.placement == PlacementStatus::Concrete && fitness < best.fitness {
-            best_genome = genome.clone();
-            best = scored;
-        }
-        population.push(Candidate {
-            genome,
-            fitness,
-            ordinal: next_ordinal,
-        });
-        next_ordinal += 1;
-        rank_and_truncate(&mut population, config.population);
-    }
-
-    // The last bounded slice first probes root-order locality for values the
-    // current winner recomputed, then probes their exact cache intervals. The
-    // order trials preserve every cache gene; the cache trials preserve root
-    // order and change one future-demand gene.
-    let guided_trials = guided_trials(context, &best, &best_genome);
-    let mut guided_cursor = 0usize;
-    while evaluations < config.evaluations {
-        let mut genome = best_genome.clone();
-        let guided_order = if let Some(trial) = guided_trials.get(guided_cursor) {
-            let guided_order = matches!(trial, GuidedTrial::Order { .. });
-            match trial {
-                GuidedTrial::Order { moving, anchor } => {
-                    move_unit_after(&mut genome.root_order_key, *moving, *anchor);
-                }
-                GuidedTrial::Cache { index, target } => {
-                    genome.cache_priority[*index] = *target;
-                }
-            }
-            guided_cursor += 1;
-            guided_order
-        } else {
-            mutate(&mut genome, config.cache_mutations, &mut rng);
-            false
-        };
-        let scored = context.score_for_search(&genome, best.fitness)?;
-        telemetry.record(&scored);
-        telemetry.guided_evaluations += 1;
-        telemetry.guided_order_evaluations += usize::from(guided_order);
-        evaluations += 1;
-        if scored.placement == PlacementStatus::Concrete && scored.fitness < best.fitness {
-            best_genome = genome;
-            best = scored;
-            telemetry.guided_improvements += 1;
-            telemetry.guided_order_improvements += usize::from(guided_order);
-        }
-    }
+    telemetry.guided_order_improvements = outcome
+        .guided_improvement_ordinals
+        .iter()
+        .filter(|ordinal| {
+            let guided_index = **ordinal - evolutionary_limit;
+            state
+                .guided_order
+                .get(guided_index)
+                .copied()
+                .unwrap_or(false)
+        })
+        .count();
 
     // Intermediate candidates use a cheap relocating certificate after greedy
     // fixed placement. Rebind only the selected genome through the complete
@@ -621,21 +718,6 @@ fn validate_config(config: MutationSearchConfig) -> Result<(), MutationSearchErr
     Ok(())
 }
 
-fn rank_and_truncate(population: &mut Vec<Candidate>, capacity: usize) {
-    population.sort_by_key(|candidate| (candidate.fitness, candidate.ordinal));
-    population.truncate(capacity);
-}
-
-fn tournament<'a>(population: &'a [Candidate], rng: &mut StableRng) -> &'a Candidate {
-    let first = &population[rng.index(population.len())];
-    let second = &population[rng.index(population.len())];
-    if (first.fitness, first.ordinal) <= (second.fitness, second.ordinal) {
-        first
-    } else {
-        second
-    }
-}
-
 fn mutate(genome: &mut EvaluationGenome, cache_mutations: usize, rng: &mut StableRng) {
     if genome.root_order_key.len() >= 2 && rng.next_u64() & 1 == 0 {
         let first = rng.index(genome.root_order_key.len());
@@ -654,38 +736,5 @@ fn mutate(genome: &mut EvaluationGenome, cache_mutations: usize, rng: &mut Stabl
         let index = rng.index(genome.cache_priority.len());
         let step = STEPS[rng.index(STEPS.len())];
         genome.cache_priority[index] = (genome.cache_priority[index] + step).clamp(-1.0, 1.0);
-    }
-}
-
-/// Fixed xorshift64* stream: no platform hash seeds or external RNG dependency.
-struct StableRng {
-    state: u64,
-}
-
-impl StableRng {
-    fn new(seed: u64) -> Self {
-        let state = seed ^ 0x9e37_79b9_7f4a_7c15;
-        Self {
-            // Xorshift's all-zero state is absorbing.
-            state: if state == 0 {
-                0xd1b5_4a32_d192_ed03
-            } else {
-                state
-            },
-        }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut value = self.state;
-        value ^= value >> 12;
-        value ^= value << 25;
-        value ^= value >> 27;
-        self.state = value;
-        value.wrapping_mul(0x2545_f491_4f6c_dd1d)
-    }
-
-    fn index(&mut self, length: usize) -> usize {
-        debug_assert!(length > 0);
-        (self.next_u64() % length as u64) as usize
     }
 }

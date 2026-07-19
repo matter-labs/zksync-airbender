@@ -66,6 +66,12 @@ fn evaluation_artifact_path(circuit: &str) -> std::path::PathBuf {
     common::compiled_circuit_dir().join(format!("{circuit}_with_caches_fwd_eval_plan_c4_gkr.json"))
 }
 
+fn pin_digest(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |digest, byte| {
+        (digest ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
+}
+
 fn arithmetic_arities(program: &Program) -> [usize; 3] {
     let mut totals = [0; 3];
     for instr in &program.instrs {
@@ -661,6 +667,74 @@ fn evaluation_artifact_json_uses_only_cell_budget() {
         assert!(layer.get("budget_lanes").is_none());
         assert!(layer.get("schema_version").is_none());
     }
+}
+
+#[test]
+fn forward_search_observable_pins() {
+    let layout = common::load_fixture(ADD_SUB);
+    let dag = lower_dag(&layout).expect("lower add_sub fixture");
+    validate(&dag).expect("validate add_sub DAG");
+    let cross = build_cross_layer_field_map(&dag);
+    let layer = &dag.layers[0];
+    let artifact_layer = &layout.layers[0];
+    let fields = (0..layer.exprs.len())
+        .map(
+            |index| match expr_operand_field(layer, ExprId(index as u32), &cross) {
+                OperandField::Base => FieldKind::Base,
+                OperandField::Ext => FieldKind::Ext,
+            },
+        )
+        .collect::<Vec<_>>();
+    let actions = build_forward_actions(layer, artifact_layer, &layout.scratch_space_mapping)
+        .expect("classify add_sub layer zero roots");
+    let compute_roots = actions
+        .iter()
+        .filter_map(|(&root, action)| matches!(action, ForwardAction::Compute).then_some(root))
+        .collect::<Vec<_>>();
+    let context =
+        PlanSearchContext::build_for_roots(layer, &fields, artifact_layer.layer, 4, &compute_roots)
+            .expect("build add_sub layer zero search context");
+
+    let mut sequence = Vec::new();
+    let mut selected = None;
+    for evaluations in [2, 4, 8, 16, 32, 64, 128] {
+        let outcome = mutation_search(
+            &context,
+            MutationSearchConfig {
+                population: 16,
+                evaluations,
+                staging_evaluations: 0,
+                seed: 0,
+                cache_mutations: 2,
+            },
+        )
+        .unwrap_or_else(|error| panic!("search add_sub layer zero at {evaluations}: {error:?}"));
+        let genome = serde_json::to_string(&outcome.best_genome)
+            .expect("serialize selected add_sub layer zero genome");
+        println!(
+            "CANDIDATE evaluations={evaluations} fitness={:?} genome={genome}",
+            outcome.best.fitness,
+        );
+        sequence.extend_from_slice(&evaluations.to_le_bytes());
+        sequence.extend_from_slice(genome.as_bytes());
+        selected = Some(outcome.best_genome);
+    }
+
+    let selected = selected.expect("search checkpoints are nonempty");
+    let selected_json = serde_json::to_string(&selected).expect("serialize selected genome");
+    println!("SELECTED-GENOME {selected_json}");
+    let selected_artifact =
+        EvaluationGenomeArtifact::capture("add_sub_lui_auipc_mop", &context, &actions, selected)
+            .expect("capture selected add_sub layer zero artifact");
+    let artifact_bytes =
+        serde_json::to_vec(&selected_artifact).expect("serialize selected artifact");
+    println!(
+        "ARTIFACT-BYTES len={} fnv={:016x}",
+        artifact_bytes.len(),
+        pin_digest(&artifact_bytes),
+    );
+    sequence.extend_from_slice(&artifact_bytes);
+    println!("DIGEST {:016x}", pin_digest(&sequence));
 }
 
 #[test]

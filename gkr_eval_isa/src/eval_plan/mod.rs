@@ -15,6 +15,7 @@ mod interp;
 mod packed;
 mod packed_interp;
 mod search;
+mod search_driver;
 
 pub use artifact::{
     CompiledEvaluationCircuit, CompiledEvaluationLayer, DomainCertificate, EvaluationArtifactError,
