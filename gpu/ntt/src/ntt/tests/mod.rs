@@ -754,10 +754,11 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_7_cosets_8, 7, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_8, 8, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_11_cosets_16, 11, 16);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_12_cosets_4, 12, 4);
-// 2-pass-compact-initial range (log_n 13..20): batched-entry-vs-2pc-direct reps
-// at 13/17/19. Log_n 9/10 in the DIT range are covered by dit_engine two_pass +
-// dit_launcher_two_pass; 14/16/18/20 by the range tests below + the pure-CPU
-// host_oracle module (13/14/18/19/20).
+// 2-pass-compact-initial range (log_n 13..20): GPU-vs-GPU batching cross-checks
+// (production multi-coset entry vs the direct-2pc baseline) at reps 13/17/19.
+// The family is independently oracled against a pure-CPU forward NTT by the
+// `host_oracle_2pc_*` set (log_n 13/14/15/16/17/18/19/20); log_n 9/10 in the DIT
+// range are covered by dit_engine two_pass + dit_launcher_two_pass.
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_13_cosets_8, 13, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_17_cosets_4, 17, 4);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_19_cosets_2, 19, 2);
@@ -1014,6 +1015,31 @@ mod host_oracle {
     #[test]
     fn host_oracle_2pc_log_n_15_multi_coset_matches() {
         run_host_oracle_forward_parity(15, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_15u64);
+    }
+
+    // log_n 16/17/18: the ONLY independent (pure-CPU) oracles for the
+    // 2pc-compact-initial first_8/9/10 kernels
+    // (`ab_monomials_to_evals_first_{8,9,10}_stages_compact_kernel`, K = log_n -
+    // 8). Each stage-count is a DISTINCT compile-time kernel; the multi-coset
+    // entry routes each log_n to `MonomialsToEvalsFirstCompact { stages: log_n -
+    // 8 }` (DIT tops out at 13, and the lde-intermediate fast path is only
+    // reached via `lde_with_coset_range`, a different entry — so neither is taken
+    // here). The GPU-vs-GPU `multi_coset_monomials_to_evals_log_n_17_cosets_4`
+    // parity case remains a valid batching cross-check alongside the log_n 17
+    // oracle here.
+    #[test]
+    fn host_oracle_2pc_log_n_16_multi_coset_matches() {
+        run_host_oracle_forward_parity(16, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_16u64);
+    }
+
+    #[test]
+    fn host_oracle_2pc_log_n_17_multi_coset_matches() {
+        run_host_oracle_forward_parity(17, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_17u64);
+    }
+
+    #[test]
+    fn host_oracle_2pc_log_n_18_multi_coset_matches() {
+        run_host_oracle_forward_parity(18, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_18u64);
     }
 
     // LDE-intermediate fast path (`ab_lde_first_{6..10}_stages_kernel` +
