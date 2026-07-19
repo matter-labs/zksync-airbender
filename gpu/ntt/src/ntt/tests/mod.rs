@@ -467,11 +467,11 @@ fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
 }
 
 // The former `compact_parity_test` harness (log_n 4..20) is retired: it oracled
-// the strategy-routed forward NTT against the now-deleted single-stage radix-2
-// `bitreversed_coeffs_to_natural_coset`. Its coverage is preserved elsewhere:
-// log_n <= 13 by the multi_coset / streaming / DIT parity harnesses (which
-// cross-check against the compact kernels called directly), and log_n > 13 by
-// the `host_oracle` module (pure-CPU forward-NTT ground truth).
+// the strategy-routed forward NTT against the now-removed single-stage radix-2
+// per-stage reference path. Its coverage is preserved elsewhere: log_n <= 13 by
+// the multi_coset / streaming / DIT parity harnesses (which cross-check against
+// the compact kernels called directly), and log_n > 13 by the `host_oracle`
+// module (pure-CPU forward-NTT ground truth).
 
 // Parity tests for `bitreversed_monomials_to_natural_evals_multi_coset`: the
 // multi-coset entry's per-coset slice of the output must match the

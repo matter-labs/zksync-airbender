@@ -9,9 +9,10 @@
 // >= 5). Inputs are bitreversed monomial coefficients; outputs are the
 // natural-order evaluations on `coset_index` (encoded via `coset_factor_power`).
 //
-// Semantics match `ab_copy_scale_bitreversed_coeffs_kernel` +
-// `ab_bitreversed_coeffs_to_natural_ntt_stage_kernel` (the single-stage
-// fallback used previously), but executed in one launch.
+// Semantics: a single-stage radix-2 decimation-in-time forward NTT with the
+// coset shift fused into the bitreversed load, executed in one launch rather
+// than one kernel per butterfly stage. Parity is anchored by the `host_oracle`
+// tests (pure-CPU forward-NTT ground truth), not a per-stage GPU reference.
 //
 // Shared memory is dynamic (`extern __shared__ bf smem[]`): for LOG_N <= 12
 // the per-block requirement is <= 16 KB, well within the default cap.
@@ -68,8 +69,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_all_stages_in_block(bf_matrix_getter<
   __syncthreads();
 
   // Decimation-in-time butterflies. After `stage` stages, smem holds the NTT
-  // of size 2^(stage+1) chunks. We mirror
-  // `ab_bitreversed_coeffs_to_natural_ntt_stage_kernel`:
+  // of size 2^(stage+1) chunks. The per-stage butterfly recipe is:
   //   pairs_per_group = 1 << stage
   //   group           = pair_idx >> stage
   //   pair            = pair_idx & (pairs_per_group - 1)
