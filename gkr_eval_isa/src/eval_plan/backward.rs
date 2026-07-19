@@ -435,7 +435,7 @@ fn validate_fragment_order(
     Ok(order.to_vec())
 }
 
-fn validate_and_resolve_backward(
+pub(super) fn validate_and_resolve_backward(
     d: &DistilledLayer,
 ) -> Result<Vec<FieldKind>, BackwardEvaluationError> {
     let root_count = d.layer.roots.len();

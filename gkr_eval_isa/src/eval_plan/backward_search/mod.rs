@@ -1,6 +1,8 @@
 use crate::bwd::source::FoldState;
+use crate::eval_plan::backward::BackwardEvaluationError;
 
 pub mod materialization;
+pub mod problem;
 
 pub use materialization::{
     SourceOriginKind, SourceRoundUse, StaticMaterialization, build_static_materialization,
@@ -167,11 +169,27 @@ pub struct SourceRoundBinding {
     pub store_for_next_round: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum BackwardSearchError {
     CostOverflow,
-    DuplicateSourceRound { desc: u16, round: u8 },
-    MissingSourceRound { desc: u16, round: u8 },
+    DuplicateSourceRound {
+        desc: u16,
+        round: u8,
+    },
+    MissingSourceRound {
+        desc: u16,
+        round: u8,
+    },
     MalformedRoundSequence,
-    VirtualSetupMaterialized { desc: u16, round: u8 },
+    VirtualSetupMaterialized {
+        desc: u16,
+        round: u8,
+    },
+    BackwardEvaluation(BackwardEvaluationError),
+    DuplicateStableFragment,
+    MissingStableValue,
+    MissingStableSite,
+    MissingLeafInstant {
+        expr: cs::gkr_compiler::dag_ir::ExprId,
+    },
 }
