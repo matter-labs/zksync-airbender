@@ -67,45 +67,71 @@ pub(super) fn dispatch_strategy(
             super::NttKernelKind::MonomialsToEvalsSubwarp {
                 log_instances_per_block,
                 ..
-            } => monomials_to_evals_subwarp(
-                inputs_matrix,
-                outputs_matrix,
-                log_n,
-                coset_index,
-                coset_factor_shift,
-                1,
-                num_cols_per_coset,
-                log_instances_per_block,
-                stream,
-            ),
+            } => {
+                // Precondition guard restored after the dead-param removal: this
+                // kernel only ever runs at log_n < 21, so transposed monomials
+                // (log_n >= 21) are unreachable by construction — panic loudly if
+                // a future strategy/caller change ever routes one here.
+                assert!(
+                    !transposed_monomials,
+                    "subwarp forward NTT kernel does not support transposed monomials",
+                );
+                monomials_to_evals_subwarp(
+                    inputs_matrix,
+                    outputs_matrix,
+                    log_n,
+                    coset_index,
+                    coset_factor_shift,
+                    1,
+                    num_cols_per_coset,
+                    log_instances_per_block,
+                    stream,
+                )
+            }
             super::NttKernelKind::MonomialsToEvalsSmemPacked {
                 log_instances_per_block,
                 ..
-            } => monomials_to_evals_smem_packed(
-                inputs_matrix,
-                outputs_matrix,
-                log_n,
-                coset_index,
-                coset_factor_shift,
-                1,
-                num_cols_per_coset,
-                log_instances_per_block,
-                stream,
-            ),
-            _ => monomials_to_evals_compact_1_pass(
-                inputs_matrix,
-                outputs_matrix,
-                log_n,
-                coset_index,
-                coset_factor_shift,
-                1,
-                num_cols_per_coset,
-                strategy.columns_per_launch,
-                stream,
-            ),
+            } => {
+                assert!(
+                    !transposed_monomials,
+                    "smem-packed forward NTT kernel does not support transposed monomials",
+                );
+                monomials_to_evals_smem_packed(
+                    inputs_matrix,
+                    outputs_matrix,
+                    log_n,
+                    coset_index,
+                    coset_factor_shift,
+                    1,
+                    num_cols_per_coset,
+                    log_instances_per_block,
+                    stream,
+                )
+            }
+            _ => {
+                assert!(
+                    !transposed_monomials,
+                    "compact 1-pass forward NTT kernel does not support transposed monomials",
+                );
+                monomials_to_evals_compact_1_pass(
+                    inputs_matrix,
+                    outputs_matrix,
+                    log_n,
+                    coset_index,
+                    coset_factor_shift,
+                    1,
+                    num_cols_per_coset,
+                    strategy.columns_per_launch,
+                    stream,
+                )
+            }
         },
         2 => match strategy.passes[0].kernel {
             super::NttKernelKind::MonomialsToEvalsFirstCompact { .. } => {
+                assert!(
+                    !transposed_monomials,
+                    "2-pass compact-initial forward NTT kernel does not support transposed monomials",
+                );
                 monomials_to_evals_2_pass_compact_initial(
                     inputs_matrix,
                     outputs_matrix,
