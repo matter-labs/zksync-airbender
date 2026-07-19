@@ -108,18 +108,23 @@ DEVICE_FORCEINLINE ThreadTileStarts thread_tile_starts(const int lane_in_tile, c
   };
 }
 
-// Swizzled warp transpose: publish 32 per-lane registers to smem at the
+// Swizzled warp transpose: publish N per-lane registers to smem at the
 // swizzled (lane, y) address, then read them back from the swizzled (x, lane)
 // address, exchanging the register axis with the lane axis across the warp.
-// 32 == VALS_PER_THREAD in every consuming phase. The mirror-direction transpose
-// (store at (x, lane), load at (lane, y)) is a distinct idiom and stays inline.
-DEVICE_FORCEINLINE void warp_transpose_swizzled(bf *smem_warp, bf *vals, const int lane) {
+// The tile width is a template parameter (defaulting to 32) so the
+// "N == VALS_PER_THREAD == 32" invariant is compile-checked at every
+// instantiation instead of living as a bare literal; the swizzle assumes a
+// 32-wide warp tile, so the static_assert pins N to 32 (relax it if/when the
+// swizzle is generalized). The mirror-direction transpose (store at (x, lane),
+// load at (lane, y)) is a distinct idiom and stays inline.
+template <unsigned N = 32> DEVICE_FORCEINLINE void warp_transpose_swizzled(bf *smem_warp, bf *vals, const int lane) {
+  static_assert(N == 32, "warp_transpose_swizzled assumes a 32-wide warp tile (VALS_PER_THREAD == 32)");
 #pragma unroll
-  for (int y = 0; y < 32; y++)
+  for (int y = 0; y < static_cast<int>(N); y++)
     smem_warp[xy_to_swizzled(lane, y)] = vals[y];
   __syncwarp();
 #pragma unroll
-  for (int x = 0; x < 32; x++)
+  for (int x = 0; x < static_cast<int>(N); x++)
     vals[x] = smem_warp[xy_to_swizzled(x, lane)];
 }
 

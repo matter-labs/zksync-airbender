@@ -17,7 +17,8 @@ pub(crate) const LOG_MAX_NTT_SIZE: usize = 24;
 pub(crate) const CMEM_LOG_ORDER: usize = 19;
 pub(crate) const CMEM_COARSE_LOG_COUNT: usize = 10;
 pub(crate) const LENGTH_CMEM_COARSE: usize = 1 << CMEM_COARSE_LOG_COUNT;
-// "- 1" accounts for NTT twiddle arrays only covering half the range
+// "- 1" accounts for NTT twiddle arrays only covering half the range.
+// native/context.cuh mirrors this derivation with a twin `static_assert`.
 pub(crate) const CMEM_FINE_LOG_COUNT: usize = CMEM_LOG_ORDER - CMEM_COARSE_LOG_COUNT - 1;
 pub(crate) const GMEM_COARSE_LOG_COUNT: usize = 13;
 pub(crate) const LENGTH_GMEM_COARSE: usize = 1 << GMEM_COARSE_LOG_COUNT;
@@ -70,6 +71,24 @@ impl PowersData2Layer {
 
 #[cfg(no_cuda)]
 unsafe impl Sync for PowersData2Layer {}
+
+// Cross-language layout drift guard. These MUST match the twin `static_assert`s
+// on `powers_layer_data` / `powers_data_2_layer` in native/context.cuh: both
+// sides pin the SAME explicit numbers so that either side drifting fails its own
+// compile (the structs are memcpy'd verbatim into `__constant__` device symbols,
+// so any layout mismatch would silently corrupt every twiddle lookup). Update
+// the twin block in context.cuh whenever you change a field here.
+const _: () = {
+    assert!(core::mem::size_of::<PowersLayerData>() == 16);
+    assert!(core::mem::align_of::<PowersLayerData>() == 8);
+    assert!(core::mem::offset_of!(PowersLayerData, values) == 0);
+    assert!(core::mem::offset_of!(PowersLayerData, mask) == 8);
+    assert!(core::mem::offset_of!(PowersLayerData, log_count) == 12);
+    assert!(core::mem::size_of::<PowersData2Layer>() == 32);
+    assert!(core::mem::align_of::<PowersData2Layer>() == 8);
+    assert!(core::mem::offset_of!(PowersData2Layer, fine) == 0);
+    assert!(core::mem::offset_of!(PowersData2Layer, coarse) == 16);
+};
 
 cuda_struct_and_stub! { static ab_ntt_forward_powers: PowersData2Layer; }
 cuda_struct_and_stub! { static ab_ntt_inverse_powers: PowersData2Layer; }
