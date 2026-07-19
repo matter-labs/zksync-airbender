@@ -738,8 +738,36 @@ macro_rules! multi_coset_range_parity_test {
     };
 }
 
-// Compact 1-pass range: kernel batches all cosets into one launch.
+// Multi-coset forward-NTT parity (candidate = production multi-coset entry /
+// `lde_with_coset_range`; oracle = the compact / 2pc-compact-initial kernels
+// called DIRECTLY, an independent GPU baseline). One representative kept per
+// (kernel-family, log_n): the coset count only varies grid batching (guarded by
+// `strategy::compact_range_batches_all_cosets_into_one_launch`), so the extra
+// coset counts at a given log_n are redundant. Larger log_n (>=13) is
+// additionally pinned by the pure-CPU `host_oracle` module.
+
+// Compact 1-pass / subwarp range (log_n 2..12): one rep per log_n.
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_2_cosets_256, 2, 256);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_3_cosets_256, 3, 256);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_4, 4, 4);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_7_cosets_8, 7, 8);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_8, 8, 8);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_11_cosets_16, 11, 16);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_12_cosets_4, 12, 4);
+// 2-pass-compact-initial range (log_n 13..20): batched-entry-vs-2pc-direct reps
+// at 13/17/19. Log_n 9/10 in the DIT range are covered by dit_engine two_pass +
+// dit_launcher_two_pass; 14/16/18/20 by the range tests below + the pure-CPU
+// host_oracle module (13/14/18/19/20).
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_13_cosets_8, 13, 8);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_17_cosets_4, 17, 4);
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_19_cosets_2, 19, 2);
+// 3-pass range (log_n 21..23): rep at 21; 22/23 subsumed by the pure-CPU
+// `monomials_to_evals_3_pass` matrix tests (log_n 21..24).
+multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_21_cosets_2, 21, 2);
+// Range variants (nonzero coset_index_base -> exercise the coset-factor shift).
+// Reps at log_n 8/14/18/23; the lde-intermediate fast path (log_n in (13, 18])
+// is independently oracled by host_oracle_lde_intermediate_log_n_14/18, so the
+// 15/16/17 range cases are redundant.
 multi_coset_range_parity_test!(
     multi_coset_monomials_to_evals_log_n_8_cosets_4_base_4,
     8,
@@ -755,27 +783,6 @@ multi_coset_range_parity_test!(
     8
 );
 multi_coset_range_parity_test!(
-    multi_coset_monomials_to_evals_log_n_17_cosets_16_base_16,
-    17,
-    10,
-    16,
-    16
-);
-multi_coset_range_parity_test!(
-    multi_coset_monomials_to_evals_log_n_16_cosets_32_base_32,
-    16,
-    11,
-    32,
-    32
-);
-multi_coset_range_parity_test!(
-    multi_coset_monomials_to_evals_log_n_15_cosets_64_base_64,
-    15,
-    12,
-    64,
-    64
-);
-multi_coset_range_parity_test!(
     multi_coset_monomials_to_evals_log_n_14_cosets_128_base_128,
     14,
     12,
@@ -789,43 +796,6 @@ multi_coset_range_parity_test!(
     4,
     4
 );
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_7_cosets_8, 7, 8);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_32, 8, 32);
-// Multi-coset parity over the small-`log_n` range (2..8): the candidate runs
-// through the production multi-coset entry (DIT where applicable, else
-// subwarp/compact) and is checked against the independent compact baseline.
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_2_cosets_256, 2, 256);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_3_cosets_256, 3, 256);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_128, 4, 128);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_4_cosets_256, 4, 256);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_5_cosets_64, 5, 64);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_6_cosets_32, 6, 32);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_7_cosets_16, 7, 16);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_8, 8, 8);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_11_cosets_16, 11, 16);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_12_cosets_4, 12, 4);
-// Strategy-driven parity tests for the two-pass streaming kernel (log_n 9..12)
-// and a regression check for the two-pass-compact kernel at log_n=13. The
-// `select_forward_strategy` dispatcher routes log_n in [9, 12] through the new
-// streaming kernel; log_n=13 falls into `TWO_PASS_COMPACT` and routes to
-// `MonomialsToEvalsFirstCompact + NonInitial` (pre-existing).
-multi_coset_parity_test!(streaming_log_n_9, 9, 256);
-multi_coset_parity_test!(streaming_log_n_10, 10, 128);
-multi_coset_parity_test!(streaming_log_n_11, 11, 64);
-multi_coset_parity_test!(streaming_log_n_12, 12, 32);
-multi_coset_parity_test!(streaming_log_n_13, 13, 16);
-// 2-pass-compact-initial range: kernels batch cosets per launch up to the
-// L2-pressure cap from the strategy.
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_13_cosets_8, 13, 8);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_15_cosets_4, 15, 4);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_17_cosets_4, 17, 4);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_19_cosets_2, 19, 2);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_20_cosets_2, 20, 2);
-// 3-pass range: kernels batch cosets per launch (typically 1 at this size on
-// L4 since one column already fills a third of L2).
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_21_cosets_2, 21, 2);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_22_cosets_2, 22, 2);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_23_cosets_2, 23, 2);
 
 // Host-oracle forward-NTT parity tests. Unlike the parity harnesses above
 // (which cross-check one GPU kernel family against ANOTHER GPU path), these
@@ -1171,12 +1141,10 @@ smem_packed_parity_test!(smem_packed_log_n_7_ipb_4_cosets_8_cols_4, 7, 2, 8, 4);
 smem_packed_parity_test!(smem_packed_log_n_8_ipb_2_cosets_2_cols_1, 8, 1, 2, 1);
 smem_packed_parity_test!(smem_packed_log_n_8_ipb_2_cosets_4_cols_4, 8, 1, 4, 4);
 
-// Extend the strategy-driven multi-coset parity sweep to log_n=6 and 8 (which
-// now route through smem-packed) so the end-to-end multi-coset path is also
-// covered.
+// Extend the strategy-driven multi-coset parity sweep to log_n=6 (now routed
+// through smem-packed). log_n=8 is already covered by log_n_8_cosets_8 above,
+// and the extra coset counts only vary grid batching.
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_6_cosets_8, 6, 8);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_6_cosets_16, 6, 16);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_8_cosets_2, 8, 2);
 
 // Parity test for the production forward-NTT path on the DIT range (log_n in
 // [2, 13]). CANDIDATE = the public multi-coset entry
@@ -1378,35 +1346,15 @@ macro_rules! streaming_v8_parity_test {
     };
 }
 
-// VPT=4 boundary cases (num_cosets == cosets_per_iter = 256 >> (log_n - 2)).
+// One representative each (VPT=4 and VPT=8) of the streaming-vs-compact parity
+// harness. The DIT range (log_n 2..13) that these route through the production
+// multi-coset entry into the DIT engine is covered INDEPENDENTLY per
+// (log_n, log_vpt) by the dit_engine parity tests (`dit_single_stream_*` /
+// `dit_two_pass_*` vs a compact/lde/host oracle, plus `dit_launcher_*`) and by
+// the strategy DIT-route cpu_tests. These anchors keep the end-to-end
+// multi-coset-entry -> DIT path exercised at both VPTs.
 streaming_v4_parity_test!(streaming_v4_log_n_2_cosets_256, 2, 256, 1);
-streaming_v4_parity_test!(streaming_v4_log_n_3_cosets_128, 3, 128, 1);
-streaming_v4_parity_test!(streaming_v4_log_n_4_cosets_64, 4, 64, 1);
-streaming_v4_parity_test!(streaming_v4_log_n_5_cosets_32, 5, 32, 1);
-streaming_v4_parity_test!(streaming_v4_log_n_6_cosets_16, 6, 16, 1);
-streaming_v4_parity_test!(streaming_v4_log_n_7_cosets_8, 7, 8, 1);
-// Multi-iter cases: num_cosets > cosets_per_iter exercises the running shift.
-streaming_v4_parity_test!(streaming_v4_log_n_2_cosets_512, 2, 512, 1);
-streaming_v4_parity_test!(streaming_v4_log_n_3_cosets_512, 3, 512, 1);
-streaming_v4_parity_test!(streaming_v4_log_n_4_cosets_256, 4, 256, 1);
-streaming_v4_parity_test!(streaming_v4_log_n_7_cosets_32, 7, 32, 1);
-// Multi-column: caller loops over columns externally.
-streaming_v4_parity_test!(streaming_v4_log_n_5_cosets_64_cols_4, 5, 64, 4);
-
-// v8 sanity case — single-pass should already cover log_n=8
-streaming_v8_parity_test!(streaming_v8_parity_log_n_8_cosets_8, 8, 8, 4);
-
 streaming_v8_parity_test!(streaming_v8_parity_log_n_9_cosets_4, 9, 4, 4);
-streaming_v8_parity_test!(streaming_v8_parity_log_n_10_cosets_2, 10, 2, 4);
-streaming_v8_parity_test!(streaming_v8_parity_log_n_11_cosets_1, 11, 1, 4);
-streaming_v8_parity_test!(streaming_v8_parity_log_n_12_cosets_1, 12, 1, 4);
-streaming_v8_parity_test!(streaming_v8_parity_log_n_13_cosets_1, 13, 1, 4);
-
-streaming_v4_parity_test!(streaming_v4_parity_log_n_8_cosets_4, 8, 4, 4);
-streaming_v4_parity_test!(streaming_v4_parity_log_n_9_cosets_2, 9, 2, 4);
-streaming_v4_parity_test!(streaming_v4_parity_log_n_10_cosets_1, 10, 1, 4);
-streaming_v4_parity_test!(streaming_v4_parity_log_n_11_cosets_1, 11, 1, 4);
-streaming_v4_parity_test!(streaming_v4_parity_log_n_12_cosets_1, 12, 1, 4);
 
 // Direct parity test for the sub-warp kernel vs the compact 1-pass kernel.
 // Same shape as `run_smem_packed_vs_compact_parity`: bypass the strategy and
@@ -1521,7 +1469,6 @@ subwarp_parity_test!(subwarp_log_n_5_ipb_8_cosets_16_cols_4, 5, 3, 16, 4);
 // Extend the strategy-driven multi-coset sweep to log_n=5 (now routed through
 // subwarp at workload >= 8) so the end-to-end multi-coset path is covered.
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_5_cosets_8, 5, 8);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_5_cosets_16, 5, 16);
 
 // Parity test for the sub-warp kernel at log_n in {1, 2, 3}: the subwarp
 // dispatcher is validated against a PURE-CPU forward NTT
@@ -1632,13 +1579,11 @@ subwarp_vs_host_parity_test!(subwarp_log_n_2_ipb_64_cosets_64_cols_1, 2, 6, 64, 
 subwarp_vs_host_parity_test!(subwarp_log_n_3_ipb_32_cosets_32_cols_1, 3, 5, 32, 1);
 subwarp_vs_host_parity_test!(subwarp_log_n_3_ipb_1_cosets_4_cols_1, 3, 0, 4, 1);
 
-// Extend the strategy-driven multi-coset parity sweep to log_n in {1, 2, 3}:
-// the multi-coset entry now routes through the strategy at these sizes too,
-// hitting the subwarp dispatch (IPB_max for workload >= IPB_max, IPB=1 for
-// the per-coset reference).
+// Extend the strategy-driven multi-coset parity sweep to log_n=1 (the
+// multi-coset entry routes through the subwarp dispatch at this size too:
+// IPB_max for workload >= IPB_max, IPB=1 for the per-coset reference). log_n
+// 2/3 already have reps above; the extra coset counts only vary grid batching.
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_1_cosets_32, 1, 32);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_2_cosets_16, 2, 16);
-multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_3_cosets_8, 3, 8);
 
 mod dit_engine;
 mod helpers;

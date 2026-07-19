@@ -793,13 +793,12 @@ macro_rules! dit_two_pass_parity_test {
             run_two_pass_parity($log_n, $log_vpt, 1, 1);
             // grid = 1: one block does all cosets
             run_two_pass_parity($log_n, $log_vpt, 8, 1);
-            // mid grid: cosets_per_block = coset_count / 2
-            run_two_pass_parity($log_n, $log_vpt, 8, 4);
-            // grid = coset_count: one coset per block
-            run_two_pass_parity($log_n, $log_vpt, 8, 8);
             // ragged: grid does NOT divide total — exercises the streaming
             // guard (blocks do unequal trip counts; the loop condition is the
             // only bound). 5 blocks over 8 cosets: bx<3 do 2, bx>=3 do 1.
+            // (The divisible mid/one-per-block grids 8/4 and 8/8 were dropped:
+            // the 1/1, 8/1 and ragged 8/5 grids already cover every per-symbol
+            // path — one block/all cosets, and the guarded grid-stride walk.)
             run_two_pass_parity($log_n, $log_vpt, 8, 5);
         }
     };
@@ -966,38 +965,24 @@ macro_rules! dit_fill_d_table_parity_test {
     };
 }
 
-// CLEAN: the deduped 12-pair set.
-dit_fill_clean_parity_test!(dit_fill_clean_2_2_parity, 2, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_3_2_parity, 3, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_3_3_parity, 3, 3);
-dit_fill_clean_parity_test!(dit_fill_clean_4_2_parity, 4, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_4_3_parity, 4, 3);
-dit_fill_clean_parity_test!(dit_fill_clean_5_2_parity, 5, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_5_3_parity, 5, 3);
-dit_fill_clean_parity_test!(dit_fill_clean_6_2_parity, 6, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_6_3_parity, 6, 3);
+// CLEAN / COUPLED direct-dispatcher regression anchors. The full per-config
+// device-fill-vs-Rust-builder sweep is `dit_context_triangle_precompute_parity`,
+// which iterates EVERY `CLEAN_CONFIGS`/`COUPLED_CONFIGS` entry through the same
+// `fill_clean_triangle`/`fill_coupled_triangle` dispatchers (via
+// `DeviceContext::build`) and compares against `build_clean_triangle` /
+// `build_coupled_triangle`. These direct-call anchors (one boundary pair each)
+// keep the grid=1/block=256 dispatcher launch contract explicitly guarded.
 dit_fill_clean_parity_test!(dit_fill_clean_7_2_parity, 7, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_7_3_parity, 7, 3);
 dit_fill_clean_parity_test!(dit_fill_clean_8_3_parity, 8, 3);
 
-// COUPLED: every two-pass config.
-dit_fill_coupled_parity_test!(dit_fill_coupled_9_3_parity, 9, 3);
-dit_fill_coupled_parity_test!(dit_fill_coupled_10_3_parity, 10, 3);
-dit_fill_coupled_parity_test!(dit_fill_coupled_11_3_parity, 11, 3);
-dit_fill_coupled_parity_test!(dit_fill_coupled_12_3_parity, 12, 3);
 dit_fill_coupled_parity_test!(dit_fill_coupled_13_3_parity, 13, 3);
-dit_fill_coupled_parity_test!(dit_fill_coupled_8_2_parity, 8, 2);
-dit_fill_coupled_parity_test!(dit_fill_coupled_9_2_parity, 9, 2);
-dit_fill_coupled_parity_test!(dit_fill_coupled_10_2_parity, 10, 2);
-dit_fill_coupled_parity_test!(dit_fill_coupled_11_2_parity, 11, 2);
 dit_fill_coupled_parity_test!(dit_fill_coupled_12_2_parity, 12, 2);
 
-// D-TABLE: every two-pass LOG_N.
+// D-TABLE: boundary LOG_Ns. The runtime `fill_d_table` path is also exercised
+// end-to-end by `dit_launcher_two_pass_parity` (which fills the d-table at
+// runtime for log_n=9 and validates the full output against the compact oracle).
 dit_fill_d_table_parity_test!(dit_fill_d_table_8_parity, 8);
-dit_fill_d_table_parity_test!(dit_fill_d_table_9_parity, 9);
 dit_fill_d_table_parity_test!(dit_fill_d_table_10_parity, 10);
-dit_fill_d_table_parity_test!(dit_fill_d_table_11_parity, 11);
-dit_fill_d_table_parity_test!(dit_fill_d_table_12_parity, 12);
 dit_fill_d_table_parity_test!(dit_fill_d_table_13_parity, 13);
 
 // ===========================================================================
