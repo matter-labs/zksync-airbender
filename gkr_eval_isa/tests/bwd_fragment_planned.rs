@@ -1,51 +1,27 @@
-//! Task 8 (CS-M5a): non-vacuous fragment planned-replay + pinned retention gate.
+//! Fragment planned-replay and finite Retain-corpus gate at b16.
 //!
-//! This is the FIRST value-gating of the fragment PLAN-MODE code paths. Tasks 5-7
-//! built `compile_distilled_fragments{,_traced,_planned}`, the `FragmentBackend` /
-//! `coordinate_correct_frozen_with_backend` seed, and the constructive
-//! `construct_fragment_order`, but no test ever replayed a plan through the fragment
-//! driver and checked the result against the value oracle. In particular the plan-mode
-//! arms of `lower_bwd_top_atom` (`fwd/compile/lower.rs`: resident-hit / source-admit /
-//! compound-admit) were compiled but NEVER executed. The `Retain` trials here are what
-//! finally drive them.
+//! For every backward layer of every fixture in both R0 and Ext, this gate uses the
+//! constructed fragment order and its coordinate-correct all-`Bypass` freeze. It first
+//! checks that both the incumbent fragment compiler and the shared replay path accept
+//! the all-`Bypass` schedule with identical values and no shared-path traffic regression.
 //!
-//! # Per fixture × {R0, Ext} × every bwd layer at b16
+//! The Retain corpus then ranks every consecutive opening by
+//! `(serve gap, ExprId, opening position)` and selects the first eight leaf openings and
+//! first eight compound openings independently in each layer/regime instance. Every
+//! selected plan contains exactly one `Retain`. A compound resident hit suppresses only
+//! the closing occurrence's descendant cone, computed by the local consumer-stack rule.
+//! There is no first-success exit: every selected candidate is attempted.
 //!
-//! 1. `order = construct_fragment_order(...)` — the real (generally non-identity)
-//!    constructed fragment schedule order (Task 7).
-//! 2. `frozen0 = coordinate_correct_frozen_with_backend(&d, 16, &FragmentBackend{order})`
-//!    — NEVER a raw traced freeze. Per `fif.rs`'s doc, every priced planner MUST seed
-//!    from this planned all-`Bypass` `lower==place==budget` coordinate; so does this gate.
-//! 3. All-`Bypass` planned replay (built from `frozen0.domain_serves`, mirroring
-//!    `all_bypass_plan` / the term path's `coordinate_correct_baseline`):
-//!    `compile_distilled_fragments_planned(&d, 16, &plan, Some(&order))` must
-//!    (a) NOT diverge (`BwdEvent::Diverge` absent), (b) certify EXACTLY
-//!    (`counted_traffic == reported_traffic`, exact integers), (c) match the independent
-//!    value oracle bit-for-bit (`assert_bwd_value_parity` over the RAW canonical layer).
+//! Every clean incumbent acceptance is a hard obligation for the shared replay path.
+//! The gate checks exact action realization, oracle value parity, the incumbent traffic
+//! ceiling, encode/decode round trips, and the b16 lane bound. Ext certificates are exact; R0
+//! additionally pins the incumbent's known `ExtCellMisaligned` rejection class. All
+//! other rejections, divergences, refusals, or unrealized Retains fail directly or via
+//! the pinned category counts.
 //!
-//! # Certificate is an Ext-regime invariant
-//!
-//! `certify` recounts `TrafficRead` events against `stats_ext.global + fold_traffic`, and
-//! that identity is exact ONLY in the folded Ext regime — the same reason the term-path
-//! certificate gate (`bwd_cs_engine.rs::certificate_exact_on_baseline_and_planned`) runs
-//! Ext L0 exclusively. In R0 even the shipped TERM driver's uncached compile fails to
-//! certify (measured: add_sub L0 counted 343 vs reported 346), so certify is not a valid
-//! tool there. This gate therefore asserts the EXACT certificate in the Ext regime, and
-//! (a) no-diverge + (c) oracle value parity in BOTH regimes. The two pins are Ext L0.
-//! 4. **Retain non-vacuity.** From the all-`Bypass` plan, pick a DOMAIN LEAF value (a
-//!    `Source`/resolution atom — its resident hit suppresses NO descendant cone, so the
-//!    serve stream is unchanged and the fail-closed matcher cannot EOF-diverge) with ≥ 2
-//!    occurrences (a closing occurrence therefore exists), flip its earliest small-gap
-//!    occurrence to `Retain`, recompile planned, and check the retention was actually
-//!    REALIZED (an `Admit` of that value + a `Serve{from: Resident}` of it, no `Refuse`
-//!    of it) — a REFUSED retain would pass (a)/(b)/(c) vacuously, which is precisely the
-//!    silent-skip failure mode this task exists to prevent. Trial candidates
-//!    (smallest-serve-gap first, bounded) until one is clean+realized, then assert the
-//!    same three properties on that Retain-carrying program.
-//!
-//! **PINNED (unconditional):** ≥ 1 Retain trial MUST succeed on `bigint` L0 Ext AND on
-//! `blake2_with_extended_control` (blake2_ext) L0 Ext. The gate FAILS if either pin
-//! cannot retain — a "silently skip everything" outcome is the bug, not a pass.
+//! The complete category and acceptance census is pinned below, as are successful
+//! `bigint` L0 Ext and `blake2_with_extended_control` L0 Ext Retains, preventing a
+//! vacuous skip-all corpus from passing.
 
 mod common;
 
@@ -63,26 +39,69 @@ use gkr_eval_isa::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_ent
 use gkr_eval_isa::bwd::trace::{BwdCompileTrace, BwdEvent, BwdServedFrom, FrozenDemand, certify};
 use gkr_eval_isa::eval_plan::{CompiledBackwardEvaluation, compile_backward_fragments_replayed};
 use gkr_eval_isa::fwd::encode::{decode, encode};
+use gkr_eval_isa::fwd::error::CompileError;
 
 const BUDGET: usize = 16;
 
 /// The two unconditional Ext-L0 retention pins.
 const BIGINT: &str = "bigint_with_extended_control_layout_gkr.json";
 const BLAKE2_EXT: &str = "blake2_with_extended_control_layout_gkr.json";
+const INITS: &str = "inits_and_teardowns_preprocessed_layout_gkr.json";
 
-/// Max `Retain` candidate trials per (fixture, layer, regime). Candidates are ordered
-/// smallest-serve-gap first (a short residency window is likeliest to fit the streamed
-/// headroom), so a realizable retain — if one exists — is reached early. The pins are
-/// asserted against the OUTCOME within this bound, so an unreachable retain on a pin
-/// fails loudly rather than being masked.
+/// Finite deterministic corpus bound per `(fixture, layer, regime, category)`.
+/// Every eligible consecutive opening is ranked by `(gap, ExprId, opening
+/// position)`; the first eight leaf and first eight compound openings are
+/// included independently for each layer/regime instance.
 const MAX_TRIALS: usize = 8;
+const EXPECTED_RETAIN_CANDIDATES: usize = 832;
 
-#[derive(Default)]
-struct RetainRejections {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CandidateKind {
+    Leaf,
+    Compound,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RetainCandidate {
+    value: ExprId,
+    opening: usize,
+    closing: usize,
+    kind: CandidateKind,
+}
+
+#[derive(Default, Debug, PartialEq, Eq)]
+struct RegimeCorpus {
+    bypass_schedules: usize,
+    leaf_instances: usize,
+    compound_instances: usize,
+    leaf_candidates: usize,
+    compound_candidates: usize,
+    compound_suppressed: usize,
+    leaf_incumbent_accepted: usize,
+    compound_incumbent_accepted: usize,
+    leaf_shared_realized: usize,
+    compound_shared_realized: usize,
     incumbent_compile_r0: usize,
     incumbent_diverged: usize,
-    incumbent_refused: usize,
-    incumbent_unrealized: usize,
+    incumbent_refused_or_infeasible: usize,
+}
+
+impl RegimeCorpus {
+    fn retain_candidates(&self) -> usize {
+        self.leaf_candidates + self.compound_candidates
+    }
+
+    fn scheduled(&self) -> usize {
+        self.bypass_schedules + self.retain_candidates()
+    }
+
+    fn incumbent_accepted(&self) -> usize {
+        self.bypass_schedules + self.leaf_incumbent_accepted + self.compound_incumbent_accepted
+    }
+
+    fn shared_realized_retains(&self) -> usize {
+        self.leaf_shared_realized + self.compound_shared_realized
+    }
 }
 
 // ── plan builders (all built FROM the frozen snapshot, never hand-derived) ─────
@@ -104,18 +123,6 @@ fn all_bypass_plan(frozen: &FrozenDemand) -> BwdOccurrencePlan {
         epoch: frozen.epoch,
         entries_fnv: plan_entries_fnv(&entries),
         stream_reductions: frozen.stream_reductions,
-        entries,
-    }
-}
-
-/// `base` with the entry at `pos` flipped to `Retain` (and `entries_fnv` re-hashed).
-fn with_retain_at(base: &BwdOccurrencePlan, pos: usize) -> BwdOccurrencePlan {
-    let mut entries = base.entries.clone();
-    entries[pos].action = PlanAction::Retain;
-    BwdOccurrencePlan {
-        epoch: base.epoch,
-        entries_fnv: plan_entries_fnv(&entries),
-        stream_reductions: base.stream_reductions,
         entries,
     }
 }
@@ -266,122 +273,255 @@ fn assert_clean_certified_and_valued(
     assert_bwd_value_parity(c, d, layer);
 }
 
-/// Whether `v` is a fragment-atom LEAF (`Source` expr or a resolution atom) — the arm-2
-/// (source-admit) path of `lower_bwd_top_atom`. Retaining a leaf suppresses no descendant
-/// cone, so the actual serve stream stays identical to the all-`Bypass` plan and the
-/// fail-closed matcher cannot EOF-diverge (a compound retention would need the
-/// `compound_batch_plan` suppressed-stream machinery, out of scope here).
+/// Whether `v` is a fragment-atom leaf (`Source` expr or a resolution atom).
 fn is_leaf(d: &DistilledLayer, v: ExprId) -> bool {
     d.layer.resolutions.contains_key(&v) || matches!(d.layer.exprs[v.0 as usize], Expr::Source(_))
 }
 
-/// Deterministic `Retain` candidates over `base`'s entries: for each DOMAIN LEAF value with
-/// ≥ 2 occurrences, its smallest-gap consecutive occurrence pair, returned as `(pos)` of the
-/// earlier (producer) occurrence — ordered smallest-gap first, then by value, then position.
-fn retain_candidates(d: &DistilledLayer, base: &BwdOccurrencePlan) -> Vec<(ExprId, usize)> {
+/// Every eligible single-`Retain` opening, ordered deterministically. The finite
+/// corpus applies its bound independently to the leaf and compound subsequences.
+fn retain_candidates(d: &DistilledLayer, base: &BwdOccurrencePlan) -> Vec<RetainCandidate> {
     let mut positions: BTreeMap<ExprId, Vec<usize>> = BTreeMap::new();
     for (i, e) in base.entries.iter().enumerate() {
-        if is_leaf(d, e.fp.value) {
-            positions.entry(e.fp.value).or_default().push(i);
-        }
+        positions.entry(e.fp.value).or_default().push(i);
     }
-    // (gap, value, producer-position) for the tightest consecutive pair of each leaf.
-    let mut ranked: Vec<(usize, ExprId, usize)> = Vec::new();
+    let mut ranked = Vec::new();
     for (&v, pos_list) in &positions {
-        if pos_list.len() < 2 {
-            continue;
-        }
-        let (gap, pos) = pos_list
-            .windows(2)
-            .map(|w| (w[1] - w[0], w[0]))
-            .min_by_key(|&(gap, pos)| (gap, pos))
-            .expect("len >= 2 has a window");
-        ranked.push((gap, v, pos));
+        let kind = if is_leaf(d, v) {
+            CandidateKind::Leaf
+        } else {
+            CandidateKind::Compound
+        };
+        ranked.extend(pos_list.windows(2).map(|window| {
+            let opening = window[0];
+            let closing = window[1];
+            (
+                closing - opening,
+                v.0,
+                opening,
+                RetainCandidate {
+                    value: v,
+                    opening,
+                    closing,
+                    kind,
+                },
+            )
+        }));
     }
-    ranked.sort_by_key(|&(gap, v, pos)| (gap, v.0, pos));
-    ranked.into_iter().map(|(_, v, pos)| (v, pos)).collect()
+    ranked.sort_by_key(|&(gap, value, opening, _)| (gap, value, opening));
+    ranked
+        .into_iter()
+        .map(|(_, _, _, candidate)| candidate)
+        .collect()
 }
 
-/// Trial `Retain` candidates (bounded, smallest-gap first) until one compiles cleanly AND
-/// realizes the retention (admitted + a resident serve, never refused). On success returns
-/// the retained value + producer position, having asserted the three properties on the
-/// Retain-carrying program. `None` iff no candidate in the bound was clean+realized.
-///
-/// A candidate whose planned compile returns `Err` is NOT clean — per the brief's step 4
-/// ("trial candidates until one compiles cleanly") it is skipped and counted (`errs`). This
-/// matters only in R0, where the fragment plan-mode admission of a Base-width leaf currently
-/// hits a placement `ExtCellMisaligned` on some candidates (a real fragment-R0 finding,
-/// reported); the Ext regime — where the two pins live and all leaf admissions compile —
-/// never errors here.
+/// Per-serve exclusive subtree ends over the frozen domain stream. A compound
+/// hit at `closing` removes exactly `(closing + 1)..end[closing]`; leaf ranges
+/// are empty. This is the same consumer-stack rule used by the incumbent's
+/// compound plan construction, specialized here to one chosen gap.
+fn subtree_ends(base: &BwdOccurrencePlan) -> Vec<usize> {
+    let mut end = vec![base.entries.len(); base.entries.len()];
+    let mut stack = Vec::<(ExprId, usize)>::new();
+    for (index, entry) in base.entries.iter().enumerate() {
+        while let Some(&(value, opening)) = stack.last() {
+            if Some(value) == entry.fp.consumer {
+                break;
+            }
+            end[opening] = index;
+            stack.pop();
+        }
+        stack.push((entry.fp.value, index));
+    }
+    for (_, opening) in stack {
+        end[opening] = base.entries.len();
+    }
+    end
+}
+
+fn single_retain_plan(base: &BwdOccurrencePlan, candidate: RetainCandidate) -> BwdOccurrencePlan {
+    assert_eq!(base.entries[candidate.opening].fp.value, candidate.value);
+    assert_eq!(base.entries[candidate.closing].fp.value, candidate.value);
+    let end = subtree_ends(base);
+    let suppressed = (candidate.closing + 1)..end[candidate.closing];
+    let entries = base
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !suppressed.contains(index))
+        .map(|(index, entry)| PlanEntry {
+            fp: entry.fp,
+            action: if index == candidate.opening {
+                PlanAction::Retain
+            } else {
+                PlanAction::Bypass
+            },
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|entry| entry.action == PlanAction::Retain)
+            .count(),
+        1
+    );
+    BwdOccurrencePlan {
+        epoch: base.epoch,
+        entries_fnv: plan_entries_fnv(&entries),
+        stream_reductions: base.stream_reductions,
+        entries,
+    }
+}
+
+/// Exercise every incumbent-accepted plan in the pinned candidate set. The
+/// first accepted candidate is retained only for the two historical
+/// non-vacuity pins; it never terminates iteration.
 #[allow(clippy::too_many_arguments)]
-fn try_retain(
+fn exercise_retain_corpus(
     ctx: &str,
     d: &DistilledLayer,
     layer: &cs::gkr_compiler::dag_ir::DagLayer,
     order: &[usize],
     base: &BwdOccurrencePlan,
     certify_exact: bool,
-    trials: &mut usize,
-    rejected: &mut RetainRejections,
+    corpus: &mut RegimeCorpus,
 ) -> Option<(ExprId, usize)> {
-    for (v, pos) in retain_candidates(d, base).into_iter().take(MAX_TRIALS) {
-        *trials += 1;
-        let plan = with_retain_at(base, pos);
-        let (c, t) = match compile_distilled_fragments_planned(d, BUDGET, &plan, Some(order)) {
-            Ok(ct) => ct,
-            Err(_) => {
-                assert_eq!(
-                    d.regime,
-                    BwdRegime::R0,
-                    "only the known R0 placement class may reject an incumbent Retain trial"
-                );
-                rejected.incumbent_compile_r0 += 1;
-                continue; // did not compile cleanly — try the next candidate
+    let candidates = retain_candidates(d, base);
+    let mut first_accepted = None;
+    for kind in [CandidateKind::Leaf, CandidateKind::Compound] {
+        let selected = candidates
+            .iter()
+            .copied()
+            .filter(|candidate| candidate.kind == kind)
+            .take(MAX_TRIALS)
+            .collect::<Vec<_>>();
+        match kind {
+            CandidateKind::Leaf => {
+                corpus.leaf_candidates += selected.len();
+                corpus.leaf_instances += usize::from(!selected.is_empty());
             }
-        };
+            CandidateKind::Compound => {
+                corpus.compound_candidates += selected.len();
+                corpus.compound_instances += usize::from(!selected.is_empty());
+            }
+        }
+        for candidate in selected {
+            let v = candidate.value;
+            let plan = single_retain_plan(base, candidate);
+            if kind == CandidateKind::Compound && plan.entries.len() < base.entries.len() {
+                corpus.compound_suppressed += 1;
+            }
+            let (c, t) = match compile_distilled_fragments_planned(d, BUDGET, &plan, Some(order)) {
+                Ok(ct) => ct,
+                Err(CompileError::ExtCellMisaligned(_)) => {
+                    assert_eq!(
+                        d.regime,
+                        BwdRegime::R0,
+                        "only R0 may retain the known ExtCellMisaligned classification"
+                    );
+                    corpus.incumbent_compile_r0 += 1;
+                    continue;
+                }
+                Err(error) => panic!("[{ctx}] unexpected incumbent candidate rejection: {error:?}"),
+            };
 
-        // Realized? An admitted value served from residency, with no refusal — the
-        // plan-mode resident-hit + source-admit arms genuinely fired for `v`.
-        if diverged(&t) {
-            rejected.incumbent_diverged += 1;
-            continue;
-        }
-        if refused(&t, v) {
-            rejected.incumbent_refused += 1;
-            continue;
-        }
-        if !admitted(&t, v) || !served_resident(&t, v) {
-            rejected.incumbent_unrealized += 1;
-            continue;
-        }
+            if diverged(&t) {
+                corpus.incumbent_diverged += 1;
+                continue;
+            }
+            if refused(&t, v) {
+                corpus.incumbent_refused_or_infeasible += 1;
+                continue;
+            }
+            if !admitted(&t, v) || !served_resident(&t, v) {
+                corpus.incumbent_refused_or_infeasible += 1;
+                continue;
+            }
 
-        assert_clean_certified_and_valued(
-            &format!("{ctx} Retain {v:?}"),
-            &c,
-            &t,
-            d,
-            layer,
-            certify_exact,
-        );
-        let new = compile_backward_fragments_replayed(d, &plan, Some(order), 4)
-            .unwrap_or_else(|error| panic!("[{ctx}] shared Retain replay {v:?}: {error:?}"));
-        assert_shared_replay(&format!("{ctx} Retain {v:?}"), &c, &new, d, layer);
-        assert_retains_realized(&format!("{ctx} Retain {v:?}"), &plan, &new.trace);
-        return Some((v, pos));
+            match kind {
+                CandidateKind::Leaf => corpus.leaf_incumbent_accepted += 1,
+                CandidateKind::Compound => corpus.compound_incumbent_accepted += 1,
+            }
+
+            assert_clean_certified_and_valued(
+                &format!("{ctx} {kind:?} Retain {v:?} @{}", candidate.opening),
+                &c,
+                &t,
+                d,
+                layer,
+                certify_exact,
+            );
+            let new = compile_backward_fragments_replayed(d, &plan, Some(order), 4).unwrap_or_else(
+                |error| {
+                    panic!(
+                        "[{ctx}] shared rejected incumbent-accepted {kind:?} Retain {v:?} \
+                     @{}: {error:?}",
+                        candidate.opening
+                    )
+                },
+            );
+            let candidate_ctx = format!("{ctx} {kind:?} Retain {v:?} @{}", candidate.opening);
+            assert_shared_replay(&candidate_ctx, &c, &new, d, layer);
+            assert_retains_realized(&candidate_ctx, &plan, &new.trace);
+            match kind {
+                CandidateKind::Leaf => corpus.leaf_shared_realized += 1,
+                CandidateKind::Compound => corpus.compound_shared_realized += 1,
+            }
+            first_accepted.get_or_insert((v, candidate.opening));
+        }
     }
-    None
+    first_accepted
 }
 
 // ── the gate ────────────────────────────────────────────────────────────────
 
 #[test]
+fn retained_leaf_mixed_eliminated_product_fits_b16() {
+    let (_, layer, cross) = layers_with_bwd_roots(INITS)
+        .find(|(layer_index, _, _)| *layer_index == 0)
+        .expect("the pinned fixture has backward layer 0");
+    let d = distill(&layer, BwdRegime::Ext, &cross, None);
+    let stable_domain = stable_distilled_site_domain(&d);
+    let order = construct_fragment_order(&layer, &d, &stable_domain);
+    let frozen = coordinate_correct_frozen_with_backend(
+        &d,
+        BUDGET,
+        &FragmentBackend {
+            order: order.clone(),
+        },
+    )
+    .unwrap();
+    let bypass = all_bypass_plan(&frozen);
+    let candidate = RetainCandidate {
+        value: ExprId(5),
+        opening: 2,
+        closing: 3,
+        kind: CandidateKind::Leaf,
+    };
+    let plan = single_retain_plan(&bypass, candidate);
+    let ctx = "inits L0 Ext mixed eliminated product";
+
+    let (old, old_trace) =
+        compile_distilled_fragments_planned(&d, BUDGET, &plan, Some(&order)).unwrap();
+    assert_clean_certified_and_valued(ctx, &old, &old_trace, &d, &layer, true);
+    assert!(admitted(&old_trace, candidate.value));
+    assert!(served_resident(&old_trace, candidate.value));
+
+    let new = compile_backward_fragments_replayed(&d, &plan, Some(&order), 4)
+        .unwrap_or_else(|error| panic!("[{ctx}] shared replay: {error:?}"));
+    assert_shared_replay(ctx, &old, &new, &d, &layer);
+    assert_retains_realized(ctx, &plan, &new.trace);
+    assert!(
+        new.symbolic.plan.stats.peak_live_lanes <= BUDGET,
+        "[{ctx}] mixed product lowering exceeded b16: {}",
+        new.symbolic.plan.stats.peak_live_lanes
+    );
+}
+
+#[test]
 fn fragment_planned_replay_and_retention_gate() {
     let mut instances = 0usize; // (fixture, layer, regime) instances exercised
-    let mut clean_retains = 0usize; // instances with a clean+realized Retain
-    let mut retain_trials = 0usize; // total Retain compiles attempted
-    let mut retain_rejections = RetainRejections::default();
-    let mut with_candidates = 0usize; // instances that had ≥1 leaf retain candidate
-    let mut ext_clean_retains = 0usize; // Ext-regime clean+realized retains
+    let mut r0_corpus = RegimeCorpus::default();
+    let mut ext_corpus = RegimeCorpus::default();
 
     // Pin bookkeeping: (reached, retained) for bigint / blake2_ext L0 Ext.
     let mut bigint_pin = (false, false);
@@ -396,6 +536,10 @@ fn fragment_planned_replay_and_retention_gate() {
                 }
                 let ctx = format!("{name} L{li} {regime:?}");
                 let certify_exact = regime == BwdRegime::Ext; // certify is Ext-only (module doc)
+                let corpus = match regime {
+                    BwdRegime::R0 => &mut r0_corpus,
+                    BwdRegime::Ext => &mut ext_corpus,
+                };
                 let is_bigint_l0_ext = name == BIGINT && li == 0 && regime == BwdRegime::Ext;
                 let is_blake2_l0_ext = name == BLAKE2_EXT && li == 0 && regime == BwdRegime::Ext;
                 if is_bigint_l0_ext {
@@ -435,26 +579,20 @@ fn fragment_planned_replay_and_retention_gate() {
                 let new0 = compile_backward_fragments_replayed(&d, &bypass_plan, Some(&order), 4)
                     .unwrap_or_else(|error| panic!("[{ctx}] shared all-Bypass replay: {error:?}"));
                 assert_shared_replay(&format!("{ctx} all-Bypass"), &c0, &new0, &d, &layer);
+                corpus.bypass_schedules += 1;
 
-                // 4. Retain non-vacuity.
-                if !retain_candidates(&d, &bypass_plan).is_empty() {
-                    with_candidates += 1;
-                }
-                let retained = try_retain(
+                // 4. Every incumbent-accepted plan in the finite pinned
+                // leaf+compound candidate corpus must replay through the shared path.
+                let first_retained = exercise_retain_corpus(
                     &ctx,
                     &d,
                     &layer,
                     &order,
                     &bypass_plan,
                     certify_exact,
-                    &mut retain_trials,
-                    &mut retain_rejections,
+                    corpus,
                 );
-                if let Some((v, pos)) = retained {
-                    clean_retains += 1;
-                    if regime == BwdRegime::Ext {
-                        ext_clean_retains += 1;
-                    }
+                if let Some((v, pos)) = first_retained {
                     if is_bigint_l0_ext {
                         bigint_pin.1 = true;
                         eprintln!("PIN bigint L0 Ext: retained {v:?} @entry {pos}");
@@ -470,31 +608,100 @@ fn fragment_planned_replay_and_retention_gate() {
         }
     }
 
+    for (regime, corpus) in [("R0", &r0_corpus), ("Ext", &ext_corpus)] {
+        println!(
+            "fragment replay corpus {regime}: scheduled={} bypass={} retain_candidates={} \
+             incumbent_accepted={} shared_realized_retains={} compile_rejected={} \
+             diverged={} refused/infeasible={}; leaf instances={} candidates={} \
+             accepted={} realized={}; compound instances={} candidates={} suppressing={} \
+             accepted={} realized={}",
+            corpus.scheduled(),
+            corpus.bypass_schedules,
+            corpus.retain_candidates(),
+            corpus.incumbent_accepted(),
+            corpus.shared_realized_retains(),
+            corpus.incumbent_compile_r0,
+            corpus.incumbent_diverged,
+            corpus.incumbent_refused_or_infeasible,
+            corpus.leaf_instances,
+            corpus.leaf_candidates,
+            corpus.leaf_incumbent_accepted,
+            corpus.leaf_shared_realized,
+            corpus.compound_instances,
+            corpus.compound_candidates,
+            corpus.compound_suppressed,
+            corpus.compound_incumbent_accepted,
+            corpus.compound_shared_realized,
+        );
+    }
     println!(
-        "fragment_planned_replay_and_retention_gate: {instances} layer instances \
-         (all-Bypass planned: no-diverge + Ext-exact-cert + oracle-parity); \
-         {with_candidates} had leaf retain candidates; {clean_retains} realized a clean \
-         Retain ({ext_clean_retains} in Ext) over {retain_trials} trials; rejected: \
-         r0-incumbent-compile={} incumbent-diverged={} \
-         incumbent-refused={} incumbent-unrealized={}",
-        retain_rejections.incumbent_compile_r0,
-        retain_rejections.incumbent_diverged,
-        retain_rejections.incumbent_refused,
-        retain_rejections.incumbent_unrealized,
+        "fragment replay corpus total: instances={instances} scheduled={} \
+         retain_candidates={} incumbent_accepted={} shared_realized_retains={} \
+         compile_rejected={}",
+        r0_corpus.scheduled() + ext_corpus.scheduled(),
+        r0_corpus.retain_candidates() + ext_corpus.retain_candidates(),
+        r0_corpus.incumbent_accepted() + ext_corpus.incumbent_accepted(),
+        r0_corpus.shared_realized_retains() + ext_corpus.shared_realized_retains(),
+        r0_corpus.incumbent_compile_r0 + ext_corpus.incumbent_compile_r0,
     );
     println!(
         "pins — bigint L0 Ext: reached={} retained={}; blake2_ext L0 Ext: reached={} retained={}",
         bigint_pin.0, bigint_pin.1, blake2_pin.0, blake2_pin.1
     );
 
-    assert!(
-        instances > 0,
-        "no layer instances exercised — enumeration broke"
+    assert_eq!(instances, 114, "the pinned layer/regime census changed");
+    assert_eq!(
+        r0_corpus,
+        RegimeCorpus {
+            bypass_schedules: 57,
+            leaf_instances: 53,
+            compound_instances: 24,
+            leaf_candidates: 347,
+            compound_candidates: 65,
+            compound_suppressed: 15,
+            leaf_incumbent_accepted: 282,
+            compound_incumbent_accepted: 65,
+            leaf_shared_realized: 282,
+            compound_shared_realized: 65,
+            incumbent_compile_r0: 65,
+            incumbent_diverged: 0,
+            incumbent_refused_or_infeasible: 0,
+        },
+        "the pinned R0 replay corpus changed"
     );
-    assert!(
-        ext_clean_retains > 0,
-        "no Ext layer realized a clean Retain anywhere — the plan-mode resident-hit / \
-         source-admit arms were never exercised (fragment retention is vacuous)"
+    assert_eq!(
+        ext_corpus,
+        RegimeCorpus {
+            bypass_schedules: 57,
+            leaf_instances: 54,
+            compound_instances: 24,
+            leaf_candidates: 355,
+            compound_candidates: 65,
+            compound_suppressed: 15,
+            leaf_incumbent_accepted: 355,
+            compound_incumbent_accepted: 65,
+            leaf_shared_realized: 355,
+            compound_shared_realized: 65,
+            incumbent_compile_r0: 0,
+            incumbent_diverged: 0,
+            incumbent_refused_or_infeasible: 0,
+        },
+        "the pinned Ext replay corpus changed"
+    );
+    assert_eq!(
+        r0_corpus.retain_candidates() + ext_corpus.retain_candidates(),
+        EXPECTED_RETAIN_CANDIDATES,
+        "the finite Retain candidate corpus silently changed"
+    );
+    assert_eq!(
+        r0_corpus.scheduled() + ext_corpus.scheduled(),
+        946,
+        "the all-Bypass plus bounded Retain schedule corpus silently changed"
+    );
+    assert_eq!(
+        r0_corpus.incumbent_accepted() + ext_corpus.incumbent_accepted(),
+        881,
+        "the incumbent-accepted schedule corpus silently changed"
     );
 
     // The unconditional pins: silent skip-all is the failure this gate exists to catch.

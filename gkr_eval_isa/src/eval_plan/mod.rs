@@ -533,6 +533,7 @@ fn elaborate_internal(
         live_temps: HashMap::new(),
         live_lanes: 0,
         residents: BTreeMap::new(),
+        replay_logically_retired: BTreeSet::new(),
         pinned: BTreeSet::new(),
         resident_lanes: 0,
         budget_lanes,
@@ -666,6 +667,7 @@ fn elaborate_backward_fragments_with_policy(
         live_temps: HashMap::new(),
         live_lanes: 0,
         residents: BTreeMap::new(),
+        replay_logically_retired: BTreeSet::new(),
         pinned: BTreeSet::new(),
         resident_lanes: 0,
         budget_lanes,
@@ -840,6 +842,48 @@ struct PreparedOperand {
     scope: PreferenceMap,
 }
 
+enum FmaOperandPreparation {
+    Ready(PreparedOperand),
+    NeedsEvaluation {
+        expr: ExprId,
+        value: ValueRef,
+        scope: PreferenceMap,
+    },
+}
+
+enum BinaryFmaPreparation {
+    Ready {
+        first: PreparedOperand,
+        second: PreparedOperand,
+    },
+    NeedsEvaluation {
+        first: PreparedOperand,
+        expr: ExprId,
+        value: ValueRef,
+        scope: PreferenceMap,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReplayResidentState {
+    Absent,
+    Visible,
+    RetiredPinned,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct BackwardDemandOutcome {
+    action: Option<PlanAction>,
+    was_visible: bool,
+    retire_after_select: bool,
+}
+
+impl BackwardDemandOutcome {
+    fn needs_fresh_admission(self) -> bool {
+        self.action == Some(PlanAction::Retain) && !self.was_visible
+    }
+}
+
 #[derive(Clone)]
 struct ResidentEntry {
     value: ValueRef,
@@ -892,8 +936,11 @@ struct BackwardDemandState {
 
 pub(super) struct BackwardReplay {
     run: PlanRun,
-    /// Values named by the incumbent occurrence stream. Shared-only demands
-    /// remain ordinary Bypass demands and do not become cross-engine divergence.
+    /// Independent static eligibility from `distilled_site_domain`, never
+    /// derived from supplied plan entries. Every actual eligible serve is
+    /// dispatched through `PlanRun`, so deleting a value or the entire entry
+    /// stream is detected; structurally eliminated boundaries simply never
+    /// become actual serves.
     domain: BTreeSet<ExprId>,
 }
 
@@ -920,6 +967,10 @@ struct Elaborator<'a, 'oracle> {
     live_temps: HashMap<TempId, usize>,
     live_lanes: usize,
     residents: BTreeMap<ValueFingerprint, ResidentEntry>,
+    /// Replay hits selected by a closing Bypass remain physically resident
+    /// while a pending instruction pins their cell, but are no longer
+    /// available to later logical demands.
+    replay_logically_retired: BTreeSet<ValueFingerprint>,
     pinned: BTreeSet<ValueFingerprint>,
     resident_lanes: usize,
     budget_lanes: usize,
@@ -1036,9 +1087,9 @@ impl Elaborator<'_, '_> {
         self.eval_entered_expr(expr, root, path, &scope)
     }
 
-    fn record_backward_demand(&mut self, expr: ExprId) -> Result<(), PlanError> {
+    fn record_backward_demand(&mut self, expr: ExprId) -> Result<BackwardDemandOutcome, PlanError> {
         let Some(state) = &self.backward_demand else {
-            return Ok(());
+            return Ok(BackwardDemandOutcome::default());
         };
         let fp = BwdFingerprint {
             term: state.schedule_pos,
@@ -1047,14 +1098,14 @@ impl Elaborator<'_, '_> {
             consumer: state.consumer_stack.last().copied(),
         };
         let fingerprint = self.fingerprint(expr);
-        let resident = self.residents.contains_key(&fingerprint);
+        let was_visible = self.replay_resident_state(fingerprint) == ReplayResidentState::Visible;
         self.backward_demand
             .as_mut()
             .expect("checked Some above")
             .events
             .push(BwdEvent::Serve {
                 fp,
-                from: if resident {
+                from: if was_visible {
                     BwdServedFrom::Resident
                 } else {
                     BwdServedFrom::Recomputed
@@ -1062,10 +1113,16 @@ impl Elaborator<'_, '_> {
             });
 
         let ElaborationCachePolicy::BackwardReplay(replay) = &mut self.cache_policy else {
-            return Ok(());
+            return Ok(BackwardDemandOutcome {
+                was_visible,
+                ..BackwardDemandOutcome::default()
+            });
         };
         if !replay.domain.contains(&expr) {
-            return Ok(());
+            return Ok(BackwardDemandOutcome {
+                was_visible,
+                ..BackwardDemandOutcome::default()
+            });
         }
         let action = replay.run.on_serve(&fp);
         if let Some(at_entry) = replay.run.diverged() {
@@ -1076,7 +1133,7 @@ impl Elaborator<'_, '_> {
                 .push(BwdEvent::Diverge { at_entry });
             return Err(PlanError::ReplayDiverged { at_entry });
         }
-        if action == PlanAction::Retain && resident {
+        if action == PlanAction::Retain && was_visible {
             let closes_at = replay
                 .run
                 .retention(expr)
@@ -1085,7 +1142,18 @@ impl Elaborator<'_, '_> {
                 entry.retain_for(expr, closes_at);
             }
         }
-        Ok(())
+        let retire_after_select = action == PlanAction::Bypass
+            && was_visible
+            && self
+                .residents
+                .get(&fingerprint)
+                .and_then(|entry| entry.replay_closes_at(&replay.run))
+                .is_none();
+        Ok(BackwardDemandOutcome {
+            action: Some(action),
+            was_visible,
+            retire_after_select,
+        })
     }
 
     fn source_operand(&mut self, value: ValueRef) -> Operand {
@@ -1133,7 +1201,7 @@ impl Elaborator<'_, '_> {
         path: &[PathStep],
         inherited: &PreferenceMap,
     ) -> Result<(SiteId, PreferenceMap), PlanError> {
-        let hit = self.residents.contains_key(&self.fingerprint(expr));
+        let hit = self.is_logically_resident(self.fingerprint(expr));
         let (site, scope) = self.enter_site(expr, root, path, inherited)?;
         if !hit {
             let staging = match &mut self.cache_policy {
@@ -1206,7 +1274,7 @@ impl Elaborator<'_, '_> {
             let suffix = &staged.path[boundary.path.len()..];
             if suffix[..suffix.len() - 1]
                 .iter()
-                .any(|step| self.residents.contains_key(&step.child))
+                .any(|step| self.is_logically_resident(step.child))
             {
                 // The natural walk will hit this resident ancestor and prune
                 // the requested site's cone, so computing the descendant now
@@ -1227,7 +1295,7 @@ impl Elaborator<'_, '_> {
                     staged: Box::new(staged),
                 });
             }
-            if self.residents.contains_key(&staged.value) {
+            if self.is_logically_resident(staged.value) {
                 continue;
             }
             let (actual, scope) = self.enter_and_stage(expr, root, &staged.path, inherited)?;
@@ -1278,7 +1346,7 @@ impl Elaborator<'_, '_> {
         scope: &PreferenceMap,
     ) -> Result<FieldKind, PlanError> {
         let value = self.value_ref(expr);
-        if self.residents.contains_key(&value.fingerprint) {
+        if self.is_logically_resident(value.fingerprint) {
             if self.pending_sinks.contains_key(&expr) {
                 return Err(PlanError::ResidentWithPendingSinks(expr));
             }
@@ -1491,7 +1559,7 @@ impl Elaborator<'_, '_> {
         if let Some((sign, child)) = self.direct_single_product(product) {
             let child_path = extended(path, child.step);
             let prepared =
-                self.prepare_fma_operand(child.expr, root, &child_path, &product_scope)?;
+                self.prepare_ready_fma_operand(child.expr, root, &child_path, &product_scope)?;
             self.emit(EvalOp::AccInit(prepared.operand))?;
             if sign == Sign::Minus {
                 self.emit(EvalOp::AccNeg)?;
@@ -1520,30 +1588,54 @@ impl Elaborator<'_, '_> {
             .iter()
             .all(|child| self.is_direct(child.expr))
         {
-            let mut children = product_children.into_iter();
-            let first = children
-                .next()
-                .expect("an eliminated product has an operand");
-            let first_path = extended(path, first.step);
-            let mut product_field =
-                self.eval_expr(first.expr, root, &first_path, &product_scope)?;
-            for child in children {
-                let child_path = extended(path, child.step);
-                if self.is_direct(child.expr) {
-                    self.fold_direct(
-                        child.expr,
-                        ReductionOp::Mul,
-                        root,
-                        &child_path,
-                        &product_scope,
-                    )?;
-                } else {
-                    let saved = self.save_acc(product_field)?;
-                    self.eval_expr(child.expr, root, &child_path, &product_scope)?;
-                    self.emit(EvalOp::AccMul(Operand::Temp(saved)))?;
+            let direct_first = product_children.len() == 2
+                && self.is_direct(product_children[0].expr)
+                && !self.is_direct(product_children[1].expr);
+            let product_field = if direct_first {
+                // Preserve the incumbent serve order without seeding ACC from
+                // the direct factor and stashing it while the compound cone is
+                // evaluated. Preparing a source emits no instruction; the
+                // compound can therefore use ACC directly before multiplying
+                // by the deferred operand.
+                let first = &product_children[0];
+                let first_path = extended(path, first.step);
+                let prepared =
+                    self.prepare_ready_fma_operand(first.expr, root, &first_path, &product_scope)?;
+                let second = &product_children[1];
+                let second_path = extended(path, second.step);
+                let second_field =
+                    self.eval_expr(second.expr, root, &second_path, &product_scope)?;
+                self.emit(EvalOp::AccMul(prepared.operand))?;
+                self.pinned.remove(&prepared.value.fingerprint);
+                self.realize_exit(&prepared.scope, None)?;
+                join(prepared.value.field, second_field)
+            } else {
+                let mut children = product_children.into_iter();
+                let first = children
+                    .next()
+                    .expect("an eliminated product has an operand");
+                let first_path = extended(path, first.step);
+                let mut product_field =
+                    self.eval_expr(first.expr, root, &first_path, &product_scope)?;
+                for child in children {
+                    let child_path = extended(path, child.step);
+                    if self.is_direct(child.expr) {
+                        self.fold_direct(
+                            child.expr,
+                            ReductionOp::Mul,
+                            root,
+                            &child_path,
+                            &product_scope,
+                        )?;
+                    } else {
+                        let saved = self.save_acc(product_field)?;
+                        self.eval_expr(child.expr, root, &child_path, &product_scope)?;
+                        self.emit(EvalOp::AccMul(Operand::Temp(saved)))?;
+                    }
+                    product_field = join(product_field, self.field(child.expr));
                 }
-                product_field = join(product_field, self.field(child.expr));
-            }
+                product_field
+            };
             if product_unit_sign(self.layer, product) {
                 self.emit(EvalOp::AccNeg)?;
             }
@@ -1561,18 +1653,24 @@ impl Elaborator<'_, '_> {
         }
 
         debug_assert_eq!(product_children.len(), 2);
-        let mut prepared = Vec::with_capacity(2);
-        for child in product_children {
-            let child_path = extended(path, child.step);
-            prepared.push(self.prepare_fma_operand(
-                child.expr,
-                root,
-                &child_path,
-                &product_scope,
-            )?);
+        let second_path = extended(path, product_children[1].step);
+        match self.prepare_binary_fma_operands(&product_children, root, path, &product_scope)? {
+            BinaryFmaPreparation::Ready { first, second } => {
+                self.emit(EvalOp::AccInit(first.operand))?;
+                self.emit(EvalOp::AccMul(second.operand))?;
+                self.release_prepared_operand(first)?;
+                self.release_prepared_operand(second)?;
+            }
+            BinaryFmaPreparation::NeedsEvaluation {
+                first,
+                expr,
+                value,
+                scope,
+            } => {
+                self.release_retired_fma_operand(first)?;
+                self.eval_and_square_entered_operand(expr, value, root, &second_path, &scope)?;
+            }
         }
-        self.emit(EvalOp::AccInit(prepared[0].operand))?;
-        self.emit(EvalOp::AccMul(prepared[1].operand))?;
         if product_unit_sign(self.layer, product) {
             self.emit(EvalOp::AccNeg)?;
         }
@@ -1581,12 +1679,6 @@ impl Elaborator<'_, '_> {
             .entry(product)
             .or_default()
             .fma_fusions += 1;
-        for operand in &prepared {
-            self.pinned.remove(&operand.value.fingerprint);
-        }
-        for operand in prepared {
-            self.realize_exit(&operand.scope, None)?;
-        }
         self.realize_exit(&product_scope, None)?;
         Ok(self.field(product))
     }
@@ -1621,7 +1713,7 @@ impl Elaborator<'_, '_> {
         // follow, and uncached ready products come last to expose FMA.
         children.sort_by_key(|child| {
             let fingerprint = child.step.child;
-            let resident = self.residents.contains_key(&fingerprint);
+            let resident = self.is_logically_resident(fingerprint);
             let desired = scope.contains_key(&fingerprint);
             let pressure_class = match (resident, desired) {
                 (true, false) => 0u8,
@@ -1712,7 +1804,7 @@ impl Elaborator<'_, '_> {
             let child_path = extended(path, child.step);
             let binary_product = operation == ReductionOp::Add
                 && self.effective_product_arity(child.expr) == Some(2);
-            if self.residents.contains_key(&child.step.child) {
+            if self.is_logically_resident(child.step.child) {
                 if binary_product {
                     self.plan
                         .attribution
@@ -1881,7 +1973,7 @@ impl Elaborator<'_, '_> {
             self.enter_and_stage(expr, root, path, inherited)?.1
         };
         let value = self.value_ref(expr);
-        let was_resident = self.residents.contains_key(&value.fingerprint);
+        let was_resident = self.is_logically_resident(value.fingerprint);
         if was_resident && self.pending_sinks.contains_key(&expr) {
             return Err(PlanError::ResidentWithPendingSinks(expr));
         }
@@ -1894,7 +1986,7 @@ impl Elaborator<'_, '_> {
             // DstFromSrc would be a second DRAM read not represented by the plan.
             self.realize_exit(&scope, Some((value, CacheStoreFrom::Source)))?;
         }
-        let operand = if self.residents.contains_key(&value.fingerprint) {
+        let operand = if self.is_logically_resident(value.fingerprint) {
             if was_resident {
                 self.plan.stats.cache_hits += 1;
             }
@@ -2007,7 +2099,8 @@ impl Elaborator<'_, '_> {
         if preserve_product_consumer {
             self.push_backward_consumer(product);
         }
-        let prepared = self.prepare_fma_operand(child.expr, root, &child_path, &product_scope)?;
+        let prepared =
+            self.prepare_ready_fma_operand(child.expr, root, &child_path, &product_scope)?;
         if preserve_product_consumer {
             self.pop_backward_consumer(product);
         }
@@ -2063,7 +2156,7 @@ impl Elaborator<'_, '_> {
             ReductionOp::Mul,
         );
         debug_assert_eq!(product_children.len(), 2);
-        let mut prepared = Vec::with_capacity(2);
+        let second_path = extended(path, product_children[1].step);
         let preserve_product_consumer = !matches!(
             &self.cache_policy,
             ElaborationCachePolicy::BackwardReplay(_)
@@ -2071,40 +2164,46 @@ impl Elaborator<'_, '_> {
         if preserve_product_consumer {
             self.push_backward_consumer(product);
         }
-        for child in product_children {
-            let child_path = extended(path, child.step);
-            prepared.push(self.prepare_fma_operand(
-                child.expr,
-                root,
-                &child_path,
-                &product_scope,
-            )?);
-        }
+        let prepared =
+            self.prepare_binary_fma_operands(&product_children, root, path, &product_scope)?;
         if preserve_product_consumer {
             self.pop_backward_consumer(product);
         }
 
-        self.emit(EvalOp::AccFma {
-            sign: if product_unit_sign(self.layer, product) {
-                Sign::Minus
-            } else {
-                Sign::Plus
-            },
-            lhs: prepared[0].operand,
-            rhs: prepared[1].operand,
-        })?;
+        let negative = product_unit_sign(self.layer, product);
+        match prepared {
+            BinaryFmaPreparation::Ready { first, second } => {
+                self.emit(EvalOp::AccFma {
+                    sign: if negative { Sign::Minus } else { Sign::Plus },
+                    lhs: first.operand,
+                    rhs: second.operand,
+                })?;
+                self.release_prepared_operand(first)?;
+                self.release_prepared_operand(second)?;
+            }
+            BinaryFmaPreparation::NeedsEvaluation {
+                first,
+                expr,
+                value,
+                scope,
+            } => {
+                self.release_retired_fma_operand(first)?;
+                let saved = self.save_acc(acc_field)?;
+                self.eval_and_square_entered_operand(expr, value, root, &second_path, &scope)?;
+                if negative {
+                    self.emit(EvalOp::AccNeg)?;
+                }
+                self.emit(EvalOp::AccAdd {
+                    sign: Sign::Plus,
+                    operand: Operand::Temp(saved),
+                })?;
+            }
+        }
         self.plan
             .attribution
             .entry(product)
             .or_default()
             .fma_fusions += 1;
-
-        for operand in &prepared {
-            self.pinned.remove(&operand.value.fingerprint);
-        }
-        for operand in prepared {
-            self.realize_exit(&operand.scope, None)?;
-        }
         // The fused product itself never existed independently. Product-level
         // preferences still govern which operand/outer residents survive.
         self.realize_exit(&product_scope, None)
@@ -2116,15 +2215,24 @@ impl Elaborator<'_, '_> {
         root: &RootKey,
         path: &[PathStep],
         inherited: &PreferenceMap,
-    ) -> Result<PreparedOperand, PlanError> {
-        self.record_backward_demand(expr)?;
+    ) -> Result<FmaOperandPreparation, PlanError> {
+        let demand = self.record_backward_demand(expr)?;
         let scope = if let Some(staged) = self.take_staged(expr, root, path) {
             staged.scope
         } else {
             self.enter_and_stage(expr, root, path, inherited)?.1
         };
         let value = self.value_ref(expr);
-        let was_resident = self.residents.contains_key(&value.fingerprint);
+        let was_resident = self.is_logically_resident(value.fingerprint);
+        let needs_evaluation = demand.action.is_some()
+            && !demand.was_visible
+            && (!self.is_source_like(expr)
+                || (demand.needs_fresh_admission()
+                    && self.replay_resident_state(value.fingerprint)
+                        == ReplayResidentState::RetiredPinned));
+        if needs_evaluation {
+            return Ok(FmaOperandPreparation::NeedsEvaluation { expr, value, scope });
+        }
         if was_resident && self.pending_sinks.contains_key(&expr) {
             return Err(PlanError::ResidentWithPendingSinks(expr));
         }
@@ -2134,7 +2242,7 @@ impl Elaborator<'_, '_> {
         if !was_resident && self.is_source_like(expr) && scope.contains_key(&value.fingerprint) {
             self.realize_exit(&scope, Some((value, CacheStoreFrom::Source)))?;
         }
-        let operand = if self.residents.contains_key(&value.fingerprint) {
+        let operand = if self.is_logically_resident(value.fingerprint) {
             if was_resident {
                 self.plan.stats.cache_hits += 1;
             }
@@ -2145,11 +2253,113 @@ impl Elaborator<'_, '_> {
         } else {
             return Err(PlanError::ExpectedSource(expr));
         };
-        Ok(PreparedOperand {
+        if demand.retire_after_select {
+            debug_assert!(was_resident);
+            self.replay_logically_retired.insert(value.fingerprint);
+        }
+        Ok(FmaOperandPreparation::Ready(PreparedOperand {
             operand,
             value,
             scope,
-        })
+        }))
+    }
+
+    fn prepare_ready_fma_operand(
+        &mut self,
+        expr: ExprId,
+        root: &RootKey,
+        path: &[PathStep],
+        inherited: &PreferenceMap,
+    ) -> Result<PreparedOperand, PlanError> {
+        match self.prepare_fma_operand(expr, root, path, inherited)? {
+            FmaOperandPreparation::Ready(prepared) => Ok(prepared),
+            FmaOperandPreparation::NeedsEvaluation { expr, .. } => {
+                Err(PlanError::ExpectedSource(expr))
+            }
+        }
+    }
+
+    fn prepare_binary_fma_operands(
+        &mut self,
+        children: &[ChildOccurrence],
+        root: &RootKey,
+        path: &[PathStep],
+        scope: &PreferenceMap,
+    ) -> Result<BinaryFmaPreparation, PlanError> {
+        debug_assert_eq!(children.len(), 2);
+        let first_child = &children[0];
+        let first_path = extended(path, first_child.step);
+        let first = match self.prepare_fma_operand(first_child.expr, root, &first_path, scope)? {
+            FmaOperandPreparation::Ready(prepared) => prepared,
+            FmaOperandPreparation::NeedsEvaluation { expr, .. } => {
+                return Err(PlanError::ExpectedSource(expr));
+            }
+        };
+
+        let second_child = &children[1];
+        let second_path = extended(path, second_child.step);
+        match self.prepare_fma_operand(second_child.expr, root, &second_path, scope)? {
+            FmaOperandPreparation::Ready(second) => {
+                Ok(BinaryFmaPreparation::Ready { first, second })
+            }
+            FmaOperandPreparation::NeedsEvaluation { expr, value, scope } => {
+                debug_assert!(matches!(
+                    &self.cache_policy,
+                    ElaborationCachePolicy::BackwardReplay(_)
+                ));
+                debug_assert_eq!(first.value.fingerprint, value.fingerprint);
+                debug_assert!(matches!(first.operand, Operand::Resident(_)));
+                debug_assert_eq!(
+                    self.replay_resident_state(first.value.fingerprint),
+                    ReplayResidentState::RetiredPinned
+                );
+                Ok(BinaryFmaPreparation::NeedsEvaluation {
+                    first,
+                    expr,
+                    value,
+                    scope,
+                })
+            }
+        }
+    }
+
+    fn release_prepared_operand(&mut self, prepared: PreparedOperand) -> Result<(), PlanError> {
+        self.pinned.remove(&prepared.value.fingerprint);
+        self.realize_exit(&prepared.scope, None)
+    }
+
+    fn release_retired_fma_operand(&mut self, prepared: PreparedOperand) -> Result<(), PlanError> {
+        debug_assert_eq!(
+            self.replay_resident_state(prepared.value.fingerprint),
+            ReplayResidentState::RetiredPinned
+        );
+        let was_pinned = self.pinned.remove(&prepared.value.fingerprint);
+        debug_assert!(was_pinned);
+        self.realize_exit(&prepared.scope, None)?;
+        debug_assert_eq!(
+            self.replay_resident_state(prepared.value.fingerprint),
+            ReplayResidentState::Absent
+        );
+        Ok(())
+    }
+
+    fn eval_and_square_entered_operand(
+        &mut self,
+        expr: ExprId,
+        value: ValueRef,
+        root: &RootKey,
+        path: &[PathStep],
+        scope: &PreferenceMap,
+    ) -> Result<(), PlanError> {
+        let field = self.eval_entered_expr(expr, root, path, scope)?;
+        debug_assert_eq!(field, value.field);
+        let operand = match self.replay_resident_state(value.fingerprint) {
+            ReplayResidentState::Visible => Operand::Resident(value),
+            ReplayResidentState::Absent => Operand::Temp(self.save_acc(value.field)?),
+            ReplayResidentState::RetiredPinned => return Err(PlanError::ReplayInfeasible),
+        };
+        self.emit(EvalOp::AccMul(operand))?;
+        self.realize_exit(scope, None)
     }
 
     fn materialize(&mut self, expr: ExprId, from: MaterializeFrom) -> Result<(), PlanError> {
@@ -2233,7 +2443,30 @@ impl Elaborator<'_, '_> {
     }
 
     fn is_direct(&self, expr: ExprId) -> bool {
-        self.residents.contains_key(&self.fingerprint(expr)) || self.is_source_like(expr)
+        self.is_logically_resident(self.fingerprint(expr)) || self.is_source_like(expr)
+    }
+
+    fn replay_resident_state(&self, fingerprint: ValueFingerprint) -> ReplayResidentState {
+        let physically_resident = self.residents.contains_key(&fingerprint);
+        let logically_retired = self.replay_logically_retired.contains(&fingerprint);
+        debug_assert!(
+            !logically_retired || physically_resident,
+            "a logically retired replay value must remain physically resident"
+        );
+        debug_assert!(
+            !logically_retired || self.pinned.contains(&fingerprint),
+            "a logically retired replay value must remain pinned"
+        );
+        match (physically_resident, logically_retired) {
+            (false, false) => ReplayResidentState::Absent,
+            (true, false) => ReplayResidentState::Visible,
+            (true, true) => ReplayResidentState::RetiredPinned,
+            (false, true) => unreachable!("checked by the replay retirement invariant"),
+        }
+    }
+
+    fn is_logically_resident(&self, fingerprint: ValueFingerprint) -> bool {
+        self.replay_resident_state(fingerprint) == ReplayResidentState::Visible
     }
 
     fn is_source_like(&self, expr: ExprId) -> bool {
@@ -2274,7 +2507,7 @@ impl Elaborator<'_, '_> {
         inherited: &PreferenceMap,
     ) -> Result<(SiteId, PreferenceMap), PlanError> {
         let site = self.record_site(expr, root, path);
-        let hit = self.residents.contains_key(&site.value);
+        let hit = self.is_logically_resident(site.value);
         let mut scope = if matches!(
             &self.cache_policy,
             ElaborationCachePolicy::BackwardReplay(_)
@@ -2473,9 +2706,16 @@ impl Elaborator<'_, '_> {
         let Some(closes_at) = closes_at else {
             return Ok(());
         };
-        if let Some(entry) = self.residents.get_mut(&value.fingerprint) {
-            entry.retain_for(value.expr, closes_at);
-            return Ok(());
+        match self.replay_resident_state(value.fingerprint) {
+            ReplayResidentState::Visible => {
+                self.residents
+                    .get_mut(&value.fingerprint)
+                    .expect("a visible replay value is physically resident")
+                    .retain_for(value.expr, closes_at);
+                return Ok(());
+            }
+            ReplayResidentState::RetiredPinned => return Err(PlanError::ReplayInfeasible),
+            ReplayResidentState::Absent => {}
         }
 
         let need = field_lanes(value.field);
@@ -2600,6 +2840,7 @@ impl Elaborator<'_, '_> {
         let Some(entry) = self.residents.remove(&fingerprint) else {
             return Ok(());
         };
+        self.replay_logically_retired.remove(&fingerprint);
         self.resident_lanes -= field_lanes(entry.value.field);
         self.emit(EvalOp::CacheDrop(entry.value))?;
         if self.trace_residency {
@@ -4968,6 +5209,376 @@ mod tests {
                 .filter(|op| matches!(op, EvalOp::CacheDrop(value) if value.expr == product))
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn replay_repeated_fma_operand_bypass_hit_is_logically_consumed_once() {
+        let value = ExprId(0);
+        let seed = ExprId(1);
+        let product = ExprId(2);
+        let sum = ExprId(3);
+        let layer = replay_test_layer(
+            vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Mul(vec![value, value]),
+                Expr::Add(vec![seed, product]),
+            ],
+            (0..2)
+                .map(|column| SourceInfo {
+                    kind: SourceKind::Read {
+                        place: ReadPlace::BaseLayerWitness { column },
+                    },
+                })
+                .collect(),
+            sum,
+        );
+        let entries = vec![
+            PlanEntry {
+                fp: replay_test_fp(0, value, None),
+                action: PlanAction::Retain,
+            },
+            PlanEntry {
+                fp: replay_test_fp(1, value, Some(sum)),
+                action: PlanAction::Bypass,
+            },
+            PlanEntry {
+                fp: replay_test_fp(1, value, Some(sum)),
+                action: PlanAction::Bypass,
+            },
+        ];
+
+        let (plan, events) =
+            replay_test_run(&layer, &[value, sum], entries, BTreeSet::from([value]), 8).unwrap();
+
+        assert_eq!(
+            served_from(&events, value),
+            vec![
+                BwdServedFrom::Recomputed,
+                BwdServedFrom::Resident,
+                BwdServedFrom::Recomputed,
+            ],
+            "the closing Bypass hit is unavailable to the sibling FMA operand"
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| {
+                    matches!(event, BwdEvent::TrafficRead { value: read, .. } if *read == value)
+                })
+                .count(),
+            2,
+            "the opening serve and the second product operand each read the source"
+        );
+
+        let fma = plan
+            .ops
+            .iter()
+            .position(|op| matches!(op, EvalOp::AccFma { .. }))
+            .unwrap();
+        let drop = plan
+            .ops
+            .iter()
+            .position(|op| matches!(op, EvalOp::CacheDrop(value_ref) if value_ref.expr == value))
+            .unwrap();
+        assert!(
+            drop > fma,
+            "the physically pinned resident cell cannot be dropped or reused before the FMA"
+        );
+        assert_eq!(
+            plan.ops[..drop]
+                .iter()
+                .filter(|op| matches!(op, EvalOp::CacheStore { .. }))
+                .count(),
+            1,
+            "the pinned resident cell is not reused before its deferred drop"
+        );
+
+        let closing_hit = events
+            .iter()
+            .position(|event| {
+                matches!(
+                    event,
+                    BwdEvent::Serve {
+                        fp,
+                        from: BwdServedFrom::Resident,
+                    } if fp.value == value
+                )
+            })
+            .unwrap();
+        let recomputed_sibling = events
+            .iter()
+            .rposition(|event| {
+                matches!(
+                    event,
+                    BwdEvent::Serve {
+                        fp,
+                        from: BwdServedFrom::Recomputed,
+                    } if fp.value == value
+                )
+            })
+            .unwrap();
+        let eviction = events
+            .iter()
+            .position(
+                |event| matches!(event, BwdEvent::Evict { value: evicted, expired: true } if *evicted == value),
+            )
+            .unwrap();
+        assert!(closing_hit < recomputed_sibling && recomputed_sibling < eviction);
+    }
+
+    #[test]
+    fn replay_equal_fingerprint_fma_alias_bypass_hit_is_logically_consumed_once() {
+        let original = ExprId(0);
+        let alias = ExprId(1);
+        let seed = ExprId(2);
+        let product = ExprId(3);
+        let sum = ExprId(4);
+        let layer = replay_test_layer(
+            vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Mul(vec![original, alias]),
+                Expr::Add(vec![seed, product]),
+            ],
+            (0..2)
+                .map(|column| SourceInfo {
+                    kind: SourceKind::Read {
+                        place: ReadPlace::BaseLayerWitness { column },
+                    },
+                })
+                .collect(),
+            sum,
+        );
+        let fingerprints = structural_fingerprints(&layer).unwrap();
+        assert_eq!(
+            fingerprints[original.0 as usize],
+            fingerprints[alias.0 as usize]
+        );
+        let entries = vec![
+            PlanEntry {
+                fp: replay_test_fp(0, original, None),
+                action: PlanAction::Retain,
+            },
+            PlanEntry {
+                fp: replay_test_fp(1, original, Some(sum)),
+                action: PlanAction::Bypass,
+            },
+            PlanEntry {
+                fp: replay_test_fp(1, alias, Some(sum)),
+                action: PlanAction::Bypass,
+            },
+        ];
+
+        let (plan, events) = replay_test_run(
+            &layer,
+            &[original, sum],
+            entries,
+            BTreeSet::from([original, alias]),
+            8,
+        )
+        .unwrap();
+
+        assert_eq!(
+            served_from(&events, original),
+            vec![BwdServedFrom::Recomputed, BwdServedFrom::Resident]
+        );
+        assert_eq!(
+            served_from(&events, alias),
+            vec![BwdServedFrom::Recomputed],
+            "a structural alias cannot reuse the logically consumed Bypass hit"
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| {
+                    matches!(event, BwdEvent::TrafficRead { value, .. } if *value == alias)
+                })
+                .count(),
+            1
+        );
+        let fma = plan
+            .ops
+            .iter()
+            .position(|op| matches!(op, EvalOp::AccFma { .. }))
+            .unwrap();
+        let drop = plan
+            .ops
+            .iter()
+            .position(|op| matches!(op, EvalOp::CacheDrop(value) if value.expr == original))
+            .unwrap();
+        assert!(drop > fma);
+    }
+
+    #[test]
+    fn replay_fma_bypass_then_alias_retain_requires_fresh_admission() {
+        let original = ExprId(0);
+        let alias = ExprId(1);
+        let product = ExprId(2);
+        let sum = ExprId(3);
+        let layer = replay_test_layer(
+            vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(0)),
+                Expr::Mul(vec![original, alias]),
+                Expr::Add(vec![product]),
+            ],
+            vec![SourceInfo {
+                kind: SourceKind::Read {
+                    place: ReadPlace::BaseLayerWitness { column: 0 },
+                },
+            }],
+            sum,
+        );
+        let fingerprints = structural_fingerprints(&layer).unwrap();
+        assert_eq!(
+            fingerprints[original.0 as usize],
+            fingerprints[alias.0 as usize]
+        );
+        let entries = vec![
+            PlanEntry {
+                fp: replay_test_fp(0, original, None),
+                action: PlanAction::Retain,
+            },
+            PlanEntry {
+                fp: replay_test_fp(1, original, Some(sum)),
+                action: PlanAction::Bypass,
+            },
+            PlanEntry {
+                fp: replay_test_fp(1, alias, Some(sum)),
+                action: PlanAction::Retain,
+            },
+            PlanEntry {
+                fp: replay_test_fp(2, alias, None),
+                action: PlanAction::Bypass,
+            },
+        ];
+
+        let (plan, events) = replay_test_run(
+            &layer,
+            &[original, sum, alias],
+            entries,
+            BTreeSet::from([original, alias]),
+            8,
+        )
+        .unwrap();
+
+        assert_eq!(
+            served_from(&events, original),
+            vec![BwdServedFrom::Recomputed, BwdServedFrom::Resident]
+        );
+        assert_eq!(
+            served_from(&events, alias),
+            vec![BwdServedFrom::Recomputed, BwdServedFrom::Resident]
+        );
+        let original_evict = events
+            .iter()
+            .position(|event| {
+                matches!(
+                    event,
+                    BwdEvent::Evict {
+                        value,
+                        expired: true,
+                    } if *value == original
+                )
+            })
+            .unwrap();
+        let alias_admits = events
+            .iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                matches!(event, BwdEvent::Admit { value, .. } if *value == alias).then_some(index)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(alias_admits.len(), 1);
+        assert!(
+            original_evict < alias_admits[0],
+            "the miss-side Retain must admit only after the retired generation is evicted"
+        );
+
+        let original_drop = plan
+            .ops
+            .iter()
+            .position(|op| matches!(op, EvalOp::CacheDrop(value) if value.expr == original))
+            .unwrap();
+        let alias_store = plan
+            .ops
+            .iter()
+            .position(|op| matches!(op, EvalOp::CacheStore { value, .. } if value.expr == alias))
+            .unwrap();
+        assert!(
+            original_drop < alias_store,
+            "operand 2 must not reuse the retired operand-1 cell"
+        );
+    }
+
+    #[test]
+    fn replay_repeated_compound_fma_operand_recomputes_with_tight_headroom() {
+        const BUDGET_LANES: usize = 12;
+
+        let mut arena = ArenaBuilder::new();
+        let a = challenge(&mut arena, 1);
+        let b = challenge(&mut arena, 2);
+        let seed = challenge(&mut arena, 3);
+        let compound = arena.add(vec![a, b]);
+        let product = arena.mul(vec![compound, compound]);
+        let sum = arena.add(vec![seed, product]);
+        let layer = layer(arena, root(sum, false));
+        assert_eq!(fields(&layer)[compound.0 as usize], FieldKind::Ext);
+        let entries = vec![
+            PlanEntry {
+                fp: replay_test_fp(0, compound, None),
+                action: PlanAction::Retain,
+            },
+            PlanEntry {
+                fp: replay_test_fp(1, compound, Some(sum)),
+                action: PlanAction::Bypass,
+            },
+            PlanEntry {
+                fp: replay_test_fp(1, compound, Some(sum)),
+                action: PlanAction::Bypass,
+            },
+        ];
+
+        let (plan, events) = replay_test_run(
+            &layer,
+            &[compound, sum],
+            entries,
+            BTreeSet::from([compound]),
+            BUDGET_LANES,
+        )
+        .unwrap();
+
+        assert_eq!(
+            served_from(&events, compound),
+            vec![
+                BwdServedFrom::Recomputed,
+                BwdServedFrom::Resident,
+                BwdServedFrom::Recomputed,
+            ]
+        );
+        assert!(plan.stats.peak_live_lanes <= BUDGET_LANES);
+        let compound_drop = plan
+            .ops
+            .iter()
+            .position(|op| matches!(op, EvalOp::CacheDrop(value) if value.expr == compound))
+            .unwrap();
+        let saves = plan
+            .ops
+            .iter()
+            .enumerate()
+            .filter_map(|(index, op)| matches!(op, EvalOp::SaveAcc(_)).then_some(index))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            saves.len(),
+            3,
+            "the fragment total, outer ACC, and one-use square each require one save"
+        );
+        assert!(
+            compound_drop < saves[1],
+            "the retired compound must be dropped before the fallback saves the outer ACC"
         );
     }
 
