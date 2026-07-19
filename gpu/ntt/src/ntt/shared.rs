@@ -24,6 +24,7 @@ type BF = BaseField;
 /// Intentional divergence: the compact-1-pass, subwarp and smem-packed
 /// launchers do NOT call this — they issue no async-pipeline loads and so carry
 /// no alignment requirement.
+#[track_caller]
 pub(super) fn assert_ntt_16b_aligned(
     inputs: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &(impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -40,6 +41,7 @@ pub(super) fn assert_ntt_16b_aligned(
 /// Opt a kernel into a dynamic shared-memory allocation larger than the default
 /// 48 KB cap. Folds the `usize -> i32` cast behind a single bound check; safe to
 /// call once above a launch loop (nothing here is loop-bound) or per launch.
+#[track_caller]
 pub(crate) fn set_max_dynamic_smem(func: &impl KernelFunction, bytes: usize) -> CudaResult<()> {
     assert!(bytes <= i32::MAX as usize);
     unsafe {
@@ -57,6 +59,12 @@ pub(crate) fn set_max_dynamic_smem(func: &impl KernelFunction, bytes: usize) -> 
 /// the launcher will write: `num_cosets` cosets spaced `num_cols_per_coset`
 /// apart, with `num_ntts` columns written per coset. The highest column touched
 /// is `(num_cosets - 1) * num_cols_per_coset + num_ntts - 1`.
+///
+/// Bundles two checks (`num_cols_per_coset >= num_ntts`, then the output-width
+/// bound): at call sites that also assert pow2/workload preconditions (subwarp,
+/// smem_packed), the cols-per-coset check here fires after those intervening
+/// asserts when multiple preconditions are violated at once.
+#[track_caller]
 pub(super) fn assert_multi_coset_output_cols(
     output_cols: usize,
     num_cosets: usize,
