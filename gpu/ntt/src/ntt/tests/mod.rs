@@ -1023,6 +1023,228 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_21_cosets_2, 21, 2
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_22_cosets_2, 22, 2);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_23_cosets_2, 23, 2);
 
+// Host-oracle forward-NTT parity tests. Unlike the parity harnesses above
+// (which cross-check one GPU kernel family against ANOTHER GPU path), these
+// compare real GPU output against a PURE-CPU ground truth computed by
+// `host_forward_ntt_single_coset` (shared with `run_monomials_to_evals`). They
+// are the replacement oracle for the 2-pass-compact and lde-intermediate
+// forward families before the GPU per-stage reference path is deleted.
+//
+// Naming: NOT prefixed `cpu_` — these launch GPU kernels and must stay in the
+// GPU-serialized nextest group (a `cpu_` path segment opts a test OUT of it).
+#[cfg(not(no_cuda))]
+mod host_oracle {
+    use super::super::ntt::monomials_to_evals_2_pass_compact_initial;
+    use super::super::{bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range};
+    use super::helpers::host_forward_ntt_single_coset;
+    use super::make_context;
+    use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+    use crate::upstream::Field;
+    use era_cudart::memory::memory_copy_async;
+    use fft::precompute_twiddles_for_fft;
+    use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
+    use gpu_core::primitives::field::BF;
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+    use std::alloc::Global;
+    use worker::Worker;
+
+    /// Which production launcher produces the CANDIDATE (GPU) output.
+    #[derive(Clone, Copy)]
+    enum Route {
+        /// `monomials_to_evals_2_pass_compact_initial` called DIRECTLY. Pins the
+        /// 2-pass-compact family at log_n 13, where the forward strategy would
+        /// otherwise route to the DIT engine (so a strategy-routed call would
+        /// exercise the wrong family).
+        Direct2pc,
+        /// The production multi-coset entry
+        /// `bitreversed_monomials_to_natural_evals_multi_coset` (full coset set,
+        /// base 0). For log_n >= 14 the strategy deterministically selects the
+        /// 2-pass-compact family (DIT tops out at 13); no d-table scratch needed.
+        MultiCosetEntry,
+        /// `lde_with_coset_range`, which for log_n in (13, 18] takes the
+        /// lde-intermediate fast path unconditionally.
+        LdeWithCosetRange,
+    }
+
+    /// Drive one forward-NTT case and compare every (coset, column, index) of
+    /// the GPU output against the pure-CPU forward NTT.
+    ///
+    /// Geometry: contiguous coset-major output (num_cols_per_coset_stride ==
+    /// num_cols); coset `coset_index_base + offset` occupies
+    /// `out[(offset * num_cols + col) * n ..]`. Inputs are randomized with a
+    /// fixed seed (reproducible; seed logged in each assert via the message).
+    fn run_host_oracle_forward_parity(
+        log_n: usize,
+        log_lde_factor: usize,
+        num_cosets: usize,
+        coset_index_base: usize,
+        num_cols: usize,
+        route: Route,
+        seed: u64,
+    ) {
+        assert!(num_cosets.is_power_of_two() && num_cosets >= 2);
+        assert!(coset_index_base + num_cosets <= (1usize << log_lde_factor));
+        assert!(log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize);
+
+        let context = make_context();
+        let stream = context.get_exec_stream();
+        let device_props = context.get_device_properties();
+        let n = 1usize << log_n;
+        let stride = n; // contiguous: num_cols_per_coset_stride == num_cols.
+        let cols_size = stride * num_cols;
+        let total_size = num_cosets * cols_size;
+
+        // Randomized, fixed-seed bitreversed monomials. One shared input matrix
+        // of `num_cols` columns is fanned out across all output cosets, matching
+        // the launcher contract.
+        let mut rng = StdRng::seed_from_u64(seed);
+        let mut inputs_host = vec![BF::ZERO; cols_size];
+        for value in inputs_host.iter_mut() {
+            *value = BF::from_nonreduced_u32(rng.random());
+        }
+        let mut inputs_device = context.alloc(cols_size).unwrap();
+        memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
+
+        let mut outputs_device = context.alloc(total_size).unwrap();
+
+        let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
+
+        {
+            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
+            match route {
+                Route::Direct2pc => {
+                    let mut outputs_matrix =
+                        DeviceMatrixChunkMut::new(&mut outputs_device[..], stride, 0, n);
+                    monomials_to_evals_2_pass_compact_initial(
+                        &inputs_matrix,
+                        &mut outputs_matrix,
+                        log_n,
+                        coset_index_base,
+                        coset_factor_shift,
+                        num_cosets,
+                        num_cols,   // num_cols_per_coset (contiguous)
+                        num_cosets, // cosets_per_launch: batch every coset
+                        num_cols,   // columns_per_launch
+                        false,
+                        stream,
+                    )
+                    .unwrap();
+                }
+                Route::MultiCosetEntry => {
+                    // The entry hardcodes base 0 and the full coset set.
+                    assert_eq!(coset_index_base, 0);
+                    assert_eq!(num_cosets, 1usize << log_lde_factor);
+                    bitreversed_monomials_to_natural_evals_multi_coset(
+                        &inputs_matrix,
+                        &mut outputs_device[..],
+                        log_n,
+                        log_lde_factor,
+                        num_cols, // num_cols_per_coset_stride (contiguous)
+                        false,
+                        context.device_context(),
+                        None, // log_n >= 14: no DIT, so no d-table scratch
+                        stream,
+                        device_props,
+                    )
+                    .unwrap();
+                }
+                Route::LdeWithCosetRange => {
+                    lde_with_coset_range(
+                        &inputs_matrix,
+                        &mut outputs_device[..],
+                        log_n,
+                        log_lde_factor,
+                        num_cosets,
+                        coset_index_base,
+                        num_cols, // num_cols_per_coset_stride (contiguous)
+                        1,        // occupancy hint numerator
+                        1,        // occupancy hint denominator
+                        context.device_context(),
+                        None, // log_n in (13, 18]: fast path needs no scratch
+                        stream,
+                        device_props,
+                    )
+                    .unwrap();
+                }
+            }
+        }
+
+        let mut outputs_host = vec![BF::ZERO; total_size];
+        memory_copy_async(&mut outputs_host, &outputs_device, stream).unwrap();
+        stream.synchronize().unwrap();
+
+        // PURE-CPU ground truth: one independent forward NTT per (coset, column).
+        // No GPU kernel touches the expected side.
+        let worker = Worker::new();
+        let forward_twiddles = precompute_twiddles_for_fft::<BF, Global, false>(n, &worker);
+        let forward_twiddles = &forward_twiddles[..(n >> 1)];
+
+        for coset_offset in 0..num_cosets {
+            let coset_index = coset_index_base + coset_offset;
+            for col in 0..num_cols {
+                let col_monomials = &inputs_host[col * stride..col * stride + n];
+                let expected = host_forward_ntt_single_coset(
+                    col_monomials,
+                    log_n,
+                    log_lde_factor,
+                    coset_index,
+                    forward_twiddles,
+                );
+                let base = coset_offset * cols_size + col * stride;
+                for k in 0..n {
+                    assert_eq!(
+                        outputs_host[base + k], expected[k],
+                        "log_n={log_n}, log_lde_factor={log_lde_factor}, num_cosets={num_cosets}, coset_index_base={coset_index_base}, coset_offset={coset_offset}, col={col}, k={k}, seed={seed:#x}"
+                    );
+                }
+            }
+        }
+    }
+
+    // 2-pass-compact-initial family (`ab_monomials_to_evals_first_K_stages_compact`
+    // + `noninitial_8`).
+    //
+    // log_n 13: DIRECT call — pins the 2pc family (strategy would route 13 to
+    // DIT). Nonzero coset_index_base (2) exercises the coset-factor shift.
+    #[test]
+    fn host_oracle_2pc_log_n_13_direct_matches() {
+        run_host_oracle_forward_parity(13, 2, 2, 2, 2, Route::Direct2pc, 0x2c_13u64);
+    }
+
+    // log_n 14 and 20: via the production multi-coset entry (strategy selects the
+    // 2pc family for log_n >= 14).
+    #[test]
+    fn host_oracle_2pc_log_n_14_multi_coset_matches() {
+        run_host_oracle_forward_parity(14, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_14u64);
+    }
+
+    #[test]
+    fn host_oracle_2pc_log_n_20_multi_coset_matches() {
+        run_host_oracle_forward_parity(20, 1, 2, 0, 1, Route::MultiCosetEntry, 0x2c_20u64);
+    }
+
+    // LDE-intermediate fast path (`ab_lde_first_{6..10}_stages_kernel` +
+    // `noninitial_8`) via `lde_with_coset_range`. log_n 14 and 18 lie in
+    // (13, 18], so the fast path is taken unconditionally.
+    //
+    // Coset-tile size: the fast path's grid builder targets FULL occupancy
+    // (hints 1/1) and asserts the coset tile is not over-split
+    // (`grid_dim_z <= cosets_in_tile`). A 2-coset tile is too small to fill a
+    // large GPU at 1/1, so — matching the existing lde-intermediate parity
+    // tests — these use a production-scale power-of-two coset tile with a
+    // nonzero coset_index_base (which still exercises the coset-factor shift).
+    #[test]
+    fn host_oracle_lde_intermediate_log_n_14_matches() {
+        run_host_oracle_forward_parity(14, 7, 64, 64, 2, Route::LdeWithCosetRange, 0x1de_14u64);
+    }
+
+    #[test]
+    fn host_oracle_lde_intermediate_log_n_18_matches() {
+        run_host_oracle_forward_parity(18, 5, 16, 16, 2, Route::LdeWithCosetRange, 0x1de_18u64);
+    }
+}
+
 // Direct parity test for the smem-packed multi-NTT-per-block kernel vs the
 // compact 1-pass kernel: bypass `select_ntt_strategy` (which routes both
 // candidate and reference through smem-packed at log_n in [6, 8]) and call the

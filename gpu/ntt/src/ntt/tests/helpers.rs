@@ -66,6 +66,46 @@ pub(super) fn transpose_monomials(vals: &mut [BF]) {
     }
 }
 
+/// Pure-CPU forward-NTT reference for a SINGLE coset: bitreversed monomials ->
+/// natural-order evaluations on coset `coset_index` of the size-2^(log_n +
+/// log_lde_factor) LDE domain.
+///
+/// This is the exact host math previously inlined in `run_monomials_to_evals`,
+/// hoisted so the multi-coset host-oracle parity tests share one forward NTT
+/// instead of copy-pasting a second reference. It is pure CPU — no GPU kernel
+/// participates in producing the expected values.
+///
+/// Convention (matches the GPU launchers): the coset shift multiplies each
+/// bitreversed monomial by the bitreversed powers of `tau^coset_index`, where
+/// `tau` generates the full LDE domain of order `2^(log_n + log_lde_factor)`.
+/// `coset_index == 0` yields `tau^0 = ONE`, i.e. the identity shift. The
+/// Cooley-Tukey NTT then maps bitreversed coeffs to natural-order evaluations.
+///
+/// `forward_twiddles` must be the size-`n` forward twiddles
+/// (`precompute_twiddles_for_fft::<BF, Global, false>`) truncated to `n / 2`.
+#[cfg(not(no_cuda))]
+pub(super) fn host_forward_ntt_single_coset(
+    monomials_bitreversed: &[BF],
+    log_n: usize,
+    log_lde_factor: usize,
+    coset_index: usize,
+    forward_twiddles: &[BF],
+) -> Vec<BF> {
+    let n = 1usize << log_n;
+    assert_eq!(monomials_bitreversed.len(), n);
+    assert_eq!(forward_twiddles.len(), n >> 1);
+    let tau = domain_generator_for_size::<BF>(1u64 << (log_n + log_lde_factor));
+    let mut adjustments = vec![BF::ONE; n];
+    distribute_powers_serial(&mut adjustments, BF::ONE, tau.pow(coset_index as u32));
+    bitreverse_enumeration_inplace(&mut adjustments);
+    let mut evals = monomials_bitreversed.to_vec();
+    for (val, adjustment) in evals.iter_mut().zip(adjustments.iter()) {
+        val.mul_assign(adjustment);
+    }
+    serial_ct_ntt_bitreversed_to_natural(&mut evals, log_n as u32, forward_twiddles);
+    evals
+}
+
 #[cfg(not(no_cuda))]
 pub(super) fn run_evals_to_monomials(
     log_n_range: Range<usize>,
@@ -359,15 +399,12 @@ pub(super) fn run_monomials_to_evals(
 
         stream.synchronize().unwrap();
 
-        let tau = domain_generator_for_size::<BF>(1u64 << (log_n + TEST_LOG_LDE_FACTOR));
-        let mut adjustments = vec![BF::ONE; n];
-        distribute_powers_serial(&mut adjustments, BF::ONE, tau.pow(TEST_COSET_INDEX as u32));
-        bitreverse_enumeration_inplace(&mut adjustments);
         // Same column-parallel pattern as `run_evals_to_monomials`: the
         // CPU NTT dominates wall time at large `log_n`, and the per-column
-        // slices are disjoint.
+        // slices are disjoint. The forward-NTT math (coset shift + CT NTT) is
+        // shared with the host-oracle parity tests via
+        // `host_forward_ntt_single_coset`.
         let twiddles_slice = &twiddles[..(n >> 1)];
-        let adjustments_slice: &[BF] = &adjustments;
         let outputs_slice: &[BF] = &outputs_host;
         let inputs_orig_slice: &[BF] = &inputs_orig_host;
         worker.scope(num_bf_cols, |scope, geometry| {
@@ -379,13 +416,11 @@ pub(super) fn run_monomials_to_evals(
                         let start = ntt * stride + OFFSET as usize;
                         let xs_range = start..start + n;
                         let gpu_results = &outputs_slice[xs_range.clone()];
-                        let mut cpu_refs: Vec<BF> = inputs_orig_slice[xs_range].to_vec();
-                        for (val, adjustment) in cpu_refs.iter_mut().zip(adjustments_slice.iter()) {
-                            val.mul_assign(adjustment);
-                        }
-                        serial_ct_ntt_bitreversed_to_natural(
-                            &mut cpu_refs,
-                            log_n as u32,
+                        let cpu_refs = host_forward_ntt_single_coset(
+                            &inputs_orig_slice[xs_range],
+                            log_n,
+                            TEST_LOG_LDE_FACTOR,
+                            TEST_COSET_INDEX,
                             twiddles_slice,
                         );
                         for k in 0..n {
