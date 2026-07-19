@@ -38,10 +38,10 @@ EXTERN __launch_bounds__(512, 2) __global__
   extern __shared__ uint8_t smem[];
 
   const unsigned leaves_per_coset = 1 << log_leaves_per_coset;
-  const unsigned slot_in_leaf = threadIdx.y;
+  const unsigned initial_slot_in_leaf = threadIdx.y;
   const unsigned initial_exchg_stride = leaves_per_coset << (log_values_per_leaf - 1);
   // Grabbing inputs by jumping around in bitreversed order is convenient for the NTT-like transform.
-  const unsigned src_row_a = leaves_per_coset * slot_in_leaf;
+  const unsigned src_row_a = leaves_per_coset * initial_slot_in_leaf;
   const unsigned src_row_b = src_row_a + initial_exchg_stride;
 
   const e4 a = src.get_at_row(src_row_a);
@@ -64,8 +64,8 @@ EXTERN __launch_bounds__(512, 2) __global__
     bf *x_invs = reinterpret_cast<bf *>(smem + 2 * blockDim.x * blockDim.y * sizeof(e4)) + threadIdx.x;
 
     // We need to multiply by two_inv_power at some point. Might as well be here.
-    smem_thread[blockDim.x * slot_in_leaf] = e4::mul(two_inv_power, e4::add(a, b));
-    smem_thread[blockDim.x * (slot_in_leaf + blockDim.y)] = e4::mul(bf::mul(x_inv, two_inv_power), e4::sub(a, b));
+    smem_thread[blockDim.x * initial_slot_in_leaf] = e4::mul(two_inv_power, e4::add(a, b));
+    smem_thread[blockDim.x * (initial_slot_in_leaf + blockDim.y)] = e4::mul(bf::mul(x_inv, two_inv_power), e4::sub(a, b));
 
     // Middle stages (stage enumeration runs from 0 to log_values_per_leaf - 1)
     for (unsigned stage = 1; stage < log_values_per_leaf - 1; stage++) {
@@ -73,7 +73,7 @@ EXTERN __launch_bounds__(512, 2) __global__
       const unsigned exchg_stride = 1 << log_exchg_stride;
       const unsigned exchg_region = threadIdx.y >> log_exchg_stride;
       const unsigned exchg_lane = threadIdx.y & (exchg_stride - 1);
-      const unsigned slot_in_leaf = 2 * exchg_stride * exchg_region + exchg_lane;
+      const unsigned mid_stage_slot_in_leaf = 2 * exchg_stride * exchg_region + exchg_lane;
 
       // Publish squared x_invs reusable across exchange regions
       if (exchg_region == 0) {
@@ -83,8 +83,8 @@ EXTERN __launch_bounds__(512, 2) __global__
       // TODO: Evaluate performance impact of full syncthreads().
       // If it's bad, remap threads so exchanges happen within warps, with a swizzled access pattern to avoid bank conflicts.
       __syncthreads();
-      const e4 a = smem_thread[blockDim.x * slot_in_leaf];
-      const e4 b = smem_thread[blockDim.x * (slot_in_leaf + exchg_stride)];
+      const e4 a = smem_thread[blockDim.x * mid_stage_slot_in_leaf];
+      const e4 b = smem_thread[blockDim.x * (mid_stage_slot_in_leaf + exchg_stride)];
       if (exchg_region != 0)
         x_inv = x_invs[blockDim.x * exchg_lane];
       // not needed because
@@ -94,14 +94,14 @@ EXTERN __launch_bounds__(512, 2) __global__
 
       const e4 c = e4::add(a, b);
       const e4 d = e4::mul(x_inv, e4::sub(a, b));
-      smem_thread[blockDim.x * slot_in_leaf] = c;
-      smem_thread[blockDim.x * (slot_in_leaf + exchg_stride)] = d;
+      smem_thread[blockDim.x * mid_stage_slot_in_leaf] = c;
+      smem_thread[blockDim.x * (mid_stage_slot_in_leaf + exchg_stride)] = d;
 
       x_invs += blockDim.x * (blockDim.y >> stage);
     }
 
     // Last stage (special cased to elide a bit of work)
-    const unsigned slot_in_leaf = 2 * threadIdx.y;
+    const unsigned final_slot_in_leaf = 2 * threadIdx.y;
 
     // Leader publishes final squared x_inv
     if (threadIdx.y == 0) {
@@ -111,13 +111,13 @@ EXTERN __launch_bounds__(512, 2) __global__
     __syncthreads();
     if (threadIdx.y != 0)
       x_inv = x_invs[0];
-    const e4 a = smem_thread[blockDim.x * slot_in_leaf];
-    const e4 b = smem_thread[blockDim.x * (slot_in_leaf + 1)];
+    const e4 a = smem_thread[blockDim.x * final_slot_in_leaf];
+    const e4 b = smem_thread[blockDim.x * (final_slot_in_leaf + 1)];
 
     const e4 c = e4::add(a, b);
     const e4 d = e4::mul(x_inv, e4::sub(a, b));
-    dst.set_at_row(leaves_per_coset * slot_in_leaf, c);
-    dst.set_at_row(leaves_per_coset * (slot_in_leaf + 1), d);
+    dst.set_at_row(leaves_per_coset * final_slot_in_leaf, c);
+    dst.set_at_row(leaves_per_coset * (final_slot_in_leaf + 1), d);
   }
 }
 

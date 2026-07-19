@@ -105,13 +105,7 @@ DEVICE_FORCEINLINE void hypercube_evals_to_monomials_final_up_to_8_stages(bf_mat
     }
   }
 
-#pragma unroll
-  for (int y = 0; y < VALS_PER_THREAD; y++)
-    smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-  __syncwarp();
-#pragma unroll
-  for (int x = 0; x < VALS_PER_THREAD; x++)
-    vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+  warp_transpose_swizzled(smem_warp, vals, lane_id);
 
   reg_exchg_hypercube_inv<16, 32, 1>(vals);
   reg_exchg_hypercube_inv<8, 16, 2>(vals);
