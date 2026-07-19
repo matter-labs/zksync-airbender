@@ -58,9 +58,10 @@ DEVICE_FORCEINLINE void initialize(u32 state[STATE_SIZE]) {
   state[0] ^= IV_0_TWIST;
 }
 
-DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) {
-  return num_bits == 0 ? 0 : (__brev(value) >> (32 - num_bits));
-}
+// Re-export gpu_core's guarded bit-reversal (common.cuh) into this namespace so
+// circuit_prover's leaves.cu alias (`using ::airbender::hash::bitreverse_low_bits;`)
+// keeps resolving.
+using ::bitreverse_low_bits;
 
 template <bool IS_FINAL_BLOCK> DEVICE_FORCEINLINE void compress(u32 state[STATE_SIZE], u32 &t, const u32 m[BLOCK_SIZE], const unsigned block_size) {
   IV_DEF;

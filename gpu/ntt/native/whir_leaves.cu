@@ -11,8 +11,6 @@ using namespace ::airbender::primitives::vectorized;
 
 namespace airbender::ntt {
 
-DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) { return __brev(value) >> (32 - num_bits); }
-
 // Implements "Improving running time via alternate domain evaluation" from page 15 of
 // https://eprint.iacr.org/2024/1586.pdf.
 // Transforms values for each leaf in-place and preserves natural coset order.

@@ -69,6 +69,7 @@ DEVICE_FORCEINLINE bf get_forward_twiddle_power(const unsigned idx) { return get
 
 DEVICE_FORCEINLINE bf get_inverse_twiddle_power(const unsigned idx) { return get_power_from_layers(::ab_ntt_inverse_powers, idx); }
 
-DEVICE_FORCEINLINE unsigned bitrev(const unsigned idx, const unsigned log_n) { return __brev(idx) >> (32 - log_n); }
+// In-crate name kept to avoid call-site churn; delegates to gpu_core's guarded helper (common.cuh).
+DEVICE_FORCEINLINE unsigned bitrev(const unsigned idx, const unsigned log_n) { return ::bitreverse_low_bits(idx, log_n); }
 
 } // namespace airbender::ntt
