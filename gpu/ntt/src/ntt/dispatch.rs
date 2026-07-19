@@ -44,7 +44,6 @@ pub(super) fn dispatch_strategy(
         strategy.passes.iter().map(|p| p.stage_count).sum::<usize>(),
         log_n,
     );
-    let mut d_table_scratch = d_table_scratch;
     match strategy.passes.len() {
         1 => match strategy.passes[0].kernel {
             super::NttKernelKind::MonomialsToEvalsDit { log_vpt, .. } => monomials_to_evals_dit(
@@ -58,7 +57,7 @@ pub(super) fn dispatch_strategy(
                 num_cols_per_coset,
                 transposed_monomials,
                 ntt_ctx,
-                d_table_scratch.as_deref_mut().expect(
+                d_table_scratch.expect(
                     "DIT range requires a d_table_scratch (len >= N); caller must \
                      provide one for log_n in [2,13]",
                 ),

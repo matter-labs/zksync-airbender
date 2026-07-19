@@ -187,7 +187,7 @@ fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
 
     // Bit-reversed-order monomial coefficients shared by all cosets.
     let monomials_host: Vec<BF> = (0..n)
-        .map(|idx| BF::new((17 + (idx as u32).wrapping_mul(31)) as u32))
+        .map(|idx| BF::new(17 + (idx as u32).wrapping_mul(31)))
         .collect();
 
     // --- Engine path ---------------------------------------------------------
@@ -216,7 +216,7 @@ fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
 
         let mono_ptr = monomials_dev[..].as_ptr();
         let tw_ptr = tw_clean_dev[..].as_ptr();
-        let out_ptr = (&mut out_dev[..]).as_mut_ptr();
+        let out_ptr = out_dev[..].as_mut_ptr();
         // coset_out_stride = N keeps the contiguous-output expectation.
         let coset_out_stride: u32 = 1u32 << log_n;
         // 7-arg streaming ABI: runtime `num_cosets` (the grid-stride guard bound),
@@ -597,7 +597,7 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
 
     // Bit-reversed-order monomial coefficients shared by all cosets.
     let monomials_host: Vec<BF> = (0..n)
-        .map(|idx| BF::new((17 + (idx as u32).wrapping_mul(31)) as u32))
+        .map(|idx| BF::new(17 + (idx as u32).wrapping_mul(31)))
         .collect();
 
     // --- Engine path ---------------------------------------------------------
@@ -634,7 +634,7 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
         let tw_p1_ptr = tw_p1_dev[..].as_ptr();
         let tw_p2_ptr = tw_p2_dev[..].as_ptr();
         let d_ptr = d_table_dev[..].as_ptr();
-        let out_ptr = (&mut out_dev[..]).as_mut_ptr();
+        let out_ptr = out_dev[..].as_mut_ptr();
         // coset_out_stride = N keeps the contiguous-output expectation.
         let coset_out_stride: u32 = 1u32 << log_n;
         let args = DitTwoPassArguments::new(
@@ -1098,9 +1098,7 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
     let monomials_host: Vec<BF> = (0..num_ntts)
         .flat_map(|col| {
             (0..n).map(move |idx| {
-                BF::new(
-                    (17 + (idx as u32).wrapping_mul(31) + (col as u32).wrapping_mul(101)) as u32,
-                )
+                BF::new(17 + (idx as u32).wrapping_mul(31) + (col as u32).wrapping_mul(101))
             })
         })
         .collect();
@@ -1318,7 +1316,7 @@ mod bench_variants {
         // and grid must itself be a power of two (the coset walk strides by grid).
         assert!(k.is_power_of_two(), "k must be a power of two");
         assert!(
-            total % k == 0,
+            total.is_multiple_of(k),
             "k ({k}) must divide total ({total}) exactly"
         );
         let grid: u32 = total / k;
@@ -1338,7 +1336,7 @@ mod bench_variants {
 
         // Bit-reversed-order monomial coefficients shared by all cosets.
         let monomials_host: Vec<BF> = (0..n)
-            .map(|idx| BF::new((17 + (idx as u32).wrapping_mul(31)) as u32))
+            .map(|idx| BF::new(17 + (idx as u32).wrapping_mul(31)))
             .collect();
 
         // --- Engine path -----------------------------------------------------
@@ -1375,7 +1373,7 @@ mod bench_variants {
             let tw_p1_ptr = tw_p1_dev[..].as_ptr();
             let tw_p2_ptr = tw_p2_dev[..].as_ptr();
             let d_ptr = d_table_dev[..].as_ptr();
-            let out_ptr = (&mut out_dev[..]).as_mut_ptr();
+            let out_ptr = out_dev[..].as_mut_ptr();
             // coset_out_stride = N keeps the contiguous-output expectation.
             let coset_out_stride: u32 = 1u32 << log_n;
             // 8-arg ABI: NO cosets_per_block (K is a compile-time template arg).
@@ -1535,7 +1533,7 @@ mod bench_variants {
 
         // Bit-reversed-order monomial coefficients shared by all cosets.
         let monomials_host: Vec<BF> = (0..n)
-            .map(|idx| BF::new((17 + (idx as u32).wrapping_mul(31)) as u32))
+            .map(|idx| BF::new(17 + (idx as u32).wrapping_mul(31)))
             .collect();
 
         // --- Engine path -----------------------------------------------------
@@ -1559,7 +1557,7 @@ mod bench_variants {
 
             let mono_ptr = monomials_dev[..].as_ptr();
             let tw_ptr = tw_clean_dev[..].as_ptr();
-            let out_ptr = (&mut out_dev[..]).as_mut_ptr();
+            let out_ptr = out_dev[..].as_mut_ptr();
             // coset_out_stride = N keeps the contiguous-output expectation.
             let coset_out_stride: u32 = 1u32 << log_n;
             // 7-arg ABI: runtime num_cosets (guard bound), NO d-table.

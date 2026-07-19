@@ -87,7 +87,7 @@ pub(crate) fn evals_to_monomials_3_pass(
                 input,
                 output_matrix_mut,
                 log_n as i32,
-                start_stage as i32,
+                start_stage,
                 0,
                 0,
             );

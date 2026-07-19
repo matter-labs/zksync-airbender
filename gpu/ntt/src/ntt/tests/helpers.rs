@@ -110,7 +110,7 @@ pub(super) fn run_evals_to_monomials(
     let mut rng = rand::rng();
     const OFFSET: usize = 0;
     let max_stride: usize = n_max + OFFSET;
-    let max_memory_size = (max_stride * num_bf_cols) as usize;
+    let max_memory_size = max_stride * num_bf_cols;
     let flush_l2_size = 1 << 26;
     // Using parallel rng generation, as in the benches, does not reduce runtime noticeably
     let mut inputs_orig_host =
@@ -133,7 +133,7 @@ pub(super) fn run_evals_to_monomials(
         let stride = n + OFFSET;
         let memory_size = stride * num_bf_cols;
 
-        (&mut inputs_host[0..memory_size]).copy_from_slice(&inputs_orig_host[0..memory_size]);
+        inputs_host[0..memory_size].copy_from_slice(&inputs_orig_host[0..memory_size]);
 
         match in_or_out_of_place {
             InOrOutOfPlace::Out => {
@@ -210,7 +210,7 @@ pub(super) fn run_evals_to_monomials(
         stream.synchronize().unwrap();
 
         for col in 0..num_bf_cols {
-            let start = (col * stride + OFFSET) as usize;
+            let start = col * stride + OFFSET;
             let range = start..start + n;
             if transposed_monomials {
                 transpose_monomials(&mut outputs_host[range.clone()]);
@@ -232,7 +232,7 @@ pub(super) fn run_evals_to_monomials(
                     let chunk_size = geometry.get_chunk_size(thread_idx);
                     let start_col = geometry.get_chunk_start_pos(thread_idx);
                     for ntt in start_col..start_col + chunk_size {
-                        let start = ntt * stride + OFFSET as usize;
+                        let start = ntt * stride + OFFSET;
                         let xs_range = start..start + n;
                         let gpu_results = &outputs_slice[xs_range.clone()];
                         let mut cpu_refs: Vec<BF> = inputs_slice[xs_range].to_vec();
@@ -275,7 +275,7 @@ pub(super) fn run_monomials_to_evals(
     let mut rng = rand::rng();
     const OFFSET: usize = 0;
     let max_stride: usize = n_max + OFFSET;
-    let max_memory_size = (max_stride * num_bf_cols) as usize;
+    let max_memory_size = max_stride * num_bf_cols;
     let flush_l2_size = 1 << 26;
     // Using parallel rng generation, as in the benches, does not reduce runtime noticeably
     let mut inputs_orig_host =
@@ -300,10 +300,10 @@ pub(super) fn run_monomials_to_evals(
         let stride = n + OFFSET;
         let memory_size = stride * num_bf_cols;
 
-        (&mut inputs_host[0..memory_size]).copy_from_slice(&inputs_orig_host[0..memory_size]);
+        inputs_host[0..memory_size].copy_from_slice(&inputs_orig_host[0..memory_size]);
 
         for col in 0..num_bf_cols {
-            let start = (col * stride + OFFSET) as usize;
+            let start = col * stride + OFFSET;
             let range = start..start + n;
             if transposed_monomials {
                 transpose_monomials(&mut inputs_host[range]);
@@ -393,7 +393,7 @@ pub(super) fn run_monomials_to_evals(
                     let chunk_size = geometry.get_chunk_size(thread_idx);
                     let start_col = geometry.get_chunk_start_pos(thread_idx);
                     for ntt in start_col..start_col + chunk_size {
-                        let start = ntt * stride + OFFSET as usize;
+                        let start = ntt * stride + OFFSET;
                         let xs_range = start..start + n;
                         let gpu_results = &outputs_slice[xs_range.clone()];
                         let cpu_refs = host_forward_ntt_single_coset(

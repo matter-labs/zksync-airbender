@@ -333,7 +333,7 @@ pub fn transform_whir_leaves_from_ntt_in_place_multi_coset(
     );
     let dst_ptr = dst_slice.as_ptr();
     let dst_slice = unsafe { DeviceSlice::from_raw_parts(dst_ptr, dst_slice.len()) };
-    let src = DeviceMatrix::new(&dst_slice, dst.stride());
+    let src = DeviceMatrix::new(dst_slice, dst.stride());
     transform_whir_leaves_from_ntt_multi_coset(
         &src,
         dst,

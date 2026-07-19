@@ -267,7 +267,7 @@ fn dit_is_applicable(
             let log_vpt = c.log_vpt();
             // cosets_per_block = 1024 / LANES, LANES = 1 << (log_n - log_vpt).
             let cosets_per_block = 1usize << (10 - (log_n - log_vpt));
-            if num_cosets >= cosets_per_block && num_cosets % cosets_per_block == 0 {
+            if num_cosets >= cosets_per_block && num_cosets.is_multiple_of(cosets_per_block) {
                 Some(c)
             } else {
                 None
@@ -439,11 +439,9 @@ fn l2_clamped_columns_per_launch(
 ) -> usize {
     let column_bytes = (1usize << log_n) * size_of::<BF>();
     let half_l2 = device_props.l2_cache_size_bytes / 2;
-    let columns_per_launch_l2 = if column_bytes == 0 {
-        num_columns
-    } else {
-        (half_l2 / column_bytes).max(1)
-    };
+    let columns_per_launch_l2 = half_l2
+        .checked_div(column_bytes)
+        .map_or(num_columns, |cols| cols.max(1));
     num_columns.min(columns_per_launch_l2)
 }
 
@@ -832,10 +830,10 @@ mod cpu_tests {
             // (V4TwoPass takes any num_cosets >= 1 and the v4 two-pass smem
             // fits L4's 99 KiB opt-in cap), routed with log_vpt=2.
             let expected_kind = match log_n {
-                1 | 2 | 3 => format!(
+                1..=3 => format!(
                     "MonomialsToEvalsSubwarp {{ stages: {log_n}, log_instances_per_block: 0 }}"
                 ),
-                8 | 9 | 10 | 11 | 12 => {
+                8..=12 => {
                     format!("MonomialsToEvalsDit {{ stages: {log_n}, log_vpt: 2 }}")
                 }
                 _ => format!("MonomialsToEvalsInitial {{ stages: {log_n} }}"),

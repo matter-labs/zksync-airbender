@@ -457,7 +457,7 @@ fn launch_two_pass_stream(
         .wrap()?;
     }
 
-    let grid_dim: Dim3 = (grid as u32).into();
+    let grid_dim: Dim3 = grid.into();
     let block_dim: Dim3 = ((n >> log_vpt) as u32).into();
     let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     config.dynamic_smem_bytes = smem;
@@ -493,7 +493,7 @@ fn launch_two_pass_fixed(
     let num_cosets = num_cosets_for(log_n);
     let k_usize = k as usize;
     assert!(
-        num_cosets % k_usize == 0,
+        num_cosets.is_multiple_of(k_usize),
         "two-pass fixed: num_cosets ({num_cosets}) not divisible by k ({k})"
     );
     let grid = num_cosets / k_usize;
@@ -563,7 +563,7 @@ fn launch_single_fixed(
     let slots_per_block = single_slots_per_block(log_n, log_vpt);
     let cosets_per_block_total = slots_per_block * (k as usize);
     assert!(
-        num_cosets % cosets_per_block_total == 0,
+        num_cosets.is_multiple_of(cosets_per_block_total),
         "single-pass fixed: num_cosets ({num_cosets}) not divisible by \
          slots_per_block*k ({cosets_per_block_total}) at log_n={log_n}, log_vpt={log_vpt}, k={k}"
     );
@@ -669,14 +669,14 @@ pub fn is_valid(log_n: usize, log_vpt: usize, cfg: LaunchCfg) -> bool {
             log_n > log_vpt + 5 && grid >= 1 && (grid as usize) <= num_cosets
         }
         LaunchCfg::TwoPassFixed { k } => {
-            log_n > log_vpt + 5 && k != 0 && num_cosets % (k as usize) == 0
+            log_n > log_vpt + 5 && k != 0 && num_cosets.is_multiple_of(k as usize)
         }
         LaunchCfg::SinglePassFixed { k } => {
             if log_n > log_vpt + 5 || k == 0 {
                 return false;
             }
             let denom = single_slots_per_block(log_n, log_vpt) * (k as usize);
-            denom != 0 && num_cosets % denom == 0
+            denom != 0 && num_cosets.is_multiple_of(denom)
         }
         LaunchCfg::SinglePassStream { grid } => {
             // grid is FREE: the guarded kernel maps coset_idx = s + spb*(b +

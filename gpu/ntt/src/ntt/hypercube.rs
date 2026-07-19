@@ -112,7 +112,7 @@ pub(crate) fn hypercube_evals_to_monomials_3_pass(
                 input,
                 output_matrix_mut,
                 log_n as i32,
-                start_stage as i32,
+                start_stage,
             );
             StridedTilesStagesFunction(ab_hypercube_evals_to_monomials_nonfinal_8_stages_kernel)
                 .launch(&config, &args)?;

@@ -64,16 +64,14 @@ fn get_lde_grid_dims_for_occupancy_hint(
 
     // Second, see if we can achieve target occupancy by parallelizing over columns
     // within each coset. Expose the parallelism via blockDim.y.
-    let grid_dim_y;
     if grid_dim_x * num_cols_per_coset >= target_blocks {
-        grid_dim_y = target_blocks.div_ceil(grid_dim_x);
+        let grid_dim_y = target_blocks.div_ceil(grid_dim_x);
         debug_assert!(grid_dim_x * grid_dim_y >= target_blocks);
         let grid = (grid_dim_x as u32, grid_dim_y as u32, 1).into();
         return Ok(grid);
-    } else {
-        // Max out parallelism over columns within each coset (prioritize monomial reuse)
-        grid_dim_y = num_cols_per_coset;
     }
+    // Max out parallelism over columns within each coset (prioritize monomial reuse)
+    let grid_dim_y = num_cols_per_coset;
 
     // As a last resort, split the coset tile. Expose the parallelism via blockDim.z.
     let xy_blocks = grid_dim_x * grid_dim_y;
@@ -88,7 +86,7 @@ fn get_lde_grid_dims_for_occupancy_hint(
     // launch.
     debug_assert!(grid_dim_z <= cosets_in_tile);
     let grid = (grid_dim_x as u32, grid_dim_y as u32, grid_dim_z as u32).into();
-    return Ok(grid);
+    Ok(grid)
 }
 
 fn get_lde_config_for_log_n(log_n: usize) -> (usize, usize) {

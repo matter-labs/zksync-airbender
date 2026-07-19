@@ -17,8 +17,8 @@
 //! The clean/coupled kernels init-to-`ONE` then overwrite active entries, ordered
 //! by `__syncthreads()` which synchronizes within one block only; grid > 1 races.
 //!
-//! Binding shape: the `era_cudart` multi-arm `cuda_kernel!` form (one shared type
-//! + a per-symbol macro) generates module-private types and a non-exported local
+//! Binding shape: the `era_cudart` multi-arm `cuda_kernel!` form (one shared type +
+//! a per-symbol macro) generates module-private types and a non-exported local
 //! macro, so it cannot be consumed from another module (e.g. the parity test). We
 //! therefore use the single-arm `cuda_kernel!(pub(crate) <Type>, <symbol>(..))`
 //! form: it honors the visibility, emitting a crate-visible `<Type>Function`

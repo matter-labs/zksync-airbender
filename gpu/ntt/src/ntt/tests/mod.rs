@@ -553,7 +553,7 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
 
     let mut inputs_host = vec![BF::ZERO; cols_size];
     for (idx, value) in inputs_host.iter_mut().enumerate() {
-        *value = BF::new((23 + (idx as u32).wrapping_mul(41)) as u32);
+        *value = BF::new(23 + (idx as u32).wrapping_mul(41));
     }
 
     let mut inputs_device = context.alloc(cols_size).unwrap();
@@ -1028,12 +1028,12 @@ mod host_oracle {
     // nonzero coset_index_base (which still exercises the coset-factor shift).
     #[test]
     fn host_oracle_lde_intermediate_log_n_14_matches() {
-        run_host_oracle_forward_parity(14, 7, 64, 64, 2, Route::LdeWithCosetRange, 0x1de_14u64);
+        run_host_oracle_forward_parity(14, 7, 64, 64, 2, Route::LdeWithCosetRange, 0x1de14u64);
     }
 
     #[test]
     fn host_oracle_lde_intermediate_log_n_18_matches() {
-        run_host_oracle_forward_parity(18, 5, 16, 16, 2, Route::LdeWithCosetRange, 0x1de_18u64);
+        run_host_oracle_forward_parity(18, 5, 16, 16, 2, Route::LdeWithCosetRange, 0x1de18u64);
     }
 
     // log_n 15/16/17: the ONLY oracles for the fast-path first_7/8/9 kernels
@@ -1046,17 +1046,17 @@ mod host_oracle {
     // coset-factor shift.
     #[test]
     fn host_oracle_lde_intermediate_log_n_15_matches() {
-        run_host_oracle_forward_parity(15, 7, 64, 64, 2, Route::LdeWithCosetRange, 0x1de_15u64);
+        run_host_oracle_forward_parity(15, 7, 64, 64, 2, Route::LdeWithCosetRange, 0x1de15u64);
     }
 
     #[test]
     fn host_oracle_lde_intermediate_log_n_16_matches() {
-        run_host_oracle_forward_parity(16, 6, 32, 32, 2, Route::LdeWithCosetRange, 0x1de_16u64);
+        run_host_oracle_forward_parity(16, 6, 32, 32, 2, Route::LdeWithCosetRange, 0x1de16u64);
     }
 
     #[test]
     fn host_oracle_lde_intermediate_log_n_17_matches() {
-        run_host_oracle_forward_parity(17, 5, 16, 16, 2, Route::LdeWithCosetRange, 0x1de_17u64);
+        run_host_oracle_forward_parity(17, 5, 16, 16, 2, Route::LdeWithCosetRange, 0x1de17u64);
     }
 }
 
@@ -1088,7 +1088,7 @@ fn run_smem_packed_vs_compact_parity(
 
     let mut inputs_host = vec![BF::ZERO; cols_size];
     for (idx, value) in inputs_host.iter_mut().enumerate() {
-        *value = BF::new((73 + (idx as u32).wrapping_mul(29)) as u32);
+        *value = BF::new(73 + (idx as u32).wrapping_mul(29));
     }
     let mut inputs_device = context.alloc(cols_size).unwrap();
     memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
@@ -1227,7 +1227,7 @@ fn run_streaming_vs_compact_parity(
 
     let mut inputs_host = vec![BF::ZERO; cols_size];
     for (idx, value) in inputs_host.iter_mut().enumerate() {
-        *value = BF::new((97 + (idx as u32).wrapping_mul(53)) as u32);
+        *value = BF::new(97 + (idx as u32).wrapping_mul(53));
     }
     let mut inputs_device = context.alloc(cols_size).unwrap();
     memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
@@ -1416,7 +1416,7 @@ fn run_subwarp_vs_compact_parity(
 
     let mut inputs_host = vec![BF::ZERO; cols_size];
     for (idx, value) in inputs_host.iter_mut().enumerate() {
-        *value = BF::new((59 + (idx as u32).wrapping_mul(37)) as u32);
+        *value = BF::new(59 + (idx as u32).wrapping_mul(37));
     }
     let mut inputs_device = context.alloc(cols_size).unwrap();
     memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
@@ -1536,7 +1536,7 @@ fn run_subwarp_vs_host_parity(
 
     let mut inputs_host = vec![BF::ZERO; cols_size];
     for (idx, value) in inputs_host.iter_mut().enumerate() {
-        *value = BF::new((41 + (idx as u32).wrapping_mul(53)) as u32);
+        *value = BF::new(41 + (idx as u32).wrapping_mul(53));
     }
     let mut inputs_device = context.alloc(cols_size).unwrap();
     memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
