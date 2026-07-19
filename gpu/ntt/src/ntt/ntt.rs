@@ -1468,8 +1468,20 @@ pub fn lde_with_coset_range(
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
     assert!(
+        log_n + log_lde_factor <= OMEGA_LOG_ORDER as usize,
+        "log_n ({log_n}) + log_lde_factor ({log_lde_factor}) > OMEGA_LOG_ORDER ({OMEGA_LOG_ORDER})",
+    );
+    assert!(
         num_cosets.is_power_of_two(),
         "num_cosets must be a power of 2 (got {num_cosets})"
+    );
+    let full_num_cosets = 1usize << log_lde_factor;
+    let coset_index_end = coset_index_base
+        .checked_add(num_cosets)
+        .expect("coset_index_base + num_cosets overflow");
+    assert!(
+        coset_index_end <= full_num_cosets,
+        "coset range [{coset_index_base}, {coset_index_end}) exceeds full LDE coset count {full_num_cosets}",
     );
     // TODO: extend to smaller sizes when chunking-friendly kernels are done
     if (log_n <= 18) && (log_n > MAX_LOG_N_FOR_SINGLE_KERNEL_LDE) {
