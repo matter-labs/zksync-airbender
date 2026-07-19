@@ -41,7 +41,7 @@ use gkr_eval_isa::schedule_search::scorer::{
 };
 
 const ADD_SUB: &str = "add_sub_lui_auipc_mop_layout_gkr.json";
-const ADD_SUB_EVAL_PLAN: &str = "add_sub_lui_auipc_mop_with_caches_fwd_eval_plan_b16_gkr.json";
+const ADD_SUB_EVAL_PLAN: &str = "add_sub_lui_auipc_mop_with_caches_fwd_eval_plan_c4_gkr.json";
 const FORWARD_CORPUS: &[(&str, &str)] = &[
     ("add_sub_lui_auipc_mop", ADD_SUB),
     (
@@ -63,7 +63,7 @@ const FORWARD_CORPUS: &[(&str, &str)] = &[
 ];
 
 fn evaluation_artifact_path(circuit: &str) -> std::path::PathBuf {
-    common::compiled_circuit_dir().join(format!("{circuit}_with_caches_fwd_eval_plan_b16_gkr.json"))
+    common::compiled_circuit_dir().join(format!("{circuit}_with_caches_fwd_eval_plan_c4_gkr.json"))
 }
 
 fn arithmetic_arities(program: &Program) -> [usize; 3] {
@@ -988,7 +988,7 @@ fn add_sub_artifact_compiles_and_matches_canonical_values() {
 }
 
 #[test]
-fn forward_with_caches_b16_artifact_corpus_compiles_and_matches_values() {
+fn forward_with_caches_c4_artifact_corpus_compiles_and_matches_values() {
     let synthetic = common::SyntheticResolvers;
     let resolvers = common::resolvers(&synthetic);
     let mut searched_reads = 0usize;
@@ -1003,6 +1003,10 @@ fn forward_with_caches_b16_artifact_corpus_compiles_and_matches_values() {
         let path = evaluation_artifact_path(circuit);
         let artifact = load_evaluation_genome_artifact(&path)
             .unwrap_or_else(|error| panic!("load {}: {error:?}", path.display()));
+        assert_eq!(
+            artifact.budget_cells, 4,
+            "{circuit}: loaded c4 artifact budget"
+        );
         let searched = compile_circuit_with_evaluation_genomes(
             &dag,
             &layout,
@@ -1012,6 +1016,10 @@ fn forward_with_caches_b16_artifact_corpus_compiles_and_matches_values() {
             &artifact,
         )
         .unwrap_or_else(|error| panic!("compile searched {circuit}: {error:?}"));
+        assert_eq!(
+            searched.budget_cells, 4,
+            "{circuit}: compiled c4 artifact budget"
+        );
         let schedule = load_committed_schedule(&common::schedule_path(circuit))
             .unwrap_or_else(|error| panic!("load established {circuit}: {error:?}"));
         let established = compile_circuit(&dag, &schedule, &layout)
@@ -1136,7 +1144,7 @@ fn produce_add_sub_searched_evaluation_artifact() {
 
 #[test]
 #[ignore = "on-demand corpus regen: set GKR_PRODUCE_EVAL_PLAN_CORPUS=1"]
-fn produce_forward_with_caches_b16_evaluation_artifact_corpus() {
+fn produce_forward_with_caches_c4_evaluation_artifact_corpus() {
     if std::env::var("GKR_PRODUCE_EVAL_PLAN_CORPUS").is_err() || std::env::var("CI").is_ok() {
         eprintln!("skipping producer (set GKR_PRODUCE_EVAL_PLAN_CORPUS=1, not in CI)");
         return;
@@ -2117,7 +2125,7 @@ fn compare_forward_corpus_all_layers() {
 
 #[test]
 #[ignore = "on-demand established-neutral-semantics ablation"]
-fn ablate_first_fit_corpus_budget_twelve() {
+fn ablate_first_fit_corpus_budget_3_cells() {
     assert_eq!(FORWARD_CORPUS.len(), 11, "scheduled reference corpus drift");
     let budget_cells = 3;
     let budget_lanes = 12;
@@ -2196,7 +2204,7 @@ fn ablate_first_fit_corpus_budget_twelve() {
         );
 
         println!(
-            "eval-plan first-fit: circuit={stem} budget={budget_lanes} floor={} established_natural={} \
+            "eval-plan first-fit: circuit={stem} budget_cells={budget_cells} legacy_lanes={budget_lanes} floor={} established_natural={} \
              established_committed={} uncached={} first_fit_natural={:?} first_fit_committed={:?} \
              elapsed={:?}",
             reference_context.floor,

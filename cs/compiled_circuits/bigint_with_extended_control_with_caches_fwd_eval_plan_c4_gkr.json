@@ -1,10 +1,9 @@
 {
-  "schema_version": 2,
   "circuit": "bigint_with_extended_control",
   "pass": "Forward",
   "layout_variant": "WithCaches",
   "layout_fixture": "bigint_with_extended_control_layout_gkr.json",
-  "budget_lanes": 16,
+  "budget_cells": 4,
   "expected_fitness": {
     "infeasible": false,
     "dram_read_lanes": 1325,
@@ -20,10 +19,9 @@
   },
   "layers": [
     {
-      "schema_version": 2,
       "circuit": "bigint_with_extended_control",
       "layer": 0,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 79,
         "digest": [
@@ -2275,10 +2273,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "bigint_with_extended_control",
       "layer": 1,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 47,
         "digest": [
@@ -2862,10 +2859,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "bigint_with_extended_control",
       "layer": 2,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 23,
         "digest": [
@@ -3152,10 +3148,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "bigint_with_extended_control",
       "layer": 3,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 12,
         "digest": [
@@ -3335,10 +3330,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "bigint_with_extended_control",
       "layer": 4,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 7,
         "digest": [
@@ -3463,10 +3457,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "bigint_with_extended_control",
       "layer": 5,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 5,
         "digest": [

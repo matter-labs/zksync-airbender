@@ -1,10 +1,9 @@
 {
-  "schema_version": 2,
   "circuit": "blake2_with_extended_control",
   "pass": "Forward",
   "layout_variant": "WithCaches",
   "layout_fixture": "blake2_with_extended_control_layout_gkr.json",
-  "budget_lanes": 16,
+  "budget_cells": 4,
   "expected_fitness": {
     "infeasible": false,
     "dram_read_lanes": 2928,
@@ -20,10 +19,9 @@
   },
   "layers": [
     {
-      "schema_version": 2,
       "circuit": "blake2_with_extended_control",
       "layer": 0,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 193,
         "digest": [
@@ -5357,10 +5355,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "blake2_with_extended_control",
       "layer": 1,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 96,
         "digest": [
@@ -6335,10 +6332,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "blake2_with_extended_control",
       "layer": 2,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 47,
         "digest": [
@@ -6847,10 +6843,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "blake2_with_extended_control",
       "layer": 3,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 25,
         "digest": [
@@ -7145,10 +7140,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "blake2_with_extended_control",
       "layer": 4,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 12,
         "digest": [
@@ -7328,10 +7322,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "blake2_with_extended_control",
       "layer": 5,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 6,
         "digest": [
@@ -7445,10 +7438,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "blake2_with_extended_control",
       "layer": 6,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 5,
         "digest": [
@@ -7564,10 +7556,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "blake2_with_extended_control",
       "layer": 7,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 1,
         "digest": [

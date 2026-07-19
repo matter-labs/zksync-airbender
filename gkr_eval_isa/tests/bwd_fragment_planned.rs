@@ -475,7 +475,7 @@ fn exercise_retain_corpus(
 // ── the gate ────────────────────────────────────────────────────────────────
 
 #[test]
-fn retained_leaf_mixed_eliminated_product_fits_b16() {
+fn retained_leaf_mixed_eliminated_product_fits_4_cells() {
     let (_, layer, cross) = layers_with_bwd_roots(INITS)
         .find(|(layer_index, _, _)| *layer_index == 0)
         .expect("the pinned fixture has backward layer 0");
@@ -512,7 +512,7 @@ fn retained_leaf_mixed_eliminated_product_fits_b16() {
     assert_retains_realized(ctx, &plan, &new.trace);
     assert!(
         new.symbolic.plan.stats.peak_live_lanes <= BUDGET,
-        "[{ctx}] mixed product lowering exceeded b16: {}",
+        "[{ctx}] mixed product lowering exceeded 4 cells: {}",
         new.symbolic.plan.stats.peak_live_lanes
     );
 }

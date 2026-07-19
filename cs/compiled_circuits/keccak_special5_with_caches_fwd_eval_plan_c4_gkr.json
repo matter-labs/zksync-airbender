@@ -1,10 +1,9 @@
 {
-  "schema_version": 2,
   "circuit": "keccak_special5",
   "pass": "Forward",
   "layout_variant": "WithCaches",
   "layout_fixture": "keccak_special5_layout_gkr.json",
-  "budget_lanes": 16,
+  "budget_cells": 4,
   "expected_fitness": {
     "infeasible": false,
     "dram_read_lanes": 766,
@@ -20,10 +19,9 @@
   },
   "layers": [
     {
-      "schema_version": 2,
       "circuit": "keccak_special5",
       "layer": 0,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 50,
         "digest": [
@@ -1633,10 +1631,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "keccak_special5",
       "layer": 1,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 26,
         "digest": [
@@ -1934,10 +1931,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "keccak_special5",
       "layer": 2,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 13,
         "digest": [
@@ -2114,10 +2110,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "keccak_special5",
       "layer": 3,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 7,
         "digest": [
@@ -2242,10 +2237,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "keccak_special5",
       "layer": 4,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 4,
         "digest": [
@@ -2350,10 +2344,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "keccak_special5",
       "layer": 5,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 1,
         "digest": [

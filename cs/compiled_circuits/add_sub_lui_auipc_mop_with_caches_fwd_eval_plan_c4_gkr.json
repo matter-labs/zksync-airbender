@@ -1,10 +1,9 @@
 {
-  "schema_version": 2,
   "circuit": "add_sub_lui_auipc_mop",
   "pass": "Forward",
   "layout_variant": "WithCaches",
   "layout_fixture": "add_sub_lui_auipc_mop_layout_gkr.json",
-  "budget_lanes": 16,
+  "budget_cells": 4,
   "expected_fitness": {
     "infeasible": false,
     "dram_read_lanes": 154,
@@ -20,10 +19,9 @@
   },
   "layers": [
     {
-      "schema_version": 2,
       "circuit": "add_sub_lui_auipc_mop",
       "layer": 0,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 12,
         "digest": [
@@ -407,10 +405,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "add_sub_lui_auipc_mop",
       "layer": 1,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 6,
         "digest": [
@@ -535,10 +532,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "add_sub_lui_auipc_mop",
       "layer": 2,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 4,
         "digest": [
@@ -643,10 +639,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "add_sub_lui_auipc_mop",
       "layer": 3,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 1,
         "digest": [

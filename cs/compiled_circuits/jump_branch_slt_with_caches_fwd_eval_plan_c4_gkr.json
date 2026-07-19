@@ -1,10 +1,9 @@
 {
-  "schema_version": 2,
   "circuit": "jump_branch_slt",
   "pass": "Forward",
   "layout_variant": "WithCaches",
   "layout_fixture": "jump_branch_slt_layout_gkr.json",
-  "budget_lanes": 16,
+  "budget_cells": 4,
   "expected_fitness": {
     "infeasible": false,
     "dram_read_lanes": 170,
@@ -20,10 +19,9 @@
   },
   "layers": [
     {
-      "schema_version": 2,
       "circuit": "jump_branch_slt",
       "layer": 0,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 13,
         "digest": [
@@ -426,10 +424,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "jump_branch_slt",
       "layer": 1,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 6,
         "digest": [
@@ -554,10 +551,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "jump_branch_slt",
       "layer": 2,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 5,
         "digest": [
@@ -673,10 +669,9 @@
       }
     },
     {
-      "schema_version": 2,
       "circuit": "jump_branch_slt",
       "layer": 3,
-      "budget_lanes": 16,
+      "budget_cells": 4,
       "unit_domain": {
         "count": 1,
         "digest": [

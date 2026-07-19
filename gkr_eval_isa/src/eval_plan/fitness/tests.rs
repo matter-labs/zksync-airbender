@@ -121,8 +121,8 @@ fn forward_adapter_corpus_parity() {
             lower_dag(&layout).unwrap_or_else(|error| panic!("{fixture}: lower DAG: {error}"));
         validate(&dag).unwrap_or_else(|error| panic!("{fixture}: validate DAG: {error}"));
         let cross = build_cross_layer_field_map(&dag);
-        let artifact_path = compiled_circuit_dir()
-            .join(format!("{circuit}_with_caches_fwd_eval_plan_b16_gkr.json"));
+        let artifact_path =
+            compiled_circuit_dir().join(format!("{circuit}_with_caches_fwd_eval_plan_c4_gkr.json"));
         let committed = load_evaluation_genome_artifact(&artifact_path).unwrap_or_else(|error| {
             panic!("{fixture}: load {}: {error:?}", artifact_path.display())
         });
@@ -137,7 +137,7 @@ fn forward_adapter_corpus_parity() {
             EvaluationLayoutVariant::WithCaches,
             "{fixture}: artifact variant"
         );
-        assert_eq!(committed.budget_cells, 4, "{fixture}: committed b16 budget");
+        assert_eq!(committed.budget_cells, 4, "{fixture}: committed c4 budget");
         assert_eq!(
             committed.layers.len(),
             dag.layers.len(),
@@ -166,7 +166,6 @@ fn forward_adapter_corpus_parity() {
             let fields = expr_fields(layer, &cross);
 
             for budget_cells in [2, 3, 4] {
-                let budget_lanes = budget_cells * LANES_PER_STORAGE_CELL;
                 let old_context = PlanSearchContext::build_selected_with_units(
                     layer,
                     &fields,
@@ -176,7 +175,7 @@ fn forward_adapter_corpus_parity() {
                     expected.clone(),
                 )
                 .unwrap_or_else(|error| {
-                    panic!("{fixture} L{layer_index} b{budget_lanes}: old context: {error:?}")
+                    panic!("{fixture} L{layer_index} c{budget_cells}: old context: {error:?}")
                 });
                 let new_context = PlanSearchContext::build_for_roots(
                     layer,
@@ -186,7 +185,7 @@ fn forward_adapter_corpus_parity() {
                     &compute_roots,
                 )
                 .unwrap_or_else(|error| {
-                    panic!("{fixture} L{layer_index} b{budget_lanes}: new context: {error:?}")
+                    panic!("{fixture} L{layer_index} c{budget_cells}: new context: {error:?}")
                 });
                 let old_genome = EvaluationGenome::neutral(&old_context);
                 let new_genome = EvaluationGenome::neutral(&new_context);
@@ -224,7 +223,7 @@ fn forward_adapter_corpus_parity() {
                             layer,
                             old_context.materialized_roots(),
                             layout_layer.layer,
-                            budget_lanes,
+                            budget_cells * LANES_PER_STORAGE_CELL,
                         )
                         .unwrap();
                         let new_concrete = bind_packed_plan(
@@ -232,7 +231,7 @@ fn forward_adapter_corpus_parity() {
                             layer,
                             new_context.materialized_roots(),
                             layout_layer.layer,
-                            budget_lanes,
+                            budget_cells * LANES_PER_STORAGE_CELL,
                         )
                         .unwrap();
                         assert_eq!(
