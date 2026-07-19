@@ -7,6 +7,10 @@
 //! env-var prefix, and two optional behaviors (exporting the native include
 //! dir; the deterministic-PoW feature gate). This crate centralizes it so each
 //! `build.rs` is a single [`CudaArchive`] call.
+//!
+//! It also ships the shared CMake module `cmake/ab_cuda_target.cmake` (the
+//! `ab_cuda_configure_target` function that owns the common target
+//! configuration), whose directory is passed to CMake as `AB_CUDA_CMAKE_DIR`.
 
 use era_cudart_sys::{
     get_cuda_include_path, get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_message,
@@ -34,8 +38,15 @@ impl CudaArchive {
     /// * `lib_name` — the CMake `add_library`/`install` target, also the static
     ///   library linked via `cargo:rustc-link-lib=static=<lib_name>` (e.g.
     ///   `"gpu_ntt_native"`).
-    /// * `env_prefix` — prefix of the lineinfo toggle env var and matching
-    ///   CMake `-D` (e.g. `"GPU_NTT"` → `GPU_NTT_ENABLE_LINEINFO`).
+    /// * `env_prefix` — prefix of the diagnostics toggle env vars and matching
+    ///   CMake `-D`s (e.g. `"GPU_NTT"` → `GPU_NTT_ENABLE_LINEINFO`). Both
+    ///   toggles are off by default; presence of the env var (any value) means
+    ///   ON:
+    ///     - `<PREFIX>_ENABLE_LINEINFO` — nvcc `-lineinfo` (ncu source
+    ///       correlation; alters device code).
+    ///     - `<PREFIX>_ENABLE_BUILD_DIAG` — nvcc `--ptxas-options=-v` +
+    ///       `--keep` (per-kernel register/spill report + retained PTX/cubin
+    ///       intermediates).
     pub fn new(lib_name: impl Into<String>, env_prefix: impl Into<String>) -> Self {
         Self {
             lib_name: lib_name.into(),
@@ -78,7 +89,17 @@ impl CudaArchive {
         let enable_lineinfo = env::var_os(&lineinfo_var).is_some();
         println!("cargo:rerun-if-env-changed={lineinfo_var}");
 
+        let build_diag_var = format!("{}_ENABLE_BUILD_DIAG", self.env_prefix);
+        let enable_build_diag = env::var_os(&build_diag_var).is_some();
+        println!("cargo:rerun-if-env-changed={build_diag_var}");
+
         emit_rerun_if_changed_recursive(Path::new("native"));
+
+        // The shared CMake module ships with this helper crate, outside the calling
+        // crate's `native/` — track it per file so edits retrigger consumers (a bare
+        // directory path would only catch entry add/remove, not content edits).
+        let cmake_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("cmake");
+        emit_rerun_if_changed_recursive(&cmake_dir);
 
         if self.export_include {
             // Runtime `CARGO_MANIFEST_DIR` (the calling crate's dir), not the
@@ -122,6 +143,18 @@ impl CudaArchive {
             }
         }
         config.define(&lineinfo_var, if enable_lineinfo { "ON" } else { "OFF" });
+        config.define(
+            "AB_CUDA_CMAKE_DIR",
+            cmake_dir
+                .to_str()
+                .expect("cmake module dir must be valid UTF-8")
+                // CMake include() wants forward slashes; backslashes break on Windows.
+                .replace('\\', "/"),
+        );
+        config.define(
+            &build_diag_var,
+            if enable_build_diag { "ON" } else { "OFF" },
+        );
         if self.deterministic_pow && env::var_os("CARGO_FEATURE_DETERMINISTIC_POW").is_some() {
             config.define("AB_DETERMINISTIC_POW", "ON");
         }
