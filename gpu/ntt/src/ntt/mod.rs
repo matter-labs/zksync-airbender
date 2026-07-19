@@ -19,13 +19,16 @@ use gpu_core::primitives::utils::{
 
 /// Number of passes for the multi-stage NTT kernels at a given `log_n`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NttPassCount {
+pub(crate) enum NttPassCount {
     Two,
     Three,
 }
 
 /// Pick 3-pass vs 2-pass based on whether a single column fits in L2.
-pub fn ntt_pass_selection(log_n: usize, device_properties: &DeviceProperties) -> NttPassCount {
+pub(crate) fn ntt_pass_selection(
+    log_n: usize,
+    device_properties: &DeviceProperties,
+) -> NttPassCount {
     let l2_bytes = device_properties.l2_cache_size_bytes;
     let column_bytes = (1usize << log_n) * size_of::<BF>();
     if column_bytes >= l2_bytes && log_n >= 23 {
@@ -45,27 +48,23 @@ mod inverse;
 mod kernels;
 mod lde;
 mod strategy;
-#[allow(dead_code)]
 pub use dispatch::natural_evals_to_bitreversed_monomials;
 #[cfg(test)]
-pub use forward::{monomials_to_evals_2_pass, monomials_to_evals_3_pass};
+pub(crate) use forward::{monomials_to_evals_2_pass, monomials_to_evals_3_pass};
 #[cfg(test)]
-pub use inverse::{evals_to_monomials_2_pass, evals_to_monomials_3_pass};
-#[allow(dead_code)]
+pub(crate) use inverse::{evals_to_monomials_2_pass, evals_to_monomials_3_pass};
 pub use lde::{
     bitreversed_monomials_to_natural_evals_multi_coset, lde_with_coset_range,
     MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
 };
-#[allow(dead_code)]
-pub use strategy::{
-    select_ntt_strategy, NttDirection, NttKernelKind, NttPass, NttStrategy, NttStrategyError,
-    MIN_SUPPORTED_LOG_N,
-};
+pub(crate) use strategy::{select_ntt_strategy, NttDirection, NttKernelKind, NttStrategy};
 
 mod hypercube;
 pub use hypercube::hypercube_x1_msb_evals_to_x1_msb_monomials;
 #[cfg(test)]
-pub use hypercube::{hypercube_evals_to_monomials_2_pass, hypercube_evals_to_monomials_3_pass};
+pub(crate) use hypercube::{
+    hypercube_evals_to_monomials_2_pass, hypercube_evals_to_monomials_3_pass,
+};
 
 cuda_kernel!(
     HypercubeStage,
@@ -142,7 +141,7 @@ fn launch_natural_evals_to_bitreversed_coeffs_ntt_stage(
     NaturalEvalsToBitreversedCoeffsNttStageFunction::default().launch(&config, &args)
 }
 
-pub fn hypercube_evals_natural_to_bitreversed_coeffs(
+pub(crate) fn hypercube_evals_natural_to_bitreversed_coeffs(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -164,7 +163,7 @@ pub fn hypercube_evals_natural_to_bitreversed_coeffs(
     Ok(())
 }
 
-pub fn hypercube_coeffs_to_evals_impl(
+pub(crate) fn hypercube_coeffs_to_evals_impl(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -191,7 +190,6 @@ pub fn hypercube_coeffs_to_evals_impl(
     Ok(())
 }
 
-#[allow(dead_code)]
 pub fn hypercube_coeffs_bitrev_to_bitrev_evals(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
@@ -201,7 +199,7 @@ pub fn hypercube_coeffs_bitrev_to_bitrev_evals(
     hypercube_coeffs_to_evals_impl(src, dst, log_n, true, stream)
 }
 
-pub fn natural_evals_to_bitreversed_coeffs(
+pub(crate) fn natural_evals_to_bitreversed_coeffs(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -221,6 +219,8 @@ pub fn natural_evals_to_bitreversed_coeffs(
     Ok(())
 }
 
+// cross-crate test-reference reader; keep pub (gpu_circuit_prover's
+// whir/fold tests import this directly).
 pub const MIN_LOG_N_FOR_MULTISTAGE_KERNELS: usize = 21;
 
 pub fn log_size_supports_transposed_monomials(log_n: usize) -> bool {
@@ -248,7 +248,7 @@ cuda_kernel_declaration!(
     )
 );
 
-pub fn transform_whir_leaves_from_ntt_multi_coset(
+pub(crate) fn transform_whir_leaves_from_ntt_multi_coset(
     src: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     dst: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_trace_len: u32,

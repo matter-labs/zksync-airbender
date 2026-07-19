@@ -2,15 +2,15 @@
 //!
 //! `select_ntt_strategy` returns an `NttStrategy` describing how a given
 //! `(log_n, num_columns, num_cosets)` NTT should be executed on the active
-//! device. It routes the existing `bitreversed_monomials_to_natural_evals`
-//! through this selector, and compact kernels extend the supported `log_n`
-//! range.
+//! device. It routes the multi-coset entry
+//! `bitreversed_monomials_to_natural_evals_multi_coset` through this
+//! selector, and compact kernels extend the supported `log_n` range.
 
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NttPass {
+pub(crate) struct NttPass {
     pub start_stage: usize,
     pub stage_count: usize,
     pub kernel: NttKernelKind,
@@ -19,13 +19,13 @@ pub struct NttPass {
 /// Direction the NTT plan runs in. Forward = bitreversed monomials → natural
 /// evals; Inverse = natural evals → bitreversed monomials.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NttDirection {
+pub(crate) enum NttDirection {
     Forward,
     Inverse,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NttKernelKind {
+pub(crate) enum NttKernelKind {
     MonomialsToEvalsInitial {
         stages: usize,
     },
@@ -88,14 +88,14 @@ pub enum NttKernelKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NttStrategy {
+pub(crate) struct NttStrategy {
     pub passes: Vec<NttPass>,
     pub columns_per_launch: usize,
     pub cosets_per_launch: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NttStrategyError {
+pub(crate) enum NttStrategyError {
     LogNBelowSupported { log_n: usize, min_supported: usize },
 }
 
@@ -108,18 +108,22 @@ pub enum NttStrategyError {
 /// `[TWO_PASS_COMPACT_MIN_LOG_N, TWO_PASS_COMPACT_MAX_LOG_N]`, and the existing
 /// 2-/3-pass kernels cover `[MULTIPASS_MIN_LOG_N, ..]`. Selector returns
 /// `Err(LogNBelowSupported)` for `log_n = 0` only (identity NTT = host memcpy).
-pub const MIN_SUPPORTED_LOG_N: usize = 1;
-pub const COMPACT_MIN_LOG_N: usize = 1;
+// Documentation-only: the actual floor check in `select_forward_strategy`
+// matches against `COMPACT_MIN_LOG_N` (same value) directly, so this named
+// constant has no live reference; kept because the module doc above cites it.
+#[allow(dead_code)]
+pub(crate) const MIN_SUPPORTED_LOG_N: usize = 1;
+pub(crate) const COMPACT_MIN_LOG_N: usize = 1;
 // log_n in [13, 14] move to the 2-pass-compact-initial path: compact-1-pass
 // uses a single block per NTT and starves SMs once the per-block working set
 // approaches its smem cap; per-stage launch overhead is a smaller cost than
 // the SM-occupancy loss in that range.
-pub const COMPACT_MAX_LOG_N: usize = 12;
-pub const TWO_PASS_COMPACT_MIN_LOG_N: usize = 13;
-pub const TWO_PASS_COMPACT_MAX_LOG_N: usize = 20;
-pub const MULTIPASS_MIN_LOG_N: usize = 21;
+pub(crate) const COMPACT_MAX_LOG_N: usize = 12;
+pub(crate) const TWO_PASS_COMPACT_MIN_LOG_N: usize = 13;
+pub(crate) const TWO_PASS_COMPACT_MAX_LOG_N: usize = 20;
+pub(crate) const MULTIPASS_MIN_LOG_N: usize = 21;
 
-pub fn select_ntt_strategy(
+pub(crate) fn select_ntt_strategy(
     direction: NttDirection,
     log_n: usize,
     num_columns: usize,

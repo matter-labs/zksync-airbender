@@ -20,7 +20,6 @@ use gpu_core::primitives::field::BaseField;
 
 type BF = BaseField;
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn dispatch_strategy(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -152,7 +151,6 @@ pub(super) fn dispatch_strategy(
     }
 }
 
-#[allow(dead_code)]
 pub fn natural_evals_to_bitreversed_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),

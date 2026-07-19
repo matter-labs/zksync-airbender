@@ -17,7 +17,7 @@ use std::mem::size_of;
 
 type BF = BaseField;
 
-pub fn monomials_to_evals_3_pass(
+pub(crate) fn monomials_to_evals_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -169,7 +169,7 @@ pub fn monomials_to_evals_3_pass(
     Ok(())
 }
 
-pub fn monomials_to_evals_compact_1_pass(
+pub(crate) fn monomials_to_evals_compact_1_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -299,7 +299,7 @@ pub fn monomials_to_evals_compact_1_pass(
     Ok(())
 }
 
-pub fn monomials_to_evals_subwarp(
+pub(crate) fn monomials_to_evals_subwarp(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -422,7 +422,7 @@ pub fn monomials_to_evals_subwarp(
     Ok(())
 }
 
-pub fn monomials_to_evals_smem_packed(
+pub(crate) fn monomials_to_evals_smem_packed(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -551,7 +551,7 @@ pub fn monomials_to_evals_smem_packed(
     Ok(())
 }
 
-pub fn monomials_to_evals_2_pass_compact_initial(
+pub(crate) fn monomials_to_evals_2_pass_compact_initial(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -721,7 +721,7 @@ pub fn monomials_to_evals_2_pass_compact_initial(
     Ok(())
 }
 
-pub fn monomials_to_evals_2_pass(
+pub(crate) fn monomials_to_evals_2_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,

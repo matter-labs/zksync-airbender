@@ -55,7 +55,7 @@ hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_6_stag
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_7_stages_kernel);
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_8_stages_kernel);
 
-pub fn hypercube_evals_to_monomials_3_pass(
+pub(crate) fn hypercube_evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -157,7 +157,7 @@ pub fn hypercube_evals_to_monomials_3_pass(
     Ok(())
 }
 
-pub fn hypercube_evals_to_monomials_2_pass(
+pub(crate) fn hypercube_evals_to_monomials_2_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -252,7 +252,6 @@ pub fn hypercube_evals_to_monomials_2_pass(
     Ok(())
 }
 
-#[allow(dead_code)]
 pub fn hypercube_x1_msb_evals_to_x1_msb_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),

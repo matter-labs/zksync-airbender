@@ -8,6 +8,10 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 #![cfg_attr(test, feature(allocator_api))]
+// Launcher signatures mirror kernel parameter lists by design (same precedent
+// as gpu_hash's crate-level allow): splitting them into config structs would
+// obscure the 1:1 Rust<->kernel correspondence.
+#![allow(clippy::too_many_arguments)]
 
 mod upstream;
 

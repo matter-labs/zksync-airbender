@@ -98,7 +98,7 @@ fn get_lde_config_for_log_n(log_n: usize) -> (usize, usize) {
     (block_dim_x, vals_per_block)
 }
 
-pub fn lde_intermediate_size_with_coset_range(
+pub(crate) fn lde_intermediate_size_with_coset_range(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -206,7 +206,6 @@ pub fn lde_intermediate_size_with_coset_range(
 /// it larger leaves gaps between cosets (used by the base-trace LDE caller
 /// to write directly into a `[coset][col][trace_len]` trace-holder backing
 /// where col here is a per-column NTT inside an outer column loop).
-#[allow(dead_code)]
 pub fn bitreversed_monomials_to_natural_evals_multi_coset(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
@@ -246,7 +245,6 @@ pub const MAX_LOG_N_FOR_SINGLE_KERNEL_LDE: usize = 13;
 /// first local coset's coset factor. Both caller-controlled values must be
 /// powers of two, and the selected range must fit within the full LDE coset
 /// domain.
-#[allow(dead_code)]
 pub fn lde_with_coset_range(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,

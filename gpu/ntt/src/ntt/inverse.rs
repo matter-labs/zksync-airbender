@@ -17,7 +17,7 @@ use std::mem::size_of;
 
 type BF = BaseField;
 
-pub fn evals_to_monomials_3_pass(
+pub(crate) fn evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -133,7 +133,7 @@ pub fn evals_to_monomials_3_pass(
     Ok(())
 }
 
-pub fn evals_to_monomials_2_pass(
+pub(crate) fn evals_to_monomials_2_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,

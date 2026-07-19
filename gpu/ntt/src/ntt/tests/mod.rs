@@ -5,9 +5,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use worker::Worker;
 
-use super::{
-    hypercube_evals_natural_to_bitreversed_coeffs, natural_evals_to_bitreversed_coeffs,
-};
+use super::{hypercube_evals_natural_to_bitreversed_coeffs, natural_evals_to_bitreversed_coeffs};
 use crate::ntt_twiddles::DeviceContext;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;

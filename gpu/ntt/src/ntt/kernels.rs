@@ -15,6 +15,10 @@ cuda_kernel_signature_and_arguments!(
     num_cols_per_coset: i32,
     log_cosets_in_tile: i32,
 );
+// Hand-expanded copy of era_cudart 0.156.0's `cuda_kernel_function!` with a
+// `pub(super)` field (its multi-arm `cuda_kernel!` macro forces the tuple
+// field private for the multi-kernel-per-signature arm used here); re-sync
+// this expansion on any era_cudart bump.
 pub(super) struct StridedTilesStagesFunction(pub(super) StridedTilesStagesSignature);
 impl era_cudart::execution::KernelFunction for StridedTilesStagesFunction {
     type Signature = StridedTilesStagesSignature;
