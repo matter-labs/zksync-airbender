@@ -401,7 +401,8 @@ fn pick_cols_and_cosets_per_launch(
             // Larger `cols` only makes the half-L2 cap worse; further iterations are pointless.
             break;
         }
-        // K such that (K + 1) * cols * col_bytes <= L2  <=>  K * monomial_bytes <= l2 - monomial_bytes.
+        // K such that (K + 1) * cols * col_bytes <= L2
+        // <=> K * monomial_bytes <= l2 - monomial_bytes.
         let k_raw = (l2 / monomial_bytes).saturating_sub(1);
         let k_capped = k_raw.min(num_cosets);
         if k_capped == 0 {

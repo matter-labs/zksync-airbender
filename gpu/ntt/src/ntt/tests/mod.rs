@@ -1162,7 +1162,8 @@ macro_rules! smem_packed_parity_test {
     };
 }
 
-// log_n=6, IPB=8: workload >= 8 required. (cosets=8, cols=1), (cosets=2, cols=4), (cosets=16, cols=4).
+// log_n=6, IPB=8: workload >= 8 required.
+// (cosets=8, cols=1), (cosets=2, cols=4), (cosets=16, cols=4).
 smem_packed_parity_test!(smem_packed_log_n_6_ipb_8_cosets_8_cols_1, 6, 3, 8, 1);
 smem_packed_parity_test!(smem_packed_log_n_6_ipb_8_cosets_2_cols_4, 6, 3, 2, 4);
 smem_packed_parity_test!(smem_packed_log_n_6_ipb_8_cosets_16_cols_4, 6, 3, 16, 4);

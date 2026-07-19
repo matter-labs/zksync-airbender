@@ -73,7 +73,8 @@ pub(crate) fn evals_to_monomials_3_pass(
                 blocks_per_exchg_region * num_exchg_regions,
                 n / bf_vals_per_block
             );
-            // Flat-blockIdx.x: gridDim.x = blocks_per_exchg_region * num_exchg_regions * cols_in_chunk.
+            // Flat-blockIdx.x:
+            // gridDim.x = blocks_per_exchg_region * num_exchg_regions * cols_in_chunk.
             let grid_dim: Dim3 =
                 (blocks_per_exchg_region as u32 * num_exchg_regions as u32 * cols_in_chunk as u32)
                     .into();
