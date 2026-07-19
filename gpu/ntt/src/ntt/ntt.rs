@@ -1210,7 +1210,7 @@ pub fn monomials_to_evals_2_pass(
             23 => StridedTilesStagesFunction(ab_monomials_to_evals_last_9_stages_kernel),
             24 => StridedTilesStagesFunction(ab_monomials_to_evals_last_10_stages_kernel),
             _ => unreachable!(
-                "NTT 3-pass bitreversed->natural kernels are only generated for log_n in 21..=24"
+                "NTT 2-pass final-stage kernels are only generated for final_stages in {{9, 10}} (log_n in {{23, 24}})"
             ),
         };
         let func_ptr = function.as_ptr();
