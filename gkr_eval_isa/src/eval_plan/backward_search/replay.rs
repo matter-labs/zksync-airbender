@@ -5,7 +5,7 @@ use cs::gkr_compiler::dag_ir::{ExprId, FieldKind};
 use crate::bwd::distill::DistilledLayer;
 use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
 use crate::bwd::trace::{
-    BwdEvent, BwdFingerprint, BwdServeKind, positioned_physical_traffic_events,
+    BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom, positioned_physical_traffic_events,
 };
 use crate::eval_plan::backward::{
     BackwardEvaluationError, CompiledBackwardEvaluation, compile_backward_fragments_replayed,
@@ -71,28 +71,17 @@ pub fn occurrence_plan_from_paging(
         });
     }
 
-    let mut ordered_actions =
-        BTreeMap::<BwdFingerprintOrderKey, Vec<((usize, usize, usize), PagingAction)>>::new();
-    for (index, (demand, action)) in problem.demands.iter().zip(&paging.actions).enumerate() {
-        ordered_actions.entry(demand.fp.into()).or_default().push((
-            (demand.instruction, demand.physical_ordinal, index),
-            *action,
-        ));
-    }
-    let mut actions = BTreeMap::<BwdFingerprintOrderKey, VecDeque<PagingAction>>::new();
-    for (fp, mut entries) in ordered_actions {
-        entries.sort_by_key(|(identity, _)| *identity);
-        actions.insert(fp, entries.into_iter().map(|(_, action)| action).collect());
-    }
-    let eligible = actions.keys().copied().collect::<BTreeSet<_>>();
+    let mut demands = ordered_demand_queues(problem);
+    let eligible = demands.keys().copied().collect::<BTreeSet<_>>();
     let mut entries = Vec::with_capacity(problem.all_domain_serves.len());
     for (serve, &fp) in problem.all_domain_serves.iter().enumerate() {
         let key = fp.into();
         let action = if eligible.contains(&key) {
-            actions
+            let demand = demands
                 .get_mut(&key)
                 .and_then(VecDeque::pop_front)
-                .ok_or(BackwardSearchError::PagingActionUnderflow { serve })?
+                .ok_or(BackwardSearchError::PagingActionUnderflow { serve })?;
+            paging.actions[demand]
         } else {
             PagingAction::Bypass
         };
@@ -104,7 +93,7 @@ pub fn occurrence_plan_from_paging(
             },
         });
     }
-    let remaining = actions.values().try_fold(0usize, |count, queue| {
+    let remaining = demands.values().try_fold(0usize, |count, queue| {
         count
             .checked_add(queue.len())
             .ok_or(BackwardSearchError::CostOverflow)
@@ -195,31 +184,30 @@ pub fn compile_and_certify_paging(
         observable: "physical traffic source mapping",
     })?;
     let sources = controlled_sources(&problem.demands)?;
+    let realized_misses = certify_demand_misses(problem, &predicted, &compiled)?;
+    let predicted_width_lanes = demand_width_lanes(problem, &predicted.misses)?;
     let realized_reads = physical
         .iter()
         .filter_map(|positioned| match positioned.event {
             BwdEvent::TrafficRead { value, cells } if sources.contains_key(&value) => {
-                Some(PositionedSourceAccess {
-                    instruction: positioned.instruction,
-                    physical_ordinal: positioned.physical_ordinal,
-                    value,
-                    width_lanes: cells,
-                })
+                Some((value, cells))
             }
             _ => None,
         })
         .collect::<Vec<_>>();
-    let realized_width_lanes = realized_reads.iter().try_fold(0u64, |total, access| {
+    let realized_width_lanes = realized_reads.iter().try_fold(0u64, |total, (_, width)| {
         total
-            .checked_add(u64::from(access.width_lanes))
+            .checked_add(u64::from(*width))
             .ok_or(BackwardSearchError::CostOverflow)
     })?;
-    let predicted_width_lanes = predicted.accesses.iter().try_fold(0u64, |total, access| {
-        total
-            .checked_add(u64::from(access.width_lanes))
-            .ok_or(BackwardSearchError::CostOverflow)
-    })?;
-    if realized_reads != predicted.accesses {
+    let anchored_reads = realized_misses
+        .iter()
+        .map(|&index| {
+            let demand = &problem.demands[index];
+            (demand.expr, u32::from(demand.width_lanes))
+        })
+        .collect::<Vec<_>>();
+    if realized_reads != anchored_reads {
         return Err(BackwardSearchError::PagingSourceAccessMismatch {
             predicted_reads: predicted.reads,
             realized_reads: realized_reads
@@ -233,9 +221,9 @@ pub fn compile_and_certify_paging(
     let realized_read_cost =
         realized_reads
             .iter()
-            .try_fold(SourceCost::default(), |cost, access| {
-                let (width, source_desc) = sources[&access.value];
-                if u32::from(width) != access.width_lanes {
+            .try_fold(SourceCost::default(), |cost, (value, cells)| {
+                let (width, source_desc) = sources[value];
+                if u32::from(width) != *cells {
                     return Err(BackwardSearchError::PagingSourceAccessMismatch {
                         predicted_reads: predicted.reads,
                         realized_reads: realized_reads
@@ -326,16 +314,8 @@ pub fn compile_and_certify_paging(
 
 struct PredictedPaging {
     reads: u64,
-    accesses: Vec<PositionedSourceAccess>,
+    misses: Vec<usize>,
     cost: SourceCost,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct PositionedSourceAccess {
-    instruction: usize,
-    physical_ordinal: usize,
-    value: ExprId,
-    width_lanes: u32,
 }
 
 fn predict_paging(
@@ -349,7 +329,7 @@ fn predict_paging(
     }
     let mut residents = BTreeMap::<ExprId, u8>::new();
     let mut reads = 0u64;
-    let mut accesses = Vec::new();
+    let mut misses = Vec::new();
     let mut cost = SourceCost::default();
     let mut admissions = 0u32;
     let mut evictions = 0u32;
@@ -362,12 +342,7 @@ fn predict_paging(
             reads = reads
                 .checked_add(1)
                 .ok_or(BackwardSearchError::CostOverflow)?;
-            accesses.push(PositionedSourceAccess {
-                instruction: demand.instruction,
-                physical_ordinal: demand.physical_ordinal,
-                value: demand.expr,
-                width_lanes: u32::from(demand.width_lanes),
-            });
+            misses.push(position);
             cost = cost.checked_add(demand.miss_cost)?;
         }
         if *action == PagingAction::Retain {
@@ -406,7 +381,7 @@ fn predict_paging(
     }
     Ok(PredictedPaging {
         reads,
-        accesses,
+        misses,
         cost,
     })
 }
@@ -465,10 +440,9 @@ fn reprice_source_read(
     Ok(cost)
 }
 
-fn realized_occupancy_profile(
+fn ordered_demand_queues(
     problem: &BackwardSearchProblem,
-    compiled: &CompiledBackwardEvaluation,
-) -> Result<(Vec<usize>, usize), BackwardSearchError> {
+) -> BTreeMap<BwdFingerprintOrderKey, VecDeque<usize>> {
     let mut eligible = BTreeMap::<BwdFingerprintOrderKey, Vec<(usize, usize, usize)>>::new();
     for (index, demand) in problem.demands.iter().enumerate() {
         eligible.entry(demand.fp.into()).or_default().push((
@@ -477,19 +451,85 @@ fn realized_occupancy_profile(
             index,
         ));
     }
-    let mut eligible = eligible
+    eligible
         .into_iter()
         .map(|(fp, mut identities)| {
             identities.sort();
             (
                 fp,
-                identities
-                    .into_iter()
-                    .map(|(_, _, index)| index)
-                    .collect::<VecDeque<_>>(),
+                identities.into_iter().map(|(_, _, index)| index).collect(),
             )
         })
-        .collect::<BTreeMap<_, _>>();
+        .collect()
+}
+
+fn realized_demand_misses(
+    problem: &BackwardSearchProblem,
+    compiled: &CompiledBackwardEvaluation,
+) -> Result<Vec<usize>, BackwardSearchError> {
+    let mut eligible = ordered_demand_queues(problem);
+    let mut misses = Vec::new();
+    for event in &compiled.trace.events {
+        let BwdEvent::Serve { fp, from } = event else {
+            continue;
+        };
+        let key = (*fp).into();
+        let Some(queue) = eligible.get_mut(&key) else {
+            continue;
+        };
+        let index = queue
+            .pop_front()
+            .ok_or(BackwardSearchError::PagingCertificateMismatch {
+                observable: "extra eligible serve",
+            })?;
+        if *from == BwdServedFrom::Recomputed {
+            misses.push(index);
+        }
+    }
+    if eligible.values().any(|remaining| !remaining.is_empty()) {
+        return Err(BackwardSearchError::PagingCertificateMismatch {
+            observable: "eligible serve count",
+        });
+    }
+    Ok(misses)
+}
+
+fn demand_width_lanes(
+    problem: &BackwardSearchProblem,
+    demands: &[usize],
+) -> Result<u64, BackwardSearchError> {
+    demands.iter().try_fold(0u64, |total, &index| {
+        total
+            .checked_add(u64::from(problem.demands[index].width_lanes))
+            .ok_or(BackwardSearchError::CostOverflow)
+    })
+}
+
+fn certify_demand_misses(
+    problem: &BackwardSearchProblem,
+    predicted: &PredictedPaging,
+    compiled: &CompiledBackwardEvaluation,
+) -> Result<Vec<usize>, BackwardSearchError> {
+    let realized = realized_demand_misses(problem, compiled)?;
+    if realized != predicted.misses {
+        return Err(BackwardSearchError::PagingSourceAccessMismatch {
+            predicted_reads: predicted.reads,
+            realized_reads: realized
+                .len()
+                .try_into()
+                .map_err(|_| BackwardSearchError::CostOverflow)?,
+            predicted_width_lanes: demand_width_lanes(problem, &predicted.misses)?,
+            realized_width_lanes: demand_width_lanes(problem, &realized)?,
+        });
+    }
+    Ok(realized)
+}
+
+fn realized_occupancy_profile(
+    problem: &BackwardSearchProblem,
+    compiled: &CompiledBackwardEvaluation,
+) -> Result<(Vec<usize>, usize), BackwardSearchError> {
+    let mut eligible = ordered_demand_queues(problem);
     let mut resident = BTreeMap::<ExprId, usize>::new();
     let mut live = 0usize;
     let mut peak = 0usize;
@@ -584,7 +624,7 @@ mod tests {
 
     use crate::bwd::distill::{DistilledLayer, distill};
     use crate::bwd::plan::PlanAction;
-    use crate::bwd::trace::BwdEvent;
+    use crate::bwd::trace::{BwdEvent, positioned_physical_traffic_events};
     use crate::eval_plan::backward::BackwardEvaluationError;
     use crate::eval_plan::backward_search::pager::{
         ExactPagingPlan, PagerOutcome, PagingAction, solve_exact_paging,
@@ -595,8 +635,8 @@ mod tests {
     use crate::eval_plan::backward_search::{BackwardSearchError, MAX_PAGER_STATES};
 
     use super::{
-        compile_and_certify_paging, map_replay_error, occurrence_plan_from_paging,
-        realized_occupancy_profile,
+        certify_demand_misses, compile_and_certify_paging, map_replay_error,
+        occurrence_plan_from_paging, predict_paging, realized_occupancy_profile,
     };
 
     struct SyntheticFixture {
@@ -656,6 +696,62 @@ mod tests {
     }
 
     #[test]
+    fn replayed_positions_may_compress_after_an_earlier_hit() {
+        let layer = synthetic_two_shared_sources_layer();
+        let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let (_, problem) = build_backward_search_problem(&layer, &distilled, 8, 4).unwrap();
+        let problem = problem.expect("two shared-source problem");
+        let demand_values = problem
+            .demands
+            .iter()
+            .map(|demand| demand.expr)
+            .collect::<Vec<_>>();
+        assert_eq!(demand_values.len(), 4);
+        assert_eq!(demand_values[0], demand_values[1]);
+        assert_eq!(demand_values[2], demand_values[3]);
+        assert_ne!(demand_values[0], demand_values[2]);
+        let exact = match solve_exact_paging(&problem.demands, MAX_PAGER_STATES).unwrap() {
+            PagerOutcome::Solved(exact) => exact,
+            outcome => panic!("expected solved paging problem, got {outcome:?}"),
+        };
+        assert_eq!(
+            exact.actions,
+            vec![
+                PagingAction::Retain,
+                PagingAction::Bypass,
+                PagingAction::Retain,
+                PagingAction::Bypass,
+            ]
+        );
+
+        let candidate = compile_and_certify_paging(&distilled, &problem, &exact, 0).unwrap();
+        let replayed_b = positioned_physical_traffic_events(
+            &distilled.layer,
+            &candidate.compiled.compiled.program,
+            &candidate.compiled.compiled.specials,
+            &distilled.leaf_descs,
+            &candidate.compiled.compiled.backings,
+        )
+        .unwrap()
+        .into_iter()
+        .find(|positioned| {
+            matches!(
+                positioned.event,
+                BwdEvent::TrafficRead { value, .. } if value == problem.demands[2].expr
+            )
+        })
+        .unwrap();
+        assert_ne!(
+            (
+                problem.demands[2].instruction,
+                problem.demands[2].physical_ordinal,
+            ),
+            (replayed_b.instruction, replayed_b.physical_ordinal),
+            "the later B miss must exercise compressed replay coordinates"
+        );
+    }
+
+    #[test]
     fn duplicate_fingerprints_consume_actions_in_demand_order() {
         let fixture = synthetic_shared_read_fixture();
         let mut problem = fixture.problem;
@@ -709,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn certificate_rejects_reordered_duplicate_physical_occurrences() {
+    fn certificate_rejects_reordered_same_fingerprint_demand_identities() {
         let fixture = synthetic_shared_read_fixture();
         let mut problem = fixture.problem;
         let mut paging = fixture.exact;
@@ -731,6 +827,17 @@ mod tests {
             .sum();
         paging.objective.admissions = 0;
         paging.objective.evictions = 0;
+        let mut candidate =
+            compile_and_certify_paging(&fixture.distilled, &problem, &paging, 0).unwrap();
+        let fp = problem.demands[0].fp;
+        problem.demands[1].fp = fp;
+        for event in &mut candidate.compiled.trace.events {
+            if let BwdEvent::Serve { fp: served, .. } = event
+                && served.value == problem.demands[0].expr
+            {
+                *served = fp;
+            }
+        }
         let first = (
             problem.demands[0].instruction,
             problem.demands[0].physical_ordinal,
@@ -748,8 +855,9 @@ mod tests {
             problem.demands[1].physical_ordinal,
         ) = first;
 
+        let predicted = predict_paging(&problem, &paging).unwrap();
         assert!(matches!(
-            compile_and_certify_paging(&fixture.distilled, &problem, &paging, 0),
+            certify_demand_misses(&problem, &predicted, &candidate.compiled),
             Err(BackwardSearchError::PagingSourceAccessMismatch { .. })
         ));
     }
@@ -874,6 +982,27 @@ mod tests {
                 roots: vec![RootId(0), RootId(1)],
             },
             roots: vec![claim_root(ExprId(3), 0), claim_root(ExprId(4), 1)],
+            resolutions: BTreeMap::new(),
+        }
+    }
+
+    fn synthetic_two_shared_sources_layer() -> DagLayer {
+        let sources = (0..6).map(read_source).collect::<Vec<_>>();
+        let mut exprs = (0..6)
+            .map(|source| Expr::Source(SourceId(source)))
+            .collect::<Vec<_>>();
+        for children in [[0, 2], [0, 3], [1, 4], [1, 5]] {
+            exprs.push(Expr::Mul(children.map(ExprId).into_iter().collect()));
+        }
+        DagLayer {
+            sources,
+            exprs,
+            batching: BatchingOrder {
+                roots: (0..4).map(RootId).collect(),
+            },
+            roots: (0..4)
+                .map(|index| claim_root(ExprId(6 + index), index as usize))
+                .collect(),
             resolutions: BTreeMap::new(),
         }
     }
