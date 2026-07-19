@@ -51,7 +51,7 @@ mod shared;
 mod strategy;
 pub use dispatch::natural_evals_to_bitreversed_monomials;
 #[cfg(test)]
-pub(crate) use forward::{monomials_to_evals_2_pass, monomials_to_evals_3_pass};
+pub(crate) use forward::{monomials_to_evals_2_pass_smem, monomials_to_evals_3_pass};
 #[cfg(test)]
 pub(crate) use inverse::{evals_to_monomials_2_pass, evals_to_monomials_3_pass};
 pub use lde::{
@@ -164,7 +164,7 @@ pub(crate) fn hypercube_evals_natural_to_bitreversed_coeffs(
     Ok(())
 }
 
-pub(crate) fn hypercube_coeffs_to_evals_impl(
+pub(crate) fn hypercube_coeffs_to_evals(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -197,7 +197,7 @@ pub fn hypercube_coeffs_bitrev_to_bitrev_evals(
     log_n: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    hypercube_coeffs_to_evals_impl(src, dst, log_n, true, stream)
+    hypercube_coeffs_to_evals(src, dst, log_n, true, stream)
 }
 
 pub(crate) fn natural_evals_to_bitreversed_coeffs(

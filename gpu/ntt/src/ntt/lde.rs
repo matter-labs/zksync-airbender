@@ -103,7 +103,9 @@ fn get_lde_config_for_log_n(log_n: usize) -> (usize, usize) {
     (block_dim_x, vals_per_block)
 }
 
-pub(crate) fn lde_intermediate_size_with_coset_range(
+/// Fast-path arm of [`lde_with_coset_range`] for `log_n` in `(13, 18]`
+/// (`MAX_LOG_N_FOR_SINGLE_KERNEL_LDE < log_n <= 18`). Single caller.
+pub(crate) fn lde_intermediate_range(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
     log_n: usize,
@@ -224,7 +226,7 @@ pub fn bitreversed_monomials_to_natural_evals_multi_coset(
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
     let num_cosets = 1usize << log_lde_factor;
-    bitreversed_monomials_to_natural_evals_multi_coset_impl(
+    dispatch_forward_multi_coset(
         inputs_matrix,
         outputs,
         log_n,
@@ -283,7 +285,7 @@ pub fn lde_with_coset_range(
     );
     // TODO: extend to smaller sizes when chunking-friendly kernels are done
     if (log_n <= 18) && (log_n > MAX_LOG_N_FOR_SINGLE_KERNEL_LDE) {
-        let result = lde_intermediate_size_with_coset_range(
+        let result = lde_intermediate_range(
             inputs_matrix,
             outputs,
             log_n,
@@ -298,7 +300,7 @@ pub fn lde_with_coset_range(
         );
         return result;
     }
-    bitreversed_monomials_to_natural_evals_multi_coset_impl(
+    dispatch_forward_multi_coset(
         inputs_matrix,
         outputs,
         log_n,
@@ -314,7 +316,10 @@ pub fn lde_with_coset_range(
     )
 }
 
-fn bitreversed_monomials_to_natural_evals_multi_coset_impl(
+/// Shared core behind both [`bitreversed_monomials_to_natural_evals_multi_coset`]
+/// and [`lde_with_coset_range`]'s fallback arm: selects the forward NTT
+/// strategy for `log_n` and dispatches to the matching pass-shape kernel(s).
+fn dispatch_forward_multi_coset(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs: &mut DeviceSlice<BF>,
     log_n: usize,

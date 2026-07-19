@@ -641,7 +641,7 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
     Ok(())
 }
 
-pub(crate) fn monomials_to_evals_2_pass(
+pub(crate) fn monomials_to_evals_2_pass_smem(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,

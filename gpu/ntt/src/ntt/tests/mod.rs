@@ -422,7 +422,7 @@ fn test_monomials_to_evals_2_pass_out_of_place() {
     run_monomials_to_evals(
         23..25,
         4,
-        wrap_monomials_to_evals_2_pass,
+        wrap_monomials_to_evals_2_pass_smem,
         InOrOutOfPlace::Out,
         false,
     );
@@ -434,7 +434,7 @@ fn test_monomials_to_evals_2_pass_in_place() {
     run_monomials_to_evals(
         23..25,
         4,
-        wrap_monomials_to_evals_2_pass,
+        wrap_monomials_to_evals_2_pass_smem,
         InOrOutOfPlace::In,
         false,
     );
@@ -446,7 +446,7 @@ fn test_monomials_to_evals_2_pass_transposed_monomials_out_of_place() {
     run_monomials_to_evals(
         23..25,
         4,
-        wrap_monomials_to_evals_2_pass,
+        wrap_monomials_to_evals_2_pass_smem,
         InOrOutOfPlace::Out,
         true,
     );
@@ -458,7 +458,7 @@ fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
     run_monomials_to_evals(
         23..25,
         4,
-        wrap_monomials_to_evals_2_pass,
+        wrap_monomials_to_evals_2_pass_smem,
         InOrOutOfPlace::In,
         true,
     );

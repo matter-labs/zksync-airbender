@@ -15,7 +15,7 @@ use worker::Worker;
 
 use super::super::{
     evals_to_monomials_2_pass, evals_to_monomials_3_pass, hypercube_evals_to_monomials_2_pass,
-    hypercube_evals_to_monomials_3_pass, monomials_to_evals_2_pass, monomials_to_evals_3_pass,
+    hypercube_evals_to_monomials_3_pass, monomials_to_evals_2_pass_smem, monomials_to_evals_3_pass,
     OMEGA_LOG_ORDER,
 };
 use super::{InOrOutOfPlace, TEST_COSET_INDEX, TEST_LOG_LDE_FACTOR};
@@ -515,7 +515,7 @@ pub(super) fn wrap_evals_to_monomials_3_pass(
 }
 
 #[cfg(not(no_cuda))]
-pub(super) fn wrap_monomials_to_evals_2_pass(
+pub(super) fn wrap_monomials_to_evals_2_pass_smem(
     inputs: &DeviceMatrixChunk<BF>,
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
@@ -523,7 +523,7 @@ pub(super) fn wrap_monomials_to_evals_2_pass(
     transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    monomials_to_evals_2_pass(
+    monomials_to_evals_2_pass_smem(
         inputs,
         outputs,
         log_n,

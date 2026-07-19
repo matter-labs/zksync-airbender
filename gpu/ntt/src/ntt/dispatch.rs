@@ -6,7 +6,7 @@ use era_cudart::stream::CudaStream;
 
 use super::dit::monomials_to_evals_dit;
 use super::forward::{
-    monomials_to_evals_2_pass, monomials_to_evals_2_pass_compact_initial,
+    monomials_to_evals_2_pass_compact_initial, monomials_to_evals_2_pass_smem,
     monomials_to_evals_3_pass, monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed,
     monomials_to_evals_subwarp,
 };
@@ -120,7 +120,7 @@ pub(super) fn dispatch_strategy(
                     stream,
                 )
             }
-            _ => monomials_to_evals_2_pass(
+            _ => monomials_to_evals_2_pass_smem(
                 inputs_matrix,
                 outputs_matrix,
                 log_n,
