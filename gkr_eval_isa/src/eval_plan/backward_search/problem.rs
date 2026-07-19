@@ -503,7 +503,7 @@ fn gap_capacities(demand_positions: &[usize], free: &[usize]) -> Vec<u8> {
         .map(|(index, &position)| {
             let range = match demand_positions.get(index + 1) {
                 Some(&next) => position.saturating_add(1)..next.saturating_add(1),
-                None => position..free.len(),
+                None => position.saturating_add(1)..free.len(),
             };
             range
                 .filter_map(|position| free.get(position).copied())
@@ -706,7 +706,7 @@ mod tests {
 
     use cs::gkr_compiler::dag_ir::{
         BatchingOrder, BwdRegime, ClaimInfo, ReadPlace, Root, RootGroup, RootId, RootOrigin,
-        RootSlot, SourceId, SourceInfo,
+        RootSlot, SourceId, SourceInfo, VirtualSetupKind,
     };
 
     use crate::bwd::distill::distill;
@@ -735,16 +735,67 @@ mod tests {
 
     #[test]
     fn only_real_read_leaves_enter_the_paging_domain() {
-        let problem = synthetic_problem_with_read_vs_constant_and_compound();
-        assert_eq!(problem.leaf_domain.len(), 1);
-        assert!(problem.demands.iter().all(|d| d.source_desc.is_some()));
+        let canonical = synthetic_read_filter_problem_layer();
+        let d = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let stable_values = stable_distilled_site_domain(&d)
+            .into_keys()
+            .map(|site| site.value)
+            .collect::<BTreeSet<_>>();
+        assert!(stable_values.contains(&StableBwdExprKey::Canonical(ExprId(0))));
+        assert!(stable_values.contains(&StableBwdExprKey::Canonical(ExprId(3))));
+        assert!(stable_values.contains(&StableBwdExprKey::Canonical(ExprId(10))));
+        assert!(!stable_values.contains(&StableBwdExprKey::Canonical(ExprId(4))));
+        assert!(!stable_values.contains(&StableBwdExprKey::Canonical(ExprId(5))));
+
+        let (_, problem) = build_backward_search_problem(&canonical, &d, 8, 4).unwrap();
+        let problem = problem.expect("the real fixture remains reportable even if trivial");
+        assert!(!problem.demands.is_empty());
+        assert!(
+            problem
+                .demands
+                .iter()
+                .all(|demand| demand.source_desc.is_some())
+        );
+        let read_values = BTreeSet::from([
+            StableBwdExprKey::Canonical(ExprId(0)),
+            StableBwdExprKey::Canonical(ExprId(1)),
+            StableBwdExprKey::Canonical(ExprId(2)),
+        ]);
+        assert!(problem.demands.iter().all(|demand| {
+            read_values.contains(&demand.key.site.value)
+                && matches!(real_read_desc(&d, demand.expr), Some(Some(_)))
+        }));
+        assert_eq!(
+            problem.leaf_domain,
+            problem
+                .demands
+                .iter()
+                .map(|demand| demand.key.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn gap_capacity_is_the_minimum_free_lane_envelope_between_demands() {
         let demand_positions = [1usize, 5, 8];
         let free = [8usize, 7, 6, 5, 4, 8, 8, 3, 8];
-        assert_eq!(gap_capacities(&demand_positions, &free), vec![4, 3, 8]);
+        assert_eq!(gap_capacities(&demand_positions, &free), vec![4, 3, 0]);
+    }
+
+    #[test]
+    fn final_gap_starts_strictly_after_the_demand_instruction() {
+        let demand_positions = [1usize];
+        let free = [8usize, 1, 7, 6];
+        assert_eq!(gap_capacities(&demand_positions, &free), vec![6]);
+    }
+
+    #[test]
+    fn demand_at_eof_has_zero_length_gap_capacity() {
+        let demand_positions = [2usize];
+        let free = [8usize, 7, 1];
+        assert_eq!(gap_capacities(&demand_positions, &free), vec![0]);
     }
 
     #[test]
@@ -789,51 +840,48 @@ mod tests {
         (layer, d)
     }
 
-    fn synthetic_problem_with_read_vs_constant_and_compound() -> BackwardSearchProblem {
-        let fragment = StableFragmentKey {
-            atoms: vec![StableBwdExprKey::Canonical(ExprId(0))],
-            recipe: Vec::new(),
-        };
-        let key = StableLeafDemandKey {
-            fragment: fragment.clone(),
-            site: StableBwdSiteKey {
-                consumer: StableBwdConsumer::RootOutput,
-                value: StableBwdExprKey::Canonical(ExprId(0)),
+    fn synthetic_read_filter_problem_layer() -> DagLayer {
+        DagLayer {
+            sources: vec![
+                read_source(0),
+                read_source(1),
+                read_source(2),
+                SourceInfo {
+                    kind: SourceKind::VirtualSetup {
+                        kind: VirtualSetupKind::RangeCheck16Bits,
+                    },
+                },
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 7 },
+                },
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 11 },
+                },
+            ],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Source(SourceId(2)),
+                Expr::Source(SourceId(3)),
+                Expr::Source(SourceId(4)),
+                Expr::Source(SourceId(5)),
+                Expr::Mul(vec![ExprId(0), ExprId(1)]),
+                Expr::Mul(vec![ExprId(0), ExprId(2)]),
+                Expr::Mul(vec![ExprId(3), ExprId(4)]),
+                Expr::Mul(vec![ExprId(3), ExprId(5)]),
+                Expr::Add(vec![ExprId(3), ExprId(4)]),
+                Expr::Mul(vec![ExprId(1), ExprId(10)]),
+                Expr::Mul(vec![ExprId(2), ExprId(10)]),
+            ],
+            batching: BatchingOrder {
+                roots: (0..6).map(RootId).collect(),
             },
-            occurrence_in_fragment: 0,
-        };
-        let demand = BackwardDemand {
-            key: key.clone(),
-            fp: BwdFingerprint {
-                term: 0,
-                kind: crate::bwd::trace::BwdServeKind::RootOutput,
-                value: ExprId(0),
-                consumer: None,
-            },
-            expr: ExprId(0),
-            source_desc: Some(0),
-            width_lanes: 4,
-            gap_capacity_lanes: 4,
-            miss_cost: SourceCost::default(),
-            has_next: false,
-        };
-        BackwardSearchProblem {
-            fragment_domain: vec![fragment.clone()],
-            leaf_domain: vec![key],
-            constructive_order: vec![fragment.clone()],
-            selected_order: vec![fragment],
-            demands: vec![demand],
-            all_domain_serves: Vec::new(),
-            budget_cells: 4,
-            budget_lanes: 16,
-            stream_reductions: false,
-            epoch: 0,
-            materialization: StaticMaterialization {
-                bindings: BTreeMap::new(),
-                all_ext_from: None,
-                fixed_writes: SourceCost::default(),
-            },
-            fixed_cost: SourceCost::default(),
+            roots: [6u32, 7, 8, 9, 11, 12]
+                .into_iter()
+                .enumerate()
+                .map(|(relation_index, expr)| claim_root(ExprId(expr), relation_index))
+                .collect(),
+            resolutions: BTreeMap::new(),
         }
     }
 
