@@ -17,6 +17,7 @@ generic GPU workflow from [`../../../.agents/gpu_work.md`](../../../.agents/gpu_
 | `$NVTX_RANGE` | `test.gpu.prove.profiled_call@gpu_circuit_prover.tests` |
 | `$SOURCE_FOLDERS` | `gpu/circuit_prover/native` |
 | lineinfo env | `GPU_PROVER_ENABLE_LINEINFO` |
+| build-diag env | `GPU_PROVER_ENABLE_BUILD_DIAG` |
 | test-selection args | `--exact prover::tests::proof_matrix::run_add_sub_profile_test --nocapture` |
 
 ## Profiling Test

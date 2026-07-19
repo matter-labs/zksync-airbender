@@ -56,11 +56,19 @@ summary — the contract document is the source of truth.
 
 - The CUDA build is centralized in the shared `gpu_native_build` helper
   (`gpu/native_build/`); `build/main.rs` is a thin wrapper that names the
-  archive and enables `deterministic_pow`. Behavioral build changes are fine
-  when the task calls for them: change the shared helper for cross-crate build
-  behavior, `build/main.rs` only for circuit_prover-specific wiring.
-- Keep CUDA compile flags (arch, `CUDA_STANDARD`, `--expt-relaxed-constexpr`,
-  …) aligned with the other kernel crates unless a divergence is intended.
+  archive and enables `deterministic_pow`. The CMake side is likewise
+  centralized: `native/CMakeLists.txt` is a thin `add_library` +
+  `ab_cuda_configure_target(...)` call over the shared
+  `gpu/native_build/cmake/ab_cuda_target.cmake`. Behavioral build changes are
+  fine when the task calls for them: change the shared helper (or shared
+  CMake module) for cross-crate build behavior, `build/main.rs` /
+  `native/CMakeLists.txt` only for circuit_prover-specific wiring.
+- Alignment of CUDA compile flags (arch, `CUDA_STANDARD`,
+  `--expt-relaxed-constexpr`, …) with the other kernel crates is now
+  structural: the common flags/properties live once in the shared
+  `ab_cuda_configure_target` function, so a deliberate divergence means
+  changing the shared function (or adding a parameter to it), not editing
+  this crate's `CMakeLists.txt` inline.
 
 ## Key Files and Structure
 
@@ -174,9 +182,13 @@ protocol kernels in its `gkr_ops`/`transcript`/`gather` submodules).
 ## Build Script
 
 - `build/main.rs` is a thin wrapper over `gpu_native_build::CudaArchive`. The
-  shared CUDA build logic (CMake config, link directives, `DEP_*_INCLUDE`
-  forwarding, `no_cuda` handling) lives in `gpu/native_build/`; edit it there
-  when a change should apply to all kernel crates.
+  shared CUDA build logic lives in `gpu/native_build/` — the `CudaArchive`
+  helper (CMake config, link directives, `DEP_*_INCLUDE` forwarding, `no_cuda`
+  handling) plus `cmake/ab_cuda_target.cmake`, the `ab_cuda_configure_target`
+  function that `native/CMakeLists.txt` calls for the common target
+  configuration (properties, flags, and the gated `ENABLE_LINEINFO` /
+  `ENABLE_BUILD_DIAG` diagnostics); edit it there when a change should apply
+  to all kernel crates.
 
 ## Design Documents
 
