@@ -2,11 +2,16 @@ use crate::bwd::source::FoldState;
 use crate::eval_plan::backward::BackwardEvaluationError;
 
 pub mod materialization;
+pub mod pager;
 pub mod problem;
 
 pub use materialization::{
     SourceOriginKind, SourceRoundUse, StaticMaterialization, build_static_materialization,
     miss_cost,
+};
+pub use pager::{
+    ExactPagingPlan, PagerOutcome, PagingAction, PagingObjective, PagingTelemetry,
+    solve_exact_paging,
 };
 
 pub const MAX_PAGER_STATES: usize = 250_000;
