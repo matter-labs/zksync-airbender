@@ -5,7 +5,10 @@ use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use worker::Worker;
 
-use super::{hypercube_evals_natural_to_bitreversed_coeffs, natural_evals_to_bitreversed_coeffs};
+use super::{
+    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_evals_natural_to_bitreversed_coeffs,
+    natural_evals_to_bitreversed_coeffs,
+};
 use crate::ntt_twiddles::DeviceContext;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;
@@ -143,6 +146,42 @@ fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
         let mut dst = context.alloc(n).unwrap();
         memory_copy_async(&mut src, &evals, stream).unwrap();
         natural_evals_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
+
+        let mut actual = vec![BF::ZERO; n];
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(actual, expected, "log_n={}", log_n);
+    }
+}
+
+// Independent host oracle for the FORWARD hypercube launcher family
+// (`hypercube_coeffs_bitrev_to_bitrev_evals`, consumed by circuit_prover's
+// whir fold). It is the exact inverse of the line-above
+// `hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu` oracle chain:
+// the input is bitreversed coefficients, and the pure-CPU expected side is
+// `bitrev(coeffs) -> multivariate_coeffs_into_hypercube_evals -> bitrev`
+// (using the FORWARD CPU reference, not the inverse one). No GPU kernel
+// touches the expected side.
+#[test]
+#[cfg(not(no_cuda))]
+fn hypercube_coeffs_bitrev_to_bitrev_evals_matches_cpu() {
+    let context = make_context();
+    let stream = context.get_exec_stream();
+
+    for &log_n in TEST_LOG_NS {
+        let n = 1usize << log_n;
+        let coeffs = (0..n)
+            .map(|idx| BF::new((17 + idx * 13) as u32))
+            .collect::<Vec<_>>();
+        let mut expected = coeffs.clone();
+        fft::bitreverse_enumeration_inplace(&mut expected);
+        multivariate_coeffs_into_hypercube_evals(&mut expected, log_n as u32);
+        fft::bitreverse_enumeration_inplace(&mut expected);
+
+        let mut src = context.alloc(n).unwrap();
+        let mut dst = context.alloc(n).unwrap();
+        memory_copy_async(&mut src, &coeffs, stream).unwrap();
+        hypercube_coeffs_bitrev_to_bitrev_evals(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
         memory_copy_async(&mut actual, &dst, stream).unwrap();
@@ -986,6 +1025,15 @@ mod host_oracle {
     #[test]
     fn host_oracle_2pc_log_n_20_multi_coset_matches() {
         run_host_oracle_forward_parity(20, 1, 2, 0, 1, Route::MultiCosetEntry, 0x2c_20u64);
+    }
+
+    // log_n 19: an INDEPENDENT CPU oracle at the top of the 2pc range (the other
+    // multi-coset host oracles are 13/14/20). Complements the GPU-vs-GPU
+    // `multi_coset_monomials_to_evals_log_n_19_cosets_2` parity case with a
+    // pure-CPU forward-NTT ground truth via the production multi-coset entry.
+    #[test]
+    fn host_oracle_2pc_log_n_19_multi_coset_matches() {
+        run_host_oracle_forward_parity(19, 1, 2, 0, 2, Route::MultiCosetEntry, 0x2c_19u64);
     }
 
     // LDE-intermediate fast path (`ab_lde_first_{6..10}_stages_kernel` +
