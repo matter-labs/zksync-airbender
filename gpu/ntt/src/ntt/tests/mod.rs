@@ -3,14 +3,10 @@ use std::alloc::Global;
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
-use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
-
 use worker::Worker;
 
 use super::{
-    bitreversed_coeffs_to_natural_coset, hypercube_coeffs_natural_to_natural_evals,
     hypercube_evals_natural_to_bitreversed_coeffs, natural_evals_to_bitreversed_coeffs,
-    transpose_monomials_naive,
 };
 use crate::ntt_twiddles::DeviceContext;
 use gpu_core::primitives::context::DeviceProperties;
@@ -125,32 +121,6 @@ fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
 
 #[test]
 #[cfg(not(no_cuda))]
-fn hypercube_coeffs_natural_to_natural_evals_matches_cpu() {
-    let context = make_context();
-    let stream = context.get_exec_stream();
-
-    for &log_n in TEST_LOG_NS {
-        let n = 1usize << log_n;
-        let coeffs = (0..n)
-            .map(|idx| BF::new((29 + idx * 7) as u32))
-            .collect::<Vec<_>>();
-        let mut expected = coeffs.clone();
-        multivariate_coeffs_into_hypercube_evals(&mut expected, log_n as u32);
-
-        let mut src = context.alloc(n).unwrap();
-        let mut dst = context.alloc(n).unwrap();
-        memory_copy_async(&mut src, &coeffs, stream).unwrap();
-        hypercube_coeffs_natural_to_natural_evals(&src, &mut dst, log_n, stream).unwrap();
-
-        let mut actual = vec![BF::ZERO; n];
-        memory_copy_async(&mut actual, &dst, stream).unwrap();
-        stream.synchronize().unwrap();
-        assert_eq!(actual, expected, "log_n={}", log_n);
-    }
-}
-
-#[test]
-#[cfg(not(no_cuda))]
 fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
     let context = make_context();
     let stream = context.get_exec_stream();
@@ -179,89 +149,6 @@ fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
         let mut actual = vec![BF::ZERO; n];
         memory_copy_async(&mut actual, &dst, stream).unwrap();
         stream.synchronize().unwrap();
-        assert_eq!(actual, expected, "log_n={}", log_n);
-    }
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
-    let worker = Worker::new();
-    let context = make_context();
-    let stream = context.get_exec_stream();
-
-    for &log_n in TEST_LOG_NS {
-        let n = 1usize << log_n;
-        let twiddles = fft::Twiddles::<BF, Global>::new(n, &worker);
-        let selected_twiddles = &twiddles.forward_twiddles[..(n >> 1)];
-        let coeffs_natural = (0..n)
-            .map(|idx| BF::new((5 + idx * 19) as u32))
-            .collect::<Vec<_>>();
-        let mut coeffs_bitreversed = coeffs_natural.clone();
-        fft::bitreverse_enumeration_inplace(&mut coeffs_bitreversed);
-
-        let mut src = context.alloc(n).unwrap();
-        let mut dst = context.alloc(n).unwrap();
-        memory_copy_async(&mut src, &coeffs_bitreversed, stream).unwrap();
-
-        for log_lde_factor in [1usize, 2, 3] {
-            let tau = domain_generator_for_size::<BF>(1u64 << (log_n + log_lde_factor));
-            for coset_index in 0..(1usize << log_lde_factor) {
-                bitreversed_coeffs_to_natural_coset(
-                    &src,
-                    &mut dst,
-                    log_n,
-                    log_lde_factor,
-                    coset_index,
-                    stream,
-                )
-                .unwrap();
-
-                let mut actual = vec![BF::ZERO; n];
-                memory_copy_async(&mut actual, &dst, stream).unwrap();
-                stream.synchronize().unwrap();
-
-                let mut expected = coeffs_natural.clone();
-                if coset_index != 0 {
-                    distribute_powers_serial(&mut expected, BF::ONE, tau.pow(coset_index as u32));
-                }
-                fft::bitreverse_enumeration_inplace(&mut expected);
-                fft::naive::serial_ct_ntt_bitreversed_to_natural(
-                    &mut expected,
-                    log_n as u32,
-                    selected_twiddles,
-                );
-
-                assert_eq!(
-                    actual, expected,
-                    "log_n={}, log_lde_factor={}, coset_index={}",
-                    log_n, log_lde_factor, coset_index
-                );
-            }
-        }
-    }
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn transpose_monomials_naive_matches_cpu() {
-    let context = make_context();
-    let stream = context.get_exec_stream();
-
-    for &log_n in &[10usize, 12, 14] {
-        let n = 1usize << log_n;
-        let mut expected = (0..n)
-            .map(|idx| BF::new((37 + idx * 31) as u32))
-            .collect::<Vec<_>>();
-        let mut actual = expected.clone();
-        transpose_monomials(&mut expected);
-
-        let mut values = context.alloc(n).unwrap();
-        memory_copy_async(&mut values, &actual, stream).unwrap();
-        transpose_monomials_naive(&mut values, log_n, stream).unwrap();
-        memory_copy_async(&mut actual, &values, stream).unwrap();
-        stream.synchronize().unwrap();
-
         assert_eq!(actual, expected, "log_n={}", log_n);
     }
 }
@@ -579,146 +466,12 @@ fn test_monomials_to_evals_2_pass_transposed_monomials_in_place() {
     );
 }
 
-// Parity tests for the new all-stages-in-block monomials->evals kernels
-// covering log_n in [4, 13]. We compare the strategy-routed
-// `bitreversed_monomials_to_natural_evals` (which dispatches the new compact
-// kernels for these log_n) against a column-by-column reference that calls
-// the single-stage radix-2 `bitreversed_coeffs_to_natural_coset` directly.
-// The reference path is independent of the selector, so any deviation in the
-// new kernel surfaces here.
-#[cfg(not(no_cuda))]
-#[allow(dead_code)]
-fn run_compact_bitreversed_monomials_to_natural_evals_parity(log_n: usize) {
-    use super::bitreversed_monomials_to_natural_evals;
-    use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
-
-    // Sweep over all cosets at log_lde_factor=2 (matches the trace_holder
-    // call site) so the largest coset_index — where the bit-26 truncation
-    // bug surfaced — is exercised here too.
-    const TEST_LOG_LDE_FACTOR: usize = 2;
-    const NUM_COLS: usize = 4;
-
-    let context = make_context();
-    let stream = context.get_exec_stream();
-    let device_props = context.get_device_properties();
-    let n = 1usize << log_n;
-    let stride = n;
-    let memory_size = stride * NUM_COLS;
-
-    let mut inputs_host = vec![BF::ZERO; memory_size];
-    for (idx, value) in inputs_host.iter_mut().enumerate() {
-        *value = BF::new((17 + (idx as u32).wrapping_mul(31)) as u32);
-    }
-
-    let mut inputs_device = context.alloc(memory_size).unwrap();
-    let mut candidate_device = context.alloc(memory_size).unwrap();
-    let mut reference_device = context.alloc(memory_size).unwrap();
-    // DIT-range (log_n in [2, 13]) needs a d-table scratch (len >= N). The
-    // reference path below (`bitreversed_coeffs_to_natural_coset`, single-stage
-    // radix-2) is independent of the strategy, so this stays a valid baseline.
-    let mut d_scratch = context.alloc(n).unwrap();
-    memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
-
-    for coset_index in 0..(1usize << TEST_LOG_LDE_FACTOR) {
-        // Candidate: route through the strategy/dispatch path (DIT for log_n in
-        // [2, 13], compact for larger log_n).
-        {
-            let inputs_matrix = DeviceMatrixChunk::new(&inputs_device[..], stride, 0, n);
-            let mut candidate_matrix =
-                DeviceMatrixChunkMut::new(&mut candidate_device[..], stride, 0, n);
-            let scratch_opt = if (2..=13).contains(&log_n) {
-                Some(&mut d_scratch[..])
-            } else {
-                None
-            };
-            bitreversed_monomials_to_natural_evals(
-                &inputs_matrix,
-                &mut candidate_matrix,
-                log_n,
-                TEST_LOG_LDE_FACTOR,
-                coset_index,
-                false,
-                context.device_context(),
-                scratch_opt,
-                stream,
-                device_props,
-            )
-            .unwrap();
-        }
-
-        // Reference: column-by-column single-stage NTT (the prior fallback path,
-        // which uses `bf::pow` directly and is unaffected by table truncation).
-        {
-            let reference_slice = &mut reference_device[..];
-            let inputs_slice = unsafe {
-                era_cudart::slice::DeviceSlice::from_raw_parts(
-                    inputs_device.as_ptr(),
-                    inputs_device.len(),
-                )
-            };
-            for col in 0..NUM_COLS {
-                let range = col * stride..col * stride + n;
-                let src = &inputs_slice[range.clone()];
-                let dst = &mut reference_slice[range];
-                bitreversed_coeffs_to_natural_coset(
-                    src,
-                    dst,
-                    log_n,
-                    TEST_LOG_LDE_FACTOR,
-                    coset_index,
-                    stream,
-                )
-                .unwrap();
-            }
-        }
-
-        let mut candidate_host = vec![BF::ZERO; memory_size];
-        let mut reference_host = vec![BF::ZERO; memory_size];
-        memory_copy_async(&mut candidate_host, &candidate_device, stream).unwrap();
-        memory_copy_async(&mut reference_host, &reference_device, stream).unwrap();
-        stream.synchronize().unwrap();
-
-        for col in 0..NUM_COLS {
-            let start = col * stride;
-            for k in 0..n {
-                assert_eq!(
-                    candidate_host[start + k],
-                    reference_host[start + k],
-                    "log_n={log_n}, coset_index={coset_index}, col={col}, k={k}"
-                );
-            }
-        }
-    }
-}
-
-macro_rules! compact_parity_test {
-    ($name:ident, $log_n:expr) => {
-        #[test]
-        #[cfg(not(no_cuda))]
-        fn $name() {
-            run_compact_bitreversed_monomials_to_natural_evals_parity($log_n);
-        }
-    };
-}
-
-compact_parity_test!(compact_monomials_to_evals_log_n_4, 4);
-compact_parity_test!(compact_monomials_to_evals_log_n_5, 5);
-compact_parity_test!(compact_monomials_to_evals_log_n_6, 6);
-compact_parity_test!(compact_monomials_to_evals_log_n_7, 7);
-compact_parity_test!(compact_monomials_to_evals_log_n_8, 8);
-compact_parity_test!(compact_monomials_to_evals_log_n_9, 9);
-compact_parity_test!(compact_monomials_to_evals_log_n_10, 10);
-compact_parity_test!(compact_monomials_to_evals_log_n_11, 11);
-compact_parity_test!(compact_monomials_to_evals_log_n_12, 12);
-compact_parity_test!(compact_monomials_to_evals_log_n_13, 13);
-compact_parity_test!(compact_monomials_to_evals_log_n_14, 14);
-// 2-pass compact-initial range: log_n in [15, 20].
-compact_parity_test!(compact_monomials_to_evals_log_n_15, 15);
-compact_parity_test!(compact_monomials_to_evals_log_n_16, 16);
-compact_parity_test!(compact_monomials_to_evals_log_n_17, 17);
-compact_parity_test!(compact_monomials_to_evals_log_n_18, 18);
-compact_parity_test!(compact_monomials_to_evals_log_n_19, 19);
-compact_parity_test!(compact_monomials_to_evals_log_n_20, 20);
+// The former `compact_parity_test` harness (log_n 4..20) is retired: it oracled
+// the strategy-routed forward NTT against the now-deleted single-stage radix-2
+// `bitreversed_coeffs_to_natural_coset`. Its coverage is preserved elsewhere:
+// log_n <= 13 by the multi_coset / streaming / DIT parity harnesses (which
+// cross-check against the compact kernels called directly), and log_n > 13 by
+// the `host_oracle` module (pure-CPU forward-NTT ground truth).
 
 // Parity tests for `bitreversed_monomials_to_natural_evals_multi_coset`: the
 // multi-coset entry's per-coset slice of the output must match the
@@ -1707,22 +1460,25 @@ subwarp_parity_test!(subwarp_log_n_5_ipb_8_cosets_16_cols_4, 5, 3, 16, 4);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_5_cosets_8, 5, 8);
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_5_cosets_16, 5, 16);
 
-// Parity test for the sub-warp kernel at log_n in {1, 2, 3}: it is validated
-// here against the per-stage fallback via a direct call. Reference is the
-// per-stage fallback `bitreversed_coeffs_to_natural_coset` (single-coset,
-// single-column), looped over the (coset, col) workload that subwarp packs into
-// one launch.
+// Parity test for the sub-warp kernel at log_n in {1, 2, 3}: the subwarp
+// dispatcher is validated against a PURE-CPU forward NTT
+// (`host_forward_ntt_single_coset`) rather than another GPU kernel, so the
+// reference is fully independent of the device path under test. The host oracle
+// is evaluated once per (coset, col) the subwarp packs into one launch.
 #[cfg(not(no_cuda))]
 #[allow(dead_code)]
-fn run_subwarp_vs_per_stage_parity(
+fn run_subwarp_vs_host_parity(
     log_n: usize,
     log_instances_per_block: usize,
     num_cosets: usize,
     num_cols: usize,
 ) {
     use super::ntt::monomials_to_evals_subwarp;
-    use super::{bitreversed_coeffs_to_natural_coset, OMEGA_LOG_ORDER};
+    use super::OMEGA_LOG_ORDER;
+    use fft::precompute_twiddles_for_fft;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
+    use std::alloc::Global;
+    use worker::Worker;
 
     let log_lde_factor = num_cosets.trailing_zeros() as usize;
     assert_eq!(1usize << log_lde_factor, num_cosets);
@@ -1743,7 +1499,6 @@ fn run_subwarp_vs_per_stage_parity(
     memory_copy_async(&mut inputs_device, &inputs_host, stream).unwrap();
 
     let mut candidate_device = context.alloc(total_size).unwrap();
-    let mut reference_device = context.alloc(total_size).unwrap();
 
     let coset_factor_shift = (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor) as u32;
 
@@ -1765,40 +1520,31 @@ fn run_subwarp_vs_per_stage_parity(
         .unwrap();
     }
 
-    // Reference: per-stage fallback called once per (coset, col).
-    {
-        let reference_slice = &mut reference_device[..];
-        for coset_index in 0..num_cosets {
-            for col in 0..num_cols {
-                let dst_offset = coset_index * cols_size + col * stride;
-                let dst_slice = &mut reference_slice[dst_offset..dst_offset + n];
-                let src_slice = &inputs_device[col * stride..col * stride + n];
-                bitreversed_coeffs_to_natural_coset(
-                    src_slice,
-                    dst_slice,
-                    log_n,
-                    log_lde_factor,
-                    coset_index,
-                    stream,
-                )
-                .unwrap();
-            }
-        }
-    }
-
     let mut candidate_host = vec![BF::ZERO; total_size];
-    let mut reference_host = vec![BF::ZERO; total_size];
     memory_copy_async(&mut candidate_host, &candidate_device, stream).unwrap();
-    memory_copy_async(&mut reference_host, &reference_device, stream).unwrap();
     stream.synchronize().unwrap();
+
+    // PURE-CPU ground truth: one independent forward NTT per (coset, col). No
+    // GPU kernel participates in producing the expected values. `coset_index`
+    // ranges over the tile (base 0), matching the subwarp coset-factor mapping.
+    let worker = Worker::new();
+    let forward_twiddles = precompute_twiddles_for_fft::<BF, Global, false>(n, &worker);
+    let forward_twiddles = &forward_twiddles[..(n >> 1)];
 
     for coset_index in 0..num_cosets {
         for col in 0..num_cols {
+            let col_monomials = &inputs_host[col * stride..col * stride + n];
+            let expected = host_forward_ntt_single_coset(
+                col_monomials,
+                log_n,
+                log_lde_factor,
+                coset_index,
+                forward_twiddles,
+            );
             let base = coset_index * cols_size + col * stride;
             for k in 0..n {
                 assert_eq!(
-                    candidate_host[base + k],
-                    reference_host[base + k],
+                    candidate_host[base + k], expected[k],
                     "log_n={log_n}, log_ipb={log_instances_per_block}, num_cosets={num_cosets}, num_cols={num_cols}, coset={coset_index}, col={col}, k={k}"
                 );
             }
@@ -1806,33 +1552,23 @@ fn run_subwarp_vs_per_stage_parity(
     }
 }
 
-macro_rules! subwarp_per_stage_parity_test {
+macro_rules! subwarp_vs_host_parity_test {
     ($name:ident, $log_n:expr, $log_ipb:expr, $num_cosets:expr, $num_cols:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
         fn $name() {
-            run_subwarp_vs_per_stage_parity($log_n, $log_ipb, $num_cosets, $num_cols);
+            run_subwarp_vs_host_parity($log_n, $log_ipb, $num_cosets, $num_cols);
         }
     };
 }
 
-// log_n=1, IPB=128 (workload >= 128 required).
-subwarp_per_stage_parity_test!(subwarp_log_n_1_ipb_128_cosets_128_cols_1, 1, 7, 128, 1);
-subwarp_per_stage_parity_test!(subwarp_log_n_1_ipb_128_cosets_32_cols_4, 1, 7, 32, 4);
-// log_n=2, IPB=64.
-subwarp_per_stage_parity_test!(subwarp_log_n_2_ipb_64_cosets_64_cols_1, 2, 6, 64, 1);
-subwarp_per_stage_parity_test!(subwarp_log_n_2_ipb_64_cosets_16_cols_4, 2, 6, 16, 4);
-// log_n=3, IPB=32.
-subwarp_per_stage_parity_test!(subwarp_log_n_3_ipb_32_cosets_32_cols_1, 3, 5, 32, 1);
-subwarp_per_stage_parity_test!(subwarp_log_n_3_ipb_32_cosets_8_cols_4, 3, 5, 8, 4);
-
-// IPB=1 fallback variants: small workload, BLOCK_THREADS = N (= 2 / 4 / 8).
-// Exercises the narrowed __shfl_xor_sync warp mask.
-subwarp_per_stage_parity_test!(subwarp_log_n_1_ipb_1_cosets_1_cols_1, 1, 0, 1, 1);
-subwarp_per_stage_parity_test!(subwarp_log_n_2_ipb_1_cosets_1_cols_1, 2, 0, 1, 1);
-subwarp_per_stage_parity_test!(subwarp_log_n_3_ipb_1_cosets_1_cols_1, 3, 0, 1, 1);
-subwarp_per_stage_parity_test!(subwarp_log_n_2_ipb_1_cosets_2_cols_1, 2, 0, 2, 1);
-subwarp_per_stage_parity_test!(subwarp_log_n_3_ipb_1_cosets_4_cols_1, 3, 0, 4, 1);
+// One IPB_max case per log_n in {1, 2, 3} (subwarp packs `num_cosets` instances
+// per block) plus one IPB=1 fallback (BLOCK_THREADS = N, exercising the narrowed
+// __shfl_xor_sync warp mask over multiple cosets).
+subwarp_vs_host_parity_test!(subwarp_log_n_1_ipb_128_cosets_128_cols_1, 1, 7, 128, 1);
+subwarp_vs_host_parity_test!(subwarp_log_n_2_ipb_64_cosets_64_cols_1, 2, 6, 64, 1);
+subwarp_vs_host_parity_test!(subwarp_log_n_3_ipb_32_cosets_32_cols_1, 3, 5, 32, 1);
+subwarp_vs_host_parity_test!(subwarp_log_n_3_ipb_1_cosets_4_cols_1, 3, 0, 4, 1);
 
 // Extend the strategy-driven multi-coset parity sweep to log_n in {1, 2, 3}:
 // the multi-coset entry now routes through the strategy at these sizes too,
