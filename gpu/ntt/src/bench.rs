@@ -373,7 +373,7 @@ fn single_fixed_func(log_n: usize, log_vpt: usize, k: u32) -> Bench1pFixedFuncti
 
 /// Sum of `log_n + log_lde` for the bench workload (== OMEGA_LOG_ORDER, so the
 /// coset factor shift is exactly 0).
-pub const TOTAL_LOG: usize = 27;
+pub const TOTAL_LOG: usize = crate::ntt_twiddles::OMEGA_LOG_ORDER as usize;
 
 const CFP_0: u32 = 0;
 const COSET_STEP: u32 = 1;
@@ -411,7 +411,6 @@ const SINGLE_BLOCK_DIM: u32 = 4 * 32; // NUM_WARPS * 32 = 128
 /// Two-pass STREAM: caller-chosen launch `grid` (any value in `[1, num_cosets]`).
 /// The guarded grid-stride kernel walks the full `num_cosets`; the d-table
 /// advances `grid` cosets per kernel iteration (`step_per_iter = grid * coset_step`).
-#[allow(clippy::too_many_arguments)]
 fn launch_two_pass_stream(
     log_n: usize,
     log_vpt: usize,
@@ -477,7 +476,6 @@ fn launch_two_pass_stream(
 
 /// Two-pass FIXED-K: compile-time `K`, so `grid = num_cosets / K` and the
 /// d-table advances `grid` cosets per iteration. No `cosets_per_block` arg.
-#[allow(clippy::too_many_arguments)]
 fn launch_two_pass_fixed(
     log_n: usize,
     log_vpt: usize,
@@ -549,7 +547,6 @@ fn launch_two_pass_fixed(
 /// Single-pass FIXED-K: each block does `SLOTS_PER_BLOCK * K` cosets, so
 /// `grid = num_cosets / (slots_per_block * K)`. No d-table; smem = clean
 /// triangle bytes (< 48 KB, no opt-in needed).
-#[allow(clippy::too_many_arguments)]
 fn launch_single_fixed(
     log_n: usize,
     log_vpt: usize,
@@ -592,7 +589,6 @@ fn launch_single_fixed(
 /// slot stride is `gridDim.x * SLOTS_PER_BLOCK` and a guard (`coset_idx <
 /// num_cosets`) covers the full coset range. No d-table; smem = clean triangle
 /// bytes.
-#[allow(clippy::too_many_arguments)]
 fn launch_single_stream(
     log_n: usize,
     log_vpt: usize,
