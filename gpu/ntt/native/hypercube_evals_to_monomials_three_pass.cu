@@ -105,7 +105,7 @@ DEVICE_FORCEINLINE void hypercube_evals_to_monomials_final_up_to_8_stages(bf_mat
     }
   }
 
-  warp_transpose_swizzled(smem_warp, vals, lane_id);
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   reg_exchg_hypercube_inv<16, 32, 1>(vals);
   reg_exchg_hypercube_inv<8, 16, 2>(vals);

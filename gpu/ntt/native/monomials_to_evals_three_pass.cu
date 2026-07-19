@@ -161,14 +161,14 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
   } else {
     // transpose coalesced loads into registers
     if (warp_id & 4) {
-      warp_transpose_swizzled(smem_warp, vals, lane_id);
+      warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
     }
 
     __pipeline_wait_prior(0); // might as well also use this sync to ensure twiddles are ready
     __syncthreads();
 
     if (!(warp_id & 4)) {
-      warp_transpose_swizzled(smem_warp, vals, lane_id);
+      warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
     }
   }
 
@@ -187,7 +187,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
   __syncthreads();
 
   smem_warp = smem_block + warp_id * VALS_PER_WARP;
-  warp_transpose_swizzled(smem_warp, vals, lane_id);
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   // Use pure cmem for warp-uniform twiddles
   if (STAGES >= 5) {

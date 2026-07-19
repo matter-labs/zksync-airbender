@@ -180,7 +180,7 @@ EXTERN __launch_bounds__(512, 1) __global__
 
   if (!transposed_monomials) {
     // transpose coalesced loads into registers
-    warp_transpose_swizzled(smem_warp, vals, lane_id);
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
   }
 
   __pipeline_wait_prior(0); // Unfortunately we use all the coarse twiddles in the first exchange, so we can't overlap this with compute.
@@ -197,7 +197,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   thread_exchg_region_offset >>= 1;
   reg_exchg_cmem_smem_twiddles_fwd<TenStages, 16, 32, 1, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
 
-  warp_transpose_swizzled(smem_warp, vals, lane_id);
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   int warp_exchg_region_offset = (static_cast<int>(fi.intra_x) * WARPS_PER_BLOCK + warp_id) << 4;
   reg_exchg_cmem_twiddles_fwd<1, 2, 16>(vals, warp_exchg_region_offset);

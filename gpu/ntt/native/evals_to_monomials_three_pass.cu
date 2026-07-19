@@ -178,7 +178,7 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
   // The problem is, it spills registers due to threadIdx.x being dynamic. I don't see an easy fix.
 
   if (warp_id & 4) {
-    warp_transpose_swizzled(smem_warp, vals, lane_id);
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
   }
 
   __pipeline_wait_prior(0);
@@ -186,7 +186,7 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
   __syncthreads();
 
   if (!(warp_id & 4)) {
-    warp_transpose_swizzled(smem_warp, vals, lane_id);
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
   }
 
   int thread_exchg_region_offset = threadIdx.x + static_cast<int>(fi.intra_x) * blockDim.x;
@@ -215,7 +215,7 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
     __syncthreads(); // Alternatively, we could try shuffle transpose to avoid the sync, or have some warps shuffle and some do smem swizzle.
 
     smem_warp = smem_block + warp_id * VALS_PER_WARP;
-    warp_transpose_swizzled(smem_warp, vals, lane_id);
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
 #pragma unroll
     for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)

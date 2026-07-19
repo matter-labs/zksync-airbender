@@ -149,7 +149,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   reg_exchg_hypercube_inv<1, 2, 16>(vals);
 
   __syncwarp();
-  warp_transpose_swizzled(smem_warp, vals, lane_id);
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   reg_exchg_hypercube_inv<16, 32, 1>(vals);
   reg_exchg_hypercube_inv<8, 16, 2>(vals);
@@ -164,7 +164,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   } else {
     // un-swizzling + coalesced stores performs better on 5090
     __syncwarp();
-    warp_transpose_swizzled(smem_warp, vals, lane_id);
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 #pragma unroll
     for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
       gmem_out.set_at_row(row, vals[i]);
