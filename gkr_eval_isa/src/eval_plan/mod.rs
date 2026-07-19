@@ -4269,6 +4269,9 @@ mod tests {
 
     #[test]
     fn fitness_harness_rewards_grouping_reuses_by_root_order() {
+        const DOMAIN_BUDGET_CELLS: usize = 1;
+        const TEST_BUDGET_LANES: usize = 1;
+
         let mut arena = ArenaBuilder::new();
         let a = read(&mut arena, 0);
         let b = read(&mut arena, 1);
@@ -4285,7 +4288,44 @@ mod tests {
                 root_at(y, true, 3),
             ],
         );
-        let context = PlanSearchContext::build(&layer, &fields(&layer), 0, 1).unwrap();
+        let context =
+            PlanSearchContext::build(&layer, &fields(&layer), 0, DOMAIN_BUDGET_CELLS).unwrap();
+        let score_with_one_lane = |genome: &EvaluationGenome| {
+            let root_order = context.decode_root_order(&genome.root_order_key).unwrap();
+            let mut oracle = GenomeOracle::new(
+                context.site_index(),
+                &genome.cache_priority,
+                &genome.staging_priority,
+            )
+            .unwrap();
+            let plan = elaborate_with_oracle_and_sinks(
+                &layer,
+                &fields(&layer),
+                &root_order,
+                context.materialized_roots(),
+                TEST_BUDGET_LANES,
+                &mut oracle,
+            )
+            .unwrap();
+            assert_eq!(oracle.active_site_count(), 0);
+            let packed = pack_plan(&plan, &layer, PackConfig::default()).unwrap();
+            let concrete = bind_packed_plan(
+                &packed,
+                &layer,
+                context.materialized_roots(),
+                0,
+                TEST_BUDGET_LANES,
+            )
+            .unwrap();
+            let fitness = PlanFitness {
+                infeasible: false,
+                dram_read_lanes: plan.stats.dram_read_lanes,
+                program_instructions: concrete.compiled.stats.program_lanes,
+                encoded_lanes: concrete.stats.encoded_lanes,
+                arithmetic_ops: packed.stats.scalar_arithmetic_ops,
+            };
+            (root_order, plan, fitness)
+        };
         let fingerprints = structural_fingerprints(&layer).unwrap();
         let mut alternating = EvaluationGenome::neutral(&context);
         for (position, site) in context.site_index().sites().iter().enumerate() {
@@ -4301,35 +4341,28 @@ mod tests {
             }
         }
 
-        let alternating_score = context.score(&alternating).unwrap();
+        let (alternating_order, alternating_plan, alternating_fitness) =
+            score_with_one_lane(&alternating);
         assert_eq!(
-            alternating_score.root_order,
+            alternating_order,
             vec![RootId(0), RootId(1), RootId(2), RootId(3)]
         );
-        assert_eq!(alternating_score.fitness.dram_read_lanes, 6);
-        assert_eq!(alternating_score.fitness.arithmetic_ops, 3);
-        assert_plan_matches_roots(
-            &layer,
-            &alternating_score.root_order,
-            alternating_score.plan.as_ref().unwrap(),
-        );
+        assert_eq!(alternating_fitness.dram_read_lanes, 6);
+        assert_eq!(alternating_fitness.arithmetic_ops, 3);
+        assert_plan_matches_roots(&layer, &alternating_order, &alternating_plan);
 
         let mut grouped = alternating.clone();
         grouped.root_order_key = vec![0.0, 0.5, 0.25, 0.75];
-        let grouped_score = context.score(&grouped).unwrap();
+        let (grouped_order, grouped_plan, grouped_fitness) = score_with_one_lane(&grouped);
 
         assert_eq!(
-            grouped_score.root_order,
+            grouped_order,
             vec![RootId(0), RootId(2), RootId(1), RootId(3)]
         );
-        assert_eq!(grouped_score.fitness.dram_read_lanes, 4);
-        assert_eq!(grouped_score.fitness.arithmetic_ops, 2);
-        assert!(grouped_score.fitness < alternating_score.fitness);
-        assert_plan_matches_roots(
-            &layer,
-            &grouped_score.root_order,
-            grouped_score.plan.as_ref().unwrap(),
-        );
+        assert_eq!(grouped_fitness.dram_read_lanes, 4);
+        assert_eq!(grouped_fitness.arithmetic_ops, 2);
+        assert!(grouped_fitness < alternating_fitness);
+        assert_plan_matches_roots(&layer, &grouped_order, &grouped_plan);
     }
 
     #[test]
