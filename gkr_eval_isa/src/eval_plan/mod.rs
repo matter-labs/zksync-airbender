@@ -16,12 +16,12 @@ mod packed_interp;
 mod search;
 
 pub use artifact::{
-    CompiledEvaluationCircuit, CompiledEvaluationLayer, DomainCertificate,
-    EVALUATION_GENOME_SCHEMA_VERSION, EvaluationArtifactError, EvaluationCompileError,
-    EvaluationGenomeArtifact, EvaluationGenomeCircuitArtifact, EvaluationLayoutVariant,
-    EvaluationPass, ForwardActionProvenance, ForwardActionRecord, SearchProvenance,
-    compile_circuit_with_evaluation_genomes, compile_layer_with_evaluation_genome,
-    load_evaluation_genome_artifact, produce_searched_evaluation_genome_artifact,
+    CompiledEvaluationCircuit, CompiledEvaluationLayer, DomainCertificate, EvaluationArtifactError,
+    EvaluationCompileError, EvaluationGenomeArtifact, EvaluationGenomeCircuitArtifact,
+    EvaluationLayoutVariant, EvaluationPass, ForwardActionProvenance, ForwardActionRecord,
+    SearchProvenance, compile_circuit_with_evaluation_genomes,
+    compile_layer_with_evaluation_genome, load_evaluation_genome_artifact,
+    produce_searched_evaluation_genome_artifact,
 };
 pub use backward::{
     BackwardEvaluationError, BackwardSymbolicEvaluation, CompiledBackwardEvaluation,
@@ -4228,7 +4228,7 @@ mod tests {
 
         assert_eq!(units.len(), 1);
         assert_eq!(units[0].roots, vec![RootId(1)]);
-        let context = PlanSearchContext::build(&layer, &fields(&layer), 0, 2).unwrap();
+        let context = PlanSearchContext::build(&layer, &fields(&layer), 0, 1).unwrap();
         assert_eq!(context.selected_roots(), &[RootId(0), RootId(1)]);
         let scored = context.score(&EvaluationGenome::neutral(&context)).unwrap();
         let plan = scored.plan.unwrap();
@@ -4359,7 +4359,7 @@ mod tests {
                 root_at(fifth, true, 4),
             ],
         );
-        let context = PlanSearchContext::build(&layer, &fields(&layer), 0, 8).unwrap();
+        let context = PlanSearchContext::build(&layer, &fields(&layer), 0, 2).unwrap();
 
         let neutral = context.score(&EvaluationGenome::neutral(&context)).unwrap();
         let mut compute_retentive = EvaluationGenome::neutral(&context);
@@ -4443,13 +4443,11 @@ mod tests {
         let right = arena.mul(vec![c, d, c]);
         let sum = arena.add(vec![left, right]);
         let layer = layer(arena, root(sum, true));
-        let context = PlanSearchContext::build(&layer, &fields(&layer), 0, 3).unwrap();
+        let mut oracle = NoCacheOracle;
+        let error = elaborate_with_oracle(&layer, &fields(&layer), &[RootId(0)], 3, &mut oracle)
+            .expect_err("three lanes cannot satisfy the transient floor");
 
-        let scored = context.score(&EvaluationGenome::neutral(&context)).unwrap();
-
-        assert!(scored.fitness.infeasible);
-        assert!(scored.plan.is_none());
-        assert_eq!(fitness_key(scored.fitness).0, 1);
+        assert!(matches!(error, PlanError::BudgetExceeded { .. }));
     }
 
     #[test]

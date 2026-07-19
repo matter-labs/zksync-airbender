@@ -4,7 +4,7 @@
 //! circuit fixtures and score populations. Run them explicitly with:
 //! `cargo test -p gkr_eval_isa --test eval_plan_search -- --ignored --nocapture`.
 //! The corpus probe accepts `EVAL_PLAN_CIRCUIT`, comma-separated
-//! `EVAL_PLAN_BUDGET`, and `EVAL_PLAN_EVALUATIONS` filters; release mode is
+//! `EVAL_PLAN_BUDGET` (comma-separated cell counts), and `EVAL_PLAN_EVALUATIONS` filters; release mode is
 //! recommended for searches.
 
 mod common;
@@ -577,7 +577,7 @@ fn capture_retentive_circuit_artifact(
     dag: &cs::gkr_compiler::dag_ir::DagCircuit,
     layout: &cs::gkr_compiler::GKRCircuitArtifact<field::baby_bear::base::BabyBearField>,
 ) -> EvaluationGenomeCircuitArtifact {
-    const BUDGET: usize = 16;
+    const BUDGET_CELLS: usize = 4;
 
     let cross = build_cross_layer_field_map(dag);
     let layers = dag
@@ -606,7 +606,7 @@ fn capture_retentive_circuit_artifact(
                 layer,
                 &fields,
                 layout_layer.layer,
-                BUDGET,
+                BUDGET_CELLS,
                 &compute_roots,
             )
             .unwrap_or_else(|error| panic!("build add_sub layer {layer_index} context: {error:?}"));
@@ -625,7 +625,7 @@ fn capture_retentive_circuit_artifact(
         circuit,
         EvaluationLayoutVariant::WithCaches,
         layout_fixture,
-        BUDGET,
+        BUDGET_CELLS,
         SearchProvenance {
             algorithm: "retentive-smoke".to_owned(),
             seed: 0,
@@ -638,8 +638,35 @@ fn capture_retentive_circuit_artifact(
 }
 
 #[test]
+fn evaluation_artifact_json_uses_only_cell_budget() {
+    let layout = common::load_fixture(ADD_SUB);
+    let dag = lower_dag(&layout).expect("lower add_sub fixture");
+    let artifact =
+        capture_retentive_circuit_artifact("add_sub_lui_auipc_mop", ADD_SUB, &dag, &layout);
+    let json = serde_json::to_value(&artifact).expect("serialize evaluation artifact");
+
+    assert_eq!(
+        json.get("budget_cells").and_then(serde_json::Value::as_u64),
+        Some(4)
+    );
+    assert!(json.get("budget_lanes").is_none());
+    assert!(json.get("schema_version").is_none());
+    for layer in json["layers"].as_array().expect("artifact layers") {
+        assert_eq!(
+            layer
+                .get("budget_cells")
+                .and_then(serde_json::Value::as_u64),
+            Some(4),
+        );
+        assert!(layer.get("budget_lanes").is_none());
+        assert!(layer.get("schema_version").is_none());
+    }
+}
+
+#[test]
 fn add_sub_artifact_compiles_and_matches_canonical_values() {
-    const BUDGET: usize = 16;
+    const BUDGET_CELLS: usize = 4;
+    const BUDGET_LANES: usize = 16;
 
     let artifact = common::load_fixture(ADD_SUB);
     let dag = lower_dag(&artifact).expect("lower add_sub fixture");
@@ -675,7 +702,7 @@ fn add_sub_artifact_compiles_and_matches_canonical_values() {
             layer,
             &fields,
             artifact_layer.layer,
-            BUDGET,
+            BUDGET_CELLS,
             &compute_roots,
         )
         .unwrap_or_else(|error| {
@@ -703,10 +730,10 @@ fn add_sub_artifact_compiles_and_matches_canonical_values() {
         assert_eq!(decoded_artifact, genome_artifact);
         if layer_index == 0 {
             let mut stale = decoded_artifact.clone();
-            stale.budget_lanes -= 1;
+            stale.budget_cells -= 1;
             assert!(matches!(
                 stale.validate_against("add_sub_lui_auipc_mop", &context, &actions),
-                Err(EvaluationArtifactError::BudgetMismatch { .. })
+                Err(EvaluationArtifactError::BudgetCellsMismatch { .. })
             ));
             let mut wrong_domain = decoded_artifact.clone();
             wrong_domain.site_domain.count -= 1;
@@ -727,7 +754,7 @@ fn add_sub_artifact_compiles_and_matches_canonical_values() {
             artifact_layer,
             &artifact.scratch_space_mapping,
             &cross,
-            BUDGET,
+            BUDGET_CELLS,
             &decoded_artifact,
         )
         .unwrap_or_else(|error| panic!("compile add_sub layer {layer_index}: {error:?}"));
@@ -749,7 +776,7 @@ fn add_sub_artifact_compiles_and_matches_canonical_values() {
             "layer {layer_index} search/final encoding certificate",
         );
         assert!(
-            concrete.stats.max_live_lanes <= BUDGET,
+            concrete.stats.max_live_lanes <= BUDGET_LANES,
             "layer {layer_index} concrete placement respects the lane budget",
         );
         let concrete_roots = concrete
@@ -797,7 +824,7 @@ fn add_sub_artifact_compiles_and_matches_canonical_values() {
         "add_sub_lui_auipc_mop",
         EvaluationLayoutVariant::WithCaches,
         ADD_SUB,
-        BUDGET,
+        BUDGET_CELLS,
         SearchProvenance {
             algorithm: "retentive-smoke".to_owned(),
             seed: 0,
@@ -912,7 +939,7 @@ fn add_sub_artifact_compiles_and_matches_canonical_values() {
         "add_sub_lui_auipc_mop",
         ADD_SUB,
         EvaluationLayoutVariant::WithCaches,
-        BUDGET,
+        BUDGET_CELLS,
         MutationSearchConfig {
             population: 2,
             evaluations: 2,
@@ -1067,7 +1094,7 @@ fn produce_add_sub_searched_evaluation_artifact() {
         "add_sub_lui_auipc_mop",
         ADD_SUB,
         EvaluationLayoutVariant::WithCaches,
-        16,
+        4,
         MutationSearchConfig {
             population: 16,
             evaluations,
@@ -1150,7 +1177,7 @@ fn produce_forward_with_caches_b16_evaluation_artifact_corpus() {
             circuit,
             fixture,
             EvaluationLayoutVariant::WithCaches,
-            16,
+            4,
             config,
             incumbent.as_ref(),
         )
@@ -1292,11 +1319,12 @@ fn search_add_sub_layer_zero() {
     let synthetic = common::SyntheticResolvers;
     let resolvers = common::resolvers(&synthetic);
 
-    for (budget, expected_reference, expected_committed, expected_new) in
-        [(16, 31, 31, 31), (12, 36, 35, 31), (8, 51, 48, 33)]
+    for (budget_cells, expected_reference, expected_committed, expected_new) in
+        [(4, 31, 31, 31), (3, 36, 35, 31), (2, 51, 48, 33)]
     {
+        let budget_lanes = budget_cells * 4;
         let reference_context =
-            LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, budget);
+            LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, budget_lanes);
         let reference_genome = ReferenceGenome::neutral(
             reference_context.n_order_keys(),
             reference_context.n_sites(),
@@ -1312,7 +1340,7 @@ fn search_add_sub_layer_zero() {
             layer,
             &fields,
             artifact.layers[0].layer,
-            budget,
+            budget_cells,
             &compute_roots,
         )
         .expect("build search context");
@@ -1324,12 +1352,12 @@ fn search_add_sub_layer_zero() {
             .score(&EvaluationGenome::retentive(&context))
             .expect("score retentive plan");
         let search_started = Instant::now();
-        let (best, evaluations) = if budget == 16 || budget == 8 {
+        let (best, evaluations) = if budget_lanes == 16 || budget_lanes == 8 {
             let outcome = mutation_search(
                 &context,
                 MutationSearchConfig {
-                    population: if budget == 8 { 16 } else { 4 },
-                    evaluations: if budget == 8 { 512 } else { 8 },
+                    population: if budget_lanes == 8 { 16 } else { 4 },
+                    evaluations: if budget_lanes == 8 { 512 } else { 8 },
                     staging_evaluations: 0,
                     seed: 0,
                     cache_mutations: 2,
@@ -1348,10 +1376,10 @@ fn search_add_sub_layer_zero() {
             .as_ref()
             .expect("neutral plan must be feasible");
         let best_plan = best.plan.as_ref().expect("winning plan must be feasible");
-        if budget == 16 {
+        if budget_lanes == 16 {
             assert_eq!(reference.dram_traffic, reference_context.floor);
         }
-        if budget >= 12 {
+        if budget_lanes >= 12 {
             assert_eq!(best.fitness.dram_read_lanes, reference_context.floor);
         }
         assert_eq!(best.fitness.dram_read_lanes, expected_new);
@@ -1364,11 +1392,17 @@ fn search_add_sub_layer_zero() {
             layer,
             context.materialized_roots(),
             0,
-            budget,
+            budget_lanes,
         )
         .unwrap();
-        let best_concrete =
-            bind_packed_plan(&best_packed, layer, context.materialized_roots(), 0, budget).unwrap();
+        let best_concrete = bind_packed_plan(
+            &best_packed,
+            layer,
+            context.materialized_roots(),
+            0,
+            budget_lanes,
+        )
+        .unwrap();
         assert_eq!(
             interpret_packed_plan(&best_packed, layer, 0, &resolvers).unwrap(),
             interpret_plan(best_plan, layer, 0, &resolvers).unwrap()
@@ -1394,7 +1428,7 @@ fn search_add_sub_layer_zero() {
             "eval-plan add_sub L0: budget={} exprs={} units={} sites={} floor={} reference={} committed={} \
              neutral={} retentive={} best={} overhead(ref/committed/new)={}/{}/{} arithmetic={}->{} \
              instructions={}->{} (neutral), {}->{} (best) encoded_lanes={}->{} evals={} build={:?} search={:?}",
-            budget,
+            budget_lanes,
             layer.exprs.len(),
             context.units().len(),
             context.site_index().len(),
@@ -1427,7 +1461,7 @@ fn search_add_sub_layer_zero() {
 #[ignore = "on-demand concrete forward-corpus comparison"]
 fn compare_forward_corpus_layer_zero() {
     assert_eq!(FORWARD_CORPUS.len(), 11, "scheduled reference corpus drift");
-    let budgets = std::env::var("EVAL_PLAN_BUDGET")
+    let budget_cells = std::env::var("EVAL_PLAN_BUDGET")
         .ok()
         .map(|budgets| {
             budgets
@@ -1435,7 +1469,7 @@ fn compare_forward_corpus_layer_zero() {
                 .map(|budget| budget.parse::<usize>().expect("numeric EVAL_PLAN_BUDGET"))
                 .collect::<Vec<_>>()
         })
-        .unwrap_or_else(|| vec![16, 12, 8]);
+        .unwrap_or_else(|| vec![4, 3, 2]);
     let circuit_filter = std::env::var("EVAL_PLAN_CIRCUIT").ok();
     let search_evaluations = std::env::var("EVAL_PLAN_EVALUATIONS")
         .ok()
@@ -1478,9 +1512,12 @@ fn compare_forward_corpus_layer_zero() {
         let committed = load_committed_schedule(&common::schedule_path(stem))
             .unwrap_or_else(|error| panic!("load {stem} committed schedule: {error:?}"));
 
-        for &budget in &budgets {
+        for &budget_cells in &budget_cells {
+            let budget_lanes = budget_cells
+                .checked_mul(4)
+                .expect("configured cell budget fits lanes");
             let reference_context =
-                LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, budget);
+                LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, budget_lanes);
             let reference_genome = ReferenceGenome::neutral(
                 reference_context.n_order_keys(),
                 reference_context.n_sites(),
@@ -1494,16 +1531,18 @@ fn compare_forward_corpus_layer_zero() {
                 layer,
                 &fields,
                 artifact.layers[0].layer,
-                budget,
+                budget_cells,
                 &compute_roots,
             )
-            .unwrap_or_else(|error| panic!("build {stem} b{budget} context: {error:?}"));
+            .unwrap_or_else(|error| panic!("build {stem} b{budget_lanes} context: {error:?}"));
             let neutral = context
                 .score(&EvaluationGenome::neutral(&context))
-                .unwrap_or_else(|error| panic!("score {stem} b{budget} neutral: {error:?}"));
+                .unwrap_or_else(|error| panic!("score {stem} b{budget_lanes} neutral: {error:?}"));
             let retentive = context
                 .score(&EvaluationGenome::retentive(&context))
-                .unwrap_or_else(|error| panic!("score {stem} b{budget} retentive: {error:?}"));
+                .unwrap_or_else(|error| {
+                    panic!("score {stem} b{budget_lanes} retentive: {error:?}")
+                });
             let search = (search_evaluations > 0).then(|| {
                 mutation_search(
                     &context,
@@ -1515,7 +1554,7 @@ fn compare_forward_corpus_layer_zero() {
                         cache_mutations: 2,
                     },
                 )
-                .unwrap_or_else(|error| panic!("search {stem} b{budget}: {error:?}"))
+                .unwrap_or_else(|error| panic!("search {stem} b{budget_lanes}: {error:?}"))
             });
             let baseline_best = if retentive.fitness < neutral.fitness {
                 &retentive
@@ -1528,18 +1567,23 @@ fn compare_forward_corpus_layer_zero() {
                 .filter(|candidate| candidate.fitness < baseline_best.fitness)
                 .unwrap_or(baseline_best);
             let plan = best.plan.as_ref().unwrap_or_else(|| {
-                panic!("{stem} b{budget} neutral and retentive plans are infeasible")
+                panic!("{stem} b{budget_lanes} neutral and retentive plans are infeasible")
             });
             let packed = pack_plan(plan, layer, PackConfig::default())
-                .unwrap_or_else(|error| panic!("pack {stem} b{budget}: {error:?}"));
-            let concrete =
-                bind_packed_plan(&packed, layer, context.materialized_roots(), 0, budget)
-                    .unwrap_or_else(|error| panic!("bind {stem} b{budget}: {error:?}"));
+                .unwrap_or_else(|error| panic!("pack {stem} b{budget_lanes}: {error:?}"));
+            let concrete = bind_packed_plan(
+                &packed,
+                layer,
+                context.materialized_roots(),
+                0,
+                budget_lanes,
+            )
+            .unwrap_or_else(|error| panic!("bind {stem} b{budget_lanes}: {error:?}"));
 
             assert_eq!(
                 interpret_packed_plan(&packed, layer, 0, &resolvers).unwrap(),
                 interpret_plan(plan, layer, 0, &resolvers).unwrap(),
-                "{stem} b{budget} packed parity",
+                "{stem} b{budget_lanes} packed parity",
             );
             let concrete_outputs =
                 interpret_layer_row(&concrete.compiled, layer, &resolvers, 0).unwrap();
@@ -1547,16 +1591,16 @@ fn compare_forward_corpus_layer_zero() {
                 assert_eq!(
                     concrete_outputs.by_root[&root],
                     cs::gkr_compiler::dag_ir::eval_layer_root(layer, root, 0, &resolvers),
-                    "{stem} b{budget} root {}",
+                    "{stem} b{budget_lanes} root {}",
                     root.0,
                 );
             }
             assert_eq!(
                 concrete.compiled.stats.dram_traffic, packed.stats.dram_read_lanes,
-                "{stem} b{budget} traffic prediction",
+                "{stem} b{budget_lanes} traffic prediction",
             );
             println!(
-                "eval-plan corpus: circuit={stem} budget={budget} sites={} floor={} natural={} \
+                "eval-plan corpus: circuit={stem} budget={budget_lanes} sites={} floor={} natural={} \
                  committed={} neutral={} retentive={} best={} floor_gap={} moves={} evals={} placement={:?} \
                  elapsed={:?}",
                 context.site_index().len(),
@@ -1584,7 +1628,7 @@ fn compare_forward_corpus_all_layers() {
     let layer_filter = std::env::var("EVAL_PLAN_LAYER")
         .ok()
         .map(|layer| layer.parse::<usize>().expect("numeric EVAL_PLAN_LAYER"));
-    let configured_budgets = std::env::var("EVAL_PLAN_BUDGET").ok().map(|budgets| {
+    let configured_budget_cells = std::env::var("EVAL_PLAN_BUDGET").ok().map(|budgets| {
         budgets
             .split(',')
             .map(|budget| budget.parse::<usize>().expect("numeric EVAL_PLAN_BUDGET"))
@@ -1624,19 +1668,22 @@ fn compare_forward_corpus_all_layers() {
         let cross = build_cross_layer_field_map(&dag);
         let committed = load_committed_schedule(&common::schedule_path(stem))
             .unwrap_or_else(|error| panic!("load {stem} committed schedule: {error:?}"));
-        let budgets = configured_budgets
+        let budget_cells = configured_budget_cells
             .clone()
-            .unwrap_or_else(|| vec![committed.budget]);
-        let established_by_budget = budgets
+            .unwrap_or_else(|| vec![4, 3, 2]);
+        let established_by_cells = budget_cells
             .iter()
-            .map(|&budget| {
+            .map(|&budget_cells| {
+                let budget_lanes = budget_cells
+                    .checked_mul(4)
+                    .expect("configured cell budget fits lanes");
                 let mut schedule = committed.clone();
-                schedule.budget = budget;
+                schedule.budget = budget_lanes;
                 let compiled =
                     compile_circuit(&dag, &schedule, &artifact).unwrap_or_else(|error| {
-                        panic!("compile established {stem} b{budget}: {error:?}")
+                        panic!("compile established {stem} b{budget_lanes}: {error:?}")
                     });
-                (budget, compiled)
+                (budget_cells, compiled)
             })
             .collect::<BTreeMap<_, _>>();
         assert_eq!(
@@ -1649,11 +1696,11 @@ fn compare_forward_corpus_all_layers() {
             dag.layers.len(),
             "{stem} schedule/DAG layers"
         );
-        for (&budget, established) in &established_by_budget {
+        for (&budget_cells, established) in &established_by_cells {
             assert_eq!(
                 established.layers.len(),
                 dag.layers.len(),
-                "{stem} b{budget} compiled/DAG layers"
+                "{stem} c{budget_cells} compiled/DAG layers"
             );
         }
 
@@ -1698,11 +1745,14 @@ fn compare_forward_corpus_all_layers() {
                 )
                 .collect::<Vec<_>>();
 
-            for &budget in &budgets {
+            for &budget_cells in &budget_cells {
+                let budget_lanes = budget_cells
+                    .checked_mul(4)
+                    .expect("configured cell budget fits lanes");
                 let started = Instant::now();
-                let established = &established_by_budget[&budget];
+                let established = &established_by_cells[&budget_cells];
                 let reference_context =
-                    LayerCtx::new(layer, artifact_layer, &artifact, &cross, budget);
+                    LayerCtx::new(layer, artifact_layer, &artifact, &cross, budget_lanes);
                 let reference = score_reference(
                     &ReferenceGenome::neutral(
                         reference_context.n_order_keys(),
@@ -1718,19 +1768,19 @@ fn compare_forward_corpus_all_layers() {
                     layer,
                     &fields,
                     artifact_layer.layer,
-                    budget,
+                    budget_cells,
                     &compute_roots,
                 )
                 .unwrap_or_else(|error| {
-                    panic!("build {stem} layer {layer_index} b{budget}: {error:?}")
+                    panic!("build {stem} layer {layer_index} b{budget_lanes}: {error:?}")
                 });
                 let neutral_genome = EvaluationGenome::neutral(&context);
                 let retentive_genome = EvaluationGenome::retentive(&context);
                 let neutral = context.score(&neutral_genome).unwrap_or_else(|error| {
-                    panic!("score {stem} layer {layer_index} b{budget} neutral: {error:?}")
+                    panic!("score {stem} layer {layer_index} b{budget_lanes} neutral: {error:?}")
                 });
                 let retentive = context.score(&retentive_genome).unwrap_or_else(|error| {
-                    panic!("score {stem} layer {layer_index} b{budget} retentive: {error:?}")
+                    panic!("score {stem} layer {layer_index} b{budget_lanes} retentive: {error:?}")
                 });
                 let search = (search_evaluations > 0 || staging_evaluations > 0).then(|| {
                     mutation_search(
@@ -1744,7 +1794,7 @@ fn compare_forward_corpus_all_layers() {
                         },
                     )
                     .unwrap_or_else(|error| {
-                        panic!("search {stem} layer {layer_index} b{budget}: {error:?}")
+                        panic!("search {stem} layer {layer_index} b{budget_lanes}: {error:?}")
                     })
                 });
                 let (baseline_best, baseline_genome) = if retentive.fitness < neutral.fitness {
@@ -1763,7 +1813,7 @@ fn compare_forward_corpus_all_layers() {
                 {
                     println!(
                         "eval-plan staging-refinement: circuit={stem} layer={layer_index} \
-                         budget={budget} pairs={} evals={} improvements={} selected={:?}",
+                         budget={budget_lanes} pairs={} evals={} improvements={} selected={:?}",
                         context.site_index().staging_pairs().len(),
                         outcome.telemetry.staging_evaluations,
                         outcome.telemetry.staging_improvements,
@@ -1780,7 +1830,7 @@ fn compare_forward_corpus_all_layers() {
                     committed_order.root_order_key =
                         committed_order_keys(&context, &committed.layers[layer_index]);
                     let committed_order_score = context.score(&committed_order).unwrap_or_else(|error| {
-                        panic!("score {stem} layer {layer_index} b{budget} committed-order ablation: {error:?}")
+                        panic!("score {stem} layer {layer_index} b{budget_lanes} committed-order ablation: {error:?}")
                     });
                     let compatible = compatible_genome_from_schedule(
                         &context,
@@ -1788,7 +1838,7 @@ fn compare_forward_corpus_all_layers() {
                         &committed.layers[layer_index],
                     );
                     let compatible_score = context.score(&compatible).unwrap_or_else(|error| {
-                        panic!("score {stem} layer {layer_index} b{budget} compatible schedule: {error:?}")
+                        panic!("score {stem} layer {layer_index} b{budget_lanes} compatible schedule: {error:?}")
                     });
                     let mut exact_root_order = committed.layers[layer_index]
                         .atom_order()
@@ -1811,7 +1861,7 @@ fn compare_forward_corpus_all_layers() {
                         &fields,
                         &exact_root_order,
                         context.materialized_roots(),
-                        budget,
+                        budget_lanes,
                         &mut exact_oracle,
                     )
                     .expect("elaborate exact committed root order");
@@ -1823,13 +1873,13 @@ fn compare_forward_corpus_all_layers() {
                         layer,
                         context.materialized_roots(),
                         artifact_layer.layer,
-                        budget,
+                        budget_lanes,
                         &actions,
                         &cross,
                     )
                     .expect("bind exact committed root order");
                     println!(
-                        "eval-plan controlled-diff: circuit={stem} layer={layer_index} budget={budget} \
+                        "eval-plan controlled-diff: circuit={stem} layer={layer_index} budget={budget_lanes} \
                          winner={:?} winner_cache_committed_order={:?} compatible_schedule={:?} \
                          exact_root_order=({},{},{}) established_reads={} established_instr={} \
                          retentive_placement={:?} retentive_telemetry={:?}",
@@ -1857,7 +1907,7 @@ fn compare_forward_corpus_all_layers() {
                             layer,
                             context.materialized_roots(),
                             artifact_layer.layer,
-                            budget,
+                            budget_lanes,
                             &actions,
                             &cross,
                         )
@@ -1884,7 +1934,7 @@ fn compare_forward_corpus_all_layers() {
                             )
                         );
                     }
-                    if stem == "add_sub_lui_auipc_mop" && layer_index == 0 && budget == 16 {
+                    if stem == "add_sub_lui_auipc_mop" && layer_index == 0 && budget_lanes == 16 {
                         report_expr_cone(layer, cs::gkr_compiler::dag_ir::RootId(2));
                         report_expr_cone(layer, cs::gkr_compiler::dag_ir::RootId(3));
                         report_expr(layer, ExprId(191), "expr-191");
@@ -1893,30 +1943,30 @@ fn compare_forward_corpus_all_layers() {
                 }
                 let plan = best.plan.as_ref().unwrap_or_else(|| {
                     panic!(
-                        "{stem} layer {layer_index} b{budget} neutral and retentive plans infeasible"
+                        "{stem} layer {layer_index} b{budget_lanes} neutral and retentive plans infeasible"
                     )
                 });
                 if report_attribution {
-                    report_plan_attribution(stem, layer_index, budget, layer, plan);
+                    report_plan_attribution(stem, layer_index, budget_lanes, layer, plan);
                 }
                 let packed =
                     pack_plan(plan, layer, PackConfig::default()).unwrap_or_else(|error| {
-                        panic!("pack {stem} layer {layer_index} b{budget}: {error:?}")
+                        panic!("pack {stem} layer {layer_index} b{budget_lanes}: {error:?}")
                     });
                 let concrete = bind_packed_plan_with_actions(
                     &packed,
                     layer,
                     context.materialized_roots(),
                     artifact_layer.layer,
-                    budget,
+                    budget_lanes,
                     &actions,
                     &cross,
                 )
                 .unwrap_or_else(|error| {
-                    panic!("bind {stem} layer {layer_index} b{budget}: {error:?}")
+                    panic!("bind {stem} layer {layer_index} b{budget_lanes}: {error:?}")
                 });
                 validate_compiled(&concrete.compiled, layer).unwrap_or_else(|error| {
-                    panic!("validate {stem} layer {layer_index} b{budget}: {error:?}")
+                    panic!("validate {stem} layer {layer_index} b{budget_lanes}: {error:?}")
                 });
                 if std::env::var_os("EVAL_PLAN_DISASSEMBLE").is_some() {
                     println!(
@@ -1934,7 +1984,7 @@ fn compare_forward_corpus_all_layers() {
                 }
                 assert_eq!(
                     concrete.compiled.stats.dram_traffic, packed.stats.dram_read_lanes,
-                    "{stem} layer {layer_index} b{budget} traffic prediction",
+                    "{stem} layer {layer_index} b{budget_lanes} traffic prediction",
                 );
                 let new_roots = concrete
                     .compiled
@@ -1950,7 +2000,7 @@ fn compare_forward_corpus_all_layers() {
                             (!matches!(action, ForwardAction::SkipScratchPrefill)).then_some(root)
                         })
                         .collect(),
-                    "{stem} layer {layer_index} b{budget} concrete root set",
+                    "{stem} layer {layer_index} b{budget_lanes} concrete root set",
                 );
                 assert_eq!(
                     concrete
@@ -1965,14 +2015,14 @@ fn compare_forward_corpus_all_layers() {
                             matches!(action, ForwardAction::SkipScratchPrefill).then_some(root)
                         })
                         .collect(),
-                    "{stem} layer {layer_index} b{budget} skipped root set",
+                    "{stem} layer {layer_index} b{budget_lanes} skipped root set",
                 );
 
                 for row in common::sample_rows(dag.globals.trace_len) {
                     assert_eq!(
                         interpret_packed_plan(&packed, layer, row, &resolvers).unwrap(),
                         interpret_plan(plan, layer, row, &resolvers).unwrap(),
-                        "{stem} layer {layer_index} b{budget} row {row} packed parity",
+                        "{stem} layer {layer_index} b{budget_lanes} row {row} packed parity",
                     );
                     let new_outputs =
                         interpret_layer_row(&concrete.compiled, layer, &resolvers, row).unwrap();
@@ -1988,12 +2038,12 @@ fn compare_forward_corpus_all_layers() {
                             cs::gkr_compiler::dag_ir::eval_layer_root(layer, root, row, &resolvers);
                         assert_eq!(
                             new_outputs.by_root[&root], canonical,
-                            "{stem} layer {layer_index} b{budget} root {} row {row} canonical parity",
+                            "{stem} layer {layer_index} b{budget_lanes} root {} row {row} canonical parity",
                             root.0,
                         );
                         assert_eq!(
                             new_outputs.by_root[&root], established_outputs.by_root[&root],
-                            "{stem} layer {layer_index} b{budget} root {} row {row} established parity",
+                            "{stem} layer {layer_index} b{budget_lanes} root {} row {row} established parity",
                             root.0,
                         );
                     }
@@ -2007,7 +2057,7 @@ fn compare_forward_corpus_all_layers() {
                 let new_scalar_ops = scalar_isa_ops(&concrete.compiled.program);
                 println!(
                     "eval-plan all-layers: circuit={stem} layer={layer_index} \
-                     artifact_layer={} budget={budget} roots={} aliases={alias_roots} \
+                     artifact_layer={} budget={budget_lanes} roots={} aliases={alias_roots} \
                      skipped={skipped_roots} floor={} natural={} committed={} established={} \
                      neutral={} retentive={} best={} established_instr={} new_instr={} \
                      est_mov={} est_add={} est_mul={} est_fma={} \
@@ -2069,7 +2119,8 @@ fn compare_forward_corpus_all_layers() {
 #[ignore = "on-demand established-neutral-semantics ablation"]
 fn ablate_first_fit_corpus_budget_twelve() {
     assert_eq!(FORWARD_CORPUS.len(), 11, "scheduled reference corpus drift");
-    let budget = 12;
+    let budget_cells = 3;
+    let budget_lanes = 12;
     let circuit_filter = std::env::var("EVAL_PLAN_CIRCUIT").ok();
 
     for &(stem, fixture) in FORWARD_CORPUS {
@@ -2104,7 +2155,7 @@ fn ablate_first_fit_corpus_budget_twelve() {
             .unwrap_or_else(|error| panic!("load {stem} committed schedule: {error:?}"));
 
         let reference_context =
-            LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, budget);
+            LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, budget_lanes);
         let reference = score_reference(
             &ReferenceGenome::neutral(
                 reference_context.n_order_keys(),
@@ -2121,7 +2172,7 @@ fn ablate_first_fit_corpus_budget_twelve() {
             layer,
             &fields,
             artifact.layers[0].layer,
-            budget,
+            budget_cells,
             &compute_roots,
         )
         .unwrap_or_else(|error| panic!("build {stem} context: {error:?}"));
@@ -2134,18 +2185,18 @@ fn ablate_first_fit_corpus_budget_twelve() {
             &fields,
             &context,
             &neutral_genome.root_order_key,
-            budget,
+            budget_lanes,
         );
         let first_fit_committed = score_first_fit(
             layer,
             &fields,
             &context,
             &committed_order_keys(&context, &committed.layers[0]),
-            budget,
+            budget_lanes,
         );
 
         println!(
-            "eval-plan first-fit: circuit={stem} budget={budget} floor={} established_natural={} \
+            "eval-plan first-fit: circuit={stem} budget={budget_lanes} floor={} established_natural={} \
              established_committed={} uncached={} first_fit_natural={:?} first_fit_committed={:?} \
              elapsed={:?}",
             reference_context.floor,

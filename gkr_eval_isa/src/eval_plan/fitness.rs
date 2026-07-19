@@ -9,7 +9,7 @@ use super::genome::root_cmp;
 use super::{
     ConcreteBindError, EvalPlan, GenomeOracle, GenomeOracleError, PackConfig, PackError,
     PlacementTelemetry, PlanError, RootKey, StructuralSiteIndex, ValueFingerprint,
-    bind_packed_plan,
+    bind_packed_plan, budget_lanes_from_cells,
     concrete::{bind_packed_plan_for_search, bind_packed_plan_greedy},
     elaborate_with_oracle_and_sinks, pack_plan, structural_fingerprints,
 };
@@ -73,6 +73,7 @@ impl EvaluationGenome {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FitnessError {
+    BudgetCellsOutOfRange { budget_cells: usize },
     UnitConstruction(String),
     Oracle(GenomeOracleError),
     Pack(PackError),
@@ -151,7 +152,7 @@ pub struct PlanSearchContext<'a> {
     expr_fingerprints: Vec<ValueFingerprint>,
     /// Artifact layer identity used when concrete certification binds Export sinks.
     this_layer: usize,
-    budget_lanes: usize,
+    budget_cells: usize,
     units: Vec<EvaluationUnit>,
     fallback_roots: Vec<RootId>,
     /// Every selected root whose sink must be discharged. Cache roots live
@@ -167,9 +168,9 @@ impl<'a> PlanSearchContext<'a> {
         layer: &'a DagLayer,
         expr_fields: &[FieldKind],
         this_layer: usize,
-        budget_lanes: usize,
+        budget_cells: usize,
     ) -> Result<Self, FitnessError> {
-        Self::build_selected(layer, expr_fields, this_layer, budget_lanes, None)
+        Self::build_selected(layer, expr_fields, this_layer, budget_cells, None)
     }
 
     /// Build a search domain for an explicitly selected set of materialized
@@ -181,24 +182,24 @@ impl<'a> PlanSearchContext<'a> {
         layer: &'a DagLayer,
         expr_fields: &[FieldKind],
         this_layer: usize,
-        budget_lanes: usize,
+        budget_cells: usize,
         roots: &[RootId],
     ) -> Result<Self, FitnessError> {
-        Self::build_selected(layer, expr_fields, this_layer, budget_lanes, Some(roots))
+        Self::build_selected(layer, expr_fields, this_layer, budget_cells, Some(roots))
     }
 
     fn build_selected(
         layer: &'a DagLayer,
         expr_fields: &[FieldKind],
         this_layer: usize,
-        budget_lanes: usize,
+        budget_cells: usize,
         roots: Option<&[RootId]>,
     ) -> Result<Self, FitnessError> {
         Self::build_selected_with_units_inner(
             layer,
             expr_fields,
             this_layer,
-            budget_lanes,
+            budget_cells,
             roots,
             adapt_forward_relations(layer)?,
         )
@@ -209,7 +210,7 @@ impl<'a> PlanSearchContext<'a> {
         layer: &'a DagLayer,
         expr_fields: &[FieldKind],
         this_layer: usize,
-        budget_lanes: usize,
+        budget_cells: usize,
         roots: Option<&[RootId]>,
         units: Vec<EvaluationUnit>,
     ) -> Result<Self, FitnessError> {
@@ -217,7 +218,7 @@ impl<'a> PlanSearchContext<'a> {
             layer,
             expr_fields,
             this_layer,
-            budget_lanes,
+            budget_cells,
             roots,
             units,
         )
@@ -227,10 +228,12 @@ impl<'a> PlanSearchContext<'a> {
         layer: &'a DagLayer,
         expr_fields: &[FieldKind],
         this_layer: usize,
-        budget_lanes: usize,
+        budget_cells: usize,
         roots: Option<&[RootId]>,
         mut units: Vec<EvaluationUnit>,
     ) -> Result<Self, FitnessError> {
+        budget_lanes_from_cells(budget_cells)
+            .ok_or(FitnessError::BudgetCellsOutOfRange { budget_cells })?;
         let mut selected_roots = roots.map_or_else(
             || {
                 layer
@@ -297,7 +300,7 @@ impl<'a> PlanSearchContext<'a> {
             expr_fields: expr_fields.to_vec(),
             expr_fingerprints: fingerprints,
             this_layer,
-            budget_lanes,
+            budget_cells,
             units,
             fallback_roots,
             selected_roots,
@@ -325,8 +328,13 @@ impl<'a> PlanSearchContext<'a> {
         self.this_layer
     }
 
-    pub fn budget_lanes(&self) -> usize {
-        self.budget_lanes
+    pub fn budget_cells(&self) -> usize {
+        self.budget_cells
+    }
+
+    pub(crate) fn budget_lanes(&self) -> usize {
+        budget_lanes_from_cells(self.budget_cells)
+            .expect("PlanSearchContext validates its immutable cell budget at construction")
     }
 
     pub fn selected_root_keys(&self) -> Vec<RootKey> {
@@ -404,7 +412,7 @@ impl<'a> PlanSearchContext<'a> {
             &self.expr_fields,
             &root_order,
             &self.selected_roots,
-            self.budget_lanes,
+            self.budget_lanes(),
             &mut oracle,
         ) {
             Ok(plan) => {
@@ -425,7 +433,7 @@ impl<'a> PlanSearchContext<'a> {
                     self.layer,
                     &self.selected_roots,
                     self.this_layer,
-                    self.budget_lanes,
+                    self.budget_lanes(),
                 ) {
                     Ok(concrete) => {
                         let fitness = concrete_fitness(fitness, &concrete);
@@ -455,7 +463,7 @@ impl<'a> PlanSearchContext<'a> {
                         self.layer,
                         &self.selected_roots,
                         self.this_layer,
-                        self.budget_lanes,
+                        self.budget_lanes(),
                     )
                 } else {
                     bind_packed_plan(
@@ -463,7 +471,7 @@ impl<'a> PlanSearchContext<'a> {
                         self.layer,
                         &self.selected_roots,
                         self.this_layer,
-                        self.budget_lanes,
+                        self.budget_lanes(),
                     )
                 };
                 match concrete {

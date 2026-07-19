@@ -20,8 +20,6 @@ use super::{
     structural_fingerprints, validate_structural_identity,
 };
 
-pub const EVALUATION_GENOME_SCHEMA_VERSION: u32 = 2;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EvaluationPass {
     Forward,
@@ -64,15 +62,14 @@ pub struct DomainCertificate {
     pub digest: [u64; 4],
 }
 
-/// A versioned, arena-independent genome for one concrete circuit layer and
-/// lane budget. Dense genes are tied to the semantic domains stored alongside
+/// An arena-independent genome for one concrete circuit layer and cell budget.
+/// Dense genes are tied to the semantic domains stored alongside
 /// them, so a stale genome cannot silently target different sites or units.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EvaluationGenomeArtifact {
-    pub schema_version: u32,
     pub circuit: String,
     pub layer: usize,
-    pub budget_lanes: usize,
+    pub budget_cells: usize,
     pub unit_domain: DomainCertificate,
     pub selected_root_domain: DomainCertificate,
     pub site_domain: DomainCertificate,
@@ -82,16 +79,15 @@ pub struct EvaluationGenomeArtifact {
     pub expected_fitness: PlanFitness,
 }
 
-/// One forward compiler artifact for one exact layout fixture and lane budget.
+/// One forward compiler artifact for one exact layout fixture and cell budget.
 /// Layers are index-aligned with both `DagCircuit.layers` and the GKR layout.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EvaluationGenomeCircuitArtifact {
-    pub schema_version: u32,
     pub circuit: String,
     pub pass: EvaluationPass,
     pub layout_variant: EvaluationLayoutVariant,
     pub layout_fixture: String,
-    pub budget_lanes: usize,
+    pub budget_cells: usize,
     pub expected_fitness: PlanFitness,
     pub search: SearchProvenance,
     pub layers: Vec<EvaluationGenomeArtifact>,
@@ -101,10 +97,18 @@ pub struct EvaluationGenomeCircuitArtifact {
 pub enum EvaluationArtifactError {
     Identity(IdentityError),
     Fitness(FitnessError),
-    UnsupportedSchema { expected: u32, actual: u32 },
-    CircuitMismatch { expected: String, actual: String },
-    LayerMismatch { expected: usize, actual: usize },
-    BudgetMismatch { expected: usize, actual: usize },
+    CircuitMismatch {
+        expected: String,
+        actual: String,
+    },
+    LayerMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    BudgetCellsMismatch {
+        expected_cells: usize,
+        actual_cells: usize,
+    },
     UnitDomainMismatch,
     SelectedRootDomainMismatch,
     SiteDomainMismatch,
@@ -149,10 +153,9 @@ impl EvaluationGenomeArtifact {
             return Err(EvaluationArtifactError::GenomeNotConcrete(scored.placement));
         }
         Ok(Self {
-            schema_version: EVALUATION_GENOME_SCHEMA_VERSION,
             circuit: circuit.into(),
             layer: context.layer_index(),
-            budget_lanes: context.budget_lanes(),
+            budget_cells: context.budget_cells(),
             unit_domain: domain_certificate(&unit_keys)?,
             selected_root_domain: domain_certificate(&selected_root_keys)?,
             site_domain: domain_certificate(context.site_index().sites())?,
@@ -169,12 +172,6 @@ impl EvaluationGenomeArtifact {
         context: &PlanSearchContext<'_>,
         actions: &HashMap<RootId, ForwardAction>,
     ) -> Result<(), EvaluationArtifactError> {
-        if self.schema_version != EVALUATION_GENOME_SCHEMA_VERSION {
-            return Err(EvaluationArtifactError::UnsupportedSchema {
-                expected: EVALUATION_GENOME_SCHEMA_VERSION,
-                actual: self.schema_version,
-            });
-        }
         if self.circuit != circuit {
             return Err(EvaluationArtifactError::CircuitMismatch {
                 expected: circuit.to_owned(),
@@ -187,10 +184,10 @@ impl EvaluationGenomeArtifact {
                 actual: self.layer,
             });
         }
-        if self.budget_lanes != context.budget_lanes() {
-            return Err(EvaluationArtifactError::BudgetMismatch {
-                expected: context.budget_lanes(),
-                actual: self.budget_lanes,
+        if self.budget_cells != context.budget_cells() {
+            return Err(EvaluationArtifactError::BudgetCellsMismatch {
+                expected_cells: context.budget_cells(),
+                actual_cells: self.budget_cells,
             });
         }
         validate_structural_identity(context.layer())?;
@@ -370,7 +367,7 @@ pub struct CompiledEvaluationCircuit {
     pub pass: EvaluationPass,
     pub layout_variant: EvaluationLayoutVariant,
     pub layout_fixture: String,
-    pub budget_lanes: usize,
+    pub budget_cells: usize,
     pub fitness: PlanFitness,
     pub layers: Vec<CompiledEvaluationLayer>,
 }
@@ -380,17 +377,16 @@ impl EvaluationGenomeCircuitArtifact {
         circuit: impl Into<String>,
         layout_variant: EvaluationLayoutVariant,
         layout_fixture: impl Into<String>,
-        budget_lanes: usize,
+        budget_cells: usize,
         search: SearchProvenance,
         layers: Vec<EvaluationGenomeArtifact>,
     ) -> Result<Self, EvaluationCompileError> {
         let artifact = Self {
-            schema_version: EVALUATION_GENOME_SCHEMA_VERSION,
             circuit: circuit.into(),
             pass: EvaluationPass::Forward,
             layout_variant,
             layout_fixture: layout_fixture.into(),
-            budget_lanes,
+            budget_cells,
             expected_fitness: aggregate_fitness(layers.iter().map(|layer| layer.expected_fitness)),
             search,
             layers,
@@ -400,21 +396,13 @@ impl EvaluationGenomeCircuitArtifact {
     }
 
     fn validate_self_consistency(&self) -> Result<(), EvaluationCompileError> {
-        if self.schema_version != EVALUATION_GENOME_SCHEMA_VERSION {
-            return Err(EvaluationArtifactError::UnsupportedSchema {
-                expected: EVALUATION_GENOME_SCHEMA_VERSION,
-                actual: self.schema_version,
-            }
-            .into());
-        }
         if self.pass != EvaluationPass::Forward {
             return Err(EvaluationCompileError::UnsupportedPass(self.pass));
         }
         for (layer, artifact) in self.layers.iter().enumerate() {
-            if artifact.schema_version != self.schema_version
-                || artifact.circuit != self.circuit
+            if artifact.circuit != self.circuit
                 || artifact.layer != layer
-                || artifact.budget_lanes != self.budget_lanes
+                || artifact.budget_cells != self.budget_cells
             {
                 return Err(EvaluationCompileError::LayerHeaderMismatch { layer });
             }
@@ -515,7 +503,7 @@ pub fn compile_circuit_with_evaluation_genomes(
             layout_layer,
             &layout.scratch_space_mapping,
             &cross_layer_fields,
-            artifact.budget_lanes,
+            artifact.budget_cells,
             &artifact.layers[layer],
         )?;
         layers.push(compiled);
@@ -533,7 +521,7 @@ pub fn compile_circuit_with_evaluation_genomes(
         pass: artifact.pass,
         layout_variant: artifact.layout_variant,
         layout_fixture: artifact.layout_fixture.clone(),
-        budget_lanes: artifact.budget_lanes,
+        budget_cells: artifact.budget_cells,
         fitness,
         layers,
     })
@@ -549,7 +537,7 @@ pub fn produce_searched_evaluation_genome_artifact(
     circuit: &str,
     layout_fixture: &str,
     layout_variant: EvaluationLayoutVariant,
-    budget_lanes: usize,
+    budget_cells: usize,
     config: MutationSearchConfig,
     incumbent: Option<&EvaluationGenomeCircuitArtifact>,
 ) -> Result<EvaluationGenomeCircuitArtifact, EvaluationCompileError> {
@@ -562,10 +550,10 @@ pub fn produce_searched_evaluation_genome_artifact(
             layout_variant,
             incumbent,
         )?;
-        if incumbent.budget_lanes != budget_lanes {
-            return Err(EvaluationArtifactError::BudgetMismatch {
-                expected: budget_lanes,
-                actual: incumbent.budget_lanes,
+        if incumbent.budget_cells != budget_cells {
+            return Err(EvaluationArtifactError::BudgetCellsMismatch {
+                expected_cells: budget_cells,
+                actual_cells: incumbent.budget_cells,
             }
             .into());
         }
@@ -600,7 +588,7 @@ pub fn produce_searched_evaluation_genome_artifact(
             dag_layer,
             &expr_fields,
             layout_layer.layer,
-            budget_lanes,
+            budget_cells,
             &compute_roots,
         )?;
         let outcome = mutation_search(&context, config)?;
@@ -633,7 +621,7 @@ pub fn produce_searched_evaluation_genome_artifact(
         circuit,
         layout_variant,
         layout_fixture,
-        budget_lanes,
+        budget_cells,
         SearchProvenance {
             algorithm: "mutation-guided-staging-v1".to_owned(),
             seed: config.seed,
@@ -654,7 +642,7 @@ pub fn compile_layer_with_evaluation_genome(
     artifact_layer: &GKRLayerDescription,
     scratch_mapping: &BTreeMap<GKRAddress, usize>,
     cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
-    budget_lanes: usize,
+    budget_cells: usize,
     artifact: &EvaluationGenomeArtifact,
 ) -> Result<CompiledEvaluationLayer, EvaluationCompileError> {
     let actions = build_forward_actions(layer, artifact_layer, scratch_mapping)
@@ -675,10 +663,11 @@ pub fn compile_layer_with_evaluation_genome(
         layer,
         &expr_fields,
         artifact_layer.layer,
-        budget_lanes,
+        budget_cells,
         &compute_roots,
     )?;
     artifact.validate_against(circuit, &context, &actions)?;
+    let budget_lanes = context.budget_lanes();
 
     let scored = context.score(&artifact.genome)?;
     if scored.placement != PlacementStatus::Concrete {

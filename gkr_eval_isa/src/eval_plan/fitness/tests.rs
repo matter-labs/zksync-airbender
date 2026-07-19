@@ -7,8 +7,9 @@ use cs::gkr_compiler::dag_ir::{
 use field::baby_bear::base::BabyBearField;
 
 use crate::eval_plan::{
-    EvaluationGenome, EvaluationLayoutVariant, PackConfig, PlanSearchContext, bind_packed_plan,
-    compile_layer_with_evaluation_genome, load_evaluation_genome_artifact, pack_plan,
+    EvaluationGenome, EvaluationLayoutVariant, LANES_PER_STORAGE_CELL, PackConfig,
+    PlanSearchContext, bind_packed_plan, compile_layer_with_evaluation_genome,
+    load_evaluation_genome_artifact, pack_plan,
 };
 use crate::fwd::compile::{build_cross_layer_field_map, expr_operand_field};
 use crate::fwd::context::{ForwardAction, build_forward_actions};
@@ -44,8 +45,6 @@ const CORPUS: &[(&str, &str)] = &[
     ("shift_binop", "shift_binop_layout_gkr.json"),
     ("unsigned_mul_div", "unsigned_mul_div_layout_gkr.json"),
 ];
-
-const LANES_PER_CELL: usize = 4;
 
 fn compiled_circuit_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits")
@@ -138,10 +137,7 @@ fn forward_adapter_corpus_parity() {
             EvaluationLayoutVariant::WithCaches,
             "{fixture}: artifact variant"
         );
-        assert_eq!(
-            committed.budget_lanes, 16,
-            "{fixture}: committed b16 budget"
-        );
+        assert_eq!(committed.budget_cells, 4, "{fixture}: committed b16 budget");
         assert_eq!(
             committed.layers.len(),
             dag.layers.len(),
@@ -170,12 +166,12 @@ fn forward_adapter_corpus_parity() {
             let fields = expr_fields(layer, &cross);
 
             for budget_cells in [2, 3, 4] {
-                let budget_lanes = budget_cells * LANES_PER_CELL;
+                let budget_lanes = budget_cells * LANES_PER_STORAGE_CELL;
                 let old_context = PlanSearchContext::build_selected_with_units(
                     layer,
                     &fields,
                     layout_layer.layer,
-                    budget_lanes,
+                    budget_cells,
                     Some(&compute_roots),
                     expected.clone(),
                 )
@@ -186,7 +182,7 @@ fn forward_adapter_corpus_parity() {
                     layer,
                     &fields,
                     layout_layer.layer,
-                    budget_lanes,
+                    budget_cells,
                     &compute_roots,
                 )
                 .unwrap_or_else(|error| {
@@ -253,7 +249,7 @@ fn forward_adapter_corpus_parity() {
                         layout_layer,
                         &layout.scratch_space_mapping,
                         &cross,
-                        budget_lanes,
+                        budget_cells,
                         committed_layer,
                     )
                     .unwrap_or_else(|error| {
@@ -283,7 +279,7 @@ fn forward_adapter_corpus_parity() {
                         layer,
                         &fields,
                         layout_layer.layer,
-                        budget_lanes,
+                        budget_cells,
                         &compute_roots,
                     )
                     .unwrap();
@@ -347,4 +343,35 @@ fn forward_adapter_rejects_unmaterialized_selected_root() {
     assert!(
         matches!(error, FitnessError::UnitConstruction(message) if message.contains(&root.to_string()))
     );
+}
+
+#[test]
+fn plan_search_context_exposes_cells_and_derives_lanes() {
+    let layout = load_fixture(CORPUS[0].1);
+    let dag = lower_dag(&layout).expect("lower fixture");
+    let layer = &dag.layers[0];
+    let cross = build_cross_layer_field_map(&dag);
+    let fields = expr_fields(layer, &cross);
+    let context = PlanSearchContext::build(layer, &fields, 0, 4).expect("build four-cell context");
+
+    assert_eq!(context.budget_cells(), 4);
+    assert_eq!(context.budget_lanes(), 16);
+}
+
+#[test]
+fn plan_search_context_rejects_invalid_cell_budgets() {
+    let layout = load_fixture(CORPUS[0].1);
+    let dag = lower_dag(&layout).expect("lower fixture");
+    let layer = &dag.layers[0];
+    let cross = build_cross_layer_field_map(&dag);
+    let fields = expr_fields(layer, &cross);
+
+    for budget_cells in [0, crate::fwd::isa::MAX_CELL as usize / 4 + 1, usize::MAX] {
+        assert!(matches!(
+            PlanSearchContext::build(layer, &fields, 0, budget_cells),
+            Err(FitnessError::BudgetCellsOutOfRange {
+                budget_cells: actual,
+            }) if actual == budget_cells
+        ));
+    }
 }
