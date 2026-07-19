@@ -682,7 +682,7 @@ fn select_inverse_strategy(
 }
 
 #[cfg(test)]
-mod tests {
+mod cpu_tests {
     use super::*;
 
     fn l4_like() -> DeviceProperties {

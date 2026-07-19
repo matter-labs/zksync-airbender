@@ -60,7 +60,7 @@ fn make_context() -> NttTestContext {
 const TEST_LOG_NS: &[usize] = &[1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20];
 
 #[test]
-fn characterize_cpu_hypercube_ordering() {
+fn cpu_characterize_hypercube_ordering() {
     let coeffs = vec![
         BF::new(3),
         BF::new(5),

@@ -27,31 +27,11 @@ use gpu_core::primitives::device_structures::{
 use gpu_core::primitives::field::BF;
 
 /// CPU reference: sum-check inverse (hypercube evals → multilinear coefficients).
-/// Ported from `prover::gkr::whir::hypercube_to_monomial` — kept here so
-/// `gpu_ntt` tests have no dep on the `prover` crate.
+/// Shared from the parent test module (`super`) — that single ungated definition
+/// also backs the CPU-only `cpu_characterize_hypercube_ordering` test, so keeping
+/// one copy avoids drift between the two.
 #[cfg(not(no_cuda))]
-fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2: u32) {
-    assert_eq!(input.len(), 1 << size_log2);
-    let len = 1 << size_log2;
-    let mut stride = len / 2;
-    let mut iterations = len / 2;
-    for _round in 1..size_log2 {
-        let mut i = 0;
-        while i < len {
-            for _ in 0..iterations {
-                let lhs = input[i];
-                input[i + stride].sub_assign(&lhs);
-                i += 1;
-            }
-            i += iterations;
-        }
-        stride /= 2;
-        iterations /= 2;
-    }
-    for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
-        b.sub_assign(&a);
-    }
-}
+use super::multivariate_hypercube_evals_into_coeffs;
 
 pub(super) fn transpose_monomials(vals: &mut [BF]) {
     for chunk in vals.chunks_mut(1024) {
