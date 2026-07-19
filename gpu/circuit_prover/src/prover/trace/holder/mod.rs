@@ -1449,7 +1449,6 @@ pub(crate) fn commit_trace_from_ntt_single_tree(
                     log_values_per_leaf,
                     coset_index_base_this_stream as u32,
                     cosets_in_tile as u32,
-                    src_cols_per_coset as u32,
                     streams[i],
                 )?;
             }

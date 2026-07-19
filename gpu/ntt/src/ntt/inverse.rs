@@ -69,7 +69,7 @@ pub(crate) fn evals_to_monomials_3_pass(
             let num_exchg_regions = 1 << start_stage;
             let exchg_region_size = n >> start_stage;
             let blocks_per_exchg_region = exchg_region_size / bf_vals_per_block;
-            assert_eq!(
+            debug_assert_eq!(
                 blocks_per_exchg_region * num_exchg_regions,
                 n / bf_vals_per_block
             );

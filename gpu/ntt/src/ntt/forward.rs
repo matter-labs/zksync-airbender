@@ -117,9 +117,9 @@ pub(crate) fn monomials_to_evals_3_pass(
                 output_matrix_mut,
                 transposed_monomials,
                 log_n as i32,
-                tile_coset_base as i32,
-                coset_factor_shift as i32,
-                num_cols_per_coset as i32,
+                shared::checked_i32(tile_coset_base, "tile_coset_base"),
+                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
                 log_cosets_in_tile,
             );
             initial_function.launch(&config, &args_initial)?;
@@ -130,7 +130,7 @@ pub(crate) fn monomials_to_evals_3_pass(
                 let num_block_exchg_regions = n >> (start_stage + 8);
                 let block_exchg_region_size = 1 << (start_stage + 8);
                 let blocks_per_exchg_region = block_exchg_region_size / bf_vals_per_block;
-                assert_eq!(
+                debug_assert_eq!(
                     blocks_per_exchg_region * num_block_exchg_regions,
                     n / bf_vals_per_block
                 );
@@ -145,7 +145,7 @@ pub(crate) fn monomials_to_evals_3_pass(
                     output_matrix_mut,
                     log_n as i32,
                     start_stage as i32,
-                    num_cols_per_coset as i32,
+                    shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
                     log_cosets_in_tile,
                 );
                 StridedTilesStagesFunction(ab_monomials_to_evals_noninitial_8_stages_kernel)
@@ -168,7 +168,6 @@ pub(crate) fn monomials_to_evals_compact_1_pass(
     num_cosets: usize,
     num_cols_per_coset: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // One block per (column, coset) NTT, all `log_n` butterfly stages run
@@ -191,10 +190,6 @@ pub(crate) fn monomials_to_evals_compact_1_pass(
     assert!(
         (4..=12).contains(&log_n),
         "compact 1-pass NTT only supports log_n in [4, 12]"
-    );
-    assert!(
-        !transposed_monomials,
-        "compact 1-pass NTT does not support transposed monomials"
     );
     assert!(columns_per_launch >= 1);
     assert!(
@@ -262,9 +257,9 @@ pub(crate) fn monomials_to_evals_compact_1_pass(
             output_matrix_mut,
             false,
             log_n as i32,
-            coset_index_base as i32,
-            coset_factor_shift as i32,
-            num_cols_per_coset as i32,
+            shared::checked_i32(coset_index_base, "coset_index_base"),
+            shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+            shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
             log_cosets_in_tile,
         );
         function.launch(&config, &args)?;
@@ -282,7 +277,6 @@ pub(crate) fn monomials_to_evals_subwarp(
     num_cosets: usize,
     num_cols_per_coset: usize,
     log_instances_per_block: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Sub-warp register-resident kernel for log_n in {4, 5}: each thread holds
@@ -292,10 +286,6 @@ pub(crate) fn monomials_to_evals_subwarp(
     assert!(
         (1..=5).contains(&log_n),
         "subwarp NTT only supports log_n in [1, 5]"
-    );
-    assert!(
-        !transposed_monomials,
-        "subwarp NTT does not support transposed monomials"
     );
     assert!(
         num_cosets.is_power_of_two(),
@@ -379,9 +369,9 @@ pub(crate) fn monomials_to_evals_subwarp(
         output_matrix_mut,
         false,
         log_n as i32,
-        coset_index_base as i32,
-        coset_factor_shift as i32,
-        num_cols_per_coset as i32,
+        shared::checked_i32(coset_index_base, "coset_index_base"),
+        shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+        shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
         log_cosets_in_tile,
     );
     function.launch(&config, &args)?;
@@ -397,7 +387,6 @@ pub(crate) fn monomials_to_evals_smem_packed(
     num_cosets: usize,
     num_cols_per_coset: usize,
     log_instances_per_block: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Smem-packed multi-NTT-per-block kernel for log_n in [6, 8]: each block
@@ -414,10 +403,6 @@ pub(crate) fn monomials_to_evals_smem_packed(
     assert!(
         (6..=8).contains(&log_n),
         "smem-packed NTT only supports log_n in [6, 8]"
-    );
-    assert!(
-        !transposed_monomials,
-        "smem-packed NTT does not support transposed monomials"
     );
     assert!(
         num_cosets.is_power_of_two(),
@@ -492,9 +477,9 @@ pub(crate) fn monomials_to_evals_smem_packed(
         output_matrix_mut,
         false,
         log_n as i32,
-        coset_index_base as i32,
-        coset_factor_shift as i32,
-        num_cols_per_coset as i32,
+        shared::checked_i32(coset_index_base, "coset_index_base"),
+        shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+        shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
         log_cosets_in_tile,
     );
     function.launch(&config, &args)?;
@@ -511,7 +496,6 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
     num_cols_per_coset: usize,
     cosets_per_launch: usize,
     columns_per_launch: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     // Pass 1: compact "first K stages" kernel, K = log_n - 8, one block per
@@ -531,10 +515,6 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
     assert!(
         (13..=20).contains(&log_n),
         "2-pass compact-initial NTT only supports log_n in [13, 20]"
-    );
-    assert!(
-        !transposed_monomials,
-        "2-pass compact-initial NTT does not support transposed monomials"
     );
     assert!(columns_per_launch >= 1);
     assert!(cosets_per_launch >= 1 && cosets_per_launch <= num_cosets);
@@ -620,9 +600,9 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
                 output_matrix_mut,
                 false,
                 log_n as i32,
-                tile_coset_base as i32,
-                coset_factor_shift as i32,
-                num_cols_per_coset as i32,
+                shared::checked_i32(tile_coset_base, "tile_coset_base"),
+                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
                 log_cosets_in_tile,
             );
             pass1_function.launch(&config, &args)?;
@@ -633,7 +613,7 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
             let num_block_exchg_regions = n >> (start_stage + 8);
             let block_exchg_region_size = 1 << (start_stage + 8);
             let blocks_per_exchg_region = block_exchg_region_size / bf_vals_per_block_pass2;
-            assert_eq!(
+            debug_assert_eq!(
                 blocks_per_exchg_region * num_block_exchg_regions,
                 n / bf_vals_per_block_pass2
             );
@@ -649,7 +629,7 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
                 output_matrix_mut,
                 log_n as i32,
                 start_stage as i32,
-                num_cols_per_coset as i32,
+                shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
                 log_cosets_in_tile,
             );
             StridedTilesStagesFunction(ab_monomials_to_evals_noninitial_8_stages_kernel)
@@ -721,7 +701,7 @@ pub(crate) fn monomials_to_evals_2_pass(
             output_matrix_mut,
             transposed_monomials,
             log_n as i32,
-            coset_factor_power as i32,
+            shared::checked_i32(coset_factor_power, "coset_factor_power"),
         );
         let function =
             MonomialsToEvalsInitialFunction(ab_monomials_to_evals_first_14_stages_kernel);

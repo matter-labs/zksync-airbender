@@ -81,3 +81,30 @@ pub(super) fn assert_multi_coset_output_cols(
         "outputs_matrix.cols() = {output_cols} < {max_col_offset_exclusive} (num_cosets={num_cosets}, stride={num_cols_per_coset}, num_ntts={num_ntts})",
     );
 }
+
+/// Narrow a caller-controlled value to `i32` for a kernel argument struct,
+/// panicking on truncation (assert taxonomy class 1: a silently wrapped
+/// negative feeds device-side column addressing / twiddle indexing and would
+/// corrupt memory or the result). Use this only for caller-controlled values;
+/// log-domain and launch-geometry casts (which CUDA already rejects loudly, or
+/// which cannot exceed range for any valid input) do NOT use it. `u32` sources
+/// widen losslessly through `usize` before the narrowing check.
+#[track_caller]
+pub(super) fn checked_i32(v: usize, what: &str) -> i32 {
+    assert!(
+        v <= i32::MAX as usize,
+        "{what} ({v}) exceeds i32::MAX for its kernel-argument cast",
+    );
+    v as i32
+}
+
+/// Narrow a caller-controlled value to `u32` for a kernel argument struct,
+/// panicking on truncation. Same class-1 rationale as [`checked_i32`].
+#[track_caller]
+pub(super) fn checked_u32(v: usize, what: &str) -> u32 {
+    assert!(
+        v <= u32::MAX as usize,
+        "{what} ({v}) exceeds u32::MAX for its kernel-argument cast",
+    );
+    v as u32
+}

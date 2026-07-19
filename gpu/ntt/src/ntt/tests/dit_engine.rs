@@ -307,7 +307,6 @@ fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
                     1,
                     1,
                     1,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -711,7 +710,6 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
                     1,
                     1,
                     1,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -726,7 +724,6 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
                     1,
                     1,
                     1,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -1183,7 +1180,6 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
                     1,
                     1,
                     1,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -1457,7 +1453,6 @@ mod bench_variants {
                         1,
                         1,
                         1,
-                        false,
                         stream,
                     )
                     .unwrap();
@@ -1472,7 +1467,6 @@ mod bench_variants {
                         1,
                         1,
                         1,
-                        false,
                         stream,
                     )
                     .unwrap();
@@ -1651,7 +1645,6 @@ mod bench_variants {
                         1,
                         1,
                         1,
-                        false,
                         stream,
                     )
                     .unwrap();

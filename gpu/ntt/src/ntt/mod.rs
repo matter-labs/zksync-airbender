@@ -249,6 +249,9 @@ cuda_kernel_declaration!(
     )
 );
 
+// Reminder to relax this if/when we use ext6
+const WHIR_LEAF_COLS_PER_COSET: usize = 4;
+
 pub(crate) fn transform_whir_leaves_from_ntt_multi_coset(
     src: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     dst: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -257,10 +260,8 @@ pub(crate) fn transform_whir_leaves_from_ntt_multi_coset(
     log_values_per_leaf: u32,
     coset_index_base: u32,
     cosets_in_tile: u32,
-    src_cols_per_coset: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert_eq!(src_cols_per_coset, 4); // Reminder to relax this if/when we use ext6
     assert!(log_lde_factor >= 1);
     assert!(log_values_per_leaf >= 1);
     assert!(log_values_per_leaf <= 5); // Based on block size. Can be relaxed if needed.
@@ -273,7 +274,7 @@ pub(crate) fn transform_whir_leaves_from_ntt_multi_coset(
     assert!(dst.rows() <= u32::MAX as usize);
     assert!(dst.cols() <= u32::MAX as usize);
     // A warning to rework kernel for < 32B contiguous accesses if needed:
-    assert_eq!(cols, 4 << log_lde_factor);
+    assert_eq!(cols, WHIR_LEAF_COLS_PER_COSET << log_lde_factor);
     assert_eq!(rows, 1 << log_trace_len);
     assert_eq!(rows, dst.rows());
     assert_eq!(cols, dst.cols());
@@ -322,15 +323,13 @@ pub fn transform_whir_leaves_from_ntt_in_place_multi_coset(
     log_values_per_leaf: u32,
     coset_index_base: u32,
     cosets_in_tile: u32,
-    src_cols_per_coset: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert_eq!(src_cols_per_coset, 4);
     // Creates src as alias of dst
     let dst_slice = dst.slice();
     assert_eq!(
         dst_slice.len(),
-        (src_cols_per_coset << (log_trace_len + log_lde_factor)) as usize
+        WHIR_LEAF_COLS_PER_COSET << (log_trace_len + log_lde_factor)
     );
     let dst_ptr = dst_slice.as_ptr();
     let dst_slice = unsafe { DeviceSlice::from_raw_parts(dst_ptr, dst_slice.len()) };
@@ -343,7 +342,6 @@ pub fn transform_whir_leaves_from_ntt_in_place_multi_coset(
         log_values_per_leaf,
         coset_index_base,
         cosets_in_tile,
-        src_cols_per_coset,
         stream,
     )
 }

@@ -77,7 +77,6 @@ pub(super) fn dispatch_strategy(
                 1,
                 num_cols_per_coset,
                 log_instances_per_block,
-                transposed_monomials,
                 stream,
             ),
             super::NttKernelKind::MonomialsToEvalsSmemPacked {
@@ -92,7 +91,6 @@ pub(super) fn dispatch_strategy(
                 1,
                 num_cols_per_coset,
                 log_instances_per_block,
-                transposed_monomials,
                 stream,
             ),
             _ => monomials_to_evals_compact_1_pass(
@@ -104,7 +102,6 @@ pub(super) fn dispatch_strategy(
                 1,
                 num_cols_per_coset,
                 strategy.columns_per_launch,
-                transposed_monomials,
                 stream,
             ),
         },
@@ -120,7 +117,6 @@ pub(super) fn dispatch_strategy(
                     num_cols_per_coset,
                     1,
                     strategy.columns_per_launch,
-                    transposed_monomials,
                     stream,
                 )
             }

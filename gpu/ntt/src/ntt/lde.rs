@@ -12,6 +12,7 @@ use super::forward::{
     monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed, monomials_to_evals_subwarp,
 };
 use super::kernels::*;
+use super::shared;
 
 use crate::ntt_twiddles::OMEGA_LOG_ORDER;
 use gpu_core::primitives::context::DeviceProperties;
@@ -66,7 +67,7 @@ fn get_lde_grid_dims_for_occupancy_hint(
     let grid_dim_y;
     if grid_dim_x * num_cols_per_coset >= target_blocks {
         grid_dim_y = target_blocks.div_ceil(grid_dim_x);
-        assert!(grid_dim_x * grid_dim_y >= target_blocks);
+        debug_assert!(grid_dim_x * grid_dim_y >= target_blocks);
         let grid = (grid_dim_x as u32, grid_dim_y as u32, 1).into();
         return Ok(grid);
     } else {
@@ -77,11 +78,15 @@ fn get_lde_grid_dims_for_occupancy_hint(
     // As a last resort, split the coset tile. Expose the parallelism via blockDim.z.
     let xy_blocks = grid_dim_x * grid_dim_y;
     let grid_dim_z = target_blocks.div_ceil(xy_blocks);
-    assert!(xy_blocks * grid_dim_z >= target_blocks);
+    debug_assert!(xy_blocks * grid_dim_z >= target_blocks);
     // Technically, grid_dim_z can be > cosets_in_tile without affecting correctness.
     // The grid would just include a bunch of spurious no-op blocks.
     // But it would indicate a weird, non-performant geometry we don't expect in production.
-    assert!(grid_dim_z <= cosets_in_tile);
+    // Demoted to debug_assert!: an aggressive occupancy hint can legitimately
+    // push grid_dim_z past cosets_in_tile (seen while authoring the host-oracle
+    // tests), and since correctness is unaffected this must not abort a release
+    // launch.
+    debug_assert!(grid_dim_z <= cosets_in_tile);
     let grid = (grid_dim_x as u32, grid_dim_y as u32, grid_dim_z as u32).into();
     return Ok(grid);
 }
@@ -106,8 +111,8 @@ pub(crate) fn lde_intermediate_size_with_coset_range(
     cosets_in_tile: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
-    occupancy_target_numerator: usize,
-    occupancy_target_denominator: usize,
+    occupancy_hint_numerator: usize,
+    occupancy_hint_denominator: usize,
     device_properties: &DeviceProperties,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -137,8 +142,8 @@ pub(crate) fn lde_intermediate_size_with_coset_range(
         &first_pass_function,
         block_dim_x,
         vals_per_block,
-        occupancy_target_numerator,
-        occupancy_target_denominator,
+        occupancy_hint_numerator,
+        occupancy_hint_denominator,
         device_properties,
     )?;
     let config = CudaLaunchConfig::basic(grid_dim, block_dim_x as u32, stream);
@@ -146,10 +151,10 @@ pub(crate) fn lde_intermediate_size_with_coset_range(
         inputs_matrix,
         outputs_matrix_mut,
         log_n as u32,
-        coset_index_base as u32,
-        coset_factor_shift as u32,
-        num_cols_per_coset_stride as u32,
-        cosets_in_tile as u32,
+        shared::checked_u32(coset_index_base, "coset_index_base"),
+        coset_factor_shift,
+        shared::checked_u32(num_cols_per_coset_stride, "num_cols_per_coset_stride"),
+        shared::checked_u32(cosets_in_tile, "cosets_in_tile"),
     );
     first_pass_function.launch(&config, &args)?;
     // Pass 2: noninitial_8 with start_stage = log_k.
@@ -164,7 +169,7 @@ pub(crate) fn lde_intermediate_size_with_coset_range(
     let num_block_exchg_regions = trace_len >> (start_stage + 8);
     let block_exchg_region_size = 1 << (start_stage + 8);
     let blocks_per_exchg_region = block_exchg_region_size / bf_vals_per_block_pass2;
-    assert_eq!(
+    debug_assert_eq!(
         blocks_per_exchg_region * num_block_exchg_regions,
         trace_len / bf_vals_per_block_pass2
     );
@@ -180,7 +185,7 @@ pub(crate) fn lde_intermediate_size_with_coset_range(
         outputs_matrix_mut,
         log_n as i32,
         start_stage as i32,
-        cols_in_chunk as i32,
+        shared::checked_i32(cols_in_chunk, "num_cols_per_coset_stride"),
         log_cosets_in_tile as i32,
     );
     StridedTilesStagesFunction(ab_monomials_to_evals_noninitial_8_stages_kernel)
@@ -404,7 +409,6 @@ fn bitreversed_monomials_to_natural_evals_multi_coset_impl(
                 num_cosets,
                 num_cols_per_coset_stride,
                 log_instances_per_block,
-                transposed_monomials,
                 stream,
             ),
             super::NttKernelKind::MonomialsToEvalsSmemPacked {
@@ -419,7 +423,6 @@ fn bitreversed_monomials_to_natural_evals_multi_coset_impl(
                 num_cosets,
                 num_cols_per_coset_stride,
                 log_instances_per_block,
-                transposed_monomials,
                 stream,
             ),
             _ => monomials_to_evals_compact_1_pass(
@@ -431,7 +434,6 @@ fn bitreversed_monomials_to_natural_evals_multi_coset_impl(
                 num_cosets,
                 num_cols_per_coset_stride,
                 strategy.columns_per_launch,
-                transposed_monomials,
                 stream,
             ),
         };
@@ -453,7 +455,6 @@ fn bitreversed_monomials_to_natural_evals_multi_coset_impl(
             num_cols_per_coset_stride,
             strategy.cosets_per_launch,
             strategy.columns_per_launch,
-            transposed_monomials,
             stream,
         );
     }

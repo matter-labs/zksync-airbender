@@ -610,7 +610,6 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                     1,
                     NUM_COLS,
                     NUM_COLS,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -631,7 +630,6 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
                     NUM_COLS,
                     1,
                     NUM_COLS,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -893,7 +891,6 @@ mod host_oracle {
                         num_cols,   // num_cols_per_coset (contiguous)
                         num_cosets, // cosets_per_launch: batch every coset
                         num_cols,   // columns_per_launch
-                        false,
                         stream,
                     )
                     .unwrap();
@@ -1062,7 +1059,6 @@ fn run_smem_packed_vs_compact_parity(
             num_cosets,
             num_cols,
             log_instances_per_block,
-            false,
             stream,
         )
         .unwrap();
@@ -1080,7 +1076,6 @@ fn run_smem_packed_vs_compact_parity(
             num_cosets,
             num_cols,
             num_cols,
-            false,
             stream,
         )
         .unwrap();
@@ -1245,7 +1240,6 @@ fn run_streaming_vs_compact_parity(
                     1,
                     num_cols,
                     num_cols,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -1266,7 +1260,6 @@ fn run_streaming_vs_compact_parity(
                     num_cols,
                     1,
                     num_cols,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -1416,7 +1409,6 @@ fn run_subwarp_vs_compact_parity(
             num_cosets,
             num_cols,
             log_instances_per_block,
-            false,
             stream,
         )
         .unwrap();
@@ -1434,7 +1426,6 @@ fn run_subwarp_vs_compact_parity(
             num_cosets,
             num_cols,
             num_cols,
-            false,
             stream,
         )
         .unwrap();
@@ -1538,7 +1529,6 @@ fn run_subwarp_vs_host_parity(
             num_cosets,
             num_cols,
             log_instances_per_block,
-            false,
             stream,
         )
         .unwrap();
