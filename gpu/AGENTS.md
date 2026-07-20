@@ -44,8 +44,8 @@ helper, a build-dependency only).
   `squaring`, `transpose`, `bit_reverse`) with its own
   `gpu_ops_native`. `bit_reverse` is **size-generic**: `bit_reverse_in_place<T>`
   takes any `T` and dispatches on `size_of::<T>()` (4/16/32 bytes), reinterpreting
-  the element onto an internal per-size kernel binding — so it carries no blake2s
-  vocabulary and callers (incl. blake2s's `Digest = [u32; 8]`) need no per-type
+  the element onto an internal per-size kernel binding — so it carries no
+  hashing/digest vocabulary; any 32-byte POD (e.g. `[u32; 8]`) needs no per-type
   impl. The reinterpret **asserts** the runtime device pointer is aligned to the
   payload size (native `e4`/`dg` are `__align__(16)`/`__align__(32)`). Test-only
   helpers consumed by `circuit_prover`'s tests (`set_by_ref`,

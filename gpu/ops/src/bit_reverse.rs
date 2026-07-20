@@ -84,8 +84,8 @@ pub(crate) trait BitReverse: Sized {
 /// equal-sized kernel payload and dispatched to the matching kernel. Supported
 /// element sizes are 4, 16, and 32 bytes (the instantiations in
 /// `native/bit_reverse.cu`); any other size panics. Callers therefore need no
-/// per-type `impl` — e.g. a blake2s digest (`[u32; 8]`, 32 bytes) and any other
-/// 32-byte POD share the same path.
+/// per-type `impl` — e.g. any 32-byte POD such as `[u32; 8]` shares the same
+/// path.
 pub fn bit_reverse_in_place<T>(
     values: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
     stream: &CudaStream,
