@@ -1,15 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::{DagLayer, ExprId};
+use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ExprId};
 
 use crate::bwd::distill::DistilledLayer;
 use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, plan_entries_fnv};
+use crate::bwd::trace::{BwdEvent, positioned_physical_traffic_events};
 use crate::bwd::trace::{BwdFingerprint, BwdServeKind};
+use crate::eval_plan::backward::CompiledBackwardEvaluation;
 use crate::eval_plan::search_driver::{
     SearchAdapter, SearchDriverConfig, SearchDriverError, SearchDriverOutcome, StableRng,
     run_search_driver,
 };
+use crate::fwd::stats::OP_MOV;
 
 use super::genome::{
     BackwardAdapter, BackwardAdapterTelemetry, BackwardAdapterTelemetrySnapshot, BackwardGenome,
@@ -23,9 +26,11 @@ use super::problem::{
     BackwardSearchProblem, ProblemClassification, StableFragmentKey, build_backward_search_problem,
     build_problem_for_order,
 };
+use super::replay::{PagingCertificate, reprice_source_read};
 use super::{
-    BackwardScore, BackwardSearchError, CertifiedBackwardCandidate, MAX_PAGER_STATES,
-    ScoredAcceptedBackwardCandidate, compile_and_certify_paging, compile_and_score_occurrence_plan,
+    BackwardScore, BackwardSearchError, CertifiedBackwardCandidate, MAX_PAGER_STATES, RoundProfile,
+    ScoredAcceptedBackwardCandidate, SourceCost, StaticMaterialization, compile_and_certify_paging,
+    compile_and_score_occurrence_plan,
 };
 
 const SEARCH_POPULATION: usize = 32;
@@ -67,6 +72,104 @@ pub struct PagerRunTelemetry {
     pub peak_states: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstanceKey {
+    pub fixture: String,
+    pub layer_index: usize,
+    pub regime: BwdRegime,
+    pub budget_cells: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CertificateMetrics {
+    pub actions_consumed: u128,
+    pub diverged: u128,
+    pub refused_retains: u128,
+    pub predicted_source_reads: u128,
+    pub realized_source_reads: u128,
+    pub read_count_mismatches: u128,
+    pub read_cost_mismatches: u128,
+}
+
+impl CertificateMetrics {
+    fn failures(self) -> u128 {
+        self.diverged
+            + self.refused_retains
+            + self.read_count_mismatches
+            + self.read_cost_mismatches
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ArmMeasurements {
+    pub source_reads: u128,
+    pub plain_read_bytes: u128,
+    pub lazy_read_bytes: u128,
+    pub materialized_read_bytes: u128,
+    pub materialization_write_bytes: u128,
+    pub bf_add: u128,
+    pub bf_mul: u128,
+    pub mixed_add: u128,
+    pub mixed_mul: u128,
+    pub ext_add: u128,
+    pub ext_mul: u128,
+    pub primitive_equivalents: u128,
+    pub arithmetic_ops: u128,
+    pub instructions: u128,
+    pub encoded_lanes: u128,
+    pub moves: u128,
+    pub relocations: u128,
+    pub peak_lanes: u128,
+    pub peak_cells: u128,
+    pub certificate: Option<CertificateMetrics>,
+}
+
+impl ArmMeasurements {
+    pub fn dram_bytes(self) -> u128 {
+        self.plain_read_bytes
+            + self.lazy_read_bytes
+            + self.materialized_read_bytes
+            + self.materialization_write_bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SignedDelta {
+    pub negative: bool,
+    pub magnitude: u128,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Percentage {
+    pub numerator: SignedDelta,
+    pub denominator: u128,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DeltaPercentage {
+    pub delta: SignedDelta,
+    pub percentage: Option<Percentage>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MetricDeltas {
+    pub dram_bytes: DeltaPercentage,
+    pub primitive_equivalents: DeltaPercentage,
+    pub arithmetic_ops: DeltaPercentage,
+    pub instructions: DeltaPercentage,
+    pub encoded_lanes: DeltaPercentage,
+    pub moves: DeltaPercentage,
+    pub relocations: DeltaPercentage,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ArmComparisons {
+    pub uncached: Option<MetricDeltas>,
+    pub incumbent: Option<MetricDeltas>,
+    pub arm1: Option<MetricDeltas>,
+    pub arm2: Option<MetricDeltas>,
+}
+
 #[derive(Clone, Debug)]
 pub struct ArmResult {
     pub arm: ExperimentArm,
@@ -81,10 +184,24 @@ pub struct ArmResult {
     pub compile_time: Duration,
     pub wall_time: Duration,
     pub winning_tier: Option<usize>,
+    pub measurements: Option<ArmMeasurements>,
+    pub comparisons: ArmComparisons,
 }
 
 #[derive(Clone, Debug)]
-pub struct InstanceResult {
+pub struct InstanceMetrics {
+    pub key: InstanceKey,
+    pub trace_len: usize,
+    pub round_profiles: Vec<RoundProfile>,
+    pub classification: ArmClassification,
+    pub reason: Option<String>,
+    pub fragment_count: Option<u128>,
+    pub reusable_leaf_count: Option<u128>,
+    pub demand_count: Option<u128>,
+    pub materialization_bindings: Option<u128>,
+    pub materialization: Option<StaticMaterialization>,
+    pub all_ext_boundary: Option<u8>,
+    pub stream_reductions: Option<bool>,
     pub fixture: String,
     pub layer_index: usize,
     pub budget_cells: usize,
@@ -95,6 +212,8 @@ pub struct InstanceResult {
     pub arm3: ArmResult,
     pub arm4: ArmResult,
 }
+
+pub type InstanceResult = InstanceMetrics;
 
 #[derive(Clone, Debug)]
 pub struct AcceptedIncumbent {
@@ -111,6 +230,7 @@ impl InstanceResult {
         digest_bytes(&mut digest, self.fixture.as_bytes());
         digest_usize(&mut digest, self.layer_index);
         digest_usize(&mut digest, self.budget_cells);
+        digest_usize(&mut digest, self.trace_len);
         for arm in [
             &self.uncached,
             &self.incumbent,
@@ -122,6 +242,578 @@ impl InstanceResult {
             digest_arm(&mut digest, arm);
         }
         digest
+    }
+
+    pub fn certificate_failures(&self) -> u128 {
+        [
+            &self.uncached,
+            &self.incumbent,
+            &self.arm1,
+            &self.arm2,
+            &self.arm3,
+            &self.arm4,
+        ]
+        .into_iter()
+        .filter_map(|arm| arm.measurements?.certificate)
+        .map(CertificateMetrics::failures)
+        .sum()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BudgetCounts {
+    pub total: u128,
+    pub feasible: u128,
+    pub trivial: u128,
+    pub infeasible: u128,
+    pub solver_capped: u128,
+    pub matching_incumbent: u128,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReportRollup {
+    pub rows: u128,
+    pub uncached_dram_bytes: u128,
+    pub incumbent_dram_bytes: u128,
+    pub arm1_dram_bytes: u128,
+    pub arm2_dram_bytes: u128,
+    pub arm3_dram_bytes: u128,
+    pub arm4_dram_bytes: u128,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExperimentReport {
+    pub commit: String,
+    pub instances: Vec<InstanceMetrics>,
+    pub counts_by_budget: BTreeMap<usize, BudgetCounts>,
+    pub equal_instance: ReportRollup,
+    pub whole_pass: ReportRollup,
+    pub incumbent_comparable: u128,
+    pub paged_computed: u128,
+}
+
+impl Default for ExperimentReport {
+    fn default() -> Self {
+        Self {
+            commit: exact_git_commit(),
+            instances: Vec::new(),
+            counts_by_budget: [2usize, 3, 4]
+                .into_iter()
+                .map(|budget| (budget, BudgetCounts::default()))
+                .collect(),
+            equal_instance: ReportRollup::default(),
+            whole_pass: ReportRollup::default(),
+            incumbent_comparable: 0,
+            paged_computed: 0,
+        }
+    }
+}
+
+impl ExperimentReport {
+    pub fn from_instances(instances: Vec<InstanceMetrics>) -> Self {
+        let mut report = Self::default();
+        report.instances = instances;
+        report.recompute();
+        report
+    }
+
+    pub fn push(&mut self, instance: InstanceMetrics) {
+        self.instances.push(instance);
+        self.recompute();
+    }
+
+    fn recompute(&mut self) {
+        self.instances
+            .sort_by(|lhs, rhs| instance_sort_key(lhs).cmp(&instance_sort_key(rhs)));
+        self.counts_by_budget = [2usize, 3, 4]
+            .into_iter()
+            .map(|budget| (budget, BudgetCounts::default()))
+            .collect();
+        for instance in &self.instances {
+            let counts = self
+                .counts_by_budget
+                .entry(instance.key.budget_cells)
+                .or_default();
+            counts.total += 1;
+            match instance.classification {
+                ArmClassification::Searched => counts.feasible += 1,
+                ArmClassification::Trivial { .. } => counts.trivial += 1,
+                ArmClassification::Infeasible { .. } => counts.infeasible += 1,
+                ArmClassification::SolverCapped { .. } => counts.solver_capped += 1,
+                ArmClassification::UnavailableIncumbent => {
+                    unreachable!("instance classification is never incumbent availability")
+                }
+            }
+            if instance.arm1.score == instance.incumbent.score && instance.arm1.score.is_some() {
+                counts.matching_incumbent += 1;
+            }
+        }
+        self.incumbent_comparable = self
+            .instances
+            .iter()
+            .filter(|instance| {
+                instance.incumbent.measurements.is_some() && instance.arm1.measurements.is_some()
+            })
+            .count() as u128;
+        self.paged_computed = self
+            .instances
+            .iter()
+            .filter(|instance| instance.arm1.measurements.is_some())
+            .count() as u128;
+        self.equal_instance = equal_instance_rollup(&self.instances);
+        self.whole_pass = whole_pass_rollup(&self.instances);
+    }
+}
+
+fn exact_git_commit() -> String {
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("gkr_eval_isa has a workspace parent");
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|commit| commit.trim().to_owned())
+        .filter(|commit| !commit.is_empty())
+        .unwrap_or_else(|| "unavailable (git rev-parse HEAD failed)".to_owned())
+}
+
+fn instance_sort_key(instance: &InstanceMetrics) -> (&str, usize, u8, usize) {
+    (
+        &instance.key.fixture,
+        instance.key.layer_index,
+        match instance.key.regime {
+            BwdRegime::R0 => 0,
+            BwdRegime::Ext => 1,
+        },
+        instance.key.budget_cells,
+    )
+}
+
+fn arm_dram(arm: &ArmResult) -> Option<u128> {
+    arm.measurements.map(ArmMeasurements::dram_bytes)
+}
+
+fn average(values: impl Iterator<Item = Option<u128>>) -> u128 {
+    let (sum, count) = values
+        .flatten()
+        .fold((0u128, 0u128), |(sum, count), value| {
+            (
+                sum.checked_add(value).expect("experiment total fits u128"),
+                count + 1,
+            )
+        });
+    if count == 0 { 0 } else { sum / count }
+}
+
+fn equal_instance_rollup(instances: &[InstanceMetrics]) -> ReportRollup {
+    ReportRollup {
+        rows: instances.len() as u128,
+        uncached_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.uncached))),
+        incumbent_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.incumbent))),
+        arm1_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.arm1))),
+        arm2_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.arm2))),
+        arm3_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.arm3))),
+        arm4_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.arm4))),
+    }
+}
+
+fn whole_pass_rollup(instances: &[InstanceMetrics]) -> ReportRollup {
+    let mut rollup = ReportRollup::default();
+    for instance in instances {
+        let rows = instance
+            .round_profiles
+            .iter()
+            .map(|profile| profile.rows as u128)
+            .sum::<u128>();
+        rollup.rows = rollup.rows.checked_add(rows).expect("row total fits u128");
+        // Source costs and writes are already scaled by these round profiles;
+        // retain the row census without multiplying whole-pass totals again.
+        let add = |target: &mut u128, value: Option<u128>| {
+            if let Some(value) = value {
+                *target = target
+                    .checked_add(value)
+                    .expect("whole-pass metric total fits u128");
+            }
+        };
+        add(
+            &mut rollup.uncached_dram_bytes,
+            arm_dram(&instance.uncached),
+        );
+        add(
+            &mut rollup.incumbent_dram_bytes,
+            arm_dram(&instance.incumbent),
+        );
+        add(&mut rollup.arm1_dram_bytes, arm_dram(&instance.arm1));
+        add(&mut rollup.arm2_dram_bytes, arm_dram(&instance.arm2));
+        add(&mut rollup.arm3_dram_bytes, arm_dram(&instance.arm3));
+        add(&mut rollup.arm4_dram_bytes, arm_dram(&instance.arm4));
+    }
+    rollup
+}
+
+pub fn render_markdown(report: &ExperimentReport) -> String {
+    use std::fmt::Write;
+
+    let mut out = String::new();
+    writeln!(out, "# Plan 3 backward paging search experiment\n").unwrap();
+    writeln!(out, "## Run metadata\n").unwrap();
+    writeln!(out, "- Commit: `{}`", report.commit).unwrap();
+    writeln!(out, "- Instances: {}", report.instances.len()).unwrap();
+    writeln!(out, "- Budgets: 2, 3, and 4 cells").unwrap();
+    writeln!(out, "- Regimes: R0 and Ext\n").unwrap();
+
+    writeln!(out, "## Per-budget denominators\n").unwrap();
+    writeln!(
+        out,
+        "| cells | total | feasible | trivial | infeasible | solver-capped | matching incumbent |"
+    )
+    .unwrap();
+    writeln!(out, "|---:|---:|---:|---:|---:|---:|---:|").unwrap();
+    for (&budget, counts) in &report.counts_by_budget {
+        writeln!(
+            out,
+            "| {budget} | {} | {} | {} | {} | {} | {} |",
+            counts.total,
+            counts.feasible,
+            counts.trivial,
+            counts.infeasible,
+            counts.solver_capped,
+            counts.matching_incumbent
+        )
+        .unwrap();
+    }
+    writeln!(out).unwrap();
+
+    writeln!(out, "## Materialization and reduction-mode census\n").unwrap();
+    let mut census = BTreeMap::<(Option<u128>, Option<u8>, Option<bool>), u128>::new();
+    for instance in &report.instances {
+        *census
+            .entry((
+                instance.materialization_bindings,
+                instance.all_ext_boundary,
+                instance.stream_reductions,
+            ))
+            .or_default() += 1;
+    }
+    writeln!(
+        out,
+        "| bindings | all-Ext boundary | stream reductions | instances |"
+    )
+    .unwrap();
+    writeln!(out, "|---:|---:|:---:|---:|").unwrap();
+    for ((bindings, boundary, reductions), count) in census {
+        writeln!(
+            out,
+            "| {} | {} | {} | {count} |",
+            optional(bindings),
+            optional(boundary),
+            reductions.map_or("unavailable", |value| if value { "yes" } else { "no" })
+        )
+        .unwrap();
+    }
+    writeln!(out).unwrap();
+    writeln!(out, "Materialization writes are a CPU model overlay; read traffic is certified against the emitted program.\n").unwrap();
+
+    writeln!(out, "## Savings\n").unwrap();
+    writeln!(out, "### Equal-instance results\n").unwrap();
+    render_rollup(&mut out, report.equal_instance);
+
+    writeln!(out, "## Whole-pass row/round-weighted results\n").unwrap();
+    writeln!(
+        out,
+        "Actual logical row evaluations: {}.\n",
+        report.whole_pass.rows
+    )
+    .unwrap();
+    render_rollup(&mut out, report.whole_pass);
+
+    writeln!(out, "## Arm2−Arm1 order value\n").unwrap();
+    render_pair_summary(
+        &mut out,
+        report,
+        ExperimentArm::OrderSearch,
+        ExperimentArm::ExactConstructive,
+    );
+
+    writeln!(out, "## Arm3−Arm1 cache-genome secondary value\n").unwrap();
+    writeln!(out, "Primary DRAM delta: **definitionally zero**. Secondary metrics retain only computed Arm3/Arm1 pairs.\n").unwrap();
+    render_pair_summary(
+        &mut out,
+        report,
+        ExperimentArm::CacheSearch,
+        ExperimentArm::ExactConstructive,
+    );
+
+    writeln!(out, "## Arm4−Arm2 joint value\n").unwrap();
+    render_pair_summary(
+        &mut out,
+        report,
+        ExperimentArm::JointSearch,
+        ExperimentArm::OrderSearch,
+    );
+
+    writeln!(out, "## U/I comparisons with explicit denominators\n").unwrap();
+    writeln!(
+        out,
+        "- Uncached-versus-paged computed denominator: {}.",
+        report.paged_computed
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "- Incumbent-versus-paged comparable denominator: {}.",
+        report.incumbent_comparable
+    )
+    .unwrap();
+    writeln!(out, "- Unavailable incumbents, infeasible/trivial instances, solver-capped arms, and uncomputed metrics are excluded from their percentage denominators. Zero-valued references do not produce a percentage.\n").unwrap();
+
+    writeln!(out, "### Arm1−U uncached comparison\n").unwrap();
+    render_pair_summary(
+        &mut out,
+        report,
+        ExperimentArm::ExactConstructive,
+        ExperimentArm::Uncached,
+    );
+
+    writeln!(out, "### Arm1−I incumbent comparison\n").unwrap();
+    render_pair_summary(
+        &mut out,
+        report,
+        ExperimentArm::ExactConstructive,
+        ExperimentArm::Incumbent,
+    );
+
+    writeln!(
+        out,
+        "## Solver, placement, certificate, timing, and state telemetry\n"
+    )
+    .unwrap();
+    writeln!(out, "| instance | arm | class/reason | fragments | reusable leaves | demands | source reads | plain/lazy/materialized/write bytes | BF add/mul | mixed add/mul | Ext add/mul | primitive eq | arithmetic | instructions/lanes | pager states (generated/merged/peak) | moves/relocations | peak lanes/cells | certificate failures | tier/evaluations | first winner | improvements | compile ns | wall ns |").unwrap();
+    writeln!(out, "|:---|:---|:---|---:|---:|---:|---:|:---|:---|:---|:---|---:|---:|:---|:---|:---|:---|---:|:---|---:|:---|---:|---:|").unwrap();
+    for instance in &report.instances {
+        for arm in instance_arms(instance) {
+            let metrics = arm.measurements.unwrap_or_default();
+            writeln!(
+                out,
+                "| {} L{} {:?} c{} | {:?} | {} | {} | {} | {} | {} | {}/{}/{}/{} | {}/{} | {}/{} | {}/{} | {} | {} | {}/{} | {}/{}/{} | {}/{} | {}/{} | {} | {}/{} | {} | {:?} | {} | {} |",
+                instance.key.fixture,
+                instance.key.layer_index,
+                instance.key.regime,
+                instance.key.budget_cells,
+                arm.arm,
+                classification_with_reason(&arm.classification),
+                optional(instance.fragment_count),
+                optional(instance.reusable_leaf_count),
+                optional(instance.demand_count),
+                metrics.source_reads,
+                metrics.plain_read_bytes,
+                metrics.lazy_read_bytes,
+                metrics.materialized_read_bytes,
+                metrics.materialization_write_bytes,
+                metrics.bf_add,
+                metrics.bf_mul,
+                metrics.mixed_add,
+                metrics.mixed_mul,
+                metrics.ext_add,
+                metrics.ext_mul,
+                metrics.primitive_equivalents,
+                metrics.arithmetic_ops,
+                metrics.instructions,
+                metrics.encoded_lanes,
+                arm.pager.generated_states,
+                arm.pager.merged_states,
+                arm.pager.peak_states,
+                metrics.moves,
+                metrics.relocations,
+                metrics.peak_lanes,
+                metrics.peak_cells,
+                metrics.certificate.map_or(0, CertificateMetrics::failures),
+                arm.winning_tier.map_or(0, |value| value),
+                arm.evaluations,
+                arm.first_winning_ordinal.map_or(0, |value| value),
+                arm.improvement_ordinals,
+                arm.compile_time.as_nanos(),
+                arm.wall_time.as_nanos(),
+            )
+            .unwrap();
+        }
+    }
+    writeln!(out).unwrap();
+
+    writeln!(out, "## Observations for RR\n").unwrap();
+    writeln!(out, "This audit presents measured values and explicit denominators. It intentionally applies no automatic keep/remove recommendation threshold.").unwrap();
+    out
+}
+
+fn optional<T: core::fmt::Display>(value: Option<T>) -> String {
+    value.map_or_else(|| "unavailable".to_owned(), |value| value.to_string())
+}
+
+fn classification_with_reason(classification: &ArmClassification) -> String {
+    match classification {
+        ArmClassification::Searched => "feasible".to_owned(),
+        ArmClassification::Trivial { reason } => format!("trivial: {reason}"),
+        ArmClassification::Infeasible { reason } => format!("infeasible: {reason}"),
+        ArmClassification::SolverCapped {
+            cap,
+            demand_position,
+            peak_states,
+        } => format!("solver-capped: cap {cap}, demand {demand_position}, peak {peak_states}"),
+        ArmClassification::UnavailableIncumbent => "unavailable incumbent".to_owned(),
+    }
+}
+
+fn render_rollup(out: &mut String, rollup: ReportRollup) {
+    use std::fmt::Write;
+    writeln!(out, "| aggregation units | U DRAM bytes | I DRAM bytes | Arm1 DRAM bytes | Arm2 DRAM bytes | Arm3 DRAM bytes | Arm4 DRAM bytes |").unwrap();
+    writeln!(out, "|---:|---:|---:|---:|---:|---:|---:|").unwrap();
+    writeln!(
+        out,
+        "| {} | {} | {} | {} | {} | {} | {} |\n",
+        rollup.rows,
+        rollup.uncached_dram_bytes,
+        rollup.incumbent_dram_bytes,
+        rollup.arm1_dram_bytes,
+        rollup.arm2_dram_bytes,
+        rollup.arm3_dram_bytes,
+        rollup.arm4_dram_bytes
+    )
+    .unwrap();
+}
+
+fn render_pair_summary(
+    out: &mut String,
+    report: &ExperimentReport,
+    value_arm: ExperimentArm,
+    reference_arm: ExperimentArm,
+) {
+    use std::fmt::Write;
+    let pairs = report
+        .instances
+        .iter()
+        .filter_map(|instance| {
+            let value = arm_by_kind(instance, value_arm).measurements?;
+            let reference = arm_by_kind(instance, reference_arm).measurements?;
+            Some((value.dram_bytes(), reference.dram_bytes()))
+        })
+        .collect::<Vec<_>>();
+    writeln!(out, "Comparable instances: {}.", pairs.len()).unwrap();
+    writeln!(
+        out,
+        "| metric | arm total | reference total | raw delta | percentage |"
+    )
+    .unwrap();
+    writeln!(out, "|:---|---:|---:|---:|:---|").unwrap();
+    let measurements = report
+        .instances
+        .iter()
+        .filter_map(|instance| {
+            Some((
+                arm_by_kind(instance, value_arm).measurements?,
+                arm_by_kind(instance, reference_arm).measurements?,
+            ))
+        })
+        .collect::<Vec<_>>();
+    let metric = |measurement: ArmMeasurements| {
+        [
+            measurement.dram_bytes(),
+            measurement.primitive_equivalents,
+            measurement.arithmetic_ops,
+            measurement.instructions,
+            measurement.encoded_lanes,
+            measurement.moves,
+            measurement.relocations,
+        ]
+    };
+    for (index, label) in [
+        "DRAM bytes",
+        "primitive equivalents",
+        "arithmetic ops",
+        "instructions",
+        "encoded lanes",
+        "moves",
+        "relocations",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let value = measurements
+            .iter()
+            .map(|(value, _)| metric(*value)[index])
+            .try_fold(0u128, u128::checked_add)
+            .expect("report metric total fits u128");
+        let reference = measurements
+            .iter()
+            .map(|(_, reference)| metric(*reference)[index])
+            .try_fold(0u128, u128::checked_add)
+            .expect("report metric total fits u128");
+        let comparison = delta_percentage(value, reference);
+        writeln!(
+            out,
+            "| {label} | {value} | {reference} | {} | {} |",
+            format_delta(comparison.delta),
+            format_percentage(comparison.percentage)
+        )
+        .unwrap();
+    }
+    writeln!(out).unwrap();
+}
+
+fn format_delta(delta: SignedDelta) -> String {
+    if delta.negative && delta.magnitude != 0 {
+        format!("-{}", delta.magnitude)
+    } else {
+        delta.magnitude.to_string()
+    }
+}
+
+fn format_percentage(percentage: Option<Percentage>) -> String {
+    let Some(percentage) = percentage else {
+        return "percentage unavailable: zero or excluded denominator".to_owned();
+    };
+    let Some(basis_points) = percentage
+        .numerator
+        .magnitude
+        .checked_mul(10_000)
+        .map(|scaled| scaled / percentage.denominator)
+    else {
+        return format!(
+            "exact ratio {}/{} (decimal overflow)",
+            format_delta(percentage.numerator),
+            percentage.denominator
+        );
+    };
+    let sign = if percentage.numerator.negative && basis_points != 0 {
+        "-"
+    } else {
+        ""
+    };
+    format!("{sign}{}.{:02}%", basis_points / 100, basis_points % 100)
+}
+
+fn instance_arms(instance: &InstanceMetrics) -> [&ArmResult; 6] {
+    [
+        &instance.uncached,
+        &instance.incumbent,
+        &instance.arm1,
+        &instance.arm2,
+        &instance.arm3,
+        &instance.arm4,
+    ]
+}
+
+fn arm_by_kind(instance: &InstanceMetrics, arm: ExperimentArm) -> &ArmResult {
+    match arm {
+        ExperimentArm::Uncached => &instance.uncached,
+        ExperimentArm::Incumbent => &instance.incumbent,
+        ExperimentArm::ExactConstructive => &instance.arm1,
+        ExperimentArm::OrderSearch => &instance.arm2,
+        ExperimentArm::CacheSearch => &instance.arm3,
+        ExperimentArm::JointSearch => &instance.arm4,
     }
 }
 
@@ -239,6 +931,8 @@ pub(crate) fn run_instance_with_pager_cap(
         return Ok(classified_instance(
             fixture,
             layer_index,
+            d.regime,
+            trace_len,
             budget_cells,
             ArmClassification::Infeasible { reason },
         ));
@@ -249,7 +943,24 @@ pub(crate) fn run_instance_with_pager_cap(
         run_incumbent_reference(canonical, d, trace_len, budget_cells, incumbent)?;
     if let ProblemClassification::Trivial { reason } = classification {
         let classification = ArmClassification::Trivial { reason };
-        return Ok(InstanceResult {
+        return Ok(finish_instance(InstanceResult {
+            key: InstanceKey {
+                fixture: fixture.to_owned(),
+                layer_index,
+                regime: d.regime,
+                budget_cells,
+            },
+            trace_len,
+            round_profiles: round_profiles(trace_len, d.regime),
+            classification: classification.clone(),
+            reason: classification_reason(&classification),
+            fragment_count: Some(problem.fragment_domain.len() as u128),
+            reusable_leaf_count: Some(problem.leaf_domain.len() as u128),
+            demand_count: Some(problem.demands.len() as u128),
+            materialization_bindings: Some(problem.materialization.bindings.len() as u128),
+            materialization: Some(problem.materialization.clone()),
+            all_ext_boundary: problem.materialization.all_ext_from,
+            stream_reductions: Some(problem.stream_reductions),
             fixture: fixture.to_owned(),
             layer_index,
             budget_cells,
@@ -259,13 +970,30 @@ pub(crate) fn run_instance_with_pager_cap(
             arm2: classified_arm(ExperimentArm::OrderSearch, classification.clone()),
             arm3: classified_arm(ExperimentArm::CacheSearch, classification.clone()),
             arm4: classified_arm(ExperimentArm::JointSearch, classification),
-        });
+        }));
     }
 
     let arm1 = run_exact_constructive(d, &problem, pager_cap)?;
     let Some(arm1_score) = arm1.score else {
         let capped = arm1.classification.clone();
-        return Ok(InstanceResult {
+        return Ok(finish_instance(InstanceResult {
+            key: InstanceKey {
+                fixture: fixture.to_owned(),
+                layer_index,
+                regime: d.regime,
+                budget_cells,
+            },
+            trace_len,
+            round_profiles: round_profiles(trace_len, d.regime),
+            classification: capped.clone(),
+            reason: classification_reason(&capped),
+            fragment_count: Some(problem.fragment_domain.len() as u128),
+            reusable_leaf_count: Some(problem.leaf_domain.len() as u128),
+            demand_count: Some(problem.demands.len() as u128),
+            materialization_bindings: Some(problem.materialization.bindings.len() as u128),
+            materialization: Some(problem.materialization.clone()),
+            all_ext_boundary: problem.materialization.all_ext_from,
+            stream_reductions: Some(problem.stream_reductions),
             fixture: fixture.to_owned(),
             layer_index,
             budget_cells,
@@ -275,7 +1003,7 @@ pub(crate) fn run_instance_with_pager_cap(
             arm2: classified_arm(ExperimentArm::OrderSearch, capped.clone()),
             arm3: classified_arm(ExperimentArm::CacheSearch, capped.clone()),
             arm4: classified_arm(ExperimentArm::JointSearch, capped),
-        });
+        }));
     };
     let arm1_plan = arm1
         .plan
@@ -335,7 +1063,24 @@ pub(crate) fn run_instance_with_pager_cap(
         classified_arm(ExperimentArm::JointSearch, arm2.classification.clone())
     };
 
-    Ok(InstanceResult {
+    Ok(finish_instance(InstanceResult {
+        key: InstanceKey {
+            fixture: fixture.to_owned(),
+            layer_index,
+            regime: d.regime,
+            budget_cells,
+        },
+        trace_len,
+        round_profiles: round_profiles(trace_len, d.regime),
+        classification: ArmClassification::Searched,
+        reason: None,
+        fragment_count: Some(problem.fragment_domain.len() as u128),
+        reusable_leaf_count: Some(problem.leaf_domain.len() as u128),
+        demand_count: Some(problem.demands.len() as u128),
+        materialization_bindings: Some(problem.materialization.bindings.len() as u128),
+        materialization: Some(problem.materialization.clone()),
+        all_ext_boundary: problem.materialization.all_ext_from,
+        stream_reductions: Some(problem.stream_reductions),
         fixture: fixture.to_owned(),
         layer_index,
         budget_cells,
@@ -345,7 +1090,7 @@ pub(crate) fn run_instance_with_pager_cap(
         arm2,
         arm3,
         arm4,
-    })
+    }))
 }
 
 fn run_uncached_reference(
@@ -392,11 +1137,13 @@ fn run_incumbent_reference(
     )?;
     let candidate =
         compile_and_score_occurrence_plan(d, &problem, &incumbent.plan, &incumbent.order, 0)?;
-    Ok(accepted_candidate_to_reference_result(
+    accepted_candidate_to_reference_result(
+        d,
+        &problem,
         candidate,
         incumbent.order.clone(),
         started.elapsed(),
-    ))
+    )
 }
 
 fn run_exact_constructive(
@@ -541,6 +1288,7 @@ impl TierOutcome {
             .outcome
             .best_evaluation
             .expect("parent-eligible backward winner is certified");
+        let measurements = certified_measurements(&candidate);
         ArmResult {
             arm,
             classification: ArmClassification::Searched,
@@ -554,6 +1302,8 @@ impl TierOutcome {
             compile_time: self.telemetry.compile_time,
             wall_time: self.wall_time,
             winning_tier: Some(self.tier),
+            measurements: Some(measurements),
+            comparisons: ArmComparisons::default(),
         }
     }
 }
@@ -714,6 +1464,7 @@ fn candidate_to_reference_result(
     telemetry: BackwardAdapterTelemetrySnapshot,
     wall_time: Duration,
 ) -> Result<ArmResult, BackwardSearchError> {
+    let measurements = certified_measurements(&candidate);
     Ok(ArmResult {
         arm,
         classification: ArmClassification::Searched,
@@ -727,15 +1478,20 @@ fn candidate_to_reference_result(
         compile_time: telemetry.compile_time,
         wall_time,
         winning_tier: None,
+        measurements: Some(measurements),
+        comparisons: ArmComparisons::default(),
     })
 }
 
 fn accepted_candidate_to_reference_result(
+    d: &DistilledLayer,
+    problem: &BackwardSearchProblem,
     candidate: ScoredAcceptedBackwardCandidate,
     order: Vec<usize>,
     wall_time: Duration,
-) -> ArmResult {
-    ArmResult {
+) -> Result<ArmResult, BackwardSearchError> {
+    let measurements = accepted_measurements(d, problem, &candidate)?;
+    Ok(ArmResult {
         arm: ExperimentArm::Incumbent,
         classification: ArmClassification::Searched,
         score: Some(candidate.score),
@@ -748,16 +1504,295 @@ fn accepted_candidate_to_reference_result(
         compile_time: candidate.compile_time,
         wall_time,
         winning_tier: None,
+        measurements: Some(measurements),
+        comparisons: ArmComparisons::default(),
+    })
+}
+
+fn certified_measurements(candidate: &CertifiedBackwardCandidate) -> ArmMeasurements {
+    measurements_from_compiled(
+        &candidate.compiled,
+        candidate.certificate.realized_read_cost,
+        candidate.certificate.fixed_write_cost,
+        candidate.certificate.realized_source_reads as u128,
+        Some(&candidate.certificate),
+    )
+}
+
+fn accepted_measurements(
+    d: &DistilledLayer,
+    problem: &BackwardSearchProblem,
+    candidate: &ScoredAcceptedBackwardCandidate,
+) -> Result<ArmMeasurements, BackwardSearchError> {
+    let physical = positioned_physical_traffic_events(
+        &d.layer,
+        &candidate.compiled.compiled.program,
+        &candidate.compiled.compiled.specials,
+        &d.leaf_descs,
+        &candidate.compiled.compiled.backings,
+    )
+    .ok_or(BackwardSearchError::PagingCertificateMismatch {
+        observable: "incumbent physical traffic source mapping",
+    })?;
+    let read_cost = physical
+        .iter()
+        .try_fold(SourceCost::default(), |cost, positioned| {
+            let BwdEvent::TrafficRead { value, cells } = positioned.event else {
+                unreachable!("physical traffic scan emits only reads")
+            };
+            cost.checked_add(reprice_source_read(
+                problem,
+                d.leaf_descs.get(&value).copied(),
+                cells
+                    .try_into()
+                    .map_err(|_| BackwardSearchError::CostOverflow)?,
+            )?)
+        })?;
+    Ok(measurements_from_compiled(
+        &candidate.compiled,
+        read_cost,
+        problem.materialization.fixed_writes,
+        physical.len() as u128,
+        None,
+    ))
+}
+
+fn measurements_from_compiled(
+    compiled: &CompiledBackwardEvaluation,
+    read_cost: SourceCost,
+    fixed_write_cost: SourceCost,
+    source_reads: u128,
+    certificate: Option<&PagingCertificate>,
+) -> ArmMeasurements {
+    let cost = read_cost
+        .checked_add(fixed_write_cost)
+        .expect("certified source costs already passed checked scoring");
+    let certificate = certificate.map(|certificate| CertificateMetrics {
+        actions_consumed: certificate.actions_consumed as u128,
+        diverged: u128::from(certificate.diverged.is_some()),
+        refused_retains: certificate.refused_retains as u128,
+        predicted_source_reads: certificate.predicted_source_reads as u128,
+        realized_source_reads: certificate.realized_source_reads as u128,
+        read_count_mismatches: u128::from(
+            certificate.predicted_source_reads != certificate.realized_source_reads,
+        ),
+        read_cost_mismatches: u128::from(
+            certificate.predicted_read_cost != certificate.realized_read_cost,
+        ),
+    });
+    let peak_lanes = compiled.binding_stats.max_live_lanes as u128;
+    ArmMeasurements {
+        source_reads,
+        plain_read_bytes: cost.plain_read_bytes,
+        lazy_read_bytes: cost.lazy_read_bytes,
+        materialized_read_bytes: cost.materialized_read_bytes,
+        materialization_write_bytes: cost.materialization_write_bytes,
+        bf_add: cost.ops.bf_add,
+        bf_mul: cost.ops.bf_mul,
+        mixed_add: cost.ops.mixed_add,
+        mixed_mul: cost.ops.mixed_mul,
+        ext_add: cost.ops.ext_add,
+        ext_mul: cost.ops.ext_mul,
+        primitive_equivalents: cost
+            .ops
+            .primitive_equivalents()
+            .expect("certified source-op cost already passed checked scoring"),
+        arithmetic_ops: [1usize, 2, 3]
+            .into_iter()
+            .map(|opcode| compiled.compiled.stats.op_counts[opcode] as u128)
+            .sum(),
+        instructions: compiled.compiled.program.instrs.len() as u128,
+        encoded_lanes: compiled.encoded.len() as u128,
+        moves: compiled.compiled.stats.op_counts[OP_MOV] as u128,
+        relocations: compiled.binding_stats.relocation_moves as u128,
+        peak_lanes,
+        peak_cells: peak_lanes.div_ceil(4),
+        certificate,
+    }
+}
+
+pub fn round_profiles(trace_len: usize, regime: BwdRegime) -> Vec<RoundProfile> {
+    assert!(trace_len.is_power_of_two() && trace_len >= 2);
+    let rounds = trace_len.trailing_zeros() as u8;
+    (0..rounds)
+        .filter(|&round| match regime {
+            BwdRegime::R0 => round == 0,
+            BwdRegime::Ext => round != 0,
+        })
+        .map(|round| RoundProfile {
+            round,
+            rows: (trace_len >> (round as usize + 1)) as u64,
+        })
+        .collect()
+}
+
+fn classification_reason(classification: &ArmClassification) -> Option<String> {
+    match classification {
+        ArmClassification::Searched | ArmClassification::UnavailableIncumbent => None,
+        ArmClassification::Trivial { reason } => Some((*reason).to_owned()),
+        ArmClassification::Infeasible { reason } => Some(reason.clone()),
+        ArmClassification::SolverCapped {
+            cap,
+            demand_position,
+            peak_states,
+        } => Some(format!(
+            "solver cap {cap} at demand {demand_position} (peak states {peak_states})"
+        )),
+    }
+}
+
+fn signed_delta(value: u128, reference: u128) -> SignedDelta {
+    SignedDelta {
+        negative: value < reference,
+        magnitude: value.abs_diff(reference),
+    }
+}
+
+fn delta_percentage(value: u128, reference: u128) -> DeltaPercentage {
+    let delta = signed_delta(value, reference);
+    DeltaPercentage {
+        delta,
+        percentage: (reference != 0).then_some(Percentage {
+            numerator: delta,
+            denominator: reference,
+        }),
+    }
+}
+
+fn metric_deltas(value: ArmMeasurements, reference: ArmMeasurements) -> MetricDeltas {
+    MetricDeltas {
+        dram_bytes: delta_percentage(value.dram_bytes(), reference.dram_bytes()),
+        primitive_equivalents: delta_percentage(
+            value.primitive_equivalents,
+            reference.primitive_equivalents,
+        ),
+        arithmetic_ops: delta_percentage(value.arithmetic_ops, reference.arithmetic_ops),
+        instructions: delta_percentage(value.instructions, reference.instructions),
+        encoded_lanes: delta_percentage(value.encoded_lanes, reference.encoded_lanes),
+        moves: delta_percentage(value.moves, reference.moves),
+        relocations: delta_percentage(value.relocations, reference.relocations),
+    }
+}
+
+fn finish_instance(mut result: InstanceMetrics) -> InstanceMetrics {
+    let references = [
+        result.uncached.measurements,
+        result.incumbent.measurements,
+        result.arm1.measurements,
+        result.arm2.measurements,
+    ];
+    for arm in [
+        &mut result.uncached,
+        &mut result.incumbent,
+        &mut result.arm1,
+        &mut result.arm2,
+        &mut result.arm3,
+        &mut result.arm4,
+    ] {
+        let Some(value) = arm.measurements else {
+            continue;
+        };
+        arm.comparisons = ArmComparisons {
+            uncached: references[0].map(|reference| metric_deltas(value, reference)),
+            incumbent: references[1].map(|reference| metric_deltas(value, reference)),
+            arm1: references[2].map(|reference| metric_deltas(value, reference)),
+            arm2: references[3].map(|reference| metric_deltas(value, reference)),
+        };
+    }
+    result
+}
+
+#[cfg(test)]
+impl InstanceMetrics {
+    fn report_fixture(
+        key: InstanceKey,
+        trace_len: usize,
+        arm1_dram_bytes: u128,
+        incumbent_dram_bytes: Option<u128>,
+    ) -> Self {
+        let measured_arm = |arm, bytes| {
+            let mut result = classified_arm(arm, ArmClassification::Searched);
+            result.score = Some(BackwardScore {
+                infeasible: false,
+                whole_pass_dram_bytes: bytes,
+                primitive_source_ops: 0,
+                instructions: 0,
+                encoded_lanes: 0,
+                arithmetic_ops: 0,
+                ordinal: 0,
+            });
+            result.measurements = Some(ArmMeasurements {
+                plain_read_bytes: bytes,
+                ..ArmMeasurements::default()
+            });
+            result
+        };
+        let uncached = measured_arm(ExperimentArm::Uncached, arm1_dram_bytes);
+        let incumbent = incumbent_dram_bytes.map_or_else(
+            || {
+                classified_arm(
+                    ExperimentArm::Incumbent,
+                    ArmClassification::UnavailableIncumbent,
+                )
+            },
+            |bytes| measured_arm(ExperimentArm::Incumbent, bytes),
+        );
+        let arm1 = measured_arm(ExperimentArm::ExactConstructive, arm1_dram_bytes);
+        let arm2 = measured_arm(ExperimentArm::OrderSearch, arm1_dram_bytes);
+        let arm3 = measured_arm(ExperimentArm::CacheSearch, arm1_dram_bytes);
+        let arm4 = measured_arm(ExperimentArm::JointSearch, arm1_dram_bytes);
+        finish_instance(Self {
+            fixture: key.fixture.clone(),
+            layer_index: key.layer_index,
+            budget_cells: key.budget_cells,
+            round_profiles: round_profiles(trace_len, key.regime),
+            key,
+            trace_len,
+            classification: ArmClassification::Searched,
+            reason: None,
+            fragment_count: Some(1),
+            reusable_leaf_count: Some(1),
+            demand_count: Some(1),
+            materialization_bindings: Some(0),
+            materialization: None,
+            all_ext_boundary: None,
+            stream_reductions: Some(false),
+            uncached,
+            incumbent,
+            arm1,
+            arm2,
+            arm3,
+            arm4,
+        })
     }
 }
 
 fn classified_instance(
     fixture: &str,
     layer_index: usize,
+    regime: BwdRegime,
+    trace_len: usize,
     budget_cells: usize,
     classification: ArmClassification,
 ) -> InstanceResult {
-    InstanceResult {
+    finish_instance(InstanceResult {
+        key: InstanceKey {
+            fixture: fixture.to_owned(),
+            layer_index,
+            regime,
+            budget_cells,
+        },
+        trace_len,
+        round_profiles: round_profiles(trace_len, regime),
+        classification: classification.clone(),
+        reason: classification_reason(&classification),
+        fragment_count: None,
+        reusable_leaf_count: None,
+        demand_count: None,
+        materialization_bindings: None,
+        materialization: None,
+        all_ext_boundary: None,
+        stream_reductions: None,
         fixture: fixture.to_owned(),
         layer_index,
         budget_cells,
@@ -770,7 +1805,7 @@ fn classified_instance(
         arm2: classified_arm(ExperimentArm::OrderSearch, classification.clone()),
         arm3: classified_arm(ExperimentArm::CacheSearch, classification.clone()),
         arm4: classified_arm(ExperimentArm::JointSearch, classification),
-    }
+    })
 }
 
 fn classified_arm(arm: ExperimentArm, classification: ArmClassification) -> ArmResult {
@@ -787,6 +1822,8 @@ fn classified_arm(arm: ExperimentArm, classification: ArmClassification) -> ArmR
         compile_time: Duration::ZERO,
         wall_time: Duration::ZERO,
         winning_tier: None,
+        measurements: None,
+        comparisons: ArmComparisons::default(),
     }
 }
 
@@ -1101,11 +2138,127 @@ mod tests {
     use super::super::replay::reprice_source_read;
     use super::{
         AcceptedIncumbent, ArmClassification, BackwardAdapter, BackwardGenome, BackwardSearchArm,
-        EscalationStep, InstanceResult, SeededAdapter, build_backward_search_problem,
-        build_problem_for_order, escalation_tiers, exact_from_plan, joint_seed_from_arm2,
-        paging_seed, run_escalation_schedule, run_instance, run_instance_with_pager_cap, run_tier,
-        tier_search_config,
+        EscalationStep, ExperimentReport, InstanceKey, InstanceMetrics, InstanceResult,
+        RoundProfile, SeededAdapter, build_backward_search_problem, build_problem_for_order,
+        escalation_tiers, exact_from_plan, joint_seed_from_arm2, paging_seed, render_markdown,
+        round_profiles, run_escalation_schedule, run_instance, run_instance_with_pager_cap,
+        run_tier, tier_search_config,
     };
+
+    #[test]
+    fn per_budget_denominators_precede_savings_and_sum_to_total() {
+        let report = synthetic_report();
+        for budget in [2, 3, 4] {
+            let counts = report.counts_by_budget[&budget];
+            assert_eq!(
+                counts.total,
+                counts.feasible + counts.trivial + counts.infeasible + counts.solver_capped
+            );
+        }
+        let markdown = render_markdown(&report);
+        assert!(
+            markdown.find("## Per-budget denominators").unwrap()
+                < markdown.find("## Savings").unwrap()
+        );
+    }
+
+    #[test]
+    fn whole_pass_rollup_sums_preweighted_totals_without_double_weighting() {
+        let report = ExperimentReport::from_instances(vec![
+            report_fixture("first", BwdRegime::R0, 4, 100, Some(100), 8),
+            report_fixture("second", BwdRegime::R0, 4, 200, Some(200), 8),
+        ]);
+        assert_eq!(report.equal_instance.arm1_dram_bytes, 150);
+        assert_eq!(report.whole_pass.rows, 8);
+        assert_eq!(report.whole_pass.arm1_dram_bytes, 300);
+    }
+
+    #[test]
+    fn unavailable_incumbent_and_solver_capped_never_enter_percentage_denominators() {
+        let mut capped = report_fixture("capped", BwdRegime::Ext, 4, 0, Some(40), 8);
+        capped.arm1 = super::classified_arm(
+            super::ExperimentArm::ExactConstructive,
+            ArmClassification::SolverCapped {
+                cap: 1,
+                demand_position: 0,
+                peak_states: 1,
+            },
+        );
+        let mut unavailable = report_fixture("unavailable", BwdRegime::Ext, 4, 20, None, 8);
+        unavailable.classification = ArmClassification::Trivial {
+            reason: "uncomputed fixture",
+        };
+        unavailable.arm1 = super::classified_arm(
+            super::ExperimentArm::ExactConstructive,
+            unavailable.classification.clone(),
+        );
+        let report = ExperimentReport::from_instances(vec![
+            report_fixture("comparable", BwdRegime::Ext, 4, 30, Some(40), 8),
+            unavailable,
+            capped,
+        ]);
+        assert_eq!(report.incumbent_comparable, 1);
+        assert_eq!(report.paged_computed, 1);
+    }
+
+    #[test]
+    fn uncached_and_incumbent_sections_render_their_comparisons() {
+        let report = ExperimentReport::from_instances(vec![report_fixture(
+            "comparable",
+            BwdRegime::R0,
+            4,
+            30,
+            Some(40),
+            8,
+        )]);
+        let markdown = render_markdown(&report);
+        assert!(markdown.contains("### Arm1−U uncached comparison"));
+        assert!(markdown.contains("### Arm1−I incumbent comparison"));
+    }
+
+    #[test]
+    fn report_round_profiles_match_r0_and_ext_logical_row_evaluations() {
+        assert_eq!(
+            round_profiles(8, BwdRegime::R0),
+            vec![RoundProfile { round: 0, rows: 4 }]
+        );
+        assert_eq!(
+            round_profiles(8, BwdRegime::Ext),
+            vec![
+                RoundProfile { round: 1, rows: 2 },
+                RoundProfile { round: 2, rows: 1 },
+            ]
+        );
+    }
+
+    fn synthetic_report() -> ExperimentReport {
+        ExperimentReport::from_instances(vec![
+            report_fixture("feasible-c2", BwdRegime::R0, 2, 10, None, 8),
+            report_fixture("feasible-c3", BwdRegime::R0, 3, 10, None, 8),
+            report_fixture("feasible-c4", BwdRegime::R0, 4, 10, Some(10), 8),
+        ])
+    }
+
+    fn report_fixture(
+        fixture: &str,
+        regime: BwdRegime,
+        budget_cells: usize,
+        arm1_dram_bytes: u128,
+        incumbent_dram_bytes: Option<u128>,
+        trace_len: usize,
+    ) -> InstanceMetrics {
+        InstanceMetrics::report_fixture(
+            InstanceKey {
+                fixture: fixture.to_owned(),
+                layer_index: 0,
+                regime,
+                budget_cells,
+            },
+            trace_len,
+            arm1_dram_bytes,
+            incumbent_dram_bytes,
+        )
+    }
 
     #[test]
     fn every_searched_arm_keeps_its_required_exact_incumbent() {
