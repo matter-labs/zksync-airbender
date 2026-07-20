@@ -11,7 +11,9 @@ use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
 use gkr_eval_isa::eval_plan::backward_search::experiment::{
     AcceptedIncumbent, ArmClassification, ExperimentReport, render_markdown, run_instance,
 };
-use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
+use gkr_eval_isa::eval_plan::backward_search::problem::{
+    ProblemClassification, build_backward_search_problem,
+};
 use gkr_eval_isa::eval_plan::backward_search::{
     CertifiedBackwardCandidate, MAX_PAGER_STATES, PagerOutcome, compile_and_certify_paging,
     solve_exact_paging,
@@ -102,6 +104,187 @@ fn plan3_add_sub_release_smoke() {
     ));
     assert!(result.incumbent.score.is_some());
     assert_eq!(result.certificate_failures(), 0);
+}
+
+#[test]
+#[ignore = "Plan 3 inits-and-teardowns c2 classification regression"]
+fn plan3_inits_and_teardowns_r0_c2_classifies() {
+    let fixture = "inits_and_teardowns_preprocessed_layout_gkr.json";
+    let artifact = common::load_fixture(fixture);
+    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+        .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
+    let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
+        .find(|(layer_index, _, _)| *layer_index == 0)
+        .expect("inits-and-teardowns has backward layer zero");
+    let distilled = distill(&layer, BwdRegime::R0, &cross, None);
+    let (classification, problem) =
+        build_backward_search_problem(&layer, &distilled, dag.globals.trace_len, 2)
+            .expect("inits-and-teardowns c2 problem must classify");
+    assert!(matches!(
+        classification,
+        ProblemClassification::Trivial { .. }
+    ));
+    let problem = problem.expect("trivial c2 problem retains its replay surface");
+    assert!(problem.stream_reductions);
+    assert!(
+        problem
+            .demands
+            .iter()
+            .all(|demand| matches!(layer.exprs[demand.expr.0 as usize], Expr::Source(_)))
+    );
+    let exact = match solve_exact_paging(&problem.demands, MAX_PAGER_STATES)
+        .expect("trivial c2 paging solve")
+    {
+        PagerOutcome::Solved(exact) => exact,
+        PagerOutcome::SolverCapped { .. } => panic!("trivial c2 paging must not cap"),
+    };
+    let candidate = compile_and_certify_paging(&distilled, &problem, &exact, 0)
+        .expect("trivial c2 all-bypass replay must consume its logical stream");
+    let decoded = decode(&candidate.compiled.encoded).expect("decode c2 replay lanes");
+    assert_eq!(decoded, candidate.compiled.compiled.program);
+    assert_eq!(
+        encode(&decoded).expect("re-encode c2 replay lanes"),
+        candidate.compiled.encoded
+    );
+    assert_eq!(
+        candidate.certificate.predicted_read_cost,
+        candidate.certificate.realized_read_cost
+    );
+    assert_bwd_value_parity(&candidate.compiled.compiled, &distilled, &layer);
+    let result = run_instance(
+        fixture,
+        layer_index,
+        &layer,
+        &distilled,
+        dag.globals.trace_len,
+        2,
+        None,
+    )
+    .expect("inits-and-teardowns L0 R0 c2 must classify or succeed");
+    assert_eq!(result.key.budget_cells, 2);
+    assert_eq!(result.key.regime, BwdRegime::R0);
+}
+
+#[test]
+fn backward_uncached_and_replay_share_leaf_only_fused_stream() {
+    let mut layer = common::synthetic_fma_compound_products_layer(1, 2).layer;
+    let products = layer
+        .exprs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, expr)| matches!(expr, Expr::Mul(_)).then_some(ExprId(index as u32)))
+        .collect::<Vec<_>>();
+    let direct = products
+        .iter()
+        .copied()
+        .find(|product| match &layer.exprs[product.0 as usize] {
+            Expr::Mul(children) => children
+                .iter()
+                .all(|child| matches!(layer.exprs[child.0 as usize], Expr::Source(_))),
+            _ => false,
+        })
+        .expect("synthetic FMA layer has a direct product");
+    let compound = products
+        .iter()
+        .copied()
+        .find(|product| match &layer.exprs[product.0 as usize] {
+            Expr::Mul(children) => children
+                .iter()
+                .any(|child| matches!(layer.exprs[child.0 as usize], Expr::Add(_))),
+            _ => false,
+        })
+        .expect("synthetic FMA layer has a compound product");
+    let repeated_add = layer
+        .exprs
+        .iter_mut()
+        .find_map(|expr| match expr {
+            Expr::Add(children) if children.contains(&direct) && children.contains(&compound) => {
+                Some(children)
+            }
+            _ => None,
+        })
+        .expect("synthetic FMA layer has an Add containing both product kinds");
+    repeated_add.extend([direct, compound]);
+    let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+    let replay_domain = gkr_eval_isa::bwd::distill::distilled_site_domain(&distilled)
+        .into_iter()
+        .map(|site| site.value)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(replay_domain.contains(&direct));
+    assert!(replay_domain.contains(&compound));
+    let uncached =
+        gkr_eval_isa::eval_plan::compile_backward_fragments_uncached(&distilled, None, 4, true)
+            .expect("streaming mixed FMA reference compile");
+    let entries = uncached
+        .trace
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            gkr_eval_isa::bwd::trace::BwdEvent::Serve { fp, .. }
+                if replay_domain.contains(&fp.value) =>
+            {
+                Some(gkr_eval_isa::bwd::plan::PlanEntry {
+                    fp: *fp,
+                    action: gkr_eval_isa::bwd::plan::PlanAction::Bypass,
+                })
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        entries
+            .iter()
+            .all(|entry| entry.fp.value != direct && entry.fp.value != compound)
+    );
+    let replay_plan = gkr_eval_isa::bwd::plan::BwdOccurrencePlan {
+        epoch: uncached.trace.epoch,
+        entries_fnv: gkr_eval_isa::bwd::plan::plan_entries_fnv(&entries),
+        stream_reductions: true,
+        entries,
+    };
+    let replayed = gkr_eval_isa::eval_plan::compile_backward_fragments_replayed(
+        &distilled,
+        &replay_plan,
+        None,
+        4,
+    )
+    .expect("streaming mixed FMA reference must replay exactly");
+    assert_eq!(replayed.encoded, uncached.encoded);
+    assert_eq!(replayed.compiled.stats_ext, uncached.compiled.stats_ext);
+    let (_, problem) = build_backward_search_problem(&layer, &distilled, 8, 4)
+        .expect("mixed direct/compound FMA problem must build");
+    let problem = problem.expect("mixed direct/compound FMA problem retains its replay surface");
+    assert!(
+        problem
+            .demands
+            .iter()
+            .all(|demand| matches!(layer.exprs[demand.expr.0 as usize], Expr::Source(_)))
+    );
+    assert!(
+        problem
+            .all_domain_serves
+            .iter()
+            .all(|serve| serve.value != direct && serve.value != compound)
+    );
+    let exact = match solve_exact_paging(&problem.demands, MAX_PAGER_STATES)
+        .expect("mixed direct/compound FMA paging solve")
+    {
+        PagerOutcome::Solved(exact) => exact,
+        PagerOutcome::SolverCapped { .. } => panic!("small mixed FMA paging must not cap"),
+    };
+    let candidate = compile_and_certify_paging(&distilled, &problem, &exact, 0)
+        .expect("mixed direct/compound FMA replay must consume its logical stream");
+    let decoded = decode(&candidate.compiled.encoded).expect("decode mixed FMA replay lanes");
+    assert_eq!(decoded, candidate.compiled.compiled.program);
+    assert_eq!(
+        encode(&decoded).expect("re-encode mixed FMA replay lanes"),
+        candidate.compiled.encoded
+    );
+    assert_eq!(
+        candidate.certificate.predicted_read_cost,
+        candidate.certificate.realized_read_cost
+    );
+    assert_bwd_value_parity(&candidate.compiled.compiled, &distilled, &layer);
 }
 
 #[test]

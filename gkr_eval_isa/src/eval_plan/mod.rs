@@ -1012,6 +1012,14 @@ struct Elaborator<'a, 'oracle> {
 }
 
 impl Elaborator<'_, '_> {
+    fn uses_backward_eliminated_product_stream(&self) -> bool {
+        self.backward_demand.is_some()
+            && matches!(
+                &self.cache_policy,
+                ElaborationCachePolicy::None | ElaborationCachePolicy::BackwardReplay(_)
+            )
+    }
+
     fn elaborate_backward_fragments(
         &mut self,
         root: &RootKey,
@@ -1466,10 +1474,8 @@ impl Elaborator<'_, '_> {
             + usize::from(operation == ReductionOp::Mul && product_unit_sign(self.layer, parent));
 
         let mut need_memo = HashMap::new();
-        let avoid_fused_product_seed = matches!(
-            &self.cache_policy,
-            ElaborationCachePolicy::BackwardReplay(_)
-        ) && operation == ReductionOp::Add
+        let avoid_fused_product_seed = self.uses_backward_eliminated_product_stream()
+            && operation == ReductionOp::Add
             && children
                 .iter()
                 .any(|child| !self.eliminated_add_product(child.expr));
@@ -1497,10 +1503,8 @@ impl Elaborator<'_, '_> {
             .or_default()
             .accumulator_seeds += 1;
         let first_path = extended(path, first.step);
-        let replay_eliminated_product = matches!(
-            &self.cache_policy,
-            ElaborationCachePolicy::BackwardReplay(_)
-        ) && operation == ReductionOp::Add
+        let replay_eliminated_product = self.uses_backward_eliminated_product_stream()
+            && operation == ReductionOp::Add
             && !self.is_direct(first.expr)
             && self.eliminated_add_product(first.expr);
         let mut acc_field = if replay_eliminated_product {
@@ -1515,10 +1519,8 @@ impl Elaborator<'_, '_> {
             // fusion path is only for a genuinely nonresident eliminated node.
             if self.is_direct(child.expr) {
                 self.fold_direct(child.expr, operation, root, &child_path, scope)?;
-            } else if matches!(
-                &self.cache_policy,
-                ElaborationCachePolicy::BackwardReplay(_)
-            ) && operation == ReductionOp::Add
+            } else if self.uses_backward_eliminated_product_stream()
+                && operation == ReductionOp::Add
                 && self.direct_signed_single_product(child.expr).is_some()
             {
                 self.fold_or_signed_single_product(
@@ -1528,17 +1530,13 @@ impl Elaborator<'_, '_> {
                     scope,
                     acc_field,
                 )?;
-            } else if matches!(
-                &self.cache_policy,
-                ElaborationCachePolicy::BackwardReplay(_)
-            ) && operation == ReductionOp::Add
+            } else if self.uses_backward_eliminated_product_stream()
+                && operation == ReductionOp::Add
                 && self.direct_binary_product(child.expr)
             {
                 self.fold_or_fma_product(child.expr, root, &child_path, scope, acc_field)?;
-            } else if matches!(
-                &self.cache_policy,
-                ElaborationCachePolicy::BackwardReplay(_)
-            ) && operation == ReductionOp::Add
+            } else if self.uses_backward_eliminated_product_stream()
+                && operation == ReductionOp::Add
                 && self.eliminated_add_product(child.expr)
             {
                 let saved = self.save_acc(acc_field)?;
@@ -1817,10 +1815,8 @@ impl Elaborator<'_, '_> {
             .or_default()
             .accumulator_seeds += 1;
         let first_path = extended(path, first.step);
-        let replay_eliminated_product = matches!(
-            &self.cache_policy,
-            ElaborationCachePolicy::BackwardReplay(_)
-        ) && operation == ReductionOp::Add
+        let replay_eliminated_product = self.uses_backward_eliminated_product_stream()
+            && operation == ReductionOp::Add
             && !self.is_direct(first.expr)
             && self.eliminated_add_product(first.expr);
         let mut acc_field = if replay_eliminated_product {
@@ -1844,10 +1840,8 @@ impl Elaborator<'_, '_> {
                 self.fold_direct(child.expr, operation, root, &child_path, scope)?;
             } else if operation == ReductionOp::Add
                 && self.direct_single_product(child.expr).is_some()
-                && (!matches!(
-                    &self.cache_policy,
-                    ElaborationCachePolicy::BackwardReplay(_)
-                ) || self.eliminated_add_product(child.expr))
+                && (!self.uses_backward_eliminated_product_stream()
+                    || self.eliminated_add_product(child.expr))
             {
                 self.fold_or_signed_single_product(
                     child.expr,
@@ -1857,17 +1851,16 @@ impl Elaborator<'_, '_> {
                     acc_field,
                 )?;
             } else if operation == ReductionOp::Add && self.direct_binary_product(child.expr) {
-                if matches!(&self.cache_policy, ElaborationCachePolicy::None)
+                if !self.uses_backward_eliminated_product_stream()
+                    && matches!(&self.cache_policy, ElaborationCachePolicy::None)
                     && !self.pending_sinks.contains_key(&child.expr)
                 {
                     self.emit_ready_fma(child.expr, root, &child_path)?;
                 } else {
                     self.fold_or_fma_product(child.expr, root, &child_path, scope, acc_field)?;
                 }
-            } else if matches!(
-                &self.cache_policy,
-                ElaborationCachePolicy::BackwardReplay(_)
-            ) && operation == ReductionOp::Add
+            } else if self.uses_backward_eliminated_product_stream()
+                && operation == ReductionOp::Add
                 && self.eliminated_add_product(child.expr)
             {
                 let saved = self.save_acc(acc_field)?;
@@ -1972,10 +1965,7 @@ impl Elaborator<'_, '_> {
         if self.is_direct(expr) {
             return false;
         }
-        let ready_product = if matches!(
-            &self.cache_policy,
-            ElaborationCachePolicy::BackwardReplay(_)
-        ) {
+        let ready_product = if self.uses_backward_eliminated_product_stream() {
             self.direct_binary_product(expr) || self.direct_signed_single_product(expr).is_some()
         } else {
             self.direct_binary_product(expr) || self.direct_single_product(expr).is_some()
@@ -2047,7 +2037,10 @@ impl Elaborator<'_, '_> {
         root: &RootKey,
         path: &[PathStep],
     ) -> Result<(), PlanError> {
-        self.record_backward_demand(product)?;
+        let preserve_product_boundary = !self.uses_backward_eliminated_product_stream();
+        if preserve_product_boundary {
+            self.record_backward_demand(product)?;
+        }
         self.plan
             .attribution
             .entry(product)
@@ -2064,7 +2057,9 @@ impl Elaborator<'_, '_> {
         );
         debug_assert_eq!(product_children.len(), 2);
         let mut operands = Vec::with_capacity(2);
-        self.push_backward_consumer(product);
+        if preserve_product_boundary {
+            self.push_backward_consumer(product);
+        }
         for child in product_children {
             let child_path = extended(path, child.step);
             self.record_backward_demand(child.expr)?;
@@ -2073,7 +2068,9 @@ impl Elaborator<'_, '_> {
             self.materialize(child.expr, MaterializeFrom::Source(value))?;
             operands.push(self.source_operand(value));
         }
-        self.pop_backward_consumer(product);
+        if preserve_product_boundary {
+            self.pop_backward_consumer(product);
+        }
         self.emit(EvalOp::AccFma {
             sign: if product_unit_sign(self.layer, product) {
                 Sign::Minus
@@ -2121,10 +2118,7 @@ impl Elaborator<'_, '_> {
             .or_default()
             .signed_add_fusions += 1;
         let child_path = extended(path, child.step);
-        let preserve_product_consumer = !matches!(
-            &self.cache_policy,
-            ElaborationCachePolicy::BackwardReplay(_)
-        );
+        let preserve_product_consumer = !self.uses_backward_eliminated_product_stream();
         if preserve_product_consumer {
             self.push_backward_consumer(product);
         }
@@ -2186,10 +2180,7 @@ impl Elaborator<'_, '_> {
         );
         debug_assert_eq!(product_children.len(), 2);
         let second_path = extended(path, product_children[1].step);
-        let preserve_product_consumer = !matches!(
-            &self.cache_policy,
-            ElaborationCachePolicy::BackwardReplay(_)
-        );
+        let preserve_product_consumer = !self.uses_backward_eliminated_product_stream();
         if preserve_product_consumer {
             self.push_backward_consumer(product);
         }

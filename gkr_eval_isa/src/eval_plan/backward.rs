@@ -1859,7 +1859,7 @@ mod tests {
     }
 
     #[test]
-    fn backward_trace_names_fused_product_consumers() {
+    fn backward_trace_elides_fused_product_boundaries() {
         let layer = DagLayer {
             sources: (0..4).map(read_src).collect(),
             exprs: vec![
@@ -1914,12 +1914,10 @@ mod tests {
                 && fp.value == add
                 && fp.consumer.is_none()
         }));
-        assert!(serves.iter().any(|fp| {
-            fp.term == term as u32 && fp.value == product && fp.consumer == Some(add)
-        }));
+        assert!(!serves.iter().any(|fp| fp.value == product));
         for child in product_children {
             assert!(serves.iter().any(|fp| {
-                fp.term == term as u32 && fp.value == *child && fp.consumer == Some(product)
+                fp.term == term as u32 && fp.value == *child && fp.consumer == Some(add)
             }));
         }
     }

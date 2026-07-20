@@ -703,6 +703,10 @@ fn score_compiled(compiled: &CompiledBackwardEvaluation, ordinal: usize) -> Back
 
 fn floor(error: &BackwardEvaluationError) -> Option<usize> {
     match error {
+        BackwardEvaluationError::Plan(crate::eval_plan::PlanError::BudgetExceeded {
+            required_transient_lanes,
+            ..
+        }) => Some(*required_transient_lanes),
         BackwardEvaluationError::Concrete(
             crate::eval_plan::ConcreteBindError::PlacementFailed {
                 peak_live_lanes, ..
