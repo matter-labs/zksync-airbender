@@ -1,5 +1,6 @@
-use crate::simple::{Add, BinaryOp, Mul, SetByRef, SetByVal, Sub};
+use crate::simple::{Add, BinaryOp, Mul, ParametrizedOp, Pow, SetByRef, SetByVal, Sub};
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
+use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::{BF, E2, E4, E6};
 
 use era_cudart::slice::DeviceSlice;
@@ -98,6 +99,55 @@ fn set_to_zero_e2() {
 #[test]
 fn set_to_zero_e4() {
     set_to_zero::<E4, 18>();
+}
+
+#[test]
+fn set_to_ones_bf() {
+    const LOG_N: u32 = 20;
+    let n = 1usize << LOG_N;
+    let stream = CudaStream::default();
+    let mut dst_host = vec![BF::ZERO; n];
+    let mut dst_device = DeviceAllocation::alloc(n).unwrap();
+    memory_copy_async(&mut dst_device, &dst_host, &stream).unwrap();
+    super::set_to_ones(&mut dst_device, &stream).unwrap();
+    memory_copy_async(&mut dst_host, &dst_device, &stream).unwrap();
+    stream.synchronize().unwrap();
+    // set_to_ones is a raw 0xFF byte-fill, not the field element ONE.
+    assert!(dst_host.iter().all(|x| x.0 == 0xFFFF_FFFF));
+}
+
+fn pow<T: Field, const LOG_N: u32>(additional_values: &[T])
+where
+    Pow: ParametrizedOp<T>,
+{
+    let n = 1usize << LOG_N;
+    let values = get_values(n, additional_values);
+    let exps: [u32; 6] = [0, 1, 2, 3, 17, 255];
+    let stream = CudaStream::default();
+    let mut d_values = DeviceAllocation::alloc(n).unwrap();
+    memory_copy_async(&mut d_values, &values, &stream).unwrap();
+    let values_matrix = DeviceMatrix::new(&d_values, n);
+    for &exp in &exps {
+        let mut d_result = DeviceAllocation::alloc(n).unwrap();
+        let mut result_matrix = DeviceMatrixMut::new(&mut d_result, n);
+        super::pow(&values_matrix, exp, &mut result_matrix, &stream).unwrap();
+        let mut h_result = vec![T::ZERO; n];
+        memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
+        stream.synchronize().unwrap();
+        for i in 0..n {
+            assert_eq!(values[i].pow(exp), h_result[i], "exp={exp} i={i}");
+        }
+    }
+}
+
+#[test]
+fn pow_bf() {
+    pow::<BF, 8>(&BF_VALUES);
+}
+
+#[test]
+fn pow_e4() {
+    pow::<E4, 8>(&E4_VALUES);
 }
 
 fn add<T: Field, const LOG_N: u32>(additional_values: &[T])

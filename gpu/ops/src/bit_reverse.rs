@@ -343,4 +343,39 @@ mod tests {
         bitreverse_enumeration_inplace(&mut host);
         assert_eq!(host, device_back);
     }
+
+    /// `rows == 1` regression guard: `is_power_of_two()` is true and
+    /// `log_count == 0`, so bit-reversal permutes a single row within each
+    /// column, which is the identity. The generic `test_bit_reverse` helper's
+    /// oracle (`i.reverse_bits() >> (usize::BITS - LOG_ROWS)`) would shift by
+    /// `usize::BITS` here and panic/overflow, so this is a bespoke identity
+    /// check instead of a reuse of that helper.
+    fn test_bit_reverse_rows_1<T: BitReverseTest>() {
+        const COLS: usize = 4;
+        let h_src = (0..COLS).map(|_| T::rand(&mut rng())).collect_vec();
+        let stream = CudaStream::default();
+        let mut d_values = DeviceAllocation::alloc(COLS).unwrap();
+        memory_copy_async(&mut d_values, &h_src, &stream).unwrap();
+        let mut matrix = DeviceMatrixMut::new(&mut d_values, 1); // rows = 1
+        bit_reverse_in_place(&mut matrix, &stream).unwrap();
+        let mut h_dst = vec![T::default(); COLS];
+        memory_copy_async(&mut h_dst, &d_values, &stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(h_src, h_dst); // rows==1 ⇒ identity permutation
+    }
+
+    #[test]
+    fn bit_reverse_rows_1_bf() {
+        test_bit_reverse_rows_1::<BF>();
+    }
+
+    #[test]
+    fn bit_reverse_rows_1_e4() {
+        test_bit_reverse_rows_1::<E4>();
+    }
+
+    #[test]
+    fn bit_reverse_rows_1_b256() {
+        test_bit_reverse_rows_1::<[u32; 8]>();
+    }
 }
