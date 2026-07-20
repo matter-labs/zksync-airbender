@@ -3,7 +3,7 @@ mod common;
 use std::{
     collections::{BTreeMap, HashMap},
     io::Write,
-    sync::atomic::{AtomicU64, AtomicUsize, Ordering},
+    sync::{Arc, Barrier, Mutex},
     time::{Duration, Instant},
 };
 
@@ -38,6 +38,36 @@ fn three_way_progress_eta_uses_completed_mean() {
         estimated_remaining(Duration::from_secs(30), 342, 342),
         Some(Duration::ZERO)
     );
+}
+
+#[test]
+fn progress_completion_snapshots_keep_elapsed_and_count_coherent() {
+    let progress = Arc::new(ProgressReporter::new());
+    let start = Arc::new(Barrier::new(4));
+    let jobs = [11u64, 23, 47].map(|nanos| {
+        let progress = Arc::clone(&progress);
+        let start = Arc::clone(&start);
+        std::thread::spawn(move || {
+            start.wait();
+            progress.record_completion(Duration::from_nanos(nanos))
+        })
+    });
+    start.wait();
+    let snapshots = jobs.map(|job| job.join().expect("progress job must not panic"));
+
+    for snapshot in snapshots {
+        let valid_elapsed = match snapshot.completed {
+            1 => [11, 23, 47].contains(&snapshot.completed_job_nanos),
+            2 => [34, 58, 70].contains(&snapshot.completed_job_nanos),
+            3 => snapshot.completed_job_nanos == 81,
+            _ => false,
+        };
+        assert!(
+            valid_elapsed,
+            "completion count {} cannot have {} elapsed nanoseconds",
+            snapshot.completed, snapshot.completed_job_nanos,
+        );
+    }
 }
 
 #[test]
@@ -132,10 +162,21 @@ fn estimated_remaining(
     ))
 }
 
+#[derive(Clone, Copy)]
+struct ProgressSnapshot {
+    completed: usize,
+    completed_job_nanos: u64,
+}
+
+#[derive(Default)]
+struct ProgressState {
+    completed: usize,
+    completed_job_nanos: u64,
+}
+
 struct ProgressReporter {
     started: Instant,
-    completed: AtomicUsize,
-    completed_job_nanos: AtomicU64,
+    state: Mutex<ProgressState>,
 }
 
 fn classification_tag(classification: &ArmClassification) -> &'static str {
@@ -152,8 +193,18 @@ impl ProgressReporter {
     fn new() -> Self {
         Self {
             started: Instant::now(),
-            completed: AtomicUsize::new(0),
-            completed_job_nanos: AtomicU64::new(0),
+            state: Mutex::new(ProgressState::default()),
+        }
+    }
+
+    fn record_completion(&self, instance_elapsed: Duration) -> ProgressSnapshot {
+        let nanos = u64::try_from(instance_elapsed.as_nanos()).unwrap_or(u64::MAX);
+        let mut state = self.state.lock().expect("lock Plan 3 progress state");
+        state.completed_job_nanos = state.completed_job_nanos.saturating_add(nanos);
+        state.completed += 1;
+        ProgressSnapshot {
+            completed: state.completed,
+            completed_job_nanos: state.completed_job_nanos,
         }
     }
 
@@ -185,18 +236,10 @@ impl ProgressReporter {
         instance_elapsed: Duration,
         classification: &ArmClassification,
     ) {
-        let nanos = u64::try_from(instance_elapsed.as_nanos()).unwrap_or(u64::MAX);
-        let previous = self
-            .completed_job_nanos
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
-                Some(total.saturating_add(nanos))
-            })
-            .expect("saturating progress update always succeeds");
-        let completed_job_nanos = previous.saturating_add(nanos);
-        let completed = self.completed.fetch_add(1, Ordering::Relaxed) + 1;
+        let snapshot = self.record_completion(instance_elapsed);
         let eta = estimated_remaining(
-            Duration::from_nanos(completed_job_nanos),
-            completed,
+            Duration::from_nanos(snapshot.completed_job_nanos),
+            snapshot.completed,
             PLAN3_INSTANCES,
         )
         .map_or_else(
@@ -206,7 +249,8 @@ impl ProgressReporter {
         let mut stderr = std::io::stderr().lock();
         writeln!(
             stderr,
-            "DONE completed={completed}/{PLAN3_INSTANCES} job={job}/{PLAN3_INSTANCES} fixture={fixture} layer={layer} regime={regime:?} budget=c{budget_cells} class={} instance_elapsed={instance_elapsed:?} total_elapsed={:?} eta={eta}",
+            "DONE completed={}/{PLAN3_INSTANCES} job={job}/{PLAN3_INSTANCES} fixture={fixture} layer={layer} regime={regime:?} budget=c{budget_cells} class={} instance_elapsed={instance_elapsed:?} total_elapsed={:?} eta={eta}",
+            snapshot.completed,
             classification_tag(classification),
             self.started.elapsed(),
         )
