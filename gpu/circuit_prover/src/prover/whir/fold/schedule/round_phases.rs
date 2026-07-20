@@ -190,12 +190,7 @@ pub(super) fn schedule_delinearization_running_powers_phase(
     let count = num_queries + 1;
     let mut delinearization_device: DeviceAllocation<E4> =
         context.alloc(count, AllocationPlacement::BestFit)?;
-    get_powers_by_ref(
-        &delin_base[0],
-        1,
-        &mut delinearization_device[..],
-        stream,
-    )?;
+    get_powers_by_ref(&delin_base[0], 1, &mut delinearization_device[..], stream)?;
     // Materialize the OOD anchor squaring sequence directly into the caller's
     // slot (slot 0 of the fused claim_points buffer).
     squaring_sequence_e4(&ood_point_device[0], anchor_out, stream)?;
