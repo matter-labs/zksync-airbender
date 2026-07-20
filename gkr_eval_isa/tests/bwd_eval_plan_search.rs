@@ -1,6 +1,11 @@
 mod common;
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    io::Write,
+    sync::atomic::{AtomicU64, AtomicUsize, Ordering},
+    time::{Duration, Instant},
+};
 
 use common::assert_bwd_value_parity;
 use cs::gkr_compiler::dag_ir::{
@@ -9,21 +14,276 @@ use cs::gkr_compiler::dag_ir::{
 };
 use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
 use gkr_eval_isa::eval_plan::backward_search::experiment::{
-    AcceptedIncumbent, ArmClassification, ExperimentReport, render_markdown, run_instance,
+    AcceptedIncumbent, ArmClassification, ExperimentReport, InstanceResult, render_markdown,
+    run_instance,
 };
 use gkr_eval_isa::eval_plan::backward_search::problem::{
     ProblemClassification, build_backward_search_problem,
 };
 use gkr_eval_isa::eval_plan::backward_search::{
-    CertifiedBackwardCandidate, MAX_PAGER_STATES, PagerOutcome, compile_and_certify_paging,
-    solve_exact_paging,
+    BackwardSearchError, CertifiedBackwardCandidate, MAX_PAGER_STATES, PagerOutcome,
+    compile_and_certify_paging, solve_exact_paging,
 };
 use gkr_eval_isa::fwd::encode::{decode, encode};
+use rayon::prelude::*;
+
+#[test]
+fn three_way_progress_eta_uses_completed_mean() {
+    assert_eq!(
+        estimated_remaining(Duration::from_secs(30), 6, 342),
+        Some(Duration::from_secs(560))
+    );
+    assert_eq!(estimated_remaining(Duration::ZERO, 0, 342), None);
+    assert_eq!(
+        estimated_remaining(Duration::from_secs(30), 342, 342),
+        Some(Duration::ZERO)
+    );
+}
+
+#[test]
+#[ignore = "Plan 3 parallel budget-group release equivalence"]
+fn plan3_parallel_budget_group_matches_sequential() {
+    let fixture = "add_sub_lui_auipc_mop_layout_gkr.json";
+    let artifact = common::load_fixture(fixture);
+    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+        .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
+    let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
+        .next()
+        .expect("add_sub has a backward layer");
+    let regime = BwdRegime::Ext;
+    let distilled = distill(&layer, regime, &cross, None);
+    let current = gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer(&layer, regime, &cross, 16);
+    let incumbent = current
+        .fragment_order
+        .zip(current.plan)
+        .map(|(order, plan)| AcceptedIncumbent { order, plan })
+        .expect("add_sub Ext c4 ships a fragment-plan incumbent");
+    let sequential = [2usize, 3, 4]
+        .into_iter()
+        .map(|budget_cells| {
+            (
+                budget_cells,
+                run_instance(
+                    fixture,
+                    layer_index,
+                    &layer,
+                    &distilled,
+                    dag.globals.trace_len,
+                    budget_cells,
+                    (budget_cells == 4).then_some(&incumbent),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let progress = ProgressReporter::new();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(48)
+        .build()
+        .expect("build Plan 3 parallel test pool");
+    let parallel = pool.install(|| {
+        run_budget_group(1, &progress, fixture, layer_index, regime, |budget_cells| {
+            run_instance(
+                fixture,
+                layer_index,
+                &layer,
+                &distilled,
+                dag.globals.trace_len,
+                budget_cells,
+                (budget_cells == 4).then_some(&incumbent),
+            )
+        })
+    });
+
+    assert_eq!(parallel.len(), sequential.len());
+    for ((parallel_budget, parallel), (sequential_budget, sequential)) in
+        parallel.into_iter().zip(sequential)
+    {
+        assert_eq!(parallel_budget, sequential_budget);
+        let parallel = parallel.unwrap();
+        let sequential = sequential.unwrap();
+        assert_eq!(parallel.key, sequential.key);
+        assert_eq!(parallel.classification, sequential.classification);
+        assert_eq!(
+            parallel.deterministic_digest(),
+            sequential.deterministic_digest()
+        );
+    }
+}
+
+const PLAN3_INSTANCES: usize = 342;
+const BUDGET_CONCURRENCY: u128 = 3;
+
+fn estimated_remaining(
+    completed_job_time: Duration,
+    completed: usize,
+    total: usize,
+) -> Option<Duration> {
+    if completed == 0 {
+        return None;
+    }
+    let remaining = total.saturating_sub(completed) as u128;
+    let nanos = completed_job_time
+        .as_nanos()
+        .checked_div(completed as u128)?
+        .checked_mul(remaining)?
+        .checked_div(BUDGET_CONCURRENCY)?;
+    Some(Duration::from_nanos(
+        u64::try_from(nanos).unwrap_or(u64::MAX),
+    ))
+}
+
+struct ProgressReporter {
+    started: Instant,
+    completed: AtomicUsize,
+    completed_job_nanos: AtomicU64,
+}
+
+fn classification_tag(classification: &ArmClassification) -> &'static str {
+    match classification {
+        ArmClassification::Searched => "Searched",
+        ArmClassification::Trivial { .. } => "Trivial",
+        ArmClassification::Infeasible { .. } => "Infeasible",
+        ArmClassification::SolverCapped { .. } => "SolverCapped",
+        ArmClassification::UnavailableIncumbent => "UnavailableIncumbent",
+    }
+}
+
+impl ProgressReporter {
+    fn new() -> Self {
+        Self {
+            started: Instant::now(),
+            completed: AtomicUsize::new(0),
+            completed_job_nanos: AtomicU64::new(0),
+        }
+    }
+
+    fn start(
+        &self,
+        job: usize,
+        fixture: &str,
+        layer: usize,
+        regime: BwdRegime,
+        budget_cells: usize,
+    ) {
+        let mut stderr = std::io::stderr().lock();
+        writeln!(
+            stderr,
+            "START job={job}/{PLAN3_INSTANCES} fixture={fixture} layer={layer} regime={regime:?} budget=c{budget_cells} total_elapsed={:?}",
+            self.started.elapsed(),
+        )
+        .expect("write Plan 3 START");
+        stderr.flush().expect("flush Plan 3 progress");
+    }
+
+    fn done(
+        &self,
+        job: usize,
+        fixture: &str,
+        layer: usize,
+        regime: BwdRegime,
+        budget_cells: usize,
+        instance_elapsed: Duration,
+        classification: &ArmClassification,
+    ) {
+        let nanos = u64::try_from(instance_elapsed.as_nanos()).unwrap_or(u64::MAX);
+        let previous = self
+            .completed_job_nanos
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
+                Some(total.saturating_add(nanos))
+            })
+            .expect("saturating progress update always succeeds");
+        let completed_job_nanos = previous.saturating_add(nanos);
+        let completed = self.completed.fetch_add(1, Ordering::Relaxed) + 1;
+        let eta = estimated_remaining(
+            Duration::from_nanos(completed_job_nanos),
+            completed,
+            PLAN3_INSTANCES,
+        )
+        .map_or_else(
+            || "unavailable".to_owned(),
+            |eta| format!("{eta:?}-estimate"),
+        );
+        let mut stderr = std::io::stderr().lock();
+        writeln!(
+            stderr,
+            "DONE completed={completed}/{PLAN3_INSTANCES} job={job}/{PLAN3_INSTANCES} fixture={fixture} layer={layer} regime={regime:?} budget=c{budget_cells} class={} instance_elapsed={instance_elapsed:?} total_elapsed={:?} eta={eta}",
+            classification_tag(classification),
+            self.started.elapsed(),
+        )
+        .expect("write Plan 3 DONE");
+        stderr.flush().expect("flush Plan 3 progress");
+    }
+
+    fn error(
+        &self,
+        job: usize,
+        fixture: &str,
+        layer: usize,
+        regime: BwdRegime,
+        budget_cells: usize,
+        instance_elapsed: Duration,
+        error: &BackwardSearchError,
+    ) {
+        let mut stderr = std::io::stderr().lock();
+        writeln!(
+            stderr,
+            "ERROR job={job}/{PLAN3_INSTANCES} fixture={fixture} layer={layer} regime={regime:?} budget=c{budget_cells} instance_elapsed={instance_elapsed:?} total_elapsed={:?} error={error:?}",
+            self.started.elapsed(),
+        )
+        .expect("write Plan 3 ERROR");
+        stderr.flush().expect("flush Plan 3 progress");
+    }
+}
+
+fn run_budget_group(
+    job_base: usize,
+    progress: &ProgressReporter,
+    fixture: &str,
+    layer: usize,
+    regime: BwdRegime,
+    run: impl Fn(usize) -> Result<InstanceResult, BackwardSearchError> + Sync,
+) -> Vec<(usize, Result<InstanceResult, BackwardSearchError>)> {
+    let mut results = [2usize, 3, 4]
+        .into_par_iter()
+        .enumerate()
+        .map(|(offset, budget_cells)| {
+            let job = job_base + offset;
+            let started = Instant::now();
+            progress.start(job, fixture, layer, regime, budget_cells);
+            let result = run(budget_cells);
+            match &result {
+                Ok(instance) => progress.done(
+                    job,
+                    fixture,
+                    layer,
+                    regime,
+                    budget_cells,
+                    started.elapsed(),
+                    &instance.classification,
+                ),
+                Err(error) => progress.error(
+                    job,
+                    fixture,
+                    layer,
+                    regime,
+                    budget_cells,
+                    started.elapsed(),
+                    error,
+                ),
+            }
+            (budget_cells, result)
+        })
+        .collect::<Vec<_>>();
+    results.sort_by_key(|(budget, _)| *budget);
+    results
+}
 
 #[test]
 #[ignore = "Plan 3 full 342-instance release experiment"]
 fn full_plan3_backward_paging_search_experiment() {
     let mut report = ExperimentReport::default();
+    let progress = ProgressReporter::new();
+    let mut next_job = 1usize;
     for fixture in common::FIXTURES {
         let artifact = common::load_fixture(fixture);
         let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
@@ -40,8 +300,13 @@ fn full_plan3_backward_paging_search_experiment() {
                         current.fragment_order.zip(current.plan)
                     })
                     .map(|(order, plan)| AcceptedIncumbent { order, plan });
-                for budget_cells in [2usize, 3, 4] {
-                    report.push(
+                let budget_results = run_budget_group(
+                    next_job,
+                    &progress,
+                    fixture,
+                    layer_index,
+                    regime,
+                    |budget_cells| {
                         run_instance(
                             fixture,
                             layer_index,
@@ -51,17 +316,27 @@ fn full_plan3_backward_paging_search_experiment() {
                             budget_cells,
                             (budget_cells == 4).then_some(incumbent.as_ref()).flatten(),
                         )
-                        .unwrap_or_else(|error| {
-                            panic!(
-                                "Plan 3 instance must classify or succeed: {fixture} L{layer_index} {regime:?} c{budget_cells}: {error:?}"
-                            )
-                        }),
-                    );
+                    },
+                );
+                next_job += 3;
+                for (budget_cells, result) in budget_results {
+                    report.push(result.unwrap_or_else(|error| {
+                        panic!(
+                            "Plan 3 instance must classify or succeed: {fixture} L{layer_index} {regime:?} c{budget_cells}: {error:?}"
+                        )
+                    }));
                 }
             }
         }
     }
-    assert_eq!(report.instances.len(), 342);
+    assert_eq!(next_job, PLAN3_INSTANCES + 1);
+    assert_eq!(report.instances.len(), PLAN3_INSTANCES);
+    assert!(
+        report
+            .instances
+            .iter()
+            .all(|instance| instance.certificate_failures() == 0)
+    );
     let markdown = render_markdown(&report);
     let output = std::env::var("GKR_PLAN3_REPORT")
         .expect("GKR_PLAN3_REPORT must name the ignored audit output");
