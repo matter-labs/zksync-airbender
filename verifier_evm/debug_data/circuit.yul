@@ -1209,6 +1209,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 6))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7))), P)
         acc := add(mulmod(acc, alpha, P), gate)
     }
+            }
+            function scl0_g12(alpha, a) -> acc { acc := a
     {  // InitialGrandProductFromCaches: Cache(4)*Cache(5) = 3
         let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 5))), P)
         acc := add(mulmod(acc, alpha, P), gate)

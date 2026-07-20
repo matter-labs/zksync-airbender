@@ -27,7 +27,7 @@ use verifier_common::cs::definitions::split_timestamp;
 #[allow(invalid_value)]
 #[inline(never)]
 pub unsafe fn verify_full_statement_for_unified_circuit<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const BASE_LAYER: bool,
     const REDUCED_ROUNDS: bool,
@@ -236,7 +236,7 @@ where
     let pow_challenge_high = nd_source.read_word();
     let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
 
-    let expected_challenges = GKRExternalChallenges::draw_from_transcript_seed(
+    let expected_challenges = GKRExternalChallenges::draw_from_blake_transcript_seed(
         memory_seed,
         MEMORY_DELEGATION_POW_BITS,
         pow_challenge,
@@ -361,7 +361,7 @@ where
 }
 
 pub fn verify_unified_circuit_base_layer<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const REDUCED_ROUNDS: bool,
 >(
@@ -381,7 +381,7 @@ pub fn verify_unified_circuit_base_layer<
 }
 
 pub fn verify_unified_circuit_recursion_layer<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const REDUCED_ROUNDS: bool,
 >(
@@ -401,7 +401,7 @@ pub fn verify_unified_circuit_recursion_layer<
 }
 
 pub fn verify_unrolled_or_unified_circuit_recursion_layer<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const REDUCED_ROUNDS: bool,
 >(

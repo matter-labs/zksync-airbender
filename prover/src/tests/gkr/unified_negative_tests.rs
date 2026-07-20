@@ -22,22 +22,6 @@ const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
 
-fn find_base_layer_address(circuit: &GKRCircuitArtifact<BabyBearField>, name: &str) -> GKRAddress {
-    for (var, var_name) in circuit.variable_names.iter() {
-        if var_name == name {
-            let addr = *circuit
-                .placement_data
-                .get(var)
-                .expect("variable_names entry missing from placement_data");
-            return match addr {
-                GKRAddress::BaseLayerWitness(_) | GKRAddress::BaseLayerMemory(_) => addr,
-                other => panic!("variable '{name}' not in the base layer: {other:?}"),
-            };
-        }
-    }
-    panic!("no variable named '{name}' in unified circuit artifact");
-}
-
 const XOR_ROTATE_TABLE_IDS: [u32; 4] = [
     TableType::XorRotate16 as u32,
     TableType::XorRotate12 as u32,
@@ -65,35 +49,6 @@ fn find_family_row(
             && funct3_filter
                 .is_none_or(|ids| ids.contains(&read_cell(trace, funct3_addr, r).as_u32_reduced()))
     })
-}
-
-fn read_cell(
-    trace: &GKRFullWitnessTrace<BabyBearField, Global, Global>,
-    addr: GKRAddress,
-    row: usize,
-) -> BabyBearField {
-    match addr {
-        GKRAddress::BaseLayerWitness(col) => trace.column_major_witness_trace[col][row],
-        GKRAddress::BaseLayerMemory(col) => trace.column_major_memory_trace[col][row],
-        other => panic!("not a base-layer address: {other:?}"),
-    }
-}
-
-fn write_cell(
-    trace: &mut GKRFullWitnessTrace<BabyBearField, Global, Global>,
-    addr: GKRAddress,
-    row: usize,
-    value: BabyBearField,
-) {
-    match addr {
-        GKRAddress::BaseLayerWitness(col) => trace.column_major_witness_trace[col][row] = value,
-        GKRAddress::BaseLayerMemory(col) => trace.column_major_memory_trace[col][row] = value,
-        other => panic!("not a base-layer address: {other:?}"),
-    }
-}
-
-fn base_trace_len(trace: &GKRFullWitnessTrace<BabyBearField, Global, Global>) -> usize {
-    trace.column_major_witness_trace[0].len()
 }
 
 fn build_satisfying_trace_with_mutation(
@@ -152,18 +107,23 @@ fn build_satisfying_trace_with_mutation(
 fn misaligned_sw_writeaddr_lo_rejected() {
     let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
         let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
+        let rs1_lo_addr = find_base_layer_address(circuit, "rs1 read_value[0]");
         let writeaddr_lo_addr = find_base_layer_address(circuit, "unified memwrite_addr[0]");
+        let ram_addr_lo_addr = find_base_layer_address(circuit, "shared scratch var[0]");
         let sw_row = (0..base_trace_len(trace))
             .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
             .expect("multi_family_smoke must execute at least one SW");
-        // `0xFFFD` is a 16-bit value with bit 0 = 1 → misaligned. The
-        // decomposition constraint (degree 1, ungated) catches it because
-        // we leave bit_0/bit_1/top_14 unchanged.
-        write_cell(trace, writeaddr_lo_addr, sw_row, BabyBearField::new(0xFFFD));
+        let one = BabyBearField::ONE;
+        for addr in [rs1_lo_addr, writeaddr_lo_addr, ram_addr_lo_addr] {
+            let mut v = read_cell(trace, addr, sw_row);
+            v.add_assign(&one);
+            write_cell(trace, addr, sw_row, v);
+        }
     });
     assert!(
         !check_satisfied(&circuit, &full_trace),
-        "expected misaligned SW writeaddr_lo mutation to fail check_satisfied"
+        "expected coherent misaligned SW writeaddr mutation to fail check_satisfied \
+         (SW alignment decomposition + trap)"
     );
 }
 
@@ -476,6 +436,65 @@ fn unified_sw_align_bit0_flip_on_sw_row_rejected() {
     assert!(
         !check_satisfied(&circuit, &full_trace),
         "expected sw-align bit_0 flip on SW row to fail check_satisfied (gated alignment trap)"
+    );
+}
+
+#[test]
+fn unified_lw_align_bit0_flip_on_lw_row_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        // lw/sw-align bit_0 aliases shared scratch bool[3].
+        let bit_0_addr = find_base_layer_address(circuit, "shared scratch bool[3]");
+        let lw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one LW");
+        let cur = read_cell(trace, bit_0_addr, lw_row);
+        let flipped = if cur == BabyBearField::ZERO {
+            BabyBearField::ONE
+        } else {
+            BabyBearField::ZERO
+        };
+        write_cell(trace, bit_0_addr, lw_row, flipped);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected lw-align bit_0 flip on LW row to fail check_satisfied (gated alignment trap)"
+    );
+}
+
+/// Coherent misaligned LW: shift `rs1_lo`, `readaddr_lo`, and the pooled
+/// `ram_addr[0]` (shared scratch var[0]) together by +1 on an LW row, so that
+/// the address-formation constraint (`is_lw*(rs1_lo+imm_lo-readaddr_lo-2^16*of_lo)`)
+/// and the select-trick (`is_lw*(ram_addr[0]-readaddr_lo)`) BOTH still hold with
+/// the honest carry/scratch values — the mutated witness describes a genuine
+/// `lw` from a byte address ≡ 1 (mod 4). Only the alignment constraints
+/// (decomposition `4*top_14 + 2*bit_1 + bit_0 = readaddr_lo` with the honest
+/// bit/top slots, and the trap) can reject it.
+///
+/// Preconditions handled: the honest aligned `readaddr_lo` is a multiple of 4,
+/// so +1 cannot wrap the 16-bit limb (no carry change into the high limb) and
+/// cannot move the address across the ROM bound (high limb untouched).
+#[test]
+fn unified_lw_coherent_misaligned_readaddr_rejected() {
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        let rs1_lo_addr = find_base_layer_address(circuit, "rs1 read_value[0]");
+        let readaddr_lo_addr = find_base_layer_address(circuit, "unified memread_addr[0]");
+        let ram_addr_lo_addr = find_base_layer_address(circuit, "shared scratch var[0]");
+        let lw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one LW");
+        let one = BabyBearField::ONE;
+        for addr in [rs1_lo_addr, readaddr_lo_addr, ram_addr_lo_addr] {
+            let mut v = read_cell(trace, addr, lw_row);
+            v.add_assign(&one);
+            write_cell(trace, addr, lw_row, v);
+        }
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected coherent misaligned LW readaddr mutation to fail check_satisfied \
+         (LW alignment decomposition + trap)"
     );
 }
 
@@ -1176,6 +1195,133 @@ fn generate_malicious_unified_proof(
     );
 }
 
+/// Assert that the ONLY base-layer arithmetic constraint broken at `row` is the
+/// Family-4 word-alignment TRAP `(is_lw + is_sw) * (bit_0 + bit_1) = 0`.
+///
+/// The trap is the unique base-layer constraint that involves BOTH pooled
+/// alignment bits (`shared scratch bool[3]` = bit_0, `shared scratch bool[4]` =
+/// bit_1) while touching NEITHER `shared F1/F2 intermediate reg[0]` (= top_14,
+/// present in both gated decompositions) NOR `MULMOD intermediate value` (the
+/// ungated Montgomery helper). This lets the trap-isolation tests below prove
+/// their mutation trips the trap and nothing else — empirically verified by the
+/// full failing-constraint enumeration.
+fn assert_only_alignment_trap_fails(
+    circuit: &GKRCircuitArtifact<BabyBearField>,
+    trace: &GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    row: usize,
+) {
+    let failing = failing_constraints_on_row(circuit, trace, row);
+    assert_eq!(
+        failing.len(),
+        1,
+        "expected exactly ONE failing constraint (the alignment trap), got {}: {:#?}",
+        failing.len(),
+        failing
+    );
+    let (_, _, vars) = &failing[0];
+    let has = |name: &str| vars.iter().any(|v| v == name);
+    assert!(
+        has("shared scratch bool[3]") && has("shared scratch bool[4]"),
+        "the single failing constraint must be the trap (involves both alignment bits); got {vars:?}"
+    );
+    assert!(
+        !has("shared F1/F2 intermediate reg[0]"),
+        "the single failing constraint must NOT be a decomposition (top_14 present); got {vars:?}"
+    );
+    assert!(
+        !has("MULMOD intermediate value"),
+        "the single failing constraint must NOT be the ungated Montgomery helper; got {vars:?}"
+    );
+}
+
+/// TRAP-ISOLATING misaligned LW. The four pre-existing alignment negative
+/// tests never bind the trap: their mutations all leave a gated decomposition
+/// violated, so deleting the trap would not make any of them pass. This test
+/// closes that gap by constructing a witness where the gated decomposition
+/// HOLDS and only the trap rejects.
+///
+/// Mutation, on an LW row: shift `imm[0]`, `memread_addr[0]` (= readaddr_lo,
+/// also `cleanaddr_lo` on LW) and the pooled `ram_addr[0]` together by +1, and
+/// set the pooled `bit_0` (shared scratch bool[3]) to 1. Then:
+///  - address-formation `is_lw*(rs1_lo + imm_lo - readaddr_lo - 2^16*of_lo)`
+///    holds: imm_lo and readaddr_lo both +1 cancel (rs1_lo/of_lo untouched);
+///  - the select-trick `is_lw*(ram_addr[0] - readaddr_lo)` holds: both +1;
+///  - the is_lw-gated decomposition `4*top_14 + 2*bit_1 + bit_0 - readaddr_lo`
+///    holds: honest readaddr_lo = 4*top_14, so `4*top_14 + 0 + 1 -
+///    (4*top_14 + 1) = 0` with top_14/bit_1 left honest;
+///  - the ungated Montgomery constraint (add_sub_lui_auipc_mop.rs:455,
+///    `montgomery(rs1,rs2) + is_fmamod*rd_old - mulmod_intermediate`) is
+///    UNTOUCHED because it reads rs1/rs2, not imm — this is exactly why we shift
+///    `imm[0]` and NOT `rs1 read_value[0]` (shifting rs1 breaks that ungated
+///    helper too, so it can never isolate the trap).
+///
+/// The only surviving violation is the trap `(is_lw + is_sw) * (bit_0 + bit_1)`,
+/// which evaluates to `1 * (1 + 0) = 1 != 0`. `assert_only_alignment_trap_fails`
+/// verifies that isolation via the full failing-constraint enumeration.
+#[test]
+fn unified_lw_trap_fires_on_coherent_bits_misaligned() {
+    let mut anchor_row = 0usize;
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let lw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_LW_BIT}]"));
+        let imm_lo_addr = find_base_layer_address(circuit, "imm[0] from decoder");
+        let readaddr_lo_addr = find_base_layer_address(circuit, "unified memread_addr[0]");
+        let ram_addr_lo_addr = find_base_layer_address(circuit, "shared scratch var[0]");
+        let bit_0_addr = find_base_layer_address(circuit, "shared scratch bool[3]");
+        let lw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, lw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one LW");
+        anchor_row = lw_row;
+        let one = BabyBearField::ONE;
+        for addr in [imm_lo_addr, readaddr_lo_addr, ram_addr_lo_addr] {
+            let mut v = read_cell(trace, addr, lw_row);
+            v.add_assign(&one);
+            write_cell(trace, addr, lw_row, v);
+        }
+        // coherent bits: bit_0 = 1 so the decomposition still balances readaddr_lo+1.
+        write_cell(trace, bit_0_addr, lw_row, one);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected coherent-bits misaligned LW to fail check_satisfied via the alignment trap"
+    );
+    assert_only_alignment_trap_fails(&circuit, &full_trace, anchor_row);
+}
+
+/// TRAP-ISOLATING misaligned SW — SW analogue of
+/// [`unified_lw_trap_fires_on_coherent_bits_misaligned`]. Shift `imm[0]`,
+/// `memwrite_addr[0]` (= writeaddr_lo, `cleanaddr_lo` on SW) and pooled
+/// `ram_addr[0]` by +1 and set `bit_0 = 1` on an SW row; the is_sw-gated
+/// decomposition holds, address-formation / select-trick hold, the ungated
+/// Montgomery helper is untouched (imm, not rs1), and only the trap
+/// `(is_lw + is_sw) * (bit_0 + bit_1)` rejects.
+#[test]
+fn unified_sw_trap_fires_on_coherent_bits_misaligned() {
+    let mut anchor_row = 0usize;
+    let (circuit, full_trace) = build_satisfying_trace_with_mutation(|circuit, trace| {
+        let sw_addr = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
+        let imm_lo_addr = find_base_layer_address(circuit, "imm[0] from decoder");
+        let writeaddr_lo_addr = find_base_layer_address(circuit, "unified memwrite_addr[0]");
+        let ram_addr_lo_addr = find_base_layer_address(circuit, "shared scratch var[0]");
+        let bit_0_addr = find_base_layer_address(circuit, "shared scratch bool[3]");
+        let sw_row = (0..base_trace_len(trace))
+            .find(|&r| read_cell(trace, sw_addr, r) == BabyBearField::ONE)
+            .expect("multi_family_smoke must execute at least one SW");
+        anchor_row = sw_row;
+        let one = BabyBearField::ONE;
+        for addr in [imm_lo_addr, writeaddr_lo_addr, ram_addr_lo_addr] {
+            let mut v = read_cell(trace, addr, sw_row);
+            v.add_assign(&one);
+            write_cell(trace, addr, sw_row, v);
+        }
+        write_cell(trace, bit_0_addr, sw_row, one);
+    });
+    assert!(
+        !check_satisfied(&circuit, &full_trace),
+        "expected coherent-bits misaligned SW to fail check_satisfied via the alignment trap"
+    );
+    assert_only_alignment_trap_fails(&circuit, &full_trace, anchor_row);
+}
+
 #[test]
 #[ignore]
 fn generate_malicious_unified_proofs() {
@@ -1214,7 +1360,7 @@ fn generate_malicious_unified_proofs() {
         },
     );
 
-    generate_malicious_unified_proof("f4_sw_value", StaticVerdict::BothPass, |circuit, trace| {
+    generate_malicious_unified_proof("f4_sw_value", StaticVerdict::ArithRejects, |circuit, trace| {
         let sw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
         let write_value = find_base_layer_address(circuit, "rd/mem write write_value[0]");
         let row = (0..base_trace_len(trace))

@@ -61,6 +61,60 @@ pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
     }
 }
 
+/// Resolve a named committed variable to its base-layer (memory/witness)
+/// address in the compiled circuit. Shared by the witness-mutation negative
+/// tests (unified + standalone families). Panics if the name is absent or not
+/// base-layer.
+pub(crate) fn find_base_layer_address<F: PrimeField>(
+    circuit: &GKRCircuitArtifact<F>,
+    name: &str,
+) -> GKRAddress {
+    for (var, var_name) in circuit.variable_names.iter() {
+        if var_name == name {
+            let addr = *circuit
+                .placement_data
+                .get(var)
+                .expect("variable_names entry missing from placement_data");
+            return match addr {
+                GKRAddress::BaseLayerWitness(_) | GKRAddress::BaseLayerMemory(_) => addr,
+                other => panic!("variable '{name}' not in the base layer: {other:?}"),
+            };
+        }
+    }
+    panic!("no variable named '{name}' in circuit artifact");
+}
+
+pub(crate) fn read_cell<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
+    trace: &GKRFullWitnessTrace<F, A, B>,
+    addr: GKRAddress,
+    row: usize,
+) -> F {
+    match addr {
+        GKRAddress::BaseLayerWitness(col) => trace.column_major_witness_trace[col][row],
+        GKRAddress::BaseLayerMemory(col) => trace.column_major_memory_trace[col][row],
+        other => panic!("not a base-layer address: {other:?}"),
+    }
+}
+
+pub(crate) fn write_cell<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
+    trace: &mut GKRFullWitnessTrace<F, A, B>,
+    addr: GKRAddress,
+    row: usize,
+    value: F,
+) {
+    match addr {
+        GKRAddress::BaseLayerWitness(col) => trace.column_major_witness_trace[col][row] = value,
+        GKRAddress::BaseLayerMemory(col) => trace.column_major_memory_trace[col][row] = value,
+        other => panic!("not a base-layer address: {other:?}"),
+    }
+}
+
+pub(crate) fn base_trace_len<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
+    trace: &GKRFullWitnessTrace<F, A, B>,
+) -> usize {
+    trace.column_major_witness_trace[0].len()
+}
+
 pub fn check_satisfied<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     full_trace: &GKRFullWitnessTrace<F, A, B>,
@@ -265,6 +319,59 @@ pub fn check_lookups_in_range<F: PrimeField, A: GoodAllocator, B: GoodAllocator>
     }
 
     true
+}
+
+/// Enumerate ALL base-layer arithmetic constraints (degree-1 and degree-2) that
+/// are UNsatisfied at `absolute_row_idx`, returning `(kind, constraint_idx,
+/// sorted involved-variable-names)` for each. Unlike [`check_satisfied_row`],
+/// this does NOT short-circuit at the first failure — it lets a negative test
+/// attribute exactly which constraints a mutation breaks (so a test can prove a
+/// mutation isolates a single target constraint, e.g. an alignment trap, rather
+/// than incidentally tripping an unrelated ungated helper). Evaluation
+/// semantics match `check_satisfied_row`: any constraint touching a
+/// non-base-layer address evaluates to zero (treated satisfied).
+pub(crate) fn failing_constraints_on_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    full_trace: &GKRFullWitnessTrace<F, A, B>,
+    absolute_row_idx: usize,
+) -> Vec<(&'static str, usize, Vec<String>)> {
+    let name_of = |v: &_| -> String {
+        compiled_circuit
+            .variable_names
+            .get(v)
+            .cloned()
+            .unwrap_or_else(|| format!("{v:?}"))
+    };
+    let mut out = Vec::new();
+    for idx in 0..compiled_circuit.degree_1_constraints.len() {
+        if evaluate_linear_constraint(compiled_circuit, full_trace, absolute_row_idx, idx)
+            != F::ZERO
+        {
+            let c = &compiled_circuit.degree_1_constraints[idx];
+            let mut vars = BTreeSet::new();
+            for (_, a) in c.linear_terms.iter() {
+                vars.insert(*a);
+            }
+            out.push(("deg1", idx, vars.iter().map(name_of).collect()));
+        }
+    }
+    for idx in 0..compiled_circuit.degree_2_constraints.len() {
+        if evaluate_quadratic_constraint(compiled_circuit, full_trace, absolute_row_idx, idx)
+            != F::ZERO
+        {
+            let c = &compiled_circuit.degree_2_constraints[idx];
+            let mut vars = BTreeSet::new();
+            for (_, a, b) in c.quadratic_terms.iter() {
+                vars.insert(*a);
+                vars.insert(*b);
+            }
+            for (_, a) in c.linear_terms.iter() {
+                vars.insert(*a);
+            }
+            out.push(("deg2", idx, vars.iter().map(name_of).collect()));
+        }
+    }
+    out
 }
 
 pub fn check_satisfied_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(

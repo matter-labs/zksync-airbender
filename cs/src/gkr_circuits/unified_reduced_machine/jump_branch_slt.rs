@@ -4,6 +4,7 @@ use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints_conditional;
 use crate::gkr_circuits::jump_branch_slt_family::JumpSltBranchFamilyCircuitMask;
 use crate::gkr_circuits::utils::update_intermediate_carry_value;
+use crate::structured_expr::Expr;
 use crate::tables::{
     TableDriver, TableType, CONDITIONAL_RESOLUTION_EQ_BIT_SHIFT,
     CONDITIONAL_RESOLUTION_FUNCT3_BIT_SHIFT, CONDITIONAL_RESOLUTION_SRC1_SIGN_BIT_SHIFT,
@@ -59,10 +60,10 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     scratch_vars: [Variable; F2_SCRATCH_VARS],
 ) -> Vec<LookupRequest<F>> {
     // U16 views of rs1/rs2 reassembled from U8 bytes via free algebra.
-    let rs1_low_c: Constraint<F> = Constraint::from(rs1_limbs[0]);
+    // Only the high rs1 limb is still needed as a `Constraint` (fed to the
+    // out-of-scope lookup plumbing); the other limb views are inlined as
+    // `Expr::var(...)` directly at their constraint sites.
     let rs1_high_c: Constraint<F> = Constraint::from(rs1_limbs[1]);
-    let rs2_low_c: Constraint<F> = Constraint::from(rs2_limbs[0]);
-    let rs2_high_c: Constraint<F> = Constraint::from(rs2_limbs[1]);
 
     // we do NOT need range checks on RD write values, as they will be results of masking
     // based on rd == x0 predicate. But we will need to add some temporary variables to get addition results
@@ -287,82 +288,108 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
 
     // now we can put the constraint for such addition
     {
-        let mut add_like_low_constraint = Constraint::empty();
+        let mut add_like_low_constraint = Expr::<F>::zero();
         // first addend
-        add_like_low_constraint += Term::from(is_jal) * Term::from(inputs.cycle_start_state.pc[0]);
-        add_like_low_constraint += Term::from(is_jalr) * Term::from(inputs.cycle_start_state.pc[0]);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_jal) * Expr::var(inputs.cycle_start_state.pc[0]);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_jalr) * Expr::var(inputs.cycle_start_state.pc[0]);
         // for subtraction 2^16*of + a - b = c -> 2^16*of + a = b + c
         // so we use output for the first addend, and keep second addend unchanged
-        add_like_low_constraint +=
-            Term::from(is_branch) * Term::from(comparison_rel_or_jump_saved_pc_low);
-        add_like_low_constraint +=
-            Term::from(is_slt) * Term::from(comparison_rel_or_jump_saved_pc_low);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_branch) * Expr::var(comparison_rel_or_jump_saved_pc_low);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_slt) * Expr::var(comparison_rel_or_jump_saved_pc_low);
         // second addend
         // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_low_constraint +=
-            Term::from(is_jal) * Term::from(common_constants::PC_STEP as u32);
-        add_like_low_constraint +=
-            Term::from(is_jalr) * Term::from(common_constants::PC_STEP as u32);
-        add_like_low_constraint += Term::from(is_branch) * rs2_low_c.clone();
-        add_like_low_constraint += Term::from(is_slt) * rs2_low_c.clone();
-        add_like_low_constraint += Term::from(is_slt) * Term::from(inputs.decoder_data.imm[0]);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_jal) * Expr::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_jalr) * Expr::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint =
+            add_like_low_constraint + Expr::from(is_branch) * Expr::var(rs2_limbs[0]);
+        add_like_low_constraint =
+            add_like_low_constraint + Expr::from(is_slt) * Expr::var(rs2_limbs[0]);
+        add_like_low_constraint =
+            add_like_low_constraint + Expr::from(is_slt) * Expr::var(inputs.decoder_data.imm[0]);
         // out-like var
-        add_like_low_constraint -=
-            Term::from(is_jal) * Term::from(comparison_rel_or_jump_saved_pc_low);
-        add_like_low_constraint -=
-            Term::from(is_jalr) * Term::from(comparison_rel_or_jump_saved_pc_low);
-        add_like_low_constraint -= Term::from(is_branch) * rs1_low_c.clone();
-        add_like_low_constraint -= Term::from(is_slt) * rs1_low_c.clone();
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_jal) * Expr::var(comparison_rel_or_jump_saved_pc_low);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_jalr) * Expr::var(comparison_rel_or_jump_saved_pc_low);
+        add_like_low_constraint =
+            add_like_low_constraint - Expr::from(is_branch) * Expr::var(rs1_limbs[0]);
+        add_like_low_constraint =
+            add_like_low_constraint - Expr::from(is_slt) * Expr::var(rs1_limbs[0]);
 
         // intermediate carry
-        add_like_low_constraint -=
-            Term::from(is_jal) * Term::from((carry_shift, add_rel_0_intermediate_of_var));
-        add_like_low_constraint -=
-            Term::from(is_jalr) * Term::from((carry_shift, add_rel_0_intermediate_of_var));
-        add_like_low_constraint -=
-            Term::from(is_branch) * Term::from((carry_shift, add_rel_0_intermediate_of_var));
-        add_like_low_constraint -=
-            Term::from(is_slt) * Term::from((carry_shift, add_rel_0_intermediate_of_var));
-        cs.add_constraint(add_like_low_constraint);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_jal)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_0_intermediate_of_var);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_jalr)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_0_intermediate_of_var);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_branch)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_0_intermediate_of_var);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_slt)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_0_intermediate_of_var);
+        cs.add_constraint_expr(add_like_low_constraint);
 
         // high part
-        let mut add_like_high_constraint = Constraint::empty();
+        let mut add_like_high_constraint = Expr::<F>::zero();
         // intermediate carry
-        add_like_high_constraint += Term::from(is_jal) * Term::from(add_rel_0_intermediate_of_var);
-        add_like_high_constraint += Term::from(is_jalr) * Term::from(add_rel_0_intermediate_of_var);
-        add_like_high_constraint +=
-            Term::from(is_branch) * Term::from(add_rel_0_intermediate_of_var);
-        add_like_high_constraint += Term::from(is_slt) * Term::from(add_rel_0_intermediate_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_jal) * Expr::var(add_rel_0_intermediate_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_jalr) * Expr::var(add_rel_0_intermediate_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_branch) * Expr::var(add_rel_0_intermediate_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_slt) * Expr::var(add_rel_0_intermediate_of_var);
         // first addend
-        add_like_high_constraint += Term::from(is_jal) * Term::from(inputs.cycle_start_state.pc[1]);
-        add_like_high_constraint +=
-            Term::from(is_jalr) * Term::from(inputs.cycle_start_state.pc[1]);
-        add_like_high_constraint +=
-            Term::from(is_branch) * Term::from(comparison_rel_or_jump_saved_pc_high);
-        add_like_high_constraint +=
-            Term::from(is_slt) * Term::from(comparison_rel_or_jump_saved_pc_high);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_jal) * Expr::var(inputs.cycle_start_state.pc[1]);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_jalr) * Expr::var(inputs.cycle_start_state.pc[1]);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_branch) * Expr::var(comparison_rel_or_jump_saved_pc_high);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_slt) * Expr::var(comparison_rel_or_jump_saved_pc_high);
         // second addend
         // NOTE: for additions we blindly mix imm and rs2 as preprocessing ensures that if imm !=0 then rs2 = x0
-        add_like_high_constraint += Term::from(is_branch) * rs2_high_c.clone();
-        add_like_high_constraint += Term::from(is_slt) * rs2_high_c.clone();
-        add_like_high_constraint += Term::from(is_slt) * Term::from(inputs.decoder_data.imm[1]);
+        add_like_high_constraint =
+            add_like_high_constraint + Expr::from(is_branch) * Expr::var(rs2_limbs[1]);
+        add_like_high_constraint =
+            add_like_high_constraint + Expr::from(is_slt) * Expr::var(rs2_limbs[1]);
+        add_like_high_constraint =
+            add_like_high_constraint + Expr::from(is_slt) * Expr::var(inputs.decoder_data.imm[1]);
         // out-like
-        add_like_high_constraint -=
-            Term::from(is_jal) * Term::from(comparison_rel_or_jump_saved_pc_high);
-        add_like_high_constraint -=
-            Term::from(is_jalr) * Term::from(comparison_rel_or_jump_saved_pc_high);
-        add_like_high_constraint -= Term::from(is_branch) * rs1_high_c.clone();
-        add_like_high_constraint -= Term::from(is_slt) * rs1_high_c.clone();
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_jal) * Expr::var(comparison_rel_or_jump_saved_pc_high);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_jalr) * Expr::var(comparison_rel_or_jump_saved_pc_high);
+        add_like_high_constraint =
+            add_like_high_constraint - Expr::from(is_branch) * Expr::var(rs1_limbs[1]);
+        add_like_high_constraint =
+            add_like_high_constraint - Expr::from(is_slt) * Expr::var(rs1_limbs[1]);
         // final carry
-        add_like_high_constraint -=
-            Term::from(is_jal) * Term::from((carry_shift, add_rel_0_final_of_var));
-        add_like_high_constraint -=
-            Term::from(is_jalr) * Term::from((carry_shift, add_rel_0_final_of_var));
-        add_like_high_constraint -=
-            Term::from(is_branch) * Term::from((carry_shift, add_rel_0_final_of_var));
-        add_like_high_constraint -=
-            Term::from(is_slt) * Term::from((carry_shift, add_rel_0_final_of_var));
-        cs.add_constraint(add_like_high_constraint);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_jal) * Expr::constant(carry_shift) * Expr::var(add_rel_0_final_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_jalr) * Expr::constant(carry_shift) * Expr::var(add_rel_0_final_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_branch)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_0_final_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_slt) * Expr::constant(carry_shift) * Expr::var(add_rel_0_final_of_var);
+        cs.add_constraint_expr(add_like_high_constraint);
     }
 
     // now we should compare the output result to 0,
@@ -457,10 +484,15 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // dispatch one-hot in `circuit.rs`), so gating only the rs2_high / slt_sign_source terms
     // by `is_fam2_sum()` keeps this degree 2 while the whole constraint still vanishes on
     // non-F2 rows (leaving the aliased slot free for Family 3).
-    cs.add_constraint(
-        is_fam2_sum() * Term::from(slt_sign_source)
-            - is_fam2_sum() * rs2_high_c.clone()
-            - Term::from(is_slt_var) * Term::from(imm_high_var),
+    cs.add_constraint_expr(
+        (Expr::from(is_jal) + Expr::from(is_jalr) + Expr::from(is_slt) + Expr::from(is_branch))
+            * Expr::var(slt_sign_source)
+            - (Expr::from(is_jal)
+                + Expr::from(is_jalr)
+                + Expr::from(is_slt)
+                + Expr::from(is_branch))
+                * Expr::var(rs2_limbs[1])
+            - Expr::var(is_slt_var) * Expr::var(imm_high_var),
     );
 
     // Second operand's sign bit, extracted from the sign source. The resolution table
@@ -675,9 +707,9 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     }
 
     // enforce the jump if branch value
-    cs.add_constraint(
-        Term::from(is_branch) * Term::from(should_jump_or_slt_value)
-            - Term::from(should_jump_if_branch),
+    cs.add_constraint_expr(
+        Expr::from(is_branch) * Expr::var(should_jump_or_slt_value)
+            - Expr::var(should_jump_if_branch),
     );
 
     // and the corresponding constraint
@@ -685,79 +717,106 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // and if we have `should_jump_or_slt_value` it'll indicate the value,
     // but not the presence of jump. That's why we added extra variable above
     {
-        let mut add_like_low_constraint = Constraint::empty();
+        let mut add_like_low_constraint = Expr::<F>::zero();
         // first addend - default case
-        add_like_low_constraint += Term::from(is_jal) * Term::from(inputs.cycle_start_state.pc[0]);
-        add_like_low_constraint += Term::from(is_jalr) * rs1_low_c.clone();
-        add_like_low_constraint +=
-            Term::from(is_branch) * Term::from(inputs.cycle_start_state.pc[0]);
-        add_like_low_constraint += Term::from(is_slt) * Term::from(inputs.cycle_start_state.pc[0]);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_jal) * Expr::var(inputs.cycle_start_state.pc[0]);
+        add_like_low_constraint =
+            add_like_low_constraint + Expr::from(is_jalr) * Expr::var(rs1_limbs[0]);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_branch) * Expr::var(inputs.cycle_start_state.pc[0]);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_slt) * Expr::var(inputs.cycle_start_state.pc[0]);
         // second addend
-        add_like_low_constraint += Term::from(is_jal) * Term::from(inputs.decoder_data.imm[0]);
-        add_like_low_constraint += Term::from(is_jalr) * Term::from(inputs.decoder_data.imm[0]);
-        add_like_low_constraint +=
-            Term::from(is_branch) * Term::from(common_constants::PC_STEP as u32);
-        add_like_low_constraint += Term::from(should_jump_if_branch)
-            * (Term::from(inputs.decoder_data.imm[0])
-                - Term::from(common_constants::PC_STEP as u32));
-        add_like_low_constraint +=
-            Term::from(is_slt) * Term::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint =
+            add_like_low_constraint + Expr::from(is_jal) * Expr::var(inputs.decoder_data.imm[0]);
+        add_like_low_constraint =
+            add_like_low_constraint + Expr::from(is_jalr) * Expr::var(inputs.decoder_data.imm[0]);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_branch) * Expr::from(common_constants::PC_STEP as u32);
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(should_jump_if_branch)
+                * (Expr::var(inputs.decoder_data.imm[0])
+                    - Expr::from(common_constants::PC_STEP as u32));
+        add_like_low_constraint = add_like_low_constraint
+            + Expr::from(is_slt) * Expr::from(common_constants::PC_STEP as u32);
         // out-like var
-        add_like_low_constraint -=
-            Term::from(is_jal) * Term::from(pc_intermediate_addition_tmp_low);
-        add_like_low_constraint -=
-            Term::from(is_jalr) * Term::from(pc_intermediate_addition_tmp_low);
-        add_like_low_constraint -=
-            Term::from(is_branch) * Term::from(pc_intermediate_addition_tmp_low);
-        add_like_low_constraint -=
-            Term::from(is_slt) * Term::from(pc_intermediate_addition_tmp_low);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_jal) * Expr::var(pc_intermediate_addition_tmp_low);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_jalr) * Expr::var(pc_intermediate_addition_tmp_low);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_branch) * Expr::var(pc_intermediate_addition_tmp_low);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_slt) * Expr::var(pc_intermediate_addition_tmp_low);
 
         // intermediate carry
-        add_like_low_constraint -=
-            Term::from(is_jal) * Term::from((carry_shift, add_rel_1_intermediate_of_var));
-        add_like_low_constraint -=
-            Term::from(is_jalr) * Term::from((carry_shift, add_rel_1_intermediate_of_var));
-        add_like_low_constraint -=
-            Term::from(is_branch) * Term::from((carry_shift, add_rel_1_intermediate_of_var));
-        add_like_low_constraint -=
-            Term::from(is_slt) * Term::from((carry_shift, add_rel_1_intermediate_of_var));
-        cs.add_constraint(add_like_low_constraint);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_jal)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_1_intermediate_of_var);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_jalr)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_1_intermediate_of_var);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_branch)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_1_intermediate_of_var);
+        add_like_low_constraint = add_like_low_constraint
+            - Expr::from(is_slt)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_1_intermediate_of_var);
+        cs.add_constraint_expr(add_like_low_constraint);
 
         // high part
-        let mut add_like_high_constraint = Constraint::empty();
+        let mut add_like_high_constraint = Expr::<F>::zero();
         // intermediate carry
-        add_like_high_constraint += Term::from(is_jal) * Term::from(add_rel_1_intermediate_of_var);
-        add_like_high_constraint += Term::from(is_jalr) * Term::from(add_rel_1_intermediate_of_var);
-        add_like_high_constraint +=
-            Term::from(is_branch) * Term::from(add_rel_1_intermediate_of_var);
-        add_like_high_constraint += Term::from(is_slt) * Term::from(add_rel_1_intermediate_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_jal) * Expr::var(add_rel_1_intermediate_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_jalr) * Expr::var(add_rel_1_intermediate_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_branch) * Expr::var(add_rel_1_intermediate_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_slt) * Expr::var(add_rel_1_intermediate_of_var);
         // first addend
-        add_like_high_constraint += Term::from(is_jal) * Term::from(inputs.cycle_start_state.pc[1]);
-        add_like_high_constraint += Term::from(is_jalr) * rs1_high_c.clone();
-        add_like_high_constraint +=
-            Term::from(is_branch) * Term::from(inputs.cycle_start_state.pc[1]);
-        add_like_high_constraint += Term::from(is_slt) * Term::from(inputs.cycle_start_state.pc[1]);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_jal) * Expr::var(inputs.cycle_start_state.pc[1]);
+        add_like_high_constraint =
+            add_like_high_constraint + Expr::from(is_jalr) * Expr::var(rs1_limbs[1]);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_branch) * Expr::var(inputs.cycle_start_state.pc[1]);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(is_slt) * Expr::var(inputs.cycle_start_state.pc[1]);
         // second addend
-        add_like_high_constraint += Term::from(is_jal) * Term::from(inputs.decoder_data.imm[1]);
-        add_like_high_constraint += Term::from(is_jalr) * Term::from(inputs.decoder_data.imm[1]);
-        add_like_high_constraint +=
-            Term::from(should_jump_if_branch) * Term::from(inputs.decoder_data.imm[1]);
+        add_like_high_constraint =
+            add_like_high_constraint + Expr::from(is_jal) * Expr::var(inputs.decoder_data.imm[1]);
+        add_like_high_constraint =
+            add_like_high_constraint + Expr::from(is_jalr) * Expr::var(inputs.decoder_data.imm[1]);
+        add_like_high_constraint = add_like_high_constraint
+            + Expr::from(should_jump_if_branch) * Expr::var(inputs.decoder_data.imm[1]);
         // out-like
-        add_like_high_constraint -= Term::from(is_jal) * Term::from(inputs.cycle_end_state.pc[1]);
-        add_like_high_constraint -= Term::from(is_jalr) * Term::from(inputs.cycle_end_state.pc[1]);
-        add_like_high_constraint -=
-            Term::from(is_branch) * Term::from(inputs.cycle_end_state.pc[1]);
-        add_like_high_constraint -= Term::from(is_slt) * Term::from(inputs.cycle_end_state.pc[1]);
+        add_like_high_constraint =
+            add_like_high_constraint - Expr::from(is_jal) * Expr::var(inputs.cycle_end_state.pc[1]);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_jalr) * Expr::var(inputs.cycle_end_state.pc[1]);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_branch) * Expr::var(inputs.cycle_end_state.pc[1]);
+        add_like_high_constraint =
+            add_like_high_constraint - Expr::from(is_slt) * Expr::var(inputs.cycle_end_state.pc[1]);
         // final carry
-        add_like_high_constraint -=
-            Term::from(is_jal) * Term::from((carry_shift, add_rel_1_final_of_var));
-        add_like_high_constraint -=
-            Term::from(is_jalr) * Term::from((carry_shift, add_rel_1_final_of_var));
-        add_like_high_constraint -=
-            Term::from(is_branch) * Term::from((carry_shift, add_rel_1_final_of_var));
-        add_like_high_constraint -=
-            Term::from(is_slt) * Term::from((carry_shift, add_rel_1_final_of_var));
-        cs.add_constraint(add_like_high_constraint);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_jal) * Expr::constant(carry_shift) * Expr::var(add_rel_1_final_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_jalr) * Expr::constant(carry_shift) * Expr::var(add_rel_1_final_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_branch)
+                * Expr::constant(carry_shift)
+                * Expr::var(add_rel_1_final_of_var);
+        add_like_high_constraint = add_like_high_constraint
+            - Expr::from(is_slt) * Expr::constant(carry_shift) * Expr::var(add_rel_1_final_of_var);
+        cs.add_constraint_expr(add_like_high_constraint);
     }
 
     // next_pc_bit_1 = bit 1 of pc_intermediate_addition_tmp_low. The JumpCleanupOffset
@@ -816,9 +875,9 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
 
     // unaligned jump is unprovable, and we only need to check bit number 1, as jump offset is always 0 mod 2,
     // and PC is 0 mod 4
-    cs.add_constraint(
-        (Constraint::from(is_jal) + Term::from(is_jalr) + Term::from(should_jump_if_branch))
-            * Term::from(next_pc_bit_1),
+    cs.add_constraint_expr(
+        (Expr::from(is_jal) + Expr::from(is_jalr) + Expr::var(should_jump_if_branch))
+            * Expr::from(next_pc_bit_1),
     );
 
     // Per-opcode rd-write helpers. JAL and JALR are merged into a single helper
@@ -869,46 +928,84 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // Helper-Boolean setup (deg 2 each).
     // is_jal_or_jalr_writes_rd = (is_jal + is_jalr) * (1 - rd_is_zero)
     // Rearranged: is_jal_or_jalr_writes_rd + (is_jal + is_jalr)*rd_is_zero - is_jal - is_jalr = 0
-    cs.add_constraint(
-        Constraint::from(is_jal_or_jalr_writes_rd)
-            + (Constraint::from(is_jal) + Term::from(is_jalr)) * Term::from(rd_is_zero)
-            - Term::from(is_jal)
-            - Term::from(is_jalr),
+    cs.add_constraint_expr(
+        Expr::from(is_jal_or_jalr_writes_rd)
+            + (Expr::from(is_jal) + Expr::from(is_jalr)) * Expr::from(rd_is_zero)
+            - Expr::from(is_jal)
+            - Expr::from(is_jalr),
     );
-    cs.add_constraint(
-        Constraint::from(is_slt_writes_rd) + Term::from(is_slt) * Term::from(rd_is_zero)
-            - Term::from(is_slt),
+    cs.add_constraint_expr(
+        Expr::from(is_slt_writes_rd) + Expr::from(is_slt) * Expr::from(rd_is_zero)
+            - Expr::from(is_slt),
     );
     // gate_fam2_rd_zero = (is_jal + is_jalr + is_slt + is_branch) * rd_is_zero  (deg 2)
-    cs.add_constraint(
-        Constraint::from(gate_fam2_rd_zero)
-            - (Constraint::from(is_jal)
-                + Term::from(is_jalr)
-                + Term::from(is_slt)
-                + Term::from(is_branch))
-                * Term::from(rd_is_zero),
+    cs.add_constraint_expr(
+        Expr::from(gate_fam2_rd_zero)
+            - (Expr::from(is_jal)
+                + Expr::from(is_jalr)
+                + Expr::from(is_slt)
+                + Expr::from(is_branch))
+                * Expr::from(rd_is_zero),
     );
 
-    // const {
-    //     assert!(
-    //         CS::ASSUME_MEMORY_VALUES_ASSIGNED,
-    //         "Family 2 rd-write witness path requires CS::ASSUME_MEMORY_VALUES_ASSIGNED = true; \
-    //          the no-ASSUME path is not implemented"
-    //     );
-    // }
+    // Self-generating witness contract (`ASSUME_MEMORY_VALUES_ASSIGNED ==
+    // false`): the oracle is trusted only for INPUTS (instruction, register /
+    // memory READ values, timestamps). Every family DERIVES its outputs — the
+    // shared rd/mem write-value columns — in its own value_fn, gated on that
+    // family's activity mask. The generic access resolver assigns
+    // the oracle's write value first only as a fallback; the family writers
+    // below overwrite it on their rows. The contract is pinned by
+    // `test_unified_witness_self_generates_write_values` (poisoned oracle).
+    //
+    // Family 2's derivation mirrors the constraints below: jal/jalr →
+    // saved_pc, slt → slt result (high limb 0), rd == x0 (incl. branches:
+    // B-type has no rd field, decode forces rd_index = 0) → (0, 0).
+    if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+        let is_jal_var = is_jal.expect_variable();
+        let is_jalr_var = is_jalr.expect_variable();
+        let is_slt_var = is_slt.expect_variable();
+        let is_branch_var = is_branch.expect_variable();
+        let jj_writes_var = is_jal_or_jalr_writes_rd.expect_variable();
+        let slt_writes_var = is_slt_writes_rd.expect_variable();
+        let saved_pc_low_var = comparison_rel_or_jump_saved_pc_low;
+        let saved_pc_high_var = comparison_rel_or_jump_saved_pc_high;
+        let slt_value_var = should_jump_or_slt_value;
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let is_jal_m = placer.get_boolean(is_jal_var);
+            let is_jalr_m = placer.get_boolean(is_jalr_var);
+            let is_slt_m = placer.get_boolean(is_slt_var);
+            let is_branch_m = placer.get_boolean(is_branch_var);
+            let any_f2 = is_jal_m.or(&is_jalr_m).or(&is_slt_m).or(&is_branch_m);
+            let jj_writes = placer.get_boolean(jj_writes_var);
+            let slt_writes = placer.get_boolean(slt_writes_var);
+
+            let saved_pc_low = placer.get_u16(saved_pc_low_var);
+            let saved_pc_high = placer.get_u16(saved_pc_high_var);
+            let slt_value = placer.get_u16(slt_value_var);
+
+            let mut low = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0u16);
+            low.assign_masked(&jj_writes, &saved_pc_low);
+            low.assign_masked(&slt_writes, &slt_value);
+            let mut high = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0u16);
+            high.assign_masked(&jj_writes, &saved_pc_high);
+
+            placer.conditionally_assign_u16(rd_write_limbs[0], &any_f2, &low);
+            placer.conditionally_assign_u16(rd_write_limbs[1], &any_f2, &high);
+        };
+        cs.set_values(value_fn);
+    }
 
     // Per-opcode rd-write constraints. Low limb: jal/jalr → saved_pc_low; slt → slt_value.
-    cs.add_constraint(
-        Term::from(is_jal_or_jalr_writes_rd) * Term::from(comparison_rel_or_jump_saved_pc_low)
-            + Term::from(is_slt_writes_rd) * Term::from(should_jump_or_slt_value)
-            - (Constraint::from(is_jal_or_jalr_writes_rd) + Term::from(is_slt_writes_rd))
-                * Term::from(rd_write_limbs[0]),
+    cs.add_constraint_expr(
+        Expr::from(is_jal_or_jalr_writes_rd) * Expr::var(comparison_rel_or_jump_saved_pc_low)
+            + Expr::from(is_slt_writes_rd) * Expr::var(should_jump_or_slt_value)
+            - (Expr::from(is_jal_or_jalr_writes_rd) + Expr::from(is_slt_writes_rd))
+                * Expr::var(rd_write_limbs[0]),
     );
     // High limb: jal/jalr write saved_pc_high.
-    cs.add_constraint(
-        Constraint::from(is_jal_or_jalr_writes_rd)
-            * (Constraint::from(comparison_rel_or_jump_saved_pc_high)
-                - Term::from(rd_write_limbs[1])),
+    cs.add_constraint_expr(
+        Expr::from(is_jal_or_jalr_writes_rd)
+            * (Expr::var(comparison_rel_or_jump_saved_pc_high) - Expr::var(rd_write_limbs[1])),
     );
     // Pin rd_write_limbs[1] = 0 when SLT writes rd (rd != 0). SLT's 0/1 result
     // fits in the low limb. The Family-2 rd-write rewrite from standalone's
@@ -918,11 +1015,11 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // is only bounded by the top-level 16-bit RC on rd_write_limbs[1], leaving
     // 16 bits attacker-controlled. The negative test
     // `slt_rd_write_high_limb_nonzero_rejected` pins this.
-    cs.add_constraint(Term::from(is_slt_writes_rd) * Term::from(rd_write_limbs[1]));
+    cs.add_constraint_expr(Expr::from(is_slt_writes_rd) * Expr::var(rd_write_limbs[1]));
 
     // rd_is_zero case: Family 2 fires with rd=0 forces rd_write = 0.
-    cs.add_constraint(Term::from(gate_fam2_rd_zero) * Term::from(rd_write_limbs[0]));
-    cs.add_constraint(Term::from(gate_fam2_rd_zero) * Term::from(rd_write_limbs[1]));
+    cs.add_constraint_expr(Expr::from(gate_fam2_rd_zero) * Expr::var(rd_write_limbs[0]));
+    cs.add_constraint_expr(Expr::from(gate_fam2_rd_zero) * Expr::var(rd_write_limbs[1]));
 
     vec![
         regiszero_request,

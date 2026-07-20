@@ -550,7 +550,7 @@ contract GKRVerifier {
         }
 
         // GKR→WHIR handoff: draw the 4 packing coords, merge the base-layer claims (mem++wit
-        // 106→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
+        // 104→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
         // opening, and mark_gkr_verified(keccak(preimage)) with preimage
         //   [seed:32][batching:16][opening:16][z = extra(4) ++ base_z(22) : 26·16][caps:2·CAP·32].
         function emit_gkr_mark(claim_v) {
