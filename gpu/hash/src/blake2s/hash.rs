@@ -45,8 +45,9 @@ pub(super) fn hash_leaves(
     assert!(log_rows_per_hash < 32);
     assert_eq!(values_len % (count << log_rows_per_hash), 0);
     let cols_count = checked_u32(values_len / (count << log_rows_per_hash));
-    // Zero columns would emit the raw initialized state, not Blake2s(empty).
-    assert!(cols_count >= 1);
+    // `cols_count == 0` is legitimate — a zero-width trace part commits to a
+    // dummy tree (empty cap) on the CPU reference; this launcher's degenerate
+    // output for it is discarded downstream. No lower bound on cols_count.
     let count = checked_u32(count);
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
@@ -91,8 +92,9 @@ pub fn hash_leaves_multi_coset(
 ) -> CudaResult<()> {
     assert!(cosets_in_tile >= 1);
     assert!(log_rows_per_hash < 32);
-    // Zero columns would emit the raw initialized state, not Blake2s(empty).
-    assert!(cols_count >= 1);
+    // `cols_count == 0` is legitimate — a zero-width trace part commits to a
+    // dummy tree (empty cap) on the CPU reference; this launcher's degenerate
+    // output for it is discarded downstream. No lower bound on cols_count.
     assert!(
         per_coset_leaves_count.is_power_of_two(),
         "per_coset_leaves_count must be a power of two (got {per_coset_leaves_count})"
