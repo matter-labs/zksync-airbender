@@ -68,6 +68,12 @@ pub fn smem_pool_bytes_per_sm() -> usize {
 
 /// Compute the smallest carveout percentage that accommodates a kernel's
 /// static shared memory at maximum occupancy.
+// `kernel` is an opaque CUDA `__global__` function handle handed to the runtime
+// (`cudaFuncGetAttributes` / `cudaOccupancyMaxActiveBlocksPerMultiprocessor`),
+// which validates it and returns an error for an invalid handle — it is never
+// dereferenced as data, so there is no UB precondition and marking this `unsafe`
+// would misrepresent the contract. Suppress the raw-pointer-arg lint.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn compute_minimal_carveout(kernel: *const c_void, block_size: i32, pool_bytes: usize) -> i32 {
     use era_cudart_sys::{
         cudaFuncGetAttributes, cudaOccupancyMaxActiveBlocksPerMultiprocessor, CudaFuncAttributes,
@@ -101,6 +107,10 @@ pub fn compute_minimal_carveout(kernel: *const c_void, block_size: i32, pool_byt
 }
 
 /// Set the preferred shared-memory carveout percentage for a kernel.
+// `kernel` is an opaque CUDA `__global__` handle (see `compute_minimal_carveout`):
+// runtime-validated via `cudaFuncSetAttribute`, never dereferenced as data — no UB
+// precondition, so `unsafe` would misrepresent the contract.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn set_shared_carveout(kernel: *const c_void, pct: i32) {
     use era_cudart_sys::CudaFuncAttribute;
     // SAFETY: `kernel` is a valid `__global__` function pointer; the attribute and value
