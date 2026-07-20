@@ -7,7 +7,8 @@ use crate::bwd::distill::DistilledLayer;
 use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, plan_entries_fnv};
 use crate::bwd::trace::{BwdEvent, positioned_physical_traffic_events};
 use crate::bwd::trace::{BwdFingerprint, BwdServeKind};
-use crate::eval_plan::backward::CompiledBackwardEvaluation;
+use crate::eval_plan::PlanError;
+use crate::eval_plan::backward::{BackwardEvaluationError, CompiledBackwardEvaluation};
 use crate::eval_plan::search_driver::{
     SearchAdapter, SearchDriverConfig, SearchDriverError, SearchDriverOutcome, StableRng,
     run_search_driver,
@@ -1233,14 +1234,41 @@ fn run_incumbent_reference(
         budget_cells,
         incumbent.plan.stream_reductions,
     )?;
-    let candidate =
-        compile_and_score_occurrence_plan(d, &problem, &incumbent.plan, &incumbent.order, 0)?;
+    let candidate = match compile_and_score_occurrence_plan(
+        d,
+        &problem,
+        &incumbent.plan,
+        &incumbent.order,
+        0,
+    ) {
+        Ok(candidate) => candidate,
+        Err(error) if incumbent_backend_incompatibility(&error) => {
+            let mut unavailable = classified_arm(
+                ExperimentArm::Incumbent,
+                ArmClassification::UnavailableIncumbent,
+            );
+            unavailable.wall_time = started.elapsed();
+            return Ok(unavailable);
+        }
+        Err(error) => return Err(error),
+    };
     accepted_candidate_to_reference_result(
         d,
         &problem,
         candidate,
         incumbent.order.clone(),
         started.elapsed(),
+    )
+}
+
+fn incumbent_backend_incompatibility(error: &BackwardSearchError) -> bool {
+    matches!(
+        error,
+        BackwardSearchError::PagingReplayRefused { .. }
+            | BackwardSearchError::PlacementIntegrationFailure
+            | BackwardSearchError::BackwardEvaluation(BackwardEvaluationError::Plan(
+                PlanError::ReplayInfeasible
+            ))
     )
 }
 
@@ -2231,16 +2259,17 @@ mod tests {
     use crate::bwd::price::compound_batch_plan;
     use crate::bwd::trace::{BwdEvent, positioned_physical_traffic_events};
     use crate::eval_plan::search_driver::{SearchAdapter, StableRng};
+    use crate::eval_plan::{BackwardEvaluationError, PlanError};
 
-    use super::super::SourceCost;
     use super::super::replay::reprice_source_read;
+    use super::super::{BackwardSearchError, SourceCost};
     use super::{
         AcceptedIncumbent, ArmClassification, BackwardAdapter, BackwardGenome, BackwardSearchArm,
         EscalationStep, ExperimentReport, InstanceKey, InstanceMetrics, InstanceResult,
         RoundProfile, SeededAdapter, build_backward_search_problem, build_problem_for_order,
-        escalation_tiers, exact_from_plan, joint_seed_from_arm2, paging_seed, render_markdown,
-        round_profiles, run_escalation_schedule, run_instance, run_instance_with_pager_cap,
-        run_tier, tier_search_config,
+        escalation_tiers, exact_from_plan, incumbent_backend_incompatibility, joint_seed_from_arm2,
+        paging_seed, render_markdown, round_profiles, run_escalation_schedule, run_instance,
+        run_instance_with_pager_cap, run_tier, tier_search_config,
     };
 
     #[test]
@@ -2648,6 +2677,29 @@ mod tests {
         ));
         assert_eq!(c2.incumbent.evaluations, 0);
         assert_eq!(c3.incumbent.evaluations, 0);
+    }
+
+    #[test]
+    fn incumbent_unavailability_accepts_only_backend_schedule_incompatibility() {
+        for error in [
+            BackwardSearchError::PagingReplayRefused { count: 1 },
+            BackwardSearchError::PlacementIntegrationFailure,
+            BackwardSearchError::BackwardEvaluation(BackwardEvaluationError::Plan(
+                PlanError::ReplayInfeasible,
+            )),
+        ] {
+            assert!(incumbent_backend_incompatibility(&error));
+        }
+        for error in [
+            BackwardSearchError::PagingReplayDiverged { at_entry: 3 },
+            BackwardSearchError::PagingCertificateMismatch { observable: "test" },
+            BackwardSearchError::BackwardEvaluation(BackwardEvaluationError::StaleReplayEpoch {
+                expected: 1,
+                actual: 2,
+            }),
+        ] {
+            assert!(!incumbent_backend_incompatibility(&error));
+        }
     }
 
     #[test]

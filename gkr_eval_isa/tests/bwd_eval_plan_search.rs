@@ -166,6 +166,54 @@ fn plan3_inits_and_teardowns_r0_c2_classifies() {
 }
 
 #[test]
+#[ignore = "Plan 3 unsigned-mul-div Ext c4 replay regression"]
+fn plan3_unsigned_mul_div_l1_ext_c4_classifies() {
+    let fixture = "unsigned_mul_div_layout_gkr.json";
+    let artifact = common::load_fixture(fixture);
+    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+        .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
+    let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
+        .find(|(layer_index, _, _)| *layer_index == 1)
+        .expect("unsigned-mul-div has backward layer one");
+    let distilled = distill(&layer, BwdRegime::Ext, &cross, None);
+    let current =
+        gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+    let incumbent = current
+        .fragment_order
+        .zip(current.plan)
+        .map(|(order, plan)| AcceptedIncumbent { order, plan });
+    assert!(
+        incumbent.is_some(),
+        "fixture must expose its production incumbent"
+    );
+    let result = run_instance(
+        fixture,
+        layer_index,
+        &layer,
+        &distilled,
+        dag.globals.trace_len,
+        4,
+        incumbent.as_ref(),
+    )
+    .expect("unsigned-mul-div L1 Ext c4 must classify or succeed");
+    assert_eq!(result.key.budget_cells, 4);
+    assert_eq!(result.key.regime, BwdRegime::Ext);
+    assert!(matches!(
+        result.incumbent.classification,
+        ArmClassification::UnavailableIncumbent
+    ));
+    for arm in [&result.arm1, &result.arm2, &result.arm3, &result.arm4] {
+        assert!(matches!(arm.classification, ArmClassification::Searched));
+        assert!(arm.score.is_some());
+    }
+    assert_eq!(result.certificate_failures(), 0);
+    let report = ExperimentReport::from_instances(vec![result]);
+    assert_eq!(report.incumbent_comparable, 0);
+    assert_eq!(report.counts_by_budget[&4].matching_incumbent, 0);
+    assert_eq!(report.paged_computed, 1);
+}
+
+#[test]
 fn backward_uncached_and_replay_share_leaf_only_fused_stream() {
     let mut layer = common::synthetic_fma_compound_products_layer(1, 2).layer;
     let products = layer
