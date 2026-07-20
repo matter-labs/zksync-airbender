@@ -9,8 +9,6 @@ if (NOT DEFINED AB_CUDA_CMAKE_DIR)
 endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 add_library(gpu_ops_native STATIC
-        batch_inv.cu
-        batch_inv.cuh
         bit_reverse.cu
         powers.cu
         simple.cu

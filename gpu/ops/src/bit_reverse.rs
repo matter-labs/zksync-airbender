@@ -84,8 +84,8 @@ pub(crate) trait BitReverse: Sized {
 /// equal-sized kernel payload and dispatched to the matching kernel. Supported
 /// element sizes are 4, 16, and 32 bytes (the instantiations in
 /// `native/bit_reverse.cu`); any other size panics. Callers therefore need no
-/// per-type `impl` — e.g. a blake2s digest (`[u32; 8]`, 32 bytes) and any other
-/// 32-byte POD share the same path.
+/// per-type `impl` — e.g. any 32-byte POD such as `[u32; 8]` shares the same
+/// path.
 pub fn bit_reverse_in_place<T>(
     values: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
     stream: &CudaStream,
@@ -213,7 +213,7 @@ mod tests {
     use itertools::Itertools;
     use rand::rng;
 
-    pub(crate) fn bit_reverse<T: BitReverse>(
+    fn bit_reverse<T: BitReverse>(
         src: &(impl DeviceMatrixChunkImpl<T> + ?Sized),
         dst: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
         stream: &CudaStream,
@@ -247,7 +247,7 @@ mod tests {
         }
     }
 
-    // 32-byte element path (the `[u32; 8]` impl; what `gpu_hash`'s digest uses).
+    // 32-byte element path — the `[u32; 8]` impl (the canonical 32-byte POD for this size class).
     impl BitReverseTest for [u32; 8] {
         fn rand(rng: &mut impl rand::Rng) -> Self {
             std::array::from_fn(|_| BF::random_element(rng).0)
@@ -342,5 +342,40 @@ mod tests {
         stream.synchronize().unwrap();
         bitreverse_enumeration_inplace(&mut host);
         assert_eq!(host, device_back);
+    }
+
+    /// `rows == 1` regression guard: `is_power_of_two()` is true and
+    /// `log_count == 0`, so bit-reversal permutes a single row within each
+    /// column, which is the identity. The generic `test_bit_reverse` helper's
+    /// oracle (`i.reverse_bits() >> (usize::BITS - LOG_ROWS)`) would shift by
+    /// `usize::BITS` here and panic/overflow, so this is a bespoke identity
+    /// check instead of a reuse of that helper.
+    fn test_bit_reverse_rows_1<T: BitReverseTest>() {
+        const COLS: usize = 4;
+        let h_src = (0..COLS).map(|_| T::rand(&mut rng())).collect_vec();
+        let stream = CudaStream::default();
+        let mut d_values = DeviceAllocation::alloc(COLS).unwrap();
+        memory_copy_async(&mut d_values, &h_src, &stream).unwrap();
+        let mut matrix = DeviceMatrixMut::new(&mut d_values, 1); // rows = 1
+        bit_reverse_in_place(&mut matrix, &stream).unwrap();
+        let mut h_dst = vec![T::default(); COLS];
+        memory_copy_async(&mut h_dst, &d_values, &stream).unwrap();
+        stream.synchronize().unwrap();
+        assert_eq!(h_src, h_dst); // rows==1 ⇒ identity permutation
+    }
+
+    #[test]
+    fn bit_reverse_rows_1_bf() {
+        test_bit_reverse_rows_1::<BF>();
+    }
+
+    #[test]
+    fn bit_reverse_rows_1_e4() {
+        test_bit_reverse_rows_1::<E4>();
+    }
+
+    #[test]
+    fn bit_reverse_rows_1_b256() {
+        test_bit_reverse_rows_1::<[u32; 8]>();
     }
 }

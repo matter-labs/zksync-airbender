@@ -76,7 +76,6 @@ where
             crate::ops::powers::get_powers_by_ref::<E4>(
                 &batching_e4[0],
                 0,
-                false,
                 dst_e4,
                 context.get_exec_stream(),
             )?;
