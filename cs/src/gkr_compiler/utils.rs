@@ -362,14 +362,6 @@ pub(crate) fn layout_delegation_circuit_state<F: PrimeField>(
     }
 }
 
-pub trait DependentNode<F: PrimeField> {
-    fn add_dependencies_into(
-        &self,
-        graph: &mut dyn graph::GraphHolder<F>,
-        dst: &mut Vec<graph::NodeIndex>,
-    );
-}
-
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AddressSpaceIsRegisterOrRamRaw {
     IsRegister(Variable),
@@ -606,7 +598,7 @@ impl NoFieldSpecialMemoryContributionRelation {
             &CompiledAddressStrict::U32SpaceSpecialIndirect {
                 low_base,
                 low_dynamic_offset,
-                low_offset,
+                low_offset: _,
                 high,
             } => {
                 result.insert(GKRAddress::BaseLayerMemory(low_base));

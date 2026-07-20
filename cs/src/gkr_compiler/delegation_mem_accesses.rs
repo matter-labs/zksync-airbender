@@ -280,7 +280,7 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
             let indirect_read_value_vars = indirect_read_value;
             let indirect_read_value = {
                 let read_value = graph.layout_memory_subtree_multiple_variables(
-                    indirect_read_value,
+                    indirect_read_value_vars,
                     all_variables_to_place,
                     layers_mapping,
                 );

@@ -177,7 +177,7 @@ impl CompiledAddressStrict {
             Self::U32SpaceSpecialIndirect {
                 low_base,
                 low_dynamic_offset,
-                low_offset,
+                low_offset: _,
                 high,
             } => {
                 let mut result = Vec::with_capacity(3);

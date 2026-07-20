@@ -207,17 +207,10 @@ impl<F: PrimeField> GKRCompiler<F> {
             all_variables_to_place.insert(Variable(variable_idx));
         }
 
-        let mut range_check_expressions = range_check_expressions;
-        // let (shuffle_ram_inits_and_teardowns, lazy_init_aux_set) =
-        //     Self::compile_inits_and_teardowns(
-        //         num_inits_and_teardowns,
-        //         &mut boolean_vars,
-        //         &mut range_check_expressions,
-        //         &mut num_variables,
-        //         &mut memory_tree_offset,
-        //         &mut all_variables_to_place,
-        //         &mut layout,
-        //     );
+        let range_check_expressions = range_check_expressions;
+        // NOTE: we do not need to add extra range checks due to inits/teardowns anymore, as
+        // lowest bits of address are coming from virtual setup,
+        // and teardown values and timestamps are range checked by induction
 
         let mut ram_access_sets = vec![];
 
@@ -408,23 +401,22 @@ impl<F: PrimeField> GKRCompiler<F> {
 
                         RamWordRepresentation::U16Limbs(write_value)
                     }
-
-                    WordRepresentation::U8Limbs(write_value) => {
+                    WordRepresentation::U8Limbs(_write_value) => {
                         unreachable!();
-                        let write_value = graph.layout_memory_subtree_multiple_variables(
-                            write_value,
-                            &mut all_variables_to_place,
-                            &layers_mapping,
-                        );
-                        let write_value = write_value.map(|el| {
-                            let GKRAddress::BaseLayerMemory(el) = el else {
-                                unreachable!()
-                            };
+                        // let write_value = graph.layout_memory_subtree_multiple_variables(
+                        //     write_value,
+                        //     &mut all_variables_to_place,
+                        //     &layers_mapping,
+                        // );
+                        // let write_value = write_value.map(|el| {
+                        //     let GKRAddress::BaseLayerMemory(el) = el else {
+                        //         unreachable!()
+                        //     };
 
-                            el
-                        });
+                        //     el
+                        // });
 
-                        RamWordRepresentation::U8Limbs(write_value)
+                        // RamWordRepresentation::U8Limbs(write_value)
                     }
                 };
                 let query_columns = RamWriteQuery {
