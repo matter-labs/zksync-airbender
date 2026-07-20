@@ -1,7 +1,7 @@
 use crate::simple::{Add, BinaryOp, Mul, ParametrizedOp, Pow, SetByRef, SetByVal, Sub};
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
-use gpu_core::primitives::field::{BF, E2, E4, E6};
+use gpu_core::primitives::field::{BF, E4};
 
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
@@ -25,18 +25,8 @@ fn set_by_val_bf() {
 }
 
 #[test]
-fn set_by_val_e2() {
-    set_by_val::<E2, 19>();
-}
-
-#[test]
 fn set_by_val_e4() {
     set_by_val::<E4, 18>();
-}
-
-#[test]
-fn set_by_val_e6() {
-    set_by_val::<E6, 18>();
 }
 
 fn set_by_ref<T: Field + SetByVal + SetByRef, const LOG_N: u32>() {
@@ -60,18 +50,8 @@ fn set_by_ref_bf() {
 }
 
 #[test]
-fn set_by_ref_e2() {
-    set_by_ref::<E2, 19>();
-}
-
-#[test]
 fn set_by_ref_e4() {
     set_by_ref::<E4, 18>();
-}
-
-#[test]
-fn set_by_ref_e6() {
-    set_by_ref::<E6, 18>();
 }
 
 fn set_to_zero<T: Field, const LOG_N: u32>() {
@@ -89,11 +69,6 @@ fn set_to_zero<T: Field, const LOG_N: u32>() {
 #[test]
 fn set_to_zero_bf() {
     set_to_zero::<BF, 20>();
-}
-
-#[test]
-fn set_to_zero_e2() {
-    set_to_zero::<E2, 19>();
 }
 
 #[test]
@@ -165,18 +140,8 @@ fn add_bf() {
 }
 
 #[test]
-fn add_e2() {
-    add::<E2, 9>(&E2_VALUES);
-}
-
-#[test]
 fn add_e4() {
     add::<E4, 8>(&E4_VALUES);
-}
-
-#[test]
-fn add_e6() {
-    add::<E6, 8>(&E6_VALUES);
 }
 
 fn add_into_x<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -194,18 +159,8 @@ fn add_into_x_bf() {
 }
 
 #[test]
-fn add_into_x_e2() {
-    add_into_x::<E2, 9>(&E2_VALUES);
-}
-
-#[test]
 fn add_into_x_e4() {
     add_into_x::<E4, 8>(&E4_VALUES);
-}
-
-#[test]
-fn add_into_x_e6() {
-    add_into_x::<E6, 8>(&E6_VALUES);
 }
 
 fn add_into_y<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -225,18 +180,8 @@ fn add_into_y_bf() {
 }
 
 #[test]
-fn add_into_y_e2() {
-    add_into_y::<E2, 9>(&E2_VALUES);
-}
-
-#[test]
 fn add_into_y_e4() {
     add_into_y::<E4, 8>(&E4_VALUES);
-}
-
-#[test]
-fn add_into_y_e6() {
-    add_into_y::<E6, 8>(&E6_VALUES);
 }
 
 fn mul<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -254,18 +199,8 @@ fn mul_bf() {
 }
 
 #[test]
-fn mul_e2() {
-    mul::<E2, 9>(&E2_VALUES);
-}
-
-#[test]
 fn mul_e4() {
     mul::<E4, 8>(&E4_VALUES);
-}
-
-#[test]
-fn mul_e6() {
-    mul::<E6, 8>(&E6_VALUES);
 }
 
 fn mul_into_x<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -283,18 +218,8 @@ fn mul_into_x_bf() {
 }
 
 #[test]
-fn mul_into_x_e2() {
-    mul_into_x::<E2, 9>(&E2_VALUES);
-}
-
-#[test]
 fn mul_into_x_e4() {
     mul_into_x::<E4, 8>(&E4_VALUES);
-}
-
-#[test]
-fn mul_into_x_e6() {
-    mul_into_x::<E6, 8>(&E6_VALUES);
 }
 
 fn mul_into_y<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -314,18 +239,8 @@ fn mul_into_y_bf() {
 }
 
 #[test]
-fn mul_into_y_e2() {
-    mul_into_y::<E2, 9>(&E2_VALUES);
-}
-
-#[test]
 fn mul_into_y_e4() {
     mul_into_y::<E4, 8>(&E4_VALUES);
-}
-
-#[test]
-fn mul_into_y_e6() {
-    mul_into_y::<E6, 8>(&E6_VALUES);
 }
 
 fn sub<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -343,18 +258,8 @@ fn sub_bf() {
 }
 
 #[test]
-fn sub_e2() {
-    sub::<E2, 9>(&E2_VALUES);
-}
-
-#[test]
 fn sub_e4() {
     sub::<E4, 8>(&E4_VALUES);
-}
-
-#[test]
-fn sub_e6() {
-    sub::<E6, 8>(&E6_VALUES);
 }
 
 fn sub_into_x<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -372,18 +277,8 @@ fn sub_into_x_bf() {
 }
 
 #[test]
-fn sub_into_x_e2() {
-    sub_into_x::<E2, 9>(&E2_VALUES);
-}
-
-#[test]
 fn sub_into_x_e4() {
     sub_into_x::<E4, 8>(&E4_VALUES);
-}
-
-#[test]
-fn sub_into_x_e6() {
-    sub_into_x::<E6, 8>(&E6_VALUES);
 }
 
 fn sub_into_y<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -403,18 +298,8 @@ fn sub_into_y_bf() {
 }
 
 #[test]
-fn sub_into_y_e2() {
-    sub_into_y::<E2, 9>(&E2_VALUES);
-}
-
-#[test]
 fn sub_into_y_e4() {
     sub_into_y::<E4, 8>(&E4_VALUES);
-}
-
-#[test]
-fn sub_into_y_e6() {
-    sub_into_y::<E6, 8>(&E6_VALUES);
 }
 
 #[test]

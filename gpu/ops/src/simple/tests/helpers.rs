@@ -2,7 +2,7 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use gpu_core::primitives::field::{BF, E2, E4, E6};
+use gpu_core::primitives::field::{BF, E2, E4};
 
 use crate::upstream::Field;
 use itertools::Itertools;
@@ -215,15 +215,6 @@ pub(super) const E4_VALUES: [E4; 6] = [
     E4::new(E2_VALUES[3], E2_VALUES[3]),
     E4::new(E2_VALUES[4], E2_VALUES[4]),
     E4::new(E2_VALUES[5], E2_VALUES[5]),
-];
-
-pub(super) const E6_VALUES: [E6; 6] = [
-    E6::new(E2_VALUES[0], E2_VALUES[0], E2_VALUES[0]),
-    E6::new(E2_VALUES[1], E2_VALUES[1], E2_VALUES[1]),
-    E6::new(E2_VALUES[2], E2_VALUES[2], E2_VALUES[2]),
-    E6::new(E2_VALUES[3], E2_VALUES[3], E2_VALUES[3]),
-    E6::new(E2_VALUES[4], E2_VALUES[4], E2_VALUES[4]),
-    E6::new(E2_VALUES[5], E2_VALUES[5], E2_VALUES[5]),
 ];
 
 pub(super) fn get_values<T: Field>(count: usize, additional_values: &[T]) -> Vec<T> {

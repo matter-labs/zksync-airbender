@@ -10,7 +10,7 @@ use gpu_core::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStrideWrappingMatrix,
     PtrAndStrideWrappingMatrix,
 };
-use gpu_core::primitives::field::{BF, E2, E4, E6};
+use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 pub fn set_to_zero<T>(result: &mut DeviceSlice<T>, stream: &CudaStream) -> CudaResult<()> {
@@ -77,9 +77,7 @@ macro_rules! set_by_val_impl {
 set_by_val_impl!(u32);
 set_by_val_impl!(u64);
 set_by_val_impl!(BF);
-set_by_val_impl!(E2);
 set_by_val_impl!(E4);
-set_by_val_impl!(E6);
 
 // SET_BY_REF_KERNEL
 cuda_kernel_signature_arguments_and_function!(
@@ -135,9 +133,7 @@ macro_rules! set_by_ref_impl {
 set_by_ref_impl!(u32);
 set_by_ref_impl!(u64);
 set_by_ref_impl!(BF);
-set_by_ref_impl!(E2);
 set_by_ref_impl!(E4);
-set_by_ref_impl!(E6);
 
 // PARAMETRIZED_KERNEL
 cuda_kernel_signature_arguments_and_function!(
@@ -230,9 +226,7 @@ macro_rules! parametrized_ops_impl {
 }
 
 parametrized_ops_impl!(BF);
-parametrized_ops_impl!(E2);
 parametrized_ops_impl!(E4);
-parametrized_ops_impl!(E6);
 
 // BINARY_KERNEL
 cuda_kernel_signature_arguments_and_function!(
@@ -380,10 +374,8 @@ macro_rules! binary_ops_impl {
 
 binary_ops_impl!(BF, BF, BF);
 binary_ops_impl!(BF, E4, E4);
-binary_ops_impl!(E2, E2, E2);
 binary_ops_impl!(E4, BF, E4);
 binary_ops_impl!(E4, E4, E4);
-binary_ops_impl!(E6, E6, E6);
 
 #[cfg(test)]
 mod tests;

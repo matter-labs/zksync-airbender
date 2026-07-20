@@ -16,17 +16,9 @@ using bf_value_getter = value_getter<bf>;
 using bf_getter = wrapping_matrix_getter<bf_matrix_getter<ld_modifier::cs>>;
 using bf_setter = wrapping_matrix_setter<bf_matrix_setter<st_modifier::cs>>;
 
-using e2_value_getter = value_getter<e2>;
-using e2_getter = wrapping_matrix_getter<e2_matrix_getter<ld_modifier::cs>>;
-using e2_setter = wrapping_matrix_setter<e2_matrix_setter<st_modifier::cs>>;
-
 using e4_value_getter = value_getter<e4>;
 using e4_getter = wrapping_matrix_getter<e4_matrix_getter<ld_modifier::cs>>;
 using e4_setter = wrapping_matrix_setter<e4_matrix_setter<st_modifier::cs>>;
-
-using e6_value_getter = value_getter<e6>;
-using e6_getter = wrapping_matrix_getter<e6_matrix_getter<ld_modifier::cs>>;
-using e6_setter = wrapping_matrix_setter<e6_matrix_setter<st_modifier::cs>>;
 
 using u32_value_getter = value_getter<u32>;
 using u32_getter = wrapping_matrix_getter<matrix_getter<u32, ld_modifier::cs>>;
@@ -71,9 +63,7 @@ template <class T> DEVICE_FORCEINLINE T return_value(const T x) { return x; }
 SET_BY_VAL_KERNEL(u32)
 SET_BY_VAL_KERNEL(u64)
 SET_BY_VAL_KERNEL(bf)
-SET_BY_VAL_KERNEL(e2)
 SET_BY_VAL_KERNEL(e4)
-SET_BY_VAL_KERNEL(e6)
 
 #define SET_BY_REF_KERNEL(arg_t)                                                                                                                               \
   EXTERN __global__ void ab_set_by_ref_##arg_t##_kernel(const arg_t##_getter arg, arg_t##_setter result) { unary_op(return_value, arg, result); }
@@ -81,9 +71,7 @@ SET_BY_VAL_KERNEL(e6)
 SET_BY_REF_KERNEL(u32)
 SET_BY_REF_KERNEL(u64)
 SET_BY_REF_KERNEL(bf)
-SET_BY_REF_KERNEL(e2)
 SET_BY_REF_KERNEL(e4)
-SET_BY_REF_KERNEL(e6)
 
 #define PARAMETRIZED_KERNEL(op, arg_t)                                                                                                                         \
   EXTERN __global__ void ab_##op##_##arg_t##_kernel(const arg_t##_getter arg, const u32_value_getter parameter, arg_t##_setter result) {                       \
@@ -91,9 +79,7 @@ SET_BY_REF_KERNEL(e6)
   }
 
 PARAMETRIZED_KERNEL(pow, bf)
-PARAMETRIZED_KERNEL(pow, e2)
 PARAMETRIZED_KERNEL(pow, e4)
-PARAMETRIZED_KERNEL(pow, e6)
 
 #define BINARY_KERNEL(op, arg0_t, arg1_t, result_t)                                                                                                            \
   EXTERN __global__ void ab_##op##_##arg0_t##_##arg1_t##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, result_t##_setter result) {            \
@@ -101,22 +87,16 @@ PARAMETRIZED_KERNEL(pow, e6)
   }
 
 BINARY_KERNEL(add, bf, bf, bf)
-BINARY_KERNEL(add, e2, e2, e2)
 BINARY_KERNEL(add, bf, e4, e4)
 BINARY_KERNEL(add, e4, bf, e4)
 BINARY_KERNEL(add, e4, e4, e4)
-BINARY_KERNEL(add, e6, e6, e6)
 BINARY_KERNEL(mul, bf, bf, bf)
-BINARY_KERNEL(mul, e2, e2, e2)
 BINARY_KERNEL(mul, bf, e4, e4)
 BINARY_KERNEL(mul, e4, bf, e4)
 BINARY_KERNEL(mul, e4, e4, e4)
-BINARY_KERNEL(mul, e6, e6, e6)
 BINARY_KERNEL(sub, bf, bf, bf)
-BINARY_KERNEL(sub, e2, e2, e2)
 BINARY_KERNEL(sub, bf, e4, e4)
 BINARY_KERNEL(sub, e4, bf, e4)
 BINARY_KERNEL(sub, e4, e4, e4)
-BINARY_KERNEL(sub, e6, e6, e6)
 
 } // namespace airbender::ops::simple
