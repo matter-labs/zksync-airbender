@@ -207,7 +207,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
             still_alive
         });
 
-        search_step::<8>(
+        search_step::<F, 8>(
             layer,
             0,
             vec![gate_idx],
@@ -222,8 +222,8 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
     dbg!(&reports);
 }
 
-fn search_step<const MAX_CANDIDATES: usize>(
-    layer: &GKRLayerDescription,
+fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
+    layer: &GKRLayerDescription<F>,
     epoch: usize,
     chain: Vec<usize>, // chain of gates
     all_live_variables: BTreeMap<GKRAddress, usize>,
@@ -306,7 +306,7 @@ fn search_step<const MAX_CANDIDATES: usize>(
     let mut candidates_via_reuse: Vec<_> = reuse_stats.into_iter().collect();
     candidates_via_reuse.sort_by(|(a_gate, a_reuses), (b_gate, b_reuses)| {
         let t = a_reuses.cmp(b_reuses).reverse();
-        if t == Ordering::Equal {
+        if t == std::cmp::Ordering::Equal {
             a_gate.cmp(b_gate)
         } else {
             t
@@ -357,7 +357,7 @@ fn search_step<const MAX_CANDIDATES: usize>(
     let mut candidates_from_elimination: Vec<_> = elimination_stats.into_iter().collect();
     candidates_from_elimination.sort_by(|(a_gate, a_left_alive), (b_gate, b_left_alive)| {
         let t = a_left_alive.cmp(b_left_alive);
-        if t == Ordering::Equal {
+        if t == std::cmp::Ordering::Equal {
             a_gate.cmp(b_gate)
         } else {
             t
@@ -411,7 +411,7 @@ fn search_step<const MAX_CANDIDATES: usize>(
             continue;
         }
 
-        search_step::<MAX_CANDIDATES>(
+        search_step::<F, MAX_CANDIDATES>(
             layer,
             epoch,
             new_chain,

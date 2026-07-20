@@ -352,7 +352,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::MaxQuadratic { input, output } => {
+            NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
                 let challenges = [get_challenge()];
                 Self::MaxQuadratic(
                     MaxQuadraticGKRRelation::new(input, *output),
@@ -495,7 +495,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 let challenges = [get_challenge()];
                 Self::EnforceSingleMaxQuadraticConstraint(
                     EnforceSingleMaxQuadraticConstraintGKRRelation {
