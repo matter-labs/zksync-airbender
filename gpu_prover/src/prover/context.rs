@@ -48,34 +48,12 @@ impl Default for ProverContextConfig {
     fn default() -> Self {
         Self {
             powers_of_w_coarse_log_count: 12,
-            allocator_block_log_size: 20, // 1 MB blocks
-            // The slack is VRAM left outside the pool for driver-side runtime needs
-            // (kernel local memory etc.). On tightly-sized GPUs (a 24 GB L4 running
-            // the full V8 unrolled prover needs ~23.2 GB of pool and the default
-            // ~300 MB of slack leaves it ~55 MB short) the env overrides let ops
-            // trade slack for pool without a rebuild.
-            device_slack_static_bytes: env_override(
-                "GPU_PROVER_DEVICE_SLACK_STATIC_BYTES",
-                1 << 27, // 128 MB static slack
-            ),
-            device_slack_per_thread_bytes: env_override(
-                "GPU_PROVER_DEVICE_SLACK_PER_THREAD_BYTES",
-                1 << 11, // 2 KB per thread slack
-            ),
+            allocator_block_log_size: 20,             // 1 MB blocks
+            device_slack_static_bytes: 1 << 27,       // 128 MB static slack
+            device_slack_per_thread_bytes: 1 << 11,   // 2 KB per thread slack
             max_device_allocation_blocks_count: None, // use all available memory
             host_allocator_blocks_count: 1024,        // 1 GB host allocator pool
         }
-    }
-}
-
-/// Reads a `usize` override from the environment; a set-but-unparsable value is a
-/// configuration error worth failing fast on.
-fn env_override(name: &str, default: usize) -> usize {
-    match std::env::var(name) {
-        Ok(value) => value
-            .parse()
-            .unwrap_or_else(|e| panic!("invalid {name}={value}: {e}")),
-        Err(_) => default,
     }
 }
 
