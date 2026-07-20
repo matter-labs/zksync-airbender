@@ -160,6 +160,28 @@ fn disabled_small_allocator_identical_behavior() {
 }
 
 #[test]
+fn alloc_alignment_exceeding_chunk_rounds_to_alignment() {
+    // When the requested alignment exceeds the chunk granularity, the shared
+    // allocation tail rounds `alloc_len` up to the *alignment*, not the chunk
+    // size — this exercises the `.max(alignment)` term in `alloc_from_tracker`
+    // (BIG_CHUNK = 1024; a plain 8-byte alloc rounds to 1024, see the test above).
+    // Use a 2048-byte alignment (2^11 > BIG_CHUNK). The backend is sized well
+    // above alignment + alloc_len so a 2048-aligned block always fits regardless
+    // of the (arbitrary) backend base address.
+    const EXTRA_ALIGNMENT_LOG2: u32 = 11;
+    let extra_alignment = 1usize << EXTRA_ALIGNMENT_LOG2; // 2048 > BIG_CHUNK
+    let mut alloc = make_allocator_no_small(16);
+    let data = alloc
+        .alloc_with_extra_alignment::<u64, EXTRA_ALIGNMENT_LOG2>(1, AllocationPlacement::BestFit)
+        .unwrap();
+    // `.max(alignment)` took effect: rounded to the 2048 alignment, not the 1024
+    // chunk (which is what the same alloc without extra alignment would give).
+    assert_eq!(data.alloc_len, extra_alignment);
+    assert_eq!(data.ptr.as_ptr() as usize % extra_alignment, 0);
+    alloc.free(data);
+}
+
+#[test]
 fn zero_length_alloc_goes_to_big() {
     let mut alloc = make_allocator(4, 1);
     // Zero-length allocs bypass the small allocator (byte_len == 0)
