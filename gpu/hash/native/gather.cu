@@ -62,7 +62,7 @@ EXTERN __global__ void ab_gather_leaf_rows_kernel(const unsigned *indexes, const
   if (idx >= indexes_count)
     return;
   const unsigned i = indexes[idx];
-  const unsigned leaf_index = bit_reverse_indexes ? __brev(i) >> (32 - log_leaves_count) : i;
+  const unsigned leaf_index = bit_reverse_indexes ? bitreverse_low_bits(i, log_leaves_count) : i;
   const unsigned leaves_count = 1u << log_leaves_count;
   const unsigned src_row = leaf_index + bitreverse_low_bits(threadIdx.x, log_rows_per_leaf) * leaves_count;
   const unsigned dst_row = (idx << log_rows_per_leaf) + threadIdx.x;
@@ -97,7 +97,7 @@ EXTERN __global__ void ab_gather_merkle_paths_from_rows_kernel(const unsigned *i
   const unsigned query_index = indexes[idx];
   const unsigned index_lane = (query_index & ~WARP_MASK) | lane_idx;
   const bool is_output_lane = query_index == index_lane;
-  const unsigned leaf_index = bit_reverse_indexes ? __brev(index_lane) >> (32 - log_total_leaves_count) : index_lane;
+  const unsigned leaf_index = bit_reverse_indexes ? bitreverse_low_bits(index_lane, log_total_leaves_count) : index_lane;
   const unsigned log_rows_count = log_total_leaves_count + log_rows_per_leaf;
   const unsigned leaves_count = 1u << log_total_leaves_count;
   auto read = [=](const unsigned offset) {
@@ -199,7 +199,7 @@ EXTERN __global__ void ab_query_index_to_tree_index_kernel(const u32 *d_query_in
   const u32 lde_mask = log_lde_factor == 0u ? 0u : ((1u << log_lde_factor) - 1u);
   const u32 coset = q & lde_mask;
   const u32 internal = q >> log_lde_factor;
-  const u32 coset_dest = log_lde_factor == 0u ? 0u : (__brev(coset) >> (32u - log_lde_factor));
+  const u32 coset_dest = bitreverse_low_bits(coset, log_lde_factor);
   const u32 tree_idx = (coset_dest << coset_tree_size_log2) | internal;
   d_out[i] = tree_idx;
 }
