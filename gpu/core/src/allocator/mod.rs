@@ -354,4 +354,4 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Clone
 }
 
 #[cfg(test)]
-mod tests;
+mod cpu_tests;
