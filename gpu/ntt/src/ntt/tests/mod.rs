@@ -766,9 +766,13 @@ multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_19_cosets_2, 19, 2
 // `monomials_to_evals_3_pass` matrix tests (log_n 21..24).
 multi_coset_parity_test!(multi_coset_monomials_to_evals_log_n_21_cosets_2, 21, 2);
 // Range variants (nonzero coset_index_base -> exercise the coset-factor shift).
-// Reps at log_n 8/14/18/23; the lde-intermediate fast path (log_n in (13, 18])
-// is independently oracled by host_oracle_lde_intermediate_log_n_14/18, so the
-// 15/16/17 range cases are redundant.
+// Reps at log_n 8/14/18/23. The log_n 15/16/17 cases at coset counts 16/32/64
+// are additionally retained to stress the occupancy / grid-batching tuning:
+// each log_n is a distinct compiled kernel, and these coset counts drive
+// batching configurations (the candidate's lde-intermediate/2pc-batched path
+// vs the direct 2pc-compact-initial oracle) that the reps above do not. Their
+// correctness is separately pinned by the pure-CPU host_oracle_lde_intermediate
+// / host_oracle_2pc sets, so these earn their keep as launch-config coverage.
 multi_coset_range_parity_test!(
     multi_coset_monomials_to_evals_log_n_8_cosets_4_base_4,
     8,
@@ -796,6 +800,27 @@ multi_coset_range_parity_test!(
     4,
     4,
     4
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_17_cosets_16_base_16,
+    17,
+    10,
+    16,
+    16
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_16_cosets_32_base_32,
+    16,
+    11,
+    32,
+    32
+);
+multi_coset_range_parity_test!(
+    multi_coset_monomials_to_evals_log_n_15_cosets_64_base_64,
+    15,
+    12,
+    64,
+    64
 );
 
 // Host-oracle forward-NTT parity tests. Unlike the parity harnesses above
