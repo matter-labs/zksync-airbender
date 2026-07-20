@@ -247,7 +247,7 @@ mod tests {
         }
     }
 
-    // 32-byte element path (the `[u32; 8]` impl; what `gpu_hash`'s digest uses).
+    // 32-byte element path — the `[u32; 8]` impl (the canonical 32-byte POD for this size class).
     impl BitReverseTest for [u32; 8] {
         fn rand(rng: &mut impl rand::Rng) -> Self {
             std::array::from_fn(|_| BF::random_element(rng).0)
