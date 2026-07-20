@@ -81,6 +81,13 @@ fn get_or_create_domain(name: &str) -> NvtxDomainHandle {
     handle
 }
 
+// `Box<Registration>` is deliberate, not redundant: `get_or_create_registration`
+// hands out `*const Registration` pointers into these entries that must stay valid
+// for the remainder of the process (see the SAFETY note in `start_range`). Boxing
+// gives each entry a stable heap address, so pushing new entries never reallocates
+// and invalidates outstanding pointers — a plain `Vec<Registration>` would dangle
+// them on growth.
+#[allow(clippy::vec_box)]
 fn range_registry() -> &'static Mutex<Vec<Box<Registration>>> {
     static REGISTRY: OnceLock<Mutex<Vec<Box<Registration>>>> = OnceLock::new();
     REGISTRY.get_or_init(|| Mutex::new(Vec::new()))

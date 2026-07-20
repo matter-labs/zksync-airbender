@@ -15,13 +15,13 @@ pub trait GetChunksCount {
 
 impl GetChunksCount for u32 {
     fn get_chunks_count(self, chunk_size: Self) -> Self {
-        self.next_multiple_of(chunk_size) / chunk_size
+        self.div_ceil(chunk_size)
     }
 }
 
 impl GetChunksCount for usize {
     fn get_chunks_count(self, chunk_size: Self) -> Self {
-        self.next_multiple_of(chunk_size) / chunk_size
+        self.div_ceil(chunk_size)
     }
 }
 
@@ -103,7 +103,7 @@ pub fn compute_minimal_carveout(kernel: *const c_void, block_size: i32, pool_byt
 
     let total_smem = smem_per_block * max_blocks as usize;
     // Round up to the next whole percent.
-    ((total_smem * 100 + pool_bytes - 1) / pool_bytes) as i32
+    (total_smem * 100).div_ceil(pool_bytes) as i32
 }
 
 /// Set the preferred shared-memory carveout percentage for a kernel.

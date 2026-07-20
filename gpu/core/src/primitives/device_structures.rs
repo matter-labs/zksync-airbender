@@ -428,7 +428,7 @@ pub struct DeviceMatrixOwnsAllocation<T> {
 
 impl<T> DeviceMatrixOwnsAllocation<T> {
     pub fn new(allocation: crate::primitives::context::DeviceAllocation<T>, stride: usize) -> Self {
-        assert_eq!((&allocation).len() % stride, 0);
+        assert_eq!(allocation.len() % stride, 0);
         Self { allocation, stride }
     }
 }
