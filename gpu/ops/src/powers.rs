@@ -91,6 +91,7 @@ macro_rules! get_powers_by_ref_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait GetPowersByRef: Sized {
     const KERNEL_FUNCTION: GetPowersByRefSignature<Self>;
 }

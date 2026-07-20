@@ -47,6 +47,7 @@ macro_rules! set_by_val_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait SetByVal: Sized {
     const KERNEL_FUNCTION: SetByValSignature<Self>;
 }
@@ -99,6 +100,7 @@ macro_rules! set_by_ref_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait SetByRef: Sized {
     const KERNEL_FUNCTION: SetByRefSignature<Self>;
 }
@@ -252,6 +254,7 @@ macro_rules! binary_op_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait BinaryOp<T0, T1, TR> {
     const KERNEL_FUNCTION: BinaryOpSignature<T0, T1, TR>;
 
@@ -323,6 +326,7 @@ macro_rules! binary_op_def {
     // the unused ones are pub(crate) (in-crate test launchers only).
     ($op:ty, $into_x_vis:vis, $into_y_vis:vis) => {
         paste! {
+            #[doc(hidden)]
             pub struct $op;
             #[allow(dead_code)]
             pub fn [<$op:lower>]<T0, T1, TR>(
