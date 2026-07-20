@@ -17,6 +17,12 @@ use era_cudart::stream::CudaStream;
 
 pub struct Callbacks<'a>(Vec<HostFn<'a>>);
 
+impl Default for Callbacks<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> Callbacks<'a> {
     pub fn new() -> Self {
         Self(vec![])

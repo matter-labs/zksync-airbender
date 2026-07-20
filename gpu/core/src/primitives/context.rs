@@ -75,7 +75,7 @@ impl<T: ?Sized> UnsafeAccessor<T> {
 
 impl<T: ?Sized> Clone for UnsafeAccessor<T> {
     fn clone(&self) -> Self {
-        UnsafeAccessor(self.0)
+        *self
     }
 }
 
@@ -124,7 +124,7 @@ impl<T: ?Sized> UnsafeMutAccessor<T> {
 
 impl<T: ?Sized> Clone for UnsafeMutAccessor<T> {
     fn clone(&self) -> Self {
-        UnsafeMutAccessor(self.0)
+        *self
     }
 }
 
@@ -148,6 +148,9 @@ impl<T: ?Sized> HostAllocation<T> {
 }
 
 impl<T> HostAllocation<[T]> {
+    /// # Safety
+    /// The returned slice's `len` elements are uninitialized; the caller must
+    /// initialize each element before reading it.
     pub unsafe fn new_uninit_slice_in(len: usize, allocator: HostAllocator) -> Self {
         Self(Box::new_uninit_slice_in(len, allocator).assume_init())
     }

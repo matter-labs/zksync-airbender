@@ -36,15 +36,49 @@ fn make_allocator_no_small(num_big_chunks: usize) -> InnerStaticAllocator<TestBa
     InnerStaticAllocator::new([backend], BIG_LCS)
 }
 
+/// Sweeps `byte_len` across the small/big routing threshold (256 B for
+/// `make_allocator(4, 1)`), asserting the exact `alloc_len` rounding on each
+/// side. Folds `small_alloc_basic_roundtrip` (below-threshold case),
+/// `threshold_boundary` (at-threshold + above-threshold cases), and
+/// `big_alloc_bypasses_small` (above-threshold case, same assertion as
+/// `threshold_boundary`'s upper half) — all three overlapped on this one
+/// byte_len-vs-threshold dimension.
 #[test]
-fn small_alloc_basic_roundtrip() {
+fn small_vs_big_alloc_routing_by_threshold() {
+    enum Expect {
+        /// below threshold (256 B): routed to small allocator, alloc_len
+        /// rounded exactly to SMALL_CHUNK (16). [small_alloc_basic_roundtrip]
+        SmallExact,
+        /// == threshold (256 B): still routed to small allocator, alloc_len
+        /// strictly less than BIG_CHUNK. [threshold_boundary, lower half]
+        SmallBound,
+        /// above threshold (264 B): routed to big allocator, alloc_len
+        /// rounded exactly to BIG_CHUNK (1024). [threshold_boundary upper
+        /// half + big_alloc_bypasses_small]
+        Big,
+    }
+
     let mut alloc = make_allocator(4, 1);
-    // Allocate 1 u64 = 8 bytes, below threshold (256), should go to small allocator
-    let data = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
-    assert_eq!(data.len, 1);
-    // alloc_len should be rounded to small chunk size (16), not big (1024)
-    assert_eq!(data.alloc_len, SMALL_CHUNK);
-    alloc.free(data);
+    let cases = [
+        (1usize, Expect::SmallExact), // 1 u64 = 8 B
+        (32, Expect::SmallBound),     // 32 u64s = 256 B
+        (33, Expect::Big),            // 33 u64s = 264 B
+    ];
+
+    for (count, expect) in cases {
+        let data = alloc
+            .alloc::<u64>(count, AllocationPlacement::BestFit)
+            .unwrap();
+        match expect {
+            Expect::SmallExact => {
+                assert_eq!(data.len, count);
+                assert_eq!(data.alloc_len, SMALL_CHUNK);
+            }
+            Expect::SmallBound => assert!(data.alloc_len < BIG_CHUNK),
+            Expect::Big => assert_eq!(data.alloc_len, BIG_CHUNK),
+        }
+        alloc.free(data);
+    }
 }
 
 #[test]
@@ -58,18 +92,6 @@ fn small_alloc_reuse_after_free() {
     // Should reuse the same address after free
     assert_eq!(ptr1, ptr2);
     alloc.free(data2);
-}
-
-#[test]
-fn big_alloc_bypasses_small() {
-    let mut alloc = make_allocator(4, 1);
-    // Allocate above threshold: 33 u64s = 264 bytes > 256 threshold
-    let data = alloc
-        .alloc::<u64>(33, AllocationPlacement::BestFit)
-        .unwrap();
-    // alloc_len should be rounded to big chunk size (1024)
-    assert_eq!(data.alloc_len, BIG_CHUNK);
-    alloc.free(data);
 }
 
 #[test]
@@ -110,24 +132,6 @@ fn usage_counters_correct() {
 }
 
 #[test]
-fn threshold_boundary() {
-    let mut alloc = make_allocator(4, 1);
-    // Exactly at threshold: 32 u64s = 256 bytes = threshold → small
-    let at = alloc
-        .alloc::<u64>(32, AllocationPlacement::BestFit)
-        .unwrap();
-    assert!(at.alloc_len < BIG_CHUNK); // went to small allocator
-    alloc.free(at);
-
-    // One byte over: 33 u64s = 264 bytes > threshold → big
-    let over = alloc
-        .alloc::<u64>(33, AllocationPlacement::BestFit)
-        .unwrap();
-    assert_eq!(over.alloc_len, BIG_CHUNK); // went to big allocator
-    alloc.free(over);
-}
-
-#[test]
 fn small_pool_oom() {
     // 1 big chunk = 1024 bytes for small pool, small chunk = 16 bytes → 64 small slots
     let mut alloc = make_allocator(4, 1);
@@ -152,6 +156,28 @@ fn disabled_small_allocator_identical_behavior() {
     // Small allocation goes to big tracker, rounded to 1024
     let data = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
     assert_eq!(data.alloc_len, BIG_CHUNK);
+    alloc.free(data);
+}
+
+#[test]
+fn alloc_alignment_exceeding_chunk_rounds_to_alignment() {
+    // When the requested alignment exceeds the chunk granularity, the shared
+    // allocation tail rounds `alloc_len` up to the *alignment*, not the chunk
+    // size — this exercises the `.max(alignment)` term in `alloc_from_tracker`
+    // (BIG_CHUNK = 1024; a plain 8-byte alloc rounds to 1024, see the test above).
+    // Use a 2048-byte alignment (2^11 > BIG_CHUNK). The backend is sized well
+    // above alignment + alloc_len so a 2048-aligned block always fits regardless
+    // of the (arbitrary) backend base address.
+    const EXTRA_ALIGNMENT_LOG2: u32 = 11;
+    let extra_alignment = 1usize << EXTRA_ALIGNMENT_LOG2; // 2048 > BIG_CHUNK
+    let mut alloc = make_allocator_no_small(16);
+    let data = alloc
+        .alloc_with_extra_alignment::<u64, EXTRA_ALIGNMENT_LOG2>(1, AllocationPlacement::BestFit)
+        .unwrap();
+    // `.max(alignment)` took effect: rounded to the 2048 alignment, not the 1024
+    // chunk (which is what the same alloc without extra alignment would give).
+    assert_eq!(data.alloc_len, extra_alignment);
+    assert_eq!(data.ptr.as_ptr() as usize % extra_alignment, 0);
     alloc.free(data);
 }
 

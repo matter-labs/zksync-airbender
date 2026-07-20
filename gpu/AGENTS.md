@@ -33,6 +33,18 @@ helper, a build-dependency only).
   kernels — only a bench-gated `gpu_core_bench_native` archive (`native/bench/field.cu`,
   built solely under the `bench` feature for `benches/field.rs`).
   To keep it lean, `circuit_type` was relocated → `circuit_prover::witness` (it pulled `setups`).
+  **Completeness policy — `native_headers/` is a library, not a minimal set.**
+  gpu_core's base CUDA headers implement *complete* primitive families on
+  purpose, kept available for kernel/perf work; **"unused in-project" is NOT a
+  deletion signal here.** The deliberate complete families are: the PTX
+  cache-operator set (`ld_modifier`/`st_modifier` + the `load_*`/`store_*`
+  wrappers), the u32 **and** u64 carry-chain arithmetic in `ptx.cuh`, the field
+  operations (incl. `e6`), and the type×shape×access accessor matrix
+  (`{bf,e2,e4,e6}` × vector/matrix × getter/setter/getter_setter). Do not prune
+  these on usage; consumer kernel crates (gpu_ops, …) wrap only what they
+  dispatch, and the completeness lives here in core. This protects the complete
+  families specifically — genuine broken/incomplete vestiges (e.g. a
+  never-initialized global) are still fair game to remove.
 - **`gpu_ntt`** = the NTT subsystem (`ntt` launchers + `ntt_twiddles` + `native/ntt`
   CUDA), with its OWN `CMakeLists.txt` + `build.rs` producing a device-linked
   `gpu_ntt_native`; `circuit_prover` drops `gpu_prover_ntt` and links gpu_ntt's
