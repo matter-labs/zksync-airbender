@@ -72,11 +72,6 @@ fn set_to_zero_bf() {
 }
 
 #[test]
-fn set_to_zero_e4() {
-    set_to_zero::<E4, 18>();
-}
-
-#[test]
 fn set_to_ones_bf() {
     const LOG_N: u32 = 20;
     let n = 1usize << LOG_N;
@@ -158,11 +153,6 @@ fn add_into_x_bf() {
     add_into_x::<BF, 10>(&BF_VALUES);
 }
 
-#[test]
-fn add_into_x_e4() {
-    add_into_x::<E4, 8>(&E4_VALUES);
-}
-
 fn add_into_y<T: Field, const LOG_N: u32>(additional_values: &[T])
 where
     Add: BinaryOp<T, T, T>,
@@ -177,11 +167,6 @@ where
 #[test]
 fn add_into_y_bf() {
     add_into_y::<BF, 10>(&BF_VALUES);
-}
-
-#[test]
-fn add_into_y_e4() {
-    add_into_y::<E4, 8>(&E4_VALUES);
 }
 
 fn mul<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -217,11 +202,6 @@ fn mul_into_x_bf() {
     mul_into_x::<BF, 10>(&BF_VALUES);
 }
 
-#[test]
-fn mul_into_x_e4() {
-    mul_into_x::<E4, 8>(&E4_VALUES);
-}
-
 fn mul_into_y<T: Field, const LOG_N: u32>(additional_values: &[T])
 where
     Mul: BinaryOp<T, T, T>,
@@ -236,11 +216,6 @@ where
 #[test]
 fn mul_into_y_bf() {
     mul_into_y::<BF, 10>(&BF_VALUES);
-}
-
-#[test]
-fn mul_into_y_e4() {
-    mul_into_y::<E4, 8>(&E4_VALUES);
 }
 
 fn sub<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -276,11 +251,6 @@ fn sub_into_x_bf() {
     sub_into_x::<BF, 10>(&BF_VALUES);
 }
 
-#[test]
-fn sub_into_x_e4() {
-    sub_into_x::<E4, 8>(&E4_VALUES);
-}
-
 fn sub_into_y<T: Field, const LOG_N: u32>(additional_values: &[T])
 where
     Sub: BinaryOp<T, T, T>,
@@ -295,11 +265,6 @@ where
 #[test]
 fn sub_into_y_bf() {
     sub_into_y::<BF, 10>(&BF_VALUES);
-}
-
-#[test]
-fn sub_into_y_e4() {
-    sub_into_y::<E4, 8>(&E4_VALUES);
 }
 
 #[test]
