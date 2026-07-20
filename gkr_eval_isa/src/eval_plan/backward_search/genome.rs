@@ -204,6 +204,20 @@ pub(crate) fn mutate_genome(
     }
 }
 
+enum CandidateProblem<'a> {
+    Reused(&'a BackwardSearchProblem),
+    Rebuilt(BackwardSearchProblem),
+}
+
+impl AsRef<BackwardSearchProblem> for CandidateProblem<'_> {
+    fn as_ref(&self) -> &BackwardSearchProblem {
+        match self {
+            Self::Reused(problem) => problem,
+            Self::Rebuilt(problem) => problem,
+        }
+    }
+}
+
 pub struct BackwardAdapter<'a> {
     canonical: &'a DagLayer,
     distilled: &'a DistilledLayer,
@@ -281,18 +295,39 @@ impl<'a> BackwardAdapter<'a> {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let candidate_problem = match build_problem_for_order(
-            self.canonical,
-            self.distilled,
-            &order,
-            self.trace_len,
-            self.problem.budget_cells,
-            self.problem.stream_reductions,
-        ) {
+        let candidate_problem = match self.candidate_problem_for_order(&order) {
             Ok(problem) => problem,
             Err(error) if pre_paging_candidate_infeasible(&error) => return Ok(None),
             Err(error) => return Err(error),
         };
+        self.evaluate_candidate_against(ordinal, genome, candidate_problem.as_ref())
+    }
+
+    fn candidate_problem_for_order(
+        &self,
+        order: &[usize],
+    ) -> Result<CandidateProblem<'_>, BackwardSearchError> {
+        if order == self.problem.selected_order_indices {
+            Ok(CandidateProblem::Reused(self.problem))
+        } else {
+            build_problem_for_order(
+                self.canonical,
+                self.distilled,
+                order,
+                self.trace_len,
+                self.problem.budget_cells,
+                self.problem.stream_reductions,
+            )
+            .map(CandidateProblem::Rebuilt)
+        }
+    }
+
+    fn evaluate_candidate_against(
+        &self,
+        ordinal: usize,
+        genome: &BackwardGenome,
+        candidate_problem: &BackwardSearchProblem,
+    ) -> Result<Option<CertifiedBackwardCandidate>, BackwardSearchError> {
         let paging = match self.arm {
             BackwardSearchArm::OrderOnly => {
                 if let Some(telemetry) = self.telemetry {
@@ -305,7 +340,7 @@ impl<'a> BackwardAdapter<'a> {
                 exact_paging_plan(outcome)?
             }
             BackwardSearchArm::CacheOnly | BackwardSearchArm::Joint => {
-                match decode_cache_plan(&candidate_problem, genome) {
+                match decode_cache_plan(candidate_problem, genome) {
                     Ok(paging) => paging,
                     Err(BackwardSearchError::CacheGenomeInfeasible { .. }) => return Ok(None),
                     Err(error) => return Err(error),
@@ -315,7 +350,7 @@ impl<'a> BackwardAdapter<'a> {
         let started = Instant::now();
         let result = preserve_certification_result(compile_and_certify_paging(
             self.distilled,
-            &candidate_problem,
+            candidate_problem,
             &paging,
             ordinal,
         ));
@@ -615,13 +650,13 @@ mod tests {
         ExactPagingPlan, PagerOutcome, PagingAction, solve_exact_paging,
     };
     use crate::eval_plan::backward_search::problem::{
-        BackwardSearchProblem, build_backward_search_problem,
+        BackwardSearchProblem, build_backward_search_problem, build_problem_for_order,
     };
     use crate::eval_plan::backward_search::{BackwardSearchError, MAX_PAGER_STATES, SourceCost};
     use crate::eval_plan::search_driver::{SearchAdapter, StableRng};
 
     use super::{
-        BackwardAdapter, BackwardGenome, BackwardSearchArm, decode_cache_actions,
+        BackwardAdapter, BackwardGenome, BackwardSearchArm, CandidateProblem, decode_cache_actions,
         decode_fragment_order, exact_paging_plan, mutate_genome, paging_seed,
         preserve_certification_result,
     };
@@ -990,6 +1025,110 @@ mod tests {
             constructive.occurrence_plan.entries,
             reversed.occurrence_plan.entries
         );
+    }
+
+    #[test]
+    fn unchanged_order_reuse_is_exactly_equivalent_to_rebuild() {
+        let fixture = synthetic_solved_problem();
+        let genome = paging_seed(&fixture.problem, &fixture.exact).unwrap();
+        let adapter = BackwardAdapter::new(
+            &fixture.layer,
+            &fixture.distilled,
+            &fixture.problem,
+            &fixture.exact,
+            8,
+            BackwardSearchArm::CacheOnly,
+        );
+        let stable = decode_fragment_order(&fixture.problem, &genome).unwrap();
+        let originals = fixture
+            .problem
+            .selected_order
+            .iter()
+            .cloned()
+            .zip(fixture.problem.selected_order_indices.iter().copied())
+            .collect::<BTreeMap<_, _>>();
+        let order = stable
+            .iter()
+            .map(|fragment| originals[fragment])
+            .collect::<Vec<_>>();
+        let selected = adapter.candidate_problem_for_order(&order).unwrap();
+        assert!(matches!(&selected, CandidateProblem::Reused(_)));
+        let reused = adapter
+            .evaluate_candidate_against(7, &genome, selected.as_ref())
+            .unwrap()
+            .expect("constructive reused candidate is feasible");
+
+        let rebuilt = build_problem_for_order(
+            &fixture.layer,
+            &fixture.distilled,
+            &order,
+            8,
+            fixture.problem.budget_cells,
+            fixture.problem.stream_reductions,
+        )
+        .unwrap();
+        let forced = adapter
+            .evaluate_candidate_against(7, &genome, &rebuilt)
+            .unwrap()
+            .expect("constructive rebuilt candidate is feasible");
+
+        assert_eq!(reused.score, forced.score);
+        assert_eq!(reused.paging.actions, forced.paging.actions);
+        assert_eq!(
+            reused.occurrence_plan.entries,
+            forced.occurrence_plan.entries
+        );
+        assert_eq!(reused.certificate, forced.certificate);
+        assert_eq!(reused.compiled.encoded, forced.compiled.encoded);
+    }
+
+    #[test]
+    fn changed_order_uses_the_existing_rebuild_path() {
+        let fixture = synthetic_solved_problem();
+        let constructive = BackwardGenome::constructive(&fixture.problem);
+        let mut reversed = constructive.clone();
+        let stable_order = &fixture.problem.constructive_order;
+        let first = stable_order.first().unwrap();
+        let last = stable_order.last().unwrap();
+        let first_value = reversed.fragment_order_key[first];
+        let last_value = reversed.fragment_order_key[last];
+        reversed
+            .fragment_order_key
+            .insert(first.clone(), last_value);
+        reversed
+            .fragment_order_key
+            .insert(last.clone(), first_value);
+        let adapter = BackwardAdapter::new(
+            &fixture.layer,
+            &fixture.distilled,
+            &fixture.problem,
+            &fixture.exact,
+            8,
+            BackwardSearchArm::OrderOnly,
+        );
+        let stable = decode_fragment_order(&fixture.problem, &reversed).unwrap();
+        let originals = fixture
+            .problem
+            .selected_order
+            .iter()
+            .cloned()
+            .zip(fixture.problem.selected_order_indices.iter().copied())
+            .collect::<BTreeMap<_, _>>();
+        let order = stable
+            .iter()
+            .map(|fragment| originals[fragment])
+            .collect::<Vec<_>>();
+
+        assert!(matches!(
+            adapter.candidate_problem_for_order(&order).unwrap(),
+            CandidateProblem::Rebuilt(_)
+        ));
+        let (_, candidate) = adapter
+            .score_batch(&[(11, reversed)])
+            .pop()
+            .unwrap()
+            .unwrap();
+        assert!(candidate.is_some());
     }
 
     #[test]
