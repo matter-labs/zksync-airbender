@@ -111,6 +111,28 @@ fn progress_completion_snapshots_keep_elapsed_and_count_coherent() {
 }
 
 #[test]
+fn plan3_audit_write_creates_missing_parent() {
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock must follow Unix epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "gkr-plan3-audit-write-{}-{unique}",
+        std::process::id()
+    ));
+    let output = root.join("missing/nested/report.md");
+    assert!(!root.exists());
+
+    write_plan3_audit(&output, "audit body\n");
+
+    assert_eq!(
+        std::fs::read_to_string(&output).expect("read written Plan 3 audit"),
+        "audit body\n"
+    );
+    std::fs::remove_dir_all(root).expect("remove Plan 3 audit test directory");
+}
+
+#[test]
 #[ignore = "Plan 3 parallel budget-group release equivalence"]
 fn plan3_parallel_budget_group_matches_sequential() {
     let fixture = "add_sub_lui_auipc_mop_layout_gkr.json";
@@ -596,6 +618,15 @@ fn run_budget_group(
     results
 }
 
+fn write_plan3_audit(output: &std::path::Path, markdown: &str) {
+    if let Some(parent) = output.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).expect("create Plan 3 audit directory");
+    }
+    std::fs::write(output, markdown).expect("write Plan 3 audit");
+}
+
 #[test]
 #[ignore = "Plan 3 full 342-instance release experiment"]
 fn full_plan3_backward_paging_search_experiment() {
@@ -661,7 +692,7 @@ fn full_plan3_backward_paging_search_experiment() {
     let markdown = render_markdown(&report);
     let output = std::env::var("GKR_PLAN3_REPORT")
         .expect("GKR_PLAN3_REPORT must name the ignored audit output");
-    std::fs::write(output, markdown).expect("write Plan 3 audit");
+    write_plan3_audit(std::path::Path::new(&output), &markdown);
 }
 
 #[test]
