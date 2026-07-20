@@ -31,6 +31,7 @@ macro_rules! get_powers_by_val_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait GetPowersByVal: Sized {
     const KERNEL_FUNCTION: GetPowersByValSignature<Self>;
 }

@@ -213,7 +213,7 @@ mod tests {
     use itertools::Itertools;
     use rand::rng;
 
-    pub(crate) fn bit_reverse<T: BitReverse>(
+    fn bit_reverse<T: BitReverse>(
         src: &(impl DeviceMatrixChunkImpl<T> + ?Sized),
         dst: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
         stream: &CudaStream,

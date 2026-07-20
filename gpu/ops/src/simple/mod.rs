@@ -157,6 +157,7 @@ macro_rules! parametrized_op_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait ParametrizedOp<T> {
     const KERNEL_FUNCTION: ParametrizedOpSignature<T>;
 
@@ -192,6 +193,7 @@ pub trait ParametrizedOp<T> {
 macro_rules! parametrized_op_def {
     ($op:ty) => {
         paste! {
+            #[doc(hidden)]
             pub struct $op;
             #[allow(dead_code)]
             pub fn [<$op:lower>]<T>(
@@ -317,7 +319,9 @@ pub trait BinaryOp<T0, T1, TR> {
 }
 
 macro_rules! binary_op_def {
-    ($op:ty) => {
+    // into_x/into_y visibility is pub only for the variants circuit_prover consumes;
+    // the unused ones are pub(crate) (in-crate test launchers only).
+    ($op:ty, $into_x_vis:vis, $into_y_vis:vis) => {
         paste! {
             pub struct $op;
             #[allow(dead_code)]
@@ -330,7 +334,7 @@ macro_rules! binary_op_def {
                 $op::launch(x, y, result, stream)
             }
             #[allow(dead_code)]
-            pub fn [<$op:lower _into_x>]<T0, T1>(
+            $into_x_vis fn [<$op:lower _into_x>]<T0, T1>(
                 x: &mut (impl DeviceMatrixChunkMutImpl<T0> + ?Sized),
                 y: &(impl DeviceMatrixChunkImpl<T1> + ?Sized),
                 stream: &CudaStream,
@@ -338,7 +342,7 @@ macro_rules! binary_op_def {
                 $op::launch_into_x(x, y, stream)
             }
             #[allow(dead_code)]
-            pub fn [<$op:lower _into_y>]<T0, T1>(
+            $into_y_vis fn [<$op:lower _into_y>]<T0, T1>(
                 x: &(impl DeviceMatrixChunkImpl<T0> + ?Sized),
                 y: &mut (impl DeviceMatrixChunkMutImpl<T1> + ?Sized),
                 stream: &CudaStream,
@@ -349,9 +353,9 @@ macro_rules! binary_op_def {
     };
 }
 
-binary_op_def!(Add);
-binary_op_def!(Mul);
-binary_op_def!(Sub);
+binary_op_def!(Add, pub(crate), pub); // add_into_x internal, add_into_y public
+binary_op_def!(Mul, pub, pub); // both public
+binary_op_def!(Sub, pub(crate), pub(crate)); // both internal
 
 macro_rules! binary_op_impl {
     ($op:ty, $t0:ty, $t1:ty, $tr:ty) => {

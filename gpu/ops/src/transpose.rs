@@ -33,6 +33,7 @@ macro_rules! transpose_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait Transpose: Sized {
     const LOG_TILE_SIZE: u32;
     const KERNEL_FUNCTION: TransposeSignature<Self>;
