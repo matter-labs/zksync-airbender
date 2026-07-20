@@ -178,7 +178,7 @@ fn whir_build_eq_values_preserves_large_eval_buffer() {
         .alloc(trace_len, AllocationPlacement::BestFit)
         .unwrap();
     let fill = E4::from_array_of_base([BF::new(7), BF::new(13), BF::new(29), BF::new(43)]);
-    get_powers_by_val(fill, 0, false, &mut evals, stream).unwrap();
+    get_powers_by_val(fill, 0, &mut evals, stream).unwrap();
     stream.synchronize().unwrap();
 
     let mut expected_head = vec![E4::ZERO; sample_len];

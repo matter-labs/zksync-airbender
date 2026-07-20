@@ -193,7 +193,6 @@ pub(super) fn schedule_delinearization_running_powers_phase(
     get_powers_by_ref(
         &delin_base[0],
         1,
-        false,
         &mut delinearization_device[..],
         stream,
     )?;

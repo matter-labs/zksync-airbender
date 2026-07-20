@@ -74,7 +74,6 @@ pub(super) fn schedule_lookup_alpha_powers_prelude(
     crate::ops::powers::get_powers_by_ref::<E4>(
         alpha,
         0,
-        false,
         &mut powers[..generic_lookup_width],
         context.get_exec_stream(),
     )

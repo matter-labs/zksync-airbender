@@ -307,7 +307,6 @@ pub(super) fn schedule_initialize_batched_forms(
     crate::ops::powers::get_powers_by_ref(
         &batching_challenge_device[0],
         0,
-        false,
         &mut challenge_powers_device[..],
         stream,
     )?;

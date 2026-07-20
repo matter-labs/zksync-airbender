@@ -118,7 +118,7 @@ pub(crate) fn schedule_dim_reducing_batch_challenge_table_prelude(
     // SAFETY: the caller passes a device-resident scalar that remains valid
     // until this stream-ordered prelude and all following kernels are scheduled.
     let base = unsafe { DeviceVariable::from_raw_parts(batch_challenge_base) };
-    crate::ops::powers::get_powers_by_ref::<E4>(base, 0, false, table, context.get_exec_stream())
+    crate::ops::powers::get_powers_by_ref::<E4>(base, 0, table, context.get_exec_stream())
 }
 
 #[derive(Clone, Debug)]
