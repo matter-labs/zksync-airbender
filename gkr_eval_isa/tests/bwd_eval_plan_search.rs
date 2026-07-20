@@ -3,7 +3,10 @@ mod common;
 use std::{
     collections::{BTreeMap, HashMap},
     io::Write,
-    sync::{Arc, Barrier, Mutex},
+    sync::{
+        Arc, Barrier, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -37,6 +40,43 @@ fn three_way_progress_eta_uses_completed_mean() {
     assert_eq!(
         estimated_remaining(Duration::from_secs(30), 342, 342),
         Some(Duration::ZERO)
+    );
+}
+
+#[test]
+fn parallel_map_ordered_overlaps_jobs_and_preserves_input_order() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .expect("build incumbent-prepass test pool");
+    let barrier = Arc::new(Barrier::new(4));
+    let active = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
+    let inputs = [0usize, 1, 2, 3];
+
+    let outputs = pool.install(|| {
+        parallel_map_ordered(&inputs, |&input| {
+            let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(now, Ordering::SeqCst);
+            barrier.wait();
+            active.fetch_sub(1, Ordering::SeqCst);
+            10 + input
+        })
+    });
+
+    assert_eq!(outputs, vec![10, 11, 12, 13]);
+    assert_eq!(peak.load(Ordering::SeqCst), 4);
+}
+
+#[test]
+fn incumbent_eta_uses_current_rayon_width() {
+    assert_eq!(
+        estimated_remaining_with_width(Duration::from_secs(48), 6, 114, 12),
+        Some(Duration::from_secs(72))
+    );
+    assert_eq!(
+        estimated_remaining_with_width(Duration::ZERO, 0, 114, 12),
+        None
     );
 }
 
@@ -140,15 +180,61 @@ fn plan3_parallel_budget_group_matches_sequential() {
     }
 }
 
+#[test]
+#[ignore = "Plan 3 parallel incumbent-prepass release equivalence"]
+fn plan3_parallel_incumbent_prepass_matches_sequential() {
+    let fixture = "add_sub_lui_auipc_mop_layout_gkr.json";
+    let artifact = common::load_fixture(fixture);
+    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+        .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
+    let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
+        .next()
+        .expect("add_sub has a backward layer");
+    let input = CorpusLayer {
+        fixture,
+        layer_index,
+        trace_len: dag.globals.trace_len,
+        layer,
+        cross,
+    };
+    let regimes = [BwdRegime::R0, BwdRegime::Ext];
+    let sequential = regimes.map(|regime| build_incumbent(&input, regime));
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .expect("build incumbent-prepass equivalence pool");
+    let parallel =
+        pool.install(|| parallel_map_ordered(&regimes, |&regime| build_incumbent(&input, regime)));
+
+    for (parallel, sequential) in parallel.iter().zip(sequential.iter()) {
+        match (parallel, sequential) {
+            (Some(parallel), Some(sequential)) => {
+                assert_eq!(parallel.order, sequential.order);
+                assert_eq!(parallel.plan.epoch, sequential.plan.epoch);
+                assert_eq!(parallel.plan.entries_fnv, sequential.plan.entries_fnv);
+                assert_eq!(
+                    parallel.plan.stream_reductions,
+                    sequential.plan.stream_reductions
+                );
+                assert_eq!(parallel.plan.entries, sequential.plan.entries);
+            }
+            (None, None) => {}
+            _ => panic!("parallel and sequential incumbent availability differ"),
+        }
+    }
+}
+
 const PLAN3_INSTANCES: usize = 342;
+const PLAN3_INCUMBENT_JOBS: usize = 114;
 const BUDGET_CONCURRENCY: u128 = 3;
 
-fn estimated_remaining(
+fn estimated_remaining_with_width(
     completed_job_time: Duration,
     completed: usize,
     total: usize,
+    concurrency: usize,
 ) -> Option<Duration> {
-    if completed == 0 {
+    if completed == 0 || concurrency == 0 {
         return None;
     }
     let remaining = total.saturating_sub(completed) as u128;
@@ -156,10 +242,107 @@ fn estimated_remaining(
         .as_nanos()
         .checked_div(completed as u128)?
         .checked_mul(remaining)?
-        .checked_div(BUDGET_CONCURRENCY)?;
+        .checked_div(concurrency as u128)?;
     Some(Duration::from_nanos(
         u64::try_from(nanos).unwrap_or(u64::MAX),
     ))
+}
+
+fn estimated_remaining(
+    completed_job_time: Duration,
+    completed: usize,
+    total: usize,
+) -> Option<Duration> {
+    estimated_remaining_with_width(
+        completed_job_time,
+        completed,
+        total,
+        usize::try_from(BUDGET_CONCURRENCY).expect("budget concurrency fits usize"),
+    )
+}
+
+struct CorpusLayer {
+    fixture: &'static str,
+    layer_index: usize,
+    trace_len: usize,
+    layer: DagLayer,
+    cross: common::CrossFields,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct IncumbentJob {
+    corpus_layer: usize,
+    regime: BwdRegime,
+}
+
+struct PreparedIncumbent {
+    job: IncumbentJob,
+    incumbent: Option<AcceptedIncumbent>,
+}
+
+fn build_corpus_layers() -> Vec<CorpusLayer> {
+    let mut layers = Vec::new();
+    for &fixture in common::FIXTURES {
+        let artifact = common::load_fixture(fixture);
+        let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+            .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
+        let trace_len = dag.globals.trace_len;
+        layers.extend(
+            common::layers_with_bwd_roots(fixture).map(|(layer_index, layer, cross)| CorpusLayer {
+                fixture,
+                layer_index,
+                trace_len,
+                layer,
+                cross,
+            }),
+        );
+    }
+    assert_eq!(layers.len(), PLAN3_INCUMBENT_JOBS / 2);
+    layers
+}
+
+fn incumbent_jobs(layers: &[CorpusLayer]) -> Vec<IncumbentJob> {
+    let jobs = (0..layers.len())
+        .flat_map(|corpus_layer| {
+            [BwdRegime::R0, BwdRegime::Ext].map(move |regime| IncumbentJob {
+                corpus_layer,
+                regime,
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(jobs.len(), PLAN3_INCUMBENT_JOBS);
+    jobs
+}
+
+fn build_incumbent(input: &CorpusLayer, regime: BwdRegime) -> Option<AcceptedIncumbent> {
+    let distilled = distill(&input.layer, regime, &input.cross, None);
+    gkr_eval_isa::bwd::compile::compile_distilled(&distilled, 16, None)
+        .ok()
+        .and_then(|_| {
+            let current = gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer(
+                &input.layer,
+                regime,
+                &input.cross,
+                16,
+            );
+            current.fragment_order.zip(current.plan)
+        })
+        .map(|(order, plan)| AcceptedIncumbent { order, plan })
+}
+
+fn parallel_map_ordered<T: Sync, R: Send>(
+    items: &[T],
+    run: impl Fn(&T) -> R + Sync + Send,
+) -> Vec<R> {
+    items.par_iter().map(run).collect()
+}
+
+fn incumbent_job_id(job: IncumbentJob) -> usize {
+    job.corpus_layer * 2
+        + match job.regime {
+            BwdRegime::R0 => 1,
+            BwdRegime::Ext => 2,
+        }
 }
 
 #[derive(Clone, Copy)]
@@ -279,6 +462,97 @@ impl ProgressReporter {
     }
 }
 
+struct IncumbentProgressReporter {
+    started: Instant,
+    state: Mutex<ProgressState>,
+}
+
+impl IncumbentProgressReporter {
+    fn new() -> Self {
+        Self {
+            started: Instant::now(),
+            state: Mutex::new(ProgressState::default()),
+        }
+    }
+
+    fn record_completion(&self, instance_elapsed: Duration) -> ProgressSnapshot {
+        let nanos = u64::try_from(instance_elapsed.as_nanos()).unwrap_or(u64::MAX);
+        let mut state = self
+            .state
+            .lock()
+            .expect("lock Plan 3 incumbent progress state");
+        state.completed_job_nanos = state.completed_job_nanos.saturating_add(nanos);
+        state.completed += 1;
+        ProgressSnapshot {
+            completed: state.completed,
+            completed_job_nanos: state.completed_job_nanos,
+        }
+    }
+
+    fn start(&self, job: IncumbentJob, input: &CorpusLayer) {
+        let mut stderr = std::io::stderr().lock();
+        writeln!(
+            stderr,
+            "PREP START job={}/{PLAN3_INCUMBENT_JOBS} fixture={} layer={} regime={:?} total_elapsed={:?}",
+            incumbent_job_id(job),
+            input.fixture,
+            input.layer_index,
+            job.regime,
+            self.started.elapsed(),
+        )
+        .expect("write Plan 3 PREP START");
+        stderr.flush().expect("flush Plan 3 incumbent progress");
+    }
+
+    fn done(
+        &self,
+        job: IncumbentJob,
+        input: &CorpusLayer,
+        instance_elapsed: Duration,
+        available: bool,
+    ) {
+        let snapshot = self.record_completion(instance_elapsed);
+        let eta = estimated_remaining_with_width(
+            Duration::from_nanos(snapshot.completed_job_nanos),
+            snapshot.completed,
+            PLAN3_INCUMBENT_JOBS,
+            rayon::current_num_threads(),
+        )
+        .map_or_else(
+            || "unavailable".to_owned(),
+            |eta| format!("{eta:?}-estimate"),
+        );
+        let mut stderr = std::io::stderr().lock();
+        writeln!(
+            stderr,
+            "PREP DONE completed={}/{PLAN3_INCUMBENT_JOBS} job={}/{PLAN3_INCUMBENT_JOBS} fixture={} layer={} regime={:?} available={available} instance_elapsed={instance_elapsed:?} total_elapsed={:?} eta={eta}",
+            snapshot.completed,
+            incumbent_job_id(job),
+            input.fixture,
+            input.layer_index,
+            job.regime,
+            self.started.elapsed(),
+        )
+        .expect("write Plan 3 PREP DONE");
+        stderr.flush().expect("flush Plan 3 incumbent progress");
+    }
+}
+
+fn prepare_incumbents(layers: &[CorpusLayer]) -> Vec<PreparedIncumbent> {
+    let jobs = incumbent_jobs(layers);
+    let progress = IncumbentProgressReporter::new();
+    let prepared = parallel_map_ordered(&jobs, |&job| {
+        let input = &layers[job.corpus_layer];
+        let started = Instant::now();
+        progress.start(job, input);
+        let incumbent = build_incumbent(input, job.regime);
+        progress.done(job, input, started.elapsed(), incumbent.is_some());
+        PreparedIncumbent { job, incumbent }
+    });
+    assert_eq!(prepared.len(), PLAN3_INCUMBENT_JOBS);
+    prepared
+}
+
 fn run_budget_group(
     job_base: usize,
     progress: &ProgressReporter,
@@ -325,55 +599,58 @@ fn run_budget_group(
 #[test]
 #[ignore = "Plan 3 full 342-instance release experiment"]
 fn full_plan3_backward_paging_search_experiment() {
+    let corpus_layers = build_corpus_layers();
+    let prepared_incumbents = prepare_incumbents(&corpus_layers);
+    let mut prepared = prepared_incumbents.into_iter();
     let mut report = ExperimentReport::default();
     let progress = ProgressReporter::new();
     let mut next_job = 1usize;
-    for fixture in common::FIXTURES {
-        let artifact = common::load_fixture(fixture);
-        let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
-            .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
-        for (layer_index, layer, cross) in common::layers_with_bwd_roots(fixture) {
-            for regime in [BwdRegime::R0, BwdRegime::Ext] {
-                let distilled = distill(&layer, regime, &cross, None);
-                let incumbent = gkr_eval_isa::bwd::compile::compile_distilled(&distilled, 16, None)
-                    .ok()
-                    .and_then(|_| {
-                        let current = gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer(
-                            &layer, regime, &cross, 16,
-                        );
-                        current.fragment_order.zip(current.plan)
-                    })
-                    .map(|(order, plan)| AcceptedIncumbent { order, plan });
-                let budget_results = run_budget_group(
-                    next_job,
-                    &progress,
-                    fixture,
-                    layer_index,
+    for (corpus_layer, input) in corpus_layers.iter().enumerate() {
+        for regime in [BwdRegime::R0, BwdRegime::Ext] {
+            let prepared_incumbent = prepared
+                .next()
+                .expect("Plan 3 incumbent prepass must cover every group");
+            assert_eq!(
+                prepared_incumbent.job,
+                IncumbentJob {
+                    corpus_layer,
                     regime,
-                    |budget_cells| {
-                        run_instance(
-                            fixture,
-                            layer_index,
-                            &layer,
-                            &distilled,
-                            dag.globals.trace_len,
-                            budget_cells,
-                            (budget_cells == 4).then_some(incumbent.as_ref()).flatten(),
-                        )
-                    },
-                );
-                next_job += 3;
-                for (budget_cells, result) in budget_results {
-                    report.push(result.unwrap_or_else(|error| {
-                        panic!(
-                            "Plan 3 instance must classify or succeed: {fixture} L{layer_index} {regime:?} c{budget_cells}: {error:?}"
-                        )
-                    }));
                 }
+            );
+            let distilled = distill(&input.layer, regime, &input.cross, None);
+            let budget_results = run_budget_group(
+                next_job,
+                &progress,
+                input.fixture,
+                input.layer_index,
+                regime,
+                |budget_cells| {
+                    run_instance(
+                        input.fixture,
+                        input.layer_index,
+                        &input.layer,
+                        &distilled,
+                        input.trace_len,
+                        budget_cells,
+                        (budget_cells == 4)
+                            .then_some(prepared_incumbent.incumbent.as_ref())
+                            .flatten(),
+                    )
+                },
+            );
+            next_job += 3;
+            for (budget_cells, result) in budget_results {
+                report.push(result.unwrap_or_else(|error| {
+                    panic!(
+                        "Plan 3 instance must classify or succeed: {} L{} {regime:?} c{budget_cells}: {error:?}",
+                        input.fixture, input.layer_index,
+                    )
+                }));
             }
         }
     }
-    assert_eq!(next_job, PLAN3_INSTANCES + 1);
+    assert!(prepared.next().is_none());
+    assert_eq!(next_job, 343);
     assert_eq!(report.instances.len(), PLAN3_INSTANCES);
     assert!(
         report
