@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use cs::gkr_compiler::dag_ir::{DagLayer, ExprId};
 use rayon::prelude::*;
@@ -50,6 +52,59 @@ pub enum BackwardSearchArm {
     OrderOnly,
     CacheOnly,
     Joint,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct BackwardAdapterTelemetrySnapshot {
+    pub pager_calls: usize,
+    pub pager_generated_states: u64,
+    pub pager_merged_states: u64,
+    pub pager_peak_states: usize,
+    pub compile_time: Duration,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct BackwardAdapterTelemetry {
+    pager_calls: AtomicUsize,
+    pager_generated_states: AtomicU64,
+    pager_merged_states: AtomicU64,
+    pager_peak_states: AtomicUsize,
+    compile_nanos: AtomicU64,
+}
+
+impl BackwardAdapterTelemetry {
+    pub(crate) fn record_pager(&self, outcome: &PagerOutcome) {
+        self.pager_calls.fetch_add(1, Ordering::Relaxed);
+        match outcome {
+            PagerOutcome::Solved(plan) => {
+                self.pager_generated_states
+                    .fetch_add(plan.telemetry.generated_states, Ordering::Relaxed);
+                self.pager_merged_states
+                    .fetch_add(plan.telemetry.merged_states, Ordering::Relaxed);
+                self.pager_peak_states
+                    .fetch_max(plan.telemetry.peak_live_states, Ordering::Relaxed);
+            }
+            PagerOutcome::SolverCapped { peak_states, .. } => {
+                self.pager_peak_states
+                    .fetch_max(*peak_states, Ordering::Relaxed);
+            }
+        }
+    }
+
+    pub(crate) fn record_compile_time(&self, elapsed: Duration) {
+        let nanos = u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX);
+        self.compile_nanos.fetch_add(nanos, Ordering::Relaxed);
+    }
+
+    pub(crate) fn snapshot(&self) -> BackwardAdapterTelemetrySnapshot {
+        BackwardAdapterTelemetrySnapshot {
+            pager_calls: self.pager_calls.load(Ordering::Relaxed),
+            pager_generated_states: self.pager_generated_states.load(Ordering::Relaxed),
+            pager_merged_states: self.pager_merged_states.load(Ordering::Relaxed),
+            pager_peak_states: self.pager_peak_states.load(Ordering::Relaxed),
+            compile_time: Duration::from_nanos(self.compile_nanos.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 pub fn paging_seed(
@@ -137,6 +192,7 @@ pub struct BackwardAdapter<'a> {
     exact_seed: &'a ExactPagingPlan,
     trace_len: usize,
     arm: BackwardSearchArm,
+    telemetry: Option<&'a BackwardAdapterTelemetry>,
 }
 
 impl<'a> BackwardAdapter<'a> {
@@ -155,7 +211,13 @@ impl<'a> BackwardAdapter<'a> {
             exact_seed,
             trace_len,
             arm,
+            telemetry: None,
         }
+    }
+
+    pub(crate) fn with_telemetry(mut self, telemetry: &'a BackwardAdapterTelemetry) -> Self {
+        self.telemetry = Some(telemetry);
+        self
     }
 
     fn evaluate(
@@ -206,10 +268,13 @@ impl<'a> BackwardAdapter<'a> {
             Err(error) => return Err(error),
         };
         let paging = match self.arm {
-            BackwardSearchArm::OrderOnly => exact_paging_plan(solve_exact_paging(
-                &candidate_problem.demands,
-                MAX_PAGER_STATES,
-            )?)?,
+            BackwardSearchArm::OrderOnly => {
+                let outcome = solve_exact_paging(&candidate_problem.demands, MAX_PAGER_STATES)?;
+                if let Some(telemetry) = self.telemetry {
+                    telemetry.record_pager(&outcome);
+                }
+                exact_paging_plan(outcome)?
+            }
             BackwardSearchArm::CacheOnly | BackwardSearchArm::Joint => {
                 match decode_cache_plan(&candidate_problem, genome) {
                     Ok(paging) => paging,
@@ -218,12 +283,17 @@ impl<'a> BackwardAdapter<'a> {
                 }
             }
         };
-        preserve_certification_result(compile_and_certify_paging(
+        let started = Instant::now();
+        let result = preserve_certification_result(compile_and_certify_paging(
             self.distilled,
             &candidate_problem,
             &paging,
             ordinal,
-        ))
+        ));
+        if let Some(telemetry) = self.telemetry {
+            telemetry.record_compile_time(started.elapsed());
+        }
+        result
     }
 }
 

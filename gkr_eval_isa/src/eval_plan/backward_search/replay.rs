@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::time::{Duration, Instant};
 
 use cs::gkr_compiler::dag_ir::{ExprId, FieldKind};
 
@@ -36,6 +37,13 @@ pub struct CertifiedBackwardCandidate {
     pub compiled: CompiledBackwardEvaluation,
     pub certificate: PagingCertificate,
     pub score: BackwardScore,
+}
+
+pub struct ScoredAcceptedBackwardCandidate {
+    pub occurrence_plan: BwdOccurrencePlan,
+    pub compiled: CompiledBackwardEvaluation,
+    pub score: BackwardScore,
+    pub compile_time: Duration,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -126,24 +134,7 @@ pub fn compile_and_certify_paging(
     )
     .map_err(map_replay_error)?;
 
-    let diverged = compiled.trace.events.iter().find_map(|event| match event {
-        BwdEvent::Diverge { at_entry } => Some(*at_entry),
-        _ => None,
-    });
-    if let Some(at_entry) = diverged {
-        return Err(BackwardSearchError::PagingReplayDiverged { at_entry });
-    }
-    let refused_retains = compiled
-        .trace
-        .events
-        .iter()
-        .filter(|event| matches!(event, BwdEvent::Refuse { .. }))
-        .count();
-    if refused_retains != 0 {
-        return Err(BackwardSearchError::PagingReplayRefused {
-            count: refused_retains,
-        });
-    }
+    let (diverged, refused_retains) = validate_replay_trace(&compiled)?;
 
     let (realized_profile, peak_live_lanes) = realized_occupancy_profile(problem, &compiled)?;
     if realized_profile.len() != paging.live_lanes_after.len() {
@@ -244,6 +235,90 @@ pub fn compile_and_certify_paging(
     }
 
     let fixed_write_cost = problem.materialization.fixed_writes;
+    let score = score_compiled_backward(d, problem, &compiled, ordinal)?;
+    let certificate = PagingCertificate {
+        actions_consumed: paging.actions.len(),
+        diverged,
+        refused_retains,
+        predicted_source_reads: predicted.reads,
+        realized_source_reads: realized_reads
+            .len()
+            .try_into()
+            .map_err(|_| BackwardSearchError::CostOverflow)?,
+        predicted_read_cost: predicted.cost,
+        realized_read_cost,
+        fixed_write_cost,
+        peak_live_lanes,
+        placement_relocations: compiled.binding_stats.relocation_moves,
+    };
+    Ok(CertifiedBackwardCandidate {
+        paging: paging.clone(),
+        occurrence_plan,
+        compiled,
+        certificate,
+        score,
+    })
+}
+
+/// Replay and score an already accepted production occurrence plan exactly.
+///
+/// Unlike [`compile_and_certify_paging`], this path does not project the plan
+/// into the real-leaf pager domain: compound retains and their suppressed serve
+/// stream remain authoritative. The replay backend validates epoch/FNV/count,
+/// and this helper additionally requires a clean replay and concrete placement.
+pub fn compile_and_score_occurrence_plan(
+    d: &DistilledLayer,
+    problem: &BackwardSearchProblem,
+    occurrence_plan: &BwdOccurrencePlan,
+    order: &[usize],
+    ordinal: usize,
+) -> Result<ScoredAcceptedBackwardCandidate, BackwardSearchError> {
+    let started = Instant::now();
+    let compiled =
+        compile_backward_fragments_replayed(d, occurrence_plan, Some(order), problem.budget_cells)
+            .map_err(map_replay_error)?;
+    let compile_time = started.elapsed();
+    validate_replay_trace(&compiled)?;
+    let score = score_compiled_backward(d, problem, &compiled, ordinal)?;
+    Ok(ScoredAcceptedBackwardCandidate {
+        occurrence_plan: occurrence_plan.clone(),
+        compiled,
+        score,
+        compile_time,
+    })
+}
+
+fn validate_replay_trace(
+    compiled: &CompiledBackwardEvaluation,
+) -> Result<(Option<usize>, usize), BackwardSearchError> {
+    let diverged = compiled.trace.events.iter().find_map(|event| match event {
+        BwdEvent::Diverge { at_entry } => Some(*at_entry),
+        _ => None,
+    });
+    if let Some(at_entry) = diverged {
+        return Err(BackwardSearchError::PagingReplayDiverged { at_entry });
+    }
+    let refused_retains = compiled
+        .trace
+        .events
+        .iter()
+        .filter(|event| matches!(event, BwdEvent::Refuse { .. }))
+        .count();
+    if refused_retains != 0 {
+        return Err(BackwardSearchError::PagingReplayRefused {
+            count: refused_retains,
+        });
+    }
+    Ok((diverged, refused_retains))
+}
+
+fn score_compiled_backward(
+    d: &DistilledLayer,
+    problem: &BackwardSearchProblem,
+    compiled: &CompiledBackwardEvaluation,
+    ordinal: usize,
+) -> Result<BackwardScore, BackwardSearchError> {
+    let fixed_write_cost = problem.materialization.fixed_writes;
     if problem.fixed_cost != fixed_write_cost {
         return Err(BackwardSearchError::PagingWriteCostMismatch {
             predicted: problem.fixed_cost,
@@ -253,7 +328,16 @@ pub fn compile_and_certify_paging(
     if compiled.binding_stats.max_live_lanes > problem.budget_lanes {
         return Err(BackwardSearchError::PlacementIntegrationFailure);
     }
-
+    let physical = positioned_physical_traffic_events(
+        &d.layer,
+        &compiled.compiled.program,
+        &compiled.compiled.specials,
+        &d.leaf_descs,
+        &compiled.compiled.backings,
+    )
+    .ok_or(BackwardSearchError::PagingCertificateMismatch {
+        observable: "physical traffic source mapping",
+    })?;
     let whole_pass_read_cost =
         physical
             .iter()
@@ -279,7 +363,7 @@ pub fn compile_and_certify_paging(
                     .checked_add(compiled.compiled.stats.op_counts[opcode])
                     .ok_or(BackwardSearchError::CostOverflow)
             })?;
-    let score = BackwardScore {
+    Ok(BackwardScore {
         infeasible: false,
         whole_pass_dram_bytes: whole_pass_cost.dram_bytes()?,
         primitive_source_ops: whole_pass_cost.ops.primitive_equivalents()?,
@@ -287,28 +371,6 @@ pub fn compile_and_certify_paging(
         encoded_lanes: compiled.encoded.len(),
         arithmetic_ops,
         ordinal,
-    };
-    let certificate = PagingCertificate {
-        actions_consumed: paging.actions.len(),
-        diverged,
-        refused_retains,
-        predicted_source_reads: predicted.reads,
-        realized_source_reads: realized_reads
-            .len()
-            .try_into()
-            .map_err(|_| BackwardSearchError::CostOverflow)?,
-        predicted_read_cost: predicted.cost,
-        realized_read_cost,
-        fixed_write_cost,
-        peak_live_lanes,
-        placement_relocations: compiled.binding_stats.relocation_moves,
-    };
-    Ok(CertifiedBackwardCandidate {
-        paging: paging.clone(),
-        occurrence_plan,
-        compiled,
-        certificate,
-        score,
     })
 }
 

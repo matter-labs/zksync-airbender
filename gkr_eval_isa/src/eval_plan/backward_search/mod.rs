@@ -1,6 +1,7 @@
 use crate::bwd::source::FoldState;
 use crate::eval_plan::backward::BackwardEvaluationError;
 
+pub mod experiment;
 pub mod genome;
 pub mod materialization;
 pub mod pager;
@@ -21,8 +22,8 @@ pub use pager::{
     solve_exact_paging,
 };
 pub use replay::{
-    CertifiedBackwardCandidate, PagingCertificate, compile_and_certify_paging,
-    occurrence_plan_from_paging,
+    CertifiedBackwardCandidate, PagingCertificate, ScoredAcceptedBackwardCandidate,
+    compile_and_certify_paging, compile_and_score_occurrence_plan, occurrence_plan_from_paging,
 };
 
 pub const MAX_PAGER_STATES: usize = 250_000;
@@ -265,4 +266,7 @@ pub enum BackwardSearchError {
         peak_states: usize,
     },
     PagingSeedMismatch,
+    SearchDriverFailure {
+        reason: &'static str,
+    },
 }
