@@ -8,17 +8,11 @@ using namespace ::airbender::primitives::memory;
 
 namespace airbender::cub {
 
-#define BINARY_OP(op, init_fn)                                                                                                                                 \
-  template <typename T> struct op {                                                                                                                            \
-    DEVICE_FORCEINLINE T operator()(const T &a, const T &b) const { return T::op(a, b); }                                                                      \
-    static HOST_DEVICE_FORCEINLINE T init() { return T::init_fn(); }                                                                                           \
-  }
-
-BINARY_OP(add, ZERO);
-
-template <> struct add<u32> {
-  DEVICE_FORCEINLINE u32 operator()(const u32 &a, const u32 &b) const { return a + b; }
-  static HOST_DEVICE_FORCEINLINE u32 init() { return 0; }
+// Field-addition reduction operator for CUB DeviceReduce/DeviceSegmentedReduce,
+// instantiated over the field types (bf, e4) in device_reduce_*.cu.
+template <typename T> struct add {
+  DEVICE_FORCEINLINE T operator()(const T &a, const T &b) const { return T::add(a, b); }
+  static HOST_DEVICE_FORCEINLINE T init() { return T::ZERO(); }
 };
 
 } // namespace airbender::cub
