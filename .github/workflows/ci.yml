@@ -182,7 +182,7 @@ jobs:
           echo "$verify_output"
           # Words 0..8 are the keccak rolling hash of the two combined proofs' outputs;
           # they depend only on the batch outputs, so they are the same for both security levels.
-          echo "$verify_output" | grep -F "output=[2415612842, 4095476548, 166808046, 1205015445, 2386967993, 3778167604, 679852282, 914660194"
+          echo "$verify_output" | grep -F "output=[3905229877, 2075736390, 654440390, 3518657005, 36029780, 78097385, 328053251, 983946315"
 
   miri:
     name: miri

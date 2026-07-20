@@ -98,11 +98,9 @@ cargo run --release -p cli -- verify \
 
 The combined artifact proves that every input proof was verified and that all of
 them belong to the same recursion chain. Words 0..8 of its public output are the
-keccak rolling hash of the input proofs' outputs — `keccak(out_1[0..8]>>32 || ... ||
-out_n[0..8]>>32)`, each output shifted one word right with a zero prepended, exactly
-as in the pre-unrolled `CombinedMultipleRecursionLayers` flow — and words 8..16 carry
-the shared recursion chain through unchanged, so the combined proof binds to the same
-program as its inputs.
+keccak rolling hash of the input proofs' outputs — `keccak(out_1[0..8] || ... ||
+out_n[0..8])` — and words 8..16 carry the shared recursion chain through unchanged,
+so the combined proof binds to the same program as its inputs.
 
 ## 6. SNARK wrapping status
 

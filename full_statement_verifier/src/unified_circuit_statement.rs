@@ -465,7 +465,13 @@ pub fn verify_unrolled_or_unified_circuit_recursion_layer(
         OP_VERIFY_COMBINED_RECURSION_LAYERS_IN_UNIFIED_CIRCUIT => {
             verify_combined_recursion_layers(security)
         }
-        _ => verify_single_recursion_layer_op(op_type, security),
+        OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT
+        | OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
+            verify_single_recursion_layer_op(op_type, security)
+        }
+        _ => {
+            panic!("Unknown op");
+        }
     }
 }
 
@@ -532,7 +538,6 @@ pub fn verify_combined_recursion_layers(security: verifier_common::SecurityModel
     }
 
     let mut result = [0u32; 16];
-    // TODO: in the future - set the result[7] to be equal to 0.
     result[0..8].copy_from_slice(&hasher.finalize());
     // chain remains the same
     result[8..16].copy_from_slice(&first_output[8..16]);
@@ -541,18 +546,9 @@ pub fn verify_combined_recursion_layers(security: verifier_common::SecurityModel
 }
 
 /// Used in hashing proofs for combining.
-/// Keccak-256, but hashed specifically to be compatible with our SNARK.
 /// First 8 [0 -> 8) words of `output` are the actual output of the circuit, which is what we hash.
 /// Last 8 [8 -> 16) words are the recursion chain, the same across all combined proofs
 /// (checked by the caller) and carried through unchanged.
 fn update_from_recursive_circuit_output(hasher: &mut reduced_keccak::Keccak32, output: &[u32; 16]) {
-    // To make it compatible with our SNARK - we'll assume that last register (7th) is 0 (as snark ignores that too),
-    // and we'll actually shift them all by 1.
-    // So our output is the keccak(input_1[0..8]>>32, input_2[0..8]>>32, ..., input_n[0..8]>>32)
-    // TODO: in the future, check explicitly that output[7] == 0 for every proof.
-    hasher.update(&[0u32]);
-
-    for val in &output[0..7] {
-        hasher.update(&[*val]);
-    }
+    hasher.update(&output[0..8]);
 }

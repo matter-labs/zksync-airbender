@@ -689,7 +689,7 @@ pub fn verify_artifact(
 /// single proof artifact. Every input artifact is verified first; the combined
 /// statement is then proved with the unified-layer recursion program and shrunk
 /// via unified self-recursion until it converges. The resulting proof's output is
-/// `keccak(out_1[0..8]>>32 || ... || out_n[0..8]>>32) || shared_recursion_chain`,
+/// `keccak(out_1[0..8] || ... || out_n[0..8]) || shared_recursion_chain`,
 /// and is checked against the outputs of the input proofs before returning.
 pub fn combine_artifacts(
     artifacts: &[ProofArtifact],

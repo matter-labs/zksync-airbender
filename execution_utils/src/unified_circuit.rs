@@ -198,10 +198,7 @@ pub fn compute_combined_recursion_layers_output(outputs: &[[u32; 16]]) -> [u32; 
 
     let mut hasher = reduced_keccak::Keccak32::new();
     for output in outputs.iter() {
-        hasher.update(&[0u32]);
-        for val in &output[0..7] {
-            hasher.update(&[*val]);
-        }
+        hasher.update(&output[0..8]);
     }
 
     let mut result = [0u32; 16];
@@ -403,12 +400,10 @@ mod test {
         let combined = super::compute_combined_recursion_layers_output(&[output_1, output_2]);
 
         // Reference: keccak256 over the little-endian byte serialization of
-        // [0, out[0..7]] per proof (each output shifted by one word, see
-        // `verify_combined_recursion_layers`).
+        // out[0..8] per proof (see `verify_combined_recursion_layers`).
         let mut reference_input = Vec::new();
         for output in [output_1, output_2] {
-            reference_input.extend_from_slice(&0u32.to_le_bytes());
-            for val in &output[0..7] {
+            for val in &output[0..8] {
                 reference_input.extend_from_slice(&val.to_le_bytes());
             }
         }
