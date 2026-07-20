@@ -61,23 +61,20 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let rs1_b2 = scratch_space[18];
     let rs2_b0 = scratch_space[19];
     let rs2_b2 = scratch_space[20];
-    let hi_byte = |lo_limb: Variable, lo_byte: Variable| -> Constraint<F> {
-        let mut c = Constraint::from(lo_limb);
-        c -= Constraint::from(lo_byte);
-        c.scale(inv_256);
-        c
+    let hi_byte = |lo_limb: Variable, lo_byte: Variable| -> Expr<F> {
+        (Expr::from(lo_limb) - Expr::from(lo_byte)) * inv_256
     };
     // [byte0(committed), byte1(linear), byte2(committed), byte3(linear)] per operand.
-    let rs1_bytes: [Constraint<F>; 4] = [
-        Constraint::from(rs1_b0),
+    let rs1_bytes: [Expr<F>; 4] = [
+        Expr::from(rs1_b0),
         hi_byte(rs1_limbs[0], rs1_b0),
-        Constraint::from(rs1_b2),
+        Expr::from(rs1_b2),
         hi_byte(rs1_limbs[1], rs1_b2),
     ];
-    let rs2_bytes: [Constraint<F>; 4] = [
-        Constraint::from(rs2_b0),
+    let rs2_bytes: [Expr<F>; 4] = [
+        Expr::from(rs2_b0),
         hi_byte(rs2_limbs[0], rs2_b0),
-        Constraint::from(rs2_b2),
+        Expr::from(rs2_b2),
         hi_byte(rs2_limbs[1], rs2_b2),
     ];
     {
@@ -97,8 +94,8 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     let is_binary_op = decoder.perform_binary_op();
     let is_shift = decoder.perform_shift();
 
-    let shift_amount_constraint =
-        Constraint::from(truncated_shift_amount) + Term::from(inputs.decoder_data.imm[0]);
+    let shift_amount_constraint: Expr<F> =
+        Expr::from(truncated_shift_amount) + Expr::from(inputs.decoder_data.imm[0]);
 
     // Here we only assign witness
 
@@ -130,7 +127,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
 
             peek_lookup_values_unconstrained_into_variables(
                 cs,
-                &[LookupInput::from(a), LookupInput::from(b + Term::from(imm))],
+                &[LookupInput::from(a), LookupInput::from(b + Expr::from(imm))],
                 &outs,
                 LookupInput::from(inputs.decoder_data.funct3.expect("is present")),
                 is_binary_op,
@@ -177,26 +174,17 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // where they will be used as lookups. Most of selections are quadratic anyway.
 
     let combined_request = {
-        let mut input_0 = Constraint::empty();
-        input_0 += Term::from(is_binary_op) * Term::from(inputs.decoder_data.imm[1]);
-        input_0 += Term::from(is_shift) * rs2_bytes[0].clone();
+        // Each term is one `flag * operand` product (flag = is_binary_op/is_shift), kept factored.
+        let input_0 = Expr::from(is_binary_op) * Expr::from(inputs.decoder_data.imm[1])
+            + Expr::from(is_shift) * rs2_bytes[0].clone();
+        let input_1 = Expr::from(is_binary_op) * Expr::from(binary_ops_imm_sign_ext)
+            + Expr::from(is_shift) * rs2_bytes[1].clone();
+        let input_2 = Expr::from(is_shift) * Expr::from(truncated_shift_amount);
 
-        let mut input_1 = Constraint::empty();
-        input_1 += Term::from(is_binary_op) * Term::from(binary_ops_imm_sign_ext);
-        input_1 += Term::from(is_shift) * rs2_bytes[1].clone();
-
-        let mut input_2 = Constraint::empty();
-        input_2 += Term::from(is_shift) * Term::from(truncated_shift_amount);
-
-        let mut table_id = Constraint::empty();
-        table_id += Term::from(is_shift)
-            * Term::from_field(
-                F::from_u32(TableType::TruncateShiftAmountAndRangeCheck8 as u32).expect("must fit"),
-            );
-        table_id += Term::from(is_binary_op)
-            * Term::from_field(
-                F::from_u32(TableType::GetSignExtensionByte as u32).expect("must fit"),
-            );
+        let table_id = Expr::from(is_shift)
+            * F::from_u32(TableType::TruncateShiftAmountAndRangeCheck8 as u32).expect("must fit")
+            + Expr::from(is_binary_op)
+                * F::from_u32(TableType::GetSignExtensionByte as u32).expect("must fit");
 
         LookupRequest::new(table_id, vec![input_0, input_1, input_2])
     };
@@ -204,13 +192,16 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // per-byte main lookups (4): binary-op output bytes / shift output chunks
     let mut per_byte_requests: Vec<LookupRequest<F>> = Vec::with_capacity(4);
     for i in 0..4 {
-        let mut constraints: [Constraint<F>; 8] = std::array::from_fn(|_| Constraint::empty());
+        // Each lookup column is a sum of factored `flag * operand` products (`Expr` has no
+        // `AddAssign`, so accumulate with `= <prev> + <term>`).
+        let mut constraints: [Expr<F>; 8] = std::array::from_fn(|_| Expr::zero());
 
         let byte_index = i;
 
         // rs1 byte for the binary op, or byte index for shift
-        constraints[0] += Term::from(is_binary_op) * rs1_bytes[i].clone();
-        constraints[0] += Term::from(is_shift) * Term::from(byte_index as u32);
+        constraints[0] = constraints[0].clone()
+            + Expr::from(is_binary_op) * rs1_bytes[i].clone()
+            + Expr::from(is_shift) * Expr::from(byte_index as u32);
 
         let binary_op_imm = if i >= 2 {
             binary_ops_imm_sign_ext
@@ -219,41 +210,40 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         };
 
         // rs2 byte or imm extension for binary op, or rs1 byte for shift
-        constraints[1] += Term::from(is_binary_op) * rs2_bytes[i].clone();
-        constraints[1] += Term::from(is_binary_op) * Term::from(binary_op_imm);
-        constraints[1] += Term::from(is_shift) * rs1_bytes[i].clone();
+        constraints[1] = constraints[1].clone()
+            + Expr::from(is_binary_op) * rs2_bytes[i].clone()
+            + Expr::from(is_binary_op) * Expr::from(binary_op_imm)
+            + Expr::from(is_shift) * rs1_bytes[i].clone();
 
         // shift amount for shift (binop tables are (a, b, o0..o3) — inputs at cols 0,1,
         // contribution bytes at cols 2..6)
-        constraints[2] += shift_amount_constraint.clone() * Term::from(is_shift);
+        constraints[2] =
+            constraints[2].clone() + shift_amount_constraint.clone() * Expr::from(is_shift);
 
         // only shift is used for inputs below. funct3 here
-        constraints[3] +=
-            Term::from(is_shift) * Term::from(inputs.decoder_data.funct3.expect("is present"));
+        constraints[3] = constraints[3].clone()
+            + Expr::from(is_shift) * Expr::from(inputs.decoder_data.funct3.expect("is present"));
 
         let shift_outputs = shift_output_chunks[i];
 
         for j in 0..4 {
             // and outputs of shifts here
-            constraints[4 + j] += Term::from(is_shift) * Term::from(shift_outputs[j]);
+            constraints[4 + j] =
+                constraints[4 + j].clone() + Expr::from(is_shift) * Expr::from(shift_outputs[j]);
         }
 
         // binop (incl. xor-rotate): the funct3-selected table — Wide{Xor,Or,And} or
         // XorRotate{r} — is (a, b, o0, o1, o2, o3): 4 contribution bytes at cols 2..6
         // (reusing the shift_output_chunks scratch; the paths are mutually exclusive).
         for j in 0..4 {
-            constraints[2 + j] += Term::from(is_binary_op) * Term::from(shift_outputs[j]);
+            constraints[2 + j] =
+                constraints[2 + j].clone() + Expr::from(is_binary_op) * Expr::from(shift_outputs[j]);
         }
 
-        let mut table_id = Constraint::empty();
-        table_id += Term::from(is_shift)
-            * Term::from_field(
-                F::from_u32(TableType::ShiftImplementationOverBytes as u32).expect("must fit"),
-            );
-        // binop (incl. xor-rotate) dispatches by table_id = funct3 (decoder-remapped to the
-        // Wide{Xor,Or,And} id for plain binops, XorRotate{r} id for xor-rotate).
-        table_id += Term::from(is_binary_op)
-            * Term::from(inputs.decoder_data.funct3.expect("must be present"));
+        let table_id = Expr::from(is_shift)
+            * F::from_u32(TableType::ShiftImplementationOverBytes as u32).expect("must fit")
+            + Expr::from(is_binary_op)
+                * Expr::from(inputs.decoder_data.funct3.expect("must be present"));
 
         per_byte_requests.push(LookupRequest::new(table_id, constraints.to_vec()));
     }

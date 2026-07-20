@@ -63,7 +63,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // Only the high rs1 limb is still needed as a `Constraint` (fed to the
     // out-of-scope lookup plumbing); the other limb views are inlined as
     // `Expr::var(...)` directly at their constraint sites.
-    let rs1_high_c: Constraint<F> = Constraint::from(rs1_limbs[1]);
+    let rs1_high_c: Expr<F> = Expr::from(rs1_limbs[1]);
 
     // we do NOT need range checks on RD write values, as they will be results of masking
     // based on rd == x0 predicate. But we will need to add some temporary variables to get addition results
@@ -116,8 +116,11 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // is_fam2 = is_jal + is_jalr + is_slt + is_branch; the decoder one-hot +
     // dispatch constraint keep this sum in {0, 1}. Used to gate F2's lookups so
     // they fold into the shared pool (ZeroEntry / 0-tuple on non-F2 rows).
-    let is_fam2_sum = || -> Constraint<F> {
-        Constraint::from(is_jal) + Term::from(is_jalr) + Term::from(is_slt) + Term::from(is_branch)
+    // Family-2 mask as an `Expr` so `is_fam2_sum() * input` stays ONE multiplication (a product of
+    // the 4-flag sum and the input) rather than the 4 distributed products a `Constraint` yields.
+    // Witness-only `peek` sites, which need a `Constraint`, lower it via `to_max_quadratic_constraint`.
+    let is_fam2_sum = || -> Expr<F> {
+        Expr::from(is_jal) + Expr::from(is_jalr) + Expr::from(is_slt) + Expr::from(is_branch)
     };
     // Family-2 sub-opcode flag variables, OR-ed in-witness to form the is_fam2 mask
     // that gates the conditional pool-slot peeks (lookup outputs share the scratch
@@ -396,39 +399,40 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // then resolve jump/slt condition
 
     let comparison_result_is_zero = scratch_vars[0];
-    let regiszero_input: Constraint<F> = Constraint::empty()
-        + Term::from(comparison_rel_or_jump_saved_pc_low)
-        + Term::from(comparison_rel_or_jump_saved_pc_high);
+    let regiszero_input: Expr<F> = Expr::from(comparison_rel_or_jump_saved_pc_low)
+        + Expr::from(comparison_rel_or_jump_saved_pc_high);
+    let regiszero_table = || is_fam2_sum() * Expr::from(TableType::RegIsZero.to_num());
     peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
         cs,
-        &[is_fam2_sum() * regiszero_input.clone()],
+        &[(is_fam2_sum() * regiszero_input.clone()).to_max_quadratic_constraint()],
         &[comparison_result_is_zero],
-        is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
+        regiszero_table().to_max_quadratic_constraint(),
         &f2_flag_vars,
     );
     let regiszero_request = LookupRequest::new(
-        is_fam2_sum() * Term::from(TableType::RegIsZero.to_num()),
+        regiszero_table(),
         vec![
             is_fam2_sum() * regiszero_input,
-            is_fam2_sum() * Term::from(comparison_result_is_zero),
+            is_fam2_sum() * Expr::from(comparison_result_is_zero),
         ],
     );
 
     // sign of rs1's high U16 limb (reassembled from the high two bytes — that's
     // exactly `rs1_high_c`). U16GetSign maps the full 16-bit value to its sign.
     let rs1_sign = scratch_vars[1];
+    let u16getsign_table = || is_fam2_sum() * Expr::from(TableType::U16GetSign.to_num());
     peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
         cs,
-        &[is_fam2_sum() * rs1_high_c.clone()],
+        &[(is_fam2_sum() * rs1_high_c.clone()).to_max_quadratic_constraint()],
         &[rs1_sign],
-        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        u16getsign_table().to_max_quadratic_constraint(),
         &f2_flag_vars,
     );
     let u16getsign_request = LookupRequest::new(
-        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        u16getsign_table(),
         vec![
             is_fam2_sum() * rs1_high_c.clone(),
-            is_fam2_sum() * Term::from(rs1_sign),
+            is_fam2_sum() * Expr::from(rs1_sign),
         ],
     );
 
@@ -503,50 +507,43 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     let rs2_sign = scratch_vars[4];
     peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
         cs,
-        &[is_fam2_sum() * Term::from(slt_sign_source)],
+        &[(is_fam2_sum() * Expr::from(slt_sign_source)).to_max_quadratic_constraint()],
         &[rs2_sign],
-        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        u16getsign_table().to_max_quadratic_constraint(),
         &f2_flag_vars,
     );
     let rs2_sign_request = LookupRequest::new(
-        is_fam2_sum() * Term::from(TableType::U16GetSign.to_num()),
+        u16getsign_table(),
         vec![
-            is_fam2_sum() * Term::from(slt_sign_source),
-            is_fam2_sum() * Term::from(rs2_sign),
+            is_fam2_sum() * Expr::from(slt_sign_source),
+            is_fam2_sum() * Expr::from(rs2_sign),
         ],
     );
 
     let should_jump_or_slt_value = scratch_vars[2];
-    let cond_jmp_input: Constraint<F> = Constraint::empty()
-        + Term::from(rs2_sign)
-        + Term::from((
-            F::from_u32(1 << CONDITIONAL_RESOLUTION_SRC1_SIGN_BIT_SHIFT).unwrap(),
-            rs1_sign,
-        ))
-        + Term::from((
-            F::from_u32(1 << CONDITIONAL_RESOLUTION_UNSIGNED_LT_BIT_SHIFT).unwrap(),
-            add_rel_0_final_of_var,
-        ))
-        + Term::from((
-            F::from_u32(1 << CONDITIONAL_RESOLUTION_EQ_BIT_SHIFT).unwrap(),
-            comparison_result_is_zero,
-        ))
-        + Term::from((
-            F::from_u32(1 << CONDITIONAL_RESOLUTION_FUNCT3_BIT_SHIFT).unwrap(),
-            inputs.decoder_data.funct3.expect("must have funct3"),
-        ));
+    let cond_jmp_input: Expr<F> = Expr::from(rs2_sign)
+        + Expr::from(rs1_sign)
+            * F::from_u32(1 << CONDITIONAL_RESOLUTION_SRC1_SIGN_BIT_SHIFT).unwrap()
+        + Expr::from(add_rel_0_final_of_var)
+            * F::from_u32(1 << CONDITIONAL_RESOLUTION_UNSIGNED_LT_BIT_SHIFT).unwrap()
+        + Expr::from(comparison_result_is_zero)
+            * F::from_u32(1 << CONDITIONAL_RESOLUTION_EQ_BIT_SHIFT).unwrap()
+        + Expr::from(inputs.decoder_data.funct3.expect("must have funct3"))
+            * F::from_u32(1 << CONDITIONAL_RESOLUTION_FUNCT3_BIT_SHIFT).unwrap();
+    let cond_jmp_table =
+        || is_fam2_sum() * Expr::from(TableType::ConditionalJmpBranchSltUnified.to_num());
     peek_lookup_values_unconstrained_into_variables_from_constraints_conditional(
         cs,
-        &[is_fam2_sum() * cond_jmp_input.clone()],
+        &[(is_fam2_sum() * cond_jmp_input.clone()).to_max_quadratic_constraint()],
         &[should_jump_or_slt_value],
-        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSltUnified.to_num()),
+        cond_jmp_table().to_max_quadratic_constraint(),
         &f2_flag_vars,
     );
     let cond_jmp_request = LookupRequest::new(
-        is_fam2_sum() * Term::from(TableType::ConditionalJmpBranchSltUnified.to_num()),
+        cond_jmp_table(),
         vec![
             is_fam2_sum() * cond_jmp_input,
-            is_fam2_sum() * Term::from(should_jump_or_slt_value),
+            is_fam2_sum() * Expr::from(should_jump_or_slt_value),
         ],
     );
     let should_jump_if_branch = cs.add_named_variable("should jump if BRANCH opcode");
@@ -865,11 +862,11 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     // (is_fam2*input, is_fam2*bit_1, is_fam2*pc_out_low) under
     // table_id = is_fam2 * JumpCleanupOffset; (0,0,0)/ZeroEntry on non-F2 rows.
     let jump_cleanup_request = LookupRequest::new(
-        is_fam2_sum() * Term::from(TableType::JumpCleanupOffset.to_num()),
+        is_fam2_sum() * Expr::from(TableType::JumpCleanupOffset.to_num()),
         vec![
-            is_fam2_sum() * Term::from(pc_intermediate_addition_tmp_low),
-            is_fam2_sum() * Term::from(next_pc_bit_1),
-            is_fam2_sum() * Term::from(inputs.cycle_end_state.pc[0]),
+            is_fam2_sum() * Expr::from(pc_intermediate_addition_tmp_low),
+            is_fam2_sum() * Expr::from(next_pc_bit_1),
+            is_fam2_sum() * Expr::from(inputs.cycle_end_state.pc[0]),
         ],
     );
 

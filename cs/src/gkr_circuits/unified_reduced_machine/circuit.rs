@@ -6,7 +6,6 @@ use super::jump_branch_slt::{
 };
 use super::mem_word_only::apply_unified_mem_word_only_inner;
 use super::*;
-use crate::constraint::Constraint;
 use crate::cs::circuit_trait::*;
 use crate::gkr_circuits::add_sub_family::{
     add_sub_lui_auipc_mop_table_addition_fn, add_sub_lui_auipc_mop_table_driver_fn,
@@ -103,12 +102,12 @@ const UNIFIED_SCRATCH_VAR_COUNT: usize = const_max(
 pub(super) const UNIFIED_LOOKUP_WIDTH: usize = 8;
 
 pub(super) struct LookupRequest<F: PrimeField> {
-    table_id: Constraint<F>,
-    inputs: Vec<Constraint<F>>,
+    table_id: Expr<F>,
+    inputs: Vec<Expr<F>>,
 }
 
 impl<F: PrimeField> LookupRequest<F> {
-    pub(super) fn new(table_id: Constraint<F>, inputs: Vec<Constraint<F>>) -> Self {
+    pub(super) fn new(table_id: Expr<F>, inputs: Vec<Expr<F>>) -> Self {
         assert!(
             inputs.len() <= UNIFIED_LOOKUP_WIDTH,
             "LookupRequest has {} inputs, exceeds UNIFIED_LOOKUP_WIDTH={UNIFIED_LOOKUP_WIDTH}",
@@ -124,30 +123,38 @@ fn flush_unified_lookup_pool<F: PrimeField, CS: Circuit<F>>(
 ) {
     let num_slots = per_family.iter().map(Vec::len).max().unwrap_or(0);
     for k in 0..num_slots {
-        let mut table_id = Constraint::<F>::empty();
-        let mut inputs: [Constraint<F>; UNIFIED_LOOKUP_WIDTH] =
-            core::array::from_fn(|_| Constraint::empty());
+        // Pool the per-family requests for slot `k` by adding their `Expr`s (a slot no family
+        // populates stays `None` and folds in as the constant 0). Kept as `Expr` so each masked
+        // product `mask * input` reaches the compiler as one multiplication rather than the
+        // distributed sum a flattened `Constraint` would produce.
+        let mut table_id: Option<Expr<F>> = None;
+        let mut inputs: [Option<Expr<F>>; UNIFIED_LOOKUP_WIDTH] = core::array::from_fn(|_| None);
         for family in per_family {
             let Some(req) = family.get(k) else { continue };
             assert!(req.inputs.len() <= UNIFIED_LOOKUP_WIDTH);
-            table_id = table_id + req.table_id.clone();
+            table_id = Some(match table_id.take() {
+                None => req.table_id.clone(),
+                Some(acc) => acc + req.table_id.clone(),
+            });
             for (j, inp) in req.inputs.iter().enumerate() {
-                inputs[j] = inputs[j].clone() + inp.clone();
+                inputs[j] = Some(match inputs[j].take() {
+                    None => inp.clone(),
+                    Some(acc) => acc + inp.clone(),
+                });
             }
         }
-        let table_id_var = cs.add_intermediate_named_variable_from_constraint(
-            table_id,
+        let table_id_var = cs.add_intermediate_named_variable_from_expr(
+            table_id.expect("a pooled slot must have at least one contributing family"),
             &format!("pooled lookup table_id (slot {k})"),
         );
         let tuple: [LookupInput<F>; UNIFIED_LOOKUP_WIDTH] = core::array::from_fn(|j| {
             // Positions no family populates fold in as the constant 0 (no column).
-            if inputs[j].is_empty() {
-                LookupInput::from(F::ZERO)
-            } else {
-                LookupInput::from(cs.add_intermediate_named_variable_from_constraint(
-                    inputs[j].clone(),
+            match inputs[j].take() {
+                None => LookupInput::from(F::ZERO),
+                Some(expr) => LookupInput::from(cs.add_intermediate_named_variable_from_expr(
+                    expr,
                     &format!("pooled lookup input (slot {k}, pos {j})"),
-                ))
+                )),
             }
         });
         cs.enforce_lookup_tuple_for_variable_table::<UNIFIED_LOOKUP_WIDTH>(&tuple, table_id_var);
@@ -648,61 +655,75 @@ mod test {
     use crate::definitions::OutputType;
     use crate::utils::serialize_to_file;
 
-    // #[test]
-    // fn unified_rs2_sign_lookup_reads_slt_sign_source_scratch() {
-    //     use crate::cs::circuit_impl::BasicAssembly;
-    //     use crate::tables::TableType;
-    //     use ::field::baby_bear::base::BabyBearField;
+    #[test]
+    fn unified_rs2_sign_lookup_reads_slt_sign_source_scratch() {
+        use crate::cs::circuit_impl::BasicAssembly;
+        use crate::tables::TableType;
+        use ::field::baby_bear::base::BabyBearField;
 
-    //     let mut cs = BasicAssembly::<BabyBearField>::new();
-    //     unified_register_all_tables(&mut cs);
-    //     unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
-    //     let (output, _) = cs.finalize();
+        let mut cs = BasicAssembly::<BabyBearField>::new();
+        unified_register_all_tables(&mut cs);
+        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+        let (output, _) = cs.finalize();
 
-    //     let var_by_name = |name: &str| {
-    //         output
-    //             .variable_names
-    //             .iter()
-    //             .find(|(_, n)| n.as_str() == name)
-    //             .map(|(v, _)| *v)
-    //     };
-    //     let slt_sign_source =
-    //         var_by_name("shared scratch var[3]").expect("F2 sign-source scratch var must exist");
-    //     let u16getsign_id =
-    //         BabyBearField::from_u32(TableType::U16GetSign as u32).expect("table id fits");
+        let var_by_name = |name: &str| {
+            output
+                .variable_names
+                .iter()
+                .find(|(_, n)| n.as_str() == name)
+                .map(|(v, _)| *v)
+        };
+        // Pooled lookup intermediates are now defined from `Expr` via
+        // `add_intermediate_named_variable_from_expr`; `variables_from_constraints` maps the
+        // variable to the index of its `Define` statement, which carries the lowered
+        // (max-quadratic) `compiled_constraint`.
+        let defining_constraint = |var: Variable| -> &crate::constraint::Constraint<BabyBearField> {
+            let idx = output.variables_from_constraints[&var];
+            match &output.structured_statements[idx] {
+                crate::structured_expr::StructuredStatement::Define {
+                    compiled_constraint,
+                    ..
+                } => compiled_constraint,
+                other => panic!("expected a Define statement for {var:?}, got {other:?}"),
+            }
+        };
+        let slt_sign_source =
+            var_by_name("shared scratch var[3]").expect("F2 sign-source scratch var must exist");
+        let u16getsign_id =
+            BabyBearField::from_u32(TableType::U16GetSign as u32).expect("table id fits");
 
-    //     // Walk the pooled lookup slots by their generated names; stop at the first gap.
-    //     let mut found = false;
-    //     for k in 0..UNIFIED_LOOKUP_WIDTH * 8 {
-    //         let Some(tid_var) = var_by_name(&format!("pooled lookup table_id (slot {k})")) else {
-    //             break;
-    //         };
-    //         let tid_c = &output.variables_from_constraints[&tid_var];
-    //         // F2's contribution to the slot's table id is `is_fam2_sum() * U16GetSign`,
-    //         // i.e. degree-1 terms with the table id as coefficient.
-    //         let has_u16getsign = tid_c.terms.iter().any(|t| {
-    //             matches!(t, Term::Expression { coeff, degree: 1, .. } if *coeff == u16getsign_id)
-    //         });
-    //         let Some(in0_var) = var_by_name(&format!("pooled lookup input (slot {k}, pos 0)"))
-    //         else {
-    //             continue;
-    //         };
-    //         let in0_c = &output.variables_from_constraints[&in0_var];
-    //         let reads_sign_source = in0_c
-    //             .terms
-    //             .iter()
-    //             .any(|t| t.as_slice().contains(&slt_sign_source));
-    //         if has_u16getsign && reads_sign_source {
-    //             found = true;
-    //             break;
-    //         }
-    //     }
-    //     assert!(
-    //         found,
-    //         "some pooled lookup slot must extract the rs2 sign via U16GetSign fed by \
-    //          the F2 sign-source scratch var (slt_sign_source), not by raw rs2_high"
-    //     );
-    // }
+        // Walk the pooled lookup slots by their generated names; stop at the first gap.
+        let mut found = false;
+        for k in 0..UNIFIED_LOOKUP_WIDTH * 8 {
+            let Some(tid_var) = var_by_name(&format!("pooled lookup table_id (slot {k})")) else {
+                break;
+            };
+            let tid_c = defining_constraint(tid_var);
+            // F2's contribution to the slot's table id is `is_fam2_sum() * U16GetSign`,
+            // i.e. degree-1 terms with the table id as coefficient.
+            let has_u16getsign = tid_c.terms.iter().any(|t| {
+                matches!(t, Term::Expression { coeff, degree: 1, .. } if *coeff == u16getsign_id)
+            });
+            let Some(in0_var) = var_by_name(&format!("pooled lookup input (slot {k}, pos 0)"))
+            else {
+                continue;
+            };
+            let in0_c = defining_constraint(in0_var);
+            let reads_sign_source = in0_c
+                .terms
+                .iter()
+                .any(|t| t.as_slice().contains(&slt_sign_source));
+            if has_u16getsign && reads_sign_source {
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "some pooled lookup slot must extract the rs2 sign via U16GetSign fed by \
+             the F2 sign-source scratch var (slt_sign_source), not by raw rs2_high"
+        );
+    }
 
     /// Sanity-check the artifact shape: both output channels present + i/t
     /// teardown_sets populated. Doesn't write anything to disk.

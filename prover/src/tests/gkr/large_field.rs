@@ -889,7 +889,7 @@ fn circuit_layer_g(
                 acc.add_assign(&mul(&bc0, &num));
                 acc.add_assign(&mul(&bc1, &den));
             }
-            R::EnforceSingleMaxQuadraticConstraint { input } | R::MaxQuadratic { input, .. } => {
+            R::EnforceSingleMaxQuadraticConstraint { input, .. } | R::MaxQuadratic { input, .. } => {
                 // val = constant + Σ_a evals[a]·(Σ coeff·evals[b]) + Σ coeff·evals[addr]
                 let bc = cb;
                 cb.mul_assign(&batching);

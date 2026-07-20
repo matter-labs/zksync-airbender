@@ -223,8 +223,8 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         // trap store*rom — only fires when is_sw = 1 (Family 4 SW) and is_rom = 1.
         cs.add_constraint_expr(Expr::from(is_rom) * Expr::from(is_sw));
         // rom_addr = ram_addr_lo + 2^16 * ram_addr_hi — degree-1 over base vars.
-        let rom_addr: Constraint<F> =
-            Constraint::from(ram_addr[0]) + shift16_term * Term::from(ram_addr[1]);
+        let rom_addr: Expr<F> =
+            Expr::from(ram_addr[0]) + Expr::from(ram_addr[1]) * F::from_u32_with_reduction(1 << 16);
         (is_rom, rom_addr)
     };
 
@@ -323,15 +323,15 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         // non-Family-4 rows). This keeps the pooled-lookup input at 0 on non-Family-4
         // rows so it does not pollute the shared lookup-pool slot. On Family-4 rows
         // gate_fam4_rom == is_rom, so this equals the original `is_rom * rom_addr`.
-        let input = Constraint::from(gate_fam4_rom_read) * rom_addr_constraint;
+        let input = Expr::from(gate_fam4_rom_read) * rom_addr_constraint;
         // we want a constraint such that it's if we do ROM read then it's equal to destination value
         // (what we write to RD), otherwise (RAM read or SW) - it's 0. We need in mind that SW * is_ROM is
         // unreachable combiantion, so we freely treat is as 0. We also want to ensure that
         // if we do RAM read or SW, then source and destination values are the same
 
         // ROM read case
-        let output1 = Constraint::from(gate_fam4_rom_read) * Term::from(destination_low);
-        let output2 = Constraint::from(gate_fam4_rom_read) * Term::from(destination_high);
+        let output1 = Expr::from(gate_fam4_rom_read) * Expr::from(destination_low);
+        let output2 = Expr::from(gate_fam4_rom_read) * Expr::from(destination_high);
         // RAM read or SW - then if LW == 1 and we do not touch ROM, then it's 1 in predicate
         cs.add_constraint_expr(
             (Expr::from(is_lw.expect_variable()) + Expr::from(is_sw.expect_variable())
@@ -346,9 +346,9 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
 
         // table_id = execute * gate_fam4_rom * romread_table — collapses to 0
         // (ZeroEntry) when another family fires or on padding.
-        let table_id = Constraint::from(inputs.execute)
-            * Term::from(gate_fam4_rom_read)
-            * Term::from(TableType::AlignedRomRead.to_num());
+        let table_id = Expr::from(inputs.execute)
+            * Expr::from(gate_fam4_rom_read)
+            * Expr::from(TableType::AlignedRomRead.to_num());
         LookupRequest::new(table_id, vec![input, output1, output2])
     };
 
@@ -387,7 +387,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         // conditionally on is_lw∨is_sw and pinned only by the gated decompositions +
         // trap below, so they are free on non-Family-4 rows (poolable).
         //
-        // top_14 (RC-16) borrows limb 0 of the shared F1/F2/F4 Register —
+        // top_14 (RC-16) borrows limb 0 of the shared F1/F2/F4 Register (so - range-checked) —
         // free on F4 rows since F1/F2 are idle. That limb is already range-checked to
         // 16 bits by the Register, so no require_invariant here. top_14 is consumed only
         // by the gated decompositions, so its value is irrelevant on non-F4 rows;
