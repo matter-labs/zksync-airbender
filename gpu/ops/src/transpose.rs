@@ -51,6 +51,8 @@ pub trait Transpose: Sized {
         let src_cols = src.cols();
         assert_eq!(src_rows, dst.cols());
         assert_eq!(src_cols, dst.rows());
+        assert!(src_rows <= u32::MAX as usize);
+        assert!(src_cols <= u32::MAX as usize);
         let src_rows = src_rows as u32;
         let src_cols = src_cols as u32;
         let block_dim = (tile_size, tiles_per_block);
