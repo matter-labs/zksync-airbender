@@ -78,6 +78,35 @@ impl<T> MutPtrAndStrideWrappingMatrix<T> {
     }
 }
 
+// ABI drift guards — these kernel-arg descriptors cross the Rust↔CUDA boundary
+// by value; keep them byte-compatible with the CUDA counterparts in
+// native_headers/primitives/memory.cuh (matrix_accessor / wrapping_matrix_accessor).
+// Layout is element-type independent (thin *const T = 8 B + usize = 8 B), so a
+// single representative instantiation (u32) pins the ABI.
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+    assert!(size_of::<PtrAndStride<u32>>() == 16 && align_of::<PtrAndStride<u32>>() == 8);
+    assert!(offset_of!(PtrAndStride<u32>, ptr) == 0 && offset_of!(PtrAndStride<u32>, stride) == 8);
+    assert!(size_of::<MutPtrAndStride<u32>>() == 16 && align_of::<MutPtrAndStride<u32>>() == 8);
+    assert!(
+        offset_of!(MutPtrAndStride<u32>, ptr) == 0 && offset_of!(MutPtrAndStride<u32>, stride) == 8
+    );
+    assert!(
+        size_of::<PtrAndStrideWrappingMatrix<u32>>() == 24
+            && align_of::<PtrAndStrideWrappingMatrix<u32>>() == 8
+    );
+    assert!(offset_of!(PtrAndStrideWrappingMatrix<u32>, ptr_and_stride) == 0);
+    assert!(offset_of!(PtrAndStrideWrappingMatrix<u32>, rows) == 16);
+    assert!(offset_of!(PtrAndStrideWrappingMatrix<u32>, cols) == 20);
+    assert!(
+        size_of::<MutPtrAndStrideWrappingMatrix<u32>>() == 24
+            && align_of::<MutPtrAndStrideWrappingMatrix<u32>>() == 8
+    );
+    assert!(offset_of!(MutPtrAndStrideWrappingMatrix<u32>, mut_ptr_and_stride) == 0);
+    assert!(offset_of!(MutPtrAndStrideWrappingMatrix<u32>, rows) == 16);
+    assert!(offset_of!(MutPtrAndStrideWrappingMatrix<u32>, cols) == 20);
+};
+
 pub trait DeviceVectorChunkImpl<T> {
     fn slice(&self) -> &DeviceSlice<T>;
 

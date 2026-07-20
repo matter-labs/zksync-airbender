@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 #include "../common.cuh"
 #include "ptx.cuh"
 
@@ -517,4 +519,34 @@ template <typename T> struct wrapping_matrix_getter_setter : wrapping_matrix_acc
     this->internal.set(row % this->rows, col % this->cols, value);
   }
 };
+
+// --- ABI drift guards -----------------------------------------------------
+// Keep these kernel-arg accessor layouts byte-compatible with the Rust
+// descriptors in gpu/core/src/primitives/device_structures.rs:
+//   matrix_accessor          <-> PtrAndStride            (ptr + stride)
+//   wrapping_matrix_accessor <-> PtrAndStrideWrappingMatrix (inner + rows + cols)
+// The layout is element-type independent, so a representative instantiation
+// pins the ABI. offsetof on these types is conditionally-supported (they are
+// non-standard-layout: `ptr` lives in the vector_accessor base), but the
+// layout is deterministic; the pedantic host (-Winvalid-offsetof) and device
+// (#1427) diagnostics are suppressed narrowly, for these assertions only.
+static_assert(sizeof(matrix_accessor<unsigned>) == 16, "PtrAndStride size");
+static_assert(alignof(matrix_accessor<unsigned>) == 8, "PtrAndStride align");
+static_assert(sizeof(wrapping_matrix_accessor<matrix_getter<unsigned>>) == 24, "WrappingMatrix size");
+static_assert(alignof(wrapping_matrix_accessor<matrix_getter<unsigned>>) == 8, "WrappingMatrix align");
+#ifdef __CUDACC__
+#pragma nv_diagnostic push
+#pragma nv_diag_suppress 1427
+#endif
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+static_assert(offsetof(matrix_accessor<unsigned>, stride) == 8, "stride offset");
+static_assert(offsetof(wrapping_matrix_accessor<matrix_getter<unsigned>>, internal) == 0, "internal offset");
+static_assert(offsetof(wrapping_matrix_accessor<matrix_getter<unsigned>>, rows) == 16, "rows offset");
+static_assert(offsetof(wrapping_matrix_accessor<matrix_getter<unsigned>>, cols) == 20, "cols offset");
+#pragma GCC diagnostic pop
+#ifdef __CUDACC__
+#pragma nv_diagnostic pop
+#endif
+// --------------------------------------------------------------------------
 } // namespace airbender::primitives::memory
