@@ -778,6 +778,16 @@ enum CombinerBackendState {
     },
 }
 
+/// Device memory pool size for the combiner's GPU prover, in allocator blocks
+/// (1 MiB each, see `allocator_block_log_size`). The measured allocation peak of
+/// a combine run is 21,564 blocks at security 100 (security 80 peaks lower);
+/// the extra 256 blocks absorb placement-dependent fragmentation — a pool sized
+/// exactly at the peak fails to find a contiguous 128 MiB range even though
+/// enough total bytes are free. Fixing the pool size instead of taking all VRAM
+/// leaves the rest of the device to other tenants (e.g. the SNARK wrapper).
+#[cfg(feature = "gpu")]
+const COMBINER_DEVICE_POOL_BLOCKS: usize = 21_820;
+
 impl CarriedChainCombiner {
     pub fn new_cpu(security_level: SecurityLevel, cpu: CpuConfig) -> Self {
         Self::new(security_level, CombinerBackendState::Cpu(cpu))
@@ -838,6 +848,9 @@ impl CarriedChainCombiner {
                     gpu_prover::execution::prover::ExecutionProverConfiguration::default();
                 prover_configuration.replay_worker_threads_count =
                     config.replay_worker_threads_count;
+                prover_configuration
+                    .prover_context_config
+                    .max_device_allocation_blocks_count = Some(COMBINER_DEVICE_POOL_BLOCKS);
                 *host_state = Some(UnifiedRecursionProverHostState::new(
                     self.security_level.model(),
                     prover_configuration,
@@ -1020,6 +1033,9 @@ fn combine_artifacts_with_program(
             let mut prover_configuration =
                 gpu_prover::execution::prover::ExecutionProverConfiguration::default();
             prover_configuration.replay_worker_threads_count = gpu.replay_worker_threads_count;
+            prover_configuration
+                .prover_context_config
+                .max_device_allocation_blocks_count = Some(COMBINER_DEVICE_POOL_BLOCKS);
             let host_state =
                 UnifiedRecursionProverHostState::new(security_level.model(), prover_configuration);
             CombinedUnifiedProver::new_gpu(&host_state, artifacts[0].batch_id)
