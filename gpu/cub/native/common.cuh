@@ -15,16 +15,10 @@ namespace airbender::cub {
   }
 
 BINARY_OP(add, ZERO);
-BINARY_OP(mul, ONE);
 
 template <> struct add<u32> {
   DEVICE_FORCEINLINE u32 operator()(const u32 &a, const u32 &b) const { return a + b; }
   static HOST_DEVICE_FORCEINLINE u32 init() { return 0; }
-};
-
-template <> struct mul<u32> {
-  DEVICE_FORCEINLINE u32 operator()(const u32 &a, const u32 &b) const { return a * b; }
-  static HOST_DEVICE_FORCEINLINE u32 init() { return 1; }
 };
 
 } // namespace airbender::cub
