@@ -175,7 +175,6 @@ serde = { version = "1", default-features = false, features = ["derive", "alloc"
 clap = { version = "4.5.21", features = ["derive"] }
 addr2line_new = { package = "addr2line", version = "0.25" }
 object = "0.37"
-# rand = {version = "0.8", default-features = false, features = ["std_rng"] }
 rand = { version = "0.9", default-features = false }
 unroll = "0.1"
 seq-macro = "0.3"

@@ -1069,11 +1069,13 @@ fn emit_single_output_value<MW: FieldWrapper, F: PrimeField>(
 ) -> Option<TokenStream> {
     use NoFieldGKRRelation as R;
     match &gate.enforced_relation {
-        R::EnforceSingleMaxQuadraticConstraint { input } => Some(emit_max_quadratic_eval::<MW, _>(
-            input,
-            "val",
-            input_sorted_addrs,
-        )),
+        R::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+            Some(emit_max_quadratic_eval::<MW, _>(
+                input,
+                "val",
+                input_sorted_addrs,
+            ))
+        }
         R::EnforceConstraintsMaxQuadratic { .. } => {
             unimplemented!(
                 "EnforceConstraintsMaxQuadratic is not supported; use individual EnforceSingleMaxQuadraticConstraint gates"

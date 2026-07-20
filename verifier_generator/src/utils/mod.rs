@@ -205,7 +205,7 @@ pub fn collect_sorted_unique_addrs<F: PrimeField>(
                 addrs.insert(input[1][0]);
                 addrs.insert(input[1][1]);
             }
-            R::EnforceSingleMaxQuadraticConstraint { input } => {
+            R::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 for (addr, terms) in input.quadratic_terms.iter() {
                     addrs.insert(*addr);
                     for &(_, b) in terms.iter() {
