@@ -96,6 +96,26 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
         alloc
     }
 
+    fn alloc_from_tracker<T>(
+        tracker: &mut AllocationsTracker,
+        log_chunk_size: u32,
+        len: usize,
+        byte_len: usize,
+        placement: AllocationPlacement,
+        alignment: usize,
+    ) -> CudaResult<StaticAllocationData<T>> {
+        let alloc_granularity = (1usize << log_chunk_size).max(alignment);
+        let alloc_len = byte_len.next_multiple_of(alloc_granularity);
+        match tracker.alloc_aligned(alloc_len, placement, alignment) {
+            Ok(ptr) => {
+                assert!(ptr.is_aligned_to(alignment));
+                let ptr = ptr.cast::<T>();
+                Ok(StaticAllocationData::new(ptr, len, alloc_len))
+            }
+            Err(_) => Err(CudaError::ErrorMemoryAllocation),
+        }
+    }
+
     fn alloc_impl<T>(
         &mut self,
         len: usize,
@@ -109,32 +129,25 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
 
         if let Some(ref mut small) = self.small {
             if byte_len > 0 && byte_len <= small.small_threshold {
-                let slcs = small.log_chunk_size;
-                let alloc_granularity = (1usize << slcs).max(alignment);
-                let alloc_len = byte_len.next_multiple_of(alloc_granularity);
-                match small.tracker.alloc_aligned(alloc_len, placement, alignment) {
-                    Ok(ptr) => {
-                        assert!(ptr.is_aligned_to(alignment));
-                        let ptr = ptr.cast::<T>();
-                        return Ok(StaticAllocationData::new(ptr, len, alloc_len));
-                    }
-                    Err(_) => return Err(CudaError::ErrorMemoryAllocation),
-                }
+                return Self::alloc_from_tracker(
+                    &mut small.tracker,
+                    small.log_chunk_size,
+                    len,
+                    byte_len,
+                    placement,
+                    alignment,
+                );
             }
         }
 
-        let lcs = self.log_chunk_size;
-        let alloc_granularity = (1 << lcs).max(alignment);
-        let alloc_len = byte_len.next_multiple_of(alloc_granularity);
-        match self.tracker.alloc_aligned(alloc_len, placement, alignment) {
-            Ok(ptr) => {
-                assert!(ptr.is_aligned_to(alignment));
-                let ptr = ptr.cast::<T>();
-                let data = StaticAllocationData::new(ptr, len, alloc_len);
-                Ok(data)
-            }
-            Err(_) => Err(CudaError::ErrorMemoryAllocation),
-        }
+        Self::alloc_from_tracker(
+            &mut self.tracker,
+            self.log_chunk_size,
+            len,
+            byte_len,
+            placement,
+            alignment,
+        )
     }
 
     pub fn alloc<T>(
