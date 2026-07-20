@@ -270,6 +270,39 @@ pub enum InitsOrTeardownsTimestampAndValue {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum NoFieldStructuredExpression<F: PrimeField> {
+    Constant(F),
+    Place(GKRAddress),
+    Sum(Vec<Self>),
+    Product(Vec<Self>),
+}
+
+impl<F: PrimeField> PartialOrd for NoFieldStructuredExpression<F> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(Ord::cmp(self, other))
+    }
+}
+
+impl<F: PrimeField> Ord for NoFieldStructuredExpression<F> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Self::Constant(..), Self::Constant(..)) => {
+                unreachable!("unnormalized")
+            }
+            (Self::Constant(..), _) => std::cmp::Ordering::Less,
+            (_, Self::Constant(..)) => std::cmp::Ordering::Greater,
+            (Self::Place(a), Self::Place(b)) => a.cmp(b),
+            (Self::Place(..), _) => std::cmp::Ordering::Less,
+            (_, Self::Place(..)) => std::cmp::Ordering::Greater,
+            (Self::Product(..), _) => std::cmp::Ordering::Less,
+            (_, Self::Product(..)) => std::cmp::Ordering::Greater,
+            (Self::Sum(..), _) => std::cmp::Ordering::Greater,
+            (_, Self::Sum(..)) => std::cmp::Ordering::Less,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NoFieldGKRRelation<F: PrimeField> {
     LinearBaseFieldRelation {
         input: NoFieldLinearRelation<F>,
@@ -277,13 +310,13 @@ pub enum NoFieldGKRRelation<F: PrimeField> {
     },
     MaxQuadratic {
         input: NoFieldMaxQuadraticGKRRelation<F>,
-        expression: NoFieldStructuredExpression,
+        expression: NoFieldStructuredExpression<F>,
         output: GKRAddress,
     },
 
     EnforceSingleMaxQuadraticConstraint {
         input: NoFieldMaxQuadraticGKRRelation<F>,
-        expression: NoFieldStructuredExpression,
+        expression: NoFieldStructuredExpression<F>,
     },
 
     // Enforces a randomized set of constraints in a form of c1 + alpha * c2 + ...

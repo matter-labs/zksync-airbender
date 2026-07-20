@@ -121,8 +121,8 @@ pub fn no_field_gkr_max_quadratic_from_expr_and_constraint<F: PrimeField>(
     expression: Expr<F>,
     mut constraint: Constraint<F>,
     output: GKRAddress,
-) -> NoFieldGKRRelation {
-    todo!();
+) -> NoFieldGKRRelation<F> {
+    // NOTE: expression and constraint are consistent with each other
 
     constraint.normalize();
     let (quadratic_part, linear_part, constant) = constraint.clone().split_max_quadratic();
@@ -133,6 +133,12 @@ pub fn no_field_gkr_max_quadratic_from_expr_and_constraint<F: PrimeField>(
             assert_eq!(linear_part.len(), 1);
             let (c, var) = linear_part[0];
             if c.is_one() {
+                // double check that expression is also simple
+                let Expr::Var(src) = &expression else {
+                    panic!("constraint marks a copy, but expression is {:?}", expression);
+                };
+                assert_eq!(*src, var);
+
                 // just copy
                 let input = graph.get_address_for_variable(var);
                 // in circuits all elements are in base field

@@ -207,7 +207,6 @@ impl<F: PrimeField> GKRCompiler<F> {
             all_variables_to_place.insert(Variable(variable_idx));
         }
 
-        let range_check_expressions = range_check_expressions;
         // NOTE: we do not need to add extra range checks due to inits/teardowns anymore, as
         // lowest bits of address are coming from virtual setup,
         // and teardown values and timestamps are range checked by induction
@@ -455,7 +454,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             // we need to ensure that constraint the describes a carry is boolean
             let t = Expr::product(vec![
                 Expr::<F>::constant(
-                    F::from_u64_with_reduction(1 << TIMESTAMP_COLUMNS_NUM_BITS)
+                    F::from_u32_with_reduction(1 << TIMESTAMP_COLUMNS_NUM_BITS)
                         .inverse()
                         .unwrap(),
                 ),
@@ -567,16 +566,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // for all boolean vars we add booleanity constraint here
 
-        for boolean in boolean_vars.iter() {
-            let expr = Expr::<F>::from(*boolean) * (Expr::from(*boolean) - Expr::from(1));
-            expr.validate_degree_at_most(2);
-            let compiled_constraint = expr.to_max_quadratic_constraint();
-            structured_statements.push(StructuredStatement::AssertZero {
-                expr: expr,
-                compiled_constraint,
-                prevent_optimizations: true,
-            });
-        }
+        add_boolean_constraints(&mut structured_statements, boolean_vars);
 
         // and now we can finally layout all the variables. We do want to push all of them into intermediate layers
 
@@ -590,111 +580,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         // As we explicitly track variables that can be made "virtual" (by pushing them into intermediate GKR layers),
         // it should be relatively easy task.
 
-        // println!(
-        //     "In total of {} variables are defined via constraints",
-        //     variables_from_constraints.len()
-        // );
-        // for (var, _c) in variables_from_constraints.iter() {
-        //     if let Some(name) = variable_names.get(var) {
-        //         println!("Variable {:?}: `{}` is defined via constraint", var, name);
-        //     }
-        // }
-
-        // variables defined (logically) via constraints can be placed by the author at either base
-        // or intermediate layer, and we identify it by peeking into the corresponding
-        // structured expression.
-
-        // NOTE: `variables_from_constraints` only contain variables to place into intermediate layer
-
-        let mut used_definitions = BTreeSet::new();
-        if variables_from_constraints.len() > 0 {
-            assert!(all_variables_to_place.len() > 0);
-
-            // put all variables into base layer that are not defined via constraints
-            for var in all_variables_to_place.clone().iter() {
-                if variables_from_constraints.contains_key(var) {
-                    continue;
-                }
-                let _ = graph.layout_witness_subtree_multiple_variables(
-                    [*var],
-                    &mut all_variables_to_place,
-                    &layers_mapping,
-                );
-            }
-            assert_eq!(
-                all_variables_to_place.len(),
-                variables_from_constraints.len()
-            );
-
-            // now we should walk over constraints that define variables
-            let mut intermediate_layer = 1;
-            loop {
-                let initial_len = variables_from_constraints.len();
-                for (var, expression_idx) in variables_from_constraints.clone().into_iter() {
-                    let StructuredStatement::Define {
-                        dst,
-                        compiled_constraint,
-                        expr,
-                        output_layer,
-                    } = &structured_statements[expression_idx]
-                    else {
-                        unreachable!()
-                    };
-                    let all_vars = compiled_constraint.stable_variable_set();
-                    let expected_layer = *layers_mapping.get(&var).expect("must be known");
-                    assert_eq!(expected_layer, *output_layer);
-                    let inputs_layer = get_input_layer_ensure_same(&all_vars, &layers_mapping);
-                    assert_eq!(expected_layer, inputs_layer + 1);
-                    if intermediate_layer != inputs_layer + 1 {
-                        continue;
-                    }
-                    assert!(used_definitions.insert(expression_idx));
-                    let _ = graph.place_intermediate_variable_from_expression_at_layer(
-                        intermediate_layer,
-                        var,
-                        &mut all_variables_to_place,
-                        &layers_mapping,
-                        expr.clone(),
-                        compiled_constraint.clone(),
-                    );
-                    variables_from_constraints.remove(&var);
-                }
-
-                assert_ne!(
-                    initial_len,
-                    variables_from_constraints.len(),
-                    "intermediate layers places is stuck"
-                );
-                intermediate_layer += 1;
-
-                if variables_from_constraints.is_empty() {
-                    break;
-                }
-            }
-
-            assert!(all_variables_to_place.is_empty());
-        } else {
-            // put all variables into base layer
-            for var in all_variables_to_place.clone().iter() {
-                let [_place] = graph.layout_witness_subtree_multiple_variables(
-                    [*var],
-                    &mut all_variables_to_place,
-                    &layers_mapping,
-                );
-            }
-            assert!(all_variables_to_place.is_empty());
-        }
-
-        for (idx, expr) in structured_statements.iter().enumerate() {
-            match expr {
-                StructuredStatement::AssertZero { .. } => {
-                    assert!(used_definitions.contains(&idx) == false);
-                }
-                StructuredStatement::Define { .. } => {
-                    assert!(used_definitions.contains(&idx));
-                }
-            }
-        }
+        place_variables_from_constraints(&structured_statements, &mut variables_from_constraints, &layers_mapping, &mut graph, &mut all_variables_to_place);
 
         // Accumulate grand product - pairwise as much as we can
         use crate::gkr_compiler::memory_like_grand_product::accumulate_memory_like_grand_product;
@@ -1104,5 +990,127 @@ impl<F: PrimeField> GKRCompiler<F> {
             trace_len_log2,
             caching_is_allowed,
         )
+    }
+}
+
+pub(crate) fn place_variables_from_constraints<F: PrimeField>(
+    structured_statements: &Vec<StructuredStatement<F>>,
+    variables_from_constraints: &mut BTreeMap<Variable, usize>,
+    layers_mapping: &HashMap<Variable, usize>,
+    graph: &mut GKRGraph<F>,
+    all_variables_to_place: &mut BTreeSet<Variable>
+) {
+    // variables defined (logically) via constraints can be placed by the author at either base
+    // or intermediate layer, and we identify it by peeking into the corresponding
+    // structured expression.
+
+    // NOTE: `variables_from_constraints` only contain variables to place into intermediate layer
+
+    let mut used_definitions = BTreeSet::new();
+    if variables_from_constraints.len() > 0 {
+        assert!(all_variables_to_place.len() > 0);
+
+        // put all variables into base layer that are not defined via constraints
+        for var in all_variables_to_place.clone().iter() {
+            if variables_from_constraints.contains_key(var) {
+                continue;
+            }
+            let _ = graph.layout_witness_subtree_multiple_variables(
+                [*var],
+                all_variables_to_place,
+                layers_mapping,
+            );
+        }
+        assert_eq!(
+            all_variables_to_place.len(),
+            variables_from_constraints.len()
+        );
+
+        // now we should walk over constraints that define variables
+        let mut intermediate_layer = 1;
+        loop {
+            let initial_len = variables_from_constraints.len();
+            for (var, expression_idx) in variables_from_constraints.clone().into_iter() {
+                let StructuredStatement::Define {
+                    dst,
+                    compiled_constraint,
+                    expr,
+                    output_layer,
+                } = &structured_statements[expression_idx]
+                else {
+                    unreachable!()
+                };
+                let all_vars = compiled_constraint.stable_variable_set();
+                let expected_layer = *layers_mapping.get(&var).expect("must be known");
+                assert_eq!(expected_layer, *output_layer);
+                let inputs_layer = get_input_layer_ensure_same(&all_vars, layers_mapping);
+                assert_eq!(expected_layer, inputs_layer + 1);
+                if intermediate_layer != inputs_layer + 1 {
+                    continue;
+                }
+                assert!(used_definitions.insert(expression_idx));
+                let _ = graph.place_intermediate_variable_from_expression_at_layer(
+                    intermediate_layer,
+                    var,
+                    all_variables_to_place,
+                    layers_mapping,
+                    expr.clone(),
+                    compiled_constraint.clone(),
+                );
+                variables_from_constraints.remove(&var);
+            }
+
+            assert_ne!(
+                initial_len,
+                variables_from_constraints.len(),
+                "intermediate layers places is stuck"
+            );
+            intermediate_layer += 1;
+
+            if variables_from_constraints.is_empty() {
+                break;
+            }
+        }
+
+        assert!(all_variables_to_place.is_empty());
+    } else {
+        // put all variables into base layer
+        for var in all_variables_to_place.clone().iter() {
+            let [_place] = graph.layout_witness_subtree_multiple_variables(
+                [*var],
+                all_variables_to_place,
+                layers_mapping,
+            );
+        }
+        assert!(all_variables_to_place.is_empty());
+    }
+
+    for (idx, expr) in structured_statements.iter().enumerate() {
+        match expr {
+            StructuredStatement::AssertZero { .. } => {
+                assert!(used_definitions.contains(&idx) == false);
+            }
+            StructuredStatement::Define { .. } => {
+                assert!(used_definitions.contains(&idx));
+            }
+        }
+    }
+
+    assert!(variables_from_constraints.is_empty());
+}
+
+pub(crate) fn add_boolean_constraints<F: PrimeField>(
+    structured_statements: &mut Vec<StructuredStatement<F>>,
+    boolean_vars: Vec<Variable>
+) {
+    for boolean in boolean_vars.iter() {
+        let expr = Expr::<F>::from(*boolean) * (Expr::from(*boolean) - Expr::from(1));
+        expr.validate_degree_at_most(2);
+        let compiled_constraint = expr.to_max_quadratic_constraint();
+        structured_statements.push(StructuredStatement::AssertZero {
+            expr: expr,
+            compiled_constraint,
+            prevent_optimizations: true,
+        });
     }
 }

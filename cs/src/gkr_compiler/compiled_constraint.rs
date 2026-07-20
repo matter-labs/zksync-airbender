@@ -1,5 +1,4 @@
 use crate::{
-    constraint::Constraint,
     definitions::{GKRAddress, Variable},
     gkr_compiler::graph::{GKRGraph, GraphHolder},
     structured_expr::Expr,
@@ -277,12 +276,11 @@ impl<F: PrimeField> GKRGate<F> for SingleConstraintEvaluationNode<F> {
 
 pub(crate) fn expression_into_no_field_expression<F: PrimeField>(
     expr: &Expr<F>,
-    graph: &impl GraphHolder,
-) -> NoFieldStructuredExpression {
+    graph: &impl GraphHolder<F>,
+) -> NoFieldStructuredExpression<F> {
     match expr {
         Expr::Constant(c) => {
-            let value = c.as_u32_reduced();
-            NoFieldStructuredExpression::Constant(value)
+            NoFieldStructuredExpression::Constant(*c)
         }
         Expr::Var(var) => {
             let place = graph.get_address_for_variable(*var);
