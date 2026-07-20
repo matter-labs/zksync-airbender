@@ -9,7 +9,7 @@ use cs::gkr_compiler::dag_ir::{
 };
 use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
 use gkr_eval_isa::eval_plan::backward_search::experiment::{
-    AcceptedIncumbent, ExperimentReport, render_markdown, run_instance,
+    AcceptedIncumbent, ArmClassification, ExperimentReport, render_markdown, run_instance,
 };
 use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
 use gkr_eval_isa::eval_plan::backward_search::{
@@ -49,7 +49,11 @@ fn full_plan3_backward_paging_search_experiment() {
                             budget_cells,
                             (budget_cells == 4).then_some(incumbent.as_ref()).flatten(),
                         )
-                        .expect("Plan 3 instance must classify or succeed"),
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "Plan 3 instance must classify or succeed: {fixture} L{layer_index} {regime:?} c{budget_cells}: {error:?}"
+                            )
+                        }),
                     );
                 }
             }
@@ -73,6 +77,13 @@ fn plan3_add_sub_release_smoke() {
         .next()
         .expect("add_sub has a backward layer");
     let distilled = distill(&layer, BwdRegime::Ext, &cross, None);
+    let current =
+        gkr_eval_isa::bwd::engine::cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
+    let incumbent = current
+        .fragment_order
+        .zip(current.plan)
+        .map(|(order, plan)| AcceptedIncumbent { order, plan })
+        .expect("add_sub Ext c4 ships a fragment-plan incumbent");
     let result = run_instance(
         fixture,
         layer_index,
@@ -80,11 +91,16 @@ fn plan3_add_sub_release_smoke() {
         &distilled,
         dag.globals.trace_len,
         4,
-        None,
+        Some(&incumbent),
     )
     .expect("add_sub Ext c4 must classify or succeed");
     assert_eq!(result.key.budget_cells, 4);
     assert_eq!(result.key.regime, BwdRegime::Ext);
+    assert!(matches!(
+        result.incumbent.classification,
+        ArmClassification::Searched
+    ));
+    assert!(result.incumbent.score.is_some());
     assert_eq!(result.certificate_failures(), 0);
 }
 

@@ -2921,7 +2921,10 @@ impl Elaborator<'_, '_> {
 
     fn update_peak(&mut self) {
         debug_assert!(
-            self.live_lanes.saturating_add(self.resident_lanes) <= self.budget_lanes,
+            matches!(
+                &self.cache_policy,
+                ElaborationCachePolicy::BackwardReplay(_)
+            ) || self.live_lanes.saturating_add(self.resident_lanes) <= self.budget_lanes,
             "symbolic residency exceeded the configured lane budget"
         );
         self.plan.stats.peak_live_lanes = self
@@ -2931,13 +2934,24 @@ impl Elaborator<'_, '_> {
             .max(self.live_lanes.saturating_add(self.resident_lanes));
     }
 
+    fn prepare_compiler_temp(&mut self, extra_lanes: usize) -> Result<(), PlanError> {
+        if matches!(
+            &self.cache_policy,
+            ElaborationCachePolicy::BackwardReplay(_)
+        ) {
+            self.replay_drop_expired()
+        } else {
+            self.ensure_transient_capacity(extra_lanes)
+        }
+    }
+
     fn save_acc(&mut self, field: FieldKind) -> Result<TempRef, PlanError> {
         let temp = TempRef {
             id: TempId(self.next_temp),
             field,
         };
         self.next_temp += 1;
-        self.ensure_transient_capacity(field_lanes(field))?;
+        self.prepare_compiler_temp(field_lanes(field))?;
         self.emit(EvalOp::SaveAcc(temp))?;
         Ok(temp)
     }

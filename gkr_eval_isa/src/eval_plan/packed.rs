@@ -139,7 +139,8 @@ fn pack_plan_variant(
     let mut ops = Vec::with_capacity(plan.ops.len());
     let mut acc_field = None;
     let normalized_units = normalize_unit_arithmetic(&plan.ops, layer);
-    let transferred_residents = alias_dropped_resident_to_temp(&normalized_units);
+    let direct_sources = alias_saved_source_to_direct_use(&normalized_units);
+    let transferred_residents = alias_dropped_resident_to_temp(&direct_sources);
     let aliased_saves = alias_saved_acc_to_resident(&transferred_residents);
     // Source-backed stores are accumulator-neutral. Schedule them before
     // arithmetic rewrites as well as final packing so they cannot hide an
@@ -368,6 +369,63 @@ fn operand_unit_sign(operand: Operand, layer: &DagLayer) -> Option<bool> {
     }
 }
 
+/// Elide an accumulator round-trip that exists only to delay one immutable
+/// source operand past the next accumulator initialization. The source moves
+/// to the temporary's sole use, so the physical source-read multiplicity stays
+/// exactly one. Another source read in between keeps the original order.
+fn alias_saved_source_to_direct_use(ops: &[EvalOp]) -> Vec<EvalOp> {
+    let mut skip = vec![false; ops.len()];
+    let mut replacements = std::collections::HashMap::<usize, EvalOp>::new();
+
+    for index in 0..ops.len().saturating_sub(2) {
+        let (EvalOp::AccInit(Operand::Source(source)), EvalOp::SaveAcc(temp), EvalOp::AccInit(_)) =
+            (&ops[index], &ops[index + 1], &ops[index + 2])
+        else {
+            continue;
+        };
+        if source.field != temp.field {
+            continue;
+        }
+
+        let mut uses = (index + 2..ops.len()).filter(|&candidate| {
+            eval_op_operands(&ops[candidate])
+                .iter()
+                .any(|operand| matches!(operand, Operand::Temp(found) if found.id == temp.id))
+        });
+        let Some(use_index) = uses.next() else {
+            continue;
+        };
+        if uses.next().is_some()
+            || ops[index + 2..use_index]
+                .iter()
+                .any(eval_op_reads_direct_source)
+        {
+            continue;
+        }
+        let use_op = replacements.get(&use_index).unwrap_or(&ops[use_index]);
+        let Some(replacement) = replace_temp_operand_with(use_op, *temp, Operand::Source(*source))
+        else {
+            continue;
+        };
+
+        skip[index] = true;
+        skip[index + 1] = true;
+        replacements.insert(use_index, replacement);
+    }
+
+    ops.iter()
+        .enumerate()
+        .filter_map(|(index, op)| {
+            (!skip[index]).then(|| {
+                replacements
+                    .get(&index)
+                    .cloned()
+                    .unwrap_or_else(|| op.clone())
+            })
+        })
+        .collect()
+}
+
 /// Transfer ownership of a resident cell to a temporary without loading and
 /// re-saving the value. The exact safe shape is:
 ///
@@ -446,10 +504,12 @@ fn alias_dropped_resident_to_temp(ops: &[EvalOp]) -> Vec<EvalOp> {
 /// Elide a temporary save when an adjacent accumulator-backed cache store has
 /// already materialized the identical value. The temporary's single use reads
 /// that resident value directly, so this is a physical alias and emits no
-/// copy. A cache drop or redefinition before the use makes aliasing illegal.
+/// copy. A matching cache drop before that use moves immediately after it;
+/// any redefinition or second generation boundary keeps the original shape.
 fn alias_saved_acc_to_resident(ops: &[EvalOp]) -> Vec<EvalOp> {
     let mut skip = vec![false; ops.len()];
     let mut replacements = std::collections::HashMap::<usize, EvalOp>::new();
+    let mut insert_after = vec![Vec::<EvalOp>::new(); ops.len()];
 
     for index in 0..ops.len().saturating_sub(1) {
         let pair = (&ops[index], &ops[index + 1]);
@@ -483,11 +543,21 @@ fn alias_saved_acc_to_resident(ops: &[EvalOp]) -> Vec<EvalOp> {
         let Some(use_index) = uses.next() else {
             continue;
         };
-        if uses.next().is_some()
-            || ops[after_pair..use_index]
+        if uses.next().is_some() {
+            continue;
+        }
+        let mut drop_index = None;
+        let crossed_invalid_boundary =
+            ops[after_pair..use_index]
                 .iter()
-                .any(|op| cache_generation_boundary(op, value.fingerprint))
-        {
+                .enumerate()
+                .any(|(offset, op)| match op {
+                    EvalOp::CacheDrop(dropped) if dropped.fingerprint == value.fingerprint => {
+                        drop_index.replace(after_pair + offset).is_some()
+                    }
+                    _ => cache_generation_boundary(op, value.fingerprint),
+                });
+        if crossed_invalid_boundary {
             continue;
         }
         let use_op = replacements.get(&use_index).unwrap_or(&ops[use_index]);
@@ -496,44 +566,48 @@ fn alias_saved_acc_to_resident(ops: &[EvalOp]) -> Vec<EvalOp> {
         };
 
         skip[save_index] = true;
+        if let Some(drop_index) = drop_index {
+            skip[drop_index] = true;
+            insert_after[use_index].push(EvalOp::CacheDrop(value));
+        }
         replacements.insert(use_index, replacement);
     }
 
-    ops.iter()
-        .enumerate()
-        .filter_map(|(index, op)| {
-            if skip[index] {
-                None
-            } else {
-                Some(
-                    replacements
-                        .get(&index)
-                        .cloned()
-                        .unwrap_or_else(|| op.clone()),
-                )
-            }
-        })
-        .collect()
+    let mut rewritten = Vec::with_capacity(ops.len());
+    for (index, op) in ops.iter().enumerate() {
+        if !skip[index] {
+            rewritten.push(
+                replacements
+                    .get(&index)
+                    .cloned()
+                    .unwrap_or_else(|| op.clone()),
+            );
+        }
+        rewritten.extend(insert_after[index].iter().cloned());
+    }
+    rewritten
 }
 
 fn replace_temp_operand(op: &EvalOp, temp: TempRef, value: ValueRef) -> Option<EvalOp> {
+    replace_temp_operand_with(op, temp, Operand::Resident(value))
+}
+
+fn replace_temp_operand_with(op: &EvalOp, temp: TempRef, replacement: Operand) -> Option<EvalOp> {
     let replace = |operand: Operand| match operand {
-        Operand::Temp(found) if found.id == temp.id => Operand::Resident(value),
+        Operand::Temp(found) if found.id == temp.id => replacement,
         operand => operand,
     };
     Some(match op {
         EvalOp::AccInit(Operand::Temp(found)) if found.id == temp.id => {
-            EvalOp::AccInit(Operand::Resident(value))
+            EvalOp::AccInit(replacement)
         }
         EvalOp::AccAdd { sign, operand } if matches!(operand, Operand::Temp(found) if found.id == temp.id) => {
             EvalOp::AccAdd {
                 sign: *sign,
-                operand: Operand::Resident(value),
+                operand: replacement,
             }
         }
-        EvalOp::AccMul(Operand::Temp(found)) if found.id == temp.id => {
-            EvalOp::AccMul(Operand::Resident(value))
-        }
+        EvalOp::AccMul(Operand::Temp(found)) if found.id == temp.id => EvalOp::AccMul(replacement),
         EvalOp::AccFma { sign, lhs, rhs }
             if matches!(lhs, Operand::Temp(found) if found.id == temp.id)
                 || matches!(rhs, Operand::Temp(found) if found.id == temp.id) =>
@@ -1034,6 +1108,24 @@ fn eval_op_operands(op: &EvalOp) -> Vec<Operand> {
     }
 }
 
+fn eval_op_reads_direct_source(op: &EvalOp) -> bool {
+    eval_op_operands(op).into_iter().any(|operand| {
+        matches!(
+            operand,
+            Operand::Source(_) | Operand::BackwardSpecial { .. }
+        )
+    }) || matches!(
+        op,
+        EvalOp::CacheStore {
+            from: CacheStoreFrom::Source,
+            ..
+        } | EvalOp::Commit {
+            from: MaterializeFrom::Source(_),
+            ..
+        }
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ArithmeticFamily {
     Additive,
@@ -1441,7 +1533,39 @@ mod tests {
     }
 
     #[test]
-    fn resident_alias_does_not_cross_a_cache_drop() {
+    fn resident_alias_moves_matching_drop_past_its_single_use() {
+        let cached = value(0, FieldKind::Ext);
+        let temp = TempRef {
+            id: TempId(0),
+            field: FieldKind::Ext,
+        };
+        let ops = vec![
+            EvalOp::CacheStore {
+                value: cached,
+                from: CacheStoreFrom::Acc,
+            },
+            EvalOp::SaveAcc(temp),
+            EvalOp::AccInit(Operand::Resident(cached)),
+            EvalOp::CacheDrop(cached),
+            EvalOp::AccMul(Operand::Temp(temp)),
+        ];
+
+        assert_eq!(
+            alias_saved_acc_to_resident(&ops),
+            vec![
+                EvalOp::CacheStore {
+                    value: cached,
+                    from: CacheStoreFrom::Acc,
+                },
+                EvalOp::AccInit(Operand::Resident(cached)),
+                EvalOp::AccMul(Operand::Resident(cached)),
+                EvalOp::CacheDrop(cached),
+            ]
+        );
+    }
+
+    #[test]
+    fn resident_alias_does_not_cross_a_redefinition_after_drop() {
         let cached = value(0, FieldKind::Ext);
         let outer = value(1, FieldKind::Ext);
         let temp = TempRef {
@@ -1449,20 +1573,69 @@ mod tests {
             field: FieldKind::Ext,
         };
         let ops = vec![
-            EvalOp::SaveAcc(temp),
             EvalOp::CacheStore {
                 value: cached,
                 from: CacheStoreFrom::Acc,
             },
+            EvalOp::SaveAcc(temp),
             EvalOp::CacheDrop(cached),
             EvalOp::AccInit(Operand::Source(outer)),
+            EvalOp::CacheStore {
+                value: cached,
+                from: CacheStoreFrom::Acc,
+            },
+            EvalOp::AccMul(Operand::Temp(temp)),
+        ];
+
+        assert_eq!(alias_saved_acc_to_resident(&ops), ops);
+    }
+
+    #[test]
+    fn single_use_saved_source_moves_directly_to_its_consumer() {
+        let source = value(0, FieldKind::Ext);
+        let resident = value(1, FieldKind::Ext);
+        let temp = TempRef {
+            id: TempId(0),
+            field: FieldKind::Ext,
+        };
+        let ops = vec![
+            EvalOp::AccInit(Operand::Source(source)),
+            EvalOp::SaveAcc(temp),
+            EvalOp::AccInit(Operand::Resident(resident)),
+            EvalOp::CacheDrop(resident),
+            EvalOp::AccMul(Operand::Temp(temp)),
+        ];
+
+        assert_eq!(
+            alias_saved_source_to_direct_use(&ops),
+            vec![
+                EvalOp::AccInit(Operand::Resident(resident)),
+                EvalOp::CacheDrop(resident),
+                EvalOp::AccMul(Operand::Source(source)),
+            ]
+        );
+    }
+
+    #[test]
+    fn saved_source_with_multiple_uses_is_not_moved() {
+        let source = value(0, FieldKind::Ext);
+        let resident = value(1, FieldKind::Ext);
+        let temp = TempRef {
+            id: TempId(0),
+            field: FieldKind::Ext,
+        };
+        let ops = vec![
+            EvalOp::AccInit(Operand::Source(source)),
+            EvalOp::SaveAcc(temp),
+            EvalOp::AccInit(Operand::Resident(resident)),
+            EvalOp::AccMul(Operand::Temp(temp)),
             EvalOp::AccAdd {
                 sign: Sign::Plus,
                 operand: Operand::Temp(temp),
             },
         ];
 
-        assert_eq!(alias_saved_acc_to_resident(&ops), ops);
+        assert_eq!(alias_saved_source_to_direct_use(&ops), ops);
     }
 
     #[test]
