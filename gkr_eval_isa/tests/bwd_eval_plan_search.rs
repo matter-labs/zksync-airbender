@@ -133,6 +133,49 @@ fn plan3_audit_write_creates_missing_parent() {
 }
 
 #[test]
+fn plan3_audit_write_roots_relative_path_at_repository() {
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock must follow Unix epoch")
+        .as_nanos();
+    let relative = std::path::PathBuf::from(format!(
+        ".agents/audits/gkr-plan3-relative-write-{}-{unique}/report.md",
+        std::process::id()
+    ));
+    let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repository_root = crate_root
+        .parent()
+        .expect("gkr_eval_isa must be inside the repository root");
+    let expected = repository_root.join(&relative);
+    let wrong = crate_root.join(&relative);
+    let expected_parent = expected.parent().expect("relative report has a parent");
+    let wrong_parent = wrong.parent().expect("wrong report has a parent");
+    assert!(!expected_parent.exists());
+    assert!(!wrong_parent.exists());
+
+    write_plan3_audit(&relative, "audit body\n");
+
+    let expected_body = std::fs::read_to_string(&expected);
+    let wrong_exists = wrong.exists();
+    if expected_parent.exists() {
+        std::fs::remove_dir_all(expected_parent)
+            .expect("remove repository-root Plan 3 audit test directory");
+    }
+    if wrong_parent.exists() {
+        std::fs::remove_dir_all(wrong_parent)
+            .expect("remove crate-root Plan 3 audit test directory");
+    }
+    assert_eq!(
+        expected_body.expect("read repository-root Plan 3 audit"),
+        "audit body\n"
+    );
+    assert!(
+        !wrong_exists,
+        "relative audit must not resolve at crate root"
+    );
+}
+
+#[test]
 #[ignore = "Plan 3 parallel budget-group release equivalence"]
 fn plan3_parallel_budget_group_matches_sequential() {
     let fixture = "add_sub_lui_auipc_mop_layout_gkr.json";
@@ -618,13 +661,24 @@ fn run_budget_group(
     results
 }
 
+fn resolve_plan3_audit_path(output: &std::path::Path) -> std::path::PathBuf {
+    if output.is_absolute() {
+        return output.to_owned();
+    }
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("gkr_eval_isa must be inside the repository root")
+        .join(output)
+}
+
 fn write_plan3_audit(output: &std::path::Path, markdown: &str) {
+    let output = resolve_plan3_audit_path(output);
     if let Some(parent) = output.parent()
         && !parent.as_os_str().is_empty()
     {
         std::fs::create_dir_all(parent).expect("create Plan 3 audit directory");
     }
-    std::fs::write(output, markdown).expect("write Plan 3 audit");
+    std::fs::write(&output, markdown).expect("write Plan 3 audit");
 }
 
 #[test]
