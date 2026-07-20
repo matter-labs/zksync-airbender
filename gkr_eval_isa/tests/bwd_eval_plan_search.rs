@@ -146,6 +146,16 @@ fn plan3_audit_write_roots_relative_path_at_repository() {
     let repository_root = crate_root
         .parent()
         .expect("gkr_eval_isa must be inside the repository root");
+    let canonical_current_dir = std::fs::canonicalize(
+        std::env::current_dir().expect("read Plan 3 audit test current directory"),
+    )
+    .expect("canonicalize Plan 3 audit test current directory");
+    let canonical_crate_root =
+        std::fs::canonicalize(crate_root).expect("canonicalize gkr_eval_isa crate root");
+    let canonical_repository_root =
+        std::fs::canonicalize(repository_root).expect("canonicalize Plan 3 repository root");
+    assert_eq!(canonical_current_dir, canonical_crate_root);
+    assert_ne!(canonical_current_dir, canonical_repository_root);
     let expected = repository_root.join(&relative);
     let wrong = crate_root.join(&relative);
     let expected_parent = expected.parent().expect("relative report has a parent");
