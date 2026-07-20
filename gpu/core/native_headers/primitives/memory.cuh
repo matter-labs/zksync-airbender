@@ -1,13 +1,13 @@
 #pragma once
 
 #include <cstddef>
+#include <type_traits>
 
 #include "../common.cuh"
 #include "ptx.cuh"
 
 namespace airbender::primitives::memory {
 
-using namespace std;
 namespace ptx = ::airbender::primitives::ptx;
 
 using ptx::u32x8;
@@ -142,7 +142,7 @@ DEVICE_FORCEINLINE void transpose_tile(unsigned mask, T *u, const unsigned lane_
 template <class T, typename U, ld_modifier MODIFIER, unsigned STRIDE> static constexpr DEVICE_FORCEINLINE T ld(const T *address, const unsigned offset) {
   static_assert(alignof(T) % alignof(U) == 0);
   static_assert(sizeof(T) % sizeof(U) == 0);
-  constexpr size_t count = sizeof(T) / sizeof(U);
+  constexpr std::size_t count = sizeof(T) / sizeof(U);
   T result;
   auto pa = reinterpret_cast<const U *>(address) + offset;
   auto pr = reinterpret_cast<U *>(&result);
@@ -161,7 +161,7 @@ template <class T, typename U, st_modifier MODIFIER, unsigned STRIDE>
 static constexpr DEVICE_FORCEINLINE void st(T *address, const T &value, const unsigned offset) {
   static_assert(alignof(T) % alignof(U) == 0);
   static_assert(sizeof(T) % sizeof(U) == 0);
-  constexpr size_t count = sizeof(T) / sizeof(U);
+  constexpr std::size_t count = sizeof(T) / sizeof(U);
   auto pa = reinterpret_cast<U *>(address) + offset;
   auto pv = reinterpret_cast<const U *>(&value);
 #ifdef __CUDA_ARCH__
@@ -200,7 +200,7 @@ template <class T, typename U, unsigned LOG_WARP_SIZE, ld_modifier MODIFIER, boo
 DEVICE_FORCEINLINE T ld_warp(const T *address, const unsigned offset, const unsigned lane_id) {
   static_assert(alignof(T) % alignof(U) == 0);
   static_assert(sizeof(T) % (sizeof(U) << LOG_WARP_SIZE) == 0);
-  constexpr size_t count = sizeof(T) / (sizeof(U) << LOG_WARP_SIZE);
+  constexpr std::size_t count = sizeof(T) / (sizeof(U) << LOG_WARP_SIZE);
   constexpr unsigned threads_count = 1u << LOG_WARP_SIZE;
   const unsigned l = lane_id & (threads_count - 1);
   T result;
@@ -233,7 +233,7 @@ template <class T, typename U, unsigned LOG_WARP_SIZE, st_modifier MODIFIER, boo
 DEVICE_FORCEINLINE void st_warp(T *address, const unsigned offset, const T &value, const unsigned lane_id) {
   static_assert(alignof(T) % alignof(U) == 0);
   static_assert(sizeof(T) % (sizeof(U) << LOG_WARP_SIZE) == 0);
-  constexpr size_t count = sizeof(T) / (sizeof(U) << LOG_WARP_SIZE);
+  constexpr std::size_t count = sizeof(T) / (sizeof(U) << LOG_WARP_SIZE);
   constexpr unsigned threads_count = 1u << LOG_WARP_SIZE;
   const unsigned l = lane_id & (threads_count - 1);
   T value_copy = value;
@@ -266,7 +266,7 @@ template <class T> struct load_unit {
                                   std::conditional_t<sizeof(T) % 16 == 0, uint4, std::conditional_t<sizeof(T) % 8 == 0, uint2, unsigned>>>;
 };
 template <class T, unsigned LOG_WARP_SIZE> struct load_unit_warp {
-  static constexpr size_t WARP = 1u << LOG_WARP_SIZE;
+  static constexpr std::size_t WARP = 1u << LOG_WARP_SIZE;
   using type = std::conditional_t<sizeof(T) % (32 * WARP) == 0 && alignof(T) % 32 == 0, u32x8,
                                   std::conditional_t<sizeof(T) % (16 * WARP) == 0, uint4, std::conditional_t<sizeof(T) % (8 * WARP) == 0, uint2, unsigned>>>;
 };
@@ -394,9 +394,9 @@ struct vector_getter_setter : vector_accessor<T, vector_getter_setter<T, LD_MODI
 };
 
 template <typename T, typename U = T> struct matrix_accessor : vector_accessor<T, U> {
-  const size_t stride;
+  const std::size_t stride;
 
-  explicit matrix_accessor(const size_t stride) : stride(stride) {}
+  explicit matrix_accessor(const std::size_t stride) : stride(stride) {}
 
   DEVICE_FORCEINLINE U inc_row() { return this->operator++(); }
   DEVICE_FORCEINLINE U inc_col() { return this->operator+=(this->stride); }
@@ -409,7 +409,7 @@ template <typename T, typename U = T> struct matrix_accessor : vector_accessor<T
 };
 
 template <typename T, ld_modifier LD_MODIFIER = ld_modifier::none> struct matrix_getter : matrix_accessor<T, matrix_getter<T, LD_MODIFIER>> {
-  explicit matrix_getter(const size_t stride) : matrix_accessor<T, matrix_getter>(stride) {}
+  explicit matrix_getter(const std::size_t stride) : matrix_accessor<T, matrix_getter>(stride) {}
 
   DEVICE_FORCEINLINE T get() const { return load<T, LD_MODIFIER>(this->ptr); }
   DEVICE_FORCEINLINE T get_at_row(const unsigned row) const { return this->copy().add_row(row).get(); }
@@ -418,7 +418,7 @@ template <typename T, ld_modifier LD_MODIFIER = ld_modifier::none> struct matrix
 };
 
 template <typename T, st_modifier ST_MODIFIER = st_modifier::none> struct matrix_setter : matrix_accessor<T, matrix_setter<T, ST_MODIFIER>> {
-  explicit matrix_setter(const size_t stride) : matrix_accessor<T, matrix_setter>(stride) {}
+  explicit matrix_setter(const std::size_t stride) : matrix_accessor<T, matrix_setter>(stride) {}
 
   DEVICE_FORCEINLINE void set(const T &value) const { store<T, ST_MODIFIER>(this->ptr, value); }
   DEVICE_FORCEINLINE void set_at_row(const unsigned row, const T &value) const { this->copy().add_row(row).set(value); }
@@ -430,7 +430,7 @@ template <typename T, st_modifier ST_MODIFIER = st_modifier::none> struct matrix
 
 template <typename T, ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
 struct matrix_getter_setter : matrix_accessor<T, matrix_getter_setter<T, LD_MODIFIER, ST_MODIFIER>> {
-  explicit matrix_getter_setter(const size_t stride) : matrix_accessor<T, matrix_getter_setter>(stride) {}
+  explicit matrix_getter_setter(const std::size_t stride) : matrix_accessor<T, matrix_getter_setter>(stride) {}
 
   DEVICE_FORCEINLINE const matrix_getter<T, LD_MODIFIER> *as_getter() const { return reinterpret_cast<const matrix_getter<T, LD_MODIFIER> *>(this); }
 
