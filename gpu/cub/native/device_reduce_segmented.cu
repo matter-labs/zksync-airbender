@@ -34,7 +34,5 @@ struct offset_iterator {
 
 SEGMENTED_REDUCE(add, bf);
 SEGMENTED_REDUCE(add, e4);
-SEGMENTED_REDUCE(mul, bf);
-SEGMENTED_REDUCE(mul, e4);
 
 } // namespace airbender::cub::device_reduce

@@ -13,7 +13,5 @@ namespace airbender::cub::device_reduce {
 
 REDUCE(add, bf);
 REDUCE(add, e4);
-REDUCE(mul, bf);
-REDUCE(mul, e4);
 
 } // namespace airbender::cub::device_reduce
