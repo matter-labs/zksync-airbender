@@ -1489,7 +1489,7 @@ impl TierOutcome {
             plan: Some(candidate.occurrence_plan),
             first_winning_ordinal: Some(self.outcome.best_ordinal),
             improvement_ordinals: self.outcome.improvement_ordinals,
-            evaluations: self.outcome.evaluations,
+            evaluations: self.telemetry.evaluation_attempts,
             pager: pager_telemetry(self.telemetry),
             compile_time: self.telemetry.compile_time,
             wall_time: self.wall_time,
@@ -2770,21 +2770,61 @@ mod tests {
     }
 
     #[test]
-    fn searched_arm_telemetry_is_complete_and_auditable() {
+    fn successful_two_tier_arm_reports_cumulative_attempts() {
         let result = run_synthetic_instance().unwrap();
-        for arm in [&result.arm2, &result.arm3, &result.arm4] {
-            assert!(matches!(arm.winning_tier, Some(128 | 512 | 2048)));
-            assert_eq!(arm.evaluations, arm.winning_tier.unwrap());
-            assert!(arm.first_winning_ordinal.unwrap() < arm.evaluations);
-            assert!(
-                arm.improvement_ordinals
-                    .iter()
-                    .all(|&ordinal| ordinal < arm.evaluations)
-            );
-        }
-        assert_eq!(result.arm2.pager.calls, 128 + result.arm2.evaluations);
-        assert_eq!(result.arm3.pager.calls, 0);
-        assert_eq!(result.arm4.pager.calls, 0);
+        let arm = &result.arm2;
+
+        assert_eq!(result.arm2.winning_tier, Some(512));
+        assert_eq!(result.arm2.evaluations, 128 + 512);
+        assert!(arm.first_winning_ordinal.unwrap() < arm.winning_tier.unwrap());
+        assert!(
+            arm.improvement_ordinals
+                .iter()
+                .all(|&ordinal| ordinal < arm.winning_tier.unwrap())
+        );
+        assert_eq!(arm.pager.calls, arm.evaluations);
+    }
+
+    #[test]
+    fn successful_three_tier_arm_reports_cumulative_attempts() {
+        let tier = synthetic_completed_tier(2048);
+        let first_winning_ordinal = tier.outcome.best_ordinal;
+        let improvement_ordinals = tier.outcome.improvement_ordinals.clone();
+        let arm = super::StagedOutcome::Completed(tier)
+            .with_cumulative_telemetry(cumulative_attempts(&[128, 512, 2048]))
+            .into_arm_result_or_capped(super::ExperimentArm::OrderSearch);
+
+        assert_eq!(arm.evaluations, 128 + 512 + 2048);
+        assert_eq!(arm.winning_tier, Some(2048));
+        assert_eq!(arm.first_winning_ordinal, Some(first_winning_ordinal));
+        assert_eq!(arm.improvement_ordinals, improvement_ordinals);
+        assert!(arm.first_winning_ordinal.unwrap() < arm.winning_tier.unwrap());
+        assert!(
+            arm.improvement_ordinals
+                .iter()
+                .all(|&ordinal| ordinal < arm.winning_tier.unwrap())
+        );
+    }
+
+    #[test]
+    fn capped_escalation_reports_all_attempted_evaluations() {
+        let arm = super::StagedOutcome::Capped(
+            ArmClassification::SolverCapped {
+                cap: 1,
+                demand_position: 0,
+                peak_states: 2,
+            },
+            BackwardAdapterTelemetrySnapshot {
+                evaluation_attempts: 9,
+                ..Default::default()
+            },
+            Duration::ZERO,
+        )
+        .with_cumulative_telemetry(cumulative_attempts(&[128, 9]))
+        .into_arm_result_or_capped(super::ExperimentArm::OrderSearch);
+
+        assert_eq!(arm.evaluations, 128 + 9);
+        assert_eq!(arm.winning_tier, None);
     }
 
     #[test]
@@ -2977,12 +3017,54 @@ mod tests {
     #[test]
     fn search_is_thread_deterministic() {
         let result = run_synthetic_instance().unwrap();
-        println!("PLAN3-SEARCH-DIGEST {:016x}", result.deterministic_digest());
+        let digest = result.deterministic_digest();
+        assert_eq!(digest, 0x2817_d47e_35f4_c806);
+        println!("PLAN3-SEARCH-DIGEST {digest:016x}");
     }
 
     fn run_synthetic_instance() -> Result<InstanceResult, super::BackwardSearchError> {
         let (layer, distilled) = synthetic_fixture();
         run_instance("synthetic", 0, &layer, &distilled, 8, 4, None)
+    }
+
+    fn synthetic_completed_tier(evaluations: usize) -> super::TierOutcome {
+        let result = run_synthetic_instance().unwrap();
+        let (layer, distilled) = synthetic_fixture();
+        let (_, problem) = build_backward_search_problem(&layer, &distilled, 8, 4).unwrap();
+        let problem = problem.expect("synthetic search problem");
+        let exact = exact_from_plan(&problem, result.arm1.plan.as_ref().unwrap()).unwrap();
+        match run_tier(
+            &layer,
+            &distilled,
+            &problem,
+            &exact,
+            8,
+            BackwardSearchArm::OrderOnly,
+            &[BackwardGenome::constructive(&problem)],
+            evaluations,
+            usize::MAX,
+        )
+        .unwrap()
+        {
+            super::StagedOutcome::Completed(tier) => tier,
+            super::StagedOutcome::Capped(..) => panic!("synthetic tier must complete"),
+        }
+    }
+
+    fn cumulative_attempts(tiers: &[usize]) -> EscalationTelemetry {
+        let mut total = EscalationTelemetry::default();
+        for &evaluation_attempts in tiers {
+            total
+                .merge(
+                    BackwardAdapterTelemetrySnapshot {
+                        evaluation_attempts,
+                        ..Default::default()
+                    },
+                    Duration::ZERO,
+                )
+                .unwrap();
+        }
+        total
     }
 
     fn run_with_pager_cap(cap: usize) -> Result<InstanceResult, super::BackwardSearchError> {
