@@ -166,7 +166,6 @@ impl<'a> BackwardAdapter<'a> {
         match self.evaluate_candidate(ordinal, genome) {
             Ok(Some(candidate)) => Ok((candidate.score, Some(candidate))),
             Ok(None) => Ok((infeasible_score(ordinal), None)),
-            Err(error) if candidate_infeasible(&error) => Ok((infeasible_score(ordinal), None)),
             Err(error) => Err(error),
         }
     }
@@ -194,38 +193,46 @@ impl<'a> BackwardAdapter<'a> {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let candidate_problem = build_problem_for_order(
+        let candidate_problem = match build_problem_for_order(
             self.canonical,
             self.distilled,
             &order,
             self.trace_len,
             self.problem.budget_cells,
             self.problem.stream_reductions,
-        )?;
+        ) {
+            Ok(problem) => problem,
+            Err(error) if pre_paging_candidate_infeasible(&error) => return Ok(None),
+            Err(error) => return Err(error),
+        };
         let paging = match self.arm {
-            BackwardSearchArm::OrderOnly => {
-                match solve_exact_paging(&candidate_problem.demands, MAX_PAGER_STATES)? {
-                    PagerOutcome::Solved(paging) => paging,
-                    PagerOutcome::SolverCapped { .. } => return Ok(None),
+            BackwardSearchArm::OrderOnly => exact_paging_plan(solve_exact_paging(
+                &candidate_problem.demands,
+                MAX_PAGER_STATES,
+            )?)?,
+            BackwardSearchArm::CacheOnly | BackwardSearchArm::Joint => {
+                match decode_cache_plan(&candidate_problem, genome) {
+                    Ok(paging) => paging,
+                    Err(BackwardSearchError::CacheGenomeInfeasible { .. }) => return Ok(None),
+                    Err(error) => return Err(error),
                 }
             }
-            BackwardSearchArm::CacheOnly | BackwardSearchArm::Joint => {
-                decode_cache_plan(&candidate_problem, genome)?
-            }
         };
-        compile_and_certify_paging(self.distilled, &candidate_problem, &paging, ordinal).map(Some)
+        preserve_certification_result(compile_and_certify_paging(
+            self.distilled,
+            &candidate_problem,
+            &paging,
+            ordinal,
+        ))
     }
 }
-
-#[derive(Clone, Copy)]
-pub struct BackwardGuidedTrial;
 
 impl SearchAdapter for BackwardAdapter<'_> {
     type Genome = BackwardGenome;
     type Score = BackwardScore;
     type Evaluation = Option<CertifiedBackwardCandidate>;
     type Error = BackwardSearchError;
-    type GuidedTrial = BackwardGuidedTrial;
+    type GuidedTrial = ();
 
     fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error> {
         match self.arm {
@@ -271,12 +278,9 @@ impl SearchAdapter for BackwardAdapter<'_> {
     fn guided_trials(
         &self,
         _pre_guided_best: &Self::Genome,
-        pre_guided_evaluation: &Self::Evaluation,
+        _pre_guided_evaluation: &Self::Evaluation,
     ) -> Vec<Self::GuidedTrial> {
-        pre_guided_evaluation
-            .as_ref()
-            .map(|_| vec![BackwardGuidedTrial])
-            .unwrap_or_default()
+        Vec::new()
     }
 
     fn apply_guided_trial(
@@ -285,10 +289,29 @@ impl SearchAdapter for BackwardAdapter<'_> {
         live_best: &Self::Genome,
         _live_evaluation: &Self::Evaluation,
     ) -> Self::Genome {
-        let mut guided = live_best.clone();
-        guided.fragment_order_key = BackwardGenome::constructive(self.problem).fragment_order_key;
-        guided
+        live_best.clone()
     }
+}
+
+fn exact_paging_plan(outcome: PagerOutcome) -> Result<ExactPagingPlan, BackwardSearchError> {
+    match outcome {
+        PagerOutcome::Solved(paging) => Ok(paging),
+        PagerOutcome::SolverCapped {
+            cap,
+            demand_position,
+            peak_states,
+        } => Err(BackwardSearchError::ExactPagerSolverCapped {
+            cap,
+            demand_position,
+            peak_states,
+        }),
+    }
+}
+
+fn preserve_certification_result(
+    result: Result<CertifiedBackwardCandidate, BackwardSearchError>,
+) -> Result<Option<CertifiedBackwardCandidate>, BackwardSearchError> {
+    result.map(Some)
 }
 
 fn decode_cache_plan(
@@ -448,16 +471,14 @@ fn increment(value: u32) -> Result<u32, BackwardSearchError> {
         .ok_or(BackwardSearchError::CostOverflow)
 }
 
-fn candidate_infeasible(error: &BackwardSearchError) -> bool {
+fn pre_paging_candidate_infeasible(error: &BackwardSearchError) -> bool {
     matches!(
         error,
-        BackwardSearchError::CacheGenomeInfeasible { .. }
-            | BackwardSearchError::PlacementIntegrationFailure
-            | BackwardSearchError::BackwardEvaluation(
-                crate::eval_plan::backward::BackwardEvaluationError::Concrete(
-                    crate::eval_plan::ConcreteBindError::PlacementFailed { .. }
-                )
+        BackwardSearchError::BackwardEvaluation(
+            crate::eval_plan::backward::BackwardEvaluationError::Concrete(
+                crate::eval_plan::ConcreteBindError::PlacementFailed { .. }
             )
+        )
     )
 }
 
@@ -490,12 +511,13 @@ mod tests {
     use crate::eval_plan::backward_search::problem::{
         BackwardSearchProblem, build_backward_search_problem,
     };
-    use crate::eval_plan::backward_search::{BackwardSearchError, MAX_PAGER_STATES};
+    use crate::eval_plan::backward_search::{BackwardSearchError, MAX_PAGER_STATES, SourceCost};
     use crate::eval_plan::search_driver::{SearchAdapter, StableRng};
 
     use super::{
         BackwardAdapter, BackwardGenome, BackwardSearchArm, decode_cache_actions,
-        decode_fragment_order, mutate_genome, paging_seed,
+        decode_fragment_order, exact_paging_plan, mutate_genome, paging_seed,
+        preserve_certification_result,
     };
 
     #[test]
@@ -564,6 +586,143 @@ mod tests {
     }
 
     #[test]
+    fn missing_and_extra_gene_keys_are_rejected() {
+        let fixture = synthetic_solved_problem();
+        let genome = BackwardGenome::constructive(&fixture.problem);
+
+        let mut missing_fragment = genome.clone();
+        missing_fragment
+            .fragment_order_key
+            .remove(&fixture.problem.fragment_domain[0]);
+        assert!(matches!(
+            decode_fragment_order(&fixture.problem, &missing_fragment),
+            Err(BackwardSearchError::InvalidGenomeDomain {
+                gene: "fragment order key"
+            })
+        ));
+
+        let mut extra_fragment = genome.clone();
+        let mut extra_fragment_key = fixture.problem.fragment_domain[0].clone();
+        extra_fragment_key.recipe.push(Vec::new());
+        extra_fragment
+            .fragment_order_key
+            .insert(extra_fragment_key, 99.0);
+        assert!(matches!(
+            decode_fragment_order(&fixture.problem, &extra_fragment),
+            Err(BackwardSearchError::InvalidGenomeDomain {
+                gene: "fragment order key"
+            })
+        ));
+
+        let mut missing_leaf = genome.clone();
+        missing_leaf
+            .leaf_cache_priority
+            .remove(&fixture.problem.leaf_domain[0]);
+        assert!(matches!(
+            decode_cache_actions(&fixture.problem, &missing_leaf),
+            Err(BackwardSearchError::InvalidGenomeDomain {
+                gene: "leaf cache priority"
+            })
+        ));
+
+        let mut extra_leaf = genome;
+        let mut extra_leaf_key = fixture.problem.leaf_domain[0].clone();
+        extra_leaf_key.occurrence_in_fragment = u32::MAX;
+        extra_leaf.leaf_cache_priority.insert(extra_leaf_key, -1.0);
+        assert!(matches!(
+            decode_cache_actions(&fixture.problem, &extra_leaf),
+            Err(BackwardSearchError::InvalidGenomeDomain {
+                gene: "leaf cache priority"
+            })
+        ));
+    }
+
+    #[test]
+    fn non_finite_gene_values_are_rejected() {
+        let fixture = synthetic_solved_problem();
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut genome = BackwardGenome::constructive(&fixture.problem);
+            genome
+                .fragment_order_key
+                .insert(fixture.problem.fragment_domain[0].clone(), value);
+            assert!(matches!(
+                decode_fragment_order(&fixture.problem, &genome),
+                Err(BackwardSearchError::NonFiniteGenomeValue {
+                    gene: "fragment order key"
+                })
+            ));
+
+            let mut genome = BackwardGenome::constructive(&fixture.problem);
+            genome
+                .leaf_cache_priority
+                .insert(fixture.problem.leaf_domain[0].clone(), value);
+            assert!(matches!(
+                decode_cache_actions(&fixture.problem, &genome),
+                Err(BackwardSearchError::NonFiniteGenomeValue {
+                    gene: "leaf cache priority"
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn zero_and_one_element_mutations_are_safe_and_consume_stable_rng() {
+        let fixture = synthetic_solved_problem();
+        let mut empty = fixture.problem.clone();
+        empty.fragment_domain.clear();
+        empty.constructive_order.clear();
+        empty.leaf_domain.clear();
+        for arm in [BackwardSearchArm::OrderOnly, BackwardSearchArm::CacheOnly] {
+            let mut genome = BackwardGenome::constructive(&empty);
+            let mut actual = StableRng::new(23);
+            mutate_genome(&empty, arm, &mut genome, &mut actual);
+            let mut expected = StableRng::new(23);
+            assert_eq!(actual.next_u64(), expected.next_u64());
+        }
+        let mut joint_genome = BackwardGenome::constructive(&empty);
+        let mut actual = StableRng::new(23);
+        mutate_genome(
+            &empty,
+            BackwardSearchArm::Joint,
+            &mut joint_genome,
+            &mut actual,
+        );
+        let mut expected = StableRng::new(23);
+        expected.next_u64();
+        assert_eq!(actual.next_u64(), expected.next_u64());
+
+        let mut singleton_order = fixture.problem.clone();
+        singleton_order.fragment_domain.truncate(1);
+        singleton_order.constructive_order.truncate(1);
+        let mut genome = BackwardGenome::constructive(&singleton_order);
+        let mut actual = StableRng::new(41);
+        mutate_genome(
+            &singleton_order,
+            BackwardSearchArm::OrderOnly,
+            &mut genome,
+            &mut actual,
+        );
+        let mut expected = StableRng::new(41);
+        assert_eq!(actual.next_u64(), expected.next_u64());
+
+        let mut singleton_cache = fixture.problem.clone();
+        singleton_cache.leaf_domain.truncate(1);
+        let mut genome = BackwardGenome::constructive(&singleton_cache);
+        let key = singleton_cache.leaf_domain[0].clone();
+        let mut actual = StableRng::new(41);
+        mutate_genome(
+            &singleton_cache,
+            BackwardSearchArm::CacheOnly,
+            &mut genome,
+            &mut actual,
+        );
+        let mut expected = StableRng::new(41);
+        expected.next_u64();
+        assert_eq!(actual.next_u64(), expected.next_u64());
+        assert_eq!(genome.leaf_cache_priority[&key], 1.0);
+    }
+
+    #[test]
     fn requested_retain_that_does_not_fit_is_candidate_infeasible() {
         let fixture = synthetic_solved_problem();
         let mut genome = BackwardGenome::constructive(&fixture.problem);
@@ -606,6 +765,88 @@ mod tests {
     }
 
     #[test]
+    fn exact_pager_cap_is_a_typed_adapter_error() {
+        assert_eq!(
+            exact_paging_plan(PagerOutcome::SolverCapped {
+                cap: 12,
+                demand_position: 7,
+                peak_states: 13,
+            }),
+            Err(BackwardSearchError::ExactPagerSolverCapped {
+                cap: 12,
+                demand_position: 7,
+                peak_states: 13,
+            })
+        );
+    }
+
+    #[test]
+    fn task4_placement_and_certificate_errors_propagate_unchanged() {
+        let errors = [
+            BackwardSearchError::PlacementIntegrationFailure,
+            BackwardSearchError::PagingReplayDiverged { at_entry: 1 },
+            BackwardSearchError::PagingReplayIncomplete { at_entry: 2 },
+            BackwardSearchError::PagingReplayRefused { count: 3 },
+            BackwardSearchError::PagingSourceAccessMismatch {
+                predicted_reads: 4,
+                realized_reads: 5,
+                predicted_width_lanes: 6,
+                realized_width_lanes: 7,
+            },
+            BackwardSearchError::PagingReadCostMismatch {
+                predicted: SourceCost::default(),
+                realized: SourceCost {
+                    plain_read_bytes: 1,
+                    ..SourceCost::default()
+                },
+            },
+            BackwardSearchError::PagingWriteCostMismatch {
+                predicted: SourceCost::default(),
+                realized: SourceCost {
+                    materialization_write_bytes: 1,
+                    ..SourceCost::default()
+                },
+            },
+            BackwardSearchError::PagingOccupancyMismatch {
+                position: 8,
+                predicted: 9,
+                realized: 10,
+            },
+            BackwardSearchError::PagingCertificateMismatch {
+                observable: "test certificate",
+            },
+        ];
+        for error in errors {
+            let expected = format!("{error:?}");
+            match preserve_certification_result(Err(error)) {
+                Err(actual) => assert_eq!(format!("{actual:?}"), expected),
+                Ok(_) => panic!("Task 4 error became a scored evaluation"),
+            }
+        }
+    }
+
+    #[test]
+    fn backward_adapter_has_no_guided_trials_for_any_arm() {
+        let fixture = synthetic_solved_problem();
+        for arm in [
+            BackwardSearchArm::OrderOnly,
+            BackwardSearchArm::CacheOnly,
+            BackwardSearchArm::Joint,
+        ] {
+            let adapter = BackwardAdapter::new(
+                &fixture.layer,
+                &fixture.distilled,
+                &fixture.problem,
+                &fixture.exact,
+                8,
+                arm,
+            );
+            let genome = BackwardGenome::constructive(&fixture.problem);
+            assert!(adapter.guided_trials(&genome, &None).is_empty());
+        }
+    }
+
+    #[test]
     fn adapter_rebuilds_the_real_trace_for_the_decoded_order() {
         let fixture = synthetic_solved_problem();
         let constructive = BackwardGenome::constructive(&fixture.problem);
@@ -642,17 +883,30 @@ mod tests {
     }
 
     #[test]
-    fn rayon_batch_evaluation_is_exact_across_one_and_four_threads() {
+    fn rayon_batch_slots_are_exact_across_one_and_four_threads() {
         let fixture = synthetic_solved_problem();
-        let genome = paging_seed(&fixture.problem, &fixture.exact).unwrap();
+        let constructive = paging_seed(&fixture.problem, &fixture.exact).unwrap();
+        let mut reversed = constructive.clone();
+        let order = &fixture.problem.constructive_order;
+        let first = order.first().unwrap();
+        let last = order.last().unwrap();
+        let first_value = reversed.fragment_order_key[first];
+        let last_value = reversed.fragment_order_key[last];
+        reversed
+            .fragment_order_key
+            .insert(first.clone(), last_value);
+        reversed
+            .fragment_order_key
+            .insert(last.clone(), first_value);
         let adapter = BackwardAdapter::new(
             &fixture.layer,
             &fixture.distilled,
             &fixture.problem,
             &fixture.exact,
             8,
-            BackwardSearchArm::Joint,
+            BackwardSearchArm::OrderOnly,
         );
+        let candidates = vec![(17, constructive), (3, reversed)];
 
         let evaluate = |threads| {
             ThreadPoolBuilder::new()
@@ -661,23 +915,30 @@ mod tests {
                 .unwrap()
                 .install(|| {
                     adapter
-                        .score_batch(&[(17, genome.clone())])
-                        .pop()
-                        .unwrap()
-                        .unwrap()
+                        .score_batch(&candidates)
+                        .into_iter()
+                        .map(|result| {
+                            let (score, candidate) = result.unwrap();
+                            let candidate = candidate.expect("assigned candidate is feasible");
+                            (
+                                score,
+                                candidate.paging.actions,
+                                candidate.occurrence_plan.entries,
+                                candidate.compiled.encoded,
+                                candidate.certificate,
+                                candidate.paging.telemetry,
+                            )
+                        })
+                        .collect::<Vec<_>>()
                 })
         };
-        let (one_score, one) = evaluate(1);
-        let (four_score, four) = evaluate(4);
-        let one = one.expect("exact seed is feasible");
-        let four = four.expect("exact seed is feasible");
-
-        assert_eq!(one.paging.actions, four.paging.actions);
-        assert_eq!(one.occurrence_plan.entries, four.occurrence_plan.entries);
-        assert_eq!(one.compiled.encoded, four.compiled.encoded);
-        assert_eq!(one.certificate, four.certificate);
-        assert_eq!(one_score, four_score);
-        assert_eq!(one.paging.telemetry, four.paging.telemetry);
+        let one = evaluate(1);
+        let four = evaluate(4);
+        assert_eq!(
+            one.iter().map(|entry| entry.0.ordinal).collect::<Vec<_>>(),
+            vec![17, 3]
+        );
+        assert_eq!(one, four);
     }
 
     struct SyntheticFixture {

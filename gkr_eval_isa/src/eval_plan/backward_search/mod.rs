@@ -259,5 +259,10 @@ pub enum BackwardSearchError {
     CacheGenomeInfeasible {
         demand_position: usize,
     },
+    ExactPagerSolverCapped {
+        cap: usize,
+        demand_position: usize,
+        peak_states: usize,
+    },
     PagingSeedMismatch,
 }
