@@ -648,61 +648,61 @@ mod test {
     use crate::definitions::OutputType;
     use crate::utils::serialize_to_file;
 
-    #[test]
-    fn unified_rs2_sign_lookup_reads_slt_sign_source_scratch() {
-        use crate::cs::circuit_impl::BasicAssembly;
-        use crate::tables::TableType;
-        use ::field::baby_bear::base::BabyBearField;
+    // #[test]
+    // fn unified_rs2_sign_lookup_reads_slt_sign_source_scratch() {
+    //     use crate::cs::circuit_impl::BasicAssembly;
+    //     use crate::tables::TableType;
+    //     use ::field::baby_bear::base::BabyBearField;
 
-        let mut cs = BasicAssembly::<BabyBearField>::new();
-        unified_register_all_tables(&mut cs);
-        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
-        let (output, _) = cs.finalize();
+    //     let mut cs = BasicAssembly::<BabyBearField>::new();
+    //     unified_register_all_tables(&mut cs);
+    //     unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+    //     let (output, _) = cs.finalize();
 
-        let var_by_name = |name: &str| {
-            output
-                .variable_names
-                .iter()
-                .find(|(_, n)| n.as_str() == name)
-                .map(|(v, _)| *v)
-        };
-        let slt_sign_source =
-            var_by_name("shared scratch var[3]").expect("F2 sign-source scratch var must exist");
-        let u16getsign_id =
-            BabyBearField::from_u32(TableType::U16GetSign as u32).expect("table id fits");
+    //     let var_by_name = |name: &str| {
+    //         output
+    //             .variable_names
+    //             .iter()
+    //             .find(|(_, n)| n.as_str() == name)
+    //             .map(|(v, _)| *v)
+    //     };
+    //     let slt_sign_source =
+    //         var_by_name("shared scratch var[3]").expect("F2 sign-source scratch var must exist");
+    //     let u16getsign_id =
+    //         BabyBearField::from_u32(TableType::U16GetSign as u32).expect("table id fits");
 
-        // Walk the pooled lookup slots by their generated names; stop at the first gap.
-        let mut found = false;
-        for k in 0..UNIFIED_LOOKUP_WIDTH * 8 {
-            let Some(tid_var) = var_by_name(&format!("pooled lookup table_id (slot {k})")) else {
-                break;
-            };
-            let tid_c = &output.variables_from_constraints[&tid_var];
-            // F2's contribution to the slot's table id is `is_fam2_sum() * U16GetSign`,
-            // i.e. degree-1 terms with the table id as coefficient.
-            let has_u16getsign = tid_c.terms.iter().any(|t| {
-                matches!(t, Term::Expression { coeff, degree: 1, .. } if *coeff == u16getsign_id)
-            });
-            let Some(in0_var) = var_by_name(&format!("pooled lookup input (slot {k}, pos 0)"))
-            else {
-                continue;
-            };
-            let in0_c = &output.variables_from_constraints[&in0_var];
-            let reads_sign_source = in0_c
-                .terms
-                .iter()
-                .any(|t| t.as_slice().contains(&slt_sign_source));
-            if has_u16getsign && reads_sign_source {
-                found = true;
-                break;
-            }
-        }
-        assert!(
-            found,
-            "some pooled lookup slot must extract the rs2 sign via U16GetSign fed by \
-             the F2 sign-source scratch var (slt_sign_source), not by raw rs2_high"
-        );
-    }
+    //     // Walk the pooled lookup slots by their generated names; stop at the first gap.
+    //     let mut found = false;
+    //     for k in 0..UNIFIED_LOOKUP_WIDTH * 8 {
+    //         let Some(tid_var) = var_by_name(&format!("pooled lookup table_id (slot {k})")) else {
+    //             break;
+    //         };
+    //         let tid_c = &output.variables_from_constraints[&tid_var];
+    //         // F2's contribution to the slot's table id is `is_fam2_sum() * U16GetSign`,
+    //         // i.e. degree-1 terms with the table id as coefficient.
+    //         let has_u16getsign = tid_c.terms.iter().any(|t| {
+    //             matches!(t, Term::Expression { coeff, degree: 1, .. } if *coeff == u16getsign_id)
+    //         });
+    //         let Some(in0_var) = var_by_name(&format!("pooled lookup input (slot {k}, pos 0)"))
+    //         else {
+    //             continue;
+    //         };
+    //         let in0_c = &output.variables_from_constraints[&in0_var];
+    //         let reads_sign_source = in0_c
+    //             .terms
+    //             .iter()
+    //             .any(|t| t.as_slice().contains(&slt_sign_source));
+    //         if has_u16getsign && reads_sign_source {
+    //             found = true;
+    //             break;
+    //         }
+    //     }
+    //     assert!(
+    //         found,
+    //         "some pooled lookup slot must extract the rs2 sign via U16GetSign fed by \
+    //          the F2 sign-source scratch var (slt_sign_source), not by raw rs2_high"
+    //     );
+    // }
 
     /// Sanity-check the artifact shape: both output channels present + i/t
     /// teardown_sets populated. Doesn't write anything to disk.

@@ -169,13 +169,13 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     cs.add_constraint_expr(Expr::from(is_sw) * (Expr::var(ram_addr[1]) - Expr::from(writeaddr_hi)));
 
     let is_fam4: Constraint<F> = Constraint::from(is_lw) + Constraint::from(is_sw);
+    let is_fam4_expr = Expr::from(is_lw) + Expr::from(is_sw);
 
     let (is_rom_base_layer, rom_addr_constraint) = {
         // is_rom aliases shared scratch-Boolean pool slot [2]. Witnessed conditionally
         // on is_fam4 and constrained ONLY through the is_fam4-gated residue below + the
         // is_sw-gated trap, so it is free on non-Family-4 rows (poolable).
         let is_rom = of_slots[2];
-        let rom_term = Term::from(is_rom);
         // ROM-vs-data is decided by comparing the address high limb with
         // 2^ROM_SECOND_WORD_BITS. On non-Family-4 rows is_rom is a don't-care (the
         // residue is gated to 0 below), so we only assign it on Family-4 rows.
@@ -204,7 +204,6 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
             };
             cs.set_values(value_fn);
         }
-        let rom_bound_high = Term::from(1 << common_constants::ROM_SECOND_WORD_BITS);
         // residue gated by is_fam4: on non-Family-4 rows it is 0 (a valid 16-bit value)
         // regardless of the pooled is_rom/ram_addr[1] junk; on Family-4 rows (is_fam4=1)
         // it equals `2^16*is_rom + ram_addr_hi - rom_bound`, and the RC forces is_rom to
@@ -212,12 +211,11 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         // ungated form, but with is_rom/ram_addr[1] now free off-Family-4. Degree 2
         // (is_fam4 × degree-1).
 
-        let residue_inner: Constraint<F> =
-            shift16_term * rom_term + Term::from(ram_addr[1]) - rom_bound_high;
-        let residue: Constraint<F> = is_fam4.clone() * residue_inner;
+        let residue_inner: Expr<F> = Expr::constant(F::from_u32_with_reduction(1 << 16)) * Expr::from(is_rom) + Expr::from(ram_addr[1]) - Expr::constant(F::from_u32_with_reduction(1 << common_constants::ROM_SECOND_WORD_BITS));
+        let residue: Expr<F> = is_fam4_expr.clone() * residue_inner;
         assert_eq!(residue.degree(), 2);
         let residue_var =
-            cs.add_intermediate_named_variable_from_constraint(residue, "rom residue");
+            cs.add_intermediate_named_variable_from_expr(residue, "rom residue");
         cs.require_invariant_from_lookup_input(
             LookupInput::from(residue_var),
             Invariant::RangeChecked { width: 16 },
