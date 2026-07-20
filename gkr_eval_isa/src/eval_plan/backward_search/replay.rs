@@ -465,7 +465,7 @@ fn controlled_sources(
     Ok(sources)
 }
 
-fn reprice_source_read(
+pub(super) fn reprice_source_read(
     problem: &BackwardSearchProblem,
     source_desc: Option<u16>,
     width_lanes: u8,

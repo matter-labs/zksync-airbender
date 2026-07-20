@@ -140,6 +140,57 @@ pub fn escalation_tiers(
     tiers
 }
 
+enum EscalationStep<T, K> {
+    Completed {
+        value: T,
+        score: K,
+        first_winning_ordinal: usize,
+    },
+    Terminal(T),
+}
+
+fn run_escalation_schedule<T, E, K: Copy + Ord>(
+    seed_floor: K,
+    mut run_tier: impl FnMut(usize) -> Result<EscalationStep<T, K>, E>,
+) -> Result<T, E> {
+    let (tier128, score128, first_winning_ordinal) = match run_tier(128)? {
+        EscalationStep::Completed {
+            value,
+            score,
+            first_winning_ordinal,
+        } => (value, score, first_winning_ordinal),
+        EscalationStep::Terminal(value) => return Ok(value),
+    };
+    let improved_seed = score128 < seed_floor;
+    let late_winner = first_winning_ordinal >= 96;
+    if !escalation_tiers(improved_seed, late_winner, false).contains(&512) {
+        return Ok(tier128);
+    }
+
+    let (tier512, score512) = match run_tier(512)? {
+        EscalationStep::Completed { value, score, .. } => (value, score),
+        EscalationStep::Terminal(value) => return Ok(value),
+    };
+    let improved_512 = score512 < score128;
+    if !escalation_tiers(improved_seed, late_winner, improved_512).contains(&2048) {
+        return Ok(tier512);
+    }
+
+    Ok(match run_tier(2048)? {
+        EscalationStep::Completed { value, .. } | EscalationStep::Terminal(value) => value,
+    })
+}
+
+fn tier_search_config(evaluations: usize) -> SearchDriverConfig {
+    SearchDriverConfig {
+        population: SEARCH_POPULATION,
+        evaluations,
+        guided_evaluations: 0,
+        score_batch: SEARCH_BATCH,
+        seed: SEARCH_SEED,
+    }
+}
+
 pub fn run_instance(
     fixture: &str,
     layer_index: usize,
@@ -241,6 +292,7 @@ pub(crate) fn run_instance_with_pager_cap(
         BackwardSearchArm::OrderOnly,
         vec![BackwardGenome::constructive(&problem)],
         arm1_score,
+        pager_cap,
     )?;
     let arm2 = match arm2_tier {
         StagedOutcome::Completed(tier) => tier.into_arm_result(ExperimentArm::OrderSearch),
@@ -261,6 +313,7 @@ pub(crate) fn run_instance_with_pager_cap(
         BackwardSearchArm::CacheOnly,
         vec![paging_seed(&problem, &exact)?],
         arm1_score,
+        pager_cap,
     )?
     .into_arm_result_or_capped(ExperimentArm::CacheSearch);
 
@@ -275,6 +328,7 @@ pub(crate) fn run_instance_with_pager_cap(
             BackwardSearchArm::Joint,
             vec![paging_seed(&problem, &exact)?, arm2_seed],
             min_score(arm1_score, arm2.score.expect("checked above")),
+            pager_cap,
         )?
         .into_arm_result_or_capped(ExperimentArm::JointSearch)
     } else {
@@ -352,14 +406,17 @@ fn run_exact_constructive(
 ) -> Result<ArmResult, BackwardSearchError> {
     let telemetry = BackwardAdapterTelemetry::default();
     let started = Instant::now();
+    telemetry.record_evaluation_attempts(1);
+    telemetry.record_pager_call();
     let outcome = solve_exact_paging(&problem.demands, pager_cap)?;
-    telemetry.record_pager(&outcome);
+    telemetry.record_pager_outcome(&outcome);
     let paging = match outcome {
         PagerOutcome::Solved(paging) => paging,
         PagerOutcome::SolverCapped {
             cap,
             demand_position,
             peak_states,
+            ..
         } => {
             return Ok(capped_arm(
                 ExperimentArm::ExactConstructive,
@@ -399,6 +456,10 @@ impl SearchAdapter for SeededAdapter<'_> {
 
     fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error> {
         Ok(self.seeds.clone())
+    }
+
+    fn seed_is_pinned(&self, seed_index: usize) -> bool {
+        seed_index < self.seeds.len()
     }
 
     fn parent_eligible(&self, score: &Self::Score) -> bool {
@@ -507,32 +568,33 @@ fn run_staged_search(
     arm: BackwardSearchArm,
     seeds: Vec<BackwardGenome>,
     seed_floor: BackwardScore,
+    pager_cap: usize,
 ) -> Result<StagedOutcome, BackwardSearchError> {
-    let tier128 = match run_tier(
-        canonical, d, problem, exact_seed, trace_len, arm, &seeds, 128,
-    )? {
-        StagedOutcome::Completed(tier) => tier,
-        capped => return Ok(capped),
-    };
-    let improved_seed = score_key(tier128.outcome.best_score) < score_key(seed_floor);
-    let late_winner = tier128.outcome.best_ordinal >= 96;
-    if !improved_seed && !late_winner {
-        return Ok(StagedOutcome::Completed(tier128));
-    }
-
-    let tier512 = match run_tier(
-        canonical, d, problem, exact_seed, trace_len, arm, &seeds, 512,
-    )? {
-        StagedOutcome::Completed(tier) => tier,
-        capped => return Ok(capped),
-    };
-    if score_key(tier512.outcome.best_score) >= score_key(tier128.outcome.best_score) {
-        return Ok(StagedOutcome::Completed(tier512));
-    }
-
-    run_tier(
-        canonical, d, problem, exact_seed, trace_len, arm, &seeds, 2048,
-    )
+    run_escalation_schedule(score_key(seed_floor), |evaluations| {
+        let staged = run_tier(
+            canonical,
+            d,
+            problem,
+            exact_seed,
+            trace_len,
+            arm,
+            &seeds,
+            evaluations,
+            pager_cap,
+        )?;
+        Ok(match staged {
+            StagedOutcome::Completed(tier) => {
+                let score = score_key(tier.outcome.best_score);
+                let first_winning_ordinal = tier.outcome.best_ordinal;
+                EscalationStep::Completed {
+                    value: StagedOutcome::Completed(tier),
+                    score,
+                    first_winning_ordinal,
+                }
+            }
+            capped => EscalationStep::Terminal(capped),
+        })
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -545,24 +607,17 @@ fn run_tier(
     arm: BackwardSearchArm,
     seeds: &[BackwardGenome],
     evaluations: usize,
+    pager_cap: usize,
 ) -> Result<StagedOutcome, BackwardSearchError> {
     let telemetry = BackwardAdapterTelemetry::default();
     let adapter = SeededAdapter {
         inner: BackwardAdapter::new(canonical, d, problem, exact_seed, trace_len, arm)
+            .with_pager_cap(pager_cap)
             .with_telemetry(&telemetry),
         seeds: seeds.to_vec(),
     };
     let started = Instant::now();
-    let outcome = run_search_driver(
-        &adapter,
-        SearchDriverConfig {
-            population: SEARCH_POPULATION,
-            evaluations,
-            guided_evaluations: 0,
-            score_batch: SEARCH_BATCH,
-            seed: SEARCH_SEED,
-        },
-    );
+    let outcome = run_search_driver(&adapter, tier_search_config(evaluations));
     let wall_time = started.elapsed();
     let snapshot = telemetry.snapshot();
     match outcome {
@@ -580,6 +635,7 @@ fn run_tier(
             cap,
             demand_position,
             peak_states,
+            ..
         })) => Ok(StagedOutcome::Capped(
             ArmClassification::SolverCapped {
                 cap,
@@ -741,6 +797,7 @@ fn capped_arm(
     wall_time: Duration,
 ) -> ArmResult {
     let mut result = classified_arm(arm, classification);
+    result.evaluations = telemetry.evaluation_attempts;
     result.pager = pager_telemetry(telemetry);
     result.compile_time = telemetry.compile_time;
     result.wall_time = wall_time;
@@ -1037,10 +1094,17 @@ mod tests {
     use crate::bwd::fif::coordinate_correct_frozen_with_backend;
     use crate::bwd::plan::PlanAction;
     use crate::bwd::price::compound_batch_plan;
+    use crate::bwd::trace::{BwdEvent, positioned_physical_traffic_events};
+    use crate::eval_plan::search_driver::{SearchAdapter, StableRng};
 
+    use super::super::SourceCost;
+    use super::super::replay::reprice_source_read;
     use super::{
-        AcceptedIncumbent, ArmClassification, InstanceResult, escalation_tiers, run_instance,
-        run_instance_with_pager_cap,
+        AcceptedIncumbent, ArmClassification, BackwardAdapter, BackwardGenome, BackwardSearchArm,
+        EscalationStep, InstanceResult, SeededAdapter, build_backward_search_problem,
+        build_problem_for_order, escalation_tiers, exact_from_plan, joint_seed_from_arm2,
+        paging_seed, run_escalation_schedule, run_instance, run_instance_with_pager_cap, run_tier,
+        tier_search_config,
     };
 
     #[test]
@@ -1052,11 +1116,96 @@ mod tests {
     }
 
     #[test]
+    fn arm4_pins_both_required_seeds_as_eligible_parents() {
+        let result = run_synthetic_instance().unwrap();
+        let (layer, distilled) = synthetic_fixture();
+        let (_, problem) = build_backward_search_problem(&layer, &distilled, 8, 4).unwrap();
+        let problem = problem.expect("synthetic search problem");
+        let exact = exact_from_plan(&problem, result.arm1.plan.as_ref().unwrap()).unwrap();
+        let arm1_seed = paging_seed(&problem, &exact).unwrap();
+        let arm2_seed =
+            joint_seed_from_arm2(&layer, &distilled, &problem, 8, &result.arm2).unwrap();
+        let adapter = SeededAdapter {
+            inner: BackwardAdapter::new(
+                &layer,
+                &distilled,
+                &problem,
+                &exact,
+                8,
+                BackwardSearchArm::Joint,
+            ),
+            seeds: vec![arm1_seed, arm2_seed],
+        };
+        assert!(adapter.seed_is_pinned(0));
+        assert!(adapter.seed_is_pinned(1));
+        let seeds = adapter.seeds().unwrap();
+        for result in adapter.score_batch(&[(0, seeds[0].clone()), (1, seeds[1].clone())]) {
+            let (score, candidate) = result.unwrap();
+            assert!(adapter.parent_eligible(&score));
+            assert!(candidate.is_some());
+        }
+    }
+
+    #[test]
     fn tier_escalation_matches_the_approved_rules() {
         assert_eq!(escalation_tiers(false, false, false), vec![128]);
         assert_eq!(escalation_tiers(true, false, false), vec![128, 512]);
         assert_eq!(escalation_tiers(false, true, false), vec![128, 512]);
         assert_eq!(escalation_tiers(true, false, true), vec![128, 512, 2048]);
+    }
+
+    #[test]
+    fn staged_escalation_restarts_each_tier_and_reaches_2048() {
+        #[derive(Debug)]
+        struct FakeTier {
+            evaluations: usize,
+        }
+
+        let mut traces = Vec::new();
+        let winner = run_escalation_schedule(30_u8, |evaluations| {
+            let config = tier_search_config(evaluations);
+            let mut rng = StableRng::new(config.seed);
+            let trace = (0..config.evaluations)
+                .map(|_| rng.next_u64())
+                .collect::<Vec<_>>();
+            traces.push(trace);
+            let (score, first_winning_ordinal) = match evaluations {
+                128 => (20, 100),
+                512 => (10, 400),
+                2048 => (5, 1500),
+                _ => unreachable!(),
+            };
+            Ok::<_, ()>(EscalationStep::Completed {
+                value: FakeTier { evaluations },
+                score,
+                first_winning_ordinal,
+            })
+        })
+        .unwrap();
+
+        assert_eq!(winner.evaluations, 2048);
+        assert_eq!(
+            traces.iter().map(Vec::len).collect::<Vec<_>>(),
+            [128, 512, 2048]
+        );
+        assert_eq!(traces[0], traces[1][..128]);
+        assert_eq!(traces[1], traces[2][..512]);
+    }
+
+    #[test]
+    fn staged_escalation_stops_at_512_without_a_second_improvement() {
+        let mut tiers = Vec::new();
+        let winner = run_escalation_schedule(30_u8, |evaluations| {
+            tiers.push(evaluations);
+            Ok::<_, ()>(EscalationStep::Completed {
+                value: evaluations,
+                score: 20,
+                first_winning_ordinal: 100,
+            })
+        })
+        .unwrap();
+        assert_eq!(winner, 512);
+        assert_eq!(tiers, [128, 512]);
     }
 
     #[test]
@@ -1072,6 +1221,42 @@ mod tests {
         ));
         assert!(result.arm1.score.is_none());
         assert!(result.arm2.score.is_none());
+        assert_eq!(result.arm1.evaluations, 1);
+        assert_eq!(result.arm1.pager.calls, 1);
+        assert!(result.arm1.pager.generated_states > 0);
+        assert_eq!(result.arm2.evaluations, 0);
+        assert_eq!(result.arm2.pager.calls, 0);
+    }
+
+    #[test]
+    fn in_tier_order_cap_reports_attempted_evaluations_and_pager_state() {
+        let result = run_synthetic_instance().unwrap();
+        let (layer, distilled) = synthetic_fixture();
+        let (_, problem) = build_backward_search_problem(&layer, &distilled, 8, 4).unwrap();
+        let problem = problem.expect("synthetic search problem");
+        let exact = exact_from_plan(&problem, result.arm1.plan.as_ref().unwrap()).unwrap();
+        let staged = run_tier(
+            &layer,
+            &distilled,
+            &problem,
+            &exact,
+            8,
+            BackwardSearchArm::OrderOnly,
+            &[BackwardGenome::constructive(&problem)],
+            128,
+            1,
+        )
+        .unwrap();
+        let arm = staged.into_arm_result_or_capped(super::ExperimentArm::OrderSearch);
+        assert!(matches!(
+            arm.classification,
+            ArmClassification::SolverCapped { .. }
+        ));
+        assert!(arm.score.is_none());
+        assert_eq!(arm.evaluations, 1);
+        assert_eq!(arm.pager.calls, 1);
+        assert!(arm.pager.generated_states > 0);
+        assert!(arm.pager.merged_states <= arm.pager.generated_states);
     }
 
     #[test]
@@ -1176,6 +1361,46 @@ mod tests {
                 .iter()
                 .any(|entry| { entry.fp.value == compound && entry.action == PlanAction::Retain })
         );
+        let problem =
+            build_problem_for_order(&layer, &distilled, &order, 8, 4, plan.stream_reductions)
+                .unwrap();
+        let scored =
+            super::compile_and_score_occurrence_plan(&distilled, &problem, &plan, &order, 0)
+                .unwrap();
+        let physical = positioned_physical_traffic_events(
+            &distilled.layer,
+            &scored.compiled.compiled.program,
+            &scored.compiled.compiled.specials,
+            &distilled.leaf_descs,
+            &scored.compiled.compiled.backings,
+        )
+        .unwrap();
+        let expected_reads = physical
+            .iter()
+            .try_fold(SourceCost::default(), |cost, positioned| {
+                let BwdEvent::TrafficRead { value, cells } = positioned.event else {
+                    unreachable!("physical scan emits only traffic reads")
+                };
+                let read = reprice_source_read(
+                    &problem,
+                    distilled.leaf_descs.get(&value).copied(),
+                    cells.try_into().unwrap(),
+                )?;
+                cost.checked_add(read)
+            })
+            .unwrap();
+        let expected = expected_reads
+            .checked_add(problem.materialization.fixed_writes)
+            .unwrap();
+        assert_eq!(
+            scored.score.whole_pass_dram_bytes,
+            expected.dram_bytes().unwrap()
+        );
+        assert_eq!(
+            scored.score.primitive_source_ops,
+            expected.ops.primitive_equivalents().unwrap()
+        );
+
         let incumbent = AcceptedIncumbent { order, plan };
         let result =
             run_instance("compound", 0, &layer, &distilled, 8, 4, Some(&incumbent)).unwrap();

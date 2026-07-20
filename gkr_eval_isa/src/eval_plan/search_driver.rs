@@ -6,6 +6,9 @@ pub(crate) trait SearchAdapter: Sync {
     type GuidedTrial: Send;
 
     fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error>;
+    fn seed_is_pinned(&self, _seed_index: usize) -> bool {
+        false
+    }
     fn parent_eligible(&self, score: &Self::Score) -> bool;
     fn population_fill_seed(
         &self,
@@ -65,6 +68,7 @@ struct Candidate<G, S> {
     genome: G,
     score: S,
     ordinal: usize,
+    pinned: bool,
 }
 
 struct Evaluated<G, S, E> {
@@ -82,6 +86,14 @@ pub(crate) fn run_search_driver<A: SearchAdapter>(
     let seeds = adapter.seeds().map_err(SearchDriverError::Adapter)?;
     if seeds.is_empty() {
         return Err(SearchDriverError::EmptySeeds);
+    }
+    let pinned_seeds = (0..seeds.len())
+        .filter(|&index| adapter.seed_is_pinned(index))
+        .count();
+    if pinned_seeds > config.population {
+        return Err(SearchDriverError::InvalidConfig(
+            "pinned seeds exceed population",
+        ));
     }
     if config.evaluations < seeds.len() {
         return Err(SearchDriverError::InvalidConfig(
@@ -119,6 +131,7 @@ pub(crate) fn run_search_driver<A: SearchAdapter>(
                     genome: candidate.genome.clone(),
                     score: candidate.score.clone(),
                     ordinal: candidate.ordinal,
+                    pinned: adapter.seed_is_pinned(candidate.ordinal),
                 });
             }
             if best
@@ -161,6 +174,7 @@ pub(crate) fn run_search_driver<A: SearchAdapter>(
                 genome: candidate.genome.clone(),
                 score: candidate.score.clone(),
                 ordinal: candidate.ordinal,
+                pinned: false,
             };
             update_best(adapter, &mut best, candidate, &mut improvement_ordinals);
             population.push(population_candidate);
@@ -186,6 +200,7 @@ pub(crate) fn run_search_driver<A: SearchAdapter>(
                 genome: candidate.genome.clone(),
                 score: candidate.score.clone(),
                 ordinal: candidate.ordinal,
+                pinned: false,
             };
             update_best(adapter, &mut best, candidate, &mut improvement_ordinals);
             population.push(population_candidate);
@@ -332,7 +347,22 @@ fn rank_and_truncate<G, S: Ord>(population: &mut Vec<Candidate<G, S>>, capacity:
             .cmp(&right.score)
             .then_with(|| left.ordinal.cmp(&right.ordinal))
     });
-    population.truncate(capacity);
+    let pinned = population
+        .iter()
+        .filter(|candidate| candidate.pinned)
+        .count();
+    debug_assert!(pinned <= capacity);
+    let mut unpinned_slots = capacity - pinned;
+    population.retain(|candidate| {
+        if candidate.pinned {
+            true
+        } else if unpinned_slots != 0 {
+            unpinned_slots -= 1;
+            true
+        } else {
+            false
+        }
+    });
 }
 
 fn tournament<'a, G, S: Ord>(
@@ -384,6 +414,7 @@ impl StableRng {
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{SearchAdapter, SearchDriverConfig, StableRng, run_search_driver};
 
@@ -543,6 +574,121 @@ mod tests {
         assert_eq!(outcome.best_ordinal, 0);
         assert_eq!(outcome.best_genome, 0);
         assert!(outcome.improvement_ordinals.is_empty());
+    }
+
+    struct PinnedSeedAdapter {
+        pinned_parent_uses: AtomicUsize,
+        mutations: AtomicUsize,
+        pin_both: bool,
+    }
+
+    impl SearchAdapter for PinnedSeedAdapter {
+        type Genome = i32;
+        type Score = i32;
+        type Evaluation = ();
+        type Error = ();
+        type GuidedTrial = ();
+
+        fn seeds(&self) -> Result<Vec<Self::Genome>, Self::Error> {
+            Ok(vec![1_000, 0])
+        }
+
+        fn seed_is_pinned(&self, seed_index: usize) -> bool {
+            self.pin_both || seed_index == 0
+        }
+
+        fn parent_eligible(&self, _score: &Self::Score) -> bool {
+            true
+        }
+
+        fn population_fill_seed(
+            &self,
+            seeds: &[Self::Genome],
+            _seed_scores: &[Self::Score],
+            population_len: usize,
+        ) -> Self::Genome {
+            seeds[population_len % seeds.len()]
+        }
+
+        fn mutate(&self, genome: &mut Self::Genome, _rng: &mut StableRng) {
+            self.mutations.fetch_add(1, Ordering::Relaxed);
+            if *genome == 1_000 {
+                self.pinned_parent_uses.fetch_add(1, Ordering::Relaxed);
+            }
+            *genome = 0;
+        }
+
+        fn score_batch(
+            &self,
+            candidates: &[(usize, Self::Genome)],
+        ) -> Vec<Result<(Self::Score, Self::Evaluation), Self::Error>> {
+            candidates
+                .iter()
+                .map(|(_, genome)| Ok((*genome, ())))
+                .collect()
+        }
+
+        fn guided_trials(
+            &self,
+            _pre_guided_best: &Self::Genome,
+            _pre_guided_evaluation: &Self::Evaluation,
+        ) -> Vec<Self::GuidedTrial> {
+            Vec::new()
+        }
+
+        fn apply_guided_trial(
+            &self,
+            _trial: &Self::GuidedTrial,
+            live_best: &Self::Genome,
+            _live_evaluation: &Self::Evaluation,
+        ) -> Self::Genome {
+            *live_best
+        }
+    }
+
+    #[test]
+    fn worse_pinned_seed_survives_repeated_truncation_and_remains_a_parent() {
+        let adapter = PinnedSeedAdapter {
+            pinned_parent_uses: AtomicUsize::new(0),
+            mutations: AtomicUsize::new(0),
+            pin_both: false,
+        };
+        run_search_driver(
+            &adapter,
+            SearchDriverConfig {
+                population: 2,
+                evaluations: 128,
+                guided_evaluations: 0,
+                score_batch: 1,
+                seed: 17,
+            },
+        )
+        .expect("run pinned-seed search");
+        assert_eq!(adapter.mutations.load(Ordering::Relaxed), 126);
+        assert!(adapter.pinned_parent_uses.load(Ordering::Relaxed) > 1);
+    }
+
+    #[test]
+    fn pinned_seed_count_must_fit_population() {
+        let adapter = PinnedSeedAdapter {
+            pinned_parent_uses: AtomicUsize::new(0),
+            mutations: AtomicUsize::new(0),
+            pin_both: true,
+        };
+        assert_eq!(
+            run_search_driver(
+                &adapter,
+                SearchDriverConfig {
+                    population: 1,
+                    evaluations: 2,
+                    guided_evaluations: 0,
+                    score_batch: 1,
+                    seed: 0,
+                },
+            )
+            .unwrap_err(),
+            super::SearchDriverError::InvalidConfig("pinned seeds exceed population"),
+        );
     }
 
     #[test]

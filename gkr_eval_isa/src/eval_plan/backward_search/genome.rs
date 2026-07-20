@@ -56,6 +56,7 @@ pub enum BackwardSearchArm {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct BackwardAdapterTelemetrySnapshot {
+    pub evaluation_attempts: usize,
     pub pager_calls: usize,
     pub pager_generated_states: u64,
     pub pager_merged_states: u64,
@@ -65,6 +66,7 @@ pub(crate) struct BackwardAdapterTelemetrySnapshot {
 
 #[derive(Debug, Default)]
 pub(crate) struct BackwardAdapterTelemetry {
+    evaluation_attempts: AtomicUsize,
     pager_calls: AtomicUsize,
     pager_generated_states: AtomicU64,
     pager_merged_states: AtomicU64,
@@ -73,8 +75,15 @@ pub(crate) struct BackwardAdapterTelemetry {
 }
 
 impl BackwardAdapterTelemetry {
-    pub(crate) fn record_pager(&self, outcome: &PagerOutcome) {
+    pub(crate) fn record_evaluation_attempts(&self, count: usize) {
+        self.evaluation_attempts.fetch_add(count, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_pager_call(&self) {
         self.pager_calls.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_pager_outcome(&self, outcome: &PagerOutcome) {
         match outcome {
             PagerOutcome::Solved(plan) => {
                 self.pager_generated_states
@@ -84,7 +93,16 @@ impl BackwardAdapterTelemetry {
                 self.pager_peak_states
                     .fetch_max(plan.telemetry.peak_live_states, Ordering::Relaxed);
             }
-            PagerOutcome::SolverCapped { peak_states, .. } => {
+            PagerOutcome::SolverCapped {
+                peak_states,
+                generated_states,
+                merged_states,
+                ..
+            } => {
+                self.pager_generated_states
+                    .fetch_add(*generated_states, Ordering::Relaxed);
+                self.pager_merged_states
+                    .fetch_add(*merged_states, Ordering::Relaxed);
                 self.pager_peak_states
                     .fetch_max(*peak_states, Ordering::Relaxed);
             }
@@ -98,6 +116,7 @@ impl BackwardAdapterTelemetry {
 
     pub(crate) fn snapshot(&self) -> BackwardAdapterTelemetrySnapshot {
         BackwardAdapterTelemetrySnapshot {
+            evaluation_attempts: self.evaluation_attempts.load(Ordering::Relaxed),
             pager_calls: self.pager_calls.load(Ordering::Relaxed),
             pager_generated_states: self.pager_generated_states.load(Ordering::Relaxed),
             pager_merged_states: self.pager_merged_states.load(Ordering::Relaxed),
@@ -192,6 +211,7 @@ pub struct BackwardAdapter<'a> {
     exact_seed: &'a ExactPagingPlan,
     trace_len: usize,
     arm: BackwardSearchArm,
+    pager_cap: usize,
     telemetry: Option<&'a BackwardAdapterTelemetry>,
 }
 
@@ -211,8 +231,14 @@ impl<'a> BackwardAdapter<'a> {
             exact_seed,
             trace_len,
             arm,
+            pager_cap: MAX_PAGER_STATES,
             telemetry: None,
         }
+    }
+
+    pub(crate) fn with_pager_cap(mut self, pager_cap: usize) -> Self {
+        self.pager_cap = pager_cap;
+        self
     }
 
     pub(crate) fn with_telemetry(mut self, telemetry: &'a BackwardAdapterTelemetry) -> Self {
@@ -269,9 +295,12 @@ impl<'a> BackwardAdapter<'a> {
         };
         let paging = match self.arm {
             BackwardSearchArm::OrderOnly => {
-                let outcome = solve_exact_paging(&candidate_problem.demands, MAX_PAGER_STATES)?;
                 if let Some(telemetry) = self.telemetry {
-                    telemetry.record_pager(&outcome);
+                    telemetry.record_pager_call();
+                }
+                let outcome = solve_exact_paging(&candidate_problem.demands, self.pager_cap)?;
+                if let Some(telemetry) = self.telemetry {
+                    telemetry.record_pager_outcome(&outcome);
                 }
                 exact_paging_plan(outcome)?
             }
@@ -339,6 +368,9 @@ impl SearchAdapter for BackwardAdapter<'_> {
         &self,
         candidates: &[(usize, Self::Genome)],
     ) -> Vec<Result<(Self::Score, Self::Evaluation), Self::Error>> {
+        if let Some(telemetry) = self.telemetry {
+            telemetry.record_evaluation_attempts(candidates.len());
+        }
         candidates
             .par_iter()
             .map(|(ordinal, genome)| self.evaluate(*ordinal, genome))
@@ -370,10 +402,14 @@ fn exact_paging_plan(outcome: PagerOutcome) -> Result<ExactPagingPlan, BackwardS
             cap,
             demand_position,
             peak_states,
+            generated_states,
+            merged_states,
         } => Err(BackwardSearchError::ExactPagerSolverCapped {
             cap,
             demand_position,
             peak_states,
+            generated_states,
+            merged_states,
         }),
     }
 }
@@ -841,11 +877,15 @@ mod tests {
                 cap: 12,
                 demand_position: 7,
                 peak_states: 13,
+                generated_states: 21,
+                merged_states: 3,
             }),
             Err(BackwardSearchError::ExactPagerSolverCapped {
                 cap: 12,
                 demand_position: 7,
                 peak_states: 13,
+                generated_states: 21,
+                merged_states: 3,
             })
         );
     }

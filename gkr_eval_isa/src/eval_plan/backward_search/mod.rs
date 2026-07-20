@@ -264,6 +264,8 @@ pub enum BackwardSearchError {
         cap: usize,
         demand_position: usize,
         peak_states: usize,
+        generated_states: u64,
+        merged_states: u64,
     },
     PagingSeedMismatch,
     SearchDriverFailure {

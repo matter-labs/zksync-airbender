@@ -44,6 +44,8 @@ pub enum PagerOutcome {
         cap: usize,
         demand_position: usize,
         peak_states: usize,
+        generated_states: u64,
+        merged_states: u64,
     },
 }
 
@@ -183,6 +185,8 @@ pub fn solve_exact_paging(
                 cap: state_cap,
                 demand_position: position,
                 peak_states: telemetry.peak_live_states,
+                generated_states: telemetry.generated_states,
+                merged_states: telemetry.merged_states,
             });
         }
 
@@ -384,10 +388,19 @@ mod tests {
 
     #[test]
     fn tiny_live_state_cap_returns_uncomputed_solver_capped() {
-        assert!(matches!(
-            solve_exact_paging(&mixed_stream(), 1).unwrap(),
-            PagerOutcome::SolverCapped { cap: 1, .. }
-        ));
+        match solve_exact_paging(&mixed_stream(), 1).unwrap() {
+            PagerOutcome::SolverCapped {
+                cap,
+                generated_states,
+                merged_states,
+                ..
+            } => {
+                assert_eq!(cap, 1);
+                assert!(generated_states > 0);
+                assert!(merged_states <= generated_states);
+            }
+            solved => panic!("expected capped pager, got {solved:?}"),
+        }
     }
 
     fn solved(demands: &[BackwardDemand], outcome: PagerOutcome) -> ExactPagingPlan {
