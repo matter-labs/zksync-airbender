@@ -236,8 +236,8 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
         // XorRotate{r} — is (a, b, o0, o1, o2, o3): 4 contribution bytes at cols 2..6
         // (reusing the shift_output_chunks scratch; the paths are mutually exclusive).
         for j in 0..4 {
-            constraints[2 + j] =
-                constraints[2 + j].clone() + Expr::from(is_binary_op) * Expr::from(shift_outputs[j]);
+            constraints[2 + j] = constraints[2 + j].clone()
+                + Expr::from(is_binary_op) * Expr::from(shift_outputs[j]);
         }
 
         let table_id = Expr::from(is_shift)

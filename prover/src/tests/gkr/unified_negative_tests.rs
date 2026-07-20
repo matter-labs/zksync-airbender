@@ -1360,15 +1360,19 @@ fn generate_malicious_unified_proofs() {
         },
     );
 
-    generate_malicious_unified_proof("f4_sw_value", StaticVerdict::ArithRejects, |circuit, trace| {
-        let sw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
-        let write_value = find_base_layer_address(circuit, "rd/mem write write_value[0]");
-        let row = (0..base_trace_len(trace))
-            .find(|&r| read_cell(trace, sw, r) == BabyBearField::ONE)
-            .expect("multi_family_smoke must execute at least one SW");
-        let cur = read_cell(trace, write_value, row);
-        write_cell(trace, write_value, row, cur + BabyBearField::ONE);
-    });
+    generate_malicious_unified_proof(
+        "f4_sw_value",
+        StaticVerdict::ArithRejects,
+        |circuit, trace| {
+            let sw = find_base_layer_address(circuit, &format!("family_bit[{FAMILY_4_SW_BIT}]"));
+            let write_value = find_base_layer_address(circuit, "rd/mem write write_value[0]");
+            let row = (0..base_trace_len(trace))
+                .find(|&r| read_cell(trace, sw, r) == BabyBearField::ONE)
+                .expect("multi_family_smoke must execute at least one SW");
+            let cur = read_cell(trace, write_value, row);
+            write_cell(trace, write_value, row, cur + BabyBearField::ONE);
+        },
+    );
 
     generate_malicious_unified_proof(
         "f4_lw_value",

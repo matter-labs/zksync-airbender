@@ -101,7 +101,11 @@ pub struct HandoffState {
 /// Re-derive the full GKR→WHIR handoff state (seed + batching + opening + evaluation point) by
 /// replaying the GKR transcript. Kept for the one-time proof migration that backfills the
 /// `WhirPolyCommitProof` handoff fields into older proof jsons (and as an independent check).
-pub fn replay_handoff_state(circuit: &Circuit, proof: &Proof, aux: &CommitmentMode) -> HandoffState {
+pub fn replay_handoff_state(
+    circuit: &Circuit,
+    proof: &Proof,
+    aux: &CommitmentMode,
+) -> HandoffState {
     replay_handoff(circuit, proof, aux, true)
 }
 
@@ -122,8 +126,7 @@ pub(crate) fn replay_handoff(
     let worker = Worker::new_with_num_threads(4);
 
     let ti = build_transcript_input(proof, aux);
-    let mut seed =
-        <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&ti);
+    let mut seed = <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&ti);
 
     // ---- STEP 1: external challenges (PoW-gated draw of 9 elements) ----
     let entry_pow = core::cmp::max(
@@ -213,7 +216,8 @@ pub(crate) fn replay_handoff(
     }
 
     // ---- STEP 4: packed-commitment handoff ----
-    let extra = draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, PACK_LOG2);
+    let extra =
+        draw_random_field_els::<Proth120, Proth120, Keccak256Transcript>(&mut seed, PACK_LOG2);
     let whir_pow = pow_bits::batched_proximity_check_pow_bits(
         prover::definitions::SecurityLevel::Sec100.security_bits(),
         circuit.trace_len.trailing_zeros() as usize,

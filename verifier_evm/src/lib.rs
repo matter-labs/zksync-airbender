@@ -16,5 +16,5 @@ pub mod generator;
 pub mod seed;
 
 pub use flatten::{gkr_calldata, whir_calldata};
-pub use generator::{generate_verifiers, emit_circuit_yul, GeneratedContracts};
+pub use generator::{emit_circuit_yul, generate_verifiers, GeneratedContracts};
 pub use seed::{commit_seed_preimage, gkr_whir_handoff_seed};

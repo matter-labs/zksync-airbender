@@ -279,9 +279,7 @@ pub(crate) fn expression_into_no_field_expression<F: PrimeField>(
     graph: &impl GraphHolder<F>,
 ) -> NoFieldStructuredExpression<F> {
     match expr {
-        Expr::Constant(c) => {
-            NoFieldStructuredExpression::Constant(*c)
-        }
+        Expr::Constant(c) => NoFieldStructuredExpression::Constant(*c),
         Expr::Var(var) => {
             let place = graph.get_address_for_variable(*var);
             NoFieldStructuredExpression::Place(place)

@@ -135,7 +135,10 @@ pub fn no_field_gkr_max_quadratic_from_expr_and_constraint<F: PrimeField>(
             if c.is_one() {
                 // double check that expression is also simple
                 let Expr::Var(src) = &expression else {
-                    panic!("constraint marks a copy, but expression is {:?}", expression);
+                    panic!(
+                        "constraint marks a copy, but expression is {:?}",
+                        expression
+                    );
                 };
                 assert_eq!(*src, var);
 

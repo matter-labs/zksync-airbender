@@ -1020,17 +1020,25 @@ where
         crate::gkr::whir::WhirIntermediateOracleMode::Monolithic
     };
 
-    let intermediate_transcript_seed = if core::any::TypeId::of::<TR>() == core::any::TypeId::of::<Keccak256Transcript>() {
-        // some unsafe magic
-        assert_eq!(core::any::TypeId::of::<F>(), core::any::TypeId::of::<::field::Proth120>());
-        assert_eq!(core::any::TypeId::of::<E>(), core::any::TypeId::of::<::field::Proth120>());
-        let seed_copy: <Keccak256Transcript as ::transcript::Transcript<::field::Proth120, ::field::Proth120>>::Seed = unsafe {
-            core::mem::transmute_copy(&seed)
+    let intermediate_transcript_seed =
+        if core::any::TypeId::of::<TR>() == core::any::TypeId::of::<Keccak256Transcript>() {
+            // some unsafe magic
+            assert_eq!(
+                core::any::TypeId::of::<F>(),
+                core::any::TypeId::of::<::field::Proth120>()
+            );
+            assert_eq!(
+                core::any::TypeId::of::<E>(),
+                core::any::TypeId::of::<::field::Proth120>()
+            );
+            let seed_copy: <Keccak256Transcript as ::transcript::Transcript<
+                ::field::Proth120,
+                ::field::Proth120,
+            >>::Seed = unsafe { core::mem::transmute_copy(&seed) };
+            Some(seed_copy.0)
+        } else {
+            None
         };
-        Some(seed_copy.0)
-    } else {
-        None
-    };
 
     let whir_proof = whir_fold::<F, E, T, TR>(
         mem_oracle,

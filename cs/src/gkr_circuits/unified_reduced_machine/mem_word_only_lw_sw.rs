@@ -211,11 +211,15 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
         // ungated form, but with is_rom/ram_addr[1] now free off-Family-4. Degree 2
         // (is_fam4 × degree-1).
 
-        let residue_inner: Expr<F> = Expr::constant(F::from_u32_with_reduction(1 << 16)) * Expr::from(is_rom) + Expr::from(ram_addr[1]) - Expr::constant(F::from_u32_with_reduction(1 << common_constants::ROM_SECOND_WORD_BITS));
+        let residue_inner: Expr<F> = Expr::constant(F::from_u32_with_reduction(1 << 16))
+            * Expr::from(is_rom)
+            + Expr::from(ram_addr[1])
+            - Expr::constant(F::from_u32_with_reduction(
+                1 << common_constants::ROM_SECOND_WORD_BITS,
+            ));
         let residue: Expr<F> = is_fam4_expr.clone() * residue_inner;
         assert_eq!(residue.degree(), 2);
-        let residue_var =
-            cs.add_intermediate_named_variable_from_expr(residue, "rom residue");
+        let residue_var = cs.add_intermediate_named_variable_from_expr(residue, "rom residue");
         cs.require_invariant_from_lookup_input(
             LookupInput::from(residue_var),
             Invariant::RangeChecked { width: 16 },

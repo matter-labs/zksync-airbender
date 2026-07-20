@@ -580,7 +580,13 @@ impl<F: PrimeField> GKRCompiler<F> {
         // As we explicitly track variables that can be made "virtual" (by pushing them into intermediate GKR layers),
         // it should be relatively easy task.
 
-        place_variables_from_constraints(&structured_statements, &mut variables_from_constraints, &layers_mapping, &mut graph, &mut all_variables_to_place);
+        place_variables_from_constraints(
+            &structured_statements,
+            &mut variables_from_constraints,
+            &layers_mapping,
+            &mut graph,
+            &mut all_variables_to_place,
+        );
 
         // Accumulate grand product - pairwise as much as we can
         use crate::gkr_compiler::memory_like_grand_product::accumulate_memory_like_grand_product;
@@ -998,7 +1004,7 @@ pub(crate) fn place_variables_from_constraints<F: PrimeField>(
     variables_from_constraints: &mut BTreeMap<Variable, usize>,
     layers_mapping: &HashMap<Variable, usize>,
     graph: &mut GKRGraph<F>,
-    all_variables_to_place: &mut BTreeSet<Variable>
+    all_variables_to_place: &mut BTreeSet<Variable>,
 ) {
     // variables defined (logically) via constraints can be placed by the author at either base
     // or intermediate layer, and we identify it by peeking into the corresponding
@@ -1101,7 +1107,7 @@ pub(crate) fn place_variables_from_constraints<F: PrimeField>(
 
 pub(crate) fn add_boolean_constraints<F: PrimeField>(
     structured_statements: &mut Vec<StructuredStatement<F>>,
-    boolean_vars: Vec<Variable>
+    boolean_vars: Vec<Variable>,
 ) {
     for boolean in boolean_vars.iter() {
         let expr = Expr::<F>::from(*boolean) * (Expr::from(*boolean) - Expr::from(1));

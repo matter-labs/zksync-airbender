@@ -51,8 +51,16 @@ impl WhirGenConfig {
         let queries = schedule.whir_queries_schedule.clone();
         let pow_bits = schedule.whir_pow_schedule.clone();
         let num_rounds = folds.len();
-        assert_eq!(queries.len(), num_rounds, "WHIR query schedule length != fold schedule length");
-        assert_eq!(pow_bits.len(), num_rounds, "WHIR pow schedule length != fold schedule length");
+        assert_eq!(
+            queries.len(),
+            num_rounds,
+            "WHIR query schedule length != fold schedule length"
+        );
+        assert_eq!(
+            pow_bits.len(),
+            num_rounds,
+            "WHIR pow schedule length != fold schedule length"
+        );
         assert!(
             schedule.cap_size.is_power_of_two() && schedule.cap_size > 0,
             "WHIR cap_size {} is not a power of two",

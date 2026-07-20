@@ -12,8 +12,10 @@ type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
 fn load_inputs() -> (GKRCircuitArtifact<Proth120>, Proof, CommitmentMode) {
     let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_reader(
-        std::fs::File::open("../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json")
-            .expect("circuit layout"),
+        std::fs::File::open(
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+        )
+        .expect("circuit layout"),
     )
     .expect("deserialize circuit");
     let proof: Proof = serde_json::from_reader(
@@ -21,8 +23,10 @@ fn load_inputs() -> (GKRCircuitArtifact<Proth120>, Proof, CommitmentMode) {
     )
     .expect("deserialize proof");
     let aux: CommitmentMode = serde_json::from_reader(
-        std::fs::File::open("../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json")
-            .expect("aux data"),
+        std::fs::File::open(
+            "../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json",
+        )
+        .expect("aux data"),
     )
     .expect("deserialize aux");
     (circuit, proof, aux)

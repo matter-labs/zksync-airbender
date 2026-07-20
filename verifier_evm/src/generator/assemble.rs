@@ -43,7 +43,10 @@ fn set_const(src: &str, name: &str, value: u128) -> String {
             line.to_string()
         })
         .collect();
-    assert_eq!(hits, 1, "expected exactly one `uint256 constant {name}` line in the template");
+    assert_eq!(
+        hits, 1,
+        "expected exactly one `uint256 constant {name}` line in the template"
+    );
     let mut out = body.join("\n");
     if src.ends_with('\n') {
         out.push('\n');
@@ -56,7 +59,9 @@ fn set_const(src: &str, name: &str, value: u128) -> String {
 /// production verifier. Also trims a trailing block-comment that introduces the removed section.
 fn strip_from_contract(src: &str, marker: &str) -> String {
     let needle = format!("contract {marker}");
-    let cut = src.find(&needle).unwrap_or_else(|| panic!("template missing `{needle}`"));
+    let cut = src
+        .find(&needle)
+        .unwrap_or_else(|| panic!("template missing `{needle}`"));
     // back up over any immediately-preceding `//`-comment lines that document the removed section
     let mut end = src[..cut].trim_end_matches([' ', '\t']).len();
     end = src[..end].trim_end_matches('\n').len();
@@ -126,15 +131,15 @@ pub fn generate_verifiers(
     // GKR↔WHIR consistency: the shared parameters must agree between the two verifiers.
     assert_eq!(
         wc.merged_mw as u128, d.merged_mw,
-        "GKR/WHIR merged mem+wit width disagree ({} vs {})", wc.merged_mw, d.merged_mw
+        "GKR/WHIR merged mem+wit width disagree ({} vs {})",
+        wc.merged_mw, d.merged_mw
     );
     assert!(pack_log2 > 0, "pack_log2 must be positive");
 
     let cap = wc.cap_size as u128;
     // registers + final_pc/ts + top_bits(num_teardown_sets * 4) + setup_cap + memory_cap
-    let preimage_bytes = super::PREIMAGE_TOP_BITS_BYTE_OFFSET as u128
-        + d.num_teardown_sets * 4
-        + 2 * cap * 32;
+    let preimage_bytes =
+        super::PREIMAGE_TOP_BITS_BYTE_OFFSET as u128 + d.num_teardown_sets * 4 + 2 * cap * 32;
     let caps_bytes = 2 * cap * 32;
 
     // 1. GKR verifier: inline circuit.yul (replace the whole marker line, matching the awk
@@ -165,7 +170,10 @@ pub fn generate_verifiers(
         ("__TEMPLATE_MERKLE_TREE_CAPS_BYTES", caps_bytes),
         ("__TEMPLATE_GKR_INIT_PREIMAGE_BYTES", preimage_bytes),
         ("__TEMPLATE_EXTERNAL_POW_BITS", external_pow_bits as u128),
-        ("__TEMPLATE_WHIR_BATCH_POW_BITS", whir_batch_pow_bits as u128),
+        (
+            "__TEMPLATE_WHIR_BATCH_POW_BITS",
+            whir_batch_pow_bits as u128,
+        ),
         ("__TEMPLATE_EXPECTED_FINAL_PC", final_pc as u128),
     ] {
         gkr = set_const(&gkr, name, value);

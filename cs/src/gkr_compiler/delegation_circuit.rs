@@ -227,7 +227,13 @@ impl<F: PrimeField> GKRCompiler<F> {
         // And we can transform them into (potentially intersecting) sub-GKRs
 
         use crate::gkr_compiler::family_circuit::place_variables_from_constraints;
-        place_variables_from_constraints(&structured_statements, &mut variables_from_constraints, &layers_mapping, &mut graph, &mut all_variables_to_place);
+        place_variables_from_constraints(
+            &structured_statements,
+            &mut variables_from_constraints,
+            &layers_mapping,
+            &mut graph,
+            &mut all_variables_to_place,
+        );
 
         // Accumulate grand product - pairwise as much as we can
         use crate::gkr_compiler::memory_like_grand_product::accumulate_memory_like_grand_product;
@@ -315,8 +321,11 @@ impl<F: PrimeField> GKRCompiler<F> {
         }
 
         // Place a gate for constraints batch eval
-        let (degree_2_constraints, degree_1_constraints) =
-            layout_constraints_at_layers::<F, false>(&mut graph, &structured_statements, &layers_mapping);
+        let (degree_2_constraints, degree_1_constraints) = layout_constraints_at_layers::<F, false>(
+            &mut graph,
+            &structured_statements,
+            &layers_mapping,
+        );
 
         // work out the outputs
         let lookup_outputs = BTreeMap::from_iter(

@@ -14,8 +14,10 @@ type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
 fn load() -> (GKRCircuitArtifact<Proth120>, Proof, CommitmentMode) {
     let circuit = serde_json::from_reader(
-        std::fs::File::open("../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json")
-            .expect("circuit"),
+        std::fs::File::open(
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+        )
+        .expect("circuit"),
     )
     .expect("deserialize circuit");
     let proof = serde_json::from_reader(
@@ -23,8 +25,10 @@ fn load() -> (GKRCircuitArtifact<Proth120>, Proof, CommitmentMode) {
     )
     .expect("deserialize proof");
     let aux = serde_json::from_reader(
-        std::fs::File::open("../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json")
-            .expect("aux"),
+        std::fs::File::open(
+            "../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json",
+        )
+        .expect("aux"),
     )
     .expect("deserialize aux");
     (circuit, proof, aux)
@@ -44,11 +48,20 @@ fn write_calldata_into_debug_data() {
         &cfg.whir_schedule.whir_steps_schedule,
         &cfg.whir_schedule.whir_queries_schedule,
     );
-    put("gkr_full_calldata.hex", &verifier_evm::gkr_calldata(&circuit, &proof, &aux));
+    put(
+        "gkr_full_calldata.hex",
+        &verifier_evm::gkr_calldata(&circuit, &proof, &aux),
+    );
     put(
         "proth120_whir_calldata_from_proof.hex",
         &verifier_evm::whir_calldata(&circuit, &proof, &aux, folds, queries),
     );
-    put("gkr_step1_preimage.hex", &verifier_evm::commit_seed_preimage(&circuit, &proof, &aux));
-    put("gkr_whir_handoff_seed.hex", &verifier_evm::gkr_whir_handoff_seed(&proof));
+    put(
+        "gkr_step1_preimage.hex",
+        &verifier_evm::commit_seed_preimage(&circuit, &proof, &aux),
+    );
+    put(
+        "gkr_whir_handoff_seed.hex",
+        &verifier_evm::gkr_whir_handoff_seed(&proof),
+    );
 }

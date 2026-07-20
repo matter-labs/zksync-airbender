@@ -145,7 +145,11 @@ pub fn whir_calldata(
     folds: &[usize],
     queries: &[usize],
 ) -> Vec<u8> {
-    assert_eq!(folds.len(), queries.len(), "WHIR folds/queries schedule length mismatch");
+    assert_eq!(
+        folds.len(),
+        queries.len(),
+        "WHIR folds/queries schedule length mismatch"
+    );
     // Every committed-state value now comes straight from the proof — no GKR transcript replay:
     // the seed from GKRProof.intermediate_transcript_seed, and batching / batched-opening /
     // evaluation-point from the WHIR sub-proof's handoff fields (populated by the prover).

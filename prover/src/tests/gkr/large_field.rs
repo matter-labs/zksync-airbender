@@ -82,10 +82,11 @@ fn load_boundary_transcript_prefix() -> (
 ) {
     use crate::cs::definitions::split_timestamp;
     let aux: CommitmentMode = {
-        let src = std::fs::File::open(
-            "unified_circuit_proof_proth120_commitment_mod_aux_data.json",
-        )
-        .expect("aux data — run gkr_unified_packed_commitment_basic_fibonacci_sec_80 first");
+        let src =
+            std::fs::File::open("unified_circuit_proof_proth120_commitment_mod_aux_data.json")
+                .expect(
+                    "aux data — run gkr_unified_packed_commitment_basic_fibonacci_sec_80 first",
+                );
         serde_json::from_reader(src).expect("deserialize CommitmentMode aux data")
     };
     let CommitmentMode::MergedAndPackedMemoryAndWitness {
@@ -654,7 +655,11 @@ fn verify_permutation_identity_no_inversion() {
         .expect("InitsAndTeardownsProduct present");
     assert_eq!(read_poly, prod(&perm[0]), "output[0] must be Perm.read");
     assert_eq!(write_poly, prod(&perm[1]), "output[1] must be Perm.write");
-    assert_eq!(teardown_poly, prod(&it[0]), "output[8] must be I&T.teardown");
+    assert_eq!(
+        teardown_poly,
+        prod(&it[0]),
+        "output[8] must be I&T.teardown"
+    );
     assert_eq!(init_poly, prod(&it[1]), "output[9] must be I&T.init");
 
     // --- register/PC boundary contributions (read_bnd, write_bnd) ---
@@ -664,17 +669,15 @@ fn verify_permutation_identity_no_inversion() {
             split_timestamp(register_final_state[i].last_access_timestamp),
         )
     });
-    let (read_bnd, write_bnd) = produce_initial_permutation_product_separate_contributions::<
-        Proth120,
-        Proth120,
-    >(
-        &register_final_data,
-        INITIAL_PC,
-        split_timestamp(INITIAL_TIMESTAMP),
-        final_pc,
-        split_timestamp(final_timestamp),
-        &proof.external_challenges,
-    );
+    let (read_bnd, write_bnd) =
+        produce_initial_permutation_product_separate_contributions::<Proth120, Proth120>(
+            &register_final_data,
+            INITIAL_PC,
+            split_timestamp(INITIAL_TIMESTAMP),
+            final_pc,
+            split_timestamp(final_timestamp),
+            &proof.external_challenges,
+        );
 
     // --- no-inversion identity: read side product == write side product ---
     let mut read_product = read_poly;
@@ -889,7 +892,8 @@ fn circuit_layer_g(
                 acc.add_assign(&mul(&bc0, &num));
                 acc.add_assign(&mul(&bc1, &den));
             }
-            R::EnforceSingleMaxQuadraticConstraint { input, .. } | R::MaxQuadratic { input, .. } => {
+            R::EnforceSingleMaxQuadraticConstraint { input, .. }
+            | R::MaxQuadratic { input, .. } => {
                 // val = constant + Σ_a evals[a]·(Σ coeff·evals[b]) + Σ coeff·evals[addr]
                 let bc = cb;
                 cb.mul_assign(&batching);
@@ -1384,7 +1388,10 @@ fn verify_dim_reduce_layers() {
 
         println!(
             "[layer-dbg] layer {config_idx} seed=0x{}",
-            seed.0.iter().map(|b| format!("{b:02x}")).collect::<String>()
+            seed.0
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
         );
         println!(
             "[layer-dbg] layer {config_idx} initial_claim=0x{:032x}  batching=0x{:032x}  round0_c=[{:032x},{:032x},{:032x},{:032x}]",
@@ -1969,15 +1976,15 @@ fn verify_dim_reduce_layers() {
     };
     let mut calldata: Vec<u8> = vec![];
     calldata.extend_from_slice(&read_fixture("gkr_step1_preimage.hex")); // transcript preimage (916 B)
-    // external-challenge PoW nonce (8 B BE): the verifier folds keccak(seed || nonce_be8) and
-    // checks the top `pow_bits` bits are zero. Comes right after the preimage.
+                                                                         // external-challenge PoW nonce (8 B BE): the verifier folds keccak(seed || nonce_be8) and
+                                                                         // checks the top `pow_bits` bits are zero. Comes right after the preimage.
     calldata.extend_from_slice(&proof.lookup_challenges_pow_nonce.to_be_bytes());
     calldata.extend_from_slice(&read_fixture("gkr_step2_output_evals.hex")); // GKR entry outputs
     calldata.extend_from_slice(&blob); // dim-reducing data
     calldata.extend_from_slice(&circuit_blob); // circuit layers (coeffs + group-offset evals)
-    // WHIR-batching PoW nonce (8 B BE) at the calldata tail: emit_gkr_mark folds
-    // keccak(handoff_seed || nonce_be8), checks the top 11 bits are zero, then draws the
-    // WHIR batching challenge. The verifier reads it at calldatasize()-8.
+                                               // WHIR-batching PoW nonce (8 B BE) at the calldata tail: emit_gkr_mark folds
+                                               // keccak(handoff_seed || nonce_be8), checks the top 11 bits are zero, then draws the
+                                               // WHIR batching challenge. The verifier reads it at calldatasize()-8.
     calldata.extend_from_slice(&proof.batched_proximity_check_pow_nonce.to_be_bytes());
     let calldata_hex: String = calldata.iter().map(|b| format!("{b:02x}")).collect();
     std::fs::write(format!("{td}/gkr_full_calldata.hex"), &calldata_hex).unwrap();

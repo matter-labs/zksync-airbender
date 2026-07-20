@@ -19,15 +19,19 @@ const PROOF_PATH: &str = "../prover/unified_circuit_proof_proth120.json";
 #[ignore = "one-time migration; run explicitly with --ignored"]
 fn populate_intermediate_transcript_seed() {
     let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_reader(
-        std::fs::File::open("../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json")
-            .unwrap(),
+        std::fs::File::open(
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+        )
+        .unwrap(),
     )
     .unwrap();
     let mut proof: Proof =
         serde_json::from_reader(std::fs::File::open(PROOF_PATH).unwrap()).unwrap();
     let aux: CommitmentMode = serde_json::from_reader(
-        std::fs::File::open("../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json")
-            .unwrap(),
+        std::fs::File::open(
+            "../prover/unified_circuit_proof_proth120_commitment_mod_aux_data.json",
+        )
+        .unwrap(),
     )
     .unwrap();
 
