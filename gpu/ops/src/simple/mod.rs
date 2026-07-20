@@ -191,20 +191,6 @@ pub trait ParametrizedOp<T> {
             stream,
         )
     }
-
-    #[allow(dead_code)]
-    fn launch_in_place(
-        values: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
-        param: u32,
-        stream: &CudaStream,
-    ) -> CudaResult<()> {
-        Self::launch_op(
-            PtrAndStrideWrappingMatrix::new(values),
-            param,
-            MutPtrAndStrideWrappingMatrix::new(values),
-            stream,
-        )
-    }
 }
 
 macro_rules! parametrized_op_def {
@@ -219,14 +205,6 @@ macro_rules! parametrized_op_def {
                 stream: &CudaStream,
             ) -> CudaResult<()>  where $op: ParametrizedOp<T> {
                 $op::launch(values, param, result, stream)
-            }
-            #[allow(dead_code)]
-            pub fn [<$op:lower _in_place>]<T>(
-                values: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
-                param: u32,
-                stream: &CudaStream,
-            ) -> CudaResult<()>  where $op: ParametrizedOp<T> {
-                $op::launch_in_place(values, param, stream)
             }
         }
     };
