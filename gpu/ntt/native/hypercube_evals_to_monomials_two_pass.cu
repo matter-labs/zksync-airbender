@@ -22,40 +22,22 @@ EXTERN __launch_bounds__(512, 1) __global__
 
   // "ct" = consecutive tile layout
   // "il" = interleaved tile layout
-  const int thread_il_gmem_start = lane_in_tile + tile_id * TILE_GMEM_STRIDE;
-  const int thread_ct_gmem_start = lane_in_tile + tile_id * IL_GMEM_STRIDE;
-  const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
-  const int thread_ct_smem_start = lane_in_tile + tile_id * TILE_SIZE * THREAD_TILES_PER_BLOCK;
+  const ThreadTileStarts starts = thread_tile_starts(lane_in_tile, tile_id, TILE_GMEM_STRIDE, IL_GMEM_STRIDE, TILE_SIZE, THREAD_TILES_PER_BLOCK);
 
-  prefetch_pipeline_group<0, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<0>(vals);
-  prefetch_pipeline_group<1, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<1>(vals);
-  prefetch_pipeline_group<2, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<2>(vals);
-  prefetch_pipeline_group<3, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<3>(vals);
-  prefetch_pipeline_group<4, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<4>(vals);
-  prefetch_pipeline_group<5, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<5>(vals);
-  prefetch_pipeline_group<6, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<6>(vals);
-  prefetch_pipeline_group<7, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<7>(vals);
+  prefetch_exchg_pipeline_8<IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, starts.il_gmem_start, pipeline_exchg_hypercube{});
 
   reg_exchg_hypercube_inv<4, 8, 4>(vals);
   reg_exchg_hypercube_inv<2, 4, 8>(vals);
   reg_exchg_hypercube_inv<1, 2, 16>(vals);
 
 #pragma unroll
-  for (int i{0}, addr{thread_il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
+  for (int i{0}, addr{starts.il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
     smem_block[addr] = vals[i]; // write interleaved smem tiles
 
   __syncthreads();
 
 #pragma unroll
-  for (int i{0}, addr{thread_ct_smem_start}; i < 32; i++, addr += TILE_SIZE)
+  for (int i{0}, addr{starts.ct_smem_start}; i < 32; i++, addr += TILE_SIZE)
     vals[i] = smem_block[addr]; // read consecutive smem tiles
 
   reg_exchg_hypercube_inv<16, 32, 1>(vals);
@@ -65,7 +47,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   reg_exchg_hypercube_inv<1, 2, 16>(vals);
 
 #pragma unroll
-  for (int i{0}, row{thread_ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
+  for (int i{0}, row{starts.ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
     gmem_out.set_at_row(row, vals[i]); // write consecutive gmem tiles
 }
 
@@ -93,22 +75,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
   const int thread_ct_smem_start = lane_in_tile + tile_id * TILE_SIZE * 2 * THREAD_TILES_PER_BLOCK;
 
-  prefetch_pipeline_group<0, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<0>(vals);
-  prefetch_pipeline_group<1, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<1>(vals);
-  prefetch_pipeline_group<2, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<2>(vals);
-  prefetch_pipeline_group<3, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<3>(vals);
-  prefetch_pipeline_group<4, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<4>(vals);
-  prefetch_pipeline_group<5, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<5>(vals);
-  prefetch_pipeline_group<6, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<6>(vals);
-  prefetch_pipeline_group<7, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group_hypercube<7>(vals);
+  prefetch_exchg_pipeline_8<IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start, pipeline_exchg_hypercube{});
 
   reg_exchg_hypercube_inv<4, 8, 4>(vals);
   reg_exchg_hypercube_inv<2, 4, 8>(vals);
@@ -182,13 +149,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   reg_exchg_hypercube_inv<1, 2, 16>(vals);
 
   __syncwarp();
-#pragma unroll
-  for (int y = 0; y < 32; y++)
-    smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-  __syncwarp();
-#pragma unroll
-  for (int x = 0; x < 32; x++)
-    vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   reg_exchg_hypercube_inv<16, 32, 1>(vals);
   reg_exchg_hypercube_inv<8, 16, 2>(vals);
@@ -203,13 +164,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   } else {
     // un-swizzling + coalesced stores performs better on 5090
     __syncwarp();
-#pragma unroll
-    for (int y = 0; y < 32; y++)
-      smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-    __syncwarp();
-#pragma unroll
-    for (int x = 0; x < 32; x++)
-      vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 #pragma unroll
     for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
       gmem_out.set_at_row(row, vals[i]);

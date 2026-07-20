@@ -14,9 +14,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   // single-coset callers).
   const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 14u;
   const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
-  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
-  gmem_in.add_col(col_offset);
-  gmem_out.add_col(col_offset);
+  apply_flat_col_offset(fi, num_cols_per_coset, gmem_in, gmem_out);
 
   const int lane_in_tile = threadIdx.x & 15;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
@@ -30,13 +28,10 @@ EXTERN __launch_bounds__(512, 1) __global__
 
   // "ct" = consecutive tile layout
   // "il" = interleaved tile layout
-  const int thread_il_gmem_start = lane_in_tile + tile_id * TILE_GMEM_STRIDE;
-  const int thread_ct_gmem_start = lane_in_tile + tile_id * IL_GMEM_STRIDE;
-  const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
-  const int thread_ct_smem_start = lane_in_tile + tile_id * TILE_SIZE * THREAD_TILES_PER_BLOCK;
+  const ThreadTileStarts starts = thread_tile_starts(lane_in_tile, tile_id, TILE_GMEM_STRIDE, IL_GMEM_STRIDE, TILE_SIZE, THREAD_TILES_PER_BLOCK);
 
 #pragma unroll
-  for (int i{0}, row{thread_ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
+  for (int i{0}, row{starts.ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
     vals[i] = gmem_in.get_at_row(row); // read consecutive gmem tiles
 
   int tile_exchg_region_offset = tile_id << 4;
@@ -51,13 +46,13 @@ EXTERN __launch_bounds__(512, 1) __global__
   reg_exchg_fwd<16, 32, 1>(vals, tile_exchg_region_offset);
 
 #pragma unroll
-  for (int i{0}, addr{thread_ct_smem_start}; i < 32; i++, addr += TILE_SIZE)
+  for (int i{0}, addr{starts.ct_smem_start}; i < 32; i++, addr += TILE_SIZE)
     smem_block[addr] = vals[i]; // write consecutive smem tiles
 
   __syncthreads();
 
 #pragma unroll
-  for (int i{0}, addr{thread_il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
+  for (int i{0}, addr{starts.il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
     vals[i] = smem_block[addr]; // read interleaved smem tiles
 
   reg_exchg_fwd<1, 2, 16>(vals);
@@ -66,7 +61,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   reg_exchg_fwd<8, 16, 2>(vals);
   reg_exchg_final_fwd<16>(vals);
 
-  for (int i{0}, addr{thread_il_gmem_start}; i < 32; i++, addr += IL_GMEM_STRIDE)
+  for (int i{0}, addr{starts.il_gmem_start}; i < 32; i++, addr += IL_GMEM_STRIDE)
     gmem_out.set_at_row(addr, vals[i]); // write interleaved gmem tiles
 }
 
@@ -80,9 +75,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   // cols_per_launch.
   const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 14u;
   const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
-  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
-  gmem_in.add_col(col_offset);
-  gmem_out.add_col(col_offset);
+  apply_flat_col_offset(fi, num_cols_per_coset, gmem_in, gmem_out);
 
   const int lane_in_tile = threadIdx.x & 31;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
@@ -125,11 +118,11 @@ EXTERN __launch_bounds__(512, 1) __global__
   for (int i{0}, addr{thread_il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
     vals[i] = smem_block[addr]; // read interleaved smem tiles
 
-  reg_exchg_fwd<1, 2, 16>(vals, 0);
-  reg_exchg_fwd<2, 4, 8>(vals, 0);
-  reg_exchg_fwd<4, 8, 4>(vals, 0);
-  reg_exchg_fwd<8, 16, 2>(vals, 0);
-  reg_exchg_fwd<16, 32, 1>(vals, 0);
+  reg_exchg_fwd<1, 2, 16>(vals);
+  reg_exchg_fwd<2, 4, 8>(vals);
+  reg_exchg_fwd<4, 8, 4>(vals);
+  reg_exchg_fwd<8, 16, 2>(vals);
+  reg_exchg_fwd<16, 32, 1>(vals);
 
   for (int i{0}, addr{thread_il_gmem_start}; i < 32; i++, addr += IL_GMEM_STRIDE)
     gmem_out.set_at_row(addr, vals[i]); // write interleaved gmem tiles
@@ -187,13 +180,7 @@ EXTERN __launch_bounds__(512, 1) __global__
 
   if (!transposed_monomials) {
     // transpose coalesced loads into registers
-#pragma unroll
-    for (int y = 0; y < 32; y++)
-      smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-    __syncwarp();
-#pragma unroll
-    for (int x = 0; x < 32; x++)
-      vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
   }
 
   __pipeline_wait_prior(0); // Unfortunately we use all the coarse twiddles in the first exchange, so we can't overlap this with compute.
@@ -210,13 +197,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   thread_exchg_region_offset >>= 1;
   reg_exchg_cmem_smem_twiddles_fwd<TenStages, 16, 32, 1, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
 
-#pragma unroll
-  for (int y = 0; y < 32; y++)
-    smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-  __syncwarp();
-#pragma unroll
-  for (int x = 0; x < 32; x++)
-    vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   int warp_exchg_region_offset = (static_cast<int>(fi.intra_x) * WARPS_PER_BLOCK + warp_id) << 4;
   reg_exchg_cmem_twiddles_fwd<1, 2, 16>(vals, warp_exchg_region_offset);

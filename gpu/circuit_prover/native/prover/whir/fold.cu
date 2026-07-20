@@ -194,8 +194,6 @@ EXTERN __global__ void ab_whir_three_point_combined_e4_kernel(const e4 *__restri
   }
 }
 
-DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) { return __brev(value) >> (32 - num_bits); }
-
 DEVICE_FORCEINLINE void partially_evaluate_monomial_form_small_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 z,
                                                                     const unsigned log_count) {
   const int count = 1 << log_count;

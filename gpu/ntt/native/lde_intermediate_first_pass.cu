@@ -13,11 +13,6 @@ DEVICE_FORCEINLINE void shfl_for_exchange(bf *vals, const unsigned lane_mask) {
     vals[0].limb = val_received;
   else
     vals[1].limb = val_received;
-  // For Volta and later, with independent PCs per thread, the following would also be fine:
-  // if (threadIdx.x & lane_mask)
-  //   vals[0] = __shfl_xor_sync(WARP_MASK, vals[0], lane_mask);
-  // else
-  //   vals[1] = __shfl_xor_sync(WARP_MASK, vals[1], lane_mask);
 }
 
 // First-K-stages LDE for intermediate sizes.

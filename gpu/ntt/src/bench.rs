@@ -373,7 +373,7 @@ fn single_fixed_func(log_n: usize, log_vpt: usize, k: u32) -> Bench1pFixedFuncti
 
 /// Sum of `log_n + log_lde` for the bench workload (== OMEGA_LOG_ORDER, so the
 /// coset factor shift is exactly 0).
-pub const TOTAL_LOG: usize = 27;
+pub const TOTAL_LOG: usize = crate::ntt_twiddles::OMEGA_LOG_ORDER as usize;
 
 const CFP_0: u32 = 0;
 const COSET_STEP: u32 = 1;
@@ -411,7 +411,6 @@ const SINGLE_BLOCK_DIM: u32 = 4 * 32; // NUM_WARPS * 32 = 128
 /// Two-pass STREAM: caller-chosen launch `grid` (any value in `[1, num_cosets]`).
 /// The guarded grid-stride kernel walks the full `num_cosets`; the d-table
 /// advances `grid` cosets per kernel iteration (`step_per_iter = grid * coset_step`).
-#[allow(clippy::too_many_arguments)]
 fn launch_two_pass_stream(
     log_n: usize,
     log_vpt: usize,
@@ -457,7 +456,7 @@ fn launch_two_pass_stream(
         .wrap()?;
     }
 
-    let grid_dim: Dim3 = (grid as u32).into();
+    let grid_dim: Dim3 = grid.into();
     let block_dim: Dim3 = ((n >> log_vpt) as u32).into();
     let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     config.dynamic_smem_bytes = smem;
@@ -477,7 +476,6 @@ fn launch_two_pass_stream(
 
 /// Two-pass FIXED-K: compile-time `K`, so `grid = num_cosets / K` and the
 /// d-table advances `grid` cosets per iteration. No `cosets_per_block` arg.
-#[allow(clippy::too_many_arguments)]
 fn launch_two_pass_fixed(
     log_n: usize,
     log_vpt: usize,
@@ -493,7 +491,7 @@ fn launch_two_pass_fixed(
     let num_cosets = num_cosets_for(log_n);
     let k_usize = k as usize;
     assert!(
-        num_cosets % k_usize == 0,
+        num_cosets.is_multiple_of(k_usize),
         "two-pass fixed: num_cosets ({num_cosets}) not divisible by k ({k})"
     );
     let grid = num_cosets / k_usize;
@@ -549,7 +547,6 @@ fn launch_two_pass_fixed(
 /// Single-pass FIXED-K: each block does `SLOTS_PER_BLOCK * K` cosets, so
 /// `grid = num_cosets / (slots_per_block * K)`. No d-table; smem = clean
 /// triangle bytes (< 48 KB, no opt-in needed).
-#[allow(clippy::too_many_arguments)]
 fn launch_single_fixed(
     log_n: usize,
     log_vpt: usize,
@@ -563,7 +560,7 @@ fn launch_single_fixed(
     let slots_per_block = single_slots_per_block(log_n, log_vpt);
     let cosets_per_block_total = slots_per_block * (k as usize);
     assert!(
-        num_cosets % cosets_per_block_total == 0,
+        num_cosets.is_multiple_of(cosets_per_block_total),
         "single-pass fixed: num_cosets ({num_cosets}) not divisible by \
          slots_per_block*k ({cosets_per_block_total}) at log_n={log_n}, log_vpt={log_vpt}, k={k}"
     );
@@ -592,7 +589,6 @@ fn launch_single_fixed(
 /// slot stride is `gridDim.x * SLOTS_PER_BLOCK` and a guard (`coset_idx <
 /// num_cosets`) covers the full coset range. No d-table; smem = clean triangle
 /// bytes.
-#[allow(clippy::too_many_arguments)]
 fn launch_single_stream(
     log_n: usize,
     log_vpt: usize,
@@ -669,14 +665,14 @@ pub fn is_valid(log_n: usize, log_vpt: usize, cfg: LaunchCfg) -> bool {
             log_n > log_vpt + 5 && grid >= 1 && (grid as usize) <= num_cosets
         }
         LaunchCfg::TwoPassFixed { k } => {
-            log_n > log_vpt + 5 && k != 0 && num_cosets % (k as usize) == 0
+            log_n > log_vpt + 5 && k != 0 && num_cosets.is_multiple_of(k as usize)
         }
         LaunchCfg::SinglePassFixed { k } => {
             if log_n > log_vpt + 5 || k == 0 {
                 return false;
             }
             let denom = single_slots_per_block(log_n, log_vpt) * (k as usize);
-            denom != 0 && num_cosets % denom == 0
+            denom != 0 && num_cosets.is_multiple_of(denom)
         }
         LaunchCfg::SinglePassStream { grid } => {
             // grid is FREE: the guarded kernel maps coset_idx = s + spb*(b +

@@ -23,9 +23,7 @@ EXTERN __launch_bounds__(512, 2) __global__
   const unsigned log_blocks_x = static_cast<unsigned>(log_n - start_stage - 13);
   const unsigned log_blocks_y = static_cast<unsigned>(start_stage);
   const FlatBlockIndex fi = decompose_flat_2d(log_blocks_x, log_blocks_y, static_cast<unsigned>(log_cosets_in_tile));
-  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
-  gmem_in.add_col(col_offset);
-  gmem_out.add_col(col_offset);
+  apply_flat_col_offset(fi, num_cols_per_coset, gmem_in, gmem_out);
   const unsigned blocks_per_exchg_region = 1u << log_blocks_x;
   const unsigned num_exchg_regions = 1u << log_blocks_y;
 
@@ -120,9 +118,7 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
   // collapses to single-coset.
   const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 13u;
   const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
-  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
-  gmem_in.add_col(col_offset);
-  gmem_out.add_col(col_offset);
+  apply_flat_col_offset(fi, num_cols_per_coset, gmem_in, gmem_out);
 
   const int lane_id = threadIdx.x & 31;
   const int warp_id = threadIdx.x >> 5;
@@ -182,13 +178,7 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
   // The problem is, it spills registers due to threadIdx.x being dynamic. I don't see an easy fix.
 
   if (warp_id & 4) {
-#pragma unroll
-    for (int y = 0; y < VALS_PER_THREAD; y++)
-      smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-    __syncwarp();
-#pragma unroll
-    for (int x = 0; x < VALS_PER_THREAD; x++)
-      vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
   }
 
   __pipeline_wait_prior(0);
@@ -196,13 +186,7 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
   __syncthreads();
 
   if (!(warp_id & 4)) {
-#pragma unroll
-    for (int y = 0; y < VALS_PER_THREAD; y++)
-      smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-    __syncwarp();
-#pragma unroll
-    for (int x = 0; x < VALS_PER_THREAD; x++)
-      vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
   }
 
   int thread_exchg_region_offset = threadIdx.x + static_cast<int>(fi.intra_x) * blockDim.x;
@@ -231,13 +215,7 @@ DEVICE_FORCEINLINE void evals_to_monomials_final_up_to_8_stages(bf_matrix_getter
     __syncthreads(); // Alternatively, we could try shuffle transpose to avoid the sync, or have some warps shuffle and some do smem swizzle.
 
     smem_warp = smem_block + warp_id * VALS_PER_WARP;
-#pragma unroll
-    for (int y = 0; y < VALS_PER_THREAD; y++)
-      smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-    __syncwarp();
-#pragma unroll
-    for (int x = 0; x < VALS_PER_THREAD; x++)
-      vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
 #pragma unroll
     for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)

@@ -2,10 +2,12 @@ use era_cudart::memory::{memory_copy_async, CudaHostAllocFlags, DeviceAllocation
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
-use fft::utils::bitreverse_enumeration_inplace;
 use fft::{
     ifft_natural_to_natural, precompute_twiddles_for_fft, serial_ct_ntt_bitreversed_to_natural,
+};
+
+use crate::upstream::{
+    bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
 };
 
 use rand::Rng;
@@ -15,7 +17,7 @@ use worker::Worker;
 
 use super::super::{
     evals_to_monomials_2_pass, evals_to_monomials_3_pass, hypercube_evals_to_monomials_2_pass,
-    hypercube_evals_to_monomials_3_pass, monomials_to_evals_2_pass, monomials_to_evals_3_pass,
+    hypercube_evals_to_monomials_3_pass, monomials_to_evals_2_pass_smem, monomials_to_evals_3_pass,
     OMEGA_LOG_ORDER,
 };
 use super::{InOrOutOfPlace, TEST_COSET_INDEX, TEST_LOG_LDE_FACTOR};
@@ -27,31 +29,11 @@ use gpu_core::primitives::device_structures::{
 use gpu_core::primitives::field::BF;
 
 /// CPU reference: sum-check inverse (hypercube evals → multilinear coefficients).
-/// Ported from `prover::gkr::whir::hypercube_to_monomial` — kept here so
-/// `gpu_ntt` tests have no dep on the `prover` crate.
+/// Shared from the parent test module (`super`) — that single ungated definition
+/// also backs the CPU-only `cpu_characterize_hypercube_ordering` test, so keeping
+/// one copy avoids drift between the two.
 #[cfg(not(no_cuda))]
-fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_log2: u32) {
-    assert_eq!(input.len(), 1 << size_log2);
-    let len = 1 << size_log2;
-    let mut stride = len / 2;
-    let mut iterations = len / 2;
-    for _round in 1..size_log2 {
-        let mut i = 0;
-        while i < len {
-            for _ in 0..iterations {
-                let lhs = input[i];
-                input[i + stride].sub_assign(&lhs);
-                i += 1;
-            }
-            i += iterations;
-        }
-        stride /= 2;
-        iterations /= 2;
-    }
-    for [a, b] in input.as_chunks_mut::<2>().0.iter_mut() {
-        b.sub_assign(&a);
-    }
-}
+use super::multivariate_hypercube_evals_into_coeffs;
 
 pub(super) fn transpose_monomials(vals: &mut [BF]) {
     for chunk in vals.chunks_mut(1024) {
@@ -64,6 +46,46 @@ pub(super) fn transpose_monomials(vals: &mut [BF]) {
             }
         }
     }
+}
+
+/// Pure-CPU forward-NTT reference for a SINGLE coset: bitreversed monomials ->
+/// natural-order evaluations on coset `coset_index` of the size-2^(log_n +
+/// log_lde_factor) LDE domain.
+///
+/// This is the exact host math previously inlined in `run_monomials_to_evals`,
+/// hoisted so the multi-coset host-oracle parity tests share one forward NTT
+/// instead of copy-pasting a second reference. It is pure CPU — no GPU kernel
+/// participates in producing the expected values.
+///
+/// Convention (matches the GPU launchers): the coset shift multiplies each
+/// bitreversed monomial by the bitreversed powers of `tau^coset_index`, where
+/// `tau` generates the full LDE domain of order `2^(log_n + log_lde_factor)`.
+/// `coset_index == 0` yields `tau^0 = ONE`, i.e. the identity shift. The
+/// Cooley-Tukey NTT then maps bitreversed coeffs to natural-order evaluations.
+///
+/// `forward_twiddles` must be the size-`n` forward twiddles
+/// (`precompute_twiddles_for_fft::<BF, Global, false>`) truncated to `n / 2`.
+#[cfg(not(no_cuda))]
+pub(super) fn host_forward_ntt_single_coset(
+    monomials_bitreversed: &[BF],
+    log_n: usize,
+    log_lde_factor: usize,
+    coset_index: usize,
+    forward_twiddles: &[BF],
+) -> Vec<BF> {
+    let n = 1usize << log_n;
+    assert_eq!(monomials_bitreversed.len(), n);
+    assert_eq!(forward_twiddles.len(), n >> 1);
+    let tau = domain_generator_for_size::<BF>(1u64 << (log_n + log_lde_factor));
+    let mut adjustments = vec![BF::ONE; n];
+    distribute_powers_serial(&mut adjustments, BF::ONE, tau.pow(coset_index as u32));
+    bitreverse_enumeration_inplace(&mut adjustments);
+    let mut evals = monomials_bitreversed.to_vec();
+    for (val, adjustment) in evals.iter_mut().zip(adjustments.iter()) {
+        val.mul_assign(adjustment);
+    }
+    serial_ct_ntt_bitreversed_to_natural(&mut evals, log_n as u32, forward_twiddles);
+    evals
 }
 
 #[cfg(not(no_cuda))]
@@ -90,7 +112,7 @@ pub(super) fn run_evals_to_monomials(
     let mut rng = rand::rng();
     const OFFSET: usize = 0;
     let max_stride: usize = n_max + OFFSET;
-    let max_memory_size = (max_stride * num_bf_cols) as usize;
+    let max_memory_size = max_stride * num_bf_cols;
     let flush_l2_size = 1 << 26;
     // Using parallel rng generation, as in the benches, does not reduce runtime noticeably
     let mut inputs_orig_host =
@@ -113,7 +135,7 @@ pub(super) fn run_evals_to_monomials(
         let stride = n + OFFSET;
         let memory_size = stride * num_bf_cols;
 
-        (&mut inputs_host[0..memory_size]).copy_from_slice(&inputs_orig_host[0..memory_size]);
+        inputs_host[0..memory_size].copy_from_slice(&inputs_orig_host[0..memory_size]);
 
         match in_or_out_of_place {
             InOrOutOfPlace::Out => {
@@ -190,7 +212,7 @@ pub(super) fn run_evals_to_monomials(
         stream.synchronize().unwrap();
 
         for col in 0..num_bf_cols {
-            let start = (col * stride + OFFSET) as usize;
+            let start = col * stride + OFFSET;
             let range = start..start + n;
             if transposed_monomials {
                 transpose_monomials(&mut outputs_host[range.clone()]);
@@ -212,7 +234,7 @@ pub(super) fn run_evals_to_monomials(
                     let chunk_size = geometry.get_chunk_size(thread_idx);
                     let start_col = geometry.get_chunk_start_pos(thread_idx);
                     for ntt in start_col..start_col + chunk_size {
-                        let start = ntt * stride + OFFSET as usize;
+                        let start = ntt * stride + OFFSET;
                         let xs_range = start..start + n;
                         let gpu_results = &outputs_slice[xs_range.clone()];
                         let mut cpu_refs: Vec<BF> = inputs_slice[xs_range].to_vec();
@@ -255,7 +277,7 @@ pub(super) fn run_monomials_to_evals(
     let mut rng = rand::rng();
     const OFFSET: usize = 0;
     let max_stride: usize = n_max + OFFSET;
-    let max_memory_size = (max_stride * num_bf_cols) as usize;
+    let max_memory_size = max_stride * num_bf_cols;
     let flush_l2_size = 1 << 26;
     // Using parallel rng generation, as in the benches, does not reduce runtime noticeably
     let mut inputs_orig_host =
@@ -280,10 +302,10 @@ pub(super) fn run_monomials_to_evals(
         let stride = n + OFFSET;
         let memory_size = stride * num_bf_cols;
 
-        (&mut inputs_host[0..memory_size]).copy_from_slice(&inputs_orig_host[0..memory_size]);
+        inputs_host[0..memory_size].copy_from_slice(&inputs_orig_host[0..memory_size]);
 
         for col in 0..num_bf_cols {
-            let start = (col * stride + OFFSET) as usize;
+            let start = col * stride + OFFSET;
             let range = start..start + n;
             if transposed_monomials {
                 transpose_monomials(&mut inputs_host[range]);
@@ -359,15 +381,12 @@ pub(super) fn run_monomials_to_evals(
 
         stream.synchronize().unwrap();
 
-        let tau = domain_generator_for_size::<BF>(1u64 << (log_n + TEST_LOG_LDE_FACTOR));
-        let mut adjustments = vec![BF::ONE; n];
-        distribute_powers_serial(&mut adjustments, BF::ONE, tau.pow(TEST_COSET_INDEX as u32));
-        bitreverse_enumeration_inplace(&mut adjustments);
         // Same column-parallel pattern as `run_evals_to_monomials`: the
         // CPU NTT dominates wall time at large `log_n`, and the per-column
-        // slices are disjoint.
+        // slices are disjoint. The forward-NTT math (coset shift + CT NTT) is
+        // shared with the host-oracle parity tests via
+        // `host_forward_ntt_single_coset`.
         let twiddles_slice = &twiddles[..(n >> 1)];
-        let adjustments_slice: &[BF] = &adjustments;
         let outputs_slice: &[BF] = &outputs_host;
         let inputs_orig_slice: &[BF] = &inputs_orig_host;
         worker.scope(num_bf_cols, |scope, geometry| {
@@ -376,16 +395,14 @@ pub(super) fn run_monomials_to_evals(
                     let chunk_size = geometry.get_chunk_size(thread_idx);
                     let start_col = geometry.get_chunk_start_pos(thread_idx);
                     for ntt in start_col..start_col + chunk_size {
-                        let start = ntt * stride + OFFSET as usize;
+                        let start = ntt * stride + OFFSET;
                         let xs_range = start..start + n;
                         let gpu_results = &outputs_slice[xs_range.clone()];
-                        let mut cpu_refs: Vec<BF> = inputs_orig_slice[xs_range].to_vec();
-                        for (val, adjustment) in cpu_refs.iter_mut().zip(adjustments_slice.iter()) {
-                            val.mul_assign(adjustment);
-                        }
-                        serial_ct_ntt_bitreversed_to_natural(
-                            &mut cpu_refs,
-                            log_n as u32,
+                        let cpu_refs = host_forward_ntt_single_coset(
+                            &inputs_orig_slice[xs_range],
+                            log_n,
+                            TEST_LOG_LDE_FACTOR,
+                            TEST_COSET_INDEX,
                             twiddles_slice,
                         );
                         for k in 0..n {
@@ -480,7 +497,7 @@ pub(super) fn wrap_evals_to_monomials_3_pass(
 }
 
 #[cfg(not(no_cuda))]
-pub(super) fn wrap_monomials_to_evals_2_pass(
+pub(super) fn wrap_monomials_to_evals_2_pass_smem(
     inputs: &DeviceMatrixChunk<BF>,
     outputs: &mut DeviceMatrixChunkMut<BF>,
     log_n: usize,
@@ -488,7 +505,7 @@ pub(super) fn wrap_monomials_to_evals_2_pass(
     transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    monomials_to_evals_2_pass(
+    monomials_to_evals_2_pass_smem(
         inputs,
         outputs,
         log_n,

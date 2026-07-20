@@ -17,8 +17,8 @@
 //! The clean/coupled kernels init-to-`ONE` then overwrite active entries, ordered
 //! by `__syncthreads()` which synchronizes within one block only; grid > 1 races.
 //!
-//! Binding shape: the `era_cudart` multi-arm `cuda_kernel!` form (one shared type
-//! + a per-symbol macro) generates module-private types and a non-exported local
+//! Binding shape: the `era_cudart` multi-arm `cuda_kernel!` form (one shared type +
+//! a per-symbol macro) generates module-private types and a non-exported local
 //! macro, so it cannot be consumed from another module (e.g. the parity test). We
 //! therefore use the single-arm `cuda_kernel!(pub(crate) <Type>, <symbol>(..))`
 //! form: it honors the visibility, emitting a crate-visible `<Type>Function`
@@ -37,10 +37,11 @@ use std::collections::HashMap;
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
 use era_cudart::memory::DeviceAllocation;
-use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
+
+use super::shared;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::device_structures::{DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl};
 use gpu_core::primitives::field::BaseField;
@@ -82,12 +83,30 @@ cuda_kernel!(pub(crate) AbDitFillCoupled122, ab_dit_fill_coupled_triangle_12_2(d
 // ---------------------------------------------------------------------------
 // Coset d-table fill — every two-pass LOG_N (8..13).
 // ---------------------------------------------------------------------------
-cuda_kernel!(pub(crate) AbDitFillDTable8, ab_dit_fill_d_table_8(dst: *mut BF, step_per_iter: u32));
-cuda_kernel!(pub(crate) AbDitFillDTable9, ab_dit_fill_d_table_9(dst: *mut BF, step_per_iter: u32));
-cuda_kernel!(pub(crate) AbDitFillDTable10, ab_dit_fill_d_table_10(dst: *mut BF, step_per_iter: u32));
-cuda_kernel!(pub(crate) AbDitFillDTable11, ab_dit_fill_d_table_11(dst: *mut BF, step_per_iter: u32));
-cuda_kernel!(pub(crate) AbDitFillDTable12, ab_dit_fill_d_table_12(dst: *mut BF, step_per_iter: u32));
-cuda_kernel!(pub(crate) AbDitFillDTable13, ab_dit_fill_d_table_13(dst: *mut BF, step_per_iter: u32));
+cuda_kernel!(
+    pub(crate) AbDitFillDTable8,
+    ab_dit_fill_d_table_8(dst: *mut BF, step_per_iter: u32)
+);
+cuda_kernel!(
+    pub(crate) AbDitFillDTable9,
+    ab_dit_fill_d_table_9(dst: *mut BF, step_per_iter: u32)
+);
+cuda_kernel!(
+    pub(crate) AbDitFillDTable10,
+    ab_dit_fill_d_table_10(dst: *mut BF, step_per_iter: u32)
+);
+cuda_kernel!(
+    pub(crate) AbDitFillDTable11,
+    ab_dit_fill_d_table_11(dst: *mut BF, step_per_iter: u32)
+);
+cuda_kernel!(
+    pub(crate) AbDitFillDTable12,
+    ab_dit_fill_d_table_12(dst: *mut BF, step_per_iter: u32)
+);
+cuda_kernel!(
+    pub(crate) AbDitFillDTable13,
+    ab_dit_fill_d_table_13(dst: *mut BF, step_per_iter: u32)
+);
 
 // ---------------------------------------------------------------------------
 // Fixed config sets. Defined once here so the context-init triangle fill
@@ -379,36 +398,299 @@ impl DitTriangles {
 // ---------------------------------------------------------------------------
 // Hot-kernel bindings — the new ABI (trailing `coset_out_stride: u32`). One
 // `pub(crate)` single-arm `cuda_kernel!` per symbol so each is crate-visible.
-// Single-pass: `(mono, tw_clean, out, cfp_0, coset_step, coset_out_stride)`.
+// Single-pass: `(mono, tw_clean, out, cfp_0, coset_step, num_cosets, coset_out_stride)`.
 // ---------------------------------------------------------------------------
 // Production single-pass = the STREAMING kernel (guarded grid-stride + delta
 // walk), unified with two-pass on the streaming/diagonal launch. 7-arg ABI
-// (runtime num_cosets, no d-table). The static `ab_dit_single_*` wrappers still
-// exist in native for the parity tests, but the launcher no longer uses them.
-cuda_kernel!(pub(crate) AbDitSingleStream33, ab_dit_single_stream_3_3(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream43, ab_dit_single_stream_4_3(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream53, ab_dit_single_stream_5_3(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream63, ab_dit_single_stream_6_3(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream73, ab_dit_single_stream_7_3(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream83, ab_dit_single_stream_8_3(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream22, ab_dit_single_stream_2_2(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream32, ab_dit_single_stream_3_2(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream42, ab_dit_single_stream_4_2(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream52, ab_dit_single_stream_5_2(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream62, ab_dit_single_stream_6_2(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitSingleStream72, ab_dit_single_stream_7_2(mono: *const BF, tw_clean: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
+// (runtime num_cosets, no d-table). These are the SOLE single-pass symbols: the
+// single-pass parity tests now target them directly too (the static
+// `ab_dit_single_*` wrappers were removed).
+cuda_kernel!(
+    pub(crate) AbDitSingleStream33,
+    ab_dit_single_stream_3_3(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream43,
+    ab_dit_single_stream_4_3(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream53,
+    ab_dit_single_stream_5_3(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream63,
+    ab_dit_single_stream_6_3(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream73,
+    ab_dit_single_stream_7_3(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream83,
+    ab_dit_single_stream_8_3(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream22,
+    ab_dit_single_stream_2_2(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream32,
+    ab_dit_single_stream_3_2(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream42,
+    ab_dit_single_stream_4_2(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream52,
+    ab_dit_single_stream_5_2(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream62,
+    ab_dit_single_stream_6_2(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitSingleStream72,
+    ab_dit_single_stream_7_2(
+        mono: *const BF,
+        tw_clean: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
 
 // Two-pass: `(mono, tw_p1, tw_p2, d_table, out, cfp_0, coset_step, num_cosets, coset_out_stride)`.
-cuda_kernel!(pub(crate) AbDitTwoPass93, ab_dit_two_pass_9_3(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitTwoPass103, ab_dit_two_pass_10_3(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitTwoPass113, ab_dit_two_pass_11_3(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitTwoPass123, ab_dit_two_pass_12_3(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitTwoPass133, ab_dit_two_pass_13_3(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitTwoPass82, ab_dit_two_pass_8_2(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitTwoPass92, ab_dit_two_pass_9_2(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitTwoPass102, ab_dit_two_pass_10_2(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitTwoPass112, ab_dit_two_pass_11_2(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
-cuda_kernel!(pub(crate) AbDitTwoPass122, ab_dit_two_pass_12_2(mono: *const BF, tw_p1: *const BF, tw_p2: *const BF, d_table: *const BF, out: *mut BF, cfp_0: u32, coset_step: u32, num_cosets: u32, coset_out_stride: u32));
+cuda_kernel!(
+    pub(crate) AbDitTwoPass93,
+    ab_dit_two_pass_9_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPass103,
+    ab_dit_two_pass_10_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPass113,
+    ab_dit_two_pass_11_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPass123,
+    ab_dit_two_pass_12_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPass133,
+    ab_dit_two_pass_13_3(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPass82,
+    ab_dit_two_pass_8_2(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPass92,
+    ab_dit_two_pass_9_2(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPass102,
+    ab_dit_two_pass_10_2(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPass112,
+    ab_dit_two_pass_11_2(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
+cuda_kernel!(
+    pub(crate) AbDitTwoPass122,
+    ab_dit_two_pass_12_2(
+        mono: *const BF,
+        tw_p1: *const BF,
+        tw_p2: *const BF,
+        d_table: *const BF,
+        out: *mut BF,
+        cfp_0: u32,
+        coset_step: u32,
+        num_cosets: u32,
+        coset_out_stride: u32,
+    )
+);
 
 /// Two-pass dynamic-smem size in bytes for `(log_n, log_vpt)`, mirroring
 /// `ntt_two_pass_smem<LOG_N, LOG_VPT>()` in `dit_kernels.cuh`:
@@ -477,16 +759,8 @@ pub(crate) fn monomials_to_evals_dit(
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
     let num_ntts = inputs_matrix.cols();
-    assert!(
-        num_cols_per_coset >= num_ntts,
-        "num_cols_per_coset ({num_cols_per_coset}) < num_ntts ({num_ntts})",
-    );
-    let max_col_offset_exclusive = (num_cosets - 1) * num_cols_per_coset + num_ntts;
-    assert!(
-        outputs_matrix.cols() >= max_col_offset_exclusive,
-        "outputs_matrix.cols() = {} < {} (num_cosets={}, stride={}, num_ntts={})",
+    shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
-        max_col_offset_exclusive,
         num_cosets,
         num_cols_per_coset,
         num_ntts,
@@ -532,14 +806,7 @@ pub(crate) fn monomials_to_evals_dit(
         // rule is identical for both VPT. The guarded grid-stride loop covers any
         // remaining cosets, so `grid` need not divide num_cosets.
         let func = two_pass_func(log_n, log_vpt);
-        unsafe {
-            cudaFuncSetAttribute(
-                func.as_ptr(),
-                CudaFuncAttribute::MaxDynamicSharedMemorySize,
-                smem as i32,
-            )
-            .wrap()?;
-        }
+        shared::set_max_dynamic_smem(&func, smem)?;
         let occ = era_cudart::occupancy::max_active_blocks_per_multiprocessor(
             &func,
             block_dim as i32,
