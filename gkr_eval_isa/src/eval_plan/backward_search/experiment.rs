@@ -940,6 +940,52 @@ enum EscalationStep<T, K> {
     Terminal(T),
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct EscalationTelemetry {
+    adapter: BackwardAdapterTelemetrySnapshot,
+    wall_time: Duration,
+}
+
+impl EscalationTelemetry {
+    fn merge(
+        &mut self,
+        next: BackwardAdapterTelemetrySnapshot,
+        wall_time: Duration,
+    ) -> Result<(), BackwardSearchError> {
+        self.adapter.evaluation_attempts = self
+            .adapter
+            .evaluation_attempts
+            .checked_add(next.evaluation_attempts)
+            .ok_or(BackwardSearchError::CostOverflow)?;
+        self.adapter.pager_calls = self
+            .adapter
+            .pager_calls
+            .checked_add(next.pager_calls)
+            .ok_or(BackwardSearchError::CostOverflow)?;
+        self.adapter.pager_generated_states = self
+            .adapter
+            .pager_generated_states
+            .checked_add(next.pager_generated_states)
+            .ok_or(BackwardSearchError::CostOverflow)?;
+        self.adapter.pager_merged_states = self
+            .adapter
+            .pager_merged_states
+            .checked_add(next.pager_merged_states)
+            .ok_or(BackwardSearchError::CostOverflow)?;
+        self.adapter.pager_peak_states = self.adapter.pager_peak_states.max(next.pager_peak_states);
+        self.adapter.compile_time = self
+            .adapter
+            .compile_time
+            .checked_add(next.compile_time)
+            .ok_or(BackwardSearchError::CostOverflow)?;
+        self.wall_time = self
+            .wall_time
+            .checked_add(wall_time)
+            .ok_or(BackwardSearchError::CostOverflow)?;
+        Ok(())
+    }
+}
+
 fn run_escalation_schedule<T, E, K: Copy + Ord>(
     seed_floor: K,
     mut run_tier: impl FnMut(usize) -> Result<EscalationStep<T, K>, E>,
@@ -1398,6 +1444,26 @@ enum StagedOutcome {
 }
 
 impl StagedOutcome {
+    fn observed_work(&self) -> (BackwardAdapterTelemetrySnapshot, Duration) {
+        match self {
+            Self::Completed(tier) => (tier.telemetry, tier.wall_time),
+            Self::Capped(_, telemetry, wall_time) => (*telemetry, *wall_time),
+        }
+    }
+
+    fn with_cumulative_telemetry(self, total: EscalationTelemetry) -> Self {
+        match self {
+            Self::Completed(mut tier) => {
+                tier.telemetry = total.adapter;
+                tier.wall_time = total.wall_time;
+                Self::Completed(tier)
+            }
+            Self::Capped(classification, _, _) => {
+                Self::Capped(classification, total.adapter, total.wall_time)
+            }
+        }
+    }
+
     fn into_arm_result_or_capped(self, arm: ExperimentArm) -> ArmResult {
         match self {
             Self::Completed(tier) => tier.into_arm_result(arm),
@@ -1446,7 +1512,8 @@ fn run_staged_search(
     seed_floor: BackwardScore,
     pager_cap: usize,
 ) -> Result<StagedOutcome, BackwardSearchError> {
-    run_escalation_schedule(score_key(seed_floor), |evaluations| {
+    let mut cumulative = EscalationTelemetry::default();
+    let selected = run_escalation_schedule(score_key(seed_floor), |evaluations| {
         let staged = run_tier(
             canonical,
             d,
@@ -1458,6 +1525,8 @@ fn run_staged_search(
             evaluations,
             pager_cap,
         )?;
+        let (telemetry, wall_time) = staged.observed_work();
+        cumulative.merge(telemetry, wall_time)?;
         Ok(match staged {
             StagedOutcome::Completed(tier) => {
                 let score = score_key(tier.outcome.best_score);
@@ -1470,7 +1539,8 @@ fn run_staged_search(
             }
             capped => EscalationStep::Terminal(capped),
         })
-    })
+    })?;
+    Ok(selected.with_cumulative_telemetry(cumulative))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2244,6 +2314,7 @@ fn digest_bytes(digest: &mut u64, bytes: &[u8]) {
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet, HashMap};
+    use std::time::Duration;
 
     use cs::gkr_compiler::dag_ir::{
         BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
@@ -2264,12 +2335,13 @@ mod tests {
     use super::super::replay::reprice_source_read;
     use super::super::{BackwardSearchError, SourceCost};
     use super::{
-        AcceptedIncumbent, ArmClassification, BackwardAdapter, BackwardGenome, BackwardSearchArm,
-        EscalationStep, ExperimentReport, InstanceKey, InstanceMetrics, InstanceResult,
-        RoundProfile, SeededAdapter, build_backward_search_problem, build_problem_for_order,
-        escalation_tiers, exact_from_plan, incumbent_backend_incompatibility, joint_seed_from_arm2,
-        paging_seed, render_markdown, round_profiles, run_escalation_schedule, run_instance,
-        run_instance_with_pager_cap, run_tier, tier_search_config,
+        AcceptedIncumbent, ArmClassification, BackwardAdapter, BackwardAdapterTelemetrySnapshot,
+        BackwardGenome, BackwardSearchArm, EscalationStep, EscalationTelemetry, ExperimentReport,
+        InstanceKey, InstanceMetrics, InstanceResult, RoundProfile, SeededAdapter,
+        build_backward_search_problem, build_problem_for_order, escalation_tiers, exact_from_plan,
+        incumbent_backend_incompatibility, joint_seed_from_arm2, paging_seed, render_markdown,
+        round_profiles, run_escalation_schedule, run_instance, run_instance_with_pager_cap,
+        run_tier, tier_search_config,
     };
 
     #[test]
@@ -2573,6 +2645,71 @@ mod tests {
     }
 
     #[test]
+    fn escalation_telemetry_sums_work_and_maxes_peak_state() {
+        let mut total = EscalationTelemetry::default();
+        total
+            .merge(
+                BackwardAdapterTelemetrySnapshot {
+                    evaluation_attempts: 128,
+                    pager_calls: 9,
+                    pager_generated_states: 100,
+                    pager_merged_states: 7,
+                    pager_peak_states: 13,
+                    compile_time: Duration::from_millis(40),
+                },
+                Duration::from_millis(50),
+            )
+            .unwrap();
+        total
+            .merge(
+                BackwardAdapterTelemetrySnapshot {
+                    evaluation_attempts: 512,
+                    pager_calls: 11,
+                    pager_generated_states: 200,
+                    pager_merged_states: 5,
+                    pager_peak_states: 8,
+                    compile_time: Duration::from_millis(60),
+                },
+                Duration::from_millis(70),
+            )
+            .unwrap();
+
+        assert_eq!(total.adapter.evaluation_attempts, 640);
+        assert_eq!(total.adapter.pager_calls, 20);
+        assert_eq!(total.adapter.pager_generated_states, 300);
+        assert_eq!(total.adapter.pager_merged_states, 12);
+        assert_eq!(total.adapter.pager_peak_states, 13);
+        assert_eq!(total.adapter.compile_time, Duration::from_millis(100));
+        assert_eq!(total.wall_time, Duration::from_millis(120));
+    }
+
+    #[test]
+    fn escalation_telemetry_rejects_counter_overflow() {
+        let mut total = EscalationTelemetry::default();
+        total
+            .merge(
+                BackwardAdapterTelemetrySnapshot {
+                    evaluation_attempts: usize::MAX,
+                    ..Default::default()
+                },
+                Duration::default(),
+            )
+            .unwrap();
+
+        let error = total
+            .merge(
+                BackwardAdapterTelemetrySnapshot {
+                    evaluation_attempts: 1,
+                    ..Default::default()
+                },
+                Duration::default(),
+            )
+            .unwrap_err();
+
+        assert!(matches!(error, BackwardSearchError::CostOverflow));
+    }
+
+    #[test]
     fn capped_required_seed_caps_dependent_arm_without_substitution() {
         let result = run_with_pager_cap(1).unwrap();
         assert!(matches!(
@@ -2645,7 +2782,7 @@ mod tests {
                     .all(|&ordinal| ordinal < arm.evaluations)
             );
         }
-        assert_eq!(result.arm2.pager.calls, result.arm2.evaluations);
+        assert_eq!(result.arm2.pager.calls, 128 + result.arm2.evaluations);
         assert_eq!(result.arm3.pager.calls, 0);
         assert_eq!(result.arm4.pager.calls, 0);
     }
