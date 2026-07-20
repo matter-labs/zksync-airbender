@@ -146,10 +146,11 @@ pub fn build_backward_search_problem(
     Ok((classification, Some(problem)))
 }
 
-fn build_problem_for_order(
+pub(super) fn build_problem_for_order(
     _canonical: &DagLayer,
     d: &DistilledLayer,
     order: &[usize],
+    trace_len: usize,
     budget_cells: usize,
     stream_reductions: bool,
 ) -> Result<BackwardSearchProblem, BackwardSearchError> {
@@ -160,7 +161,7 @@ fn build_problem_for_order(
     let fragment_keys = stable_fragment_keys(d)?;
     validate_and_resolve_backward(d).map_err(BackwardSearchError::BackwardEvaluation)?;
     let (materialization, fixed_cost, source_costs, round_profiles, source_round_uses) =
-        source_model(d, 1)?;
+        source_model(d, trace_len)?;
     let compiled =
         compile_backward_fragments_uncached(d, Some(order), budget_cells, stream_reductions)
             .map_err(BackwardSearchError::BackwardEvaluation)?;
@@ -753,8 +754,8 @@ mod tests {
         let (canonical, d) = synthetic_backward_problem_layer();
         let (_, built) = build_backward_search_problem(&canonical, &d, 8, 4).unwrap();
         assert!(built.is_some());
-        let a = build_problem_for_order(&canonical, &d, &[0, 1], 4, false).unwrap();
-        let b = build_problem_for_order(&canonical, &d, &[1, 0], 4, false).unwrap();
+        let a = build_problem_for_order(&canonical, &d, &[0, 1], 8, 4, false).unwrap();
+        let b = build_problem_for_order(&canonical, &d, &[1, 0], 8, 4, false).unwrap();
         assert_eq!(a.fragment_domain, b.fragment_domain);
         assert_eq!(
             a.demands

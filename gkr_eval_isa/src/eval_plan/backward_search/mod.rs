@@ -1,11 +1,16 @@
 use crate::bwd::source::FoldState;
 use crate::eval_plan::backward::BackwardEvaluationError;
 
+pub mod genome;
 pub mod materialization;
 pub mod pager;
 pub mod problem;
 pub mod replay;
 
+pub use genome::{
+    BackwardAdapter, BackwardGenome, BackwardSearchArm, decode_cache_actions,
+    decode_fragment_order, paging_seed,
+};
 pub(crate) use materialization::native_read_cost;
 pub use materialization::{
     SourceOriginKind, SourceRoundUse, StaticMaterialization, build_static_materialization,
@@ -245,4 +250,14 @@ pub enum BackwardSearchError {
     PagingCertificateMismatch {
         observable: &'static str,
     },
+    InvalidGenomeDomain {
+        gene: &'static str,
+    },
+    NonFiniteGenomeValue {
+        gene: &'static str,
+    },
+    CacheGenomeInfeasible {
+        demand_position: usize,
+    },
+    PagingSeedMismatch,
 }
