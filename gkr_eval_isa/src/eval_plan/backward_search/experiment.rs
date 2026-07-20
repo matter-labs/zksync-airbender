@@ -2957,6 +2957,24 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_digest_includes_cumulative_search_work() {
+        let result = run_synthetic_instance().unwrap();
+        let mut changed_evaluations = result.clone();
+        changed_evaluations.arm2.evaluations += 1;
+        assert_ne!(
+            result.deterministic_digest(),
+            changed_evaluations.deterministic_digest()
+        );
+
+        let mut changed_pager = result.clone();
+        changed_pager.arm2.pager.calls += 1;
+        assert_ne!(
+            result.deterministic_digest(),
+            changed_pager.deterministic_digest()
+        );
+    }
+
+    #[test]
     fn search_is_thread_deterministic() {
         let result = run_synthetic_instance().unwrap();
         println!("PLAN3-SEARCH-DIGEST {:016x}", result.deterministic_digest());
