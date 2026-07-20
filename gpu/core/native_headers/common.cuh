@@ -1,5 +1,9 @@
 #pragma once
 
+// gpu_core native_headers = a complete-surface primitives LIBRARY: the field
+// ops, PTX cache-operator + carry-chain sets, and accessor matrix are
+// intentionally complete — do NOT prune on in-project usage (see gpu/AGENTS.md).
+
 #include <cstdint>
 #include <cstdio>
 #include <cuda_runtime.h>
