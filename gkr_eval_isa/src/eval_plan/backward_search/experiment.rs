@@ -618,6 +618,10 @@ pub fn render_markdown(report: &ExperimentReport) -> String {
     for instance in &report.instances {
         for arm in instance_arms(instance) {
             let metrics = arm.measurements.unwrap_or_default();
+            let certificate_failures = metrics.certificate.map_or_else(
+                || "unavailable".to_owned(),
+                |certificate| certificate.failures().to_string(),
+            );
             writeln!(
                 out,
                 "| {} L{} {:?} c{} | {:?} | {} | {} | {} | {} | {} | {}/{}/{}/{} | {}/{} | {}/{} | {}/{} | {} | {} | {}/{} | {}/{}/{} | {}/{} | {}/{} | {} | {}/{} | {} | {:?} | {} | {} |",
@@ -652,7 +656,7 @@ pub fn render_markdown(report: &ExperimentReport) -> String {
                 metrics.relocations,
                 metrics.peak_lanes,
                 metrics.peak_cells,
-                metrics.certificate.map_or(0, CertificateMetrics::failures),
+                certificate_failures,
                 arm.winning_tier.map_or(0, |value| value),
                 arm.evaluations,
                 arm.first_winning_ordinal.map_or(0, |value| value),
@@ -2369,6 +2373,29 @@ mod tests {
         assert!(markdown.contains("certificate reads (predicted/realized)"));
         assert!(markdown.contains("certificate counters (diverged/refused/read-count/read-cost)"));
         assert!(markdown.contains("| 7 | 9 | 3/4 | 1/2/5/6 | 14 |"));
+    }
+
+    #[test]
+    fn primary_telemetry_renders_missing_certificate_as_unavailable() {
+        let report = ExperimentReport::from_instances(vec![report_fixture(
+            "uncertified-incumbent",
+            BwdRegime::R0,
+            4,
+            30,
+            Some(40),
+            8,
+        )]);
+        let markdown = render_markdown(&report);
+        let primary = markdown
+            .split("### Pager and certificate counters")
+            .next()
+            .unwrap();
+        let incumbent_row = primary
+            .lines()
+            .find(|line| line.contains("| Incumbent |"))
+            .unwrap();
+        let cells = incumbent_row.split('|').map(str::trim).collect::<Vec<_>>();
+        assert_eq!(cells[18], "unavailable");
     }
 
     #[test]
