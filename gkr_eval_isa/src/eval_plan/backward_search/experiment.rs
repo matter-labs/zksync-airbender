@@ -271,14 +271,22 @@ pub struct BudgetCounts {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ArmRollup {
+    pub computed_instances: u128,
+    pub covered_rows: u128,
+    pub dram_bytes: u128,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReportRollup {
-    pub rows: u128,
-    pub uncached_dram_bytes: u128,
-    pub incumbent_dram_bytes: u128,
-    pub arm1_dram_bytes: u128,
-    pub arm2_dram_bytes: u128,
-    pub arm3_dram_bytes: u128,
-    pub arm4_dram_bytes: u128,
+    pub corpus_instances: u128,
+    pub corpus_rows: u128,
+    pub uncached: ArmRollup,
+    pub incumbent: ArmRollup,
+    pub arm1: ArmRollup,
+    pub arm2: ArmRollup,
+    pub arm3: ArmRollup,
+    pub arm4: ArmRollup,
 }
 
 #[derive(Clone, Debug)]
@@ -344,7 +352,7 @@ impl ExperimentReport {
                     unreachable!("instance classification is never incumbent availability")
                 }
             }
-            if instance.arm1.score == instance.incumbent.score && instance.arm1.score.is_some() {
+            if instance.key.budget_cells == 4 && instance.incumbent.measurements.is_some() {
                 counts.matching_incumbent += 1;
             }
         }
@@ -352,7 +360,9 @@ impl ExperimentReport {
             .instances
             .iter()
             .filter(|instance| {
-                instance.incumbent.measurements.is_some() && instance.arm1.measurements.is_some()
+                instance.key.budget_cells == 4
+                    && instance.incumbent.measurements.is_some()
+                    && instance.arm1.measurements.is_some()
             })
             .count() as u128;
         self.paged_computed = self
@@ -397,62 +407,69 @@ fn arm_dram(arm: &ArmResult) -> Option<u128> {
     arm.measurements.map(ArmMeasurements::dram_bytes)
 }
 
-fn average(values: impl Iterator<Item = Option<u128>>) -> u128 {
-    let (sum, count) = values
-        .flatten()
-        .fold((0u128, 0u128), |(sum, count), value| {
-            (
-                sum.checked_add(value).expect("experiment total fits u128"),
-                count + 1,
-            )
-        });
-    if count == 0 { 0 } else { sum / count }
+fn instance_rows(instance: &InstanceMetrics) -> u128 {
+    instance
+        .round_profiles
+        .iter()
+        .map(|profile| profile.rows as u128)
+        .try_fold(0u128, u128::checked_add)
+        .expect("instance row total fits u128")
+}
+
+fn arm_rollup(
+    instances: &[InstanceMetrics],
+    arm: ExperimentArm,
+    equal_instance: bool,
+) -> ArmRollup {
+    let mut rollup = ArmRollup::default();
+    for instance in instances {
+        let Some(dram_bytes) = arm_dram(arm_by_kind(instance, arm)) else {
+            continue;
+        };
+        rollup.computed_instances = rollup
+            .computed_instances
+            .checked_add(1)
+            .expect("computed instance count fits u128");
+        rollup.covered_rows = rollup
+            .covered_rows
+            .checked_add(instance_rows(instance))
+            .expect("covered row count fits u128");
+        rollup.dram_bytes = rollup
+            .dram_bytes
+            .checked_add(dram_bytes)
+            .expect("whole-pass metric total fits u128");
+    }
+    if equal_instance && rollup.computed_instances != 0 {
+        rollup.dram_bytes /= rollup.computed_instances;
+    }
+    rollup
+}
+
+fn report_rollup(instances: &[InstanceMetrics], equal_instance: bool) -> ReportRollup {
+    ReportRollup {
+        corpus_instances: instances.len() as u128,
+        corpus_rows: instances
+            .iter()
+            .map(instance_rows)
+            .try_fold(0u128, u128::checked_add)
+            .expect("corpus row total fits u128"),
+        uncached: arm_rollup(instances, ExperimentArm::Uncached, equal_instance),
+        incumbent: arm_rollup(instances, ExperimentArm::Incumbent, equal_instance),
+        arm1: arm_rollup(instances, ExperimentArm::ExactConstructive, equal_instance),
+        arm2: arm_rollup(instances, ExperimentArm::OrderSearch, equal_instance),
+        arm3: arm_rollup(instances, ExperimentArm::CacheSearch, equal_instance),
+        arm4: arm_rollup(instances, ExperimentArm::JointSearch, equal_instance),
+    }
 }
 
 fn equal_instance_rollup(instances: &[InstanceMetrics]) -> ReportRollup {
-    ReportRollup {
-        rows: instances.len() as u128,
-        uncached_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.uncached))),
-        incumbent_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.incumbent))),
-        arm1_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.arm1))),
-        arm2_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.arm2))),
-        arm3_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.arm3))),
-        arm4_dram_bytes: average(instances.iter().map(|i| arm_dram(&i.arm4))),
-    }
+    report_rollup(instances, true)
 }
 
 fn whole_pass_rollup(instances: &[InstanceMetrics]) -> ReportRollup {
-    let mut rollup = ReportRollup::default();
-    for instance in instances {
-        let rows = instance
-            .round_profiles
-            .iter()
-            .map(|profile| profile.rows as u128)
-            .sum::<u128>();
-        rollup.rows = rollup.rows.checked_add(rows).expect("row total fits u128");
-        // Source costs and writes are already scaled by these round profiles;
-        // retain the row census without multiplying whole-pass totals again.
-        let add = |target: &mut u128, value: Option<u128>| {
-            if let Some(value) = value {
-                *target = target
-                    .checked_add(value)
-                    .expect("whole-pass metric total fits u128");
-            }
-        };
-        add(
-            &mut rollup.uncached_dram_bytes,
-            arm_dram(&instance.uncached),
-        );
-        add(
-            &mut rollup.incumbent_dram_bytes,
-            arm_dram(&instance.incumbent),
-        );
-        add(&mut rollup.arm1_dram_bytes, arm_dram(&instance.arm1));
-        add(&mut rollup.arm2_dram_bytes, arm_dram(&instance.arm2));
-        add(&mut rollup.arm3_dram_bytes, arm_dram(&instance.arm3));
-        add(&mut rollup.arm4_dram_bytes, arm_dram(&instance.arm4));
-    }
-    rollup
+    // Source costs and writes are already scaled by each instance's round
+    // profiles. Preserve coverage without multiplying whole-pass totals again.
+    report_rollup(instances, false)
 }
 
 pub fn render_markdown(report: &ExperimentReport) -> String {
@@ -520,16 +537,20 @@ pub fn render_markdown(report: &ExperimentReport) -> String {
 
     writeln!(out, "## Savings\n").unwrap();
     writeln!(out, "### Equal-instance results\n").unwrap();
-    render_rollup(&mut out, report.equal_instance);
+    render_rollup(
+        &mut out,
+        report.equal_instance,
+        "integer mean whole-pass DRAM bytes",
+    );
 
     writeln!(out, "## Whole-pass row/round-weighted results\n").unwrap();
     writeln!(
         out,
         "Actual logical row evaluations: {}.\n",
-        report.whole_pass.rows
+        report.whole_pass.corpus_rows
     )
     .unwrap();
-    render_rollup(&mut out, report.whole_pass);
+    render_rollup(&mut out, report.whole_pass, "whole-pass DRAM bytes");
 
     writeln!(out, "## Arm2−Arm1 order value\n").unwrap();
     render_pair_summary(
@@ -644,6 +665,54 @@ pub fn render_markdown(report: &ExperimentReport) -> String {
     }
     writeln!(out).unwrap();
 
+    writeln!(out, "### Pager and certificate counters\n").unwrap();
+    writeln!(out, "| instance | arm | pager calls | certificate actions | certificate reads (predicted/realized) | certificate counters (diverged/refused/read-count/read-cost) | certificate failures |").unwrap();
+    writeln!(out, "|:---|:---|---:|---:|:---|:---|---:|").unwrap();
+    for instance in &report.instances {
+        for arm in instance_arms(instance) {
+            let certificate = arm.measurements.and_then(|metrics| metrics.certificate);
+            let (actions, reads, counters, failures) = certificate.map_or_else(
+                || {
+                    (
+                        "unavailable".to_owned(),
+                        "unavailable".to_owned(),
+                        "unavailable".to_owned(),
+                        "unavailable".to_owned(),
+                    )
+                },
+                |certificate| {
+                    (
+                        certificate.actions_consumed.to_string(),
+                        format!(
+                            "{}/{}",
+                            certificate.predicted_source_reads, certificate.realized_source_reads
+                        ),
+                        format!(
+                            "{}/{}/{}/{}",
+                            certificate.diverged,
+                            certificate.refused_retains,
+                            certificate.read_count_mismatches,
+                            certificate.read_cost_mismatches
+                        ),
+                        certificate.failures().to_string(),
+                    )
+                },
+            );
+            writeln!(
+                out,
+                "| {} L{} {:?} c{} | {:?} | {} | {actions} | {reads} | {counters} | {failures} |",
+                instance.key.fixture,
+                instance.key.layer_index,
+                instance.key.regime,
+                instance.key.budget_cells,
+                arm.arm,
+                arm.pager.calls,
+            )
+            .unwrap();
+        }
+    }
+    writeln!(out).unwrap();
+
     writeln!(out, "## Observations for RR\n").unwrap();
     writeln!(out, "This audit presents measured values and explicit denominators. It intentionally applies no automatic keep/remove recommendation threshold.").unwrap();
     out
@@ -667,22 +736,36 @@ fn classification_with_reason(classification: &ArmClassification) -> String {
     }
 }
 
-fn render_rollup(out: &mut String, rollup: ReportRollup) {
+fn render_rollup(out: &mut String, rollup: ReportRollup, value_label: &str) {
     use std::fmt::Write;
-    writeln!(out, "| aggregation units | U DRAM bytes | I DRAM bytes | Arm1 DRAM bytes | Arm2 DRAM bytes | Arm3 DRAM bytes | Arm4 DRAM bytes |").unwrap();
-    writeln!(out, "|---:|---:|---:|---:|---:|---:|---:|").unwrap();
     writeln!(
         out,
-        "| {} | {} | {} | {} | {} | {} | {} |\n",
-        rollup.rows,
-        rollup.uncached_dram_bytes,
-        rollup.incumbent_dram_bytes,
-        rollup.arm1_dram_bytes,
-        rollup.arm2_dram_bytes,
-        rollup.arm3_dram_bytes,
-        rollup.arm4_dram_bytes
+        "Corpus coverage: {} instances and {} logical rows.\n",
+        rollup.corpus_instances, rollup.corpus_rows
     )
     .unwrap();
+    writeln!(
+        out,
+        "| arm | computed instances | covered logical rows | {value_label} |"
+    )
+    .unwrap();
+    writeln!(out, "|:---|---:|---:|---:|").unwrap();
+    for (label, arm) in [
+        ("U", rollup.uncached),
+        ("I", rollup.incumbent),
+        ("Arm1", rollup.arm1),
+        ("Arm2", rollup.arm2),
+        ("Arm3", rollup.arm3),
+        ("Arm4", rollup.arm4),
+    ] {
+        writeln!(
+            out,
+            "| {label} | {} | {} | {} |",
+            arm.computed_instances, arm.covered_rows, arm.dram_bytes
+        )
+        .unwrap();
+    }
+    writeln!(out).unwrap();
 }
 
 fn render_pair_summary(
@@ -702,6 +785,17 @@ fn render_pair_summary(
         })
         .collect::<Vec<_>>();
     writeln!(out, "Comparable instances: {}.", pairs.len()).unwrap();
+    let comparable_rows = report
+        .instances
+        .iter()
+        .filter(|instance| {
+            arm_by_kind(instance, value_arm).measurements.is_some()
+                && arm_by_kind(instance, reference_arm).measurements.is_some()
+        })
+        .map(instance_rows)
+        .try_fold(0u128, u128::checked_add)
+        .expect("comparable row total fits u128");
+    writeln!(out, "Comparable logical rows: {comparable_rows}.").unwrap();
     writeln!(
         out,
         "| metric | arm total | reference total | raw delta | percentage |"
@@ -2168,9 +2262,37 @@ mod tests {
             report_fixture("first", BwdRegime::R0, 4, 100, Some(100), 8),
             report_fixture("second", BwdRegime::R0, 4, 200, Some(200), 8),
         ]);
-        assert_eq!(report.equal_instance.arm1_dram_bytes, 150);
-        assert_eq!(report.whole_pass.rows, 8);
-        assert_eq!(report.whole_pass.arm1_dram_bytes, 300);
+        assert_eq!(report.equal_instance.arm1.dram_bytes, 150);
+        assert_eq!(report.whole_pass.corpus_rows, 8);
+        assert_eq!(report.whole_pass.arm1.dram_bytes, 300);
+    }
+
+    #[test]
+    fn rollups_expose_independent_per_arm_instance_and_row_coverage() {
+        let report = ExperimentReport::from_instances(vec![
+            report_fixture("with-incumbent", BwdRegime::R0, 4, 100, Some(80), 8),
+            report_fixture("without-incumbent", BwdRegime::R0, 4, 200, None, 8),
+        ]);
+
+        assert_eq!(report.equal_instance.arm1.computed_instances, 2);
+        assert_eq!(report.equal_instance.arm1.covered_rows, 8);
+        assert_eq!(report.equal_instance.arm1.dram_bytes, 150);
+        assert_eq!(report.equal_instance.incumbent.computed_instances, 1);
+        assert_eq!(report.equal_instance.incumbent.covered_rows, 4);
+        assert_eq!(report.equal_instance.incumbent.dram_bytes, 80);
+
+        assert_eq!(report.whole_pass.arm1.computed_instances, 2);
+        assert_eq!(report.whole_pass.arm1.covered_rows, 8);
+        assert_eq!(report.whole_pass.arm1.dram_bytes, 300);
+        assert_eq!(report.whole_pass.incumbent.computed_instances, 1);
+        assert_eq!(report.whole_pass.incumbent.covered_rows, 4);
+        assert_eq!(report.whole_pass.incumbent.dram_bytes, 80);
+
+        let markdown = render_markdown(&report);
+        assert!(markdown.contains("| I | 1 | 4 | 80 |"));
+        assert!(markdown.contains("| Arm1 | 2 | 8 | 150 |"));
+        assert!(markdown.contains("| Arm1 | 2 | 8 | 300 |"));
+        assert!(markdown.contains("Comparable logical rows: 4."));
     }
 
     #[test]
@@ -2202,6 +2324,17 @@ mod tests {
     }
 
     #[test]
+    fn matching_incumbent_counts_matching_budget_provenance_not_score_equality() {
+        let report = ExperimentReport::from_instances(vec![
+            report_fixture("different-score-c4", BwdRegime::R0, 4, 30, Some(40), 8),
+            report_fixture("non-production-c2", BwdRegime::R0, 2, 30, Some(40), 8),
+        ]);
+        assert_eq!(report.counts_by_budget[&4].matching_incumbent, 1);
+        assert_eq!(report.counts_by_budget[&2].matching_incumbent, 0);
+        assert_eq!(report.incumbent_comparable, 1);
+    }
+
+    #[test]
     fn uncached_and_incumbent_sections_render_their_comparisons() {
         let report = ExperimentReport::from_instances(vec![report_fixture(
             "comparable",
@@ -2214,6 +2347,28 @@ mod tests {
         let markdown = render_markdown(&report);
         assert!(markdown.contains("### Arm1−U uncached comparison"));
         assert!(markdown.contains("### Arm1−I incumbent comparison"));
+    }
+
+    #[test]
+    fn telemetry_renders_pager_calls_and_detailed_certificate_counters() {
+        let mut instance = report_fixture("telemetry", BwdRegime::R0, 4, 30, Some(40), 8);
+        instance.arm1.pager.calls = 7;
+        instance.arm1.measurements.as_mut().unwrap().certificate =
+            Some(super::CertificateMetrics {
+                actions_consumed: 9,
+                diverged: 1,
+                refused_retains: 2,
+                predicted_source_reads: 3,
+                realized_source_reads: 4,
+                read_count_mismatches: 5,
+                read_cost_mismatches: 6,
+            });
+        let markdown = render_markdown(&ExperimentReport::from_instances(vec![instance]));
+        assert!(markdown.contains("pager calls"));
+        assert!(markdown.contains("certificate actions"));
+        assert!(markdown.contains("certificate reads (predicted/realized)"));
+        assert!(markdown.contains("certificate counters (diverged/refused/read-count/read-cost)"));
+        assert!(markdown.contains("| 7 | 9 | 3/4 | 1/2/5/6 | 14 |"));
     }
 
     #[test]
