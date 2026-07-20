@@ -41,14 +41,14 @@ helper, a build-dependency only).
   cross-wall pitfall. Its tests are self-contained (raw era_cudart allocations +
   `DeviceContext::create`, no `ProverContext`).
 - **`gpu_ops`** = the generic math/transform kernels (`simple`, `powers`,
-  `squaring`, `transpose`, `bit_reverse`, `batch_inv`) with its own
+  `squaring`, `transpose`, `bit_reverse`) with its own
   `gpu_ops_native`. `bit_reverse` is **size-generic**: `bit_reverse_in_place<T>`
   takes any `T` and dispatches on `size_of::<T>()` (4/16/32 bytes), reinterpreting
   the element onto an internal per-size kernel binding — so it carries no blake2s
   vocabulary and callers (incl. blake2s's `Digest = [u32; 8]`) need no per-type
   impl. The reinterpret **asserts** the runtime device pointer is aligned to the
   payload size (native `e4`/`dg` are `__align__(16)`/`__align__(32)`). Test-only
-  helpers consumed by `circuit_prover`'s tests (`batch_inv`, `set_by_ref`,
+  helpers consumed by `circuit_prover`'s tests (`set_by_ref`,
   `get_powers_by_val`) are `#[doc(hidden)] pub`, not `#[cfg(test)]` — a
   dependency's `cfg(test)` items are invisible to consumers.
 - **`gpu_hash`** = blake2s hashing (`blake2s/hash.rs`) + Merkle
@@ -81,7 +81,7 @@ helper, a build-dependency only).
 
 `circuit_prover` consumes the kernel crates via facade re-exports
 (`crate::{allocator, primitives}`, `crate::ops::{ntt, ntt_twiddles}`,
-`crate::ops::{simple, powers, squaring, transpose, bit_reverse, batch_inv}`,
+`crate::ops::{simple, powers, squaring, transpose, bit_reverse}`,
 `crate::ops::blake2s`, `crate::ops::cub`), so in-crate paths are unchanged. The
 only `native/` left in `circuit_prover` is the GKR/WHIR protocol + witness CUDA.
 `execution_prover` holds `ExecutionProver` + the 9-symbol facade.
