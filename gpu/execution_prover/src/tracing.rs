@@ -588,27 +588,20 @@ pub(crate) trait TracingDataProducers {
     fn finalize(self);
 }
 
-pub(crate) struct SplitTracingDataProducers {
+/// The four delegation producers (blake / bigint / keccak /
+/// blake_g_function), constructed and torn down identically by
+/// `SplitTracingDataProducers` and `UnifiedTracingDataProducers` — the two
+/// differ only in which additional (per-family or unified-cycle) producers
+/// accompany this shared set.
+struct DelegationProducers {
     blake_producer: TracingDataProducer<Blake2sRoundFunctionDelegationWitness>,
     bigint_producer: TracingDataProducer<BigintDelegationWitness>,
     keccak_producer: TracingDataProducer<KeccakSpecial5DelegationWitness>,
     blake_g_function_producer: TracingDataProducer<Blake2sGFunctionDelegationWitness>,
-    add_sub_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
-    binary_shift_csr_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
-    slt_branch_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
-    mul_div_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
-    word_size_mem_family_producer: TracingDataProducer<MemoryOpcodeTracingDataWithTimestamp>,
-    subword_size_mem_family_producer: TracingDataProducer<MemoryOpcodeTracingDataWithTimestamp>,
 }
 
-impl TracingDataProducers for SplitTracingDataProducers {
-    type Ranges = SplitDataTraceRanges;
-
-    fn new(
-        _machine_type: MachineType,
-        free_allocators: Receiver<A>,
-        results: Sender<WorkerResult<A>>,
-    ) -> Self {
+impl DelegationProducers {
+    fn new(free_allocators: &Receiver<A>, results: &Sender<WorkerResult<A>>) -> Self {
         let blake_producer = TracingDataProducer::<Blake2sRoundFunctionDelegationWitness>::new(
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
             free_allocators.clone(),
@@ -630,6 +623,41 @@ impl TracingDataProducers for SplitTracingDataProducers {
                 free_allocators.clone(),
                 results.clone(),
             );
+        Self {
+            blake_producer,
+            bigint_producer,
+            keccak_producer,
+            blake_g_function_producer,
+        }
+    }
+
+    fn finalize(self) {
+        self.blake_producer.finalize();
+        self.bigint_producer.finalize();
+        self.keccak_producer.finalize();
+        self.blake_g_function_producer.finalize();
+    }
+}
+
+pub(crate) struct SplitTracingDataProducers {
+    delegation: DelegationProducers,
+    add_sub_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
+    binary_shift_csr_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
+    slt_branch_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
+    mul_div_family_producer: TracingDataProducer<NonMemoryOpcodeTracingDataWithTimestamp>,
+    word_size_mem_family_producer: TracingDataProducer<MemoryOpcodeTracingDataWithTimestamp>,
+    subword_size_mem_family_producer: TracingDataProducer<MemoryOpcodeTracingDataWithTimestamp>,
+}
+
+impl TracingDataProducers for SplitTracingDataProducers {
+    type Ranges = SplitDataTraceRanges;
+
+    fn new(
+        _machine_type: MachineType,
+        free_allocators: Receiver<A>,
+        results: Sender<WorkerResult<A>>,
+    ) -> Self {
+        let delegation = DelegationProducers::new(&free_allocators, &results);
         let add_sub_family_producer =
             TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp>::new(
                 CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
@@ -679,10 +707,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
                 results,
             );
         Self {
-            blake_producer,
-            bigint_producer,
-            keccak_producer,
-            blake_g_function_producer,
+            delegation,
             add_sub_family_producer,
             binary_shift_csr_family_producer,
             slt_branch_family_producer,
@@ -743,26 +768,26 @@ impl TracingDataProducers for SplitTracingDataProducers {
                     final_count,
                     &mut trace_ranges.subword_size_mem_family,
                 ),
-                CounterType::BlakeDelegation => self.blake_producer.process_snapshot(
+                CounterType::BlakeDelegation => self.delegation.blake_producer.process_snapshot(
                     snapshot_index,
                     initial_count,
                     final_count,
                     &mut trace_ranges.blake_calls,
                 ),
-                CounterType::BigintDelegation => self.bigint_producer.process_snapshot(
+                CounterType::BigintDelegation => self.delegation.bigint_producer.process_snapshot(
                     snapshot_index,
                     initial_count,
                     final_count,
                     &mut trace_ranges.bigint_calls,
                 ),
-                CounterType::KeccakDelegation => self.keccak_producer.process_snapshot(
+                CounterType::KeccakDelegation => self.delegation.keccak_producer.process_snapshot(
                     snapshot_index,
                     initial_count,
                     final_count,
                     &mut trace_ranges.keccak_calls,
                 ),
                 CounterType::BlakeGFunctionDelegation => {
-                    self.blake_g_function_producer.process_snapshot(
+                    self.delegation.blake_g_function_producer.process_snapshot(
                         snapshot_index,
                         initial_count,
                         final_count,
@@ -776,10 +801,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
     }
 
     fn finalize(self) {
-        self.blake_producer.finalize();
-        self.bigint_producer.finalize();
-        self.keccak_producer.finalize();
-        self.blake_g_function_producer.finalize();
+        self.delegation.finalize();
         self.add_sub_family_producer.finalize();
         self.binary_shift_csr_family_producer.finalize();
         self.slt_branch_family_producer.finalize();
@@ -790,10 +812,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
 }
 
 pub(crate) struct UnifiedTracingDataProducers {
-    blake_producer: TracingDataProducer<Blake2sRoundFunctionDelegationWitness>,
-    bigint_producer: TracingDataProducer<BigintDelegationWitness>,
-    keccak_producer: TracingDataProducer<KeccakSpecial5DelegationWitness>,
-    blake_g_function_producer: TracingDataProducer<Blake2sGFunctionDelegationWitness>,
+    delegation: DelegationProducers,
     cycles_producer: TracingDataProducer<UnifiedOpcodeTracingDataWithTimestamp>,
 }
 
@@ -806,37 +825,14 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
         results: Sender<WorkerResult<A>>,
     ) -> Self {
         assert_eq!(machine_type, MachineType::Reduced);
-        let blake_producer = TracingDataProducer::<Blake2sRoundFunctionDelegationWitness>::new(
-            CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
-            free_allocators.clone(),
-            results.clone(),
-        );
-        let bigint_producer = TracingDataProducer::<BigintDelegationWitness>::new(
-            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl),
-            free_allocators.clone(),
-            results.clone(),
-        );
-        let keccak_producer = TracingDataProducer::<KeccakSpecial5DelegationWitness>::new(
-            CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5),
-            free_allocators.clone(),
-            results.clone(),
-        );
-        let blake_g_function_producer =
-            TracingDataProducer::<Blake2sGFunctionDelegationWitness>::new(
-                CircuitType::Delegation(DelegationCircuitType::Blake2GFunction),
-                free_allocators.clone(),
-                results.clone(),
-            );
+        let delegation = DelegationProducers::new(&free_allocators, &results);
         let cycles_producer = TracingDataProducer::<UnifiedOpcodeTracingDataWithTimestamp>::new(
             CircuitType::Unrolled(UnrolledCircuitType::Unified),
             free_allocators.clone(),
             results.clone(),
         );
         Self {
-            blake_producer,
-            bigint_producer,
-            keccak_producer,
-            blake_g_function_producer,
+            delegation,
             cycles_producer,
         }
     }
@@ -867,26 +863,26 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
                     cycles_initial_count += initial_count;
                     cycles_final_count += final_count;
                 }
-                CounterType::BlakeDelegation => self.blake_producer.process_snapshot(
+                CounterType::BlakeDelegation => self.delegation.blake_producer.process_snapshot(
                     snapshot_index,
                     initial_count,
                     final_count,
                     &mut trace_ranges.blake_calls,
                 ),
-                CounterType::BigintDelegation => self.bigint_producer.process_snapshot(
+                CounterType::BigintDelegation => self.delegation.bigint_producer.process_snapshot(
                     snapshot_index,
                     initial_count,
                     final_count,
                     &mut trace_ranges.bigint_calls,
                 ),
-                CounterType::KeccakDelegation => self.keccak_producer.process_snapshot(
+                CounterType::KeccakDelegation => self.delegation.keccak_producer.process_snapshot(
                     snapshot_index,
                     initial_count,
                     final_count,
                     &mut trace_ranges.keccak_calls,
                 ),
                 CounterType::BlakeGFunctionDelegation => {
-                    self.blake_g_function_producer.process_snapshot(
+                    self.delegation.blake_g_function_producer.process_snapshot(
                         snapshot_index,
                         initial_count,
                         final_count,
@@ -906,10 +902,7 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
     }
 
     fn finalize(self) {
-        self.blake_producer.finalize();
-        self.bigint_producer.finalize();
-        self.keccak_producer.finalize();
-        self.blake_g_function_producer.finalize();
+        self.delegation.finalize();
         self.cycles_producer.finalize();
     }
 }
