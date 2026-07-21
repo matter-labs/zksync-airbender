@@ -446,6 +446,16 @@ fn assemble_result(
         let num_unified_it_circuits = circuit_families_proofs
             .get(&UnrolledCircuitType::Unified.get_family_idx())
             .map(|unified_proofs| {
+                // Trivial-marker sequence_ids are a subset of the Unified
+                // proofs collected above (every sequence_id, trivial or
+                // real, goes through the same GpuWorkResult::Proof insert),
+                // so this subtraction can never underflow on valid state.
+                assert!(
+                    unified_proofs.len() >= trivial_unified_inits_and_teardowns_count,
+                    "unified proof count {} below trivial i&t count {}",
+                    unified_proofs.len(),
+                    trivial_unified_inits_and_teardowns_count
+                );
                 (unified_proofs.len() - trivial_unified_inits_and_teardowns_count) as u32
             });
         let result = ProveResult {
