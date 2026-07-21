@@ -117,7 +117,13 @@ impl ExecutionProver {
             );
         }
         for (delegation_type, per_seq) in delegation_circuits_memory_caps.iter() {
-            let delegation_type = DelegationCircuitType::try_from(*delegation_type as u16)
+            // Checked cast before the fallible enum conversion: `as u16`
+            // would silently truncate (and thus alias) a hypothetical future
+            // id >= 65536 instead of failing, which is exactly the kind of
+            // silent corruption this ID needs to surface loudly instead.
+            let delegation_type =
+                u16::try_from(*delegation_type).expect("delegation type id must fit in u16");
+            let delegation_type = DelegationCircuitType::try_from(delegation_type)
                 .expect("delegation memory-cap map must only contain supported delegation ids");
             for (sequence_id, caps) in per_seq.iter().enumerate() {
                 proof_caps.insert(
