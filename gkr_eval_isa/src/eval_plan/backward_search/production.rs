@@ -119,7 +119,7 @@ impl TierTelemetry {
 impl SearchAdapter for ProductionOrderAdapter<'_> {
     type Genome = ProductionOrderGenome;
     type Score = BackwardScore;
-    type Evaluation = Option<ProductionEvaluation>;
+    type Evaluation = ProductionEvaluation;
     type Error = BackwardSearchError;
     type GuidedTrial = ();
 
@@ -187,36 +187,37 @@ impl ProductionOrderAdapter<'_> {
         &self,
         ordinal: usize,
         genome: &ProductionOrderGenome,
-    ) -> Result<(BackwardScore, Option<ProductionEvaluation>), BackwardSearchError> {
-        let problem = match rebuild_for_stable_order(
-            self.canonical,
-            self.distilled,
-            self.problem,
-            self.trace_len,
-            &genome.order,
-        ) {
-            Ok(problem) => problem,
-            Err(error) if pre_paging_candidate_infeasible(&error) => {
-                return Ok((infeasible_score(ordinal), None));
-            }
-            Err(error) => return Err(error),
-        };
+    ) -> Result<(BackwardScore, ProductionEvaluation), BackwardSearchError> {
+        self.evaluate_rebuilt_problem(
+            ordinal,
+            rebuild_for_stable_order(
+                self.canonical,
+                self.distilled,
+                self.problem,
+                self.trace_len,
+                &genome.order,
+            ),
+        )
+    }
+
+    fn evaluate_rebuilt_problem(
+        &self,
+        ordinal: usize,
+        problem: Result<BackwardSearchProblem, BackwardSearchError>,
+    ) -> Result<(BackwardScore, ProductionEvaluation), BackwardSearchError> {
+        let problem = problem?;
         let paging = solve_production_paging(&problem.demands)?;
         self.telemetry
             .record(paging.solver, paging.plan.telemetry.peak_live_states);
         let candidate =
             compile_and_certify_paging(self.distilled, &problem, &paging.plan, ordinal)?;
-        Ok((
-            candidate.score,
-            Some(ProductionEvaluation { problem, candidate }),
-        ))
+        Ok((candidate.score, ProductionEvaluation { problem, candidate }))
     }
 }
 
 struct CompletedTier {
     evaluations: usize,
-    outcome:
-        SearchDriverOutcome<ProductionOrderGenome, BackwardScore, Option<ProductionEvaluation>>,
+    outcome: SearchDriverOutcome<ProductionOrderGenome, BackwardScore, ProductionEvaluation>,
     telemetry: TierTelemetrySnapshot,
 }
 
@@ -330,13 +331,7 @@ fn finish_production_search(
     telemetry.first_winning_ordinal = Some(winning.outcome.best_ordinal);
     telemetry.improvement_ordinals = winning.outcome.improvement_ordinals;
     let order = winning.outcome.best_genome.order;
-    let evaluated =
-        winning
-            .outcome
-            .best_evaluation
-            .ok_or(BackwardSearchError::SearchDriverFailure {
-                reason: "production search selected an infeasible candidate",
-            })?;
+    let evaluated = winning.outcome.best_evaluation;
     Ok(ProductionBackwardPlan {
         problem: evaluated.problem,
         candidate: evaluated.candidate,
@@ -364,14 +359,15 @@ fn production_order_seeds(
     problem: &BackwardSearchProblem,
     preceding_order: Option<&[usize]>,
 ) -> Result<Vec<ProductionOrderGenome>, BackwardSearchError> {
-    decode_order_indices(problem, &problem.selected_order_indices)?;
+    let constructive_order = encode_stable_order(problem, &problem.selected_order)?;
+    let constructive_stable = decode_order_indices(problem, &constructive_order)?;
     let constructive = ProductionOrderGenome {
-        order: problem.selected_order_indices.clone(),
+        order: constructive_order,
     };
     let mut seeds = vec![constructive];
     if let Some(order) = preceding_order {
-        decode_order_indices(problem, order)?;
-        if order != seeds[0].order {
+        let preceding_stable = decode_order_indices(problem, order)?;
+        if preceding_stable != constructive_stable {
             seeds.push(ProductionOrderGenome {
                 order: order.to_vec(),
             });
@@ -399,9 +395,6 @@ fn rebuild_for_stable_order(
     trace_len: usize,
     order: &[usize],
 ) -> Result<BackwardSearchProblem, BackwardSearchError> {
-    if order == problem.selected_order_indices {
-        return Ok(problem.clone());
-    }
     let stable_order = decode_order_indices(problem, order)?;
     let distilled_indices = problem
         .selected_order
@@ -426,6 +419,21 @@ fn rebuild_for_stable_order(
         problem.budget_cells,
         problem.stream_reductions,
     )
+}
+
+fn encode_stable_order(
+    problem: &BackwardSearchProblem,
+    stable_order: &[StableFragmentKey],
+) -> Result<Vec<usize>, BackwardSearchError> {
+    stable_order
+        .iter()
+        .map(|fragment| {
+            problem
+                .fragment_domain
+                .binary_search(fragment)
+                .map_err(|_| BackwardSearchError::InvalidFragmentPermutation)
+        })
+        .collect()
 }
 
 fn production_escalation_tiers(
@@ -456,8 +464,8 @@ fn score_key(score: BackwardScore) -> (bool, u128, u128, usize, usize, usize) {
 
 fn production_identity_seed(identity: &ProductionSearchIdentity, budget_cells: usize) -> u64 {
     let mut seed = FNV_OFFSET;
-    hash_bytes(&mut seed, identity.circuit.as_bytes());
-    hash_bytes(&mut seed, identity.layout_fixture.as_bytes());
+    hash_framed_bytes(&mut seed, identity.circuit.as_bytes());
+    hash_framed_bytes(&mut seed, identity.layout_fixture.as_bytes());
     hash_bytes(&mut seed, &(identity.layer as u64).to_le_bytes());
     hash_bytes(
         &mut seed,
@@ -468,6 +476,12 @@ fn production_identity_seed(identity: &ProductionSearchIdentity, budget_cells: u
     );
     hash_bytes(&mut seed, &(budget_cells as u64).to_le_bytes());
     seed
+}
+
+fn hash_framed_bytes(hash: &mut u64, bytes: &[u8]) {
+    let length = u64::try_from(bytes.len()).expect("production identity length fits u64");
+    hash_bytes(hash, &length.to_le_bytes());
+    hash_bytes(hash, bytes);
 }
 
 fn hash_bytes(hash: &mut u64, bytes: &[u8]) {
@@ -490,29 +504,6 @@ pub fn compulsory_read_floor(
     Ok(floor)
 }
 
-fn pre_paging_candidate_infeasible(error: &BackwardSearchError) -> bool {
-    matches!(
-        error,
-        BackwardSearchError::BackwardEvaluation(
-            crate::eval_plan::backward::BackwardEvaluationError::Concrete(
-                crate::eval_plan::ConcreteBindError::PlacementFailed { .. }
-            )
-        )
-    )
-}
-
-fn infeasible_score(ordinal: usize) -> BackwardScore {
-    BackwardScore {
-        infeasible: true,
-        whole_pass_dram_bytes: u128::MAX,
-        primitive_source_ops: u128::MAX,
-        instructions: usize::MAX,
-        encoded_lanes: usize::MAX,
-        arithmetic_ops: usize::MAX,
-        ordinal,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, HashMap};
@@ -531,32 +522,209 @@ mod tests {
 
     #[test]
     fn production_order_genome_has_constructive_and_previous_seeds() {
-        let (canonical, distilled) = shared_source_fixture();
+        let (canonical, distilled) = stable_domain_mismatch_fixture();
         let (_, problem) = build_backward_search_problem(&canonical, &distilled, 8, 4).unwrap();
         let problem = problem.unwrap();
-        let previous = problem.selected_order_indices.clone();
-        let seeds = production_order_seeds(&problem, Some(&previous)).unwrap();
-        assert_eq!(seeds[0].order, problem.selected_order_indices);
+        let constructive = stable_indices_for(&problem, &problem.selected_order);
+        assert_ne!(
+            constructive, problem.selected_order_indices,
+            "fixture must distinguish stable-domain positions from raw indices"
+        );
+        let seeds = production_order_seeds(&problem, Some(&constructive)).unwrap();
+        assert_eq!(seeds[0].order, constructive);
+        assert_eq!(
+            decode_order_indices(&problem, &seeds[0].order).unwrap(),
+            problem.selected_order
+        );
         assert_eq!(seeds.len(), 1, "identical previous order is deduplicated");
 
-        let mut reversed = previous;
+        let mut reversed = constructive;
         reversed.reverse();
         let seeds = production_order_seeds(&problem, Some(&reversed)).unwrap();
         assert_eq!(seeds.len(), 2);
         assert_eq!(seeds[1].order, reversed);
+        assert_eq!(
+            decode_order_indices(&problem, &seeds[1].order).unwrap(),
+            problem
+                .selected_order
+                .iter()
+                .cloned()
+                .rev()
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn production_order_mutation_swaps_integer_positions() {
+        let (canonical, distilled) = stable_domain_mismatch_fixture();
+        let (_, problem) = build_backward_search_problem(&canonical, &distilled, 8, 4).unwrap();
+        let problem = problem.unwrap();
+        let original = stable_indices_for(&problem, &problem.selected_order);
         let mut genome = ProductionOrderGenome {
-            order: vec![0, 1, 2, 3],
+            order: original.clone(),
         };
         let mut rng = StableRng::new(17);
         mutate_production_order(&mut genome, &mut rng);
         let mut sorted = genome.order.clone();
         sorted.sort_unstable();
-        assert_eq!(sorted, vec![0, 1, 2, 3]);
-        assert_ne!(genome.order, vec![0, 1, 2, 3]);
+        assert_eq!(sorted, (0..original.len()).collect::<Vec<_>>());
+        assert_eq!(
+            genome
+                .order
+                .iter()
+                .zip(&original)
+                .filter(|(left, right)| left != right)
+                .count(),
+            2,
+            "one mutation is exactly one transposition"
+        );
+        let rebuilt =
+            rebuild_for_stable_order(&canonical, &distilled, &problem, 8, &genome.order).unwrap();
+        assert_eq!(
+            decode_order_indices(&problem, &genome.order).unwrap(),
+            rebuilt.selected_order
+        );
+        assert_eq!(rebuilt.stream_reductions, problem.stream_reductions);
+    }
+
+    #[test]
+    fn malformed_production_permutations_are_rejected() {
+        let (canonical, distilled) = stable_domain_mismatch_fixture();
+        let (_, problem) = build_backward_search_problem(&canonical, &distilled, 8, 4).unwrap();
+        let problem = problem.unwrap();
+        let len = problem.fragment_domain.len();
+        for malformed in [
+            (0..len.saturating_sub(1)).collect::<Vec<_>>(),
+            vec![0; len],
+            (0..len)
+                .map(|index| if index + 1 == len { len } else { index })
+                .collect(),
+        ] {
+            assert_eq!(
+                production_order_seeds(&problem, Some(&malformed)).unwrap_err(),
+                BackwardSearchError::InvalidFragmentPermutation
+            );
+            assert_eq!(
+                rebuild_for_stable_order(&canonical, &distilled, &problem, 8, &malformed)
+                    .unwrap_err(),
+                BackwardSearchError::InvalidFragmentPermutation
+            );
+        }
+    }
+
+    #[test]
+    fn production_result_order_matches_rebuilt_selected_order_and_telemetry() {
+        let canonical = stable_domain_mismatch_paging_trivial_layer();
+        let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let (_, initial) = build_backward_search_problem(&canonical, &distilled, 8, 4).unwrap();
+        let initial = initial.unwrap();
+        let mut preceding = stable_indices_for(&initial, &initial.selected_order);
+        preceding.reverse();
+        let result = search_production_backward(
+            &test_identity(BwdRegime::Ext),
+            &canonical,
+            &distilled,
+            8,
+            4,
+            Some(&preceding),
+        )
+        .unwrap();
+        assert_eq!(
+            decode_order_indices(&result.problem, &result.order).unwrap(),
+            result.problem.selected_order
+        );
+        assert_eq!(
+            result.telemetry.evaluations,
+            result.telemetry.completed_tiers.iter().sum::<usize>()
+        );
+        assert_eq!(
+            result.telemetry.exact_solver_calls, result.telemetry.evaluations,
+            "every counted production evaluation reaches the exact pager"
+        );
+        assert_eq!(result.problem.stream_reductions, initial.stream_reductions);
+        assert_eq!(
+            result.telemetry.solver_kinds,
+            vec![ProductionPagingSolver::RetainAll]
+        );
+        let largest_completed_tier = *result.telemetry.completed_tiers.last().unwrap();
+        assert!(result.telemetry.first_winning_ordinal.unwrap() < largest_completed_tier);
+        assert!(
+            result
+                .telemetry
+                .improvement_ordinals
+                .iter()
+                .all(|&ordinal| ordinal < largest_completed_tier)
+        );
+    }
+
+    #[test]
+    fn preceding_budget_seed_is_scored_inside_the_fresh_tier() {
+        let canonical = stable_domain_mismatch_paging_trivial_layer();
+        let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let (_, problem) = build_backward_search_problem(&canonical, &distilled, 8, 4).unwrap();
+        let problem = problem.unwrap();
+        let mut preceding = stable_indices_for(&problem, &problem.selected_order);
+        preceding.reverse();
+        let seeds = production_order_seeds(&problem, Some(&preceding)).unwrap();
+        assert_eq!(seeds.len(), 2);
+        let tier = run_production_tier(
+            &canonical,
+            &distilled,
+            &problem,
+            8,
+            &seeds,
+            production_identity_seed(&test_identity(BwdRegime::Ext), 4),
+            2,
+        )
+        .unwrap();
+        assert_eq!(tier.outcome.evaluations, 2);
+        assert_eq!(tier.telemetry.exact_solver_calls, 2);
+        assert!(tier.outcome.best_ordinal < 2);
+        let winning_problem = &tier.outcome.best_evaluation.problem;
+        assert_eq!(
+            decode_order_indices(&problem, &tier.outcome.best_genome.order).unwrap(),
+            winning_problem.selected_order
+        );
+        assert_eq!(winning_problem.stream_reductions, problem.stream_reductions);
+    }
+
+    #[test]
+    fn placement_failed_candidate_rebuild_is_fatal_before_paging() {
+        let (canonical, distilled) = shared_source_fixture();
+        let (_, problem) = build_backward_search_problem(&canonical, &distilled, 8, 4).unwrap();
+        let problem = problem.unwrap();
+        let telemetry = TierTelemetry::default();
+        let seeds = [ProductionOrderGenome {
+            order: stable_indices_for(&problem, &problem.selected_order),
+        }];
+        let adapter = ProductionOrderAdapter {
+            canonical: &canonical,
+            distilled: &distilled,
+            problem: &problem,
+            trace_len: 8,
+            seeds: &seeds,
+            telemetry: &telemetry,
+        };
+        assert!(matches!(
+            adapter.evaluate_rebuilt_problem(
+                7,
+                Err(BackwardSearchError::BackwardEvaluation(
+                    crate::eval_plan::backward::BackwardEvaluationError::Concrete(
+                        crate::eval_plan::ConcreteBindError::PlacementFailed {
+                            budget_lanes: 16,
+                            peak_live_lanes: 20,
+                            telemetry: crate::eval_plan::PlacementTelemetry::default(),
+                        }
+                    )
+                ))
+            ),
+            Err(BackwardSearchError::BackwardEvaluation(
+                crate::eval_plan::backward::BackwardEvaluationError::Concrete(
+                    crate::eval_plan::ConcreteBindError::PlacementFailed { .. }
+                )
+            ))
+        ));
+        assert_eq!(telemetry.snapshot().exact_solver_calls, 0);
     }
 
     #[test]
@@ -576,6 +744,10 @@ mod tests {
         assert!(result.candidate.paging.actions.is_empty());
         assert_eq!(result.order.len(), 4);
         assert_eq!(result.telemetry.evaluations, 128);
+        assert_eq!(
+            result.telemetry.exact_solver_calls,
+            result.telemetry.evaluations
+        );
     }
 
     #[test]
@@ -599,10 +771,14 @@ mod tests {
     fn production_identity_seed_is_stable_and_coordinate_sensitive() {
         let identity = test_identity(BwdRegime::R0);
         let seed = production_identity_seed(&identity, 4);
+        assert_eq!(seed, 0xbbf2_c671_016e_083b);
         assert_eq!(seed, production_identity_seed(&identity, 4));
         assert_ne!(seed, production_identity_seed(&identity, 5));
 
         let mut changed = identity.clone();
+        changed.circuit.push('x');
+        assert_ne!(seed, production_identity_seed(&changed, 4));
+        changed = identity.clone();
         changed.regime = BwdRegime::Ext;
         assert_ne!(seed, production_identity_seed(&changed, 4));
         changed = identity.clone();
@@ -611,6 +787,22 @@ mod tests {
         changed = identity.clone();
         changed.layout_fixture.push('x');
         assert_ne!(seed, production_identity_seed(&changed, 4));
+
+        let left = ProductionSearchIdentity {
+            circuit: "ab".to_owned(),
+            layout_fixture: "c".to_owned(),
+            ..identity.clone()
+        };
+        let right = ProductionSearchIdentity {
+            circuit: "a".to_owned(),
+            layout_fixture: "bc".to_owned(),
+            ..identity
+        };
+        assert_ne!(
+            production_identity_seed(&left, 4),
+            production_identity_seed(&right, 4),
+            "circuit/layout string boundaries are framed into the seed"
+        );
     }
 
     #[test]
@@ -662,6 +854,29 @@ mod tests {
         let layer = synthetic_two_shared_sources_layer();
         let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
         (layer, distilled)
+    }
+
+    fn stable_domain_mismatch_fixture() -> (DagLayer, DistilledLayer) {
+        let mut layer = synthetic_two_shared_sources_layer();
+        layer.roots.rotate_left(1);
+        let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        (layer, distilled)
+    }
+
+    fn stable_domain_mismatch_paging_trivial_layer() -> DagLayer {
+        let mut layer = paging_trivial_four_fragment_layer();
+        layer.roots.rotate_left(1);
+        layer
+    }
+
+    fn stable_indices_for(
+        problem: &BackwardSearchProblem,
+        stable_order: &[StableFragmentKey],
+    ) -> Vec<usize> {
+        stable_order
+            .iter()
+            .map(|fragment| problem.fragment_domain.binary_search(fragment).unwrap())
+            .collect()
     }
 
     fn synthetic_two_shared_sources_layer() -> DagLayer {

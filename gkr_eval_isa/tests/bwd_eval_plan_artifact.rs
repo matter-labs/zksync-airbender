@@ -68,5 +68,9 @@ fn production_order_searches_a_representative_real_layer() {
     .unwrap();
     assert_eq!(result.order.len(), result.problem.fragment_domain.len());
     assert_eq!(result.telemetry.completed_tiers[0], 128);
+    assert_eq!(
+        result.telemetry.exact_solver_calls,
+        result.telemetry.evaluations
+    );
     assert!(!result.telemetry.solver_kinds.is_empty());
 }
