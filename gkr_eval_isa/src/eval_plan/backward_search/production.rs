@@ -86,6 +86,17 @@ impl EvaluationPermitGate {
     fn acquire(&self) -> EvaluationPermit<'_> {
         let mut available = self.available.lock().expect("lock production permits");
         while *available == 0 {
+            #[cfg(test)]
+            {
+                drop(available);
+                observe_production_evaluation_test_stage(
+                    ProductionEvaluationTestStage::PermitContended,
+                );
+                available = self.available.lock().expect("relock production permits");
+                if *available != 0 {
+                    continue;
+                }
+            }
             available = self
                 .wake
                 .wait(available)
@@ -98,6 +109,8 @@ impl EvaluationPermitGate {
 
 impl Drop for EvaluationPermit<'_> {
     fn drop(&mut self) {
+        #[cfg(test)]
+        observe_production_evaluation_test_stage(ProductionEvaluationTestStage::PermitReleasing);
         let mut available = self.0.available.lock().expect("release production permit");
         *available += 1;
         self.0.wake.notify_one();
@@ -110,6 +123,129 @@ fn production_evaluation_gate() -> &'static EvaluationPermitGate {
         available: Mutex::new(MAX_CONCURRENT_PRODUCTION_EVALUATIONS),
         wake: Condvar::new(),
     })
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProductionEvaluationTestStage {
+    WaitingForPermit,
+    PermitContended,
+    PermitAcquired,
+    PagingCompleted,
+    CertificationCompleted,
+    PermitReleasing,
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+struct ProductionEvaluationTestHookRegistration {
+    scope: u64,
+    callback: std::sync::Arc<dyn Fn(ProductionEvaluationTestStage) + Send + Sync>,
+}
+
+#[cfg(test)]
+struct ProductionEvaluationTestHook {
+    scope: u64,
+    _owner: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl ProductionEvaluationTestHook {
+    fn install(callback: impl Fn(ProductionEvaluationTestStage) + Send + Sync + 'static) -> Self {
+        static NEXT_SCOPE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let owner = production_evaluation_test_hook_owner()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let scope = NEXT_SCOPE.fetch_add(1, Ordering::Relaxed);
+        let mut active = production_evaluation_test_hook()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(
+            active.is_none(),
+            "production evaluation test hook is unique"
+        );
+        *active = Some(ProductionEvaluationTestHookRegistration {
+            scope,
+            callback: std::sync::Arc::new(callback),
+        });
+        drop(active);
+        Self {
+            scope,
+            _owner: owner,
+        }
+    }
+
+    fn scope(&self) -> u64 {
+        self.scope
+    }
+}
+
+#[cfg(test)]
+impl Drop for ProductionEvaluationTestHook {
+    fn drop(&mut self) {
+        let mut active = production_evaluation_test_hook()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(
+            active.as_ref().map(|hook| hook.scope),
+            Some(self.scope),
+            "drop the active production evaluation test hook"
+        );
+        *active = None;
+    }
+}
+
+#[cfg(test)]
+fn production_evaluation_test_hook_owner() -> &'static Mutex<()> {
+    static OWNER: OnceLock<Mutex<()>> = OnceLock::new();
+    OWNER.get_or_init(|| Mutex::new(()))
+}
+
+#[cfg(test)]
+type ProductionEvaluationTestHookSlot = Mutex<Option<ProductionEvaluationTestHookRegistration>>;
+
+#[cfg(test)]
+fn production_evaluation_test_hook() -> &'static ProductionEvaluationTestHookSlot {
+    static HOOK: OnceLock<ProductionEvaluationTestHookSlot> = OnceLock::new();
+    HOOK.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(test)]
+std::thread_local! {
+    static PRODUCTION_EVALUATION_TEST_SCOPE: std::cell::Cell<Option<u64>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+#[cfg(test)]
+fn with_production_evaluation_test_scope<T>(scope: u64, run: impl FnOnce() -> T) -> T {
+    struct ResetScope(Option<u64>);
+
+    impl Drop for ResetScope {
+        fn drop(&mut self) {
+            PRODUCTION_EVALUATION_TEST_SCOPE.with(|active| active.set(self.0));
+        }
+    }
+
+    let previous = PRODUCTION_EVALUATION_TEST_SCOPE.with(|active| active.replace(Some(scope)));
+    let _reset = ResetScope(previous);
+    run()
+}
+
+#[cfg(test)]
+fn observe_production_evaluation_test_stage(stage: ProductionEvaluationTestStage) {
+    let Some(scope) = PRODUCTION_EVALUATION_TEST_SCOPE.with(std::cell::Cell::get) else {
+        return;
+    };
+    let callback = production_evaluation_test_hook()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .filter(|hook| hook.scope == scope)
+        .map(|hook| std::sync::Arc::clone(&hook.callback));
+    if let Some(callback) = callback {
+        callback(stage);
+    }
 }
 
 struct ProductionOrderAdapter<'a> {
@@ -357,7 +493,13 @@ impl ProductionOrderAdapter<'_> {
     ) -> Result<(BackwardScore, ProductionEvaluation), BackwardSearchError> {
         let problem = problem?;
         let (paging, candidate) = {
+            #[cfg(test)]
+            observe_production_evaluation_test_stage(
+                ProductionEvaluationTestStage::WaitingForPermit,
+            );
             let _permit = production_evaluation_gate().acquire();
+            #[cfg(test)]
+            observe_production_evaluation_test_stage(ProductionEvaluationTestStage::PermitAcquired);
             let paging = solve_production_paging_observed(&problem.demands, |paging_progress| {
                 if let Some(progress) = self.telemetry.observe_progress(
                     paging_progress,
@@ -367,8 +509,16 @@ impl ProductionOrderAdapter<'_> {
                     (self.progress)(progress);
                 }
             })?;
+            #[cfg(test)]
+            observe_production_evaluation_test_stage(
+                ProductionEvaluationTestStage::PagingCompleted,
+            );
             let candidate =
                 compile_and_certify_paging(self.distilled, &problem, &paging.plan, ordinal)?;
+            #[cfg(test)]
+            observe_production_evaluation_test_stage(
+                ProductionEvaluationTestStage::CertificationCompleted,
+            );
             (paging, candidate)
         };
         self.telemetry
@@ -806,7 +956,9 @@ pub fn compulsory_read_floor(
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, HashMap};
-    use std::sync::{Arc, Barrier, Mutex};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Barrier, Condvar, Mutex};
 
     use cs::gkr_compiler::dag_ir::{
         BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
@@ -857,14 +1009,79 @@ mod tests {
     }
 
     #[test]
-    fn production_evaluation_permits_are_global_and_failure_safe() {
+    fn production_evaluation_permits_bound_actual_exact_work() {
         assert_eq!(
-            run_concurrent_evaluation_probe(16, true),
+            run_concurrent_actual_evaluation_probe(16),
             MAX_CONCURRENT_PRODUCTION_EVALUATIONS
         );
+    }
+
+    #[test]
+    fn production_evaluation_permits_release_after_actual_unwind() {
+        let inject = Arc::new(AtomicBool::new(true));
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let hook = ProductionEvaluationTestHook::install({
+            let inject = Arc::clone(&inject);
+            let observed = Arc::clone(&observed);
+            move |stage| {
+                observed.lock().unwrap().push(stage);
+                if stage == ProductionEvaluationTestStage::PermitAcquired
+                    && inject.swap(false, Ordering::SeqCst)
+                {
+                    panic!("injected permit-held evaluation unwind");
+                }
+            }
+        });
+        let scope = hook.scope();
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            with_production_evaluation_test_scope(scope, || select_fixture_seeds(None))
+        }));
+        assert!(result.is_err());
+        let observed = observed
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|stage| **stage != ProductionEvaluationTestStage::PermitContended)
+            .copied()
+            .collect::<Vec<_>>();
         assert_eq!(
-            run_concurrent_evaluation_probe(16, false),
+            observed,
+            vec![
+                ProductionEvaluationTestStage::WaitingForPermit,
+                ProductionEvaluationTestStage::PermitAcquired,
+                ProductionEvaluationTestStage::PermitReleasing,
+            ]
+        );
+        drop(hook);
+
+        assert_eq!(
+            run_concurrent_actual_evaluation_probe(16),
             MAX_CONCURRENT_PRODUCTION_EVALUATIONS
+        );
+    }
+
+    #[test]
+    fn production_seed_selector_reports_nontrivial_exact_solver_telemetry() {
+        let (canonical, distilled) = shared_source_fixture();
+        let selected = select_production_backward_seeds(
+            &test_identity(BwdRegime::Ext),
+            &canonical,
+            &distilled,
+            8,
+            2,
+            None,
+        )
+        .unwrap();
+        assert_eq!(selected.telemetry.evaluations, 1);
+        assert_eq!(selected.telemetry.exact_solver_calls, 1);
+        assert_eq!(
+            selected.telemetry.solver_kinds,
+            vec![ProductionPagingSolver::ResidentSets]
+        );
+        assert!(selected.telemetry.peak_dp_states > 0);
+        assert_eq!(
+            selected.telemetry.peak_dp_states,
+            selected.candidate.paging.telemetry.peak_live_states
         );
     }
 
@@ -1395,45 +1612,130 @@ mod tests {
         )
     }
 
-    fn run_concurrent_evaluation_probe(work: usize, inject_failures: bool) -> usize {
-        struct ActiveGuard<'a>(&'a AtomicUsize);
-
-        impl Drop for ActiveGuard<'_> {
-            fn drop(&mut self) {
-                self.0.fetch_sub(1, Ordering::SeqCst);
-            }
+    fn run_concurrent_actual_evaluation_probe(work: usize) -> usize {
+        #[derive(Default)]
+        struct ProbeState {
+            waiting: usize,
+            acquired: usize,
+            contended: usize,
+            active: usize,
+            peak: usize,
+            release_first_wave: bool,
+            stages: HashMap<std::thread::ThreadId, Vec<ProductionEvaluationTestStage>>,
         }
 
+        let state = Arc::new((Mutex::new(ProbeState::default()), Condvar::new()));
+        let hook = ProductionEvaluationTestHook::install({
+            let state = Arc::clone(&state);
+            move |stage| {
+                let thread = std::thread::current().id();
+                let (state_lock, wake) = &*state;
+                let mut state = state_lock.lock().unwrap();
+                state.stages.entry(thread).or_default().push(stage);
+                match stage {
+                    ProductionEvaluationTestStage::WaitingForPermit => {
+                        state.waiting += 1;
+                        wake.notify_all();
+                    }
+                    ProductionEvaluationTestStage::PermitAcquired => {
+                        state.acquired += 1;
+                        state.active += 1;
+                        state.peak = state.peak.max(state.active);
+                        wake.notify_all();
+                        if state.acquired <= MAX_CONCURRENT_PRODUCTION_EVALUATIONS {
+                            while !state.release_first_wave {
+                                state = wake.wait(state).unwrap();
+                            }
+                        }
+                    }
+                    ProductionEvaluationTestStage::PermitContended => {
+                        state.contended += 1;
+                        wake.notify_all();
+                    }
+                    ProductionEvaluationTestStage::PermitReleasing => {
+                        state.active -= 1;
+                    }
+                    ProductionEvaluationTestStage::PagingCompleted
+                    | ProductionEvaluationTestStage::CertificationCompleted => {}
+                }
+            }
+        });
+        let scope = hook.scope();
         let start = Arc::new(Barrier::new(work + 1));
-        let active = Arc::new(AtomicUsize::new(0));
-        let peak = Arc::new(AtomicUsize::new(0));
         let threads = (0..work)
-            .map(|index| {
+            .map(|_| {
                 let start = Arc::clone(&start);
-                let active = Arc::clone(&active);
-                let peak = Arc::clone(&peak);
                 std::thread::spawn(move || {
                     start.wait();
-                    let _result = (|| -> Result<(), ()> {
-                        let _permit = production_evaluation_gate().acquire();
-                        let current = active.fetch_add(1, Ordering::SeqCst) + 1;
-                        let _active = ActiveGuard(&active);
-                        peak.fetch_max(current, Ordering::SeqCst);
-                        std::thread::sleep(Duration::from_millis(10));
-                        if inject_failures && index % 2 == 0 {
-                            return Err(());
-                        }
-                        Ok(())
-                    })();
+                    with_production_evaluation_test_scope(scope, || select_fixture_seeds(None))
+                        .unwrap();
                 })
             })
             .collect::<Vec<_>>();
         start.wait();
+
+        let (state_lock, wake) = &*state;
+        let state_guard = state_lock.lock().unwrap();
+        let (state_guard, timeout) = wake
+            .wait_timeout_while(state_guard, Duration::from_secs(5), |state| {
+                state.waiting < work
+                    || state.acquired < MAX_CONCURRENT_PRODUCTION_EVALUATIONS
+                    || state.contended == 0
+            })
+            .unwrap();
+        let timed_out = timeout.timed_out();
+        let waiting_before_release = state_guard.waiting;
+        let acquired_when_ready = state_guard.acquired;
+        let active_when_ready = state_guard.active;
+        let contended_before_release = state_guard.contended;
+        let acquired_before_release = state_guard.acquired;
+        let mut state_guard = state_guard;
+        state_guard.release_first_wave = true;
+        wake.notify_all();
+        drop(state_guard);
+
         for thread in threads {
             thread.join().unwrap();
         }
-        assert_eq!(active.load(Ordering::SeqCst), 0);
-        peak.load(Ordering::SeqCst)
+        assert!(!timed_out, "four actual evaluations must acquire permits");
+        assert_eq!(waiting_before_release, work);
+        assert_eq!(acquired_when_ready, MAX_CONCURRENT_PRODUCTION_EVALUATIONS);
+        assert_eq!(active_when_ready, MAX_CONCURRENT_PRODUCTION_EVALUATIONS);
+        assert!(
+            contended_before_release > 0,
+            "at least one additional real evaluation must contend for a permit"
+        );
+        assert_eq!(
+            acquired_before_release, MAX_CONCURRENT_PRODUCTION_EVALUATIONS,
+            "no fifth actual evaluation may enter while four permits are held"
+        );
+        let state = state_lock.lock().unwrap();
+        assert_eq!(state.acquired, work);
+        assert_eq!(state.active, 0);
+        assert_eq!(state.stages.len(), work);
+        for stages in state.stages.values() {
+            let permit_held_stages = stages
+                .iter()
+                .filter(|stage| {
+                    !matches!(
+                        stage,
+                        ProductionEvaluationTestStage::WaitingForPermit
+                            | ProductionEvaluationTestStage::PermitContended
+                    )
+                })
+                .copied()
+                .collect::<Vec<_>>();
+            assert_eq!(
+                permit_held_stages,
+                vec![
+                    ProductionEvaluationTestStage::PermitAcquired,
+                    ProductionEvaluationTestStage::PagingCompleted,
+                    ProductionEvaluationTestStage::CertificationCompleted,
+                    ProductionEvaluationTestStage::PermitReleasing,
+                ]
+            );
+        }
+        state.peak
     }
 
     fn shared_source_fixture() -> (DagLayer, DistilledLayer) {
