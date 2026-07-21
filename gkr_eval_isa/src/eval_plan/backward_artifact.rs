@@ -1,16 +1,24 @@
 use std::path::Path;
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind};
+use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::bwd::distill::{StableBwdConsumer, StableBwdExprKey, StableBwdSiteKey};
+use crate::bwd::distill::{DistilledLayer, StableBwdConsumer, StableBwdExprKey, StableBwdSiteKey};
 use crate::bwd::fragment::FactorKey;
-use crate::bwd::source::FoldState;
+use crate::bwd::source::{BwdSpecial, FoldState, OriginLeaf};
+use crate::eval_plan::backward::CompiledBackwardEvaluation;
+use crate::fwd::source::virtual_setup_kind_code;
 
 use super::artifact::{DomainCertificate, EvaluationArtifactError, certificate_from_serializable};
-use super::backward_search::problem::BackwardSearchProblem;
+use super::backward_search::pager::PagingAction;
+use super::backward_search::problem::{
+    BackwardSearchProblem, build_backward_search_problem, decode_order_indices,
+    rebuild_problem_for_stable_order,
+};
+use super::backward_search::production::ProductionBackwardPlan;
 use super::backward_search::{
-    BackwardScore, BackwardSearchError, PagingCertificate, SourceCost, SourceOriginKind,
+    BackwardScore, BackwardSearchError, CertifiedBackwardCandidate, PagingCertificate, SourceCost,
+    SourceOriginKind, compile_and_certify_paging, reconstruct_paging_plan,
 };
 
 const MIN_BUDGET_CELLS: usize = 2;
@@ -238,43 +246,57 @@ pub enum BackwardArtifactError {
         regime: BwdRegime,
     },
     BudgetOutOfRange {
+        circuit: String,
+        layer: usize,
+        regime: BwdRegime,
         budget_cells: usize,
     },
     ProblemCertificateMismatch {
+        circuit: String,
         layer: usize,
         regime: BwdRegime,
         budget_cells: usize,
     },
     InvalidFragmentPermutation {
+        circuit: String,
         layer: usize,
         regime: BwdRegime,
         budget_cells: usize,
     },
     InvalidRetainedDemand {
+        circuit: String,
         layer: usize,
         regime: BwdRegime,
         budget_cells: usize,
         position: usize,
     },
     ScoreCertificateMismatch {
+        circuit: String,
         layer: usize,
         regime: BwdRegime,
         budget_cells: usize,
     },
     PagingCertificateMismatch {
+        circuit: String,
         layer: usize,
         regime: BwdRegime,
         budget_cells: usize,
     },
     InstructionDigestMismatch {
+        circuit: String,
         layer: usize,
         regime: BwdRegime,
         budget_cells: usize,
     },
     EncodedDigestMismatch {
+        circuit: String,
         layer: usize,
         regime: BwdRegime,
         budget_cells: usize,
+    },
+    ReplaySearch {
+        coordinate: BackwardArtifactCoordinate,
+        source: BackwardSearchError,
     },
     IncompleteGeneration {
         failures: Vec<BackwardArtifactCoordinate>,
@@ -316,14 +338,15 @@ impl BackwardEvaluationCircuitArtifact {
             }
         }
         for layer in &self.layers {
-            validate_regime(layer.layer, BwdRegime::R0, &layer.r0)?;
-            validate_regime(layer.layer, BwdRegime::Ext, &layer.ext)?;
+            validate_regime(&self.circuit, layer.layer, BwdRegime::R0, &layer.r0)?;
+            validate_regime(&self.circuit, layer.layer, BwdRegime::Ext, &layer.ext)?;
         }
         Ok(())
     }
 }
 
 fn validate_regime(
+    circuit: &str,
     layer: usize,
     regime: BwdRegime,
     artifact: &BackwardRegimeArtifact,
@@ -331,6 +354,9 @@ fn validate_regime(
     for plan in &artifact.plans {
         if !(MIN_BUDGET_CELLS..=MAX_BUDGET_CELLS).contains(&plan.budget_cells) {
             return Err(BackwardArtifactError::BudgetOutOfRange {
+                circuit: circuit.to_owned(),
+                layer,
+                regime,
                 budget_cells: plan.budget_cells,
             });
         }
@@ -349,6 +375,7 @@ fn validate_regime(
             .find(|pair| pair[0] >= pair[1])
         {
             return Err(BackwardArtifactError::InvalidRetainedDemand {
+                circuit: circuit.to_owned(),
                 layer,
                 regime,
                 budget_cells: plan.budget_cells,
@@ -371,6 +398,353 @@ pub fn load_backward_evaluation_artifact(
         })?;
     artifact.validate_self_consistency()?;
     Ok(artifact)
+}
+
+pub fn select_backward_plan(
+    artifact: &BackwardEvaluationCircuitArtifact,
+    layer: usize,
+    regime: BwdRegime,
+    budget_cells: usize,
+) -> Result<&BackwardPlanArtifact, BackwardArtifactError> {
+    if !(MIN_BUDGET_CELLS..=MAX_BUDGET_CELLS).contains(&budget_cells) {
+        return Err(BackwardArtifactError::BudgetOutOfRange {
+            circuit: artifact.circuit.clone(),
+            layer,
+            regime,
+            budget_cells,
+        });
+    }
+    let layer_artifact = artifact
+        .layers
+        .binary_search_by_key(&layer, |entry| entry.layer)
+        .ok()
+        .map(|index| &artifact.layers[index])
+        .ok_or(BackwardArtifactError::MissingLayer { layer })?;
+    let regime_artifact = match regime {
+        BwdRegime::R0 => &layer_artifact.r0,
+        BwdRegime::Ext => &layer_artifact.ext,
+    };
+    let plan = regime_artifact
+        .plans
+        .get(budget_cells - MIN_BUDGET_CELLS)
+        .ok_or(BackwardArtifactError::InvalidBudgetCoverage { layer, regime })?;
+    if plan.budget_cells != budget_cells {
+        return Err(BackwardArtifactError::InvalidBudgetCoverage { layer, regime });
+    }
+    Ok(plan)
+}
+
+pub fn capture_backward_plan_artifact(
+    plan: &ProductionBackwardPlan,
+) -> Result<BackwardPlanArtifact, BackwardArtifactError> {
+    let fragment_order = plan
+        .problem
+        .selected_order
+        .iter()
+        .map(|fragment| {
+            plan.problem
+                .fragment_domain
+                .iter()
+                .position(|candidate| candidate == fragment)
+                .ok_or(BackwardSearchError::InvalidFragmentPermutation)
+                .and_then(|index| {
+                    u32::try_from(index).map_err(|_| BackwardSearchError::CostOverflow)
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let order = fragment_order
+        .iter()
+        .copied()
+        .map(|index| index as usize)
+        .collect::<Vec<_>>();
+    decode_order_indices(&plan.problem, &order)?;
+    let retained_demands = plan
+        .candidate
+        .paging
+        .actions
+        .iter()
+        .enumerate()
+        .filter_map(|(position, action)| {
+            (*action == PagingAction::Retain)
+                .then(|| u32::try_from(position).map_err(|_| BackwardSearchError::CostOverflow))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let (instruction_digest, encoded_digest) = backward_output_digests(&plan.candidate.compiled)?;
+    Ok(BackwardPlanArtifact {
+        budget_cells: plan.problem.budget_cells,
+        problem: backward_problem_certificate(&plan.problem)?,
+        fragment_order,
+        retained_demands,
+        expected_score: BackwardScoreArtifact::from_score(&plan.candidate.score),
+        expected_paging: BackwardPagingCertificateArtifact::from_certificate(
+            &plan.candidate.certificate,
+        ),
+        instruction_digest,
+        encoded_digest,
+    })
+}
+
+pub fn compile_backward_plan_artifact(
+    circuit: &str,
+    layer_index: usize,
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    trace_len: usize,
+    artifact: &BackwardPlanArtifact,
+) -> Result<CertifiedBackwardCandidate, BackwardArtifactError> {
+    let regime = distilled.regime;
+    let budget_cells = artifact.budget_cells;
+    if !(MIN_BUDGET_CELLS..=MAX_BUDGET_CELLS).contains(&budget_cells) {
+        return Err(BackwardArtifactError::BudgetOutOfRange {
+            circuit: circuit.to_owned(),
+            layer: layer_index,
+            regime,
+            budget_cells,
+        });
+    }
+    let coordinate = || BackwardArtifactCoordinate {
+        circuit: circuit.to_owned(),
+        layer: layer_index,
+        regime,
+        budget_cells,
+    };
+    let (_, constructive) =
+        build_backward_search_problem(canonical, distilled, trace_len, budget_cells).map_err(
+            |source| BackwardArtifactError::ReplaySearch {
+                coordinate: coordinate(),
+                source,
+            },
+        )?;
+    let Some(constructive) = constructive else {
+        return Err(BackwardArtifactError::ReplaySearch {
+            coordinate: coordinate(),
+            source: BackwardSearchError::SearchDriverFailure {
+                reason: "artifact problem is infeasible",
+            },
+        });
+    };
+    let order = artifact
+        .fragment_order
+        .iter()
+        .copied()
+        .map(|index| index as usize)
+        .collect::<Vec<_>>();
+    let stable_order = decode_order_indices(&constructive, &order).map_err(|_| {
+        BackwardArtifactError::InvalidFragmentPermutation {
+            circuit: circuit.to_owned(),
+            layer: layer_index,
+            regime,
+            budget_cells,
+        }
+    })?;
+    let problem = rebuild_problem_for_stable_order(
+        canonical,
+        distilled,
+        &constructive,
+        trace_len,
+        &stable_order,
+    )
+    .map_err(|error| match error {
+        BackwardSearchError::InvalidFragmentPermutation => {
+            BackwardArtifactError::InvalidFragmentPermutation {
+                circuit: circuit.to_owned(),
+                layer: layer_index,
+                regime,
+                budget_cells,
+            }
+        }
+        source => BackwardArtifactError::ReplaySearch {
+            coordinate: coordinate(),
+            source,
+        },
+    })?;
+    if backward_problem_certificate(&problem)? != artifact.problem {
+        return Err(BackwardArtifactError::ProblemCertificateMismatch {
+            circuit: circuit.to_owned(),
+            layer: layer_index,
+            regime,
+            budget_cells,
+        });
+    }
+
+    let mut actions = vec![PagingAction::Bypass; problem.demands.len()];
+    let mut previous = None;
+    for &encoded_position in &artifact.retained_demands {
+        let position = encoded_position as usize;
+        if previous.is_some_and(|previous| previous >= position) || position >= actions.len() {
+            return Err(BackwardArtifactError::InvalidRetainedDemand {
+                circuit: circuit.to_owned(),
+                layer: layer_index,
+                regime,
+                budget_cells,
+                position,
+            });
+        }
+        actions[position] = PagingAction::Retain;
+        previous = Some(position);
+    }
+    let paging =
+        reconstruct_paging_plan(&problem.demands, &actions).map_err(|error| match error {
+            BackwardSearchError::IllegalPagingRetain { demand_position }
+            | BackwardSearchError::PagingLiveSetOverCapacity { demand_position } => {
+                BackwardArtifactError::InvalidRetainedDemand {
+                    circuit: circuit.to_owned(),
+                    layer: layer_index,
+                    regime,
+                    budget_cells,
+                    position: demand_position,
+                }
+            }
+            source => BackwardArtifactError::ReplaySearch {
+                coordinate: coordinate(),
+                source,
+            },
+        })?;
+    let candidate =
+        compile_and_certify_paging(distilled, &problem, &paging, 0).map_err(|source| {
+            BackwardArtifactError::ReplaySearch {
+                coordinate: coordinate(),
+                source,
+            }
+        })?;
+    if !artifact.expected_score.matches_score(&candidate.score) {
+        return Err(BackwardArtifactError::ScoreCertificateMismatch {
+            circuit: circuit.to_owned(),
+            layer: layer_index,
+            regime,
+            budget_cells,
+        });
+    }
+    if !artifact
+        .expected_paging
+        .matches_certificate(&candidate.certificate)
+    {
+        return Err(BackwardArtifactError::PagingCertificateMismatch {
+            circuit: circuit.to_owned(),
+            layer: layer_index,
+            regime,
+            budget_cells,
+        });
+    }
+    let (instruction_digest, encoded_digest) = backward_output_digests(&candidate.compiled)?;
+    if instruction_digest != artifact.instruction_digest {
+        return Err(BackwardArtifactError::InstructionDigestMismatch {
+            circuit: circuit.to_owned(),
+            layer: layer_index,
+            regime,
+            budget_cells,
+        });
+    }
+    if encoded_digest != artifact.encoded_digest {
+        return Err(BackwardArtifactError::EncodedDigestMismatch {
+            circuit: circuit.to_owned(),
+            layer: layer_index,
+            regime,
+            budget_cells,
+        });
+    }
+    Ok(candidate)
+}
+
+fn backward_output_digests(
+    compiled: &CompiledBackwardEvaluation,
+) -> Result<([u64; 4], [u64; 4]), BackwardArtifactError> {
+    let encoded_bytes = encoded_lane_bytes(&compiled.encoded);
+    let mut instruction_bytes = encoded_bytes.clone();
+    push_u64(
+        &mut instruction_bytes,
+        compiled.compiled.specials.len() as u64,
+    );
+    for index in 0..compiled.compiled.specials.len() {
+        let special = compiled
+            .compiled
+            .specials
+            .get(index as u16)
+            .expect("descriptor index below table length must resolve");
+        serialize_bwd_special(&mut instruction_bytes, special);
+    }
+    Ok((
+        four_lane_digest(&instruction_bytes)?,
+        four_lane_digest(&encoded_bytes)?,
+    ))
+}
+
+fn encoded_lane_bytes(lanes: &[u16]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(lanes.len() * 2);
+    for lane in lanes {
+        bytes.extend_from_slice(&lane.to_le_bytes());
+    }
+    bytes
+}
+
+fn four_lane_digest(bytes: &[u8]) -> Result<[u64; 4], BackwardArtifactError> {
+    Ok(certificate_from_serializable(bytes.len(), bytes)?.digest)
+}
+
+fn push_u32(bytes: &mut Vec<u8>, value: u32) {
+    bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_u64(bytes: &mut Vec<u8>, value: u64) {
+    bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn serialize_read_place(bytes: &mut Vec<u8>, place: &ReadPlace) {
+    match place {
+        ReadPlace::BaseLayerMemory { column } => {
+            bytes.push(0);
+            push_u64(bytes, *column as u64);
+        }
+        ReadPlace::BaseLayerWitness { column } => {
+            bytes.push(1);
+            push_u64(bytes, *column as u64);
+        }
+        ReadPlace::Setup { column } => {
+            bytes.push(2);
+            push_u64(bytes, *column as u64);
+        }
+        ReadPlace::Scratch { slot } => {
+            bytes.push(3);
+            push_u64(bytes, *slot as u64);
+        }
+        ReadPlace::LayerOutput { layer, offset } => {
+            bytes.push(4);
+            push_u64(bytes, *layer as u64);
+            push_u64(bytes, *offset as u64);
+        }
+        ReadPlace::CacheOutput { layer, offset } => {
+            bytes.push(5);
+            push_u64(bytes, *layer as u64);
+            push_u64(bytes, *offset as u64);
+        }
+    }
+}
+
+fn serialize_bwd_special(bytes: &mut Vec<u8>, special: &BwdSpecial) {
+    match special {
+        BwdSpecial::FoldSource { origin } => {
+            bytes.push(0);
+            match origin {
+                OriginLeaf::Read(place) => {
+                    bytes.push(0);
+                    serialize_read_place(bytes, place);
+                }
+                OriginLeaf::VirtualSetup { kind } => {
+                    bytes.push(1);
+                    push_u32(bytes, virtual_setup_kind_code(kind));
+                }
+            }
+        }
+        BwdSpecial::VirtualSetup { kind } => {
+            bytes.push(1);
+            push_u32(bytes, virtual_setup_kind_code(kind));
+        }
+        BwdSpecial::Coefficient { fragment } => {
+            bytes.push(2);
+            push_u32(bytes, *fragment);
+        }
+        BwdSpecial::AccInit => bytes.push(3),
+    }
 }
 
 #[derive(Serialize)]

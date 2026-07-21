@@ -1,5 +1,7 @@
 mod common;
 
+use std::sync::OnceLock;
+
 use cs::gkr_compiler::dag_ir::BwdRegime;
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
@@ -8,9 +10,10 @@ use gkr_eval_isa::eval_plan::backward_search::{
     solve_production_paging,
 };
 use gkr_eval_isa::eval_plan::{
-    BackwardEvaluationCircuitArtifact, BackwardLayerArtifact, BackwardPlanArtifact,
-    BackwardRegimeArtifact, BackwardScoreArtifact, CanonicalU128, DomainCertificate,
-    SourceCostArtifact, load_backward_evaluation_artifact,
+    BackwardArtifactError, BackwardEvaluationCircuitArtifact, BackwardLayerArtifact,
+    BackwardPlanArtifact, BackwardRegimeArtifact, BackwardScoreArtifact, CanonicalU128,
+    DomainCertificate, SourceCostArtifact, capture_backward_plan_artifact,
+    compile_backward_plan_artifact, load_backward_evaluation_artifact, select_backward_plan,
 };
 
 const R0_FEASIBILITY_FIXTURES: &[&str] = &[
@@ -66,6 +69,201 @@ fn sample_artifact(layers: Vec<BackwardLayerArtifact>) -> BackwardEvaluationCirc
         layout_fixture: "fixture_layout".to_owned(),
         layers,
     }
+}
+
+fn captured_real_plan() -> &'static (BackwardPlanArtifact, Vec<u16>) {
+    static CAPTURED: OnceLock<(BackwardPlanArtifact, Vec<u16>)> = OnceLock::new();
+    CAPTURED.get_or_init(|| {
+        let fixture = common::FIXTURES[0];
+        let source = common::load_fixture(fixture);
+        let dag = cs::gkr_compiler::dag_ir::lower_dag(&source).unwrap();
+        let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
+            .next()
+            .expect("fixture has a backward-bearing layer");
+        let distilled = distill(&layer, BwdRegime::Ext, &cross, None);
+        let searched = search_production_backward(
+            &ProductionSearchIdentity {
+                circuit: "add_sub_lui_auipc_mop".to_owned(),
+                layout_fixture: fixture.to_owned(),
+                layer: layer_index,
+                regime: BwdRegime::Ext,
+            },
+            &layer,
+            &distilled,
+            dag.globals.trace_len,
+            4,
+            None,
+        )
+        .unwrap();
+        let artifact = capture_backward_plan_artifact(&searched).unwrap();
+        (artifact, searched.candidate.compiled.encoded.clone())
+    })
+}
+
+fn replay_real_plan(
+    artifact: &BackwardPlanArtifact,
+) -> Result<
+    gkr_eval_isa::eval_plan::backward_search::CertifiedBackwardCandidate,
+    BackwardArtifactError,
+> {
+    let fixture = common::FIXTURES[0];
+    let source = common::load_fixture(fixture);
+    let dag = cs::gkr_compiler::dag_ir::lower_dag(&source).unwrap();
+    let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
+        .next()
+        .expect("fixture has a backward-bearing layer");
+    let distilled = distill(&layer, BwdRegime::Ext, &cross, None);
+    compile_backward_plan_artifact(
+        "add_sub_lui_auipc_mop",
+        layer_index,
+        &layer,
+        &distilled,
+        dag.globals.trace_len,
+        artifact,
+    )
+}
+
+#[test]
+fn captured_plan_replays_without_search_or_pager() {
+    let (artifact, searched_encoded) = captured_real_plan();
+    let replayed = replay_real_plan(artifact).unwrap();
+    assert_eq!(
+        BackwardScoreArtifact::from_score(&replayed.score),
+        artifact.expected_score
+    );
+    assert_eq!(&replayed.compiled.encoded, searched_encoded);
+}
+
+#[test]
+fn artifact_replay_rejects_stale_problem_score_paging_and_output_certificates() {
+    let (captured, _) = captured_real_plan();
+
+    let mut artifact = captured.clone();
+    artifact.problem.digest[0] ^= 1;
+    assert!(matches!(
+        replay_real_plan(&artifact),
+        Err(BackwardArtifactError::ProblemCertificateMismatch {
+            circuit,
+            layer: 0,
+            regime: BwdRegime::Ext,
+            budget_cells: 4,
+        }) if circuit == "add_sub_lui_auipc_mop"
+    ));
+
+    let mut artifact = captured.clone();
+    artifact.expected_score.instructions += 1;
+    assert!(matches!(
+        replay_real_plan(&artifact),
+        Err(BackwardArtifactError::ScoreCertificateMismatch {
+            circuit,
+            layer: 0,
+            regime: BwdRegime::Ext,
+            budget_cells: 4,
+        }) if circuit == "add_sub_lui_auipc_mop"
+    ));
+
+    let mut artifact = captured.clone();
+    artifact.expected_paging.actions_consumed += 1;
+    assert!(matches!(
+        replay_real_plan(&artifact),
+        Err(BackwardArtifactError::PagingCertificateMismatch {
+            circuit,
+            layer: 0,
+            regime: BwdRegime::Ext,
+            budget_cells: 4,
+        }) if circuit == "add_sub_lui_auipc_mop"
+    ));
+
+    let mut artifact = captured.clone();
+    artifact.instruction_digest[0] ^= 1;
+    assert!(matches!(
+        replay_real_plan(&artifact),
+        Err(BackwardArtifactError::InstructionDigestMismatch {
+            circuit,
+            layer: 0,
+            regime: BwdRegime::Ext,
+            budget_cells: 4,
+        }) if circuit == "add_sub_lui_auipc_mop"
+    ));
+
+    let mut artifact = captured.clone();
+    artifact.encoded_digest[0] ^= 1;
+    assert!(matches!(
+        replay_real_plan(&artifact),
+        Err(BackwardArtifactError::EncodedDigestMismatch {
+            circuit,
+            layer: 0,
+            regime: BwdRegime::Ext,
+            budget_cells: 4,
+        }) if circuit == "add_sub_lui_auipc_mop"
+    ));
+}
+
+#[test]
+fn artifact_replay_rejects_malformed_fragment_order_and_retained_positions() {
+    let (captured, _) = captured_real_plan();
+
+    let mut artifact = captured.clone();
+    artifact.fragment_order[1] = artifact.fragment_order[0];
+    assert!(matches!(
+        replay_real_plan(&artifact),
+        Err(BackwardArtifactError::InvalidFragmentPermutation {
+            circuit,
+            layer: 0,
+            regime: BwdRegime::Ext,
+            budget_cells: 4,
+        }) if circuit == "add_sub_lui_auipc_mop"
+    ));
+
+    let mut artifact = captured.clone();
+    artifact.fragment_order.pop();
+    assert!(matches!(
+        replay_real_plan(&artifact),
+        Err(BackwardArtifactError::InvalidFragmentPermutation {
+            circuit,
+            layer: 0,
+            regime: BwdRegime::Ext,
+            budget_cells: 4,
+        }) if circuit == "add_sub_lui_auipc_mop"
+    ));
+
+    let mut artifact = captured.clone();
+    artifact.retained_demands.push(u32::MAX);
+    assert!(matches!(
+        replay_real_plan(&artifact),
+        Err(BackwardArtifactError::InvalidRetainedDemand {
+            circuit,
+            layer: 0,
+            regime: BwdRegime::Ext,
+            budget_cells: 4,
+            position,
+        }) if circuit == "add_sub_lui_auipc_mop" && position == u32::MAX as usize
+    ));
+}
+
+#[test]
+fn backward_artifact_selection_is_exact_and_rejects_c17() {
+    let regime = sample_regime();
+    let artifact = sample_artifact(vec![BackwardLayerArtifact {
+        layer: 5,
+        r0: regime.clone(),
+        ext: regime,
+    }]);
+    assert_eq!(
+        select_backward_plan(&artifact, 5, BwdRegime::Ext, 4)
+            .unwrap()
+            .budget_cells,
+        4
+    );
+    assert!(matches!(
+        select_backward_plan(&artifact, 5, BwdRegime::Ext, 17),
+        Err(BackwardArtifactError::BudgetOutOfRange {
+            circuit,
+            layer: 5,
+            regime: BwdRegime::Ext,
+            budget_cells: 17,
+        }) if circuit == "fixture"
+    ));
 }
 
 #[test]
@@ -164,12 +362,13 @@ fn backward_artifact_requires_strictly_increasing_retained_demand_indices() {
         artifact.validate_self_consistency(),
         Err(
             gkr_eval_isa::eval_plan::BackwardArtifactError::InvalidRetainedDemand {
+                circuit,
                 layer: 0,
                 regime: BwdRegime::R0,
                 budget_cells: 2,
                 position: 3,
             }
-        )
+        ) if circuit == "fixture"
     ));
 }
 
@@ -185,8 +384,11 @@ fn backward_artifact_reports_out_of_range_r0_budget() {
     assert!(matches!(
         artifact.validate_self_consistency(),
         Err(gkr_eval_isa::eval_plan::BackwardArtifactError::BudgetOutOfRange {
+            circuit,
+            layer: 7,
+            regime: BwdRegime::R0,
             budget_cells: 1,
-        })
+        }) if circuit == "fixture"
     ));
 }
 
@@ -203,8 +405,11 @@ fn backward_artifact_reports_out_of_range_ext_budget() {
     assert!(matches!(
         artifact.validate_self_consistency(),
         Err(gkr_eval_isa::eval_plan::BackwardArtifactError::BudgetOutOfRange {
+            circuit,
+            layer: 9,
+            regime: BwdRegime::Ext,
             budget_cells: 17,
-        })
+        }) if circuit == "fixture"
     ));
 }
 

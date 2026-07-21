@@ -47,7 +47,8 @@ pub use backward_artifact::{
     BackwardArtifactCoordinate, BackwardArtifactError, BackwardEvaluationCircuitArtifact,
     BackwardLayerArtifact, BackwardPagingCertificateArtifact, BackwardPlanArtifact,
     BackwardProblemCertificate, BackwardRegimeArtifact, BackwardScoreArtifact, CanonicalU128,
-    SourceCostArtifact, backward_problem_certificate, load_backward_evaluation_artifact,
+    SourceCostArtifact, backward_problem_certificate, capture_backward_plan_artifact,
+    compile_backward_plan_artifact, load_backward_evaluation_artifact, select_backward_plan,
 };
 pub use concrete::{
     ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, ConcreteTerminal,

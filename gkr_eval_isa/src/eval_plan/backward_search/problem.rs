@@ -202,6 +202,38 @@ pub(crate) fn decode_order_indices(
     Ok(decoded)
 }
 
+pub(crate) fn rebuild_problem_for_stable_order(
+    canonical: &DagLayer,
+    d: &DistilledLayer,
+    base: &BackwardSearchProblem,
+    trace_len: usize,
+    stable_order: &[StableFragmentKey],
+) -> Result<BackwardSearchProblem, BackwardSearchError> {
+    let distilled_indices = base
+        .selected_order
+        .iter()
+        .cloned()
+        .zip(base.selected_order_indices.iter().copied())
+        .collect::<BTreeMap<_, _>>();
+    let order = stable_order
+        .iter()
+        .map(|fragment| {
+            distilled_indices
+                .get(fragment)
+                .copied()
+                .ok_or(BackwardSearchError::InvalidFragmentPermutation)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    build_problem_for_order(
+        canonical,
+        d,
+        &order,
+        trace_len,
+        base.budget_cells,
+        base.stream_reductions,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_problem_from_compiled(
     d: &DistilledLayer,
