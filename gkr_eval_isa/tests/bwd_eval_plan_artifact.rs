@@ -14,7 +14,8 @@ use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
 use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
 use gkr_eval_isa::eval_plan::backward_search::{
-    compulsory_read_floor, search_production_backward, solve_production_paging,
+    compulsory_read_floor, construct_production_backward_bypass, search_production_backward,
+    solve_production_paging,
     ProductionPagingSolver, ProductionSearchIdentity,
 };
 use gkr_eval_isa::eval_plan::{
@@ -1415,6 +1416,22 @@ fn plan4_small_checkpoint_digest() {
 }
 
 #[test]
+#[ignore = "Plan 4 repair for missing checkpoint chains using certified bypass-only plans"]
+fn plan4_generate_missing_bypass_artifacts() {
+    let config = Plan4RunConfig::from_values(None, None, None, None).unwrap();
+    let matrix = run_plan4_matrix_with_checkpoints_and_producer(
+        build_plan4_chain_inputs(&config.fixtures),
+        config.budgets.clone(),
+        &config.checkpoint_root(),
+        &produce_plan4_bypass_chain,
+    )
+    .unwrap();
+    matrix.publish().unwrap();
+    matrix.write_generation_summary(std::io::stdout()).unwrap();
+    println!("PLAN4-BWD-DIGEST {:016x}", matrix.digest());
+}
+
+#[test]
 #[ignore = "Plan 4 full backward artifact generator"]
 fn plan4_generate_backward_artifacts() {
     let config = Plan4RunConfig::from_env().unwrap();
@@ -2622,6 +2639,27 @@ fn produce_plan4_chain(
         budgets,
         progress,
     )
+}
+
+fn produce_plan4_bypass_chain(
+    input: &Plan4ChainInput,
+    budgets: RangeInclusive<usize>,
+    progress: &(dyn Fn(BackwardRegimeChainProgress) + Sync),
+) -> Result<BackwardRegimeArtifact, BackwardArtifactError> {
+    let plans = budgets
+        .map(|budget_cells| {
+            let selected = construct_production_backward_bypass(
+                &input.canonical,
+                &input.distilled,
+                input.trace_len,
+                budget_cells,
+            )?;
+            let artifact = capture_backward_plan_artifact(&selected)?;
+            progress(BackwardRegimeChainProgress::Completed { budget_cells });
+            Ok(artifact)
+        })
+        .collect::<Result<Vec<_>, BackwardArtifactError>>()?;
+    Ok(BackwardRegimeArtifact { plans })
 }
 
 fn run_plan4_matrix(

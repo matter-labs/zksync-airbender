@@ -27,7 +27,8 @@ pub use pager::{
 pub use production::{
     MAX_CONCURRENT_PRODUCTION_EVALUATIONS, ProductionBackwardPlan, ProductionOrderGenome,
     ProductionSearchIdentity, ProductionSearchTelemetry, compulsory_read_floor,
-    search_production_backward, select_production_backward_seeds,
+    construct_production_backward_bypass, search_production_backward,
+    select_production_backward_seeds,
     select_production_backward_seeds_with_progress,
 };
 pub use replay::{

@@ -12,7 +12,10 @@ use crate::eval_plan::search_driver::{
     run_search_driver,
 };
 
-use super::pager::{ProductionPagingProgress, solve_production_paging_observed};
+use super::pager::{
+    PagingAction, ProductionPagingProgress, reconstruct_paging_plan,
+    solve_production_paging_observed,
+};
 use super::problem::{
     BackwardSearchProblem, StableFragmentKey, build_backward_search_problem,
     build_problem_for_order, decode_order_indices,
@@ -571,6 +574,31 @@ pub fn select_production_backward_seeds(
     )
 }
 
+pub fn construct_production_backward_bypass(
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    trace_len: usize,
+    budget_cells: usize,
+) -> Result<ProductionBackwardPlan, BackwardSearchError> {
+    let (_, problem) =
+        build_backward_search_problem(canonical, distilled, trace_len, budget_cells)?;
+    let Some(problem) = problem else {
+        return Err(BackwardSearchError::SearchDriverFailure {
+            reason: "production backward problem is infeasible",
+        });
+    };
+    let order = encode_stable_order(&problem, &problem.selected_order)?;
+    let actions = vec![PagingAction::Bypass; problem.demands.len()];
+    let paging = reconstruct_paging_plan(&problem.demands, &actions)?;
+    let candidate = compile_and_certify_paging(distilled, &problem, &paging, 0)?;
+    Ok(ProductionBackwardPlan {
+        problem,
+        candidate,
+        order,
+        telemetry: ProductionSearchTelemetry::default(),
+    })
+}
+
 pub fn select_production_backward_seeds_with_progress(
     _identity: &ProductionSearchIdentity,
     canonical: &DagLayer,
@@ -1005,6 +1033,23 @@ mod tests {
         assert_eq!(
             selected.telemetry.improvement_ordinals,
             if winner == 1 { vec![1] } else { Vec::new() }
+        );
+    }
+
+    #[test]
+    fn production_bypass_constructor_certifies_without_search_or_solver_calls() {
+        let (canonical, distilled) = shared_source_fixture();
+        let selected = construct_production_backward_bypass(&canonical, &distilled, 8, 2).unwrap();
+        assert!(selected
+            .candidate
+            .paging
+            .actions
+            .iter()
+            .all(|action| *action == PagingAction::Bypass));
+        assert_eq!(selected.telemetry, ProductionSearchTelemetry::default());
+        assert_eq!(
+            selected.order,
+            stable_indices_for(&selected.problem, &selected.problem.selected_order),
         );
     }
 
