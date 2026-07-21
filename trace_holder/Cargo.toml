@@ -1,5 +1,6 @@
 [package]
-name = "trace_holder"
+name = "zksync-airbender-trace_holder"
+description = "The trace_holder crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -12,3 +13,6 @@ categories.workspace = true
 [dependencies]
 field.workspace = true
 worker.workspace = true
+
+[lib]
+name = "trace_holder"

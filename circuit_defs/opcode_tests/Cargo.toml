@@ -1,5 +1,6 @@
 [package]
 name = "opcode_tests"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -19,3 +20,6 @@ cs = { workspace = true, default-features = true, features = [
 ] }
 setups = { workspace = true }
 regex = "1.11.1"
+
+[lib]
+name = "opcode_tests"

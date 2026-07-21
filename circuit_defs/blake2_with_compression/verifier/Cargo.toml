@@ -1,5 +1,6 @@
 [package]
-name = "blake2_with_compression_verifier"
+name = "zksync-airbender-blake2_with_compression_verifier"
+description = "The blake2_with_compression_verifier crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -36,3 +37,6 @@ syn = { version = "2" }
 quote = { version = "1" }
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
 risc_v_simulator = { workspace = true, features = ["delegation"] }
+
+[lib]
+name = "blake2_with_compression_verifier"

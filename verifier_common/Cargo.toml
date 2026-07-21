@@ -1,5 +1,6 @@
 [package]
-name = "verifier_common"
+name = "zksync-airbender-verifier_common"
+description = "The verifier_common crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -14,11 +15,19 @@ field = { workspace = true }
 blake2s_u32 = { workspace = true, default-features = false }
 transcript = { workspace = true, default-features = false }
 cs = { workspace = true, default-features = false, features = ["definitions_only"] }
-prover = { workspace = true, default-features = false, features = ["definitions_only"] }
 serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
 unroll = { workspace = true }
 non_determinism_source = { workspace = true }
 poseidon2 = { workspace = true, default-features = false }
+
+# `DefaultNonDeterminismSource` on host targets (lib.rs) resolves `prover::nd_source_std`,
+# which is gated behind prover's `prover` feature. Enable it only off-riscv32 so the
+# no_std verifier-program build (riscv32) keeps using the minimal `definitions_only` prover.
+[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
+prover = { workspace = true, default-features = false, features = ["definitions_only", "prover"] }
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+prover = { workspace = true, default-features = false, features = ["definitions_only"] }
 
 [dev-dependencies]
 prover = { workspace = true, features = ["prover"] }
@@ -31,3 +40,6 @@ verifier_program = ["modular_ops"]
 proof_utils = ["prover/prover"]
 # If enabled, allows passing custom values into CSR.
 replace_csr = ["prover/prover"]
+
+[lib]
+name = "verifier_common"

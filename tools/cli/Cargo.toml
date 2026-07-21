@@ -1,5 +1,6 @@
 [package]
 name = "cli"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -25,20 +26,20 @@ setups = { workspace = true }
 serde = { workspace = true }
 serde_json = "1.0"
 prover_examples = {path = "../../circuit_defs/prover_examples"}
-worker = {path = "../../worker"}
+worker = { version = "0.1.0", package = "zksync-airbender-worker", path = "../../worker"}
 clap = { workspace = true }
 blake2s_u32 = { workspace = true }
-execution_utils = { path = "../../execution_utils"}
+execution_utils = { version = "0.1.0", package = "zksync-airbender-execution_utils", path = "../../execution_utils"}
 field = { workspace = true }
 
-risc_v_cycles_verifier = { path = "../../circuit_defs/risc_v_cycles/verifier", optional = true}
-reduced_risc_v_machine_verifier = { path = "../../circuit_defs/reduced_risc_v_machine/verifier", optional = true }
+risc_v_cycles_verifier = { version = "0.1.0", package = "zksync-airbender-risc_v_cycles_verifier", path = "../../circuit_defs/risc_v_cycles/verifier", optional = true}
+reduced_risc_v_machine_verifier = { version = "0.1.0", package = "zksync-airbender-reduced_risc_v_machine_verifier", path = "../../circuit_defs/reduced_risc_v_machine/verifier", optional = true }
 
-blake2_with_compression_verifier = { path = "../../circuit_defs/blake2_with_compression/verifier", optional = true }
+blake2_with_compression_verifier = { version = "0.1.0", package = "zksync-airbender-blake2_with_compression_verifier", path = "../../circuit_defs/blake2_with_compression/verifier", optional = true }
 
 verifier_common = { workspace = true }
 
-full_statement_verifier = { path = "../../full_statement_verifier", features=["replace_csr"], optional = true }
+full_statement_verifier = { version = "0.1.0", package = "zksync-airbender-full_statement_verifier", path = "../../full_statement_verifier", features=["replace_csr"], optional = true }
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
 sha3 = { package = "sha3_ce", version = "=0.10.6" }
 

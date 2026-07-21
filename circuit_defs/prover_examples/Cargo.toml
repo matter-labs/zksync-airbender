@@ -1,5 +1,6 @@
 [package]
 name = "prover_examples"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -41,3 +42,6 @@ timing_logs = []
 default = ["timing_logs"]
 
 gpu = ["gpu_prover", "nvtx", "cs"]
+
+[lib]
+name = "prover_examples"

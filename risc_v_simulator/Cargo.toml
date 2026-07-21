@@ -1,5 +1,6 @@
 [package]
-name = "risc_v_simulator"
+name = "zksync-airbender-risc_v_simulator"
+description = "The risc_v_simulator crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -38,3 +39,6 @@ delegation = ["blake2s_u32", "field", "poseidon2", "ruint"]
 [[bin]]
 name = "runner"
 path = "bin/runner.rs"
+
+[lib]
+name = "risc_v_simulator"

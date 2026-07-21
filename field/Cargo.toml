@@ -1,5 +1,6 @@
 [package]
-name = "field"
+name = "zksync-airbender-field"
+description = "The field crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -24,3 +25,6 @@ default = []
 modular_ops = ["use_division"]
 modular_ext4_ops = ["modular_ops"]
 no_inline = []
+
+[lib]
+name = "field"

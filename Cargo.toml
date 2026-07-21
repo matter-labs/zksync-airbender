@@ -102,33 +102,33 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [workspace.dependencies]
-field = { path = "./field", default-features = false }
-blake2s_u32 = { path = "./blake2s_u32", default-features = false }
-trace_holder = { path = "./trace_holder" }
-worker = { path = "./worker" }
-fft = { path = "./fft" }
-prover = { path = "./prover", default-features = false }
-cs = { path = "./cs", default-features = false }
-transcript = { path = "./transcript", default-features = false }
-verifier_generator = { path = "./verifier_generator" }
-circuit_common = { path = "./circuit_defs/circuit_common" }
-blake2_with_compression = { path = "./circuit_defs/blake2_with_compression" }
-bigint_with_control = { path = "./circuit_defs/bigint_with_control" }
-risc_v_cycles = { path = "./circuit_defs/risc_v_cycles" }
-machine_without_signed_mul_div = { path = "./circuit_defs/machine_without_signed_mul_div" }
-reduced_risc_v_machine = { path = "./circuit_defs/reduced_risc_v_machine" }
-reduced_risc_v_log_23_machine = { path = "./circuit_defs/reduced_risc_v_log_23_machine" }
-final_reduced_risc_v_machine = {path = "./circuit_defs/final_reduced_risc_v_machine"}
-trace_and_split = { path = "./circuit_defs/trace_and_split" }
-setups = { path = "./circuit_defs/setups" }
+field = { version = "0.1.0", package = "zksync-airbender-field", path = "./field", default-features = false }
+blake2s_u32 = { version = "0.1.0", package = "zksync-airbender-blake2s_u32", path = "./blake2s_u32", default-features = false }
+trace_holder = { version = "0.1.0", package = "zksync-airbender-trace_holder", path = "./trace_holder" }
+worker = { version = "0.1.0", package = "zksync-airbender-worker", path = "./worker" }
+fft = { version = "0.1.0", package = "zksync-airbender-fft", path = "./fft" }
+prover = { version = "0.1.0", package = "zksync-airbender-prover", path = "./prover", default-features = false }
+cs = { version = "0.1.0", package = "zksync-airbender-cs", path = "./cs", default-features = false }
+transcript = { version = "0.1.0", package = "zksync-airbender-transcript", path = "./transcript", default-features = false }
+verifier_generator = { version = "0.1.0", package = "zksync-airbender-verifier_generator", path = "./verifier_generator" }
+circuit_common = { version = "0.1.0", package = "zksync-airbender-circuit_common", path = "./circuit_defs/circuit_common" }
+blake2_with_compression = { version = "0.1.0", package = "zksync-airbender-blake2_with_compression", path = "./circuit_defs/blake2_with_compression" }
+bigint_with_control = { version = "0.1.0", package = "zksync-airbender-bigint_with_control", path = "./circuit_defs/bigint_with_control" }
+risc_v_cycles = { version = "0.1.0", package = "zksync-airbender-risc_v_cycles", path = "./circuit_defs/risc_v_cycles" }
+machine_without_signed_mul_div = { version = "0.1.0", package = "zksync-airbender-machine_without_signed_mul_div", path = "./circuit_defs/machine_without_signed_mul_div" }
+reduced_risc_v_machine = { version = "0.1.0", package = "zksync-airbender-reduced_risc_v_machine", path = "./circuit_defs/reduced_risc_v_machine" }
+reduced_risc_v_log_23_machine = { version = "0.1.0", package = "zksync-airbender-reduced_risc_v_log_23_machine", path = "./circuit_defs/reduced_risc_v_log_23_machine" }
+final_reduced_risc_v_machine = { version = "0.1.0", package = "zksync-airbender-final_reduced_risc_v_machine", path = "./circuit_defs/final_reduced_risc_v_machine"}
+trace_and_split = { version = "0.1.0", package = "zksync-airbender-trace_and_split", path = "./circuit_defs/trace_and_split" }
+setups = { version = "0.1.0", package = "zksync-airbender-setups", path = "./circuit_defs/setups" }
 # verifier = {path = "./verifier", default-features = false}
-verifier_common = { path = "./verifier_common", default-features = false }
+verifier_common = { version = "0.1.0", package = "zksync-airbender-verifier_common", path = "./verifier_common", default-features = false }
 # full_statement_verifier  = { path = "./full_statement_verifier", default-features = false }
-poseidon2 = { path = "./poseidon2", default-features = false }
-non_determinism_source = { path = "./non_determinism_source", default-features = false }
-risc_v_simulator = { path = "./risc_v_simulator", default-features = false }
-execution_utils = { path = "./execution_utils", default-features = false }
-witness_eval_generator = { path = "./witness_eval_generator", default-features = false }
+poseidon2 = { version = "0.1.0", package = "zksync-airbender-poseidon2", path = "./poseidon2", default-features = false }
+non_determinism_source = { version = "0.1.0", package = "zksync-airbender-non_determinism_source", path = "./non_determinism_source", default-features = false }
+risc_v_simulator = { version = "0.1.0", package = "zksync-airbender-risc_v_simulator", path = "./risc_v_simulator", default-features = false }
+execution_utils = { version = "0.1.0", package = "zksync-airbender-execution_utils", path = "./execution_utils", default-features = false }
+witness_eval_generator = { version = "0.1.0", package = "zksync-airbender-witness_eval_generator", path = "./witness_eval_generator", default-features = false }
 gpu_witness_eval_generator = { path = "./gpu_witness_eval_generator" }
 gpu_prover = { path = "./gpu_prover" }
 

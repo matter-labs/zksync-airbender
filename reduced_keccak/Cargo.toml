@@ -1,5 +1,6 @@
 [package]
-name = "reduced_keccak"
+name = "zksync-airbender-reduced_keccak"
+description = "The reduced_keccak crate of the zksync-airbender RISC-V zero-knowledge proving system."
 
 version.workspace = true
 edition.workspace = true
@@ -9,3 +10,6 @@ repository.workspace = true
 license.workspace = true
 keywords.workspace = true
 categories.workspace = true
+
+[lib]
+name = "reduced_keccak"

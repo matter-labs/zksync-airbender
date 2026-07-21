@@ -1,5 +1,6 @@
 [package]
-name = "transcript"
+name = "zksync-airbender-transcript"
+description = "The transcript crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -19,3 +20,6 @@ pow = ["worker"]
 blake2_with_compression = ["blake2s_u32/blake2_with_compression"]
 
 default = []
+
+[lib]
+name = "transcript"

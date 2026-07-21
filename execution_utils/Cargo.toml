@@ -1,5 +1,7 @@
 [package]
-name = "execution_utils"
+name = "zksync-airbender-execution_utils"
+publish = false
+description = "The execution_utils crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -32,3 +34,6 @@ extended_tests = []
 # debug = ["prover_examples/precheck_satisfied", "prover_examples/debug_satisfiable"]
 default = []
 # default = ["extended_tests"]
+
+[lib]
+name = "execution_utils"

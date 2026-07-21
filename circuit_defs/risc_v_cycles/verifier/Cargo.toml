@@ -1,5 +1,6 @@
 [package]
-name = "risc_v_cycles_verifier"
+name = "zksync-airbender-risc_v_cycles_verifier"
+description = "The risc_v_cycles_verifier crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -36,3 +37,6 @@ syn = { version = "2" }
 quote = { version = "1" }
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
 risc_v_simulator = { workspace = true, features = ["delegation"] }
+
+[lib]
+name = "risc_v_cycles_verifier"

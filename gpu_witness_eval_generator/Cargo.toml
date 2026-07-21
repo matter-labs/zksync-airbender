@@ -1,5 +1,6 @@
 [package]
 name = "gpu_witness_eval_generator"
+publish = false
 version.workspace = true
 edition = "2024"
 authors.workspace = true

@@ -1,5 +1,6 @@
 [package]
-name = "setups"
+name = "zksync-airbender-setups"
+description = "The setups crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -24,3 +25,6 @@ proc-macro2 = { version = "1" }
 syn = { version = "2" }
 quote = { version = "1" }
 verifier_common = { workspace = true, features = ["proof_utils"] }
+
+[lib]
+name = "setups"

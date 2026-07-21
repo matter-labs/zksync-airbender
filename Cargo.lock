@@ -133,32 +133,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "bigint_with_control"
-version = "0.1.0"
-dependencies = [
- "prover",
- "serde",
- "serde_json",
- "verifier_generator",
-]
-
-[[package]]
-name = "bigint_with_control_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "proc-macro2",
- "prover",
- "quote",
- "risc_v_simulator",
- "serde",
- "serde_json",
- "syn 2.0.111",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -195,41 +169,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46502ad458c9a52b69d4d4d32775c788b7a1b85e8bc9d482d92250fc0e3f8efe"
 dependencies = [
  "digest",
-]
-
-[[package]]
-name = "blake2_with_compression"
-version = "0.1.0"
-dependencies = [
- "prover",
- "serde",
- "serde_json",
- "verifier_generator",
-]
-
-[[package]]
-name = "blake2_with_compression_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "proc-macro2",
- "prover",
- "quote",
- "risc_v_simulator",
- "serde",
- "serde_json",
- "syn 2.0.111",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "blake2s_u32"
-version = "0.1.0"
-dependencies = [
- "blake2",
- "criterion",
- "unroll",
 ]
 
 [[package]]
@@ -330,15 +269,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "circuit_common"
-version = "0.1.0"
-dependencies = [
- "fft",
- "field",
- "worker",
-]
-
-[[package]]
 name = "clap"
 version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -383,27 +313,27 @@ name = "cli"
 version = "0.1.0"
 dependencies = [
  "base64 0.21.7",
- "blake2_with_compression_verifier",
- "blake2s_u32",
  "clap",
  "env_logger",
- "execution_utils",
- "field",
- "full_statement_verifier",
  "gpu_prover",
- "prover",
  "prover_examples",
- "reduced_risc_v_machine_verifier",
  "reqwest",
- "risc_v_cycles",
- "risc_v_cycles_verifier",
  "serde",
  "serde_json",
- "setups",
  "sha3_ce",
- "trace_and_split",
- "verifier_common",
- "worker",
+ "zksync-airbender-blake2_with_compression_verifier",
+ "zksync-airbender-blake2s_u32",
+ "zksync-airbender-execution_utils",
+ "zksync-airbender-field",
+ "zksync-airbender-full_statement_verifier",
+ "zksync-airbender-prover",
+ "zksync-airbender-reduced_risc_v_machine_verifier",
+ "zksync-airbender-risc_v_cycles",
+ "zksync-airbender-risc_v_cycles_verifier",
+ "zksync-airbender-setups",
+ "zksync-airbender-trace_and_split",
+ "zksync-airbender-verifier_common",
+ "zksync-airbender-worker",
 ]
 
 [[package]]
@@ -568,33 +498,6 @@ checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
  "typenum",
-]
-
-[[package]]
-name = "cs"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "bincode",
- "blake2s_u32",
- "ctrlc",
- "derivative",
- "disc-v",
- "divrem",
- "field",
- "itertools 0.14.0",
- "poseidon2",
- "proc-macro2",
- "quote",
- "rand 0.9.2",
- "rayon",
- "seq-macro",
- "serde",
- "serde_json",
- "smallvec",
- "super-seq-macro",
- "syn 2.0.111",
- "type-map",
 ]
 
 [[package]]
@@ -800,20 +703,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "execution_utils"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "clap",
- "prover_examples",
- "risc_v_simulator",
- "serde",
- "serde_json",
- "trace_and_split",
- "verifier_common",
-]
-
-[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -824,60 +713,6 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
-
-[[package]]
-name = "fft"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "field",
- "itertools 0.14.0",
- "rand 0.9.2",
- "rayon",
- "seq-macro",
- "trace_holder",
- "unroll",
- "worker",
-]
-
-[[package]]
-name = "field"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "rand 0.9.2",
- "seq-macro",
- "serde",
- "syn 2.0.111",
-]
-
-[[package]]
-name = "final_reduced_risc_v_machine"
-version = "0.1.0"
-dependencies = [
- "circuit_common",
- "prover",
- "serde",
- "serde_json",
- "verifier_generator",
-]
-
-[[package]]
-name = "final_reduced_risc_v_machine_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "proc-macro2",
- "prover",
- "quote",
- "risc_v_simulator",
- "serde",
- "serde_json",
- "syn 2.0.111",
- "unroll",
- "verifier_common",
-]
 
 [[package]]
 name = "find-msvc-tools"
@@ -923,19 +758,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "full_statement_verifier"
-version = "0.1.0"
-dependencies = [
- "bigint_with_control_verifier",
- "blake2_with_compression_verifier",
- "final_reduced_risc_v_machine_verifier",
- "reduced_risc_v_log_23_machine_verifier",
- "reduced_risc_v_machine_verifier",
- "risc_v_cycles_verifier",
- "verifier_common",
 ]
 
 [[package]]
@@ -1033,12 +855,12 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "gpu_witness_eval_generator",
- "prover",
  "serde",
  "serde_json",
- "setups",
- "verifier_generator",
- "witness_eval_generator",
+ "zksync-airbender-prover",
+ "zksync-airbender-setups",
+ "zksync-airbender-verifier_generator",
+ "zksync-airbender-witness_eval_generator",
 ]
 
 [[package]]
@@ -1088,41 +910,41 @@ dependencies = [
 name = "gpu_prover"
 version = "0.1.0"
 dependencies = [
- "blake2s_u32",
  "cmake",
  "criterion",
  "crossbeam-channel",
  "crossbeam-utils",
- "cs",
  "env_logger",
  "era_criterion_cuda",
  "era_cudart 0.156.0",
  "era_cudart_sys 0.156.0",
- "execution_utils",
- "fft",
- "field",
  "itertools 0.14.0",
  "log",
  "nvtx",
- "prover",
  "rand 0.9.2",
  "rayon",
  "serial_test",
- "setups",
- "trace_and_split",
- "trace_holder",
  "transpose",
- "worker",
+ "zksync-airbender-blake2s_u32",
+ "zksync-airbender-cs",
+ "zksync-airbender-execution_utils",
+ "zksync-airbender-fft",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+ "zksync-airbender-setups",
+ "zksync-airbender-trace_and_split",
+ "zksync-airbender-trace_holder",
+ "zksync-airbender-worker",
 ]
 
 [[package]]
 name = "gpu_witness_eval_generator"
 version = "0.1.0"
 dependencies = [
- "cs",
- "field",
  "serde",
  "serde_json",
+ "zksync-airbender-cs",
+ "zksync-airbender-field",
 ]
 
 [[package]]
@@ -1684,17 +1506,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "machine_without_signed_mul_div"
-version = "0.1.0"
-dependencies = [
- "circuit_common",
- "prover",
- "serde",
- "serde_json",
- "verifier_generator",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1792,10 +1603,6 @@ dependencies = [
  "cfg_aliases",
  "libc",
 ]
-
-[[package]]
-name = "non_determinism_source"
-version = "0.1.0"
 
 [[package]]
 name = "num-format"
@@ -1906,13 +1713,13 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 name = "opcode_tests"
 version = "0.1.0"
 dependencies = [
- "cs",
- "field",
  "lib-rv32-asm",
- "prover",
  "regex",
- "risc_v_simulator",
- "setups",
+ "zksync-airbender-cs",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-setups",
 ]
 
 [[package]]
@@ -2076,17 +1883,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "poseidon2"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "field",
- "non_determinism_source",
- "rand 0.9.2",
- "unroll",
-]
-
-[[package]]
 name = "potential_utf"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2136,51 +1932,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "prover"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "bit-set",
- "blake2s_u32",
- "cs",
- "fft",
- "field",
- "itertools 0.14.0",
- "lib-rv32-asm",
- "non_determinism_source",
- "poseidon2",
- "proc-macro2",
- "quote",
- "rand 0.9.2",
- "rayon",
- "risc_v_simulator",
- "seq-macro",
- "serde",
- "serde_json",
- "syn 2.0.111",
- "trace_holder",
- "transcript",
- "unroll",
- "worker",
-]
-
-[[package]]
 name = "prover_examples"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "cs",
  "gpu_prover",
  "itertools 0.14.0",
  "lib-rv32-asm",
  "nvtx",
- "prover",
- "risc_v_cycles",
  "serde",
  "serde_json",
- "setups",
- "trace_and_split",
  "transpose",
+ "zksync-airbender-cs",
+ "zksync-airbender-prover",
+ "zksync-airbender-risc_v_cycles",
+ "zksync-airbender-setups",
+ "zksync-airbender-trace_and_split",
 ]
 
 [[package]]
@@ -2293,64 +2060,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
  "bitflags",
-]
-
-[[package]]
-name = "reduced_keccak"
-version = "0.1.0"
-
-[[package]]
-name = "reduced_risc_v_log_23_machine"
-version = "0.1.0"
-dependencies = [
- "circuit_common",
- "prover",
- "serde",
- "serde_json",
- "verifier_generator",
-]
-
-[[package]]
-name = "reduced_risc_v_log_23_machine_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "proc-macro2",
- "prover",
- "quote",
- "risc_v_simulator",
- "serde",
- "serde_json",
- "syn 2.0.111",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "reduced_risc_v_machine"
-version = "0.1.0"
-dependencies = [
- "circuit_common",
- "prover",
- "serde",
- "serde_json",
- "verifier_generator",
-]
-
-[[package]]
-name = "reduced_risc_v_machine_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "proc-macro2",
- "prover",
- "quote",
- "risc_v_simulator",
- "serde",
- "serde_json",
- "syn 2.0.111",
- "unroll",
- "verifier_common",
 ]
 
 [[package]]
@@ -2486,52 +2195,6 @@ name = "ringbuffer"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57b0b88a509053cbfd535726dcaaceee631313cef981266119527a1d110f6d2b"
-
-[[package]]
-name = "risc_v_cycles"
-version = "0.1.0"
-dependencies = [
- "circuit_common",
- "prover",
- "serde",
- "serde_json",
- "verifier_generator",
-]
-
-[[package]]
-name = "risc_v_cycles_verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "proc-macro2",
- "prover",
- "quote",
- "risc_v_simulator",
- "serde",
- "serde_json",
- "syn 2.0.111",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "risc_v_simulator"
-version = "0.1.0"
-dependencies = [
- "addr2line",
- "blake2s_u32",
- "cs",
- "field",
- "inferno",
- "lib-rv32-asm",
- "memmap2",
- "object 0.37.3",
- "poseidon2",
- "rand 0.9.2",
- "ringbuffer",
- "ruint",
- "serde",
-]
 
 [[package]]
 name = "ruint"
@@ -2790,26 +2453,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.111",
-]
-
-[[package]]
-name = "setups"
-version = "0.1.0"
-dependencies = [
- "bigint_with_control",
- "blake2_with_compression",
- "final_reduced_risc_v_machine",
- "machine_without_signed_mul_div",
- "proc-macro2",
- "prover",
- "quote",
- "reduced_risc_v_log_23_machine",
- "reduced_risc_v_machine",
- "risc_v_cycles",
- "serde",
- "serde_json",
- "syn 2.0.111",
- "verifier_common",
 ]
 
 [[package]]
@@ -3203,25 +2846,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
-name = "trace_and_split"
-version = "0.1.0"
-dependencies = [
- "prover",
- "serde",
- "serde_json",
- "setups",
- "worker",
-]
-
-[[package]]
-name = "trace_holder"
-version = "0.1.0"
-dependencies = [
- "field",
- "worker",
-]
-
-[[package]]
 name = "tracing"
 version = "0.1.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3239,15 +2863,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a04e24fab5c89c6a36eb8558c9656f30d81de51dfa4d3b45f26b21d61fa0a6c"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "transcript"
-version = "0.1.0"
-dependencies = [
- "blake2s_u32",
- "unroll",
- "worker",
 ]
 
 [[package]]
@@ -3379,50 +2994,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "verifier"
-version = "0.1.0"
-dependencies = [
- "field",
- "proc-macro2",
- "prover",
- "quote",
- "risc_v_simulator",
- "serde",
- "serde_json",
- "syn 2.0.111",
- "unroll",
- "verifier_common",
-]
-
-[[package]]
-name = "verifier_common"
-version = "0.1.0"
-dependencies = [
- "blake2s_u32",
- "cs",
- "field",
- "non_determinism_source",
- "poseidon2",
- "prover",
- "serde",
- "transcript",
- "unroll",
-]
-
-[[package]]
-name = "verifier_generator"
-version = "0.1.0"
-dependencies = [
- "proc-macro-error2",
- "proc-macro2",
- "prover",
- "quote",
- "serde",
- "serde_json",
- "syn 2.0.111",
-]
 
 [[package]]
 name = "version_check"
@@ -3768,30 +3339,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
-name = "witness_eval_generator"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "cs",
- "field",
- "proc-macro-error2",
- "proc-macro2",
- "prover",
- "quote",
- "serde",
- "serde_json",
- "syn 2.0.111",
-]
-
-[[package]]
-name = "worker"
-version = "0.1.0"
-dependencies = [
- "num_cpus",
- "rayon",
-]
-
-[[package]]
 name = "writeable"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3907,7 +3454,6 @@ dependencies = [
  "clap",
  "cli",
  "env_logger",
- "execution_utils",
  "futures",
  "reqwest",
  "serde",
@@ -3915,4 +3461,458 @@ dependencies = [
  "sha3_ce",
  "tokio",
  "warp",
+ "zksync-airbender-execution_utils",
+]
+
+[[package]]
+name = "zksync-airbender-bigint_with_control"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zksync-airbender-prover",
+ "zksync-airbender-verifier_generator",
+]
+
+[[package]]
+name = "zksync-airbender-bigint_with_control_verifier"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "unroll",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-blake2_with_compression"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zksync-airbender-prover",
+ "zksync-airbender-verifier_generator",
+]
+
+[[package]]
+name = "zksync-airbender-blake2_with_compression_verifier"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "unroll",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-blake2s_u32"
+version = "0.1.0"
+dependencies = [
+ "blake2",
+ "criterion",
+ "unroll",
+]
+
+[[package]]
+name = "zksync-airbender-circuit_common"
+version = "0.1.0"
+dependencies = [
+ "zksync-airbender-fft",
+ "zksync-airbender-field",
+ "zksync-airbender-worker",
+]
+
+[[package]]
+name = "zksync-airbender-cs"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "bincode",
+ "ctrlc",
+ "derivative",
+ "disc-v",
+ "divrem",
+ "itertools 0.14.0",
+ "proc-macro2",
+ "quote",
+ "rand 0.9.2",
+ "rayon",
+ "seq-macro",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "super-seq-macro",
+ "syn 2.0.111",
+ "type-map",
+ "zksync-airbender-blake2s_u32",
+ "zksync-airbender-field",
+ "zksync-airbender-poseidon2",
+]
+
+[[package]]
+name = "zksync-airbender-execution_utils"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "clap",
+ "prover_examples",
+ "serde",
+ "serde_json",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-trace_and_split",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-fft"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "itertools 0.14.0",
+ "rand 0.9.2",
+ "rayon",
+ "seq-macro",
+ "unroll",
+ "zksync-airbender-field",
+ "zksync-airbender-trace_holder",
+ "zksync-airbender-worker",
+]
+
+[[package]]
+name = "zksync-airbender-field"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "rand 0.9.2",
+ "seq-macro",
+ "serde",
+ "syn 2.0.111",
+]
+
+[[package]]
+name = "zksync-airbender-final_reduced_risc_v_machine"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zksync-airbender-circuit_common",
+ "zksync-airbender-prover",
+ "zksync-airbender-verifier_generator",
+]
+
+[[package]]
+name = "zksync-airbender-final_reduced_risc_v_machine_verifier"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "unroll",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-full_statement_verifier"
+version = "0.1.0"
+dependencies = [
+ "zksync-airbender-bigint_with_control_verifier",
+ "zksync-airbender-blake2_with_compression_verifier",
+ "zksync-airbender-final_reduced_risc_v_machine_verifier",
+ "zksync-airbender-reduced_risc_v_log_23_machine_verifier",
+ "zksync-airbender-reduced_risc_v_machine_verifier",
+ "zksync-airbender-risc_v_cycles_verifier",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-machine_without_signed_mul_div"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zksync-airbender-circuit_common",
+ "zksync-airbender-prover",
+ "zksync-airbender-verifier_generator",
+]
+
+[[package]]
+name = "zksync-airbender-non_determinism_source"
+version = "0.1.0"
+
+[[package]]
+name = "zksync-airbender-poseidon2"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "rand 0.9.2",
+ "unroll",
+ "zksync-airbender-field",
+ "zksync-airbender-non_determinism_source",
+]
+
+[[package]]
+name = "zksync-airbender-prover"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bit-set",
+ "itertools 0.14.0",
+ "lib-rv32-asm",
+ "proc-macro2",
+ "quote",
+ "rand 0.9.2",
+ "rayon",
+ "seq-macro",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "unroll",
+ "zksync-airbender-blake2s_u32",
+ "zksync-airbender-cs",
+ "zksync-airbender-fft",
+ "zksync-airbender-field",
+ "zksync-airbender-non_determinism_source",
+ "zksync-airbender-poseidon2",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-trace_holder",
+ "zksync-airbender-transcript",
+ "zksync-airbender-worker",
+]
+
+[[package]]
+name = "zksync-airbender-reduced_keccak"
+version = "0.1.0"
+
+[[package]]
+name = "zksync-airbender-reduced_risc_v_log_23_machine"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zksync-airbender-circuit_common",
+ "zksync-airbender-prover",
+ "zksync-airbender-verifier_generator",
+]
+
+[[package]]
+name = "zksync-airbender-reduced_risc_v_log_23_machine_verifier"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "unroll",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-reduced_risc_v_machine"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zksync-airbender-circuit_common",
+ "zksync-airbender-prover",
+ "zksync-airbender-verifier_generator",
+]
+
+[[package]]
+name = "zksync-airbender-reduced_risc_v_machine_verifier"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "unroll",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-risc_v_cycles"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zksync-airbender-circuit_common",
+ "zksync-airbender-prover",
+ "zksync-airbender-verifier_generator",
+]
+
+[[package]]
+name = "zksync-airbender-risc_v_cycles_verifier"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "unroll",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-risc_v_simulator"
+version = "0.1.0"
+dependencies = [
+ "addr2line",
+ "inferno",
+ "lib-rv32-asm",
+ "memmap2",
+ "object 0.37.3",
+ "rand 0.9.2",
+ "ringbuffer",
+ "ruint",
+ "serde",
+ "zksync-airbender-blake2s_u32",
+ "zksync-airbender-cs",
+ "zksync-airbender-field",
+ "zksync-airbender-poseidon2",
+]
+
+[[package]]
+name = "zksync-airbender-setups"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "zksync-airbender-bigint_with_control",
+ "zksync-airbender-blake2_with_compression",
+ "zksync-airbender-final_reduced_risc_v_machine",
+ "zksync-airbender-machine_without_signed_mul_div",
+ "zksync-airbender-prover",
+ "zksync-airbender-reduced_risc_v_log_23_machine",
+ "zksync-airbender-reduced_risc_v_machine",
+ "zksync-airbender-risc_v_cycles",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-trace_and_split"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zksync-airbender-prover",
+ "zksync-airbender-setups",
+ "zksync-airbender-worker",
+]
+
+[[package]]
+name = "zksync-airbender-trace_holder"
+version = "0.1.0"
+dependencies = [
+ "zksync-airbender-field",
+ "zksync-airbender-worker",
+]
+
+[[package]]
+name = "zksync-airbender-transcript"
+version = "0.1.0"
+dependencies = [
+ "unroll",
+ "zksync-airbender-blake2s_u32",
+ "zksync-airbender-worker",
+]
+
+[[package]]
+name = "zksync-airbender-verifier"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "unroll",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+ "zksync-airbender-risc_v_simulator",
+ "zksync-airbender-verifier_common",
+]
+
+[[package]]
+name = "zksync-airbender-verifier_common"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "unroll",
+ "zksync-airbender-blake2s_u32",
+ "zksync-airbender-cs",
+ "zksync-airbender-field",
+ "zksync-airbender-non_determinism_source",
+ "zksync-airbender-poseidon2",
+ "zksync-airbender-prover",
+ "zksync-airbender-transcript",
+]
+
+[[package]]
+name = "zksync-airbender-verifier_generator"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-error2",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "zksync-airbender-prover",
+]
+
+[[package]]
+name = "zksync-airbender-witness_eval_generator"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "proc-macro-error2",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+ "zksync-airbender-cs",
+ "zksync-airbender-field",
+ "zksync-airbender-prover",
+]
+
+[[package]]
+name = "zksync-airbender-worker"
+version = "0.1.0"
+dependencies = [
+ "num_cpus",
+ "rayon",
 ]

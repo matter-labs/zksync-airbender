@@ -1,5 +1,6 @@
 [package]
-name = "poseidon2"
+name = "zksync-airbender-poseidon2"
+description = "The poseidon2 crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -25,3 +26,6 @@ rand.workspace = true
 field = { workspace = true, default-features = false }
 non_determinism_source = { workspace = true }
 unroll = { workspace = true }
+
+[lib]
+name = "poseidon2"

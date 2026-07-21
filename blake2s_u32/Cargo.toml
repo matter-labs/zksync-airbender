@@ -1,5 +1,6 @@
 [package]
-name = "blake2s_u32"
+name = "zksync-airbender-blake2s_u32"
+description = "The blake2s_u32 crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -24,3 +25,6 @@ harness = false
 blake2_with_compression = []
 
 default = []
+
+[lib]
+name = "blake2s_u32"
