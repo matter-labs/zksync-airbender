@@ -5788,7 +5788,7 @@
                   "BaseLayerMemory": 20
                 },
                 {
-                  "BaseLayerMemory": 23
+                  "BaseLayerWitness": 27
                 }
               ],
               "output": [
@@ -5814,10 +5814,10 @@
             "LookupPairFromMaterializedBaseInputs": {
               "input": [
                 {
-                  "BaseLayerWitness": 51
+                  "BaseLayerWitness": 28
                 },
                 {
-                  "BaseLayerMemory": 10
+                  "BaseLayerMemory": 23
                 }
               ],
               "output": [
@@ -5843,10 +5843,10 @@
             "LookupPairFromMaterializedBaseInputs": {
               "input": [
                 {
-                  "BaseLayerMemory": 11
+                  "BaseLayerWitness": 51
                 },
                 {
-                  "BaseLayerMemory": 17
+                  "BaseLayerMemory": 10
                 }
               ],
               "output": [
@@ -5872,10 +5872,10 @@
             "LookupPairFromMaterializedBaseInputs": {
               "input": [
                 {
-                  "BaseLayerMemory": 18
+                  "BaseLayerMemory": 11
                 },
                 {
-                  "BaseLayerMemory": 26
+                  "BaseLayerMemory": 17
                 }
               ],
               "output": [
@@ -5898,6 +5898,35 @@
         {
           "output_layer": 1,
           "enforced_relation": {
+            "LookupPairFromMaterializedBaseInputs": {
+              "input": [
+                {
+                  "BaseLayerMemory": 18
+                },
+                {
+                  "BaseLayerMemory": 26
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 60
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 61
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
             "CopyInBaseField": {
               "input": {
                 "BaseLayerMemory": 27
@@ -5905,7 +5934,7 @@
               "output": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 60
+                  "offset": 62
                 }
               }
             }
@@ -5924,38 +5953,6 @@
                 },
                 {
                   "VirtualSetup": "RangeCheckTimestamp"
-                }
-              ],
-              "output": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 61
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 62
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "LookupPairFromMaterializedBaseInputs": {
-              "input": [
-                {
-                  "BaseLayerMemory": 29
-                },
-                {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 8
-                  }
                 }
               ],
               "output": [
@@ -5981,15 +5978,12 @@
             "LookupPairFromMaterializedBaseInputs": {
               "input": [
                 {
-                  "Cached": {
-                    "layer": 0,
-                    "offset": 9
-                  }
+                  "BaseLayerMemory": 29
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 10
+                    "offset": 8
                   }
                 }
               ],
@@ -6018,13 +6012,13 @@
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 11
+                    "offset": 9
                   }
                 },
                 {
                   "Cached": {
                     "layer": 0,
-                    "offset": 12
+                    "offset": 10
                   }
                 }
               ],
@@ -6048,6 +6042,41 @@
         {
           "output_layer": 1,
           "enforced_relation": {
+            "LookupPairFromMaterializedBaseInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 11
+                  }
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 12
+                  }
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 69
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 70
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
             "CopyInBaseField": {
               "input": {
                 "Cached": {
@@ -6058,7 +6087,7 @@
               "output": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 69
+                  "offset": 71
                 }
               }
             }
@@ -6094,13 +6123,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 70
+                    "offset": 72
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 71
+                    "offset": 73
                   }
                 }
               ]
@@ -6169,41 +6198,203 @@
                 "quadratic_terms": [
                   [
                     {
-                      "BaseLayerWitness": 8
+                      "BaseLayerWitness": 10
                     },
                     [
                       [
-                        3987683987354747618711421180841033765,
+                        3987683987354747934941319744363579685,
                         {
-                          "BaseLayerMemory": 2
+                          "BaseLayerWitness": 24
                         }
                       ],
                       [
-                        7975367974709495237422842361684464202,
+                        7975367974709495869882639488727159370,
                         {
-                          "BaseLayerMemory": 3
+                          "BaseLayerWitness": 25
                         }
                       ],
                       [
-                        3987683987354747618711421180841033765,
+                        6646139978924580629438629555491906707,
+                        {
+                          "BaseLayerWitness": 26
+                        }
+                      ],
+                      [
+                        7975367974709495237422842435310078282,
+                        {
+                          "BaseLayerWitness": 27
+                        }
+                      ],
+                      [
+                        6646139978924579364523860586719159443,
+                        {
+                          "BaseLayerWitness": 28
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 11
+                    },
+                    [
+                      [
+                        3987683987354747934941319744363579685,
+                        {
+                          "BaseLayerWitness": 24
+                        }
+                      ],
+                      [
+                        7975367974709495869882639488727159370,
+                        {
+                          "BaseLayerWitness": 25
+                        }
+                      ],
+                      [
+                        6646139978924580629438629555491906707,
+                        {
+                          "BaseLayerWitness": 26
+                        }
+                      ],
+                      [
+                        7975367974709495237422842435310078282,
+                        {
+                          "BaseLayerWitness": 27
+                        }
+                      ],
+                      [
+                        6646139978924579364523860586719159443,
+                        {
+                          "BaseLayerWitness": 28
+                        }
+                      ],
+                      [
+                        2658455991569831745807613963487599470,
+                        {
+                          "BaseLayerMemory": 14
+                        }
+                      ],
+                      [
+                        5316911983139663491604934299115960028,
+                        {
+                          "BaseLayerMemory": 15
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 2
+                    },
+                    [
+                      [
+                        5316911983139663491615228241121378268,
                         {
                           "BaseLayerMemory": 7
                         }
                       ],
                       [
-                        7975367974709495237422842361684464202,
+                        1329227995784915872903807060277947831,
                         {
                           "BaseLayerMemory": 8
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 3
+                    },
+                    [
+                      [
+                        1329227995784915872903807060277947831,
+                        {
+                          "BaseLayerMemory": 7
+                        }
+                      ],
+                      [
+                        2658455991569831745807613963487599470,
+                        {
+                          "BaseLayerMemory": 8
+                        }
+                      ]
+                    ]
+                  ]
+                ],
+                "linear_terms": [
+                  [
+                    6646139978924579364519035458474812563,
+                    {
+                      "BaseLayerWitness": 50
+                    }
+                  ]
+                ],
+                "constant": 5316911983139663175385329677598832348
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "EnforceSingleMaxQuadraticConstraint": {
+              "input": {
+                "quadratic_terms": [
+                  [
+                    {
+                      "BaseLayerWitness": 8
+                    },
+                    [
+                      [
+                        7975367974709495237422842435310078282,
+                        {
+                          "BaseLayerWitness": 24
+                        }
+                      ],
+                      [
+                        6646139978924579364519035448657744531,
+                        {
+                          "BaseLayerWitness": 25
+                        }
+                      ],
+                      [
+                        3987683987354747618711421475353077029,
+                        {
+                          "BaseLayerWitness": 26
                         }
                       ],
                       [
                         5316911983139663491615228241121378268,
                         {
-                          "BaseLayerMemory": 19
+                          "BaseLayerMemory": 2
                         }
                       ],
                       [
                         1329227995784915872903807060277947831,
+                        {
+                          "BaseLayerMemory": 3
+                        }
+                      ],
+                      [
+                        5316911983139663491615228241121378268,
+                        {
+                          "BaseLayerMemory": 7
+                        }
+                      ],
+                      [
+                        1329227995784915872903807060277947831,
+                        {
+                          "BaseLayerMemory": 8
+                        }
+                      ],
+                      [
+                        3987683987354747618711421180841033765,
+                        {
+                          "BaseLayerMemory": 19
+                        }
+                      ],
+                      [
+                        7975367974709495237422842361684464202,
                         {
                           "BaseLayerMemory": 20
                         }
@@ -6216,37 +6407,55 @@
                     },
                     [
                       [
-                        3987683987354747618711421180841033765,
+                        7975367974709495237422842435310078282,
+                        {
+                          "BaseLayerWitness": 24
+                        }
+                      ],
+                      [
+                        6646139978924579364519035448657744531,
+                        {
+                          "BaseLayerWitness": 25
+                        }
+                      ],
+                      [
+                        3987683987354747618711421475353077029,
+                        {
+                          "BaseLayerWitness": 26
+                        }
+                      ],
+                      [
+                        5316911983139663491615228241121378268,
                         {
                           "BaseLayerMemory": 2
                         }
                       ],
                       [
-                        7975367974709495237422842361684464202,
+                        1329227995784915872903807060277947831,
                         {
                           "BaseLayerMemory": 3
                         }
                       ],
                       [
-                        5316911983139663491615228241121378268,
+                        3987683987354747618711421180841033765,
                         {
                           "BaseLayerMemory": 7
                         }
                       ],
                       [
-                        1329227995784915872903807060277947831,
+                        7975367974709495237422842361684464202,
                         {
                           "BaseLayerMemory": 8
                         }
                       ],
                       [
-                        5316911983139663491615228241121378268,
+                        3987683987354747618711421180841033765,
                         {
                           "BaseLayerMemory": 19
                         }
                       ],
                       [
-                        1329227995784915872903807060277947831,
+                        7975367974709495237422842361684464202,
                         {
                           "BaseLayerMemory": 20
                         }
@@ -6304,7 +6513,14 @@
                     ]
                   ]
                 ],
-                "linear_terms": [],
+                "linear_terms": [
+                  [
+                    3987683987354747618711420959957001253,
+                    {
+                      "BaseLayerWitness": 9
+                    }
+                  ]
+                ],
                 "constant": 0
               },
               "expression": {
@@ -6921,25 +7137,25 @@
                 ],
                 "linear_terms": [
                   [
-                    5316911983139663491615228241118981596,
+                    5316911983139663491615228241121378268,
                     {
                       "BaseLayerWitness": 8
                     }
                   ],
                   [
-                    5316911983139663491615228241118981596,
+                    5316911983139663491615228241121378268,
                     {
                       "BaseLayerWitness": 9
                     }
                   ],
                   [
-                    5316911983139663491615228241118981596,
+                    5316911983139663491615228241121378268,
                     {
                       "BaseLayerWitness": 10
                     }
                   ],
                   [
-                    5316911983139663491615228241118981596,
+                    5316911983139663491615228241121378268,
                     {
                       "BaseLayerWitness": 11
                     }
@@ -7537,25 +7753,25 @@
                 ],
                 "linear_terms": [
                   [
-                    5316911983139663491615228241118981596,
+                    2658455991569831745807614120559565678,
                     {
                       "BaseLayerWitness": 8
                     }
                   ],
                   [
-                    5316911983139663491615228241118981596,
+                    2658455991569831745807614120559565678,
                     {
                       "BaseLayerWitness": 9
                     }
                   ],
                   [
-                    5316911983139663491615228241118981596,
+                    2658455991569831745807614120559565678,
                     {
                       "BaseLayerWitness": 10
                     }
                   ],
                   [
-                    5316911983139663491615228241118981596,
+                    2658455991569831745807614120559565678,
                     {
                       "BaseLayerWitness": 11
                     }
@@ -13159,6 +13375,71 @@
                       [
                         5316911983139663491615228241121378268,
                         {
+                          "BaseLayerMemory": 9
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 26
+                    },
+                    [
+                      [
+                        1329227995784915872903807060280344503,
+                        {
+                          "BaseLayerMemory": 9
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 48
+                    },
+                    [
+                      [
+                        2658455991569831745807614120560689006,
+                        {
+                          "BaseLayerMemory": 9
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 9
+                    },
+                    [
+                      [
+                        3987683987354747618711421180841033765,
+                        {
+                          "BaseLayerMemory": 10
+                        }
+                      ]
+                    ]
+                  ]
+                ],
+                "linear_terms": [],
+                "constant": 0
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "EnforceSingleMaxQuadraticConstraint": {
+              "input": {
+                "quadratic_terms": [
+                  [
+                    {
+                      "BaseLayerWitness": 25
+                    },
+                    [
+                      [
+                        5316911983139663491615228241121378268,
+                        {
                           "BaseLayerMemory": 16
                         }
                       ]
@@ -17583,20 +17864,20 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 58
+                    "offset": 60
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 59
+                    "offset": 61
                   }
                 }
               ],
               "remainder": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 60
+                  "offset": 62
                 }
               },
               "output": [
@@ -17625,13 +17906,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 56
+                      "offset": 58
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 57
+                      "offset": 59
                     }
                   }
                 ],
@@ -17639,13 +17920,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 54
+                      "offset": 56
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 55
+                      "offset": 57
                     }
                   }
                 ]
@@ -17676,13 +17957,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 52
+                      "offset": 54
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 53
+                      "offset": 55
                     }
                   }
                 ],
@@ -17690,13 +17971,13 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 50
+                      "offset": 52
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 1,
-                      "offset": 51
+                      "offset": 53
                     }
                   }
                 ]
@@ -17721,27 +18002,37 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "LookupUnbalancedPairWithMaterializedBaseInputs": {
+            "AggregateLookupRationalPair": {
               "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 48
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 50
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 51
+                    }
                   }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 1,
-                    "offset": 49
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 48
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 49
+                    }
                   }
-                }
+                ]
               ],
-              "remainder": {
-                "InnerLayer": {
-                  "layer": 1,
-                  "offset": 7
-                }
-              },
               "output": [
                 {
                   "InnerLayer": {
@@ -17762,38 +18053,57 @@
         {
           "output_layer": 2,
           "enforced_relation": {
+            "CopyInBaseField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 7
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 11
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
             "LookupUnbalancedPairWithMaterializedBaseInputs": {
               "input": [
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 67
+                    "offset": 69
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 68
+                    "offset": 70
                   }
                 }
               ],
               "remainder": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 69
+                  "offset": 71
                 }
               },
               "output": [
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 11
+                    "offset": 12
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 12
+                    "offset": 13
                   }
                 }
               ]
@@ -17809,6 +18119,20 @@
                   {
                     "InnerLayer": {
                       "layer": 1,
+                      "offset": 67
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 68
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
                       "offset": 65
                     }
                   },
@@ -17818,33 +18142,19 @@
                       "offset": 66
                     }
                   }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 63
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 1,
-                      "offset": 64
-                    }
-                  }
                 ]
               ],
               "output": [
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 13
+                    "offset": 14
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 14
+                    "offset": 15
                   }
                 }
               ]
@@ -17858,13 +18168,13 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 61
+                  "offset": 63
                 }
               },
               "output": {
                 "InnerLayer": {
                   "layer": 2,
-                  "offset": 15
+                  "offset": 16
                 }
               }
             }
@@ -17877,13 +18187,13 @@
               "input": {
                 "InnerLayer": {
                   "layer": 1,
-                  "offset": 62
+                  "offset": 64
                 }
               },
               "output": {
                 "InnerLayer": {
                   "layer": 2,
-                  "offset": 16
+                  "offset": 17
                 }
               }
             }
@@ -17911,13 +18221,13 @@
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 17
+                    "offset": 18
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 18
+                    "offset": 19
                   }
                 }
               ]
@@ -17946,13 +18256,13 @@
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 19
+                    "offset": 20
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 20
+                    "offset": 21
                   }
                 }
               ]
@@ -17967,13 +18277,13 @@
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 70
+                    "offset": 72
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 1,
-                    "offset": 71
+                    "offset": 73
                   }
                 }
               ],
@@ -17987,13 +18297,13 @@
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 21
+                    "offset": 22
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 2,
-                    "offset": 22
+                    "offset": 23
                   }
                 }
               ]
@@ -18013,7 +18323,7 @@
               "output": {
                 "InnerLayer": {
                   "layer": 2,
-                  "offset": 23
+                  "offset": 24
                 }
               }
             }
@@ -18032,14 +18342,14 @@
               "output": {
                 "InnerLayer": {
                   "layer": 2,
-                  "offset": 24
+                  "offset": 25
                 }
               }
             }
           }
         }
       ],
-      "intermediate_layer_width": 72
+      "intermediate_layer_width": 74
     },
     {
       "layer": 2,
@@ -18099,37 +18409,27 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "AggregateLookupRationalPair": {
+            "LookupUnbalancedPairWithMaterializedBaseInputs": {
               "input": [
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 2,
-                      "offset": 9
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 2,
-                      "offset": 10
-                    }
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 9
                   }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 2,
-                      "offset": 7
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 2,
-                      "offset": 8
-                    }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 10
                   }
-                ]
+                }
               ],
+              "remainder": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 11
+                }
+              },
               "output": [
                 {
                   "InnerLayer": {
@@ -18156,13 +18456,13 @@
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 5
+                      "offset": 7
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 6
+                      "offset": 8
                     }
                   }
                 ],
@@ -18170,13 +18470,13 @@
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 3
+                      "offset": 5
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 4
+                      "offset": 6
                     }
                   }
                 ]
@@ -18201,33 +18501,71 @@
         {
           "output_layer": 3,
           "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 3
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 6
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 4
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 7
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
             "AggregateLookupRationalPair": {
               "input": [
                 [
-                  {
-                    "InnerLayer": {
-                      "layer": 2,
-                      "offset": 15
-                    }
-                  },
                   {
                     "InnerLayer": {
                       "layer": 2,
                       "offset": 16
                     }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 2,
+                      "offset": 17
+                    }
                   }
                 ],
                 [
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 13
+                      "offset": 14
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 14
+                      "offset": 15
                     }
                   }
                 ]
@@ -18236,35 +18574,16 @@
                 {
                   "InnerLayer": {
                     "layer": 3,
-                    "offset": 6
+                    "offset": 8
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 3,
-                    "offset": 7
+                    "offset": 9
                   }
                 }
               ]
-            }
-          }
-        },
-        {
-          "output_layer": 3,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 11
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 8
-                }
-              }
             }
           }
         },
@@ -18281,7 +18600,26 @@
               "output": {
                 "InnerLayer": {
                   "layer": 3,
-                  "offset": 9
+                  "offset": 10
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 13
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 11
                 }
               }
             }
@@ -18296,13 +18634,13 @@
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 21
+                      "offset": 22
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 22
+                      "offset": 23
                     }
                   }
                 ],
@@ -18310,13 +18648,13 @@
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 19
+                      "offset": 20
                     }
                   },
                   {
                     "InnerLayer": {
                       "layer": 2,
-                      "offset": 20
+                      "offset": 21
                     }
                   }
                 ]
@@ -18325,35 +18663,16 @@
                 {
                   "InnerLayer": {
                     "layer": 3,
-                    "offset": 10
+                    "offset": 12
                   }
                 },
                 {
                   "InnerLayer": {
                     "layer": 3,
-                    "offset": 11
+                    "offset": 13
                   }
                 }
               ]
-            }
-          }
-        },
-        {
-          "output_layer": 3,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 17
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 12
-                }
-              }
             }
           }
         },
@@ -18365,25 +18684,6 @@
                 "InnerLayer": {
                   "layer": 2,
                   "offset": 18
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 13
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 3,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 23
                 }
               },
               "output": {
@@ -18402,7 +18702,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 2,
-                  "offset": 24
+                  "offset": 19
                 }
               },
               "output": {
@@ -18413,18 +18713,72 @@
               }
             }
           }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 24
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 16
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 25
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 17
+                }
+              }
+            }
+          }
         }
       ],
-      "intermediate_layer_width": 25
+      "intermediate_layer_width": 26
     },
     {
       "layer": 3,
-      "gates_with_external_connections": [
+      "gates_with_external_connections": [],
+      "cached_relations": [],
+      "gates": [
         {
           "output_layer": 4,
           "enforced_relation": {
             "AggregateLookupRationalPair": {
               "input": [
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 6
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 7
+                    }
+                  }
+                ],
                 [
                   {
                     "InnerLayer": {
@@ -18436,20 +18790,6 @@
                     "InnerLayer": {
                       "layer": 3,
                       "offset": 5
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 3,
-                      "offset": 2
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 3,
-                      "offset": 3
                     }
                   }
                 ]
@@ -18474,51 +18814,38 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "AggregateLookupRationalPair": {
-              "input": [
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 3,
-                      "offset": 8
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 3,
-                      "offset": 9
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 3,
-                      "offset": 6
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 3,
-                      "offset": 7
-                    }
-                  }
-                ]
-              ],
-              "output": [
-                {
-                  "InnerLayer": {
-                    "layer": 4,
-                    "offset": 2
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 4,
-                    "offset": 3
-                  }
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 2
                 }
-              ]
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 2
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 3
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 3
+                }
+              }
             }
           }
         },
@@ -18531,20 +18858,6 @@
                   {
                     "InnerLayer": {
                       "layer": 3,
-                      "offset": 12
-                    }
-                  },
-                  {
-                    "InnerLayer": {
-                      "layer": 3,
-                      "offset": 13
-                    }
-                  }
-                ],
-                [
-                  {
-                    "InnerLayer": {
-                      "layer": 3,
                       "offset": 10
                     }
                   },
@@ -18552,6 +18865,20 @@
                     "InnerLayer": {
                       "layer": 3,
                       "offset": 11
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 8
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 9
                     }
                   }
                 ]
@@ -18576,49 +18903,62 @@
         {
           "output_layer": 4,
           "enforced_relation": {
+            "AggregateLookupRationalPair": {
+              "input": [
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 14
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 15
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 12
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 13
+                    }
+                  }
+                ]
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 4,
+                    "offset": 6
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 4,
+                    "offset": 7
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
             "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
                   "offset": 0
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 6
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 4,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 1
-                }
-              },
-              "output": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 7
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 4,
-          "enforced_relation": {
-            "CopyInExtensionField": {
-              "input": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 14
                 }
               },
               "output": {
@@ -18637,7 +18977,7 @@
               "input": {
                 "InnerLayer": {
                   "layer": 3,
-                  "offset": 15
+                  "offset": 1
                 }
               },
               "output": {
@@ -18648,38 +18988,285 @@
               }
             }
           }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 16
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 10
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 17
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 11
+                }
+              }
+            }
+          }
+        }
+      ],
+      "intermediate_layer_width": 18
+    },
+    {
+      "layer": 4,
+      "gates_with_external_connections": [
+        {
+          "output_layer": 5,
+          "enforced_relation": {
+            "AggregateLookupRationalPair": {
+              "input": [
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 4,
+                      "offset": 2
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 4,
+                      "offset": 3
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 4,
+                      "offset": 0
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 4,
+                      "offset": 1
+                    }
+                  }
+                ]
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 5,
+                    "offset": 0
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 5,
+                    "offset": 1
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 5,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 8
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 5,
+                  "offset": 2
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 5,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 9
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 5,
+                  "offset": 3
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 5,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 4
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 5,
+                  "offset": 4
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 5,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 5
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 5,
+                  "offset": 5
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 5,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 6
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 5,
+                  "offset": 6
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 5,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 7
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 5,
+                  "offset": 7
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 5,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 10
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 5,
+                  "offset": 8
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 5,
+          "enforced_relation": {
+            "CopyInExtensionField": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 11
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 5,
+                  "offset": 9
+                }
+              }
+            }
+          }
         }
       ],
       "cached_relations": [],
       "gates": [],
-      "intermediate_layer_width": 16
+      "intermediate_layer_width": 12
     }
   ],
   "global_output_map": {
     "PermutationProduct": [
       {
         "InnerLayer": {
-          "layer": 4,
-          "offset": 6
+          "layer": 5,
+          "offset": 2
         }
       },
       {
         "InnerLayer": {
-          "layer": 4,
-          "offset": 7
+          "layer": 5,
+          "offset": 3
         }
       }
     ],
     "Lookup16Bits": [
       {
         "InnerLayer": {
-          "layer": 4,
+          "layer": 5,
           "offset": 0
         }
       },
       {
         "InnerLayer": {
-          "layer": 4,
+          "layer": 5,
           "offset": 1
         }
       }
@@ -18687,41 +19274,41 @@
     "LookupTimestamps": [
       {
         "InnerLayer": {
-          "layer": 4,
-          "offset": 2
+          "layer": 5,
+          "offset": 4
         }
       },
       {
         "InnerLayer": {
-          "layer": 4,
-          "offset": 3
+          "layer": 5,
+          "offset": 5
         }
       }
     ],
     "GenericLookup": [
       {
         "InnerLayer": {
-          "layer": 4,
-          "offset": 4
+          "layer": 5,
+          "offset": 6
         }
       },
       {
         "InnerLayer": {
-          "layer": 4,
-          "offset": 5
+          "layer": 5,
+          "offset": 7
         }
       }
     ],
     "InitsAndTeardownsProduct": [
       {
         "InnerLayer": {
-          "layer": 4,
+          "layer": 5,
           "offset": 8
         }
       },
       {
         "InnerLayer": {
-          "layer": 4,
+          "layer": 5,
           "offset": 9
         }
       }
@@ -19558,64 +20145,185 @@
     {
       "quadratic_terms": [
         [
-          3987683987354747618711421180841033765,
+          3987683987354747934941319744363579685,
+          16,
+          54
+        ],
+        [
+          7975367974709495869882639488727159370,
+          16,
+          55
+        ],
+        [
+          6646139978924580629438629555491906707,
+          16,
+          56
+        ],
+        [
+          7975367974709495237422842435310078282,
+          16,
+          57
+        ],
+        [
+          6646139978924579364523860586719159443,
+          16,
+          58
+        ],
+        [
+          2658455991569831745807613963487599470,
+          17,
+          48
+        ],
+        [
+          5316911983139663491604934299115960028,
+          17,
+          49
+        ],
+        [
+          3987683987354747934941319744363579685,
+          17,
+          54
+        ],
+        [
+          7975367974709495869882639488727159370,
+          17,
+          55
+        ],
+        [
+          6646139978924580629438629555491906707,
+          17,
+          56
+        ],
+        [
+          7975367974709495237422842435310078282,
+          17,
+          57
+        ],
+        [
+          6646139978924579364523860586719159443,
+          17,
+          58
+        ],
+        [
+          5316911983139663491615228241121378268,
+          36,
+          42
+        ],
+        [
+          1329227995784915872903807060277947831,
+          36,
+          43
+        ],
+        [
+          1329227995784915872903807060277947831,
+          37,
+          42
+        ],
+        [
+          2658455991569831745807613963487599470,
+          37,
+          43
+        ]
+      ],
+      "linear_terms": [
+        [
+          6646139978924579364519035458474812563,
+          80
+        ]
+      ],
+      "constant_term": 5316911983139663175385329677598832348
+    },
+    {
+      "quadratic_terms": [
+        [
+          5316911983139663491615228241121378268,
           14,
           36
         ],
         [
-          7975367974709495237422842361684464202,
+          1329227995784915872903807060277947831,
           14,
           37
         ],
         [
-          3987683987354747618711421180841033765,
+          5316911983139663491615228241121378268,
           14,
           42
         ],
         [
-          7975367974709495237422842361684464202,
+          1329227995784915872903807060277947831,
           14,
           43
         ],
         [
-          5316911983139663491615228241121378268,
+          3987683987354747618711421180841033765,
           14,
           50
         ],
         [
-          1329227995784915872903807060277947831,
+          7975367974709495237422842361684464202,
           14,
           51
         ],
         [
-          3987683987354747618711421180841033765,
+          7975367974709495237422842435310078282,
+          14,
+          54
+        ],
+        [
+          6646139978924579364519035448657744531,
+          14,
+          55
+        ],
+        [
+          3987683987354747618711421475353077029,
+          14,
+          56
+        ],
+        [
+          5316911983139663491615228241121378268,
           15,
           36
         ],
         [
-          7975367974709495237422842361684464202,
+          1329227995784915872903807060277947831,
           15,
           37
         ],
         [
-          5316911983139663491615228241121378268,
+          3987683987354747618711421180841033765,
           15,
           42
         ],
         [
-          1329227995784915872903807060277947831,
+          7975367974709495237422842361684464202,
           15,
           43
         ],
         [
-          5316911983139663491615228241121378268,
+          3987683987354747618711421180841033765,
           15,
           50
         ],
         [
-          1329227995784915872903807060277947831,
+          7975367974709495237422842361684464202,
           15,
           51
+        ],
+        [
+          7975367974709495237422842435310078282,
+          15,
+          54
+        ],
+        [
+          6646139978924579364519035448657744531,
+          15,
+          55
+        ],
+        [
+          3987683987354747618711421475353077029,
+          15,
+          56
         ],
         [
           5316911983139663491615228241121378268,
@@ -19648,7 +20356,12 @@
           80
         ]
       ],
-      "linear_terms": [],
+      "linear_terms": [
+        [
+          3987683987354747618711420959957001253,
+          15
+        ]
+      ],
       "constant_term": 0
     },
     {
@@ -19854,19 +20567,19 @@
       ],
       "linear_terms": [
         [
-          5316911983139663491615228241118981596,
+          5316911983139663491615228241121378268,
           14
         ],
         [
-          5316911983139663491615228241118981596,
+          5316911983139663491615228241121378268,
           15
         ],
         [
-          5316911983139663491615228241118981596,
+          5316911983139663491615228241121378268,
           16
         ],
         [
-          5316911983139663491615228241118981596,
+          5316911983139663491615228241121378268,
           17
         ]
       ],
@@ -20077,19 +20790,19 @@
       ],
       "linear_terms": [
         [
-          5316911983139663491615228241118981596,
+          2658455991569831745807614120559565678,
           14
         ],
         [
-          5316911983139663491615228241118981596,
+          2658455991569831745807614120559565678,
           15
         ],
         [
-          5316911983139663491615228241118981596,
+          2658455991569831745807614120559565678,
           16
         ],
         [
-          5316911983139663491615228241118981596,
+          2658455991569831745807614120559565678,
           17
         ]
       ],
@@ -22437,7 +23150,7 @@
                 {
                   "Sum": [
                     {
-                      "Var": 50
+                      "Var": 36
                     },
                     {
                       "Product": [
@@ -22445,7 +23158,209 @@
                           "Constant": 1329227995784915872903807060277947831
                         },
                         {
-                          "Var": 51
+                          "Var": 37
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 42
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1329227995784915872903807060277947831
+                        },
+                        {
+                          "Var": 43
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 2658455991569831745807613963487599470
+                },
+                {
+                  "Var": 17
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 48
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1329227995784915872903807060277947831
+                        },
+                        {
+                          "Var": 49
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Constant": 5316911983139663175385329677598832348
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842435310078282
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 57
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1329227995784915872903807060277947831
+                        },
+                        {
+                          "Var": 58
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807613963487599470
+                        },
+                        {
+                          "Sum": [
+                            {
+                              "Var": 54
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 1329227995784915872903807060280344503
+                                },
+                                {
+                                  "Var": 55
+                                }
+                              ]
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 2658455991569831745807614120560689006
+                                },
+                                {
+                                  "Var": 56
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 16
+                    },
+                    {
+                      "Var": 17
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 6646139978924579364519035458474812563
+                },
+                {
+                  "Var": 80
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 36
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1329227995784915872903807060277947831
+                        },
+                        {
+                          "Var": 37
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 42
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1329227995784915872903807060277947831
+                        },
+                        {
+                          "Var": 43
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 7975367974709495237422842435310078282
+                        },
+                        {
+                          "Sum": [
+                            {
+                              "Var": 54
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 1329227995784915872903807060280344503
+                                },
+                                {
+                                  "Var": 55
+                                }
+                              ]
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 2658455991569831745807614120560689006
+                                },
+                                {
+                                  "Var": 56
+                                }
+                              ]
+                            }
+                          ]
                         }
                       ]
                     },
@@ -22457,7 +23372,7 @@
                         {
                           "Sum": [
                             {
-                              "Var": 36
+                              "Var": 50
                             },
                             {
                               "Product": [
@@ -22465,20 +23380,7 @@
                                   "Constant": 1329227995784915872903807060277947831
                                 },
                                 {
-                                  "Var": 37
-                                }
-                              ]
-                            },
-                            {
-                              "Var": 42
-                            },
-                            {
-                              "Product": [
-                                {
-                                  "Constant": 1329227995784915872903807060277947831
-                                },
-                                {
-                                  "Var": 43
+                                  "Var": 51
                                 }
                               ]
                             }
@@ -22498,7 +23400,7 @@
                 {
                   "Sum": [
                     {
-                      "Var": 50
+                      "Var": 36
                     },
                     {
                       "Product": [
@@ -22506,7 +23408,7 @@
                           "Constant": 1329227995784915872903807060277947831
                         },
                         {
-                          "Var": 51
+                          "Var": 37
                         }
                       ]
                     },
@@ -22518,7 +23420,7 @@
                         {
                           "Sum": [
                             {
-                              "Var": 36
+                              "Var": 42
                             },
                             {
                               "Product": [
@@ -22526,31 +23428,68 @@
                                   "Constant": 1329227995784915872903807060277947831
                                 },
                                 {
-                                  "Var": 37
+                                  "Var": 43
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "Constant": 3987683987354747618711420959957001253
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 7975367974709495237422842435310078282
+                        },
+                        {
+                          "Sum": [
+                            {
+                              "Var": 54
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 1329227995784915872903807060280344503
+                                },
+                                {
+                                  "Var": 55
                                 }
                               ]
                             },
                             {
                               "Product": [
                                 {
-                                  "Constant": 3987683987354747618711421180841033765
+                                  "Constant": 2658455991569831745807614120560689006
                                 },
                                 {
-                                  "Sum": [
-                                    {
-                                      "Var": 42
-                                    },
-                                    {
-                                      "Product": [
-                                        {
-                                          "Constant": 1329227995784915872903807060277947831
-                                        },
-                                        {
-                                          "Var": 43
-                                        }
-                                      ]
-                                    }
-                                  ]
+                                  "Var": 56
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 3987683987354747618711421180841033765
+                        },
+                        {
+                          "Sum": [
+                            {
+                              "Var": 50
+                            },
+                            {
+                              "Product": [
+                                {
+                                  "Constant": 1329227995784915872903807060277947831
+                                },
+                                {
+                                  "Var": 51
                                 }
                               ]
                             }
@@ -23099,7 +24038,7 @@
                       "Var": 78
                     },
                     {
-                      "Constant": 5316911983139663491615228241118981596
+                      "Constant": 5316911983139663491615228241121378268
                     },
                     {
                       "Product": [
@@ -23755,7 +24694,7 @@
                       "Var": 79
                     },
                     {
-                      "Constant": 5316911983139663491615228241118981596
+                      "Constant": 2658455991569831745807614120559565678
                     },
                     {
                       "Product": [
@@ -29202,6 +30141,2161 @@
                 ],
                 "degree": 1
               }
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 0
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 0
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 78
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 78
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Constant": 2658455991569831745807614120560689006
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Constant": 2658455991569831745807614120560689006
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 42
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 42
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 8
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 78
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 78
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 36
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 36
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 52
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 52
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 52
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 52
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 52
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 52
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 52
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 52
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 1
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 1
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 79
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 79
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 43
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 43
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 9
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 79
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 79
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 37
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 37
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 53
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 53
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 53
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 53
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 21
+                    },
+                    {
+                      "Var": 22
+                    },
+                    {
+                      "Var": 23
+                    },
+                    {
+                      "Var": 24
+                    }
+                  ]
+                },
+                {
+                  "Var": 60
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 21
+                    },
+                    {
+                      "Var": 22
+                    },
+                    {
+                      "Var": 23
+                    },
+                    {
+                      "Var": 24
+                    }
+                  ]
+                },
+                {
+                  "Var": 43
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 9
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 59
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 82
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 0
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 36
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 0
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 0
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 8
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 8
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Constant": 2658455991569831745807614120560689006
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 82
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 8
+                    },
+                    {
+                      "Constant": 6646139978924579364519035301401723027
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Constant": 2658455991569831745807614120560689006
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 81
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 81
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 81
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 81
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 54
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 54
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 54
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 54
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 54
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 54
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 54
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 54
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 1
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 37
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 1
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 1
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 9
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 9
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 82
+                },
+                {
+                  "Var": 9
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 31
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 31
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 31
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 31
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 55
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 55
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 24
+                },
+                {
+                  "Var": 55
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 7975367974709495237422842361684464202
+                },
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 55
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Var": 21
+                },
+                {
+                  "Var": 22
+                },
+                {
+                  "Var": 82
+                }
+              ]
+            },
+            {
+              "Var": 56
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Var": 83
+            },
+            {
+              "Product": [
+                {
+                  "Sum": [
+                    {
+                      "Var": 21
+                    },
+                    {
+                      "Var": 22
+                    }
+                  ]
+                },
+                {
+                  "Var": 25
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 21
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 22
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Var": 84
+            },
+            {
+              "Product": [
+                {
+                  "Var": 23
+                },
+                {
+                  "Var": 25
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 23
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Var": 85
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 21
+                    },
+                    {
+                      "Var": 22
+                    },
+                    {
+                      "Var": 23
+                    },
+                    {
+                      "Var": 24
+                    }
+                  ]
+                },
+                {
+                  "Var": 25
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 83
+                },
+                {
+                  "Var": 78
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 84
+                },
+                {
+                  "Var": 59
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 83
+                    },
+                    {
+                      "Var": 84
+                    }
+                  ]
+                },
+                {
+                  "Var": 50
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 83
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 79
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 51
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 84
+            },
+            {
+              "Var": 51
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 85
+            },
+            {
+              "Var": 50
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 85
+            },
+            {
+              "Var": 51
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 26
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 59
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 58
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 27
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 59
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 58
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 26
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 63
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 62
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 27
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 62
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 65
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 26
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 67
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 66
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 27
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 69
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 68
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 26
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 71
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 70
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 27
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 72
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 71
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 27
+                    },
+                    {
+                      "Var": 26
+                    }
+                  ]
+                },
+                {
+                  "Var": 50
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 26
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 61
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 60
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 27
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 61
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 60
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 26
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 65
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 64
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 27
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 64
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 63
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 26
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 69
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 68
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 27
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 67
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 66
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 26
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 73
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 72
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 27
+                },
+                {
+                  "Sum": [
+                    {
+                      "Product": [
+                        {
+                          "Constant": 2658455991569831745807614120560679790
+                        },
+                        {
+                          "Var": 70
+                        }
+                      ]
+                    },
+                    {
+                      "Var": 73
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 27
+                    },
+                    {
+                      "Var": 26
+                    }
+                  ]
+                },
+                {
+                  "Var": 51
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 5316911983139663491615228241121378268
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 28
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 38
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 6
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 5316911983139663491615228241121378268
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 28
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 39
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 5316911983139663491615228241121378268
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 29
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 44
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 7
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Constant": 5316911983139663491615228241121378268
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 29
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Var": 45
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 28
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 36
+                    },
+                    {
+                      "Var": 8
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 3987683987354747618711421180841033765
+                        },
+                        {
+                          "Var": 38
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 7975367974709495237422842361684464202
+                        },
+                        {
+                          "Var": 52
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 29
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 36
+                    },
+                    {
+                      "Var": 8
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 3987683987354747618711421180841033765
+                        },
+                        {
+                          "Var": 44
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 7975367974709495237422842361684464202
+                        },
+                        {
+                          "Var": 52
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Var": 28
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 37
+                    },
+                    {
+                      "Var": 9
+                    },
+                    {
+                      "Var": 52
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 3987683987354747618711421180841033765
+                        },
+                        {
+                          "Var": 39
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 7975367974709495237422842361684464202
+                        },
+                        {
+                          "Var": 53
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Var": 29
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 37
+                    },
+                    {
+                      "Var": 9
+                    },
+                    {
+                      "Var": 52
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 3987683987354747618711421180841033765
+                        },
+                        {
+                          "Var": 45
+                        }
+                      ]
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 7975367974709495237422842361684464202
+                        },
+                        {
+                          "Var": 53
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 28
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 57
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 38
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 29
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 57
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 44
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 28
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 58
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 39
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 29
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 58
+                },
+                {
+                  "Product": [
+                    {
+                      "Constant": 3987683987354747618711421180841033765
+                    },
+                    {
+                      "Var": 45
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 54
+            },
+            {
+              "Var": 29
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 29
+            },
+            {
+              "Var": 54
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Var": 87
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 3987683987354747618711421180841033765
+                },
+                {
+                  "Var": 28
+                },
+                {
+                  "Var": 54
+                }
+              ]
             }
           ]
         },
@@ -37550,7 +40644,7 @@
           [
             5316911983139663491615228241121378268,
             {
-              "BaseLayerMemory": 23
+              "BaseLayerWitness": 27
             }
           ]
         ],
@@ -37564,7 +40658,7 @@
           [
             5316911983139663491615228241121378268,
             {
-              "BaseLayerWitness": 51
+              "BaseLayerWitness": 28
             }
           ]
         ],
@@ -37578,7 +40672,7 @@
           [
             5316911983139663491615228241121378268,
             {
-              "BaseLayerMemory": 10
+              "BaseLayerMemory": 23
             }
           ]
         ],
@@ -37592,7 +40686,7 @@
           [
             5316911983139663491615228241121378268,
             {
-              "BaseLayerMemory": 11
+              "BaseLayerWitness": 51
             }
           ]
         ],
@@ -37606,7 +40700,7 @@
           [
             5316911983139663491615228241121378268,
             {
-              "BaseLayerMemory": 17
+              "BaseLayerMemory": 10
             }
           ]
         ],
@@ -37620,7 +40714,7 @@
           [
             5316911983139663491615228241121378268,
             {
-              "BaseLayerMemory": 18
+              "BaseLayerMemory": 11
             }
           ]
         ],
@@ -37634,7 +40728,21 @@
           [
             5316911983139663491615228241121378268,
             {
-              "BaseLayerMemory": 26
+              "BaseLayerMemory": 17
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 10
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            5316911983139663491615228241121378268,
+            {
+              "BaseLayerMemory": 18
             }
           ]
         ],
@@ -37648,13 +40756,27 @@
           [
             5316911983139663491615228241121378268,
             {
+              "BaseLayerMemory": 26
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 13
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            5316911983139663491615228241121378268,
+            {
               "BaseLayerMemory": 27
             }
           ]
         ],
         "constant": 0
       },
-      "lookup_set_index": 12
+      "lookup_set_index": 14
     },
     {
       "input": {
@@ -37668,7 +40790,7 @@
         ],
         "constant": 0
       },
-      "lookup_set_index": 10
+      "lookup_set_index": 12
     }
   ],
   "timestamp_range_check_lookup_expressions": [

@@ -68,7 +68,7 @@ pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = UNIFIED_F1_NUM_FLAGS
 /// only inside that family's flag-gated constraints, hence unconstrained (free)
 /// on rows where the family is idle. Because at most one family fires per row,
 /// these slots can be ALIASED across families into one shared pool.
-pub(super) const F1_SCRATCH_BOOLS: usize = 4; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans. Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0.
+pub(super) const F1_SCRATCH_BOOLS: usize = 5; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans; two-field mop.rr reuses [2],[3],[4] for the q-top/k bits t0/t1/t2 (written only on is_mul_like/is_addmod/is_submod rows — disjoint from is_tri_add). Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0; [4]=sw-align bit_1 — and with F2's [4]=next_pc_bit_1.
 pub(super) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,final}_of (4) + next_pc_bit_1
 pub(super) const F3_SCRATCH_BOOLS: usize = 0;
 pub(super) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
@@ -88,7 +88,7 @@ const UNIFIED_SCRATCH_BOOL_COUNT: usize = const_max(
     const_max(F3_SCRATCH_BOOLS, F4_SCRATCH_BOOLS),
 );
 
-pub(super) const F1_SCRATCH_VARS: usize = 0;
+pub(super) const F1_SCRATCH_VARS: usize = 2; // two-field mop.rr quotient low limbs q_lo16, q_hi16 ([0],[1]); written only on is_mul_like rows and RC-16'd (unconditional, holds pool-wide since every family's value in [0],[1] is < 2^16). 0 on the single-field native path (F == MopF branch never touches these). Aliased with F2's [0]=comparison_result_is_zero,[1]=rs1_sign; F3's [0]=imm_sign_ext/trunc_shift,[1]=shift_output byte; F4's [0],[1]=ram_addr limbs.
 pub(super) const F2_SCRATCH_VARS: usize = 5; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source, rs2_sign
 pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points (xor-rotate reuses the rs2 split: rs2 aliases rd at decode)
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
@@ -204,12 +204,32 @@ pub fn unified_reduced_machine_table_driver_fn<F: PrimeField>(table_driver: &mut
     }
 }
 
+/// Wrapper preserving the historic single-field signature; delegates to the
+/// two-generic core with the mop field fixed to `BabyBearField` — the only mop.rr
+/// field (asserted in `mop_two_field_decompose`). For `F = BabyBearField` this is
+/// the native single-field path; for a large `F` (e.g. Proth120) it IS the
+/// two-field instantiation. The `_core` form exists for the generic threading,
+/// not as an extension point for other mop fields.
+pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) {
+    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<
+        F,
+        ::field::baby_bear::base::BabyBearField,
+        CS,
+    >(cs);
+}
+
 /// Top-level unified circuit body. Allocates a single shared set of memory accesses
 /// for all reduced-machine families, then dispatches to each family's per-flag body.
 /// Per-family bodies don't allocate their own accesses — they accept extracted
 /// limbs/timestamps as parameters.
-pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr<
+pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core<
     F: PrimeField,
+    MopF: PrimeField,
     CS: Circuit<F>,
 >(
     cs: &mut CS,
@@ -223,10 +243,10 @@ pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr<
     let bitmask: [_; UNIFIED_REDUCED_MACHINE_NUM_FLAGS] = bitmask.try_into().unwrap();
     let bitmask = bitmask.map(|el| Boolean::Is(el));
 
-    apply_unified_reduced_machine_inner(cs, input, bitmask);
+    apply_unified_reduced_machine_inner::<F, MopF, _>(cs, input, bitmask);
 }
 
-fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
+fn apply_unified_reduced_machine_inner<F: PrimeField, MopF: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     bitmask: [Boolean; UNIFIED_REDUCED_MACHINE_NUM_FLAGS],
@@ -338,7 +358,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     // is_* flags are 1 per cycle. Family 4's body owns the cleanaddr/ROM/lookup
     // logic and the register-side address-binding constraints (gated on
     // `NOT is_lw` / `NOT is_sw`, which fire for Families 1-3 too).
-    apply_unified_add_sub_lui_auipc_mop_inner(
+    apply_unified_add_sub_lui_auipc_mop_inner::<F, MopF, _>(
         cs,
         inputs.clone(),
         unified_mask.add_sub_lui_auipc_mop(),
@@ -350,6 +370,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rs2_read_timestamp,
         shared_intermediate_reg,
         core::array::from_fn::<_, F1_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),
+        core::array::from_fn::<_, F1_SCRATCH_VARS, _>(|i| scratch_vars[i]),
     );
     let f2_lookups = apply_unified_jump_branch_slt_inner(
         cs,
@@ -621,7 +642,20 @@ fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(cs: &mut 
 /// Single source of truth used by the cs-side serialization tests below,
 /// the verifier_generator integration test, and the `unified_reduced_machine`
 /// setup crate that wires the circuit into the GKR prover.
+///
+/// BabyBear wrapper preserving the historic single-field signature; delegates to
+/// `build_unified_artifact_core` with `MopF = BabyBearField`.
 pub fn build_unified_artifact<F: ::field::PrimeField>(
+    use_caches: bool,
+    trace_len_log2: usize,
+) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
+    build_unified_artifact_core::<F, ::field::baby_bear::base::BabyBearField>(
+        use_caches,
+        trace_len_log2,
+    )
+}
+
+pub fn build_unified_artifact_core<F: ::field::PrimeField, MopF: ::field::PrimeField>(
     use_caches: bool,
     trace_len_log2: usize,
 ) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
@@ -630,7 +664,7 @@ pub fn build_unified_artifact<F: ::field::PrimeField>(
 
     let mut cs = BasicAssembly::<F>::new();
     unified_register_all_tables(&mut cs);
-    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<F, MopF, _>(&mut cs);
     let (cs_output, _) = cs.finalize();
 
     let compiler = GKRCompiler::<F>::default();

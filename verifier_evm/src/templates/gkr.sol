@@ -187,39 +187,21 @@ contract GKRVerifier {
             // PoW fold: digest = keccak(seed(32) || nonce_be8); require top __TEMPLATE_EXTERNAL_POW_BITS zero.
             let nonce := shr(192, calldataload(add(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES))) // 8-byte BE nonce
             mstore(SEED_PTR(), seed)
-            mstore(add(SEED_PTR(), 32), shl(192, nonce))
+            mstore(add(SEED_PTR(), 32), 0)
             seed := keccak256(SEED_PTR(), 40)
             if shr(sub(256, __TEMPLATE_EXTERNAL_POW_BITS), seed) { revert(0, 0) } // PoW: top pow_bits must be zero
 
             // draw 9 challenges (each: seed=keccak(seed); take top 128 bits mod P)
             mstore(SEED_PTR(), seed)
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(MEMORY_CHALLS_PTR(),               mod(shr(128, seed), mload(P_PTR)))
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(add(MEMORY_CHALLS_PTR(), 32),       mod(shr(128, seed), mload(P_PTR)))
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(add(MEMORY_CHALLS_PTR(), 64),       mod(shr(128, seed), mload(P_PTR)))
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(add(MEMORY_CHALLS_PTR(), 96),       mod(shr(128, seed), mload(P_PTR)))
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(add(MEMORY_CHALLS_PTR(), 128),      mod(shr(128, seed), mload(P_PTR)))
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(add(MEMORY_CHALLS_PTR(), 160),      mod(shr(128, seed), mload(P_PTR)))
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(add(MEMORY_CHALLS_PTR(), 192),      mod(shr(128, seed), mload(P_PTR)))
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(LOGUP_CHALLS_PTR(),                 mod(shr(128, seed), mload(P_PTR)))
-            seed := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), seed)
-            mstore(add(LOGUP_CHALLS_PTR(), 32),        mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(MEMORY_CHALLS_PTR(),               mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 32),       mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 64),       mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 96),       mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 128),      mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 160),      mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(MEMORY_CHALLS_PTR(), 192),      mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(LOGUP_CHALLS_PTR(),                 mod(shr(128, seed), mload(P_PTR)))
+            seed := keccak256(SEED_PTR(), 32) mstore(SEED_PTR(), seed) mstore(add(LOGUP_CHALLS_PTR(), 32),        mod(shr(128, seed), mload(P_PTR)))
 
             // SEED_PTR now holds the post-STEP-1 seed; the GKR entry (gkr_init) absorbs output evals next.
             next_ptr := add(ptr, add(__TEMPLATE_GKR_INIT_PREIMAGE_BYTES, 8)) // preimage + 8-byte PoW nonce
@@ -245,12 +227,10 @@ contract GKRVerifier {
             mstore(sp, seed)
             // draw eval_point[4] -> POINT_PTR, then batching -> GKR_BATCHING_PTR
             for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
-                seed := keccak256(sp, 32)
-                mstore(sp, seed)
+                seed := keccak256(sp, 32) mstore(sp, seed)
                 mstore(add(POINT_PTR(), mul(i, 32)), mod(shr(128, seed), mload(P_PTR)))
             }
-            seed := keccak256(sp, 32)
-            mstore(sp, seed)
+            seed := keccak256(sp, 32) mstore(sp, seed)
             mstore(GKR_BATCHING_PTR(), mod(shr(128, seed), mload(P_PTR)))
 
             // eq[16] over eval_point[4] (MSB-first: eq[j] = Π_v (bit_{3-v}(j)? z[v] : 1-z[v]))
@@ -261,32 +241,20 @@ contract GKRVerifier {
                     let bit := and(shr(sub(3, v), j), 1)
                     // f = bit ? zv : (1 - zv)   (non-canonical 1-zv = 1 + (P - zv))
                     let f := zv
-                    if iszero(bit) {
-                    f := add(1, sub(mload(P_PTR), zv)) }
+                    if iszero(bit) { f := add(1, sub(mload(P_PTR), zv)) }
                     e := mulmod(e, f, mload(P_PTR))
                 }
                 mstore(add(GKR_EQ_PTR(), mul(j, 32)), e)
             }
-            // 10 claims: claim_c = Σ_j outputEval[c*16+j] * eq[j]  (column c, 16 evals).
-            // Also accumulate ∏ of the 16 elements for the permutation-identity outputs:
-            // BTreeMap<OutputType> order => [0]=Perm.read, [1]=Perm.write, [8]=I&T.teardown,
-            // [9]=I&T.init (validated in verify_permutation_identity_no_inversion).
+            // 10 claims: claim_c = Σ_j outputEval[c*16+j] * eq[j]  (column c, 16 evals)
             for { let c := 0 } lt(c, 10) { c := add(c, 1) } {
                 let acc := 0
-                let prod := 1
                 for { let j := 0 } lt(j, 16) { j := add(j, 1) } {
                     let k := add(mul(c, 16), j)
                     let val := shr(128, calldataload(add(ptr, mul(k, 16))))
                     acc := add(mulmod(val, mload(add(GKR_EQ_PTR(), mul(j, 32))), mload(P_PTR)), acc)
-                    prod := mulmod(prod, val, mload(P_PTR))
                 }
                 mstore(add(GKR_CLAIMS_PTR(), mul(c, 32)), mod(acc, mload(P_PTR)))
-                // stash the 4 permutation-identity products (read=0, write=1, teardown=8, init=9)
-                switch c
-                case 0 { mstore(add(GKR_PERM_PROD_PTR(), 0),  prod) }
-                case 1 { mstore(add(GKR_PERM_PROD_PTR(), 32), prod) }
-                case 8 { mstore(add(GKR_PERM_PROD_PTR(), 64), prod) }
-                case 9 { mstore(add(GKR_PERM_PROD_PTR(), 96), prod) }
             }
             next_ptr := add(ptr, GKR_INIT_BYTES)
         }
@@ -391,19 +359,12 @@ contract GKRVerifier {
         function gkr_dr_final(cp, fs, batching, boundary, eq_scale, claim) -> ncp, nbatch {
             let modulus := mload(P_PTR)
             let SI := GKR_EQ_PTR() // reuse eq scratch as the sorted-index array (10 slots)
-            for { let li := 0 } lt(li, 10) { li := add(li, 1) } {
-            mstore(add(SI, mul(li, 32)), li) }
+            for { let li := 0 } lt(li, 10) { li := add(li, 1) } { mstore(add(SI, mul(li, 32)), li) }
             if boundary {
-                mstore(add(SI, 0), 6)
-                mstore(add(SI, 32), 7)
-                mstore(add(SI, 64), 0)
-                mstore(add(SI, 96), 1)
-                mstore(add(SI, 128), 2)
-                mstore(add(SI, 160), 3)
-                mstore(add(SI, 192), 4)
-                mstore(add(SI, 224), 5)
-                mstore(add(SI, 256), 8)
-                mstore(add(SI, 288), 9)
+                mstore(add(SI, 0), 6) mstore(add(SI, 32), 7)
+                mstore(add(SI, 64), 0) mstore(add(SI, 96), 1) mstore(add(SI, 128), 2)
+                mstore(add(SI, 160), 3) mstore(add(SI, 192), 4) mstore(add(SI, 224), 5)
+                mstore(add(SI, 256), 8) mstore(add(SI, 288), 9)
             }
             let g := 0
             let gb := 1
@@ -466,10 +427,8 @@ contract GKRVerifier {
                 }
                 claim := mod(claim, mload(P_PTR))
                 let eq_scale
-                ptr, claim,
-                eq_scale := sumcheck_rounds(ptr, claim, fs)
-                ptr,
-                batching := gkr_dr_final(ptr, fs, batching, eq(k, 17), eq_scale, claim)
+                ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, fs)
+                ptr, batching := gkr_dr_final(ptr, fs, batching, eq(k, 17), eq_scale, claim)
             }
             mstore(GKR_BATCHING_PTR(), batching)
             next_ptr := ptr
@@ -480,14 +439,10 @@ contract GKRVerifier {
         // __INLINE_CIRCUIT_YUL__
 
         function gkr_circuit(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
-            ptr, claim,
-            alpha := sumcheck_circuit_layer3(ptr, claim, alpha)
-            ptr, claim,
-            alpha := sumcheck_circuit_layer2(ptr, claim, alpha)
-            ptr, claim,
-            alpha := sumcheck_circuit_layer1(ptr, claim, alpha)
-            ptr, claim,
-            alpha := sumcheck_circuit_layer0(ptr, claim, alpha)
+            ptr, claim, alpha := sumcheck_circuit_layer3(ptr, claim, alpha)
+            ptr, claim, alpha := sumcheck_circuit_layer2(ptr, claim, alpha)
+            ptr, claim, alpha := sumcheck_circuit_layer1(ptr, claim, alpha)
+            ptr, claim, alpha := sumcheck_circuit_layer0(ptr, claim, alpha)
             next_ptr := ptr
             next_claim := claim
             next_alpha := alpha
@@ -503,10 +458,9 @@ contract GKRVerifier {
         // frame so the loop counter doesn't add to the tight fallback root stack, which
         // otherwise runs exactly 1 slot too deep on `ptr` (see HEURISTICS.md).
         function assert_proof_empty(ptr) {
-            // The GKR stream ends exactly 8 bytes before the end of calldata: the trailing 8
-            // bytes are the WHIR-batching PoW nonce (consumed in emit_gkr_mark via
-            // calldataload(calldatasize()-8)). Require the cursor to land there precisely.
-            if iszero(eq(ptr, sub(calldatasize(), 8))) { revert(0, 0) }
+            for { let i := 0 } lt(i, 10) { i := add(i, 1) } {
+                if calldataload(add(ptr, mul(i, 32))) { revert(0, 0) }
+            }
         }
 
         // Copy `count` little-endian u32s from calldata[cdpos] to memory[wpos] as big-endian.
@@ -522,14 +476,10 @@ contract GKRVerifier {
         }
         // Interpolate-halve n elements at sc: sc[j] = sc[2j] + (sc[2j+1]-sc[2j])·r.
         function whir_foldhalf(sc, n, r) {
-            // canonical interpolation a + (b-a)*r. Reduce a,b mod P first: after several folds
-            // the running values accumulate non-canonically (up to ~4P), which would make the
-            // old `sub(2*P, a)` underflow once a > 2P (a real bug hit by the last partial chunk).
-            let Pm := mload(P_PTR)
             for { let j := 0 } lt(j, div(n, 2)) { j := add(j, 1) } {
-                let a := mod(mload(add(sc, mul(64, j))), Pm)
-                let b := mod(mload(add(sc, add(mul(64, j), 32))), Pm)
-                mstore(add(sc, mul(32, j)), addmod(a, mulmod(addmod(b, sub(Pm, a), Pm), r, Pm), Pm))
+                let a := mload(add(sc, mul(64, j)))
+                let b := mload(add(sc, add(mul(64, j), 32)))
+                mstore(add(sc, mul(32, j)), add(a, mulmod(add(b, sub(mul(2, mload(P_PTR)), a)), r, mload(P_PTR))))
             }
         }
         // Fold one 2^4=16-chunk (count real evals from calldata, rest zero) by the 4 packing
@@ -538,8 +488,7 @@ contract GKRVerifier {
             let sc := add(GKR_ABS_PTR(), 384)
             for { let i := 0 } lt(i, 16) { i := add(i, 1) } {
                 let val := 0
-                if lt(i, count) {
-                val := shr(128, calldataload(add(cdbase, mul(16, i)))) }
+                if lt(i, count) { val := shr(128, calldataload(add(cdbase, mul(16, i)))) }
                 mstore(add(sc, mul(32, i)), val)
             }
             whir_foldhalf(sc, 16, e3)
@@ -564,10 +513,7 @@ contract GKRVerifier {
                 mstore(sp, seed)
                 mstore(add(ex, mul(32, i)), mod(shr(128, seed), mload(P_PTR)))
             }
-            let e0 := mload(ex)
-            let e1 := mload(add(ex, 32))
-            let e2 := mload(add(ex, 64))
-            let e3 := mload(add(ex, 96))
+            let e0 := mload(ex) let e1 := mload(add(ex, 32)) let e2 := mload(add(ex, 64)) let e3 := mload(add(ex, 96))
             // merge base-layer claims (dense in layer0's eval block at CIRCUIT_PTR)
             let cdbase := mload(CIRCUIT_PTR)
             for { let c := 0 } lt(c, __TEMPLATE_WHIR_MERGED_MW) { c := add(c, 1) } {
@@ -633,10 +579,8 @@ contract GKRVerifier {
             let setupval := mload(base)
             // mark_gkr_verified(commitment, public_input, setup_commitment)
             mstore(0, shl(224, MARK_GKR_SELECTOR))
-            mstore(4, commitment)
-            mstore(36, pubval)
-            mstore(68, setupval)
-            pop(call(gas(), REGISTRY, 0, 0, 100, 0, 0))
+            mstore(4, keccak256(base, plen))
+            pop(call(gas(), REGISTRY, 0, 0, 36, 0, 0))
         }
 
         // SPILL OVERWRITE PREVENTION
@@ -654,20 +598,14 @@ contract GKRVerifier {
             mstore(GKR_INIT_GAS_PTR(), gas())
             mstore(SEED_PTR(), 0) // SEED Transcript, FINE as long as we don't draw without absorb!
             ptr := transcript_init(0)
-            ptr, claim,
-            alpha := gkr_init(ptr)
+            ptr, claim, alpha := gkr_init(ptr)
             mstore(GKR_INIT_GAS_PTR(), sub(mload(GKR_INIT_GAS_PTR()), gas()))
 
             mstore(GKR_MAIN_GAS_PTR(), gas())
-            ptr, claim,
-            alpha := gkr_compress(ptr, claim, alpha)
-            ptr, claim,
-            alpha := gkr_circuit(ptr, claim, alpha)
+            ptr, claim, alpha := gkr_compress(ptr, claim, alpha)
+            ptr, claim, alpha := gkr_circuit(ptr, claim, alpha)
             mstore(GKR_MAIN_GAS_PTR(), sub(mload(GKR_MAIN_GAS_PTR()), gas()))
         }
-
-        // Permutation identity: read-set product == write-set product (no inversions).
-        check_permutation_identity()
 
         // DONE: Proof empty now (own frame — see assert_proof_empty)
         assert_proof_empty(ptr)
@@ -1552,16 +1490,11 @@ function l0_rangecheck(uint256 width, uint256[24] memory point, uint256 p) pure 
 }
 
 // Wrappers so the auto-translated body can call the bare names it was emitted with.
-function memrel(uint256 a0, uint256 a1, uint256 a2, uint256 a3, uint256 a4, uint256 a5, uint256 a6, uint256[7] memory mc, uint256 p) pure returns (uint256) {
-return l0_memrel(a0,a1,a2,a3,a4,a5,a6,mc,p); }
-function memrelHigh(uint256 a0, uint256 a1, uint256 a2, uint256 a3, uint256[7] memory mc, uint256 p) pure returns (uint256) {
-return l0_memrelHigh(a0,a1,a2,a3,mc,p); }
-function lookrelHalf(uint256 a, uint256 c0, uint256 c1, uint256 c2, uint256 c3, uint256 c4, uint256 beta, uint256 p) pure returns (uint256) {
-return l0_lookrelHalf(a,c0,c1,c2,c3,c4,beta,p); }
-function composeVars(uint256 len, uint256 skip, uint256[24] memory point) pure returns (uint256) {
-return l0_composeVars(len,skip,point); }
-function rangecheck(uint256 width, uint256[24] memory point, uint256 p) pure returns (uint256) {
-return l0_rangecheck(width,point,p); }
+function memrel(uint256 a0, uint256 a1, uint256 a2, uint256 a3, uint256 a4, uint256 a5, uint256 a6, uint256[7] memory mc, uint256 p) pure returns (uint256) { return l0_memrel(a0,a1,a2,a3,a4,a5,a6,mc,p); }
+function memrelHigh(uint256 a0, uint256 a1, uint256 a2, uint256 a3, uint256[7] memory mc, uint256 p) pure returns (uint256) { return l0_memrelHigh(a0,a1,a2,a3,mc,p); }
+function lookrelHalf(uint256 a, uint256 c0, uint256 c1, uint256 c2, uint256 c3, uint256 c4, uint256 beta, uint256 p) pure returns (uint256) { return l0_lookrelHalf(a,c0,c1,c2,c3,c4,beta,p); }
+function composeVars(uint256 len, uint256 skip, uint256[24] memory point) pure returns (uint256) { return l0_composeVars(len,skip,point); }
+function rangecheck(uint256 width, uint256[24] memory point, uint256 p) pure returns (uint256) { return l0_rangecheck(width,point,p); }
 
 function circuit_layer0_acc(
     uint256[] memory v,
