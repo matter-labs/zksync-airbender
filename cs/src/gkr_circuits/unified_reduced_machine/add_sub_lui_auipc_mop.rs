@@ -601,9 +601,9 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
         let mul_term = (out.clone() - Expr::var(mulmod_intermediate_var)) * is_mul_like;
         if two_field {
             // in case of non-native field we perform just an addition with carry, and
-            // we assume that (2^32 - 1) * 2 (we accept non-canonical form) can not overflow 3 MopF chars
+            // we assume that (2^32 - 1) * 2 (we accept non-canonical form) can not overflow 7 MopF chars
             // (for addition), and also we do not need to add more than 3 chars for subtractions without underflow
-            assert!(((1u64 << 32) - 1) * 2 < (MopF::CHARACTERISTICS_U32 as u64) * 3);
+            assert!(((1u64 << 32) - 1) * 2 < (MopF::CHARACTERISTICS_U32 as u64) * 7);
             assert!((u32::MAX as u64) < (MopF::CHARACTERISTICS_U32 as u64) * 3);
             
             let [t0, t1, t2] = t_bit_vars.unwrap();
