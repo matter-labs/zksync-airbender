@@ -15,7 +15,7 @@ use std::path::Path;
 // PoW difficulties are the verifier's soundness knobs. Update these when the program changes.
 const WHIR_BATCH_POW_BITS: u32 = 11;
 const EXTERNAL_POW_BITS: u32 = 20;
-const EXPECTED_FINAL_PC: u32 = 0x00000c8c;
+const EXPECTED_FINAL_PC: u32 = 3568;
 
 #[test]
 fn generate_contracts_into_dir() {

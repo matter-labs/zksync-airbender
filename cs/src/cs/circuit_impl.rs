@@ -1645,68 +1645,57 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
     }
 
     fn is_satisfied(&mut self) -> bool {
-        todo!();
-
-        // if let Some(witness_placer) = self.witness_placer.as_ref() {
-        //     if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-        //         unsafe {
-        //             let resolver = (witness_placer as *const W)
-        //                 .cast::<CSDebugWitnessEvaluator<F>>()
-        //                 .as_ref_unchecked();
-
-        //             // there could be cases when conditional branches were not taken,
-        //             // and our routines above just would not mark variable as resolved for that reason,
-        //             // so we can still assume that all unresolved are 0s below
-
-        //             for (constraint, _) in self.constraint_storage.iter() {
-        //                 let (quad, linear, constant) = constraint.clone().split_max_quadratic();
-        //                 let mut value = constant;
-        //                 for (coeff, a, b) in quad.into_iter() {
-        //                     let mut t = coeff;
-
-        //                     // let a_value = resolver.get_value(a).unwrap_or(F::ZERO);
-        //                     // t.mul_assign(&a_value);
-        //                     // let b_value = resolver.get_value(b).unwrap_or(F::ZERO);
-        //                     // t.mul_assign(&b_value);
-
-        //                     let Some(a_value) = resolver.get_value(a) else {
-        //                         panic!("Variable {:?} left unresolved", a);
-        //                     };
-        //                     t.mul_assign(&a_value);
-        //                     let Some(b_value) = resolver.get_value(b) else {
-        //                         panic!("Variable {:?} left unresolved", b);
-        //                     };
-        //                     t.mul_assign(&b_value);
-
-        //                     value.add_assign(&t);
-        //                 }
-        //                 for (coeff, a) in linear.into_iter() {
-        //                     let mut t = coeff;
-
-        //                     // let a_value = resolver.get_value(a).unwrap_or(F::ZERO);
-        //                     // t.mul_assign(&a_value);
-
-        //                     let Some(a_value) = resolver.get_value(a) else {
-        //                         panic!("Variable {:?} left unresolved", a);
-        //                     };
-        //                     t.mul_assign(&a_value);
-
-        //                     value.add_assign(&t);
-        //                 }
-
-        //                 if value != F::ZERO {
-        //                     println!(
-        //                         "[{}:{}] unsatisfied at constraint {constraint:?} with value {value:?}",
-        //                         file!(), line!()
-        //                     );
-        //                     return false;
-        //                 }
-        //             }
-
-        //             return true;
-        //         }
-        //     }
-        // }
+        // Restored after the expr-migration stubbed this out. Constraints now live in
+        // `structured_statements` as `AssertZero { compiled_constraint, .. }` (the ≤-quadratic
+        // compiled form); evaluate each against the resolved debug witness and fail on the first
+        // nonzero. Same per-constraint evaluation as `try_check_constraint`.
+        //
+        // Unresolved variables are treated as 0: on a single active row the inactive opcode
+        // families never assign their columns, yet every such constraint is multiplied by a
+        // resolved activity mask of 0, so the product still vanishes (the pre-migration contract —
+        // "assume all unresolved are 0s"). Only the debug evaluator carries values; other placers
+        // vacuously pass, matching the prior behaviour.
+        if let Some(witness_placer) = self.witness_placer.as_ref() {
+            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
+                let resolver = unsafe {
+                    (witness_placer as *const W)
+                        .cast::<CSDebugWitnessEvaluator<F>>()
+                        .as_ref_unchecked()
+                };
+                for stmt in self.structured_statements.iter() {
+                    let StructuredStatement::AssertZero {
+                        compiled_constraint,
+                        ..
+                    } = stmt
+                    else {
+                        continue;
+                    };
+                    let (quad, linear, constant) =
+                        compiled_constraint.clone().split_max_quadratic();
+                    let mut value = constant;
+                    for (coeff, a, b) in quad.into_iter() {
+                        let mut t = coeff;
+                        t.mul_assign(&resolver.get_value(a).unwrap_or(F::ZERO));
+                        t.mul_assign(&resolver.get_value(b).unwrap_or(F::ZERO));
+                        value.add_assign(&t);
+                    }
+                    for (coeff, a) in linear.into_iter() {
+                        let mut t = coeff;
+                        t.mul_assign(&resolver.get_value(a).unwrap_or(F::ZERO));
+                        value.add_assign(&t);
+                    }
+                    if value != F::ZERO {
+                        println!(
+                            "[{}:{}] unsatisfied at constraint {compiled_constraint:?} with value {value:?}",
+                            file!(),
+                            line!()
+                        );
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
 
         true
     }

@@ -271,6 +271,24 @@ mod two_field_mop_tests {
         a.as_u32_raw_repr_reduced()
     }
 
+    /// Build a NON-canonical raw u32 repr of the same BabyBear element that `reduced` (∈ [0,p))
+    /// denotes. `from_raw_repr_with_reduction` maps both `reduced` and `reduced + p` to the SAME
+    /// field element (it reduces its argument), yet `reduced + p ∈ [p, 2p) ⊆ [p, u32::MAX]` is a
+    /// non-reduced register word — a "raw repr without reduction". `2p < u32::MAX` for BabyBear,
+    /// so the offset never wraps. This is exactly the case the mop.rr circuit must handle: a
+    /// register may legitimately hold a non-canonical field encoding that has to be reduced before
+    /// the modular op, while the emitted output must still be canonical.
+    fn non_canonical(reduced: u32) -> u32 {
+        assert!(reduced < BB_P, "start from a canonical value (< p)");
+        let raw = reduced + BB_P;
+        debug_assert_eq!(
+            <MopF as PrimeField>::from_raw_repr_with_reduction(raw),
+            <MopF as PrimeField>::from_raw_repr_with_reduction(reduced),
+            "the +p offset must not change the field element",
+        );
+        raw
+    }
+
     fn with_two_field_cs<R>(
         opcode: u32,
         rs1_value: u32,
@@ -506,6 +524,54 @@ mod two_field_mop_tests {
                 "submod rd must equal (rs1 − rs2) mod p for rs1={rs1} rs2={rs2}"
             );
         }
+    }
+
+    /// mop.rr with NON-CANONICAL operands (raw reprs ≥ p, ≤ u32::MAX). A register may hold a
+    /// non-reduced BabyBear encoding; the circuit must pre-reduce the inputs and still emit a
+    /// canonically-reduced output. Exercises the range budgets the asserts in
+    /// `add_sub_lui_auipc_mop.rs` guarantee: the mul/fma quotient q̂ ∈ [0, 8·2^32) and the
+    /// add/sub reduction count k ∈ [0,8). Covers add/mul/fma with `non_canonical()` inputs and —
+    /// the worst-borrow submod case — subtraction of the largest non-canonical word from zero.
+    #[test]
+    fn test_mop_noncanonical_inputs_proth120() {
+        // reduced operands (< p); their +p reprs are non-canonical but denote the same elements.
+        let a = non_canonical(7);
+        let b = non_canonical(BB_P - 3);
+        let c = non_canonical(123456);
+
+        // mulmod: both operands non-canonical.
+        let expected = expected_mulmod(a, b);
+        let (sat, out) =
+            run_two_field_cycle(encode_mop(MULMOD_FUNCT7, 10, 11, 12), a, b, 0, expected);
+        assert!(sat, "mulmod unsatisfied for non-canonical rs1={a} rs2={b}");
+        assert_eq!(out, expected, "mulmod non-canonical output must match reduced product");
+        assert!(out < BB_P, "mulmod output must be canonical (< p), got {out}");
+
+        // addmod: both operands non-canonical (dividend up to ~4p).
+        let expected = expected_addmod(a, b);
+        let (sat, out) =
+            run_two_field_cycle(encode_mop(ADDMOD_FUNCT7, 10, 11, 12), a, b, 0, expected);
+        assert!(sat, "addmod unsatisfied for non-canonical rs1={a} rs2={b}");
+        assert_eq!(out, expected, "addmod non-canonical output must match reduced sum");
+        assert!(out < BB_P, "addmod output must be canonical (< p), got {out}");
+
+        // fmamod: all three operands (including the rd_old addend) non-canonical.
+        let expected = expected_fmamod(a, b, c);
+        let (sat, out) =
+            run_two_field_cycle(encode_mop(FMAMOD_FUNCT7, 10, 11, 12), a, b, c, expected);
+        assert!(sat, "fmamod unsatisfied for non-canonical rs1={a} rs2={b} rd_old={c}");
+        assert_eq!(out, expected, "fmamod non-canonical output must match reduced fma");
+        assert!(out < BB_P, "fmamod output must be canonical (< p), got {out}");
+
+        // submod: subtract the maximal non-canonical word from zero (0 − u32::MAX). This is the
+        // worst borrow the +3p offset must absorb (the `u32::MAX < 3p` assert covers it).
+        let (rs1, rs2) = (0u32, u32::MAX);
+        let expected = expected_submod(rs1, rs2);
+        let (sat, out) =
+            run_two_field_cycle(encode_mop(SUBMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
+        assert!(sat, "submod unsatisfied for 0 − u32::MAX (max non-canonical subtrahend)");
+        assert_eq!(out, expected, "submod(0, u32::MAX) must reduce canonically");
+        assert!(out < BB_P, "submod output must be canonical (< p), got {out}");
     }
 
     #[test]

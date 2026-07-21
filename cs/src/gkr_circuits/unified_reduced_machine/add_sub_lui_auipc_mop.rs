@@ -565,6 +565,30 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
             //   x·y + is_fma·d·R + C·p − q·p − m·R = 0,
             // with x = rs1, y = rs2, d = rd_read (fma addend), m = mulmod_intermediate_var, and
             // C = R = 2^32.
+            //
+            // RANGE SOUNDNESS/COMPLETENESS with NON-CANONICAL operands. rs1, rs2 and (fma) rd_read
+            // are register words that may be ANY u32 — mop.rr accepts non-reduced inputs (possibly
+            // ≥ MopF::CHAR, but ≤ u32::MAX). The quotient is committed as
+            //   q̂ = q_lo16 + q_hi16·2^16 + k·2^32,  q_lo16,q_hi16 ∈ [0,2^16) (16-bit RC),
+            //   k = t0 + 2·t1 + 4·t2 ∈ [0,8) (3 Booleans),  ⇒ q̂ ∈ [0, 8·2^32).
+            // From q̂·p = x·y + is_fma·d·R̂ + R̂·p̂ − m·R̂ with the reduced output m ∈ [0,p), q̂ is
+            // maximized at m = 0, x = y = d = u32::MAX, is_fma = 1. That maximum MUST fit the
+            // representable range, else an honest prover cannot commit the quotient and the mul/fma
+            // row becomes unsatisfiable (completeness break). Assert it, so a smaller MopF or a
+            // wider Montgomery R can never silently violate the 2×16-bit-limb + 3-bit-k budget.
+            // (Soundness — no wraparound of the degree-2 relation mod F — is covered separately by
+            // the `F::CHAR_BITS >= 68` assert above: the largest term q̂·p̂ is < 8·2^32·p < 2^66 < F.)
+            {
+                let r: u128 = 1u128 << 32;
+                let p: u128 = MopF::CHARACTERISTICS_U32 as u128;
+                let max_quotient_numerator =
+                    (u32::MAX as u128) * (u32::MAX as u128) + (u32::MAX as u128) * r + r * p;
+                assert!(
+                    max_quotient_numerator < (8u128 << 32) * p,
+                    "mulmod/fmamod quotient q̂ (2×16-bit limbs + 3-bit k, range [0, 8·2^32)) is too \
+                     narrow to represent the max quotient for non-canonical u32 inputs"
+                );
+            }
             let r_hat = F::from_u128_with_reduction(1u128 << 32);
             let p_hat = F::from_u32_with_reduction(MopF::CHARACTERISTICS_U32);
             let cp_hat =
@@ -600,12 +624,20 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
         let is_mul_like = Expr::<F>::Sum(vec![Expr::from(is_mulmod), Expr::from(is_fmamod)]);
         let mul_term = (out.clone() - Expr::var(mulmod_intermediate_var)) * is_mul_like;
         if two_field {
-            // in case of non-native field we perform just an addition with carry, and
-            // we assume that (2^32 - 1) * 2 (we accept non-canonical form) can not overflow 7 MopF chars
-            // (for addition), and also we do not need to add more than 3 chars for subtractions without underflow
+            // addmod/submod over the non-native field with NON-CANONICAL operands (rs1, rs2 any
+            // u32, possibly ≥ MopF::CHAR). The reduction count `k = t0 + 2·t1 + 4·t2` shares the
+            // same 3 Boolean slots as the mul quotient's top bits, so k ∈ [0,8), and the output is
+            // pinned canonical (out is 2×16-bit range-checked AND the `carry == 1` normalization
+            // forces out < p). For the honest witness to fit that 3-bit budget:
+            //   * addmod: out = rs1 + rs2 − k·p, so k = (rs1+rs2−out)/p ≤ (rs1+rs2)/p. Worst case
+            //     rs1 = rs2 = 2^32−1 ⇒ k ≤ ⌊2·(2^32−1)/p⌋; require 2·(2^32−1) < 7·p ⇒ k ≤ 4 < 8.
+            //   * submod: out = rs1 − rs2 + 3p − k·p. The +3p keeps the value non-negative for the
+            //     worst borrow rs1 = 0, rs2 = 2^32−1 (needs 3p > 2^32−1), and bounds
+            //     k = (rs1−rs2+3p−out)/p ≤ (2^32−1)/p + 3 < 6 < 8 under the same u32::MAX < 3p.
+            // Assert both so a smaller MopF can never overflow the shared 3-bit k / break canonicity.
             assert!(((1u64 << 32) - 1) * 2 < (MopF::CHARACTERISTICS_U32 as u64) * 7);
             assert!((u32::MAX as u64) < (MopF::CHARACTERISTICS_U32 as u64) * 3);
-            
+
             let [t0, t1, t2] = t_bit_vars.unwrap();
             let k_expr = Expr::var(t0)
                 + Expr::var(t1) * F::from_u32_with_reduction(2)
