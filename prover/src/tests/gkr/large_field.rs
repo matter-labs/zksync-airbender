@@ -67,6 +67,19 @@ fn basic_fibonacci_config() -> ProgramConfig {
     }
 }
 
+/// `circuit_tester`: some hand crafted program for testing, uses no oracles and no
+/// delegations (reduced-machine ASM), so nothing exercises a precompile CSR.
+fn circuit_tester_config() -> ProgramConfig {
+    ProgramConfig {
+        binary_path: "../examples/circuit_tester/app.bin".to_string(),
+        text_section_path: "../examples/circuit_tester/app.text".to_string(),
+        // no non-determinism oracle reads
+        non_determinism_reads: vec![],
+        cycles_bound: 1 << 20,
+        ram_bound_bytes: 1 << 30,
+    }
+}
+
 const TRACE_LEN_LOG2: usize = 22;
 
 /// Load the serialized `CommitmentMode` aux data and build the transcript prefix the packed
@@ -130,8 +143,9 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
     let pack_log2 = 4usize;
     let external_challenges_pow_bits = 20u32;
 
-    // 1. Run the plain fibonacci program (reduced machine, no precompiles).
-    let config = basic_fibonacci_config();
+    // 1. Run the plain program (reduced machine, no precompiles).
+    // let config = basic_fibonacci_config();
+    let config = circuit_tester_config();
     let vm = run_vm_and_capture::<DelegationsAndUnifiedCounters, ReducedMachineDecoderConfig>(
         &config, &worker,
     );

@@ -1997,7 +1997,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t}}");
                 }
                 // NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, expression } => {
-                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                     // Constraint gate: contributes a g slot (val==0 when satisfied) but no output
                     // claim — compute_claim skips it (advances the batching slot only).
                     claim_slots.push(None);
@@ -2103,7 +2103,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
                     \t    {pointcheck_update:x}
                     \t}}");
                 }
-                NoFieldGKRRelation::MaxQuadratic { input, output } => {
+                NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
                     let output =
                         gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));

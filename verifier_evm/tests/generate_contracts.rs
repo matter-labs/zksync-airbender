@@ -12,7 +12,7 @@ use std::path::Path;
 // Deployment parameters for the current program/proof (Sec100). See gkr.sol constants.
 const EXTERNAL_POW_BITS: u32 = 20;
 const WHIR_BATCH_POW_BITS: u32 = 11;
-const FINAL_PC: u32 = 384;
+const FINAL_PC: u32 = 0x00000180;
 
 #[test]
 fn generate_contracts_into_dir() {

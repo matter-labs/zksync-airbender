@@ -477,6 +477,80 @@ contract GKRVerifier {
             next_alpha := batching
         }
 
+function sumcheck_circuit_layer4(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
+    // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
+    // (compute_claim). Replaces the threaded scalar; alpha == this layer's batching.
+    claim := sccl4(alpha)
+    // SUMCHECK ROUNDS
+    let eq_scale
+    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
+    ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
+    
+    // POINT CHECK
+    let acc
+            mstore(CIRCUIT_PTR, ptr)
+            scl4_caches()
+            acc := scl4_g0(alpha, acc)
+    let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
+    // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
+    // after stack-heavy values are dead
+    if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
+
+    
+            // WRITEBACK claims for next layer (12 evals)
+                for { let wk := 0 } lt(wk, 12) { wk := add(wk, 1) } {
+                    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
+                }
+    // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
+    // split the absorb: final_step, draw, extras). next_claim unused (sccl recomputes).
+    next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 12)
+}
+
+            function scl4_caches() {
+            }
+            function scl4_g0(alpha, a) -> acc { acc := a
+    // CopyInExtensionField: [11] = 9
+    acc := gate_copyinextensionfield(alpha, acc, 11)
+    
+    // CopyInExtensionField: [10] = 8
+    acc := gate_copyinextensionfield(alpha, acc, 10)
+    
+    // CopyInExtensionField: [7] = 7
+    acc := gate_copyinextensionfield(alpha, acc, 7)
+    
+    // CopyInExtensionField: [6] = 6
+    acc := gate_copyinextensionfield(alpha, acc, 6)
+    
+    // CopyInExtensionField: [5] = 5
+    acc := gate_copyinextensionfield(alpha, acc, 5)
+    
+    // CopyInExtensionField: [4] = 4
+    acc := gate_copyinextensionfield(alpha, acc, 4)
+    
+    // CopyInExtensionField: [9] = 3
+    acc := gate_copyinextensionfield(alpha, acc, 9)
+    
+    // CopyInExtensionField: [8] = 2
+    acc := gate_copyinextensionfield(alpha, acc, 8)
+    
+    // AggregateLookupRationalPair: [2]/[3] + [0]/[1] = 0/1
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 2, 0, 3, 1)
+    
+            }
+            function sccl4(alpha) -> claim {
+            let src := GKR_CLAIMS_PTR()
+            claim := 0
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
+            }
 function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
     // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
     // (compute_claim). Replaces the threaded scalar; alpha == this layer's batching.
@@ -497,43 +571,51 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
     if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
-            // WRITEBACK claims for next layer (16 evals)
-                for { let wk := 0 } lt(wk, 16) { wk := add(wk, 1) } {
+            // WRITEBACK claims for next layer (18 evals)
+                for { let wk := 0 } lt(wk, 18) { wk := add(wk, 1) } {
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
     // split the absorb: final_step, draw, extras). next_claim unused (sccl recomputes).
-    next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 16)
+    next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 18)
 }
 
             function scl3_caches() {
             }
             function scl3_g0(alpha, a) -> acc { acc := a
-    // CopyInExtensionField: [15] = 9
-    acc := gate_copyinextensionfield(alpha, acc, 15)
+    // CopyInExtensionField: [17] = 11
+    acc := gate_copyinextensionfield(alpha, acc, 17)
     
-    // CopyInExtensionField: [14] = 8
-    acc := gate_copyinextensionfield(alpha, acc, 14)
+    // CopyInExtensionField: [16] = 10
+    acc := gate_copyinextensionfield(alpha, acc, 16)
     
-    // CopyInExtensionField: [1] = 7
+    // CopyInExtensionField: [1] = 9
     acc := gate_copyinextensionfield(alpha, acc, 1)
     
-    // CopyInExtensionField: [0] = 6
+    // CopyInExtensionField: [0] = 8
     acc := gate_copyinextensionfield(alpha, acc, 0)
     
-    // AggregateLookupRationalPair: [12]/[13] + [10]/[11] = 4/5
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 12, 10, 13, 11)
+    // AggregateLookupRationalPair: [14]/[15] + [12]/[13] = 6/7
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 14, 12, 15, 13)
     
-    // AggregateLookupRationalPair: [8]/[9] + [6]/[7] = 2/3
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 8, 6, 9, 7)
+    // AggregateLookupRationalPair: [10]/[11] + [8]/[9] = 4/5
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 10, 8, 11, 9)
     
-    // AggregateLookupRationalPair: [4]/[5] + [2]/[3] = 0/1
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 4, 2, 5, 3)
+    // CopyInExtensionField: [3] = 3
+    acc := gate_copyinextensionfield(alpha, acc, 3)
+    
+    // CopyInExtensionField: [2] = 2
+    acc := gate_copyinextensionfield(alpha, acc, 2)
+    
+    // AggregateLookupRationalPair: [6]/[7] + [4]/[5] = 0/1
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 6, 4, 7, 5)
     
             }
             function sccl3(alpha) -> claim {
-            let src := GKR_CLAIMS_PTR()
+            let src := GKR_CIRCUIT_CLAIMS_PTR()
             claim := 0
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 11))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 10))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
@@ -559,54 +641,68 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
             mstore(CIRCUIT_PTR, ptr)
             scl2_caches()
             acc := scl2_g0(alpha, acc)
+            acc := scl2_g1(alpha, acc)
     let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
     // after stack-heavy values are dead
     if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
-            // WRITEBACK claims for next layer (25 evals)
-                for { let wk := 0 } lt(wk, 25) { wk := add(wk, 1) } {
+            // WRITEBACK claims for next layer (26 evals)
+                for { let wk := 0 } lt(wk, 26) { wk := add(wk, 1) } {
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
     // split the absorb: final_step, draw, extras). next_claim unused (sccl recomputes).
-    next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 25)
+    next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 26)
 }
 
             function scl2_caches() {
             }
             function scl2_g0(alpha, a) -> acc { acc := a
-    // CopyInExtensionField: [24] = 15
+    // CopyInExtensionField: [25] = 17
+    acc := gate_copyinextensionfield(alpha, acc, 25)
+    
+    // CopyInExtensionField: [24] = 16
     acc := gate_copyinextensionfield(alpha, acc, 24)
     
-    // CopyInExtensionField: [23] = 14
-    acc := gate_copyinextensionfield(alpha, acc, 23)
+    // CopyInExtensionField: [19] = 15
+    acc := gate_copyinextensionfield(alpha, acc, 19)
     
-    // CopyInExtensionField: [18] = 13
+    // CopyInExtensionField: [18] = 14
     acc := gate_copyinextensionfield(alpha, acc, 18)
     
-    // CopyInExtensionField: [17] = 12
-    acc := gate_copyinextensionfield(alpha, acc, 17)
+    // AggregateLookupRationalPair: [22]/[23] + [20]/[21] = 12/13
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 22, 20, 23, 21)
     
-    // AggregateLookupRationalPair: [21]/[22] + [19]/[20] = 10/11
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 21, 19, 22, 20)
+    // CopyInExtensionField: [13] = 11
+    acc := gate_copyinextensionfield(alpha, acc, 13)
     
-    // CopyInExtensionField: [12] = 9
+    // CopyInExtensionField: [12] = 10
     acc := gate_copyinextensionfield(alpha, acc, 12)
     
-    // CopyInExtensionField: [11] = 8
-    acc := gate_copyinextensionfield(alpha, acc, 11)
+    // AggregateLookupRationalPair: [16]/[17] + [14]/[15] = 8/9
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 16, 14, 17, 15)
     
-    // AggregateLookupRationalPair: [15]/[16] + [13]/[14] = 6/7
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 15, 13, 16, 14)
+    // CopyInExtensionField: [4] = 7
+    acc := gate_copyinextensionfield(alpha, acc, 4)
     
-    // AggregateLookupRationalPair: [5]/[6] + [3]/[4] = 4/5
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 5, 3, 6, 4)
+    // CopyInExtensionField: [3] = 6
+    acc := gate_copyinextensionfield(alpha, acc, 3)
     
-    // AggregateLookupRationalPair: [9]/[10] + [7]/[8] = 2/3
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 9, 7, 10, 8)
+    // AggregateLookupRationalPair: [7]/[8] + [5]/[6] = 4/5
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 7, 5, 8, 6)
     
+    {  // LookupUnbalancedPairWithMaterializedBaseInputs: [9]/[10] + 1/(δ + [11]) = 2/3
+        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11))))), mload(P_PTR))
+        let gate := den_out
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 9)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11))))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))))
+        gate := num_out
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+    }
+            }
+            function scl2_g1(alpha, a) -> acc { acc := a
     // MaskIntoIdentityProduct: [2]*[0] + (1-[0]) = 1
     acc := gate_maskintoidentityproduct(alpha, acc, 2, 0)
     
@@ -617,6 +713,8 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
             function sccl2(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
             claim := 0
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 17))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 16))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 15))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 14))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 13))))
@@ -655,8 +753,8 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
-            // WRITEBACK claims for next layer (72 evals)
-                for { let wk := 0 } lt(wk, 72) { wk := add(wk, 1) } {
+            // WRITEBACK claims for next layer (74 evals)
+                for { let wk := 0 } lt(wk, 74) { wk := add(wk, 1) } {
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
@@ -667,8 +765,8 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
             let bp := add(GKR_ABS_PTR(), 32)
             calldatacopy(bp, add(base, mul(16, 0)), mul(16, 8))
             bp := add(bp, mul(16, 8))
-            calldatacopy(bp, add(base, mul(16, 48)), mul(16, 24))
-            bp := add(bp, mul(16, 24))
+            calldatacopy(bp, add(base, mul(16, 48)), mul(16, 26))
+            bp := add(bp, mul(16, 26))
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)))))
             bp := add(bp, 16)
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)))))
@@ -690,7 +788,7 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
             bp := add(bp, mul(16, 40))
             s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
             mstore(SEED_PTR(), s)
-            next_ptr := add(ptr, mul(16, 72))
+            next_ptr := add(ptr, mul(16, 74))
             next_claim := 0
             }
 }
@@ -718,21 +816,21 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     }
             }
             function scl1_g0(alpha, a) -> acc { acc := a
-    // CopyInExtensionField: [5] = 24
+    // CopyInExtensionField: [5] = 25
     acc := gate_copyinextensionfield(alpha, acc, 5)
     
-    // CopyInExtensionField: [6] = 23
+    // CopyInExtensionField: [6] = 24
     acc := gate_copyinextensionfield(alpha, acc, 6)
     
-    {  // LookupUnbalancedPairWithMaterializedVectorInputs: [70]/[71] + 1/(δ + Cache(4)) = 21/22
-        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))), mload(P_PTR))
+    {  // LookupUnbalancedPairWithMaterializedVectorInputs: [72]/[73] + 1/(δ + Cache(4)) = 22/23
+        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 73)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))), mload(P_PTR))
         let gate := den_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71)))))
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 72)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 73)))))
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedVectorInputs: 1/(δ+Cache(2)) + 1/(δ+Cache(3)) = 19/20
+    {  // LookupPairFromMaterializedVectorInputs: 1/(δ+Cache(2)) + 1/(δ+Cache(3)) = 20/21
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
@@ -742,7 +840,7 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedVectorInputs: 1/(δ+Cache(0)) + 1/(δ+Cache(1)) = 17/18
+    {  // LookupPairFromMaterializedVectorInputs: 1/(δ+Cache(0)) + 1/(δ+Cache(1)) = 18/19
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
@@ -752,44 +850,43 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    // CopyInExtensionField: [62] = 16
-    acc := gate_copyinextensionfield(alpha, acc, 62)
+    // CopyInExtensionField: [64] = 17
+    acc := gate_copyinextensionfield(alpha, acc, 64)
     
-    // CopyInExtensionField: [61] = 15
-    acc := gate_copyinextensionfield(alpha, acc, 61)
+    // CopyInExtensionField: [63] = 16
+    acc := gate_copyinextensionfield(alpha, acc, 63)
     
-    // AggregateLookupRationalPair: [65]/[66] + [63]/[64] = 13/14
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 65, 63, 66, 64)
+    // AggregateLookupRationalPair: [67]/[68] + [65]/[66] = 14/15
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 67, 65, 68, 66)
     
-    {  // LookupUnbalancedPairWithMaterializedBaseInputs: [67]/[68] + 1/(δ + [69]) = 11/12
-        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), mload(P_PTR))
+    {  // LookupUnbalancedPairWithMaterializedBaseInputs: [69]/[70] + 1/(δ + [71]) = 12/13
+        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71))))), mload(P_PTR))
         let gate := den_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 67)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69))))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 68)))))
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 69)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 71))))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 70)))))
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupUnbalancedPairWithMaterializedBaseInputs: [48]/[49] + 1/(δ + [7]) = 9/10
-        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), mload(P_PTR))
-        let gate := den_out
-        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 48)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 49)))))
-        gate := num_out
+    {  // CopyInBaseField: [7] = 11
+        let gate := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 7))))
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    // AggregateLookupRationalPair: [52]/[53] + [50]/[51] = 7/8
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 52, 50, 53, 51)
+    // AggregateLookupRationalPair: [50]/[51] + [48]/[49] = 9/10
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 50, 48, 51, 49)
     
-    // AggregateLookupRationalPair: [56]/[57] + [54]/[55] = 5/6
-    acc := gate_aggregatelookuprationalpair(alpha, acc, 56, 54, 57, 55)
+    // AggregateLookupRationalPair: [54]/[55] + [52]/[53] = 7/8
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 54, 52, 55, 53)
     
             }
             function scl1_g1(alpha, a) -> acc { acc := a
-    {  // LookupUnbalancedPairWithMaterializedBaseInputs: [58]/[59] + 1/(δ + [60]) = 3/4
-        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60))))), mload(P_PTR))
+    // AggregateLookupRationalPair: [58]/[59] + [56]/[57] = 5/6
+    acc := gate_aggregatelookuprationalpair(alpha, acc, 58, 56, 59, 57)
+    
+    {  // LookupUnbalancedPairWithMaterializedBaseInputs: [60]/[61] + 1/(δ + [62]) = 3/4
+        let den_out := mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62))))), mload(P_PTR))
         let gate := den_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
-        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 58)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60))))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 59)))))
+        let num_out := add(mulmod(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 60)))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 62))))), mload(P_PTR)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 61)))))
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
@@ -809,6 +906,7 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
             function sccl1(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
             claim := 0
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 25))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 24))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 23))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 22))))
@@ -859,169 +957,182 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             // seed gateval[gate_slot] with each relation's nonzero constant term
             mstore(add(GKR_GATEVAL_PTR(), mul(32, 34)), 0x380000000000000000000000000)
             mstore(add(GKR_GATEVAL_PTR(), mul(32, 35)), 0x37ffe4000000000000000000000)
+            mstore(add(GKR_GATEVAL_PTR(), mul(32, 86)), 0x7800000100000000)
             // packed term records, written 32 bytes at a time
             mstore(add(GKR_QTABLE_PTR(), 0), 0x221d01242b01242c01242d01242e01242f012430012431012432012433012434)
             mstore(add(GKR_QTABLE_PTR(), 32), 0x01243501243601243701243801243901243a01243b0124090124100125610127)
-            mstore(add(GKR_QTABLE_PTR(), 64), 0x60042860012d5e01361201371101380b01390a01415d01425c01435b01463704)
-            mstore(add(GKR_QTABLE_PTR(), 96), 0x4638044a35044a3604532e01532f015330015331015d3a035e35025e36025e37)
-            mstore(add(GKR_QTABLE_PTR(), 128), 0x025e38025e3a09663a02673533673633673733673833673a096f3a0170350570)
-            mstore(add(GKR_QTABLE_PTR(), 160), 0x3605703705703805703a09793505793605793705793805793a097d35017d3601)
-            mstore(add(GKR_QTABLE_PTR(), 192), 0x7d37017d38017d3a087d3b03512effff512fffff5130ffff5131ffff522effff)
-            mstore(add(GKR_QTABLE_PTR(), 224), 0x522fffff5230ffff5231ffff2218000000e0000000000000000000000000221c)
-            mstore(add(GKR_QTABLE_PTR(), 256), 0x06ffff200000000000000000000000012318000000dfff200000000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 288), 0x0000231c06ffff2000e000000000000000000001006401016301026201036101)
-            mstore(add(GKR_QTABLE_PTR(), 320), 0x046001055f01065e01075d01085c01095b010a40010b3f010c3e010d3d010e3c)
-            mstore(add(GKR_QTABLE_PTR(), 352), 0x010f1001100901113b01123a0113390114380115370116360117350118340119)
-            mstore(add(GKR_QTABLE_PTR(), 384), 0x33011a32011b31011c30011d2f011e2e011f2d01202c01212b01221901281501)
-            mstore(add(GKR_QTABLE_PTR(), 416), 0x372701392601423701433501433601465a04475a015515017e09407e10400064)
-            mstore(add(GKR_QTABLE_PTR(), 448), 0x640101636301026262010361610104606001055f5f01065e5e01075d5d01085c)
-            mstore(add(GKR_QTABLE_PTR(), 480), 0x5c01095b5b010a4040010b3f3f010c3e3e010d3d3d010e3c3c010f1010011009)
-            mstore(add(GKR_QTABLE_PTR(), 512), 0x0901113b3b01123a3a0113393901143838011537370116363601173535011834)
-            mstore(add(GKR_QTABLE_PTR(), 544), 0x3401193333011a3232011b3131011c3030011d2f2f011e2e2e011f2d2d01202c)
-            mstore(add(GKR_QTABLE_PTR(), 576), 0x2c01212b2b01265f600126601701276016012835150128361501283715012838)
-            mstore(add(GKR_QTABLE_PTR(), 608), 0x1501293f1001294010012a3f10012a4010022a5610042b5e08012b0914012b10)
-            mstore(add(GKR_QTABLE_PTR(), 640), 0x14012c5e07012c0913012c1013012e3e10012f3e100130421001314209013241)
-            mstore(add(GKR_QTABLE_PTR(), 672), 0x1001334109013429090134291001343c0901343c100134030901340310013528)
-            mstore(add(GKR_QTABLE_PTR(), 704), 0x090135281001350209013502100137271001392609013a3a44013a3a48013a3a)
-            mstore(add(GKR_QTABLE_PTR(), 736), 0x4c013a3a50013a3b44013a3b47013a3b4a013a3b51013b3a42013b3a46013b3a)
-            mstore(add(GKR_QTABLE_PTR(), 768), 0x4a013b3a4e013b3b42013b3b49013b3b4c013b3b4f013c5d14013d5d13013e5c)
-            mstore(add(GKR_QTABLE_PTR(), 800), 0x14013f575b0140435c0140565b01423739014335390143363901443540014436)
-            mstore(add(GKR_QTABLE_PTR(), 832), 0x400144405a01452935014529360145295a0145353e014535170145363e014536)
-            mstore(add(GKR_QTABLE_PTR(), 864), 0x030145373e014537170145383e0145381701462835014628360146285a014635)
-            mstore(add(GKR_QTABLE_PTR(), 896), 0x1601463602014637160146381601473843014835440148364401483744014838)
-            mstore(add(GKR_QTABLE_PTR(), 928), 0x44014929370149353c014935170149363c014936170149373c01493757014937)
-            mstore(add(GKR_QTABLE_PTR(), 960), 0x080149383c0149385701493808014a2837014a3516014a3616014a3756014a37)
-            mstore(add(GKR_QTABLE_PTR(), 992), 0x07014a3856014a3807014b3214014c3213014d3206014e3205014f3208015032)
-            mstore(add(GKR_QTABLE_PTR(), 1024), 0x070151292b0151292d01512b3d01512b0301512b0801512c3d01512c0801512c)
-            mstore(add(GKR_QTABLE_PTR(), 1056), 0x1401512d3d01512d1701512e3d01512e5701512f3d01512f570151303d015130)
-            mstore(add(GKR_QTABLE_PTR(), 1088), 0x570151313d015131570151343d0151343e01513403015134080151340f015228)
-            mstore(add(GKR_QTABLE_PTR(), 1120), 0x2b0152282d01522b0201522b0701522c0701522c1301522d1601522e5601522f)
-            mstore(add(GKR_QTABLE_PTR(), 1152), 0x56015230560152315601523402015234070152340e01542e1301542f0701542f)
-            mstore(add(GKR_QTABLE_PTR(), 1184), 0x1301543013015431130155151501563a5101573a5001583a4f01583b5101593a)
-            mstore(add(GKR_QTABLE_PTR(), 1216), 0x4e01593b50015a2a3a015a3b4f015b283a015b351a015b361a015b371a015b38)
-            mstore(add(GKR_QTABLE_PTR(), 1248), 0x1a015b3a41015b3b4e015c3540015c3640015c3740015c3840015c3b41015d35)
-            mstore(add(GKR_QTABLE_PTR(), 1280), 0x59015d3659015d3759015d3859015e2a3b015f3a4d01603a4c01613a4b01613b)
-            mstore(add(GKR_QTABLE_PTR(), 1312), 0x4d01623a4a01623b4c01632a3a01633b4b0164283a01643a4101643b4a016535)
-            mstore(add(GKR_QTABLE_PTR(), 1344), 0x4301653643016537430165384301653a5301653b4101653b5501662a3510662a)
-            mstore(add(GKR_QTABLE_PTR(), 1376), 0x3610662a3710662a381066353d0466354108663542026635450166363d046636)
-            mstore(add(GKR_QTABLE_PTR(), 1408), 0x4108663642026636450166373d0466374108663742026637450166383d046638)
-            mstore(add(GKR_QTABLE_PTR(), 1440), 0x41086638420266384501663b5301672a3b01683a4901693a48016a3a47016a3b)
-            mstore(add(GKR_QTABLE_PTR(), 1472), 0x49016b3a46016b3b48016c2a3a016c3b47016d283a016d3a41016d3b46016e29)
-            mstore(add(GKR_QTABLE_PTR(), 1504), 0x3b016e3545016e3645016e3745016e3845016f3544016f3644016f3744016f38)
-            mstore(add(GKR_QTABLE_PTR(), 1536), 0x4401702a3b01713a4501723a4401733a4301733b4501743a4201743b4401752a)
-            mstore(add(GKR_QTABLE_PTR(), 1568), 0x3a01753b430176283a01763a4101763b420177283b0177354201773642017737)
-            mstore(add(GKR_QTABLE_PTR(), 1600), 0x420177384201773a5201773b540178350301783603017837030178380301783b)
-            mstore(add(GKR_QTABLE_PTR(), 1632), 0x5201792a3b017a3a41017a145e017b3541017b3641017b3741017b3841017b3b)
-            mstore(add(GKR_QTABLE_PTR(), 1664), 0x41017b135e017c293b017c3556017c3557017c3656017c3657017c3756017c37)
-            mstore(add(GKR_QTABLE_PTR(), 1696), 0x57017c3856017c3857017c3a54017c415e017d155e227e0942017e1042013a3a)
-            mstore(add(GKR_QTABLE_PTR(), 1728), 0x4501003a3a4901003a3a4d01003a3a5101003a3b4501003a3b4801003a3b4b01)
-            mstore(add(GKR_QTABLE_PTR(), 1760), 0x003a3b4e01003b3a4301003b3a4701003b3a4b01003b3a4f01003b3b4301003b)
-            mstore(add(GKR_QTABLE_PTR(), 1792), 0x3b4601003b3b4d01003b3b500100542e1400010000542f0800010000542f1400)
-            mstore(add(GKR_QTABLE_PTR(), 1824), 0x01000054301400010000543114000100007c425e000100007e093e000100007e)
-            mstore(add(GKR_QTABLE_PTR(), 1856), 0x103e0001000023181806ffffffffe40000000000000000000123181c00000000)
-            mstore(add(GKR_QTABLE_PTR(), 1888), 0x003800000000000000000000231c1c06ffffffffe4000000000000000000015c)
-            mstore(add(GKR_QTABLE_PTR(), 1920), 0x3a53000700000000000000000000000000005c3a0306f9000000000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 1952), 0x00000000015c3b55000700000000000000000000000000005c3b0806f9000000)
-            mstore(add(GKR_QTABLE_PTR(), 1984), 0x00000000000000000000015d3b53000700000000000000000000000000005d3b)
-            mstore(add(GKR_QTABLE_PTR(), 2016), 0x0306f900000000000000000000000000016e3a52000700000000000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2048), 0x000000006e3a0206f900000000000000000000000000016e3b54000700000000)
-            mstore(add(GKR_QTABLE_PTR(), 2080), 0x000000000000000000006e3b0706f900000000000000000000000000016f3b52)
-            mstore(add(GKR_QTABLE_PTR(), 2112), 0x000700000000000000000000000000006f3b0206f90000000000000000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2144), 0x0000017b3a54000700000000000000000000000000007b3a0706f90000000000)
-            mstore(add(GKR_QTABLE_PTR(), 2176), 0x000000000000000001242b1501242c1501242d1501242e1501242f1501243015)
-            mstore(add(GKR_QTABLE_PTR(), 2208), 0x0124311501243215012433150124341501243515012436150124371501243815)
-            mstore(add(GKR_QTABLE_PTR(), 2240), 0x0124391501243a1501243b15012409150124101501252b1501252c1501252d15)
-            mstore(add(GKR_QTABLE_PTR(), 2272), 0x01252e1501252f15012530150125311501253215012533150125341501253515)
-            mstore(add(GKR_QTABLE_PTR(), 2304), 0x01253615012537150125381501253a1501253b1501250915012510150126601b)
-            mstore(add(GKR_QTABLE_PTR(), 2336), 0x0127601a012a1011012b5e14012b0809012b0810012c5e13012c0709012c0710)
-            mstore(add(GKR_QTABLE_PTR(), 2368), 0x012d3e09013010120131090b013210110133090a0134090b013410120135090a)
-            mstore(add(GKR_QTABLE_PTR(), 2400), 0x0135101101361012013710110138090b0139090a013a3a14013a3b14013b3a13)
-            mstore(add(GKR_QTABLE_PTR(), 2432), 0x013b3b13013f5b1401405b1301405c1301413539014136390141373901413839)
-            mstore(add(GKR_QTABLE_PTR(), 2464), 0x0145351b0145361b0145371b0145381b01463559014636590146375901463859)
-            mstore(add(GKR_QTABLE_PTR(), 2496), 0x0148293701483508014836080148370801483808014935570149365701493703)
-            mstore(add(GKR_QTABLE_PTR(), 2528), 0x01493803014a3556014a3656014a3702014a380201512b1401512c0301512d14)
-            mstore(add(GKR_QTABLE_PTR(), 2560), 0x01512e1401512f1401513014015131140151341401522b1301522c0201522d13)
-            mstore(add(GKR_QTABLE_PTR(), 2592), 0x01522e1301522f1301523013015231130152341301532e3c01532f3c0153303c)
-            mstore(add(GKR_QTABLE_PTR(), 2624), 0x0153313c01542e0201542e0701542f02015430580154315801275f6000010000)
-            mstore(add(GKR_QTABLE_PTR(), 2656), 0x343d0900010000343d1000010000353c0900010000353c100001000045353f00)
-            mstore(add(GKR_QTABLE_PTR(), 2688), 0x01000045363f0001000045373f0001000045383f0001000046353e0001000046)
-            mstore(add(GKR_QTABLE_PTR(), 2720), 0x363e0001000046373e0001000046383e0001000049353d0001000049363d0001)
-            mstore(add(GKR_QTABLE_PTR(), 2752), 0x000049373d0001000049383d000100004a353c000100004a363c000100004a37)
-            mstore(add(GKR_QTABLE_PTR(), 2784), 0x3c000100004a383c00010000512b3c00010000512c3c00010000512d3c000100)
-            mstore(add(GKR_QTABLE_PTR(), 2816), 0x00512e3c00010000512f3c0001000051303c0001000051313c0001000051343c)
-            mstore(add(GKR_QTABLE_PTR(), 2848), 0x0001000051343f00010000522b3d00010000522c3d00010000522d3d00010000)
-            mstore(add(GKR_QTABLE_PTR(), 2880), 0x522e3d00010000522f3d0001000052303d0001000052313d0001000052343d00)
-            mstore(add(GKR_QTABLE_PTR(), 2912), 0x01000052343e00010000542e0300010000542e0800010000542f030001000000)
+            mstore(add(GKR_QTABLE_PTR(), 64), 0x60042860012e5e01371201381101390b013a0a01425d01435c01445b01473704)
+            mstore(add(GKR_QTABLE_PTR(), 96), 0x4738044b35044b3604532e01532f01533001533101542e01542f015430015431)
+            mstore(add(GKR_QTABLE_PTR(), 128), 0x015f3a03603502603602603702603802603a09683a0269353369363369373369)
+            mstore(add(GKR_QTABLE_PTR(), 160), 0x3833693a09713a01723505723605723705723805723a097b35057b36057b3705)
+            mstore(add(GKR_QTABLE_PTR(), 192), 0x7b38057b3a097f35017f36017f37017f38017f3a087f3b03522e7800522f7800)
+            mstore(add(GKR_QTABLE_PTR(), 224), 0x52307800523178002218000000e0000000000000000000000000221c06ffff20)
+            mstore(add(GKR_QTABLE_PTR(), 256), 0x0000000000000000000000012318000000dfff2000000000000000000000231c)
+            mstore(add(GKR_QTABLE_PTR(), 288), 0x06ffff2000e000000000000000000001552f0000000000000000000000016800)
+            mstore(add(GKR_QTABLE_PTR(), 320), 0x0003565806ffffffffffffffffffffff00000001006401016301026201036101)
+            mstore(add(GKR_QTABLE_PTR(), 352), 0x046001055f01065e01075d01085c01095b010a40010b3f010c3e010d3d010e3c)
+            mstore(add(GKR_QTABLE_PTR(), 384), 0x010f1001100901113b01123a0113390114380115370116360117350118340119)
+            mstore(add(GKR_QTABLE_PTR(), 416), 0x33011a32011b31011c30011d2f011e2e011f2d01202c01212b01221901281501)
+            mstore(add(GKR_QTABLE_PTR(), 448), 0x3827013a2601433701443501443601475a04485a015715018009408010400064)
+            mstore(add(GKR_QTABLE_PTR(), 480), 0x640101636301026262010361610104606001055f5f01065e5e01075d5d01085c)
+            mstore(add(GKR_QTABLE_PTR(), 512), 0x5c01095b5b010a4040010b3f3f010c3e3e010d3d3d010e3c3c010f1010011009)
+            mstore(add(GKR_QTABLE_PTR(), 544), 0x0901113b3b01123a3a0113393901143838011537370116363601173535011834)
+            mstore(add(GKR_QTABLE_PTR(), 576), 0x3401193333011a3232011b3131011c3030011d2f2f011e2e2e011f2d2d01202c)
+            mstore(add(GKR_QTABLE_PTR(), 608), 0x2c01212b2b01265f600126601701276016012835150128361501283715012838)
+            mstore(add(GKR_QTABLE_PTR(), 640), 0x1501293f0901293f100129400901294010012a3f10012a4010022a5610042b3f)
+            mstore(add(GKR_QTABLE_PTR(), 672), 0x09012b4009022b5609042c5e08012c0914012c1014012d5e07012d0913012d10)
+            mstore(add(GKR_QTABLE_PTR(), 704), 0x13012f3e1001303e100131421001324209013341100134410901352909013529)
+            mstore(add(GKR_QTABLE_PTR(), 736), 0x1001353c0901353c100135030901350310013628090136281001360209013602)
+            mstore(add(GKR_QTABLE_PTR(), 768), 0x1001382710013a2609013b3a44013b3a48013b3a4c013b3a50013b3b44013b3b)
+            mstore(add(GKR_QTABLE_PTR(), 800), 0x47013b3b4a013b3b51013c3a42013c3a46013c3a4a013c3a4e013c3b42013c3b)
+            mstore(add(GKR_QTABLE_PTR(), 832), 0x49013c3b4c013c3b4f013d5d14013e5d13013f5c140140575b0141435c014156)
+            mstore(add(GKR_QTABLE_PTR(), 864), 0x5b01433739014435390144363901453540014536400145405a01462935014629)
+            mstore(add(GKR_QTABLE_PTR(), 896), 0x360146295a0146353e014635170146363e014636030146373e01463717014638)
+            mstore(add(GKR_QTABLE_PTR(), 928), 0x3e0146381701472835014728360147285a014735160147360201473716014738)
+            mstore(add(GKR_QTABLE_PTR(), 960), 0x160148384301493544014936440149374401493844014a2937014a353c014a35)
+            mstore(add(GKR_QTABLE_PTR(), 992), 0x17014a363c014a3617014a373c014a3757014a3708014a383c014a3857014a38)
+            mstore(add(GKR_QTABLE_PTR(), 1024), 0x08014b2837014b3516014b3616014b3756014b3707014b3856014b3807014c32)
+            mstore(add(GKR_QTABLE_PTR(), 1056), 0x14014d3213014e3206014f320501503208015132070152292b0152292d01522b)
+            mstore(add(GKR_QTABLE_PTR(), 1088), 0x3d01522b0301522b0801522c3d01522c0801522c1401522d3d01522d1701522e)
+            mstore(add(GKR_QTABLE_PTR(), 1120), 0x3d01522e5701522f3d01522f570152303d015230570152313d01523157015234)
+            mstore(add(GKR_QTABLE_PTR(), 1152), 0x3d0152343e01523403015234080152340f0153282b0153282d01532b0201532b)
+            mstore(add(GKR_QTABLE_PTR(), 1184), 0x0701532c0701532c1301532d1601532e5601532f560153305601533156015334)
+            mstore(add(GKR_QTABLE_PTR(), 1216), 0x02015334070153340e01552e0201552e0701552f020155301301553113015602)
+            mstore(add(GKR_QTABLE_PTR(), 1248), 0x070157151501583a5101593a50015a3a4f015a3b51015b3a4e015b3b50015c2a)
+            mstore(add(GKR_QTABLE_PTR(), 1280), 0x3a015c3b4f015d283a015d351a015d361a015d371a015d381a015d3a41015d3b)
+            mstore(add(GKR_QTABLE_PTR(), 1312), 0x4e015e3540015e3640015e3740015e3840015e3b41015f3559015f3659015f37)
+            mstore(add(GKR_QTABLE_PTR(), 1344), 0x59015f385901602a3b01613a4d01623a4c01633a4b01633b4d01643a4a01643b)
+            mstore(add(GKR_QTABLE_PTR(), 1376), 0x4c01652a3a01653b4b0166283a01663a4101663b4a0167354301673643016737)
+            mstore(add(GKR_QTABLE_PTR(), 1408), 0x430167384301673a5301673b4101673b5501682a3510682a3610682a3710682a)
+            mstore(add(GKR_QTABLE_PTR(), 1440), 0x381068353d0468354108683542026835450168363d0468364108683642026836)
+            mstore(add(GKR_QTABLE_PTR(), 1472), 0x450168373d0468374108683742026837450168383d0468384108683842026838)
+            mstore(add(GKR_QTABLE_PTR(), 1504), 0x4501683b5301692a3b016a3a49016b3a48016c3a47016c3b49016d3a46016d3b)
+            mstore(add(GKR_QTABLE_PTR(), 1536), 0x48016e2a3a016e3b47016f283a016f3a41016f3b460170293b01703545017036)
+            mstore(add(GKR_QTABLE_PTR(), 1568), 0x4501703745017038450171354401713644017137440171384401722a3b01733a)
+            mstore(add(GKR_QTABLE_PTR(), 1600), 0x4501743a4401753a4301753b4501763a4201763b4401772a3a01773b43017828)
+            mstore(add(GKR_QTABLE_PTR(), 1632), 0x3a01783a4101783b420179283b0179354201793642017937420179384201793a)
+            mstore(add(GKR_QTABLE_PTR(), 1664), 0x5201793b54017a3503017a3603017a3703017a3803017a3b52017b2a3b017c3a)
+            mstore(add(GKR_QTABLE_PTR(), 1696), 0x41017c145e017d3541017d3641017d3741017d3841017d3b41017d135e017e29)
+            mstore(add(GKR_QTABLE_PTR(), 1728), 0x3b017e3556017e3557017e3656017e3657017e3756017e3757017e3856017e38)
+            mstore(add(GKR_QTABLE_PTR(), 1760), 0x57017e3a54017e415e017f155e2280094201801042013b3a4501003b3a490100)
+            mstore(add(GKR_QTABLE_PTR(), 1792), 0x3b3a4d01003b3a5101003b3b4501003b3b4801003b3b4b01003b3b4e01003c3a)
+            mstore(add(GKR_QTABLE_PTR(), 1824), 0x4301003c3a4701003c3a4b01003c3a4f01003c3b4301003c3b4601003c3b4d01)
+            mstore(add(GKR_QTABLE_PTR(), 1856), 0x003c3b500100552e0300010000552e0800010000552f03000100005530140001)
+            mstore(add(GKR_QTABLE_PTR(), 1888), 0x00005531140001000056020800010000560307000100007e425e000100008009)
+            mstore(add(GKR_QTABLE_PTR(), 1920), 0x3e0001000080103e0001000023181806ffffffffe40000000000000000000123)
+            mstore(add(GKR_QTABLE_PTR(), 1952), 0x181c00000000003800000000000000000000231c1c06ffffffffe40000000000)
+            mstore(add(GKR_QTABLE_PTR(), 1984), 0x0000000001552e4006fffffffffffffffffffffe1ffffffd552f4006ffffffff)
+            mstore(add(GKR_QTABLE_PTR(), 2016), 0xfffffffffffffe1ffffffd56303e06ffffffffffffff87ffffff000000015630)
+            mstore(add(GKR_QTABLE_PTR(), 2048), 0x3f06ffffffffffffff0ffffffe0000000156304006fffffffffffffe1ffffffc)
+            mstore(add(GKR_QTABLE_PTR(), 2080), 0x0000000156304206ffffffffffffffffff87ffffff000156313e06ffffffffff)
+            mstore(add(GKR_QTABLE_PTR(), 2112), 0xffff87ffffff0000000156313f06ffffffffffffff0ffffffe00000001563140)
+            mstore(add(GKR_QTABLE_PTR(), 2144), 0x06fffffffffffffe1ffffffc0000000156314206ffffffffffffffffff87ffff)
+            mstore(add(GKR_QTABLE_PTR(), 2176), 0xff000156310e0000000000000000000000010000000056310f00000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2208), 0x000001000000000000560308000000000000000000000001000000005e3a5300)
+            mstore(add(GKR_QTABLE_PTR(), 2240), 0x0700000000000000000000000000005e3a0306f9000000000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2272), 0x00015e3b55000700000000000000000000000000005e3b0806f9000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2304), 0x00000000000000015f3b53000700000000000000000000000000005f3b0306f9)
+            mstore(add(GKR_QTABLE_PTR(), 2336), 0x0000000000000000000000000001703a52000700000000000000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2368), 0x00703a0206f90000000000000000000000000001703b54000700000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2400), 0x00000000000000703b0706f90000000000000000000000000001713b52000700)
+            mstore(add(GKR_QTABLE_PTR(), 2432), 0x00000000000000000000000000713b0206f90000000000000000000000000001)
+            mstore(add(GKR_QTABLE_PTR(), 2464), 0x7d3a54000700000000000000000000000000007d3a0706f90000000000000000)
+            mstore(add(GKR_QTABLE_PTR(), 2496), 0x000000000001242b1501242c1501242d1501242e1501242f1501243015012431)
+            mstore(add(GKR_QTABLE_PTR(), 2528), 0x1501243215012433150124341501243515012436150124371501243815012439)
+            mstore(add(GKR_QTABLE_PTR(), 2560), 0x1501243a1501243b15012409150124101501252b1501252c1501252d1501252e)
+            mstore(add(GKR_QTABLE_PTR(), 2592), 0x1501252f15012530150125311501253215012533150125341501253515012536)
+            mstore(add(GKR_QTABLE_PTR(), 2624), 0x15012537150125381501253a1501253b1501250915012510150126601b012760)
+            mstore(add(GKR_QTABLE_PTR(), 2656), 0x1a012a1011012b090a012c5e14012c0809012c0810012d5e13012d0709012d07)
+            mstore(add(GKR_QTABLE_PTR(), 2688), 0x10012e3e09013110120132090b013310110134090a0135090b01351012013609)
+            mstore(add(GKR_QTABLE_PTR(), 2720), 0x0a0136101101371012013810110139090b013a090a013b3a14013b3b14013c3a)
+            mstore(add(GKR_QTABLE_PTR(), 2752), 0x13013c3b1301405b1401415b1301415c13014235390142363901423739014238)
+            mstore(add(GKR_QTABLE_PTR(), 2784), 0x390146351b0146361b0146371b0146381b014735590147365901473759014738)
+            mstore(add(GKR_QTABLE_PTR(), 2816), 0x590149293701493508014936080149370801493808014a3557014a3657014a37)
+            mstore(add(GKR_QTABLE_PTR(), 2848), 0x03014a3803014b3556014b3656014b3702014b380201522b1401522c0301522d)
+            mstore(add(GKR_QTABLE_PTR(), 2880), 0x1401522e1401522f1401523014015231140152341401532b1301532c0201532d)
+            mstore(add(GKR_QTABLE_PTR(), 2912), 0x1301532e1301532f1301533013015331130153341301542e3c01542f3c015430)
+            mstore(add(GKR_QTABLE_PTR(), 2944), 0x3c0154313c01552e1301552f0701552f13015530580155315801275f60000100)
+            mstore(add(GKR_QTABLE_PTR(), 2976), 0x00353d0900010000353d1000010000363c0900010000363c100001000046353f)
+            mstore(add(GKR_QTABLE_PTR(), 3008), 0x0001000046363f0001000046373f0001000046383f0001000047353e00010000)
+            mstore(add(GKR_QTABLE_PTR(), 3040), 0x47363e0001000047373e0001000047383e000100004a353d000100004a363d00)
+            mstore(add(GKR_QTABLE_PTR(), 3072), 0x0100004a373d000100004a383d000100004b353c000100004b363c000100004b)
+            mstore(add(GKR_QTABLE_PTR(), 3104), 0x373c000100004b383c00010000522b3c00010000522c3c00010000522d3c0001)
+            mstore(add(GKR_QTABLE_PTR(), 3136), 0x0000522e3c00010000522f3c0001000052303c0001000052313c000100005234)
+            mstore(add(GKR_QTABLE_PTR(), 3168), 0x3c0001000052343f00010000532b3d00010000532c3d00010000532d3d000100)
+            mstore(add(GKR_QTABLE_PTR(), 3200), 0x00532e3d00010000532f3d0001000053303d0001000053313d0001000053343d)
+            mstore(add(GKR_QTABLE_PTR(), 3232), 0x0001000053343e00010000552e3e78000001552e3ff0000002552e1400010000)
+            mstore(add(GKR_QTABLE_PTR(), 3264), 0x552f3e78000001552f3ff0000002552f0800010000552f140001000056304178)
+            mstore(add(GKR_QTABLE_PTR(), 3296), 0x0000015631417800000100000000000000000000000000000000000000000000)
             // accumulate every term into gateval[gate_slot], one loop per bucket
             {
             let modulus := P
             let col_base := mload(CIRCUIT_PTR) // calldata base of the column at-point evals
             let gateval := GKR_GATEVAL_PTR()
-            // linear    terms, coeff  1B positive  (68 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 0) let rec_end := add(rec_ptr, 204)
+            // linear    terms, coeff  1B positive  (72 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 0) let rec_end := add(rec_ptr, 216)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(232, rec), 0xff), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // linear    terms, coeff  2B positive  (8 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 204) let rec_end := add(rec_ptr, 32)
+            // linear    terms, coeff  2B positive  (4 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 216) let rec_end := add(rec_ptr, 16)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xffff), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // linear    terms, coeff 16B canonical (4 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 236) let rec_end := add(rec_ptr, 72)
+            // linear    terms, coeff 16B canonical (6 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 232) let rec_end := add(rec_ptr, 108)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 18) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(112, rec), MASK), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
             // linear    terms, coeff  1B negative  (46 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 308) let rec_end := add(rec_ptr, 138)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 340) let rec_end := add(rec_ptr, 138)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(232, rec), 0xff)), shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // quadratic terms, coeff  1B positive  (320 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 446) let rec_end := add(rec_ptr, 1280)
+            // quadratic terms, coeff  1B positive  (326 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 478) let rec_end := add(rec_ptr, 1304)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
             // quadratic terms, coeff  2B positive  (16 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 1726) let rec_end := add(rec_ptr, 80)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1782) let rec_end := add(rec_ptr, 80)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 5) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(216, rec), 0xffff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  4B positive  (8 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 1806) let rec_end := add(rec_ptr, 56)
+            // quadratic terms, coeff  4B positive  (10 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1862) let rec_end := add(rec_ptr, 70)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(200, rec), 0xffffffff), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff 16B canonical (17 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 1862) let rec_end := add(rec_ptr, 323)
+            // quadratic terms, coeff 16B canonical (30 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 1932) let rec_end := add(rec_ptr, 570)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 19) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(104, rec), MASK), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  1B negative  (116 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 2185) let rec_end := add(rec_ptr, 464)
+            // quadratic terms, coeff  1B negative  (117 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 2502) let rec_end := add(rec_ptr, 468)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(224, rec), 0xff)), mulmod(shr(128, calldataload(add(col_base, mul(16, byte(1, rec))))), shr(128, calldataload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  4B negative  (42 records)
-            { let rec_ptr := add(GKR_QTABLE_PTR(), 2649) let rec_end := add(rec_ptr, 294)
+            // quadratic terms, coeff  4B negative  (48 records)
+            { let rec_ptr := add(GKR_QTABLE_PTR(), 2970) let rec_end := add(rec_ptr, 336)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
@@ -1257,11 +1368,11 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             }
             function scl0_g7(alpha, a) -> acc { acc := a
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
-            for { let s := 84 } lt(s, 86) { s := add(s, 1) } {
+            for { let s := 84 } lt(s, 88) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
             } }
 
-    {  // LookupWithCachedDensAndSetup: (([21])·((Cache(15))+δ) − ([103])·((Cache(14))+δ)) / (((Cache(14))+δ)((Cache(15))+δ)) = 70/71
+    {  // LookupWithCachedDensAndSetup: (([21])·((Cache(15))+δ) − ([103])·((Cache(14))+δ)) / (((Cache(14))+δ)((Cache(15))+δ)) = 72/73
         let bg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14))))
         let dg := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15))))
         let den_out := mulmod(bg, dg, mload(P_PTR))
@@ -1271,11 +1382,11 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // CopyInBaseField: Cache(13) = 69
+    {  // CopyInBaseField: Cache(13) = 71
         let gate := mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 13)))
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+Cache(11)) + 1/(δ+Cache(12)) = 67/68
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+Cache(11)) + 1/(δ+Cache(12)) = 69/70
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 11))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 12))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
@@ -1285,7 +1396,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+Cache(9)) + 1/(δ+Cache(10)) = 65/66
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+Cache(9)) + 1/(δ+Cache(10)) = 67/68
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 9))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 10))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
@@ -1295,7 +1406,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[29]) + 1/(δ+Cache(8)) = 63/64
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[29]) + 1/(δ+Cache(8)) = 65/66
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 29)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
@@ -1305,7 +1416,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [28]) - [102]/(δ + Cache(17)) = 61/62
+    {  // LookupFromMaterializedBaseInputWithSetup: 1/(δ + [28]) - [102]/(δ + Cache(17)) = 63/64
         let den_out := mulmod(add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 28))))), add(mload(add(LOGUP_CHALLS_PTR(), 32)), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))), mload(P_PTR))
         let gate := den_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
@@ -1313,11 +1424,11 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // CopyInBaseField: [27] = 60
+    {  // CopyInBaseField: [27] = 62
         let gate := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 27))))
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[18]) + 1/(δ+[26]) = 58/59
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[18]) + 1/(δ+[26]) = 60/61
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 18)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 26)))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
@@ -1327,7 +1438,9 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[11]) + 1/(δ+[17]) = 56/57
+            }
+            function scl0_g8(alpha, a) -> acc { acc := a
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[11]) + 1/(δ+[17]) = 58/59
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 11)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 17)))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
@@ -1337,7 +1450,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[89]) + 1/(δ+[10]) = 54/55
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[89]) + 1/(δ+[10]) = 56/57
         let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 89)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 10)))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
@@ -1347,11 +1460,19 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-            }
-            function scl0_g8(alpha, a) -> acc { acc := a
-    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[20]) + 1/(δ+[23]) = 52/53
-        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))))
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[66]) + 1/(δ+[23]) = 54/55
+        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 66)))))
         let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 23)))))
+        let den_out := mulmod(den1, den2, mload(P_PTR))
+        let gate := den_out
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+        let num_out := add(den1, den2)
+        gate := num_out
+        acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
+    }
+    {  // LookupPairFromMaterializedBaseInputs: 1/(δ+[20]) + 1/(δ+[65]) = 52/53
+        let den1 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 20)))))
+        let den2 := add(mload(add(LOGUP_CHALLS_PTR(), 32)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, 65)))))
         let den_out := mulmod(den1, den2, mload(P_PTR))
         let gate := den_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
@@ -1378,28 +1499,28 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
-            for { let s := 86 } lt(s, 95) { s := add(s, 1) } {
+            for { let s := 88 } lt(s, 94) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
             } }
 
             }
             function scl0_g9(alpha, a) -> acc { acc := a
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
-            for { let s := 95 } lt(s, 107) { s := add(s, 1) } {
+            for { let s := 94 } lt(s, 106) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
             } }
 
             }
             function scl0_g10(alpha, a) -> acc { acc := a
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
-            for { let s := 107 } lt(s, 119) { s := add(s, 1) } {
+            for { let s := 106 } lt(s, 118) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
             } }
 
             }
             function scl0_g11(alpha, a) -> acc { acc := a
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
-            for { let s := 119 } lt(s, 127) { s := add(s, 1) } {
+            for { let s := 118 } lt(s, 129) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
             } }
 
@@ -1410,6 +1531,8 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := mulmod(lhs, rhs, mload(P_PTR))
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
+            }
+            function scl0_g12(alpha, a) -> acc { acc := a
     {  // InitsOrTeardownsInitialPair: (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[0]<<8)) + 0) * (γ + 1 + αCache(18) + α²(Cache(19) + (topbits[1]<<8)) + 0) = 5
         let shared := add(add(mload(add(MEMORY_CHALLS_PTR(), mul(32, 6))), 1), mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 0))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18))), mload(P_PTR)))
         let lhs := add(shared, add(mulmod(mload(add(MEMORY_CHALLS_PTR(), mul(32, 1))), add(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19))), shl(8, gkr_inits_teardowns_topbits(396))), mload(P_PTR)), 0)) // for memrel we collect
@@ -1425,8 +1548,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 5))), mload(P_PTR))
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
-            }
-            function scl0_g12(alpha, a) -> acc { acc := a
     {  // InitialGrandProductFromCaches: Cache(2)*Cache(3) = 2
         let gate := mulmod(mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2))), mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3))), mload(P_PTR))
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
@@ -1529,6 +1650,10 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             claim := mulmod(claim, alpha, mload(P_PTR))
             claim := mulmod(claim, alpha, mload(P_PTR))
             claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := mulmod(claim, alpha, mload(P_PTR))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 73))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 72))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 71))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 70))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 69))))
@@ -1842,7 +1967,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         }
 
         // GKR→WHIR handoff: draw the 4 packing coords, merge the base-layer claims (mem++wit
-        // 106→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
+        // 104→7, setup 10→1), draw the WHIR batching challenge (PoW nonce=0), form the batched
         // opening, and mark_gkr_verified(keccak(preimage)) with preimage
         //   [seed:32][batching:16][opening:16][z = extra(4) ++ base_z(22) : 26·16][caps:2·CAP·32].
         function emit_gkr_mark(claim_v) {

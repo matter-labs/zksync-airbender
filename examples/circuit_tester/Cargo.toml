@@ -11,6 +11,7 @@ categories = ["cryptography"]
 
 [dependencies]
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
+field = { path = "../../field", features = ["modular_ops"] }
 
 [profile.release]
 lto = true

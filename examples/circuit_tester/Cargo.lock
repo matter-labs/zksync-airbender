@@ -6,6 +6,7 @@ version = 4
 name = "circuit_tester"
 version = "0.1.0"
 dependencies = [
+ "field",
  "riscv_common",
 ]
 
@@ -13,6 +14,16 @@ dependencies = [
 name = "common_constants"
 version = "0.1.0"
 dependencies = [
+ "seq-macro",
+ "serde",
+]
+
+[[package]]
+name = "field"
+version = "0.1.0"
+dependencies = [
+ "common_constants",
+ "rand",
  "seq-macro",
  "serde",
 ]
@@ -34,6 +45,21 @@ checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "rand"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
+dependencies = [
+ "rand_core",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 
 [[package]]
 name = "riscv_common"
