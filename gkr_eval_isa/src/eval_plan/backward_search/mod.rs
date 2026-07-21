@@ -25,8 +25,10 @@ pub use pager::{
     solve_production_paging, solve_retain_all_if_exact,
 };
 pub use production::{
-    ProductionBackwardPlan, ProductionOrderGenome, ProductionSearchIdentity,
-    ProductionSearchTelemetry, compulsory_read_floor, search_production_backward,
+    MAX_CONCURRENT_PRODUCTION_EVALUATIONS, ProductionBackwardPlan, ProductionOrderGenome,
+    ProductionSearchIdentity, ProductionSearchTelemetry, compulsory_read_floor,
+    search_production_backward, select_production_backward_seeds,
+    select_production_backward_seeds_with_progress,
 };
 pub use replay::{
     CertifiedBackwardCandidate, PagingCertificate, ScoredAcceptedBackwardCandidate,

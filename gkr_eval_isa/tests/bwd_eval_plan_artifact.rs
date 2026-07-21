@@ -1102,6 +1102,47 @@ fn artifact_consumer_is_reconstruction_only() {
 }
 
 #[test]
+fn generation_uses_seed_only_selector() {
+    let artifact_source = include_str!("../src/eval_plan/backward_artifact.rs");
+    let production_source = include_str!("../src/eval_plan/backward_search/production.rs");
+    let production_chain = source_function_body(
+        artifact_source,
+        "pub fn produce_backward_regime_chain_with_progress(",
+    );
+    assert!(production_chain.contains("select_production_backward_seeds_with_progress"));
+    let seed_selector = source_function_body(
+        production_source,
+        "pub fn select_production_backward_seeds_with_progress(",
+    );
+    for forbidden in [
+        "search_production_backward",
+        "run_search_driver",
+        "mutate_production_order",
+        "production_identity_seed",
+        "StableRng",
+        ".mutate(",
+    ] {
+        assert!(
+            !production_chain.contains(forbidden) && !seed_selector.contains(forbidden),
+            "production generation must not invoke {forbidden}",
+        );
+    }
+
+    let exact_evaluation = source_function_body(production_source, "fn evaluate_rebuilt_problem(");
+    let permit = exact_evaluation
+        .find("production_evaluation_gate().acquire()")
+        .expect("exact production evaluation acquires the global permit");
+    let paging = exact_evaluation
+        .find("solve_production_paging_observed")
+        .expect("exact production evaluation pages exactly");
+    let certification = exact_evaluation
+        .find("compile_and_certify_paging")
+        .expect("exact production evaluation compiles and certifies");
+    assert!(permit < paging && paging < certification);
+    assert!(!exact_evaluation.contains("drop(_permit)"));
+}
+
+#[test]
 #[ignore = "Plan 4 small shared-pool worker-invariance probe"]
 fn plan4_small_parallel_digest() {
     let matrix = run_plan4_matrix(&common::FIXTURES[..1], 2..=2).unwrap();

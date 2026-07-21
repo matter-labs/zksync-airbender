@@ -20,7 +20,7 @@ use super::backward_search::problem::{
 };
 use super::backward_search::production::{
     ProductionBackwardPlan, ProductionSearchIdentity, ProductionSearchProgress,
-    search_production_backward_with_progress,
+    select_production_backward_seeds_with_progress,
 };
 use super::backward_search::{
     BackwardScore, BackwardSearchError, CertifiedBackwardCandidate, PagingCertificate, SourceCost,
@@ -437,7 +437,7 @@ pub fn produce_backward_regime_chain_with_progress(
     progress: &(dyn Fn(BackwardRegimeChainProgress) + Sync),
 ) -> Result<BackwardRegimeArtifact, BackwardArtifactError> {
     let plans = produce_regime_chain_with(identity, budgets, |budget_cells, preceding_order| {
-        let searched = search_production_backward_with_progress(
+        let searched = select_production_backward_seeds_with_progress(
             identity,
             canonical,
             distilled,

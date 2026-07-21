@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer};
@@ -24,6 +24,7 @@ use super::{
 
 const SEARCH_POPULATION: usize = 32;
 const SEARCH_BATCH: usize = 16;
+pub const MAX_CONCURRENT_PRODUCTION_EVALUATIONS: usize = 4;
 const LIVE_PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -72,6 +73,43 @@ pub struct ProductionBackwardPlan {
 struct ProductionEvaluation {
     problem: BackwardSearchProblem,
     candidate: CertifiedBackwardCandidate,
+}
+
+struct EvaluationPermitGate {
+    available: Mutex<usize>,
+    wake: Condvar,
+}
+
+struct EvaluationPermit<'a>(&'a EvaluationPermitGate);
+
+impl EvaluationPermitGate {
+    fn acquire(&self) -> EvaluationPermit<'_> {
+        let mut available = self.available.lock().expect("lock production permits");
+        while *available == 0 {
+            available = self
+                .wake
+                .wait(available)
+                .expect("wait for production permit");
+        }
+        *available -= 1;
+        EvaluationPermit(self)
+    }
+}
+
+impl Drop for EvaluationPermit<'_> {
+    fn drop(&mut self) {
+        let mut available = self.0.available.lock().expect("release production permit");
+        *available += 1;
+        self.0.wake.notify_one();
+    }
+}
+
+fn production_evaluation_gate() -> &'static EvaluationPermitGate {
+    static GATE: OnceLock<EvaluationPermitGate> = OnceLock::new();
+    GATE.get_or_init(|| EvaluationPermitGate {
+        available: Mutex::new(MAX_CONCURRENT_PRODUCTION_EVALUATIONS),
+        wake: Condvar::new(),
+    })
 }
 
 struct ProductionOrderAdapter<'a> {
@@ -318,19 +356,23 @@ impl ProductionOrderAdapter<'_> {
         problem: Result<BackwardSearchProblem, BackwardSearchError>,
     ) -> Result<(BackwardScore, ProductionEvaluation), BackwardSearchError> {
         let problem = problem?;
-        let paging = solve_production_paging_observed(&problem.demands, |paging_progress| {
-            if let Some(progress) = self.telemetry.observe_progress(
-                paging_progress,
-                self.tier_evaluations,
-                self.evaluation_offset + self.telemetry.evaluations.load(Ordering::Relaxed),
-            ) {
-                (self.progress)(progress);
-            }
-        })?;
+        let (paging, candidate) = {
+            let _permit = production_evaluation_gate().acquire();
+            let paging = solve_production_paging_observed(&problem.demands, |paging_progress| {
+                if let Some(progress) = self.telemetry.observe_progress(
+                    paging_progress,
+                    self.tier_evaluations,
+                    self.evaluation_offset + self.telemetry.evaluations.load(Ordering::Relaxed),
+                ) {
+                    (self.progress)(progress);
+                }
+            })?;
+            let candidate =
+                compile_and_certify_paging(self.distilled, &problem, &paging.plan, ordinal)?;
+            (paging, candidate)
+        };
         self.telemetry
             .record(paging.solver, paging.plan.telemetry.peak_live_states);
-        let candidate =
-            compile_and_certify_paging(self.distilled, &problem, &paging.plan, ordinal)?;
         Ok((candidate.score, ProductionEvaluation { problem, candidate }))
     }
 }
@@ -358,6 +400,92 @@ pub fn search_production_backward(
         preceding_order,
         &|_| {},
     )
+}
+
+pub fn select_production_backward_seeds(
+    identity: &ProductionSearchIdentity,
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    trace_len: usize,
+    budget_cells: usize,
+    preceding_order: Option<&[usize]>,
+) -> Result<ProductionBackwardPlan, BackwardSearchError> {
+    select_production_backward_seeds_with_progress(
+        identity,
+        canonical,
+        distilled,
+        trace_len,
+        budget_cells,
+        preceding_order,
+        &|_| {},
+    )
+}
+
+pub fn select_production_backward_seeds_with_progress(
+    _identity: &ProductionSearchIdentity,
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    trace_len: usize,
+    budget_cells: usize,
+    preceding_order: Option<&[usize]>,
+    progress: &(dyn Fn(ProductionSearchProgress) + Sync),
+) -> Result<ProductionBackwardPlan, BackwardSearchError> {
+    let (_, problem) =
+        build_backward_search_problem(canonical, distilled, trace_len, budget_cells)?;
+    let Some(problem) = problem else {
+        return Err(BackwardSearchError::SearchDriverFailure {
+            reason: "production backward problem is infeasible",
+        });
+    };
+    let seeds = production_order_seeds(&problem, preceding_order)?;
+    let telemetry = TierTelemetry::default();
+    progress(telemetry.progress(seeds.len(), 0));
+    let adapter = ProductionOrderAdapter {
+        canonical,
+        distilled,
+        problem: &problem,
+        trace_len,
+        seeds: &seeds,
+        telemetry: &telemetry,
+        tier_evaluations: seeds.len(),
+        evaluation_offset: 0,
+        progress,
+    };
+    let mut evaluated = Vec::with_capacity(seeds.len());
+    let mut improvement_ordinals = Vec::new();
+    let mut best_score = None;
+    for (ordinal, genome) in seeds.iter().cloned().enumerate() {
+        let (score, evaluation) = adapter.evaluate(ordinal, &genome)?;
+        if best_score.is_some_and(|best| score < best) {
+            improvement_ordinals.push(ordinal);
+        }
+        if best_score.is_none_or(|best| score < best) {
+            best_score = Some(score);
+        }
+        let completed = telemetry.evaluations.fetch_add(1, Ordering::Relaxed) + 1;
+        progress(telemetry.progress(adapter.tier_evaluations, completed));
+        evaluated.push((score, ordinal, genome, evaluation));
+    }
+
+    let snapshot = telemetry.snapshot();
+    let (_, winning_ordinal, winning_genome, winning_evaluation) = evaluated
+        .into_iter()
+        .min_by_key(|(score, ordinal, _, _)| (*score, *ordinal))
+        .expect("production order seeds always contain the constructive order");
+    Ok(ProductionBackwardPlan {
+        problem: winning_evaluation.problem,
+        candidate: winning_evaluation.candidate,
+        order: winning_genome.order,
+        telemetry: ProductionSearchTelemetry {
+            evaluations: telemetry.evaluations.load(Ordering::Relaxed),
+            completed_tiers: Vec::new(),
+            first_winning_ordinal: Some(winning_ordinal),
+            improvement_ordinals,
+            exact_solver_calls: snapshot.exact_solver_calls,
+            solver_kinds: snapshot.solver_kinds,
+            peak_dp_states: snapshot.peak_dp_states,
+        },
+    })
 }
 
 pub fn search_production_backward_with_progress(
@@ -691,6 +819,54 @@ mod tests {
     use crate::eval_plan::search_driver::StableRng;
 
     use super::*;
+
+    #[test]
+    fn production_seed_selector_evaluates_only_constructive_and_distinct_previous() {
+        let selected = select_fixture_seeds(None).unwrap();
+        assert_eq!(selected.telemetry.evaluations, 1);
+        assert_eq!(selected.telemetry.exact_solver_calls, 1);
+        assert!(selected.telemetry.completed_tiers.is_empty());
+        assert_eq!(
+            selected.telemetry.solver_kinds,
+            vec![ProductionPagingSolver::RetainAll]
+        );
+        assert_eq!(selected.telemetry.first_winning_ordinal, Some(0));
+        assert!(selected.telemetry.improvement_ordinals.is_empty());
+        assert_eq!(
+            selected.telemetry.peak_dp_states,
+            selected.candidate.paging.telemetry.peak_live_states
+        );
+
+        let mut previous = stable_indices_for(&selected.problem, &selected.problem.selected_order);
+        let deduplicated = select_fixture_seeds(Some(&previous)).unwrap();
+        assert_eq!(deduplicated.telemetry.evaluations, 1);
+        assert_eq!(deduplicated.telemetry.exact_solver_calls, 1);
+
+        previous.reverse();
+        let selected = select_fixture_seeds(Some(&previous)).unwrap();
+        assert_eq!(selected.telemetry.evaluations, 2);
+        assert_eq!(selected.telemetry.exact_solver_calls, 2);
+        assert!(selected.telemetry.evaluations <= 2);
+        assert!(selected.telemetry.completed_tiers.is_empty());
+        let winner = selected.telemetry.first_winning_ordinal.unwrap();
+        assert!(winner < selected.telemetry.evaluations);
+        assert_eq!(
+            selected.telemetry.improvement_ordinals,
+            if winner == 1 { vec![1] } else { Vec::new() }
+        );
+    }
+
+    #[test]
+    fn production_evaluation_permits_are_global_and_failure_safe() {
+        assert_eq!(
+            run_concurrent_evaluation_probe(16, true),
+            MAX_CONCURRENT_PRODUCTION_EVALUATIONS
+        );
+        assert_eq!(
+            run_concurrent_evaluation_probe(16, false),
+            MAX_CONCURRENT_PRODUCTION_EVALUATIONS
+        );
+    }
 
     #[test]
     fn tier_telemetry_concurrent_snapshots_are_candidate_coherent() {
@@ -1202,6 +1378,62 @@ mod tests {
             layer: 0,
             regime,
         }
+    }
+
+    fn select_fixture_seeds(
+        preceding_order: Option<&[usize]>,
+    ) -> Result<ProductionBackwardPlan, BackwardSearchError> {
+        let canonical = stable_domain_mismatch_paging_trivial_layer();
+        let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        select_production_backward_seeds(
+            &test_identity(BwdRegime::Ext),
+            &canonical,
+            &distilled,
+            8,
+            4,
+            preceding_order,
+        )
+    }
+
+    fn run_concurrent_evaluation_probe(work: usize, inject_failures: bool) -> usize {
+        struct ActiveGuard<'a>(&'a AtomicUsize);
+
+        impl Drop for ActiveGuard<'_> {
+            fn drop(&mut self) {
+                self.0.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
+
+        let start = Arc::new(Barrier::new(work + 1));
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let threads = (0..work)
+            .map(|index| {
+                let start = Arc::clone(&start);
+                let active = Arc::clone(&active);
+                let peak = Arc::clone(&peak);
+                std::thread::spawn(move || {
+                    start.wait();
+                    let _result = (|| -> Result<(), ()> {
+                        let _permit = production_evaluation_gate().acquire();
+                        let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                        let _active = ActiveGuard(&active);
+                        peak.fetch_max(current, Ordering::SeqCst);
+                        std::thread::sleep(Duration::from_millis(10));
+                        if inject_failures && index % 2 == 0 {
+                            return Err(());
+                        }
+                        Ok(())
+                    })();
+                })
+            })
+            .collect::<Vec<_>>();
+        start.wait();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        assert_eq!(active.load(Ordering::SeqCst), 0);
+        peak.load(Ordering::SeqCst)
     }
 
     fn shared_source_fixture() -> (DagLayer, DistilledLayer) {
