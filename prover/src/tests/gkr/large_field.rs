@@ -85,7 +85,7 @@ fn load_boundary_transcript_prefix() -> (
         let src =
             std::fs::File::open("unified_circuit_proof_proth120_commitment_mod_aux_data.json")
                 .expect(
-                    "aux data — run gkr_unified_packed_commitment_basic_fibonacci_sec_80 first",
+                    "aux data — run gkr_unified_packed_commitment_basic_fibonacci first",
                 );
         serde_json::from_reader(src).expect("deserialize CommitmentMode aux data")
     };
@@ -120,7 +120,7 @@ fn load_boundary_transcript_prefix() -> (
 }
 
 #[test]
-fn gkr_unified_packed_commitment_basic_fibonacci_sec_80() {
+fn gkr_unified_packed_commitment_basic_fibonacci() {
     let worker = Worker::new_with_num_threads(8);
     let level = SecurityLevel::Sec100;
     // With `pack_log2 = 4` the 2^22 base trace is packed into a single 2^26-variate
@@ -386,7 +386,7 @@ fn validate_packed_transcript_recipe() {
 
     let proof: GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap> = {
         let src = std::fs::File::open("unified_circuit_proof_proth120.json")
-            .expect("run gkr_unified_packed_commitment_basic_fibonacci_sec_80 first");
+            .expect("run gkr_unified_packed_commitment_basic_fibonacci first");
         serde_json::from_reader(src).expect("deserialize proof")
     };
 
@@ -616,7 +616,7 @@ fn verify_permutation_identity_no_inversion() {
 
     let proof: GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap> = {
         let src = std::fs::File::open("unified_circuit_proof_proth120.json")
-            .expect("run gkr_unified_packed_commitment_basic_fibonacci_sec_80 first");
+            .expect("run gkr_unified_packed_commitment_basic_fibonacci first");
         serde_json::from_reader(src).expect("deserialize proof")
     };
     let (_prefix, register_final_state, final_pc, final_timestamp, _pow) =
@@ -2004,7 +2004,7 @@ fn inspect_packed_proof_structure() {
 
     let proof: GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap> = {
         let src = std::fs::File::open("unified_circuit_proof_proth120.json")
-            .expect("run gkr_unified_packed_commitment_basic_fibonacci_sec_80 first");
+            .expect("run gkr_unified_packed_commitment_basic_fibonacci first");
         serde_json::from_reader(src).expect("deserialize proof")
     };
 
