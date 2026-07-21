@@ -176,7 +176,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
         for i in 0..CounterType::FormalEnd as u8 {
             // SAFETY: loop bound `0..CounterType::FormalEnd as u8` keeps `i`
             // within the enum's defined `#[repr(u8)]` discriminants.
-            let counter_type = unsafe { transmute(i) };
+            let counter_type = unsafe { transmute::<u8, CounterType>(i) };
             let index = i as usize;
             let initial_count = initial_counters[index] as usize;
             let final_count = final_counters[index] as usize;
@@ -298,7 +298,7 @@ impl TracingDataProducers for UnifiedTracingDataProducers {
         for i in 0..CounterType::FormalEnd as u8 {
             // SAFETY: loop bound `0..CounterType::FormalEnd as u8` keeps `i`
             // within the enum's defined `#[repr(u8)]` discriminants.
-            let counter_type = unsafe { transmute(i) };
+            let counter_type = unsafe { transmute::<u8, CounterType>(i) };
             let index = i as usize;
             let initial_count = initial_counters[index] as usize;
             let final_count = final_counters[index] as usize;

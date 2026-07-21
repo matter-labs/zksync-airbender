@@ -63,9 +63,8 @@ pub(super) fn seed_from_cache(
                 precomputations,
                 inits_and_teardowns,
                 tracing_data,
-                external_challenges: external_challenges
-                    .expect("proof cache seeding requires external challenges")
-                    .clone(),
+                external_challenges: *external_challenges
+                    .expect("proof cache seeding requires external challenges"),
                 memory_caps,
                 security_level: prover.configuration.security_level,
             };

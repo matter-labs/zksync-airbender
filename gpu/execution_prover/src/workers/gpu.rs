@@ -300,7 +300,6 @@ fn schedule_phase_one<'a>(
         let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
         let external_challenges_value = state
             .external_challenges
-            .clone()
             .expect("Proof requires external_challenges");
         let compiled_circuit = state.precomputations.compiled_circuit.as_ref();
         // ACTUAL top bits for this circuit: canonical (== the real top bits in

@@ -75,10 +75,9 @@ impl<'a> RequestContext<'a> {
                 precomputations,
                 inits_and_teardowns,
                 tracing_data,
-                external_challenges: self
+                external_challenges: *self
                     .external_challenges
-                    .expect("proof request construction requires external challenges")
-                    .clone(),
+                    .expect("proof request construction requires external challenges"),
                 memory_caps,
                 security_level: prover.configuration.security_level,
             };

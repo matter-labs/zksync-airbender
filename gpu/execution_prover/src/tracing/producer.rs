@@ -18,7 +18,7 @@ use riscv_transpiler::witness::{
 };
 use std::cmp::min;
 use std::collections::{BTreeSet, VecDeque};
-use std::mem::replace;
+use std::mem::take;
 use std::sync::Arc;
 
 pub(crate) trait TracingDataProducerType: Sized {
@@ -109,7 +109,7 @@ impl<T: TracingDataProducerType> TracingDataProducer<T> {
             let next_circuit_boundary = (start + 1).next_multiple_of(cycles_per_circuit);
             let next_circuit_index = next_circuit_boundary / cycles_per_circuit;
             assert_eq!(next_circuit_index, self.current_circuit_index + 1);
-            if self.chunks.back().map_or(true, |v| v.len() == v.capacity()) {
+            if self.chunks.back().is_none_or(|v| v.len() == v.capacity()) {
                 let allocator = self
                     .free_allocators
                     .recv()
@@ -159,8 +159,7 @@ impl<T: TracingDataProducerType> TracingDataProducer<T> {
         let chunks = self.chunks.drain(..).collect_vec();
         let holder = ChunkedTraceHolder { chunks };
         let tracing_data = T::produce_tracing_data(holder);
-        let participating_snapshot_indexes =
-            replace(&mut self.participating_snapshot_indexes, BTreeSet::new());
+        let participating_snapshot_indexes = take(&mut self.participating_snapshot_indexes);
         let data = TracingData {
             circuit_type: self.circuit_type,
             sequence_id: self.current_circuit_index,

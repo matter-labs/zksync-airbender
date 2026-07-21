@@ -431,10 +431,7 @@ fn assemble_result(
             .into_iter()
             .map(|(i, v)| (i, v.into_values().collect_vec()))
             .collect();
-        let inits_and_teardowns_proofs = inits_and_teardowns_proofs
-            .into_iter()
-            .map(|(_, v)| v)
-            .collect_vec();
+        let inits_and_teardowns_proofs = inits_and_teardowns_proofs.into_values().collect_vec();
         let delegation_circuits_proofs = delegation_circuits_proofs
             .into_iter()
             .map(|(i, v)| (i, v.into_values().collect_vec()))
@@ -474,10 +471,8 @@ fn assemble_result(
             .into_iter()
             .map(|(i, v)| (i, v.into_values().collect_vec()))
             .collect();
-        let inits_and_teardowns_memory_caps = inits_and_teardowns_memory_caps
-            .into_iter()
-            .map(|(_, v)| v)
-            .collect_vec();
+        let inits_and_teardowns_memory_caps =
+            inits_and_teardowns_memory_caps.into_values().collect_vec();
         let delegation_circuits_memory_caps = delegation_circuits_memory_caps
             .into_iter()
             .map(|(i, v)| (i, v.into_values().collect_vec()))

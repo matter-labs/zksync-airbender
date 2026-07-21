@@ -170,7 +170,7 @@ pub(crate) fn run_simulator<
         let final_register_values = state
             .materialized_registers()
             .into_iter()
-            .zip(register_timestamps.into_iter())
+            .zip(register_timestamps)
             .map(|(value, last_access_timestamp)| FinalRegisterValue {
                 value,
                 last_access_timestamp,

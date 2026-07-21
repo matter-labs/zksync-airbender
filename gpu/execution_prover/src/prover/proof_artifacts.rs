@@ -1,16 +1,20 @@
 use super::*;
 use gpu_circuit_prover::prover::proof::canonical_inits_and_teardowns_top_bits;
 
+/// `(pow_challenge, external_challenges, proof_caps)`, as derived from a
+/// completed memory commitment and consumed by `prove_inner`.
+type ProofArtifacts = (
+    u64,
+    GKRExternalChallenges<BF, E4>,
+    BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+);
+
 impl ExecutionProver {
     fn derive_proof_artifacts(
         &self,
         binary_key: usize,
         memory_commitment: &CommitMemoryResult,
-    ) -> (
-        u64,
-        GKRExternalChallenges<BF, E4>,
-        BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-    ) {
+    ) -> ProofArtifacts {
         let CommitMemoryResult {
             final_register_values,
             final_pc,

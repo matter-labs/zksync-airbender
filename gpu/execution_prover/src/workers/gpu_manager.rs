@@ -94,7 +94,7 @@ fn gpu_manager(
         worker_queues.push(VecDeque::from([None, None]));
         let gpu_worker_func = get_gpu_worker_func(
             device_id,
-            prover_context_config.clone(),
+            prover_context_config,
             worker_initialized_sender.clone(),
             request_receiver,
             result_sender,
