@@ -1,2 +1,3 @@
-# Scratch output of the `generate_all` test (real outputs live in circuit_defs/**/generated/).
+# Local scratch if the `generate` bin is pointed at this dir; the committed
+# artifacts live in circuit_defs/**/generated/.
 *.cuh
