@@ -299,6 +299,35 @@ enum UnrolledSetup {
     Unified(UnrolledUnifiedSetup),
 }
 
+/// Wraps a per-family memory-circuit setup's `(compiled_circuit, setup)`
+/// pair together with its decoder data, mirroring the shape every
+/// `UnrolledCircuitType::Memory` arm in `build_unrolled_setup` produces.
+fn wrap_memory_setup(
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    setup: CpuGKRSetup<BF>,
+    decoder_data: Vec<CSExecutorFamilyDecoderData>,
+) -> UnrolledSetup {
+    UnrolledSetup::Memory(UnrolledMemorySetup {
+        compiled_circuit,
+        setup,
+        decoder_data,
+    })
+}
+
+/// Non-memory counterpart of [`wrap_memory_setup`]; mirrors every
+/// `UnrolledCircuitType::NonMemory` arm in `build_unrolled_setup`.
+fn wrap_non_memory_setup(
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    setup: CpuGKRSetup<BF>,
+    decoder_data: Vec<CSExecutorFamilyDecoderData>,
+) -> UnrolledSetup {
+    UnrolledSetup::NonMemory(UnrolledNonMemorySetup {
+        compiled_circuit,
+        setup,
+        decoder_data,
+    })
+}
+
 fn build_unrolled_setup(
     machine_type: MachineType,
     circuit_type: UnrolledCircuitType,
@@ -376,11 +405,7 @@ fn build_unrolled_setup(
                 true,
                 worker,
             );
-            UnrolledSetup::Memory(UnrolledMemorySetup {
-                compiled_circuit: s.compiled_circuit,
-                setup: s.setup,
-                decoder_data: decoder_data_from_table,
-            })
+            wrap_memory_setup(s.compiled_circuit, s.setup, decoder_data_from_table)
         }
         UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreSubwordOnly) => {
             let s = crate::upstream::load_store_subword_only_circuit_setup::<Global>(
@@ -389,11 +414,7 @@ fn build_unrolled_setup(
                 true,
                 worker,
             );
-            UnrolledSetup::Memory(UnrolledMemorySetup {
-                compiled_circuit: s.compiled_circuit,
-                setup: s.setup,
-                decoder_data: decoder_data_from_table,
-            })
+            wrap_memory_setup(s.compiled_circuit, s.setup, decoder_data_from_table)
         }
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop) => {
             let s = crate::upstream::add_sub_lui_auipc_mop_circuit_setup::<Global>(
@@ -401,29 +422,17 @@ fn build_unrolled_setup(
                 true,
                 worker,
             );
-            UnrolledSetup::NonMemory(UnrolledNonMemorySetup {
-                compiled_circuit: s.compiled_circuit,
-                setup: s.setup,
-                decoder_data: decoder_data_from_table,
-            })
+            wrap_non_memory_setup(s.compiled_circuit, s.setup, decoder_data_from_table)
         }
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::JumpBranchSlt) => {
             let s =
                 crate::upstream::jump_branch_slt_circuit_setup::<Global>(&table_data, true, worker);
-            UnrolledSetup::NonMemory(UnrolledNonMemorySetup {
-                compiled_circuit: s.compiled_circuit,
-                setup: s.setup,
-                decoder_data: decoder_data_from_table,
-            })
+            wrap_non_memory_setup(s.compiled_circuit, s.setup, decoder_data_from_table)
         }
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinaryCsr) => {
             let s =
                 crate::upstream::shift_binary_circuit_setup::<Global>(&table_data, true, worker);
-            UnrolledSetup::NonMemory(UnrolledNonMemorySetup {
-                compiled_circuit: s.compiled_circuit,
-                setup: s.setup,
-                decoder_data: decoder_data_from_table,
-            })
+            wrap_non_memory_setup(s.compiled_circuit, s.setup, decoder_data_from_table)
         }
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::MulDivUnsigned) => {
             let s = crate::upstream::mul_div_unsigned_circuit_setup::<Global>(
@@ -431,11 +440,7 @@ fn build_unrolled_setup(
                 true,
                 worker,
             );
-            UnrolledSetup::NonMemory(UnrolledNonMemorySetup {
-                compiled_circuit: s.compiled_circuit,
-                setup: s.setup,
-                decoder_data: decoder_data_from_table,
-            })
+            wrap_non_memory_setup(s.compiled_circuit, s.setup, decoder_data_from_table)
         }
         UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified => unreachable!(),
     }
