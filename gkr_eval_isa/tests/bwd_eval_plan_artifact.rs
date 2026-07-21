@@ -28,6 +28,7 @@ use gkr_eval_isa::eval_plan::{
 use gkr_eval_isa::fwd::encode::encode;
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 const R0_FEASIBILITY_FIXTURES: &[&str] = &[
     "bigint_with_extended_control_layout_gkr.json",
@@ -35,6 +36,9 @@ const R0_FEASIBILITY_FIXTURES: &[&str] = &[
     "keccak_special5_layout_gkr.json",
     "unified_reduced_machine_layout_gkr.json",
 ];
+
+const PLAN4_PRODUCTION_CHECKPOINT_ROOT: &str = ".agents/checkpoints/gkr-plan4-bwd-c2-c16";
+static PLAN4_CHECKPOINT_NONCE: AtomicUsize = AtomicUsize::new(0);
 
 fn sample_plan(budget_cells: usize) -> BackwardPlanArtifact {
     BackwardPlanArtifact {
@@ -941,8 +945,20 @@ fn generation_filters_force_diagnostic_tmp_output() {
     .unwrap();
     assert!(!config.may_publish_production);
     assert!(config.diagnostic_dir.as_ref().unwrap().starts_with("/tmp"));
+    assert!(config.checkpoint_root().starts_with("/tmp"));
+    assert!(
+        config
+            .checkpoint_root()
+            .ends_with("gkr-plan4-chain-checkpoints")
+    );
     assert_eq!(config.budgets, 3..=4);
     assert!(Plan4RunConfig::from_values(None, Some("2"), None, Some("1")).is_err());
+
+    let production = Plan4RunConfig::from_values(None, None, None, None).unwrap();
+    assert_eq!(
+        production.checkpoint_root(),
+        PathBuf::from(".agents/checkpoints/gkr-plan4-bwd-c2-c16"),
+    );
 }
 
 #[test]
@@ -1007,6 +1023,7 @@ fn generation_rejects_production_publication_for_a_partial_corpus() {
         inputs: build_plan4_chain_inputs(&common::FIXTURES[..1]),
         outputs: Vec::new(),
         budgets: 2..=16,
+        summary: Plan4GenerationSummary::default(),
     };
     assert!(matches!(
         matrix.validate_production_scope(),
@@ -1039,6 +1056,234 @@ fn generation_progress_snapshot_releases_state_before_formatting() {
     assert!(String::from_utf8(rendered)
         .unwrap()
         .contains("PLAN4 progress"));
+}
+
+fn checkpoint_test_root(label: &str) -> PathBuf {
+    let root = PathBuf::from("/tmp").join(format!(
+        "gkr-plan4-{label}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id(),
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    root
+}
+
+fn checkpoint_test_inputs(count: usize) -> Vec<Plan4ChainInput> {
+    let mut inputs = build_plan4_chain_inputs(&common::FIXTURES[..1]);
+    inputs.truncate(count);
+    inputs
+}
+
+fn checkpoint_inventory(root: &Path) -> usize {
+    std::fs::read_dir(root)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .count()
+}
+
+#[test]
+fn checkpoint_resume_skips_certified_chains_and_preserves_digest() {
+    let root = checkpoint_test_root("resume");
+    let calls = AtomicUsize::new(0);
+    let producer = |input: &Plan4ChainInput,
+                    budgets: RangeInclusive<usize>,
+                    progress: &(dyn Fn(BackwardRegimeChainProgress) + Sync)| {
+        calls.fetch_add(1, Ordering::Relaxed);
+        produce_backward_regime_chain_with_progress(
+            &input.identity(),
+            &input.canonical,
+            &input.distilled,
+            input.trace_len,
+            budgets,
+            progress,
+        )
+    };
+
+    let first = run_plan4_matrix_with_checkpoints_and_producer(
+        checkpoint_test_inputs(2),
+        2..=2,
+        &root,
+        &producer,
+    )
+    .unwrap();
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    assert_eq!(first.summary.new_entries, 2);
+    assert_eq!(first.summary.resumed_entries, 0);
+    assert_eq!(first.summary.exact_solver_calls, 2);
+
+    let second = run_plan4_matrix_with_checkpoints_and_producer(
+        checkpoint_test_inputs(2),
+        2..=2,
+        &root,
+        &producer,
+    )
+    .unwrap();
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    assert_eq!(second.summary.new_entries, 0);
+    assert_eq!(second.summary.resumed_entries, 2);
+    assert_eq!(second.summary.exact_solver_calls, 0);
+    assert_eq!(first.digest(), second.digest());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn checkpoint_stale_or_corrupt_fails_closed_without_producer_calls() {
+    let inputs = checkpoint_test_inputs(1);
+    let input = &inputs[0];
+    let budgets = 2..=2;
+    let producer_calls = AtomicUsize::new(0);
+    let producer = |_: &Plan4ChainInput,
+                    _: RangeInclusive<usize>,
+                    _: &(dyn Fn(BackwardRegimeChainProgress) + Sync)| {
+        producer_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(BackwardRegimeArtifact {
+            plans: vec![sample_plan(2)],
+        })
+    };
+
+    let stale_root = checkpoint_test_root("stale");
+    let stale_path = plan4_checkpoint_path(&stale_root, input, &budgets).unwrap();
+    let stale = Plan4ChainCheckpoint {
+        circuit: "stale-circuit".to_owned(),
+        layout_fixture: input.fixture.to_owned(),
+        layer: input.layer_index,
+        regime: plan4_regime_code(input.regime),
+        budget_min: 2,
+        budget_max: 2,
+        artifact: BackwardRegimeArtifact {
+            plans: vec![sample_plan(2)],
+        },
+    };
+    std::fs::write(&stale_path, serde_json::to_vec_pretty(&stale).unwrap()).unwrap();
+    assert!(matches!(
+        run_plan4_matrix_with_checkpoints_and_producer(
+            checkpoint_test_inputs(1),
+            budgets.clone(),
+            &stale_root,
+            &producer,
+        ),
+        Err(BackwardArtifactError::Publish(_))
+    ));
+
+    let corrupt_root = checkpoint_test_root("corrupt");
+    let corrupt_path = plan4_checkpoint_path(&corrupt_root, input, &budgets).unwrap();
+    std::fs::write(&corrupt_path, b"{not-json\n").unwrap();
+    assert!(matches!(
+        run_plan4_matrix_with_checkpoints_and_producer(
+            checkpoint_test_inputs(1),
+            budgets,
+            &corrupt_root,
+            &producer,
+        ),
+        Err(BackwardArtifactError::Publish(_))
+    ));
+    assert_eq!(producer_calls.load(Ordering::Relaxed), 0);
+    std::fs::remove_dir_all(stale_root).unwrap();
+    std::fs::remove_dir_all(corrupt_root).unwrap();
+}
+
+#[test]
+fn checkpoint_interrupted_matrix_keeps_completed_inventory() {
+    let root = checkpoint_test_root("interrupted");
+    let producer = |input: &Plan4ChainInput,
+                    _: RangeInclusive<usize>,
+                    _: &(dyn Fn(BackwardRegimeChainProgress) + Sync)| {
+        if input.ordinal < 3 {
+            Ok(BackwardRegimeArtifact {
+                plans: vec![sample_plan(2)],
+            })
+        } else {
+            Err(BackwardArtifactError::Publish(
+                "injected chain failure".to_owned(),
+            ))
+        }
+    };
+    let result = run_plan4_matrix_with_checkpoints_and_producer(
+        checkpoint_test_inputs(4),
+        2..=2,
+        &root,
+        &producer,
+    );
+    assert!(result.is_err());
+    assert_eq!(checkpoint_inventory(&root), 3);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn checkpoint_requires_exact_identity_and_budget_coverage() {
+    let root = checkpoint_test_root("exact-identity");
+    let inputs = checkpoint_test_inputs(1);
+    let input = &inputs[0];
+    let budgets = 2..=2;
+    let path = plan4_checkpoint_path(&root, input, &budgets).unwrap();
+    let checkpoint = Plan4ChainCheckpoint {
+        circuit: input.circuit.clone(),
+        layout_fixture: input.fixture.to_owned(),
+        layer: input.layer_index,
+        regime: plan4_regime_code(input.regime),
+        budget_min: 2,
+        budget_max: 2,
+        artifact: BackwardRegimeArtifact {
+            plans: vec![sample_plan(3)],
+        },
+    };
+    std::fs::write(path, serde_json::to_vec_pretty(&checkpoint).unwrap()).unwrap();
+    assert!(matches!(
+        load_plan4_chain_checkpoint(&root, input, &budgets),
+        Err(BackwardArtifactError::Publish(_))
+    ));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn checkpoint_atomic_collisions_preserve_unowned_files() {
+    let root = checkpoint_test_root("atomic-collision");
+    let inputs = checkpoint_test_inputs(1);
+    let input = &inputs[0];
+    let budgets = 2..=2;
+    let destination = plan4_checkpoint_path(&root, input, &budgets).unwrap();
+    let sentinel = b"foreign checkpoint\n";
+    std::fs::write(&destination, sentinel).unwrap();
+    let artifact = BackwardRegimeArtifact {
+        plans: vec![sample_plan(2)],
+    };
+    assert!(matches!(
+        publish_plan4_chain_checkpoint(&root, input, &budgets, &artifact),
+        Err(BackwardArtifactError::Publish(_))
+    ));
+    assert_eq!(std::fs::read(&destination).unwrap(), sentinel);
+    assert_eq!(
+        std::fs::read_dir(&root).unwrap().count(),
+        1,
+        "failed publication must clean up only its owned temporary and lock",
+    );
+
+    std::fs::remove_file(&destination).unwrap();
+    let temporary = root.join("foreign-temporary");
+    std::fs::write(&temporary, sentinel).unwrap();
+    let checkpoint = Plan4ChainCheckpoint {
+        circuit: input.circuit.clone(),
+        layout_fixture: input.fixture.to_owned(),
+        layer: input.layer_index,
+        regime: plan4_regime_code(input.regime),
+        budget_min: 2,
+        budget_max: 2,
+        artifact,
+    };
+    assert!(matches!(
+        publish_plan4_chain_checkpoint_to_temporary(&destination, &temporary, &checkpoint,),
+        Err(BackwardArtifactError::Publish(_))
+    ));
+    assert_eq!(std::fs::read(&temporary).unwrap(), sentinel);
+    assert!(!destination.exists());
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -1150,16 +1395,48 @@ fn plan4_small_parallel_digest() {
 }
 
 #[test]
+#[ignore = "Plan 4 small checkpoint/resume worker-invariance probe"]
+fn plan4_small_checkpoint_digest() {
+    let root = checkpoint_test_root("small-checkpoint-digest");
+    let first = run_plan4_matrix_with_checkpoints_and_producer(
+        checkpoint_test_inputs(2),
+        2..=2,
+        &root,
+        &produce_plan4_chain,
+    )
+    .unwrap();
+    let resumed = run_plan4_matrix_with_checkpoints_and_producer(
+        checkpoint_test_inputs(2),
+        2..=2,
+        &root,
+        &produce_plan4_chain,
+    )
+    .unwrap();
+    assert_eq!(first.digest(), resumed.digest());
+    assert_eq!(first.summary.new_entries, 2);
+    assert_eq!(resumed.summary.resumed_entries, 2);
+    assert_eq!(resumed.summary.exact_solver_calls, 0);
+    println!("PLAN4-SMALL-CHECKPOINT-DIGEST {:016x}", first.digest());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 #[ignore = "Plan 4 full backward artifact generator"]
 fn plan4_generate_backward_artifacts() {
     let config = Plan4RunConfig::from_env().unwrap();
-    let matrix = run_plan4_matrix(&config.fixtures, config.budgets.clone()).unwrap();
+    let matrix = run_plan4_matrix_with_checkpoints(
+        &config.fixtures,
+        config.budgets.clone(),
+        &config.checkpoint_root(),
+    )
+    .unwrap();
     let digest = matrix.digest();
     if let Some(directory) = &config.diagnostic_dir {
         matrix.write_diagnostic(directory).unwrap();
     } else if config.may_publish_production {
         matrix.publish().unwrap();
     }
+    matrix.write_generation_summary(std::io::stdout()).unwrap();
     println!("PLAN4-BWD-DIGEST {digest:016x}");
 }
 
@@ -1705,10 +1982,12 @@ impl Plan4RunConfig {
             return Err("GKR_PLAN4_BUDGET_MIN exceeds GKR_PLAN4_BUDGET_MAX".into());
         }
         let fixtures = match fixture {
-            Some(fixture) => vec![*common::FIXTURES
-                .iter()
-                .find(|candidate| **candidate == fixture)
-                .ok_or_else(|| format!("unknown GKR_PLAN4_FIXTURE={fixture}"))?],
+            Some(fixture) => vec![
+                *common::FIXTURES
+                    .iter()
+                    .find(|candidate| **candidate == fixture)
+                    .ok_or_else(|| format!("unknown GKR_PLAN4_FIXTURE={fixture}"))?,
+            ],
             None => common::FIXTURES.to_vec(),
         };
         Ok(Self {
@@ -1719,6 +1998,13 @@ impl Plan4RunConfig {
             }),
             may_publish_production: !filtered && !digest_only,
         })
+    }
+
+    fn checkpoint_root(&self) -> PathBuf {
+        self.diagnostic_dir.as_ref().map_or_else(
+            || PathBuf::from(PLAN4_PRODUCTION_CHECKPOINT_ROOT),
+            |directory| directory.join("gkr-plan4-chain-checkpoints"),
+        )
     }
 }
 
@@ -1731,6 +2017,319 @@ struct Plan4ChainInput {
     regime: BwdRegime,
     canonical: DagLayer,
     distilled: DistilledLayer,
+}
+
+impl Plan4ChainInput {
+    fn identity(&self) -> ProductionSearchIdentity {
+        ProductionSearchIdentity {
+            circuit: self.circuit.clone(),
+            layout_fixture: self.fixture.to_owned(),
+            layer: self.layer_index,
+            regime: self.regime,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Plan4ChainCheckpoint {
+    circuit: String,
+    layout_fixture: String,
+    layer: usize,
+    regime: u8,
+    budget_min: usize,
+    budget_max: usize,
+    artifact: BackwardRegimeArtifact,
+}
+
+fn plan4_regime_code(regime: BwdRegime) -> u8 {
+    match regime {
+        BwdRegime::R0 => 0,
+        BwdRegime::Ext => 1,
+    }
+}
+
+fn plan4_budget_endpoints(
+    budgets: &RangeInclusive<usize>,
+) -> Result<(usize, usize), BackwardArtifactError> {
+    let mut values = budgets.clone();
+    let budget_min = values.next().ok_or_else(|| {
+        BackwardArtifactError::Publish("Plan 4 checkpoint budget range is empty".to_owned())
+    })?;
+    let budget_max = values.next_back().unwrap_or(budget_min);
+    Ok((budget_min, budget_max))
+}
+
+fn plan4_checkpoint_record(
+    input: &Plan4ChainInput,
+    budgets: &RangeInclusive<usize>,
+    artifact: BackwardRegimeArtifact,
+) -> Result<Plan4ChainCheckpoint, BackwardArtifactError> {
+    let (budget_min, budget_max) = plan4_budget_endpoints(budgets)?;
+    Ok(Plan4ChainCheckpoint {
+        circuit: input.circuit.clone(),
+        layout_fixture: input.fixture.to_owned(),
+        layer: input.layer_index,
+        regime: plan4_regime_code(input.regime),
+        budget_min,
+        budget_max,
+        artifact,
+    })
+}
+
+fn plan4_checkpoint_path(
+    root: &Path,
+    input: &Plan4ChainInput,
+    budgets: &RangeInclusive<usize>,
+) -> Result<PathBuf, BackwardArtifactError> {
+    let (budget_min, budget_max) = plan4_budget_endpoints(budgets)?;
+    if input.circuit.is_empty()
+        || !input
+            .circuit
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return Err(BackwardArtifactError::Publish(format!(
+            "invalid Plan 4 checkpoint schedule stem {:?}",
+            input.circuit,
+        )));
+    }
+    Ok(root.join(format!(
+        "{}-l{}-r{}-c{}-c{}.json",
+        input.circuit,
+        input.layer_index,
+        plan4_regime_code(input.regime),
+        budget_min,
+        budget_max,
+    )))
+}
+
+fn plan4_checkpoint_error(
+    path: &Path,
+    input: &Plan4ChainInput,
+    detail: impl std::fmt::Display,
+) -> BackwardArtifactError {
+    BackwardArtifactError::Publish(format!(
+        "checkpoint {} for {}/{} L{} {:?}: {detail}",
+        path.display(),
+        input.circuit,
+        input.fixture,
+        input.layer_index,
+        input.regime,
+    ))
+}
+
+fn load_plan4_chain_checkpoint(
+    root: &Path,
+    input: &Plan4ChainInput,
+    budgets: &RangeInclusive<usize>,
+) -> Result<Option<Plan4ChainCheckpoint>, BackwardArtifactError> {
+    let path = plan4_checkpoint_path(root, input, budgets)?;
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(plan4_checkpoint_error(&path, input, error)),
+    };
+    let checkpoint: Plan4ChainCheckpoint = serde_json::from_slice(&bytes)
+        .map_err(|error| plan4_checkpoint_error(&path, input, format!("parse: {error}")))?;
+    let expected =
+        plan4_checkpoint_record(input, budgets, BackwardRegimeArtifact { plans: Vec::new() })?;
+    if checkpoint.circuit != expected.circuit
+        || checkpoint.layout_fixture != expected.layout_fixture
+        || checkpoint.layer != expected.layer
+        || checkpoint.regime != expected.regime
+        || checkpoint.budget_min != expected.budget_min
+        || checkpoint.budget_max != expected.budget_max
+    {
+        return Err(plan4_checkpoint_error(
+            &path,
+            input,
+            "identity or budget range mismatch",
+        ));
+    }
+    let expected_budgets = budgets.clone().collect::<Vec<_>>();
+    if checkpoint.artifact.plans.len() != expected_budgets.len()
+        || checkpoint
+            .artifact
+            .plans
+            .iter()
+            .zip(&expected_budgets)
+            .any(|(plan, expected_budget)| plan.budget_cells != *expected_budget)
+    {
+        return Err(plan4_checkpoint_error(
+            &path,
+            input,
+            "plan count or budget order mismatch",
+        ));
+    }
+    for plan in &checkpoint.artifact.plans {
+        compile_backward_plan_artifact(
+            &input.circuit,
+            input.layer_index,
+            &input.canonical,
+            &input.distilled,
+            input.trace_len,
+            plan,
+        )
+        .map_err(|error| {
+            plan4_checkpoint_error(
+                &path,
+                input,
+                format!("replay c{} failed: {error:?}", plan.budget_cells),
+            )
+        })?;
+    }
+    Ok(Some(checkpoint))
+}
+
+fn publish_plan4_chain_checkpoint(
+    root: &Path,
+    input: &Plan4ChainInput,
+    budgets: &RangeInclusive<usize>,
+    artifact: &BackwardRegimeArtifact,
+) -> Result<(), BackwardArtifactError> {
+    std::fs::create_dir_all(root).map_err(|error| {
+        BackwardArtifactError::Publish(format!(
+            "create checkpoint root {}: {error}",
+            root.display(),
+        ))
+    })?;
+    let destination = plan4_checkpoint_path(root, input, budgets)?;
+    let file_name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            BackwardArtifactError::Publish(format!(
+                "invalid checkpoint destination {}",
+                destination.display(),
+            ))
+        })?;
+    let nonce = PLAN4_CHECKPOINT_NONCE.fetch_add(1, Ordering::Relaxed);
+    let temporary = root.join(format!(".{file_name}.tmp-{}-{nonce}", std::process::id(),));
+    let checkpoint = plan4_checkpoint_record(input, budgets, artifact.clone())?;
+    publish_plan4_chain_checkpoint_to_temporary(&destination, &temporary, &checkpoint)
+}
+
+fn publish_plan4_chain_checkpoint_to_temporary(
+    destination: &Path,
+    temporary: &Path,
+    checkpoint: &Plan4ChainCheckpoint,
+) -> Result<(), BackwardArtifactError> {
+    let parent = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let lock = destination.with_extension("json.publish-lock");
+    let mut created_temporary = false;
+    let mut created_lock = false;
+    let publication = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(temporary)
+            .map_err(|error| {
+                BackwardArtifactError::Publish(format!(
+                    "create checkpoint temporary {}: {error}",
+                    temporary.display(),
+                ))
+            })?;
+        created_temporary = true;
+        serde_json::to_writer_pretty(&mut file, checkpoint).map_err(|error| {
+            BackwardArtifactError::Publish(format!(
+                "serialize checkpoint temporary {}: {error}",
+                temporary.display(),
+            ))
+        })?;
+        file.write_all(b"\n")
+            .and_then(|()| file.sync_all())
+            .map_err(|error| {
+                BackwardArtifactError::Publish(format!(
+                    "sync checkpoint temporary {}: {error}",
+                    temporary.display(),
+                ))
+            })?;
+        drop(file);
+
+        let reloaded: Plan4ChainCheckpoint =
+            serde_json::from_slice(&std::fs::read(temporary).map_err(|error| {
+                BackwardArtifactError::Publish(format!(
+                    "reload checkpoint temporary {}: {error}",
+                    temporary.display(),
+                ))
+            })?)
+            .map_err(|error| {
+                BackwardArtifactError::Publish(format!(
+                    "parse checkpoint temporary {}: {error}",
+                    temporary.display(),
+                ))
+            })?;
+        if reloaded != *checkpoint {
+            return Err(BackwardArtifactError::Publish(format!(
+                "checkpoint temporary {} changed across serialization",
+                temporary.display(),
+            )));
+        }
+
+        let _lock_file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock)
+            .map_err(|error| {
+                BackwardArtifactError::Publish(format!(
+                    "claim checkpoint destination {}: {error}",
+                    destination.display(),
+                ))
+            })?;
+        created_lock = true;
+        match std::fs::read(destination) {
+            Ok(bytes) => {
+                let existing: Plan4ChainCheckpoint =
+                    serde_json::from_slice(&bytes).map_err(|error| {
+                        BackwardArtifactError::Publish(format!(
+                            "existing checkpoint {} is not replaceable: {error}",
+                            destination.display(),
+                        ))
+                    })?;
+                if existing != *checkpoint {
+                    return Err(BackwardArtifactError::Publish(format!(
+                        "existing checkpoint {} has different identity, range, or artifact",
+                        destination.display(),
+                    )));
+                }
+                return Ok(());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(BackwardArtifactError::Publish(format!(
+                    "inspect checkpoint destination {}: {error}",
+                    destination.display(),
+                )));
+            }
+        }
+        std::fs::rename(temporary, destination).map_err(|error| {
+            BackwardArtifactError::Publish(format!(
+                "rename checkpoint {} to {}: {error}",
+                temporary.display(),
+                destination.display(),
+            ))
+        })?;
+        std::fs::File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| {
+                BackwardArtifactError::Publish(format!(
+                    "sync checkpoint directory {}: {error}",
+                    parent.display(),
+                ))
+            })?;
+        Ok(())
+    })();
+    if created_lock {
+        let _ = std::fs::remove_file(&lock);
+    }
+    if created_temporary && temporary.exists() {
+        let _ = std::fs::remove_file(temporary);
+    }
+    publication
 }
 
 struct Plan4ChainOutput {
@@ -1791,6 +2390,8 @@ struct FixtureProgress {
 
 struct Plan4ProgressSnapshot {
     completed: usize,
+    new_entries: usize,
+    resumed_entries: usize,
     total_entries: usize,
     completed_circuits: usize,
     total_circuits: usize,
@@ -1820,6 +2421,8 @@ struct Plan4Progress {
     total_entries: usize,
     total_circuits: usize,
     completed: AtomicUsize,
+    new_entries: AtomicUsize,
+    resumed_entries: AtomicUsize,
     completed_circuits: AtomicUsize,
     state: Mutex<Plan4ProgressState>,
     wake: Condvar,
@@ -1842,6 +2445,8 @@ impl Plan4Progress {
             total_entries: inputs.len() * entries_per_chain,
             total_circuits: remaining_chains.len(),
             completed: AtomicUsize::new(0),
+            new_entries: AtomicUsize::new(0),
+            resumed_entries: AtomicUsize::new(0),
             completed_circuits: AtomicUsize::new(0),
             state: Mutex::new(Plan4ProgressState {
                 active: BTreeMap::new(),
@@ -1870,10 +2475,18 @@ impl Plan4Progress {
                     },
                 );
             }
-            BackwardRegimeChainProgress::Completed { .. } => {
-                self.completed.fetch_add(1, Ordering::Relaxed);
-                state.active.remove(&input.ordinal);
-            }
+            BackwardRegimeChainProgress::Completed { .. } => {}
+        }
+    }
+
+    fn checkpointed_chain(&self, input: &Plan4ChainInput, entries: usize, resumed: bool) {
+        let mut state = self.state.lock().expect("lock Plan 4 checkpoint progress");
+        state.active.remove(&input.ordinal);
+        self.completed.fetch_add(entries, Ordering::Relaxed);
+        if resumed {
+            self.resumed_entries.fetch_add(entries, Ordering::Relaxed);
+        } else {
+            self.new_entries.fetch_add(entries, Ordering::Relaxed);
         }
     }
 
@@ -1929,6 +2542,8 @@ impl Plan4Progress {
     fn snapshot(&self) -> Plan4ProgressSnapshot {
         let elapsed = self.started.elapsed();
         let completed = self.completed.load(Ordering::Relaxed);
+        let new_entries = self.new_entries.load(Ordering::Relaxed);
+        let resumed_entries = self.resumed_entries.load(Ordering::Relaxed);
         let completed_circuits = self.completed_circuits.load(Ordering::Relaxed);
         let active = {
             let state = self.state.lock().expect("lock Plan 4 progress snapshot");
@@ -1936,6 +2551,8 @@ impl Plan4Progress {
         };
         Plan4ProgressSnapshot {
             completed,
+            new_entries,
+            resumed_entries,
             total_entries: self.total_entries,
             completed_circuits,
             total_circuits: self.total_circuits,
@@ -1955,9 +2572,11 @@ impl Plan4Progress {
         );
         writeln!(
             output,
-            "PLAN4 progress completed={}/{} circuits={}/{} active={} elapsed={:?} eta={eta}",
+            "PLAN4 progress completed={}/{} new={} resumed={} circuits={}/{} active={} elapsed={:?} eta={eta}",
             snapshot.completed,
             snapshot.total_entries,
+            snapshot.new_entries,
+            snapshot.resumed_entries,
             snapshot.completed_circuits,
             snapshot.total_circuits,
             snapshot.active.len(),
@@ -1986,13 +2605,104 @@ struct Plan4Matrix {
     inputs: Vec<Plan4ChainInput>,
     outputs: Vec<Plan4ChainOutput>,
     budgets: RangeInclusive<usize>,
+    summary: Plan4GenerationSummary,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Plan4GenerationSummary {
+    new_entries: usize,
+    resumed_entries: usize,
+    exact_solver_calls: usize,
+}
+
+#[derive(Default)]
+struct Plan4ChainGenerationTelemetry {
+    latest: BTreeMap<
+        usize,
+        gkr_eval_isa::eval_plan::backward_search::production::ProductionSearchProgress,
+    >,
+    exact_solver_calls: usize,
+}
+
+impl Plan4ChainGenerationTelemetry {
+    fn record(&mut self, event: BackwardRegimeChainProgress) {
+        match event {
+            BackwardRegimeChainProgress::Search {
+                budget_cells,
+                search,
+            } => {
+                self.latest.insert(budget_cells, search);
+            }
+            BackwardRegimeChainProgress::Completed { budget_cells } => {
+                if let Some(search) = self.latest.remove(&budget_cells) {
+                    self.exact_solver_calls = self
+                        .exact_solver_calls
+                        .checked_add(search.evaluations)
+                        .expect("Plan 4 exact solver call count overflow");
+                }
+            }
+        }
+    }
+}
+
+struct Plan4ChainRun {
+    output: Plan4ChainOutput,
+    resumed: bool,
+    exact_solver_calls: usize,
+}
+
+fn produce_plan4_chain(
+    input: &Plan4ChainInput,
+    budgets: RangeInclusive<usize>,
+    progress: &(dyn Fn(BackwardRegimeChainProgress) + Sync),
+) -> Result<BackwardRegimeArtifact, BackwardArtifactError> {
+    produce_backward_regime_chain_with_progress(
+        &input.identity(),
+        &input.canonical,
+        &input.distilled,
+        input.trace_len,
+        budgets,
+        progress,
+    )
 }
 
 fn run_plan4_matrix(
     fixtures: &[&'static str],
     budgets: RangeInclusive<usize>,
 ) -> Result<Plan4Matrix, BackwardArtifactError> {
-    let inputs = build_plan4_chain_inputs(fixtures);
+    let checkpoint_root = PathBuf::from("/tmp")
+        .join(format!("gkr-plan4-diagnostic-{}", std::process::id()))
+        .join("gkr-plan4-chain-checkpoints");
+    run_plan4_matrix_with_checkpoints(fixtures, budgets, &checkpoint_root)
+}
+
+fn run_plan4_matrix_with_checkpoints(
+    fixtures: &[&'static str],
+    budgets: RangeInclusive<usize>,
+    checkpoint_root: &Path,
+) -> Result<Plan4Matrix, BackwardArtifactError> {
+    run_plan4_matrix_with_checkpoints_and_producer(
+        build_plan4_chain_inputs(fixtures),
+        budgets,
+        checkpoint_root,
+        &produce_plan4_chain,
+    )
+}
+
+fn run_plan4_matrix_with_checkpoints_and_producer<P>(
+    inputs: Vec<Plan4ChainInput>,
+    budgets: RangeInclusive<usize>,
+    checkpoint_root: &Path,
+    producer: &P,
+) -> Result<Plan4Matrix, BackwardArtifactError>
+where
+    P: Fn(
+            &Plan4ChainInput,
+            RangeInclusive<usize>,
+            &(dyn Fn(BackwardRegimeChainProgress) + Sync),
+        ) -> Result<BackwardRegimeArtifact, BackwardArtifactError>
+        + Sync,
+{
     let entries_per_chain = budgets.clone().count();
     let progress = Plan4Progress::new(&inputs, entries_per_chain);
     let monitor_progress = Arc::clone(&progress);
@@ -2000,28 +2710,58 @@ fn run_plan4_matrix(
     let results = inputs
         .par_iter()
         .map(|input| {
-            let identity = ProductionSearchIdentity {
-                circuit: input.circuit.clone(),
-                layout_fixture: input.fixture.to_owned(),
-                layer: input.layer_index,
-                regime: input.regime,
-            };
-            let result = produce_backward_regime_chain_with_progress(
-                &identity,
-                &input.canonical,
-                &input.distilled,
-                input.trace_len,
-                budgets.clone(),
-                &|event| progress.record(input, event),
-            )
-            .map(|artifact| Plan4ChainOutput {
-                ordinal: input.ordinal,
-                fixture: input.fixture,
-                circuit: input.circuit.clone(),
-                layer_index: input.layer_index,
-                regime: input.regime,
-                artifact,
-            });
+            let result = (|| {
+                if let Some(checkpoint) =
+                    load_plan4_chain_checkpoint(checkpoint_root, input, &budgets)?
+                {
+                    let entries = checkpoint.artifact.plans.len();
+                    let output = Plan4ChainOutput {
+                        ordinal: input.ordinal,
+                        fixture: input.fixture,
+                        circuit: input.circuit.clone(),
+                        layer_index: input.layer_index,
+                        regime: input.regime,
+                        artifact: checkpoint.artifact,
+                    };
+                    progress.checkpointed_chain(input, entries, true);
+                    return Ok(Plan4ChainRun {
+                        output,
+                        resumed: true,
+                        exact_solver_calls: 0,
+                    });
+                }
+
+                let telemetry = Mutex::new(Plan4ChainGenerationTelemetry::default());
+                let artifact = producer(input, budgets.clone(), &|event| {
+                    if matches!(event, BackwardRegimeChainProgress::Search { .. }) {
+                        progress.record(input, event);
+                    }
+                    telemetry
+                        .lock()
+                        .expect("lock Plan 4 chain telemetry")
+                        .record(event);
+                })?;
+                publish_plan4_chain_checkpoint(checkpoint_root, input, &budgets, &artifact)?;
+                let exact_solver_calls = telemetry
+                    .into_inner()
+                    .expect("unlock Plan 4 chain telemetry")
+                    .exact_solver_calls;
+                let entries = artifact.plans.len();
+                let output = Plan4ChainOutput {
+                    ordinal: input.ordinal,
+                    fixture: input.fixture,
+                    circuit: input.circuit.clone(),
+                    layer_index: input.layer_index,
+                    regime: input.regime,
+                    artifact,
+                };
+                progress.checkpointed_chain(input, entries, false);
+                Ok(Plan4ChainRun {
+                    output,
+                    resumed: false,
+                    exact_solver_calls,
+                })
+            })();
             progress.chain_done(input, result.is_ok());
             result
         })
@@ -2030,10 +2770,20 @@ fn run_plan4_matrix(
     monitor.join().expect("join Plan 4 progress monitor");
 
     let mut outputs = Vec::with_capacity(results.len());
+    let mut summary = Plan4GenerationSummary::default();
     let mut failures = Vec::new();
     for result in results {
         match result {
-            Ok(output) => outputs.push(output),
+            Ok(chain) => {
+                let entries = chain.output.artifact.plans.len();
+                if chain.resumed {
+                    summary.resumed_entries += entries;
+                } else {
+                    summary.new_entries += entries;
+                    summary.exact_solver_calls += chain.exact_solver_calls;
+                }
+                outputs.push(chain.output);
+            }
             Err(BackwardArtifactError::IncompleteGeneration {
                 failures: chain_failures,
             }) => failures.extend(chain_failures),
@@ -2048,10 +2798,19 @@ fn run_plan4_matrix(
         inputs,
         outputs,
         budgets,
+        summary,
     })
 }
 
 impl Plan4Matrix {
+    fn write_generation_summary(&self, mut output: impl Write) -> std::io::Result<()> {
+        writeln!(
+            output,
+            "PLAN4 generation new={} resumed={} exact_solver_calls={}",
+            self.summary.new_entries, self.summary.resumed_entries, self.summary.exact_solver_calls,
+        )
+    }
+
     fn validate_production_scope(&self) -> Result<(), BackwardArtifactError> {
         let fixtures = self.inputs.iter().map(|input| input.fixture).fold(
             Vec::new(),
