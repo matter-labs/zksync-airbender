@@ -19,17 +19,27 @@ contract GKRVerifier {
     uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits (one field lane)
     // Stack-pressure fix: the ~123-bit modulus P as a literal is a PUSH16 rematerialized at
     // every addmod/mulmod, and the Yul scheduler keeps it live across the deep gate sequences
-    // (→ "stack too deep"). Store P once at a small heap offset and `mload(P_PTR)` it instead
-    // (PUSH1 offset + MLOAD, consumed immediately, not kept live). The generated circuit.yul
-    // and the hand-written ops both use `mload(P_PTR)`; `mstore(P_PTR, mload(P_PTR))` runs first in the
-    // fallback. P_PTR is below the hand-placed heap (MINIMUM_FREE_HEAP_PTR) and above the
-    // 0..128 return/scratch region.
-    uint256 constant P_PTR  = 160;
+    // (→ "stack too deep"). Store P once at a heap offset and `mload(P_PTR)` it instead. The
+    // generated circuit.yul and the hand-written ops both use `mload(P_PTR)`; `mstore(P_PTR, P)`
+    // runs first in the fallback.
+    //
+    // MEMORY LAYOUT (matters under via_ir): solc's IR backend places its stack-spill slots at
+    // fixed low offsets that grow up from 0x80, and the SPILL-OVERWRITE guard (end of the
+    // fallback) asserts they never reach MINIMUM_FREE_HEAP_PTR. So the region
+    // [0x80, MINIMUM_FREE_HEAP_PTR) is the spill zone and [MINIMUM_FREE_HEAP_PTR, ∞) is
+    // spill-safe. P_PTR / CIRCUIT_PTR MUST live in the safe region — a low fixed slot (the old
+    // 160/192) is silently clobbered by via_ir spills, corrupting the committed state. They take
+    // the first two slots of the safe region; the hand-placed heap (MEMORY_CHALLS_PTR) starts 64
+    // bytes higher. INVARIANT (Yul forbids constant arithmetic in assembly, so these are spelled
+    // as literals): P_PTR == MINIMUM_FREE_HEAP_PTR, CIRCUIT_PTR == MINIMUM_FREE_HEAP_PTR + 32,
+    // MEMORY_CHALLS_PTR == MINIMUM_FREE_HEAP_PTR + 64. Bump all four together if the spill zone
+    // ever needs more room.
+    uint256 constant P_PTR  = 7588;      // == MINIMUM_FREE_HEAP_PTR  (spill-safe slot 0)
     // Fixed heap slot holding the circuit-layer calldata cursor, so gate/cache sub-functions
     // read it via mload instead of a `ptr` parameter (that param was the single deepest stack
-    // slot pushing each of them 1 over the EVM limit). Sits just above P_PTR (160..191).
-    uint256 constant CIRCUIT_PTR = 192;
-    uint256 constant ROUNDS = 200;
+    // slot pushing each of them 1 over the EVM limit). Spill-safe slot 1, just above P_PTR.
+    uint256 constant CIRCUIT_PTR = 7620; // == MINIMUM_FREE_HEAP_PTR + 32
+    uint256 constant ROUNDS = 200; // test-harness only (GKRStreamGen); stripped from production
 
     // ── Transcript init (absorb caps, derive memory/logup challenges) ─────────
     uint256 constant __TEMPLATE_MERKLE_TREE_CAPS_BYTES = 512; // 16 caps * 32-byte hash
@@ -87,7 +97,8 @@ contract GKRVerifier {
         // first: shr(128, seed), then and(seed, MASK).
 
         function MEMORY_CHALLS_PTR() -> ptr {
-            ptr := MINIMUM_FREE_HEAP_PTR
+            // +64: the first two safe slots hold P_PTR and CIRCUIT_PTR (see the layout note).
+            ptr := add(MINIMUM_FREE_HEAP_PTR, 64)
         }
         function LOGUP_CHALLS_PTR() -> ptr {
             ptr := add(MEMORY_CHALLS_PTR(), mul(32, 7))

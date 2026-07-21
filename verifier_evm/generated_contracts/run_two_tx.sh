@@ -1,7 +1,7 @@
 #!/bin/sh
 # End-to-end: (re)generate the GKR + WHIR + Registry Solidity from the circuit artifact,
 # regenerate the verifier calldata from the proof, compile each verifier in its own Foundry
-# project (they can't co-compile — GKR needs the legacy backend, WHIR needs via_ir), run the
+# project (both via_ir now, but separate projects so each has its own optimizer_runs), run the
 # two-transaction cross-check (GKR committed state == WHIR committed state), and report the
 # compiler options, deployed bytecode sizes, and REAL per-tx gas (raw anvil txs, no harness
 # memcopy over-count).
@@ -17,7 +17,7 @@ echo "== generating verifiers + calldata from the circuit artifact + proof =="
 ( cd .. && cargo test -q -p verifier_evm --test flatten_calldata   >/dev/null )
 
 # 2. compile each verifier in its own project (different backends), + the registry
-echo "== compiling GKR (legacy) / WHIR (via_ir) / Registry =="
+echo "== compiling GKR (via_ir) / WHIR (via_ir) / Registry =="
 ( cd gkr    && forge build >/dev/null )
 ( cd whir   && forge build >/dev/null )
 ( cd two_tx && forge build >/dev/null )

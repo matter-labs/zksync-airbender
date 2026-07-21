@@ -7,9 +7,15 @@ solc_version = "0.8.36"
 auto_detect_solc = false
 src = "src"
 out = "out"
-# Legacy backend (no via_ir): this is the validated codegen path for the hand-written GKR
-# verifier assembly (the "memory-safe" fallback + hand-placed heap). via_ir compiles too but
-# was never run end-to-end; legacy matches the harness that verified the real proof.
-via_ir = false
+# via_ir backend. The GKR verifier's hand-written assembly stays `("memory-safe")` so the IR
+# backend can spill freely (plain assembly → stack-too-deep). The one requirement: via_ir places
+# its stack-spill slots at fixed low offsets [0x80, MINIMUM_FREE_HEAP_PTR), so the verifier's two
+# live low pointers (P_PTR, CIRCUIT_PTR) were moved into the spill-safe region above
+# MINIMUM_FREE_HEAP_PTR (see the layout note in gkr.sol) — otherwise the spills silently clobber
+# them and the committed state comes out wrong. Validated end-to-end by the two-tx cross-check.
+# optimizer_runs = 1: the GKR tx is bounded by the EIP-7623 calldata floor (execution gas <
+# floor), so lowering execution gas via a higher runs count does NOT reduce total tx gas — it
+# only enlarges the bytecode. runs=1 gives the smallest bytecode at identical on-chain gas.
+via_ir = true
 optimizer = true
 optimizer_runs = 1
