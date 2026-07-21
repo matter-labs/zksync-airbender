@@ -539,10 +539,10 @@ mod tests {
     #[test]
     fn uniform_solver_matches_resident_sets_on_traversable_unit_fixtures() {
         for demands in [
-            stream(&[0, 1, 0, 1], &[1, 1, 1, 0]),
-            stream(&[0, 0, 0], &[1, 1, 0]),
-            stream(&[0, 1, 0, 1], &[2, 2, 2, 0]),
-            stream(&[0, 1, 0, 1, 0], &[2, 1, 2, 1, 0]),
+            costed_stream(&[(0, 1, 20, 3), (1, 1, 11, 2), (0, 1, 20, 3), (1, 0, 11, 2)]),
+            costed_stream(&[(0, 1, 0, 0), (0, 1, 0, 0), (0, 0, 0, 0)]),
+            costed_stream(&[(0, 1, 10, 1), (1, 1, 10, 1), (0, 1, 10, 1), (1, 0, 10, 1)]),
+            costed_stream(&[(0, 2, 10, 1), (1, 2, 10, 1), (0, 2, 10, 1), (1, 0, 10, 1)]),
         ] {
             let uniform = solve_uniform_exact_paging(&demands).unwrap();
             let PagerOutcome::Solved(resident_sets) =
@@ -652,6 +652,23 @@ mod tests {
                 demand(position, expr, gap_capacity_lanes, has_next[position])
             })
             .collect()
+    }
+
+    fn costed_stream(spec: &[(u32, u8, u128, u128)]) -> Vec<BackwardDemand> {
+        let exprs = spec.iter().map(|entry| entry.0).collect::<Vec<_>>();
+        let capacities = spec.iter().map(|entry| entry.1).collect::<Vec<_>>();
+        let mut demands = stream(&exprs, &capacities);
+        for (demand, &(_, _, dram, ops)) in demands.iter_mut().zip(spec) {
+            demand.miss_cost = SourceCost {
+                plain_read_bytes: dram,
+                ops: SourceOpCost {
+                    bf_add: ops,
+                    ..SourceOpCost::default()
+                },
+                ..SourceCost::default()
+            };
+        }
+        demands
     }
 
     fn demand(
