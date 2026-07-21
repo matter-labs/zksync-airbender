@@ -4,7 +4,7 @@ use cs::gkr_compiler::dag_ir::ExprId;
 
 use super::BackwardSearchError;
 use super::problem::BackwardDemand;
-use super::uniform_pager::solve_uniform_exact_paging;
+use super::uniform_pager::solve_uniform_exact_paging_observed;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PagingAction {
@@ -61,6 +61,13 @@ pub enum ProductionPagingSolver {
 pub struct ProductionPagingResult {
     pub solver: ProductionPagingSolver,
     pub plan: ExactPagingPlan,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ProductionPagingProgress {
+    pub solver: ProductionPagingSolver,
+    pub current_states: usize,
+    pub peak_states: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -215,21 +222,57 @@ pub fn solve_retain_all_if_exact(
 pub fn solve_production_paging(
     demands: &[BackwardDemand],
 ) -> Result<ProductionPagingResult, BackwardSearchError> {
+    solve_production_paging_observed(demands, |_| {})
+}
+
+pub(crate) fn solve_production_paging_observed(
+    demands: &[BackwardDemand],
+    mut observe: impl FnMut(ProductionPagingProgress),
+) -> Result<ProductionPagingResult, BackwardSearchError> {
     if let Some(plan) = solve_retain_all_if_exact(demands)? {
+        observe(ProductionPagingProgress {
+            solver: ProductionPagingSolver::RetainAll,
+            current_states: usize::from(!demands.is_empty()),
+            peak_states: usize::from(!demands.is_empty()),
+        });
         return Ok(ProductionPagingResult {
             solver: ProductionPagingSolver::RetainAll,
             plan,
         });
     }
     if demands.iter().all(|demand| demand.width_lanes == 1) {
+        observe(ProductionPagingProgress {
+            solver: ProductionPagingSolver::UniformIntervals,
+            current_states: 0,
+            peak_states: 0,
+        });
+        let mut observe_uniform = |current_states, peak_states| {
+            observe(ProductionPagingProgress {
+                solver: ProductionPagingSolver::UniformIntervals,
+                current_states,
+                peak_states,
+            });
+        };
         return Ok(ProductionPagingResult {
             solver: ProductionPagingSolver::UniformIntervals,
-            plan: solve_uniform_exact_paging(demands)?,
+            plan: solve_uniform_exact_paging_observed(demands, &mut observe_uniform)?,
         });
     }
     const CAPS: &[usize] = &[250_000, 500_000, 1_000_000, 2_000_000, 4_000_000];
     for &cap in CAPS {
-        match solve_exact_paging(demands, cap)? {
+        observe(ProductionPagingProgress {
+            solver: ProductionPagingSolver::ResidentSets,
+            current_states: 0,
+            peak_states: 0,
+        });
+        let mut observe_resident_sets = |current_states, peak_states| {
+            observe(ProductionPagingProgress {
+                solver: ProductionPagingSolver::ResidentSets,
+                current_states,
+                peak_states,
+            });
+        };
+        match solve_exact_paging_observed(demands, cap, &mut observe_resident_sets)? {
             PagerOutcome::Solved(plan) => {
                 return Ok(ProductionPagingResult {
                     solver: ProductionPagingSolver::ResidentSets,
@@ -247,6 +290,14 @@ pub fn solve_production_paging(
 pub fn solve_exact_paging(
     demands: &[BackwardDemand],
     state_cap: usize,
+) -> Result<PagerOutcome, BackwardSearchError> {
+    solve_exact_paging_observed(demands, state_cap, &mut |_, _| {})
+}
+
+fn solve_exact_paging_observed(
+    demands: &[BackwardDemand],
+    state_cap: usize,
+    observe: &mut impl FnMut(usize, usize),
 ) -> Result<PagerOutcome, BackwardSearchError> {
     let (demand_leaves, leaf_widths) = dense_leaf_domain(demands)?;
     let miss_costs = demands
@@ -278,13 +329,16 @@ pub fn solve_exact_paging(
             arena_index: 0,
         },
     )]);
+    observe(current.len(), current.len());
 
     for (position, demand) in demands.iter().enumerate() {
         let demanded_leaf = demand_leaves[position];
         let leaf_width = leaf_widths[usize::from(demanded_leaf)];
         let mut next = BTreeMap::<Vec<u16>, Node>::new();
+        let mut processed_states = 0usize;
 
         for (residents, parent) in &current {
+            processed_states += 1;
             let (base_residents, hit) = remove_demanded(residents, demanded_leaf);
             let live_without_demand = if hit {
                 parent
@@ -341,9 +395,14 @@ pub fn solve_exact_paging(
                 telemetry.peak_live_lanes = telemetry.peak_live_lanes.max(retained_lanes);
                 merge_candidate(&mut next, retained, retain, &mut telemetry)?;
             }
+            if processed_states.is_multiple_of(4096) {
+                telemetry.peak_live_states = telemetry.peak_live_states.max(next.len());
+                observe(next.len(), telemetry.peak_live_states);
+            }
         }
 
         telemetry.peak_live_states = telemetry.peak_live_states.max(next.len());
+        observe(next.len(), telemetry.peak_live_states);
         if next.len() >= state_cap {
             return Ok(PagerOutcome::SolverCapped {
                 cap: state_cap,
@@ -615,6 +674,56 @@ mod tests {
                 .unwrap()
                 .solver,
             ProductionPagingSolver::ResidentSets
+        );
+    }
+
+    #[test]
+    fn observed_resident_sets_reports_live_nonzero_states_before_return() {
+        let returned = std::cell::Cell::new(false);
+        let mut updates = Vec::new();
+        let result = solve_production_paging_observed(&shrinking_capacity_stream(), |progress| {
+            assert!(
+                !returned.get(),
+                "pager callback must run before solver return"
+            );
+            updates.push(progress);
+        })
+        .unwrap();
+        returned.set(true);
+        assert_eq!(result.solver, ProductionPagingSolver::ResidentSets);
+        assert!(updates.iter().all(|update| {
+            update.solver == ProductionPagingSolver::ResidentSets
+                && update.current_states <= update.peak_states
+        }));
+        assert!(
+            updates
+                .iter()
+                .any(|update| update.current_states > 0 && update.peak_states > 0)
+        );
+    }
+
+    #[test]
+    fn observed_uniform_solver_reports_live_nonzero_states_before_return() {
+        let returned = std::cell::Cell::new(false);
+        let mut updates = Vec::new();
+        let result = solve_production_paging_observed(&overlapping_retain_stream(), |progress| {
+            assert!(
+                !returned.get(),
+                "pager callback must run before solver return"
+            );
+            updates.push(progress);
+        })
+        .unwrap();
+        returned.set(true);
+        assert_eq!(result.solver, ProductionPagingSolver::UniformIntervals);
+        assert!(updates.iter().all(|update| {
+            update.solver == ProductionPagingSolver::UniformIntervals
+                && update.current_states <= update.peak_states
+        }));
+        assert!(
+            updates
+                .iter()
+                .any(|update| update.current_states > 0 && update.peak_states > 0)
         );
     }
 

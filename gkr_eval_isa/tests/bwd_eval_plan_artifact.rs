@@ -945,6 +945,46 @@ fn generation_filters_force_diagnostic_tmp_output() {
 }
 
 #[test]
+fn generation_hostile_tmpdir_cannot_redirect_filtered_diagnostics() {
+    const CHILD: &str = "GKR_PLAN4_HOSTILE_TMPDIR_CHILD";
+    const HOSTILE: &str = "/cs/compiled_circuits/hostile-tmp";
+    if std::env::var_os(CHILD).is_some() {
+        let config = Plan4RunConfig::from_values(
+            Some("add_sub_lui_auipc_mop_layout_gkr.json"),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let directory = config.diagnostic_dir.unwrap();
+        assert!(directory.starts_with("/tmp"));
+        assert!(!directory.starts_with(HOSTILE));
+        return;
+    }
+
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("generation_hostile_tmpdir_cannot_redirect_filtered_diagnostics")
+        .arg("--exact")
+        .env(CHILD, "1")
+        .env("TMPDIR", HOSTILE)
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+#[test]
+fn generation_eta_uses_observed_parallel_throughput_without_width_division() {
+    assert_eq!(
+        plan4_estimated_remaining(Duration::from_secs(12), 3, 9),
+        Some(Duration::from_secs(24)),
+    );
+    assert_eq!(
+        plan4_estimated_remaining(Duration::from_secs(12), 0, 9),
+        None
+    );
+}
+
+#[test]
 fn generation_chain_queue_is_canonical_and_complete() {
     let inputs = build_plan4_chain_inputs(common::FIXTURES);
     assert_eq!(inputs.len(), 114);
@@ -973,6 +1013,35 @@ fn generation_rejects_production_publication_for_a_partial_corpus() {
         matrix.validate_production_scope(),
         Err(BackwardArtifactError::Publish(_))
     ));
+}
+
+#[test]
+fn generation_failed_fixture_never_counts_as_a_completed_circuit() {
+    let inputs = build_plan4_chain_inputs(&common::FIXTURES[..1]);
+    let progress = Plan4Progress::new(&inputs, 1);
+    for (index, input) in inputs.iter().enumerate() {
+        progress.chain_done(input, index != 0);
+    }
+    assert_eq!(progress.snapshot().completed_circuits, 0);
+}
+
+#[test]
+fn generation_progress_snapshot_releases_state_before_formatting() {
+    let inputs = build_plan4_chain_inputs(&common::FIXTURES[..1]);
+    let progress = Plan4Progress::new(&inputs, 1);
+    let snapshot = progress.snapshot();
+    let state = progress
+        .state
+        .try_lock()
+        .expect("snapshot must not retain the active-map mutex");
+    let mut rendered = Vec::new();
+    Plan4Progress::write_snapshot(&snapshot, &mut rendered).unwrap();
+    drop(state);
+    assert!(
+        String::from_utf8(rendered)
+            .unwrap()
+            .contains("PLAN4 progress")
+    );
 }
 
 #[test]
@@ -1057,7 +1126,7 @@ impl Plan4RunConfig {
             fixtures,
             budgets: min..=max,
             diagnostic_dir: filtered.then(|| {
-                std::env::temp_dir().join(format!("gkr-plan4-diagnostic-{}", std::process::id()))
+                PathBuf::from("/tmp").join(format!("gkr-plan4-diagnostic-{}", std::process::id()))
             }),
             may_publish_production: !filtered && !digest_only,
         })
@@ -1122,8 +1191,39 @@ struct ActiveChain {
 
 struct Plan4ProgressState {
     active: BTreeMap<usize, ActiveChain>,
-    remaining_chains: BTreeMap<&'static str, usize>,
+    remaining_chains: BTreeMap<&'static str, FixtureProgress>,
     stopped: bool,
+}
+
+struct FixtureProgress {
+    remaining: usize,
+    failed: bool,
+}
+
+struct Plan4ProgressSnapshot {
+    completed: usize,
+    total_entries: usize,
+    completed_circuits: usize,
+    total_circuits: usize,
+    active: Vec<ActiveChain>,
+    elapsed: Duration,
+    eta: Option<Duration>,
+}
+
+fn plan4_estimated_remaining(
+    elapsed: Duration,
+    completed: usize,
+    total: usize,
+) -> Option<Duration> {
+    if completed == 0 {
+        return None;
+    }
+    let remaining = total.saturating_sub(completed) as u128;
+    let nanos = elapsed
+        .as_nanos()
+        .checked_mul(remaining)?
+        .checked_div(completed as u128)?;
+    Some(Duration::from_nanos(nanos.min(u64::MAX as u128) as u64))
 }
 
 struct Plan4Progress {
@@ -1140,7 +1240,13 @@ impl Plan4Progress {
     fn new(inputs: &[Plan4ChainInput], entries_per_chain: usize) -> Arc<Self> {
         let mut remaining_chains = BTreeMap::new();
         for input in inputs {
-            *remaining_chains.entry(input.fixture).or_insert(0) += 1;
+            remaining_chains
+                .entry(input.fixture)
+                .or_insert(FixtureProgress {
+                    remaining: 0,
+                    failed: false,
+                })
+                .remaining += 1;
         }
         Arc::new(Self {
             started: Instant::now(),
@@ -1182,15 +1288,16 @@ impl Plan4Progress {
         }
     }
 
-    fn chain_done(&self, input: &Plan4ChainInput) {
+    fn chain_done(&self, input: &Plan4ChainInput, succeeded: bool) {
         let mut state = self.state.lock().expect("lock Plan 4 progress");
         state.active.remove(&input.ordinal);
-        let remaining = state
+        let fixture = state
             .remaining_chains
             .get_mut(input.fixture)
             .expect("fixture chain count exists");
-        *remaining -= 1;
-        if *remaining == 0 {
+        fixture.failed |= !succeeded;
+        fixture.remaining -= 1;
+        if fixture.remaining == 0 && !fixture.failed {
             self.completed_circuits.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -1224,40 +1331,52 @@ impl Plan4Progress {
     }
 
     fn emit(&self) {
-        let state = self.state.lock().expect("lock Plan 4 progress snapshot");
+        let snapshot = self.snapshot();
+        let mut stderr = std::io::stderr().lock();
+        Self::write_snapshot(&snapshot, &mut stderr).expect("write Plan 4 progress snapshot");
+        stderr.flush().expect("flush Plan 4 progress");
+    }
+
+    fn snapshot(&self) -> Plan4ProgressSnapshot {
         let elapsed = self.started.elapsed();
         let completed = self.completed.load(Ordering::Relaxed);
         let completed_circuits = self.completed_circuits.load(Ordering::Relaxed);
-        let eta = if completed == 0 {
-            "unavailable".to_owned()
-        } else {
-            let remaining = self.total_entries.saturating_sub(completed) as u128;
-            let width = rayon::current_num_threads().max(1) as u128;
-            let nanos = elapsed
-                .as_nanos()
-                .saturating_mul(remaining)
-                .saturating_div(completed as u128)
-                .saturating_div(width);
-            format!(
-                "{:?}-estimate",
-                Duration::from_nanos(nanos.min(u64::MAX as u128) as u64)
-            )
+        let active = {
+            let state = self.state.lock().expect("lock Plan 4 progress snapshot");
+            state.active.values().cloned().collect::<Vec<_>>()
         };
-        let active = state.active.values().cloned().collect::<Vec<_>>();
-        let mut stderr = std::io::stderr().lock();
-        writeln!(
-            stderr,
-            "PLAN4 progress completed={}/{} circuits={}/{} active={} elapsed={elapsed:?} eta={eta}",
+        Plan4ProgressSnapshot {
             completed,
-            self.total_entries,
+            total_entries: self.total_entries,
             completed_circuits,
-            self.total_circuits,
-            active.len(),
-        )
-        .expect("write Plan 4 progress");
-        for active in active {
+            total_circuits: self.total_circuits,
+            active,
+            elapsed,
+            eta: plan4_estimated_remaining(elapsed, completed, self.total_entries),
+        }
+    }
+
+    fn write_snapshot(
+        snapshot: &Plan4ProgressSnapshot,
+        mut output: impl Write,
+    ) -> std::io::Result<()> {
+        let eta = snapshot.eta.map_or_else(
+            || "unavailable".to_owned(),
+            |eta| format!("{eta:?}-estimate"),
+        );
+        writeln!(
+            output,
+            "PLAN4 progress completed={}/{} circuits={}/{} active={} elapsed={:?} eta={eta}",
+            snapshot.completed,
+            snapshot.total_entries,
+            snapshot.completed_circuits,
+            snapshot.total_circuits,
+            snapshot.active.len(),
+            snapshot.elapsed,
+        )?;
+        for active in &snapshot.active {
             writeln!(
-                stderr,
+                output,
                 "  {} L{} {:?} c{} eval={}/{} solver={:?} dp={}/{}",
                 active.fixture,
                 active.layer,
@@ -1268,10 +1387,9 @@ impl Plan4Progress {
                 active.search.solver,
                 active.search.dp_states,
                 active.search.peak_dp_states,
-            )
-            .expect("write Plan 4 active coordinate");
+            )?;
         }
-        stderr.flush().expect("flush Plan 4 progress");
+        Ok(())
     }
 }
 
@@ -1315,7 +1433,7 @@ fn run_plan4_matrix(
                 regime: input.regime,
                 artifact,
             });
-            progress.chain_done(input);
+            progress.chain_done(input, result.is_ok());
             result
         })
         .collect::<Vec<_>>();

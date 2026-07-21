@@ -288,6 +288,13 @@ impl PartialOrd for QueueEntry {
 pub fn solve_uniform_exact_paging(
     demands: &[BackwardDemand],
 ) -> Result<ExactPagingPlan, BackwardSearchError> {
+    solve_uniform_exact_paging_observed(demands, &mut |_, _| {})
+}
+
+pub(crate) fn solve_uniform_exact_paging_observed(
+    demands: &[BackwardDemand],
+    observe: &mut impl FnMut(usize, usize),
+) -> Result<ExactPagingPlan, BackwardSearchError> {
     for (demand_position, demand) in demands.iter().enumerate() {
         if demand.width_lanes != 1 {
             return Err(BackwardSearchError::UniformPagerMixedWidth {
@@ -350,7 +357,7 @@ pub fn solve_uniform_exact_paging(
         add_edge(&mut graph, start, end, 1, Cost::blocker());
     }
 
-    min_cost_flow(&mut graph, usize::from(max_capacity))?;
+    min_cost_flow(&mut graph, usize::from(max_capacity), observe)?;
     for (start, edge_index) in real_edges {
         if graph[start][edge_index].residual_capacity == 0 {
             actions[start] = PagingAction::Retain;
@@ -407,9 +414,14 @@ fn add_edge(graph: &mut [Vec<Edge>], from: usize, to: usize, capacity: u16, cost
     });
 }
 
-fn min_cost_flow(graph: &mut [Vec<Edge>], units: usize) -> Result<(), BackwardSearchError> {
+fn min_cost_flow(
+    graph: &mut [Vec<Edge>],
+    units: usize,
+    observe: &mut impl FnMut(usize, usize),
+) -> Result<(), BackwardSearchError> {
     let terminal = graph.len() - 1;
     let mut potential = dag_initial_potentials(graph)?;
+    let mut peak_states = 0usize;
     for _ in 0..units {
         let mut distance = vec![None::<Cost>; graph.len()];
         let mut predecessor = vec![None::<(usize, usize)>; graph.len()];
@@ -419,8 +431,12 @@ fn min_cost_flow(graph: &mut [Vec<Edge>], units: usize) -> Result<(), BackwardSe
             cost: Cost::default(),
             node: 0,
         });
+        peak_states = peak_states.max(queue.len());
+        observe(queue.len(), peak_states);
+        let mut processed = 0usize;
 
         while let Some(QueueEntry { cost, node }) = queue.pop() {
+            processed += 1;
             if distance[node].as_ref() != Some(&cost) {
                 continue;
             }
@@ -444,9 +460,14 @@ fn min_cost_flow(graph: &mut [Vec<Edge>], units: usize) -> Result<(), BackwardSe
                         cost: candidate,
                         node: edge.to,
                     });
+                    peak_states = peak_states.max(queue.len());
                 }
             }
+            if processed.is_multiple_of(4096) {
+                observe(queue.len(), peak_states);
+            }
         }
+        observe(queue.len(), peak_states);
 
         for (node, reached) in distance.iter().enumerate() {
             if let Some(reached) = reached {

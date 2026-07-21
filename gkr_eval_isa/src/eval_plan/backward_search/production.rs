@@ -10,13 +10,14 @@ use crate::eval_plan::search_driver::{
     run_search_driver,
 };
 
+use super::pager::{ProductionPagingProgress, solve_production_paging_observed};
 use super::problem::{
     BackwardSearchProblem, StableFragmentKey, build_backward_search_problem,
     build_problem_for_order, decode_order_indices,
 };
 use super::{
     BackwardScore, BackwardSearchError, CertifiedBackwardCandidate, ProductionPagingSolver,
-    SourceCost, compile_and_certify_paging, solve_production_paging,
+    SourceCost, compile_and_certify_paging,
 };
 
 const SEARCH_POPULATION: usize = 32;
@@ -102,16 +103,25 @@ struct TierTelemetrySnapshot {
 impl TierTelemetry {
     fn record(&self, solver: ProductionPagingSolver, peak_dp_states: usize) {
         self.exact_solver_calls.fetch_add(1, Ordering::Relaxed);
-        let bit = match solver {
+        self.observe(ProductionPagingProgress {
+            solver,
+            current_states: peak_dp_states,
+            peak_states: peak_dp_states,
+        });
+    }
+
+    fn observe(&self, progress: ProductionPagingProgress) {
+        let bit = match progress.solver {
             ProductionPagingSolver::RetainAll => 1,
             ProductionPagingSolver::UniformIntervals => 2,
             ProductionPagingSolver::ResidentSets => 4,
         };
         self.solver_mask.fetch_or(bit, Ordering::Relaxed);
         self.last_solver.store(bit, Ordering::Relaxed);
-        self.dp_states.store(peak_dp_states, Ordering::Relaxed);
+        self.dp_states
+            .store(progress.current_states, Ordering::Relaxed);
         self.peak_dp_states
-            .fetch_max(peak_dp_states, Ordering::Relaxed);
+            .fetch_max(progress.peak_states, Ordering::Relaxed);
     }
 
     fn progress(&self, tier_evaluations: usize, evaluations: usize) -> ProductionSearchProgress {
@@ -251,7 +261,13 @@ impl ProductionOrderAdapter<'_> {
         problem: Result<BackwardSearchProblem, BackwardSearchError>,
     ) -> Result<(BackwardScore, ProductionEvaluation), BackwardSearchError> {
         let problem = problem?;
-        let paging = solve_production_paging(&problem.demands)?;
+        let paging = solve_production_paging_observed(&problem.demands, |paging_progress| {
+            self.telemetry.observe(paging_progress);
+            (self.progress)(self.telemetry.progress(
+                self.tier_evaluations,
+                self.evaluation_offset + self.telemetry.evaluations.load(Ordering::Relaxed),
+            ));
+        })?;
         self.telemetry
             .record(paging.solver, paging.plan.telemetry.peak_live_states);
         let candidate =
@@ -755,8 +771,7 @@ mod tests {
 
     #[test]
     fn production_observer_reports_bounded_deterministic_search_work() {
-        let canonical = paging_trivial_four_fragment_layer();
-        let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let (canonical, distilled) = shared_source_fixture();
         let snapshots = std::sync::Mutex::new(Vec::<ProductionSearchProgress>::new());
         let result = search_production_backward_with_progress(
             &test_identity(BwdRegime::Ext),
@@ -781,6 +796,12 @@ mod tests {
                 || pair[0].evaluations <= pair[1].evaluations
         }));
         assert!(snapshots.last().unwrap().solver.is_some());
+        assert!(snapshots.iter().any(|snapshot| {
+            snapshot.tier_completed == 0
+                && snapshot.solver.is_some()
+                && snapshot.dp_states > 0
+                && snapshot.dp_states <= snapshot.peak_dp_states
+        }));
     }
 
     #[test]

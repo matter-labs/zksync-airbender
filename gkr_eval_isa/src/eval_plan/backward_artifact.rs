@@ -464,7 +464,6 @@ pub fn publish_backward_evaluation_artifact(
     artifact: &BackwardEvaluationCircuitArtifact,
     validator: impl FnOnce(&BackwardEvaluationCircuitArtifact) -> Result<(), BackwardArtifactError>,
 ) -> Result<(), BackwardArtifactError> {
-    artifact.validate_self_consistency()?;
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -478,14 +477,26 @@ pub fn publish_backward_evaluation_artifact(
     let nonce = PUBLICATION_NONCE.fetch_add(1, Ordering::Relaxed);
     let temporary = parent.join(format!(".{file_name}.tmp-{}-{nonce}", std::process::id(),));
 
+    publish_backward_evaluation_artifact_to_temporary(path, &temporary, artifact, validator)
+}
+
+fn publish_backward_evaluation_artifact_to_temporary(
+    path: &Path,
+    temporary: &Path,
+    artifact: &BackwardEvaluationCircuitArtifact,
+    validator: impl FnOnce(&BackwardEvaluationCircuitArtifact) -> Result<(), BackwardArtifactError>,
+) -> Result<(), BackwardArtifactError> {
+    artifact.validate_self_consistency()?;
+    let mut created = false;
     let publication = (|| {
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&temporary)
+            .open(temporary)
             .map_err(|error| {
                 BackwardArtifactError::Publish(format!("create {}: {error}", temporary.display()))
             })?;
+        created = true;
         serde_json::to_writer_pretty(&mut file, artifact).map_err(|error| {
             BackwardArtifactError::Publish(format!("serialize {}: {error}", temporary.display()))
         })?;
@@ -512,8 +523,8 @@ pub fn publish_backward_evaluation_artifact(
         })?;
         Ok(())
     })();
-    if publication.is_err() {
-        let _ = std::fs::remove_file(&temporary);
+    if created && publication.is_err() {
+        let _ = std::fs::remove_file(temporary);
     }
     publication
 }
@@ -1259,6 +1270,38 @@ mod generation_tests {
                     budget_cells: 3,
                 }]
         ));
+    }
+
+    #[test]
+    fn publication_collision_preserves_foreign_temporary_and_destination() {
+        let directory = std::env::temp_dir().join(format!(
+            "plan4-publication-collision-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id(),
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let destination = directory.join("artifact.json");
+        let temporary = directory.join(".artifact.json.foreign.tmp");
+        std::fs::write(&destination, b"certified-destination").unwrap();
+        std::fs::write(&temporary, b"foreign-temporary").unwrap();
+        let artifact =
+            BackwardEvaluationCircuitArtifact::new("circuit", "fixture", Vec::new()).unwrap();
+
+        assert!(matches!(
+            publish_backward_evaluation_artifact_to_temporary(
+                &destination,
+                &temporary,
+                &artifact,
+                |_| Ok(()),
+            ),
+            Err(BackwardArtifactError::Publish(_))
+        ));
+        assert_eq!(
+            std::fs::read(&destination).unwrap(),
+            b"certified-destination"
+        );
+        assert_eq!(std::fs::read(&temporary).unwrap(), b"foreign-temporary");
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }
 
