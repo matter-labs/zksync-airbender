@@ -7,6 +7,7 @@ pub mod materialization;
 pub mod pager;
 pub mod problem;
 pub mod replay;
+mod uniform_pager;
 
 pub use genome::{
     BackwardAdapter, BackwardGenome, BackwardSearchArm, decode_cache_actions,
@@ -19,12 +20,14 @@ pub use materialization::{
 };
 pub use pager::{
     ExactPagingPlan, PagerOutcome, PagingAction, PagingObjective, PagingTelemetry,
-    reconstruct_paging_plan, solve_exact_paging, solve_retain_all_if_exact,
+    ProductionPagingResult, ProductionPagingSolver, reconstruct_paging_plan, solve_exact_paging,
+    solve_production_paging, solve_retain_all_if_exact,
 };
 pub use replay::{
     CertifiedBackwardCandidate, PagingCertificate, ScoredAcceptedBackwardCandidate,
     compile_and_certify_paging, compile_and_score_occurrence_plan, occurrence_plan_from_paging,
 };
+pub use uniform_pager::solve_uniform_exact_paging;
 
 pub const MAX_PAGER_STATES: usize = 250_000;
 
@@ -218,6 +221,13 @@ pub enum BackwardSearchError {
     },
     PagingLiveSetOverCapacity {
         demand_position: usize,
+    },
+    UniformPagerMixedWidth {
+        demand_position: usize,
+        width_lanes: u8,
+    },
+    ProductionPagerResourceLimit {
+        max_states: usize,
     },
     PagingActionUnderflow {
         serve: usize,

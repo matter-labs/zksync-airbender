@@ -4,6 +4,7 @@ use cs::gkr_compiler::dag_ir::ExprId;
 
 use super::BackwardSearchError;
 use super::problem::BackwardDemand;
+use super::uniform_pager::solve_uniform_exact_paging;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PagingAction {
@@ -47,6 +48,19 @@ pub enum PagerOutcome {
         generated_states: u64,
         merged_states: u64,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProductionPagingSolver {
+    RetainAll,
+    UniformIntervals,
+    ResidentSets,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProductionPagingResult {
+    pub solver: ProductionPagingSolver,
+    pub plan: ExactPagingPlan,
 }
 
 #[derive(Clone, Debug)]
@@ -196,6 +210,38 @@ pub fn solve_retain_all_if_exact(
         ) => Ok(None),
         Err(error) => Err(error),
     }
+}
+
+pub fn solve_production_paging(
+    demands: &[BackwardDemand],
+) -> Result<ProductionPagingResult, BackwardSearchError> {
+    if let Some(plan) = solve_retain_all_if_exact(demands)? {
+        return Ok(ProductionPagingResult {
+            solver: ProductionPagingSolver::RetainAll,
+            plan,
+        });
+    }
+    if demands.iter().all(|demand| demand.width_lanes == 1) {
+        return Ok(ProductionPagingResult {
+            solver: ProductionPagingSolver::UniformIntervals,
+            plan: solve_uniform_exact_paging(demands)?,
+        });
+    }
+    const CAPS: &[usize] = &[250_000, 500_000, 1_000_000, 2_000_000, 4_000_000];
+    for &cap in CAPS {
+        match solve_exact_paging(demands, cap)? {
+            PagerOutcome::Solved(plan) => {
+                return Ok(ProductionPagingResult {
+                    solver: ProductionPagingSolver::ResidentSets,
+                    plan,
+                });
+            }
+            PagerOutcome::SolverCapped { .. } => {}
+        }
+    }
+    Err(BackwardSearchError::ProductionPagerResourceLimit {
+        max_states: 4_000_000,
+    })
 }
 
 pub fn solve_exact_paging(
@@ -548,6 +594,28 @@ mod tests {
         let retained = solve_retain_all_if_exact(&demands).unwrap().unwrap();
         assert_eq!(retained.actions, exact.actions);
         assert_eq!(retained.objective, exact.objective);
+    }
+
+    #[test]
+    fn production_pager_dispatches_by_exact_solver_domain() {
+        assert_eq!(
+            solve_production_paging(&all_fitting_stream())
+                .unwrap()
+                .solver,
+            ProductionPagingSolver::RetainAll
+        );
+        assert_eq!(
+            solve_production_paging(&overlapping_retain_stream())
+                .unwrap()
+                .solver,
+            ProductionPagingSolver::UniformIntervals
+        );
+        assert_eq!(
+            solve_production_paging(&shrinking_capacity_stream())
+                .unwrap()
+                .solver,
+            ProductionPagingSolver::ResidentSets
+        );
     }
 
     #[test]
