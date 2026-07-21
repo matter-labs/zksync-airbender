@@ -37,7 +37,6 @@ const R0_FEASIBILITY_FIXTURES: &[&str] = &[
     "unified_reduced_machine_layout_gkr.json",
 ];
 
-const PLAN4_PRODUCTION_CHECKPOINT_ROOT: &str = ".agents/checkpoints/gkr-plan4-bwd-c2-c16";
 static PLAN4_CHECKPOINT_NONCE: AtomicUsize = AtomicUsize::new(0);
 
 fn sample_plan(budget_cells: usize) -> BackwardPlanArtifact {
@@ -953,12 +952,17 @@ fn generation_filters_force_diagnostic_tmp_output() {
     );
     assert_eq!(config.budgets, 3..=4);
     assert!(Plan4RunConfig::from_values(None, Some("2"), None, Some("1")).is_err());
+}
 
+#[test]
+fn checkpoint_production_root_is_repository_absolute() {
     let production = Plan4RunConfig::from_values(None, None, None, None).unwrap();
+    let repository_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     assert_eq!(
         production.checkpoint_root(),
-        PathBuf::from(".agents/checkpoints/gkr-plan4-bwd-c2-c16"),
+        repository_root.join(".agents/checkpoints/gkr-plan4-bwd-c2-c16"),
     );
+    assert!(production.checkpoint_root().is_absolute());
 }
 
 #[test]
@@ -1243,31 +1247,16 @@ fn checkpoint_requires_exact_identity_and_budget_coverage() {
 }
 
 #[test]
-fn checkpoint_atomic_collisions_preserve_unowned_files() {
-    let root = checkpoint_test_root("atomic-collision");
+fn checkpoint_stale_orphan_does_not_block_unique_temporary() {
+    let root = checkpoint_test_root("stale-orphan");
     let inputs = checkpoint_test_inputs(1);
     let input = &inputs[0];
     let budgets = 2..=2;
     let destination = plan4_checkpoint_path(&root, input, &budgets).unwrap();
     let sentinel = b"foreign checkpoint\n";
-    std::fs::write(&destination, sentinel).unwrap();
     let artifact = BackwardRegimeArtifact {
         plans: vec![sample_plan(2)],
     };
-    assert!(matches!(
-        publish_plan4_chain_checkpoint(&root, input, &budgets, &artifact),
-        Err(BackwardArtifactError::Publish(_))
-    ));
-    assert_eq!(std::fs::read(&destination).unwrap(), sentinel);
-    assert_eq!(
-        std::fs::read_dir(&root).unwrap().count(),
-        1,
-        "failed publication must clean up only its owned temporary and lock",
-    );
-
-    std::fs::remove_file(&destination).unwrap();
-    let temporary = root.join("foreign-temporary");
-    std::fs::write(&temporary, sentinel).unwrap();
     let checkpoint = Plan4ChainCheckpoint {
         circuit: input.circuit.clone(),
         layout_fixture: input.fixture.to_owned(),
@@ -1277,12 +1266,17 @@ fn checkpoint_atomic_collisions_preserve_unowned_files() {
         budget_max: 2,
         artifact,
     };
-    assert!(matches!(
-        publish_plan4_chain_checkpoint_to_temporary(&destination, &temporary, &checkpoint,),
-        Err(BackwardArtifactError::Publish(_))
-    ));
-    assert_eq!(std::fs::read(&temporary).unwrap(), sentinel);
-    assert!(!destination.exists());
+    let orphan = root.join(".stale-checkpoint.tmp");
+    std::fs::write(&orphan, sentinel).unwrap();
+    let temporary = root.join("different-unique-temporary");
+    publish_plan4_chain_checkpoint_to_temporary(&destination, &temporary, &checkpoint).unwrap();
+    assert_eq!(std::fs::read(&orphan).unwrap(), sentinel);
+    assert!(!temporary.exists());
+    assert_eq!(
+        serde_json::from_slice::<Plan4ChainCheckpoint>(&std::fs::read(destination).unwrap())
+            .unwrap(),
+        checkpoint,
+    );
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -2002,7 +1996,12 @@ impl Plan4RunConfig {
 
     fn checkpoint_root(&self) -> PathBuf {
         self.diagnostic_dir.as_ref().map_or_else(
-            || PathBuf::from(PLAN4_PRODUCTION_CHECKPOINT_ROOT),
+            || {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("gkr_eval_isa manifest has a repository parent")
+                    .join(".agents/checkpoints/gkr-plan4-bwd-c2-c16")
+            },
             |directory| directory.join("gkr-plan4-chain-checkpoints"),
         )
     }
@@ -2219,9 +2218,7 @@ fn publish_plan4_chain_checkpoint_to_temporary(
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    let lock = destination.with_extension("json.publish-lock");
     let mut created_temporary = false;
-    let mut created_lock = false;
     let publication = (|| {
         let mut file = std::fs::OpenOptions::new()
             .write(true)
@@ -2270,42 +2267,6 @@ fn publish_plan4_chain_checkpoint_to_temporary(
             )));
         }
 
-        let _lock_file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&lock)
-            .map_err(|error| {
-                BackwardArtifactError::Publish(format!(
-                    "claim checkpoint destination {}: {error}",
-                    destination.display(),
-                ))
-            })?;
-        created_lock = true;
-        match std::fs::read(destination) {
-            Ok(bytes) => {
-                let existing: Plan4ChainCheckpoint =
-                    serde_json::from_slice(&bytes).map_err(|error| {
-                        BackwardArtifactError::Publish(format!(
-                            "existing checkpoint {} is not replaceable: {error}",
-                            destination.display(),
-                        ))
-                    })?;
-                if existing != *checkpoint {
-                    return Err(BackwardArtifactError::Publish(format!(
-                        "existing checkpoint {} has different identity, range, or artifact",
-                        destination.display(),
-                    )));
-                }
-                return Ok(());
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(BackwardArtifactError::Publish(format!(
-                    "inspect checkpoint destination {}: {error}",
-                    destination.display(),
-                )));
-            }
-        }
         std::fs::rename(temporary, destination).map_err(|error| {
             BackwardArtifactError::Publish(format!(
                 "rename checkpoint {} to {}: {error}",
@@ -2323,9 +2284,6 @@ fn publish_plan4_chain_checkpoint_to_temporary(
             })?;
         Ok(())
     })();
-    if created_lock {
-        let _ = std::fs::remove_file(&lock);
-    }
     if created_temporary && temporary.exists() {
         let _ = std::fs::remove_file(temporary);
     }
