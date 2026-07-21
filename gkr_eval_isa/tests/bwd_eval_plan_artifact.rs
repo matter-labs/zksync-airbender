@@ -1464,6 +1464,22 @@ fn plan4_checkpoint_resume_does_not_recompile_certified_plans() {
 }
 
 #[test]
+fn plan4_corpus_gate_parallelizes_independent_budgets() {
+    let source = include_str!("bwd_eval_plan_artifact.rs");
+    let gate_start = ["fn plan4_backward_artifact_", "corpus_gate()"].concat();
+    let gate_end = ["struct Plan4", "CensusScore"].concat();
+    let parallel_iteration = [".into_par_", "iter()"].concat();
+    let gate = source
+        .split_once(&gate_start)
+        .expect("Plan 4 corpus gate exists")
+        .1
+        .split_once(&gate_end)
+        .expect("Plan 4 corpus gate has a bounded source span")
+        .0;
+    assert!(gate.contains(&parallel_iteration));
+}
+
+#[test]
 #[ignore = "Plan 4 full backward artifact generator"]
 fn plan4_generate_backward_artifacts() {
     let config = Plan4RunConfig::from_env().unwrap();
@@ -1586,45 +1602,52 @@ fn plan4_backward_artifact_corpus_gate() {
             .unwrap();
             let floor_bytes = floor.dram_bytes().unwrap();
             let floor_ops = floor.ops.primitive_equivalents().unwrap();
-            let mut scores = Vec::with_capacity(15);
-
-            for budget_cells in 2..=16 {
-                let plan =
-                    select_backward_plan(&artifact, input.layer_index, input.regime, budget_cells)
-                        .unwrap();
-                assert_eq!(plan.budget_cells, budget_cells);
-                assert!(!plan.expected_score.infeasible);
-                assert_eq!(plan.expected_paging.diverged, None);
-                assert_eq!(plan.expected_paging.refused_retains, 0);
-
-                let replayed = compile_backward_plan_artifact(
-                    &artifact.circuit,
-                    input.layer_index,
-                    &input.canonical,
-                    &input.distilled,
-                    input.trace_len,
-                    plan,
-                )
-                .unwrap_or_else(|error| {
-                    panic!(
-                        "certify {} L{} {:?} c{}: {error:?}",
-                        fixture, input.layer_index, input.regime, budget_cells,
+            let scores = (2..=16)
+                .into_par_iter()
+                .map(|budget_cells| {
+                    let plan = select_backward_plan(
+                        &artifact,
+                        input.layer_index,
+                        input.regime,
+                        budget_cells,
                     )
-                });
-                assert!(!replayed.score.infeasible);
-                assert_eq!(replayed.certificate.diverged, None);
-                assert_eq!(replayed.certificate.refused_retains, 0);
-                common::assert_bwd_value_parity(
-                    &replayed.compiled.compiled,
-                    &input.distilled,
-                    &input.canonical,
-                );
+                    .unwrap();
+                    assert_eq!(plan.budget_cells, budget_cells);
+                    assert!(!plan.expected_score.infeasible);
+                    assert_eq!(plan.expected_paging.diverged, None);
+                    assert_eq!(plan.expected_paging.refused_retains, 0);
 
-                let score = Plan4CensusScore::from_artifact(plan);
-                assert!(score.dram_bytes >= floor_bytes);
-                assert!(score.source_ops >= floor_ops);
+                    let replayed = compile_backward_plan_artifact(
+                        &artifact.circuit,
+                        input.layer_index,
+                        &input.canonical,
+                        &input.distilled,
+                        input.trace_len,
+                        plan,
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "certify {} L{} {:?} c{}: {error:?}",
+                            fixture, input.layer_index, input.regime, budget_cells,
+                        )
+                    });
+                    assert!(!replayed.score.infeasible);
+                    assert_eq!(replayed.certificate.diverged, None);
+                    assert_eq!(replayed.certificate.refused_retains, 0);
+                    common::assert_bwd_value_parity(
+                        &replayed.compiled.compiled,
+                        &input.distilled,
+                        &input.canonical,
+                    );
+
+                    let score = Plan4CensusScore::from_artifact(plan);
+                    assert!(score.dram_bytes >= floor_bytes);
+                    assert!(score.source_ops >= floor_ops);
+                    score
+                })
+                .collect::<Vec<_>>();
+            for (budget_cells, score) in (2..=16).zip(&scores) {
                 totals.record(budget_cells, floor_bytes, &score);
-                scores.push(score);
                 totals.entries += 1;
                 totals.certified += 1;
                 totals.semantic_parity += 1;
