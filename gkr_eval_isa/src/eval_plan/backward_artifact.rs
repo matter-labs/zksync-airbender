@@ -328,6 +328,13 @@ fn validate_regime(
     regime: BwdRegime,
     artifact: &BackwardRegimeArtifact,
 ) -> Result<(), BackwardArtifactError> {
+    for plan in &artifact.plans {
+        if !(MIN_BUDGET_CELLS..=MAX_BUDGET_CELLS).contains(&plan.budget_cells) {
+            return Err(BackwardArtifactError::BudgetOutOfRange {
+                budget_cells: plan.budget_cells,
+            });
+        }
+    }
     if artifact.plans.len() != BUDGET_PLAN_COUNT {
         return Err(BackwardArtifactError::InvalidBudgetCoverage { layer, regime });
     }
@@ -336,22 +343,16 @@ fn validate_regime(
         if plan.budget_cells != expected {
             return Err(BackwardArtifactError::InvalidBudgetCoverage { layer, regime });
         }
-        if plan
+        if let Some(pair) = plan
             .retained_demands
             .windows(2)
-            .any(|pair| pair[0] >= pair[1])
+            .find(|pair| pair[0] >= pair[1])
         {
-            let position = plan
-                .retained_demands
-                .windows(2)
-                .position(|pair| pair[0] >= pair[1])
-                .expect("predicate identified an invalid retained-demand pair")
-                + 1;
             return Err(BackwardArtifactError::InvalidRetainedDemand {
                 layer,
                 regime,
                 budget_cells: plan.budget_cells,
-                position,
+                position: pair[1] as usize,
             });
         }
     }

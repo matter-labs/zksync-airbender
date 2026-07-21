@@ -167,9 +167,44 @@ fn backward_artifact_requires_strictly_increasing_retained_demand_indices() {
                 layer: 0,
                 regime: BwdRegime::R0,
                 budget_cells: 2,
-                position: 1,
+                position: 3,
             }
         )
+    ));
+}
+
+#[test]
+fn backward_artifact_reports_out_of_range_r0_budget() {
+    let mut regime = sample_regime();
+    regime.plans[0].budget_cells = 1;
+    let artifact = sample_artifact(vec![BackwardLayerArtifact {
+        layer: 7,
+        r0: regime.clone(),
+        ext: regime,
+    }]);
+    assert!(matches!(
+        artifact.validate_self_consistency(),
+        Err(gkr_eval_isa::eval_plan::BackwardArtifactError::BudgetOutOfRange {
+            budget_cells: 1,
+        })
+    ));
+}
+
+#[test]
+fn backward_artifact_reports_out_of_range_ext_budget() {
+    let regime = sample_regime();
+    let mut ext = regime.clone();
+    ext.plans[14].budget_cells = 17;
+    let artifact = sample_artifact(vec![BackwardLayerArtifact {
+        layer: 9,
+        r0: regime,
+        ext,
+    }]);
+    assert!(matches!(
+        artifact.validate_self_consistency(),
+        Err(gkr_eval_isa::eval_plan::BackwardArtifactError::BudgetOutOfRange {
+            budget_cells: 17,
+        })
     ));
 }
 
@@ -186,6 +221,33 @@ fn backward_artifact_rejects_unknown_schema_fields() {
         .unwrap()
         .insert("version".to_owned(), serde_json::json!(1));
     assert!(serde_json::from_value::<BackwardEvaluationCircuitArtifact>(json).is_err());
+}
+
+#[test]
+fn backward_artifact_loader_rejects_unknown_problem_certificate_fields() {
+    let regime = sample_regime();
+    let artifact = sample_artifact(vec![BackwardLayerArtifact {
+        layer: 0,
+        r0: regime.clone(),
+        ext: regime,
+    }]);
+    for field in ["version", "unknown"] {
+        let mut json = serde_json::to_value(artifact.clone()).unwrap();
+        let problem = json["layers"][0]["r0"]["plans"][0]["problem"]
+            .as_object_mut()
+            .unwrap();
+        problem.insert(field.to_owned(), serde_json::json!(1));
+        let path = std::env::temp_dir().join(format!(
+            "gkr-eval-plan-artifact-problem-{field}-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+        assert!(matches!(
+            load_backward_evaluation_artifact(&path),
+            Err(gkr_eval_isa::eval_plan::BackwardArtifactError::Load(_))
+        ));
+        std::fs::remove_file(path).unwrap();
+    }
 }
 
 #[test]

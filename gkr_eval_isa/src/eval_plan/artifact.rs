@@ -57,6 +57,7 @@ pub struct ForwardActionRecord {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DomainCertificate {
     pub count: usize,
     pub digest: [u64; 4],
