@@ -40,9 +40,10 @@ pub(super) fn append_tower_layers<F: PrimeField>(
 
     let mut layer_inputs: BTreeMap<OutputType, Vec<GKRAddress>> =
         artifact.global_output_map.clone();
-    let mut current_layer_idx = initial_layer_idx;
     for round in 0..total_rounds {
-        let output_layer = current_layer_idx + 1;
+        // `output_layer` advances by exactly one storage layer per round past
+        // `initial_layer_idx`; no separate running counter is needed.
+        let output_layer = initial_layer_idx + round + 1;
         let input_size_log_2 = initial_trace_log_2 - round;
         let output_log2_stride = (input_size_log_2 - 1) as u32;
 
@@ -102,6 +103,5 @@ pub(super) fn append_tower_layers<F: PrimeField>(
         layers[output_layer] = new_layer_layout;
 
         layer_inputs = next_inputs;
-        current_layer_idx += 1;
     }
 }

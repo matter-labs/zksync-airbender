@@ -5,8 +5,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address_audit::{
-    classify, collect_addresses_from_cache_relation, collect_addresses_from_relation,
-    AddressClass, GKR_MAX_POLYS_PER_SLOT,
+    classify, collect_addresses_from_cache_relation, collect_addresses_from_relation, AddressClass,
+    GKR_MAX_POLYS_PER_SLOT,
 };
 use crate::upstream::{
     GKRAddress, GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation, PrimeField,
@@ -259,16 +259,22 @@ fn cache_relation_output_type(rel: &NoFieldGKRCacheRelation) -> FieldType {
 }
 
 fn column_index_for_layer0(addr: &GKRAddress) -> u32 {
-    match addr {
+    let col = match addr {
         GKRAddress::BaseLayerWitness(col)
         | GKRAddress::BaseLayerMemory(col)
         | GKRAddress::Setup(col)
-        | GKRAddress::ScratchSpace(col) => *col as u32,
+        | GKRAddress::ScratchSpace(col) => *col,
         _ => unreachable!(
             "column_index_for_layer0 called on non-trace-holder address {:?}",
             addr
         ),
-    }
+    };
+    // Checked cast: a naive `as u32` would silently truncate (and thus alias
+    // two distinct large column indices onto the same `poly_idx`) instead of
+    // failing, which is exactly the kind of silent corruption this trace
+    // column addressing must surface loudly instead of masking.
+    u32::try_from(col)
+        .unwrap_or_else(|_| panic!("column index {col} exceeds u32::MAX for layer-0 poly_idx"))
 }
 
 /// Walks the relation and returns `(output_address, field_type)` for every
