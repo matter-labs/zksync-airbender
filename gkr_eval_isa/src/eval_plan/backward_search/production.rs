@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer};
 use rayon::prelude::*;
@@ -22,6 +24,7 @@ use super::{
 
 const SEARCH_POPULATION: usize = 32;
 const SEARCH_BATCH: usize = 16;
+const LIVE_PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -86,11 +89,16 @@ struct ProductionOrderAdapter<'a> {
 #[derive(Default)]
 struct TierTelemetry {
     exact_solver_calls: AtomicUsize,
-    solver_mask: AtomicU8,
-    last_solver: AtomicU8,
     evaluations: AtomicUsize,
-    dp_states: AtomicUsize,
-    peak_dp_states: AtomicUsize,
+    paging: Mutex<PagingTelemetryState>,
+}
+
+#[derive(Default)]
+struct PagingTelemetryState {
+    latest: Option<ProductionPagingProgress>,
+    solver_mask: u8,
+    tier_peak_states: usize,
+    last_forwarded_at: Option<Instant>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -111,38 +119,75 @@ impl TierTelemetry {
     }
 
     fn observe(&self, progress: ProductionPagingProgress) {
-        let bit = match progress.solver {
-            ProductionPagingSolver::RetainAll => 1,
-            ProductionPagingSolver::UniformIntervals => 2,
-            ProductionPagingSolver::ResidentSets => 4,
-        };
-        self.solver_mask.fetch_or(bit, Ordering::Relaxed);
-        self.last_solver.store(bit, Ordering::Relaxed);
-        self.dp_states
-            .store(progress.current_states, Ordering::Relaxed);
-        self.peak_dp_states
-            .fetch_max(progress.peak_states, Ordering::Relaxed);
+        let mut paging = self.paging.lock().expect("lock tier paging telemetry");
+        paging.observe(progress);
+    }
+
+    fn observe_progress(
+        &self,
+        progress: ProductionPagingProgress,
+        tier_evaluations: usize,
+        evaluations: usize,
+    ) -> Option<ProductionSearchProgress> {
+        self.observe_progress_with_clock(progress, tier_evaluations, evaluations, Instant::now)
+    }
+
+    fn observe_progress_at(
+        &self,
+        progress: ProductionPagingProgress,
+        tier_evaluations: usize,
+        evaluations: usize,
+        now: Instant,
+    ) -> Option<ProductionSearchProgress> {
+        self.observe_progress_with_clock(progress, tier_evaluations, evaluations, || now)
+    }
+
+    fn observe_progress_with_clock(
+        &self,
+        progress: ProductionPagingProgress,
+        tier_evaluations: usize,
+        evaluations: usize,
+        now: impl FnOnce() -> Instant,
+    ) -> Option<ProductionSearchProgress> {
+        let mut paging = self.paging.lock().expect("lock tier paging telemetry");
+        let now = now();
+        paging.observe(progress);
+        if progress.current_states == 0 && progress.peak_states == 0 {
+            return None;
+        }
+        if paging
+            .last_forwarded_at
+            .is_some_and(|last| now.saturating_duration_since(last) < LIVE_PROGRESS_INTERVAL)
+        {
+            return None;
+        }
+        paging.last_forwarded_at = Some(now);
+        Some(ProductionSearchProgress {
+            tier_evaluations,
+            tier_completed: self.evaluations.load(Ordering::Relaxed),
+            evaluations,
+            solver: Some(progress.solver),
+            dp_states: progress.current_states,
+            peak_dp_states: progress.peak_states,
+        })
     }
 
     fn progress(&self, tier_evaluations: usize, evaluations: usize) -> ProductionSearchProgress {
-        let solver = match self.last_solver.load(Ordering::Relaxed) {
-            1 => Some(ProductionPagingSolver::RetainAll),
-            2 => Some(ProductionPagingSolver::UniformIntervals),
-            4 => Some(ProductionPagingSolver::ResidentSets),
-            _ => None,
-        };
+        let paging = self.paging.lock().expect("lock tier paging telemetry");
+        let latest = paging.latest;
         ProductionSearchProgress {
             tier_evaluations,
             tier_completed: self.evaluations.load(Ordering::Relaxed),
             evaluations,
-            solver,
-            dp_states: self.dp_states.load(Ordering::Relaxed),
-            peak_dp_states: self.peak_dp_states.load(Ordering::Relaxed),
+            solver: latest.map(|progress| progress.solver),
+            dp_states: latest.map_or(0, |progress| progress.current_states),
+            peak_dp_states: latest.map_or(0, |progress| progress.peak_states),
         }
     }
 
     fn snapshot(&self) -> TierTelemetrySnapshot {
-        let mask = self.solver_mask.load(Ordering::Relaxed);
+        let paging = self.paging.lock().expect("lock tier paging telemetry");
+        let mask = paging.solver_mask;
         let mut solver_kinds = Vec::new();
         if mask & 1 != 0 {
             solver_kinds.push(ProductionPagingSolver::RetainAll);
@@ -156,8 +201,20 @@ impl TierTelemetry {
         TierTelemetrySnapshot {
             exact_solver_calls: self.exact_solver_calls.load(Ordering::Relaxed),
             solver_kinds,
-            peak_dp_states: self.peak_dp_states.load(Ordering::Relaxed),
+            peak_dp_states: paging.tier_peak_states,
         }
+    }
+}
+
+impl PagingTelemetryState {
+    fn observe(&mut self, progress: ProductionPagingProgress) {
+        self.solver_mask |= match progress.solver {
+            ProductionPagingSolver::RetainAll => 1,
+            ProductionPagingSolver::UniformIntervals => 2,
+            ProductionPagingSolver::ResidentSets => 4,
+        };
+        self.tier_peak_states = self.tier_peak_states.max(progress.peak_states);
+        self.latest = Some(progress);
     }
 }
 
@@ -262,11 +319,13 @@ impl ProductionOrderAdapter<'_> {
     ) -> Result<(BackwardScore, ProductionEvaluation), BackwardSearchError> {
         let problem = problem?;
         let paging = solve_production_paging_observed(&problem.demands, |paging_progress| {
-            self.telemetry.observe(paging_progress);
-            (self.progress)(self.telemetry.progress(
+            if let Some(progress) = self.telemetry.observe_progress(
+                paging_progress,
                 self.tier_evaluations,
                 self.evaluation_offset + self.telemetry.evaluations.load(Ordering::Relaxed),
-            ));
+            ) {
+                (self.progress)(progress);
+            }
         })?;
         self.telemetry
             .record(paging.solver, paging.plan.telemetry.peak_live_states);
@@ -619,6 +678,7 @@ pub fn compulsory_read_floor(
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, HashMap};
+    use std::sync::{Arc, Barrier, Mutex};
 
     use cs::gkr_compiler::dag_ir::{
         BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
@@ -631,6 +691,150 @@ mod tests {
     use crate::eval_plan::search_driver::StableRng;
 
     use super::*;
+
+    #[test]
+    fn tier_telemetry_concurrent_snapshots_are_candidate_coherent() {
+        let telemetry = Arc::new(TierTelemetry::default());
+        telemetry.observe(ProductionPagingProgress {
+            solver: ProductionPagingSolver::ResidentSets,
+            current_states: 1_600,
+            peak_states: 1_600,
+        });
+        let candidates = Arc::new(
+            (0..SEARCH_BATCH)
+                .map(|candidate| ProductionPagingProgress {
+                    solver: match candidate % 3 {
+                        0 => ProductionPagingSolver::RetainAll,
+                        1 => ProductionPagingSolver::UniformIntervals,
+                        _ => ProductionPagingSolver::ResidentSets,
+                    },
+                    current_states: candidate * 10 + 1,
+                    peak_states: candidate * 10 + 7,
+                })
+                .collect::<Vec<_>>(),
+        );
+        let barrier = Arc::new(Barrier::new(SEARCH_BATCH + 1));
+        let snapshots = Arc::new(Mutex::new(Vec::new()));
+        let threads = candidates
+            .iter()
+            .copied()
+            .map(|candidate| {
+                let telemetry = Arc::clone(&telemetry);
+                let barrier = Arc::clone(&barrier);
+                let snapshots = Arc::clone(&snapshots);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    for _ in 0..256 {
+                        telemetry.observe(candidate);
+                        std::thread::yield_now();
+                        snapshots.lock().unwrap().push(telemetry.progress(128, 0));
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        barrier.wait();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        let snapshots = snapshots.lock().unwrap();
+        assert_eq!(snapshots.len(), SEARCH_BATCH * 256);
+        for snapshot in snapshots.iter() {
+            assert!(snapshot.dp_states <= snapshot.peak_dp_states);
+            assert!(
+                candidates.iter().any(|candidate| {
+                    snapshot.solver == Some(candidate.solver)
+                        && snapshot.dp_states == candidate.current_states
+                        && snapshot.peak_dp_states == candidate.peak_states
+                }),
+                "incoherent candidate snapshot: {snapshot:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tier_telemetry_forwards_initial_live_and_one_second_updates() {
+        let telemetry = TierTelemetry::default();
+        let started = std::time::Instant::now();
+        assert_eq!(
+            telemetry.observe_progress_at(
+                ProductionPagingProgress {
+                    solver: ProductionPagingSolver::ResidentSets,
+                    current_states: 0,
+                    peak_states: 0,
+                },
+                128,
+                0,
+                started,
+            ),
+            None,
+        );
+
+        let first = ProductionPagingProgress {
+            solver: ProductionPagingSolver::UniformIntervals,
+            current_states: 5,
+            peak_states: 8,
+        };
+        let first_snapshot = telemetry
+            .observe_progress_at(first, 128, 0, started)
+            .expect("first nonzero live event is always forwarded");
+        assert_eq!(first_snapshot.solver, Some(first.solver));
+        assert_eq!(first_snapshot.dp_states, first.current_states);
+        assert_eq!(first_snapshot.peak_dp_states, first.peak_states);
+
+        assert_eq!(
+            telemetry.observe_progress_at(
+                ProductionPagingProgress {
+                    solver: ProductionPagingSolver::RetainAll,
+                    current_states: 11,
+                    peak_states: 13,
+                },
+                128,
+                0,
+                started + std::time::Duration::from_millis(999),
+            ),
+            None,
+        );
+
+        let boundary = ProductionPagingProgress {
+            solver: ProductionPagingSolver::ResidentSets,
+            current_states: 17,
+            peak_states: 19,
+        };
+        let boundary_snapshot = telemetry
+            .observe_progress_at(
+                boundary,
+                128,
+                0,
+                started + std::time::Duration::from_secs(1),
+            )
+            .expect("one-second boundary permits the next live event");
+        assert_eq!(boundary_snapshot.solver, Some(boundary.solver));
+        assert_eq!(boundary_snapshot.dp_states, boundary.current_states);
+        assert_eq!(boundary_snapshot.peak_dp_states, boundary.peak_states);
+    }
+
+    #[test]
+    fn tier_telemetry_samples_forwarding_time_under_the_paging_lock() {
+        let telemetry = TierTelemetry::default();
+        let snapshot = telemetry.observe_progress_with_clock(
+            ProductionPagingProgress {
+                solver: ProductionPagingSolver::ResidentSets,
+                current_states: 23,
+                peak_states: 29,
+            },
+            128,
+            0,
+            || {
+                assert!(matches!(
+                    telemetry.paging.try_lock(),
+                    Err(std::sync::TryLockError::WouldBlock)
+                ));
+                std::time::Instant::now()
+            },
+        );
+        assert!(snapshot.is_some());
+    }
 
     #[test]
     fn production_order_genome_has_constructive_and_previous_seeds() {
