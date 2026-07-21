@@ -3,7 +3,10 @@ mod common;
 use cs::gkr_compiler::dag_ir::BwdRegime;
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
-use gkr_eval_isa::eval_plan::backward_search::{ProductionPagingSolver, solve_production_paging};
+use gkr_eval_isa::eval_plan::backward_search::{
+    ProductionPagingSolver, ProductionSearchIdentity, search_production_backward,
+    solve_production_paging,
+};
 
 const R0_FEASIBILITY_FIXTURES: &[&str] = &[
     "bigint_with_extended_control_layout_gkr.json",
@@ -37,4 +40,33 @@ fn plan4_r0_exact_solver_feasibility_2_to_16() {
         }
     }
     assert_eq!(solved, 60);
+}
+
+#[test]
+fn production_order_searches_a_representative_real_layer() {
+    let fixture = common::FIXTURES[0];
+    let artifact = common::load_fixture(fixture);
+    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact).unwrap();
+    let trace_len = dag.globals.trace_len;
+    let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
+        .next()
+        .expect("fixture has a backward-bearing layer");
+    let distilled = distill(&layer, BwdRegime::R0, &cross, None);
+    let result = search_production_backward(
+        &ProductionSearchIdentity {
+            circuit: "add_sub_lui_auipc_mop".to_owned(),
+            layout_fixture: fixture.to_owned(),
+            layer: layer_index,
+            regime: BwdRegime::R0,
+        },
+        &layer,
+        &distilled,
+        trace_len,
+        4,
+        None,
+    )
+    .unwrap();
+    assert_eq!(result.order.len(), result.problem.fragment_domain.len());
+    assert_eq!(result.telemetry.completed_tiers[0], 128);
+    assert!(!result.telemetry.solver_kinds.is_empty());
 }

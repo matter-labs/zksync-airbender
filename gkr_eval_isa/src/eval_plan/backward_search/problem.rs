@@ -146,7 +146,7 @@ pub fn build_backward_search_problem(
     Ok((classification, Some(problem)))
 }
 
-pub(super) fn build_problem_for_order(
+pub(crate) fn build_problem_for_order(
     _canonical: &DagLayer,
     d: &DistilledLayer,
     order: &[usize],
@@ -179,6 +179,27 @@ pub(super) fn build_problem_for_order(
         source_round_uses,
         compiled,
     )
+}
+
+pub(crate) fn decode_order_indices(
+    problem: &BackwardSearchProblem,
+    order: &[usize],
+) -> Result<Vec<StableFragmentKey>, BackwardSearchError> {
+    if order.len() != problem.fragment_domain.len() {
+        return Err(BackwardSearchError::InvalidFragmentPermutation);
+    }
+    let mut seen = vec![false; order.len()];
+    let mut decoded = Vec::with_capacity(order.len());
+    for &index in order {
+        let Some(fragment) = problem.fragment_domain.get(index) else {
+            return Err(BackwardSearchError::InvalidFragmentPermutation);
+        };
+        if core::mem::replace(&mut seen[index], true) {
+            return Err(BackwardSearchError::InvalidFragmentPermutation);
+        }
+        decoded.push(fragment.clone());
+    }
+    Ok(decoded)
 }
 
 #[allow(clippy::too_many_arguments)]

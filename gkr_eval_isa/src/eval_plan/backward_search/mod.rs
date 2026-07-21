@@ -6,6 +6,7 @@ pub mod genome;
 pub mod materialization;
 pub mod pager;
 pub mod problem;
+pub mod production;
 pub mod replay;
 mod uniform_pager;
 
@@ -22,6 +23,10 @@ pub use pager::{
     ExactPagingPlan, PagerOutcome, PagingAction, PagingObjective, PagingTelemetry,
     ProductionPagingResult, ProductionPagingSolver, reconstruct_paging_plan, solve_exact_paging,
     solve_production_paging, solve_retain_all_if_exact,
+};
+pub use production::{
+    ProductionBackwardPlan, ProductionOrderGenome, ProductionSearchIdentity,
+    ProductionSearchTelemetry, compulsory_read_floor, search_production_backward,
 };
 pub use replay::{
     CertifiedBackwardCandidate, PagingCertificate, ScoredAcceptedBackwardCandidate,
@@ -284,6 +289,7 @@ pub enum BackwardSearchError {
         merged_states: u64,
     },
     PagingSeedMismatch,
+    InvalidFragmentPermutation,
     SearchDriverFailure {
         reason: &'static str,
     },
