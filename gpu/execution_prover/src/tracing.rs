@@ -225,6 +225,51 @@ impl Tracer for SplitTracer {
     }
 }
 
+// `SplitTracer` and `UnifiedTracer` both name their four delegation
+// `TracerRanges` fields identically (`blake_calls` / `bigint_calls` /
+// `keccak_calls` / `blake_g_function_calls`), so `WitnessTracer::write_delegation`
+// dispatches identically for both — this macro is the shared method body,
+// invoked once per `impl WitnessTracer for { Split, Unified }Tracer` block.
+macro_rules! impl_write_delegation {
+    () => {
+        #[inline(always)]
+        fn write_delegation<
+            const DELEGATION_TYPE: u16,
+            const REG_ACCESSES: usize,
+            const INDIRECT_READS: usize,
+            const INDIRECT_WRITES: usize,
+            const VARIABLE_OFFSETS: usize,
+        >(
+            &mut self,
+            data: riscv_transpiler::witness::DelegationWitness<
+                REG_ACCESSES,
+                INDIRECT_READS,
+                INDIRECT_WRITES,
+                VARIABLE_OFFSETS,
+            >,
+        ) {
+            // SAFETY: `unreachable_unchecked` covers the upstream
+            // `WitnessTracer::write_delegation` contract (DELEGATION_TYPE outside
+            // the enumerated set). `write_type_unchecked` is sound because each
+            // arm pairs a const DELEGATION_TYPE with the matching witness type T
+            // by construction.
+            unsafe {
+                if const { DELEGATION_TYPE == BLAKE_DELEGATION_TYPE_ID } {
+                    self.blake_calls.write_type_unchecked(data)
+                } else if const { DELEGATION_TYPE == BIGINT_DELEGATION_TYPE_ID } {
+                    self.bigint_calls.write_type_unchecked(data)
+                } else if const { DELEGATION_TYPE == KECCAK_DELEGATION_TYPE_ID } {
+                    self.keccak_calls.write_type_unchecked(data)
+                } else if const { DELEGATION_TYPE == BLAKE_G_FUNCTION_DELEGATION_TYPE_ID } {
+                    self.blake_g_function_calls.write_type_unchecked(data)
+                } else {
+                    core::hint::unreachable_unchecked()
+                };
+            }
+        }
+    };
+}
+
 impl WitnessTracer for SplitTracer {
     #[inline(always)]
     fn needs_tracing_data_for_circuit_family<const FAMILY: u8>(&self) -> bool {
@@ -279,41 +324,7 @@ impl WitnessTracer for SplitTracer {
         }
     }
 
-    #[inline(always)]
-    fn write_delegation<
-        const DELEGATION_TYPE: u16,
-        const REG_ACCESSES: usize,
-        const INDIRECT_READS: usize,
-        const INDIRECT_WRITES: usize,
-        const VARIABLE_OFFSETS: usize,
-    >(
-        &mut self,
-        data: riscv_transpiler::witness::DelegationWitness<
-            REG_ACCESSES,
-            INDIRECT_READS,
-            INDIRECT_WRITES,
-            VARIABLE_OFFSETS,
-        >,
-    ) {
-        // SAFETY: `unreachable_unchecked` covers the upstream
-        // `WitnessTracer::write_delegation` contract (DELEGATION_TYPE outside
-        // the enumerated set). `write_type_unchecked` is sound because each
-        // arm pairs a const DELEGATION_TYPE with the matching witness type T
-        // by construction.
-        unsafe {
-            if const { DELEGATION_TYPE == BLAKE_DELEGATION_TYPE_ID } {
-                self.blake_calls.write_type_unchecked(data)
-            } else if const { DELEGATION_TYPE == BIGINT_DELEGATION_TYPE_ID } {
-                self.bigint_calls.write_type_unchecked(data)
-            } else if const { DELEGATION_TYPE == KECCAK_DELEGATION_TYPE_ID } {
-                self.keccak_calls.write_type_unchecked(data)
-            } else if const { DELEGATION_TYPE == BLAKE_G_FUNCTION_DELEGATION_TYPE_ID } {
-                self.blake_g_function_calls.write_type_unchecked(data)
-            } else {
-                core::hint::unreachable_unchecked()
-            };
-        }
-    }
+    impl_write_delegation!();
 }
 
 pub(crate) struct UnifiedTracer {
@@ -374,40 +385,7 @@ impl WitnessTracer for UnifiedTracer {
         }
     }
 
-    #[inline(always)]
-    fn write_delegation<
-        const DELEGATION_TYPE: u16,
-        const REG_ACCESSES: usize,
-        const INDIRECT_READS: usize,
-        const INDIRECT_WRITES: usize,
-        const VARIABLE_OFFSETS: usize,
-    >(
-        &mut self,
-        data: riscv_transpiler::witness::DelegationWitness<
-            REG_ACCESSES,
-            INDIRECT_READS,
-            INDIRECT_WRITES,
-            VARIABLE_OFFSETS,
-        >,
-    ) {
-        // SAFETY: same contract as `SplitTracer::write_delegation`:
-        // `unreachable_unchecked` covers the upstream DELEGATION_TYPE contract;
-        // each `write_type_unchecked` arm pairs a const DELEGATION_TYPE with
-        // the matching witness type T by construction.
-        unsafe {
-            if const { DELEGATION_TYPE == BLAKE_DELEGATION_TYPE_ID } {
-                self.blake_calls.write_type_unchecked(data)
-            } else if const { DELEGATION_TYPE == BIGINT_DELEGATION_TYPE_ID } {
-                self.bigint_calls.write_type_unchecked(data)
-            } else if const { DELEGATION_TYPE == KECCAK_DELEGATION_TYPE_ID } {
-                self.keccak_calls.write_type_unchecked(data)
-            } else if const { DELEGATION_TYPE == BLAKE_G_FUNCTION_DELEGATION_TYPE_ID } {
-                self.blake_g_function_calls.write_type_unchecked(data)
-            } else {
-                core::hint::unreachable_unchecked()
-            };
-        }
-    }
+    impl_write_delegation!();
 }
 
 trait TracingDataProducerType: Sized {
