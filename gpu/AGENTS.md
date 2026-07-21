@@ -17,9 +17,11 @@ gpu_core  <  { gpu_ntt, gpu_ops, gpu_hash, gpu_cub }  <  circuit_prover  <  exec
 Plus three off-DAG crates: **`gpu_witness_eval_generator`** (`witness_eval_generator/`:
 pure-CPU codegen producing the committed `circuit_defs/**/generated/witness_generation_fn.cuh`
 CUDA witness bodies that `circuit_prover`'s native templates `#include`; run manually via its
-`generate` bin (`generate_all` is a local `skip_if_ci` SMOKE test emitting gitignored
-scratch `.cuh`, NOT a committed-output drift guard — regenerate + diff the committed
-`.cuh` by hand when changing codegen); has its own `AGENTS.md`),
+`generate` bin; the committed artifacts are drift-guarded by the
+`committed_witness_cuh_is_current` test (regenerates each from its committed
+`cs/compiled_circuits/*_gkr.json` inputs and asserts byte-identity — GPU-free,
+runs in CI) and refreshed by the `regenerate_committed` bin after an intentional
+codegen change; has its own `AGENTS.md`),
 **`gpu_gkr_model`** (pure-CPU GKR layout model — address
 audit, storage layout, circuit transform; deps `cs` + `field`, no CUDA; consumed
 by `circuit_prover`'s `gkr` via `gkr::{gkr_address_audit, storage_layout,
