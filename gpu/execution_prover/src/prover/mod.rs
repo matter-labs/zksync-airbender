@@ -15,7 +15,6 @@ mod result;
 
 pub use artifacts::{CircuitArtifact, ProgramArtifacts};
 pub use config::{ExecutionKind, ExecutionProverConfiguration};
-pub use gpu_circuit_prover::UnsupportedGpuSecurityLevel;
 pub use result::{CommitMemoryResult, ProveResult};
 
 /// Opaque handle to a binary registered with the `ExecutionProver`. Returned by

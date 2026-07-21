@@ -1,4 +1,5 @@
 use super::*;
+use gpu_circuit_prover::UnsupportedGpuSecurityLevel;
 
 impl ExecutionProver {
     pub fn new() -> Self {
