@@ -550,7 +550,7 @@ mod unified_setup_tests {
     /// (`compile_unified_reduced_machine_with_inline_inits_and_teardowns` in
     /// `cs::gkr_circuits::unified_reduced_machine::circuit`).
     #[test]
-    fn unified_setup_direct_matches_cpu_geometry() {
+    fn cpu_unified_setup_direct_matches_cpu_geometry() {
         let worker = Worker::new();
         // 2^(16+ROM_SECOND_WORD_BITS) bytes of zero bytecode for compile-shape parity.
         let n = (1usize << (16 + crate::upstream::ROM_SECOND_WORD_BITS)) / 4;

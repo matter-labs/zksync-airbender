@@ -342,7 +342,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reduced_machine_idx_maps_to_unified() {
+    fn cpu_reduced_machine_idx_maps_to_unified() {
         let ct = unrolled_circuit_type_from_family_idx(
             UnrolledCircuitType::Unified.get_family_idx(),
             MachineType::Reduced,
