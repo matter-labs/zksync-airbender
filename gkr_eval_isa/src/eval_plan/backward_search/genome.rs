@@ -2,15 +2,14 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::{DagLayer, ExprId};
+use cs::gkr_compiler::dag_ir::DagLayer;
 use rayon::prelude::*;
 
 use crate::bwd::distill::DistilledLayer;
 use crate::eval_plan::search_driver::{SearchAdapter, StableRng};
 
 use super::pager::{
-    ExactPagingPlan, PagerOutcome, PagingAction, PagingObjective, PagingTelemetry,
-    solve_exact_paging,
+    ExactPagingPlan, PagerOutcome, PagingAction, reconstruct_paging_plan, solve_exact_paging,
 };
 use super::problem::{
     BackwardSearchProblem, StableFragmentKey, StableLeafDemandKey, build_problem_for_order,
@@ -183,6 +182,34 @@ pub fn decode_cache_actions(
     genome: &BackwardGenome,
 ) -> Result<Vec<PagingAction>, BackwardSearchError> {
     Ok(decode_cache_plan(problem, genome)?.actions)
+}
+
+fn decode_cache_action_vector(
+    problem: &BackwardSearchProblem,
+    genome: &BackwardGenome,
+) -> Result<Vec<PagingAction>, BackwardSearchError> {
+    validate_domain(
+        &problem.leaf_domain,
+        &genome.leaf_cache_priority,
+        "leaf cache priority",
+    )?;
+    problem
+        .demands
+        .iter()
+        .map(|demand| {
+            let priority = genome.leaf_cache_priority[&demand.key];
+            if !priority.is_finite() {
+                return Err(BackwardSearchError::NonFiniteGenomeValue {
+                    gene: "leaf cache priority",
+                });
+            }
+            Ok(if priority > 0.0 {
+                PagingAction::Retain
+            } else {
+                PagingAction::Bypass
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn mutate_genome(
@@ -459,96 +486,15 @@ fn decode_cache_plan(
     problem: &BackwardSearchProblem,
     genome: &BackwardGenome,
 ) -> Result<ExactPagingPlan, BackwardSearchError> {
-    validate_domain(
-        &problem.leaf_domain,
-        &genome.leaf_cache_priority,
-        "leaf cache priority",
-    )?;
-    let mut residents = BTreeMap::<ExprId, u8>::new();
-    let mut live_lanes = 0u8;
-    let mut actions = Vec::with_capacity(problem.demands.len());
-    let mut live_lanes_after = Vec::with_capacity(problem.demands.len());
-    let mut objective = PagingObjective::default();
-    let mut predicted_misses = 0u32;
-    let mut refused_retains = 0u32;
-    let mut peak_live_lanes = 0u8;
-
-    for (position, demand) in problem.demands.iter().enumerate() {
-        let hit = residents.remove(&demand.expr).is_some();
-        if hit {
-            live_lanes = live_lanes
-                .checked_sub(demand.width_lanes)
-                .ok_or(BackwardSearchError::CostOverflow)?;
-            objective.evictions = increment(objective.evictions)?;
-        } else {
-            objective.dram_bytes = objective
-                .dram_bytes
-                .checked_add(demand.miss_cost.dram_bytes()?)
-                .ok_or(BackwardSearchError::CostOverflow)?;
-            objective.primitive_source_ops = objective
-                .primitive_source_ops
-                .checked_add(demand.miss_cost.ops.primitive_equivalents()?)
-                .ok_or(BackwardSearchError::CostOverflow)?;
-            predicted_misses = increment(predicted_misses)?;
-        }
-
-        let priority = genome.leaf_cache_priority[&demand.key];
-        if !priority.is_finite() {
-            return Err(BackwardSearchError::NonFiniteGenomeValue {
-                gene: "leaf cache priority",
-            });
-        }
-        let action = if priority > 0.0 {
-            let retained_lanes = live_lanes
-                .checked_add(demand.width_lanes)
-                .ok_or(BackwardSearchError::CostOverflow)?;
-            if !demand.has_next || retained_lanes > demand.gap_capacity_lanes {
-                return Err(BackwardSearchError::CacheGenomeInfeasible {
-                    demand_position: position,
-                });
-            }
-            residents.insert(demand.expr, demand.width_lanes);
-            live_lanes = retained_lanes;
-            objective.admissions = increment(objective.admissions)?;
-            peak_live_lanes = peak_live_lanes.max(live_lanes);
-            PagingAction::Retain
-        } else {
-            let retain_fits = demand.has_next
-                && live_lanes
-                    .checked_add(demand.width_lanes)
-                    .ok_or(BackwardSearchError::CostOverflow)?
-                    <= demand.gap_capacity_lanes;
-            if demand.has_next && !retain_fits {
-                refused_retains = increment(refused_retains)?;
-            }
-            if live_lanes > demand.gap_capacity_lanes {
-                return Err(BackwardSearchError::CacheGenomeInfeasible {
-                    demand_position: position,
-                });
-            }
-            PagingAction::Bypass
-        };
-        actions.push(action);
-        live_lanes_after.push(live_lanes);
+    let actions = decode_cache_action_vector(problem, genome)?;
+    match reconstruct_paging_plan(&problem.demands, &actions) {
+        Ok(plan) => Ok(plan),
+        Err(
+            BackwardSearchError::IllegalPagingRetain { demand_position }
+            | BackwardSearchError::PagingLiveSetOverCapacity { demand_position },
+        ) => Err(BackwardSearchError::CacheGenomeInfeasible { demand_position }),
+        Err(error) => Err(error),
     }
-
-    Ok(ExactPagingPlan {
-        actions,
-        live_lanes_after,
-        objective,
-        predicted_misses,
-        refused_retains,
-        telemetry: PagingTelemetry {
-            peak_live_states: usize::from(!problem.demands.is_empty()),
-            generated_states: problem
-                .demands
-                .len()
-                .try_into()
-                .map_err(|_| BackwardSearchError::CostOverflow)?,
-            merged_states: 0,
-            peak_live_lanes,
-        },
-    })
 }
 
 fn validate_domain<K: Ord>(
@@ -606,12 +552,6 @@ fn mutate_cache(problem: &BackwardSearchProblem, genome: &mut BackwardGenome, rn
     }
 }
 
-fn increment(value: u32) -> Result<u32, BackwardSearchError> {
-    value
-        .checked_add(1)
-        .ok_or(BackwardSearchError::CostOverflow)
-}
-
 fn pre_paging_candidate_infeasible(error: &BackwardSearchError) -> bool {
     matches!(
         error,
@@ -647,7 +587,7 @@ mod tests {
 
     use crate::bwd::distill::{DistilledLayer, distill};
     use crate::eval_plan::backward_search::pager::{
-        ExactPagingPlan, PagerOutcome, PagingAction, solve_exact_paging,
+        ExactPagingPlan, PagerOutcome, PagingAction, reconstruct_paging_plan, solve_exact_paging,
     };
     use crate::eval_plan::backward_search::problem::{
         BackwardSearchProblem, build_backward_search_problem, build_problem_for_order,
@@ -656,9 +596,9 @@ mod tests {
     use crate::eval_plan::search_driver::{SearchAdapter, StableRng};
 
     use super::{
-        BackwardAdapter, BackwardGenome, BackwardSearchArm, CandidateProblem, decode_cache_actions,
-        decode_fragment_order, exact_paging_plan, mutate_genome, paging_seed,
-        preserve_certification_result,
+        BackwardAdapter, BackwardGenome, BackwardSearchArm, CandidateProblem,
+        decode_cache_action_vector, decode_cache_actions, decode_cache_plan, decode_fragment_order,
+        exact_paging_plan, mutate_genome, paging_seed, preserve_certification_result,
     };
 
     #[test]
@@ -678,6 +618,50 @@ mod tests {
         assert_eq!(
             decode_cache_actions(&fixture.problem, &genome).unwrap(),
             fixture.exact.actions
+        );
+    }
+
+    #[test]
+    fn decoded_genome_actions_match_reconstructed_paging_observables() {
+        let fixture = synthetic_solved_problem();
+        let genome = paging_seed(&fixture.problem, &fixture.exact).unwrap();
+        let actions = decode_cache_actions(&fixture.problem, &genome).unwrap();
+        let decoded = decode_cache_plan(&fixture.problem, &genome).unwrap();
+        let rebuilt = reconstruct_paging_plan(&fixture.problem.demands, &actions).unwrap();
+        assert_eq!(decoded.actions, rebuilt.actions);
+        assert_eq!(decoded.live_lanes_after, rebuilt.live_lanes_after);
+        assert_eq!(decoded.objective, rebuilt.objective);
+        assert_eq!(decoded.predicted_misses, rebuilt.predicted_misses);
+        assert_eq!(decoded.refused_retains, rebuilt.refused_retains);
+    }
+
+    #[test]
+    fn cache_genome_maps_reconstructed_live_set_over_capacity() {
+        let fixture = synthetic_solved_problem();
+        let mut problem = fixture.problem.clone();
+        let mut retained = problem.demands[0].clone();
+        retained.expr = ExprId(0);
+        retained.width_lanes = 1;
+        retained.gap_capacity_lanes = 1;
+        retained.has_next = true;
+        let mut bypass = retained.clone();
+        bypass.key.occurrence_in_fragment = retained.key.occurrence_in_fragment + 1;
+        bypass.expr = ExprId(1);
+        bypass.gap_capacity_lanes = 0;
+        bypass.has_next = false;
+        problem.demands = vec![retained.clone(), bypass];
+        problem.leaf_domain = vec![retained.key.clone(), problem.demands[1].key.clone()];
+        let mut genome = BackwardGenome::constructive(&problem);
+        genome.leaf_cache_priority.insert(retained.key.clone(), 1.0);
+
+        let actions = decode_cache_action_vector(&problem, &genome).unwrap();
+        assert_eq!(
+            reconstruct_paging_plan(&problem.demands, &actions),
+            Err(BackwardSearchError::PagingLiveSetOverCapacity { demand_position: 1 })
+        );
+        assert_eq!(
+            decode_cache_actions(&problem, &genome),
+            Err(BackwardSearchError::CacheGenomeInfeasible { demand_position: 1 })
         );
     }
 
