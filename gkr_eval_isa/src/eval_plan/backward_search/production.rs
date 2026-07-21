@@ -48,6 +48,16 @@ pub struct ProductionSearchTelemetry {
     pub peak_dp_states: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ProductionSearchProgress {
+    pub tier_evaluations: usize,
+    pub tier_completed: usize,
+    pub evaluations: usize,
+    pub solver: Option<ProductionPagingSolver>,
+    pub dp_states: usize,
+    pub peak_dp_states: usize,
+}
+
 pub struct ProductionBackwardPlan {
     pub problem: BackwardSearchProblem,
     pub candidate: CertifiedBackwardCandidate,
@@ -67,12 +77,18 @@ struct ProductionOrderAdapter<'a> {
     trace_len: usize,
     seeds: &'a [ProductionOrderGenome],
     telemetry: &'a TierTelemetry,
+    tier_evaluations: usize,
+    evaluation_offset: usize,
+    progress: &'a (dyn Fn(ProductionSearchProgress) + Sync),
 }
 
 #[derive(Default)]
 struct TierTelemetry {
     exact_solver_calls: AtomicUsize,
     solver_mask: AtomicU8,
+    last_solver: AtomicU8,
+    evaluations: AtomicUsize,
+    dp_states: AtomicUsize,
     peak_dp_states: AtomicUsize,
 }
 
@@ -92,8 +108,27 @@ impl TierTelemetry {
             ProductionPagingSolver::ResidentSets => 4,
         };
         self.solver_mask.fetch_or(bit, Ordering::Relaxed);
+        self.last_solver.store(bit, Ordering::Relaxed);
+        self.dp_states.store(peak_dp_states, Ordering::Relaxed);
         self.peak_dp_states
             .fetch_max(peak_dp_states, Ordering::Relaxed);
+    }
+
+    fn progress(&self, tier_evaluations: usize, evaluations: usize) -> ProductionSearchProgress {
+        let solver = match self.last_solver.load(Ordering::Relaxed) {
+            1 => Some(ProductionPagingSolver::RetainAll),
+            2 => Some(ProductionPagingSolver::UniformIntervals),
+            4 => Some(ProductionPagingSolver::ResidentSets),
+            _ => None,
+        };
+        ProductionSearchProgress {
+            tier_evaluations,
+            tier_completed: self.evaluations.load(Ordering::Relaxed),
+            evaluations,
+            solver,
+            dp_states: self.dp_states.load(Ordering::Relaxed),
+            peak_dp_states: self.peak_dp_states.load(Ordering::Relaxed),
+        }
     }
 
     fn snapshot(&self) -> TierTelemetrySnapshot {
@@ -158,10 +193,20 @@ impl SearchAdapter for ProductionOrderAdapter<'_> {
         &self,
         candidates: &[(usize, Self::Genome)],
     ) -> Vec<Result<(Self::Score, Self::Evaluation), Self::Error>> {
-        candidates
+        let results = candidates
             .par_iter()
             .map(|(ordinal, genome)| self.evaluate(*ordinal, genome))
-            .collect()
+            .collect();
+        let tier_completed = self
+            .telemetry
+            .evaluations
+            .fetch_add(candidates.len(), Ordering::Relaxed)
+            + candidates.len();
+        (self.progress)(self.telemetry.progress(
+            self.tier_evaluations,
+            self.evaluation_offset + tier_completed,
+        ));
+        results
     }
 
     fn guided_trials(
@@ -229,6 +274,26 @@ pub fn search_production_backward(
     budget_cells: usize,
     preceding_order: Option<&[usize]>,
 ) -> Result<ProductionBackwardPlan, BackwardSearchError> {
+    search_production_backward_with_progress(
+        identity,
+        canonical,
+        distilled,
+        trace_len,
+        budget_cells,
+        preceding_order,
+        &|_| {},
+    )
+}
+
+pub fn search_production_backward_with_progress(
+    identity: &ProductionSearchIdentity,
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    trace_len: usize,
+    budget_cells: usize,
+    preceding_order: Option<&[usize]>,
+    progress: &(dyn Fn(ProductionSearchProgress) + Sync),
+) -> Result<ProductionBackwardPlan, BackwardSearchError> {
     let (_, problem) =
         build_backward_search_problem(canonical, distilled, trace_len, budget_cells)?;
     let Some(problem) = problem else {
@@ -240,21 +305,23 @@ pub fn search_production_backward(
     let seed = production_identity_seed(identity, budget_cells);
     let mut completed = Vec::new();
 
-    let tier128 =
-        run_production_tier(canonical, distilled, &problem, trace_len, &seeds, seed, 128)?;
+    let tier128 = run_production_tier_with_progress(
+        canonical, distilled, &problem, trace_len, &seeds, seed, 128, 0, progress,
+    )?;
     let improved_seed = tier128.outcome.best_ordinal >= seeds.len();
     let late_winner = tier128.outcome.best_ordinal >= 96;
     completed.push(tier128);
 
     if production_escalation_tiers(improved_seed, late_winner, false).contains(&512) {
-        let tier512 =
-            run_production_tier(canonical, distilled, &problem, trace_len, &seeds, seed, 512)?;
+        let tier512 = run_production_tier_with_progress(
+            canonical, distilled, &problem, trace_len, &seeds, seed, 512, 128, progress,
+        )?;
         let improved_512 =
             score_key(tier512.outcome.best_score) < score_key(completed[0].outcome.best_score);
         completed.push(tier512);
         if production_escalation_tiers(improved_seed, late_winner, improved_512).contains(&2048) {
-            completed.push(run_production_tier(
-                canonical, distilled, &problem, trace_len, &seeds, seed, 2048,
+            completed.push(run_production_tier_with_progress(
+                canonical, distilled, &problem, trace_len, &seeds, seed, 2048, 640, progress,
             )?);
         }
     }
@@ -271,7 +338,33 @@ fn run_production_tier(
     seed: u64,
     evaluations: usize,
 ) -> Result<CompletedTier, BackwardSearchError> {
+    run_production_tier_with_progress(
+        canonical,
+        distilled,
+        problem,
+        trace_len,
+        seeds,
+        seed,
+        evaluations,
+        0,
+        &|_| {},
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_production_tier_with_progress(
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    problem: &BackwardSearchProblem,
+    trace_len: usize,
+    seeds: &[ProductionOrderGenome],
+    seed: u64,
+    evaluations: usize,
+    evaluation_offset: usize,
+    progress: &(dyn Fn(ProductionSearchProgress) + Sync),
+) -> Result<CompletedTier, BackwardSearchError> {
     let telemetry = TierTelemetry::default();
+    progress(telemetry.progress(evaluations, evaluation_offset));
     let adapter = ProductionOrderAdapter {
         canonical,
         distilled,
@@ -279,6 +372,9 @@ fn run_production_tier(
         trace_len,
         seeds,
         telemetry: &telemetry,
+        tier_evaluations: evaluations,
+        evaluation_offset,
+        progress,
     };
     let outcome = run_search_driver(
         &adapter,
@@ -658,6 +754,36 @@ mod tests {
     }
 
     #[test]
+    fn production_observer_reports_bounded_deterministic_search_work() {
+        let canonical = paging_trivial_four_fragment_layer();
+        let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let snapshots = std::sync::Mutex::new(Vec::<ProductionSearchProgress>::new());
+        let result = search_production_backward_with_progress(
+            &test_identity(BwdRegime::Ext),
+            &canonical,
+            &distilled,
+            8,
+            4,
+            None,
+            &|snapshot| snapshots.lock().unwrap().push(snapshot),
+        )
+        .unwrap();
+        let snapshots = snapshots.into_inner().unwrap();
+        assert!(!snapshots.is_empty());
+        assert_eq!(snapshots[0].tier_evaluations, 128);
+        assert_eq!(snapshots[0].evaluations, 0);
+        assert_eq!(
+            snapshots.last().unwrap().evaluations,
+            result.telemetry.evaluations
+        );
+        assert!(snapshots.windows(2).all(|pair| {
+            pair[0].tier_evaluations != pair[1].tier_evaluations
+                || pair[0].evaluations <= pair[1].evaluations
+        }));
+        assert!(snapshots.last().unwrap().solver.is_some());
+    }
+
+    #[test]
     fn preceding_budget_seed_is_scored_inside_the_fresh_tier() {
         let canonical = stable_domain_mismatch_paging_trivial_layer();
         let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
@@ -704,6 +830,9 @@ mod tests {
             trace_len: 8,
             seeds: &seeds,
             telemetry: &telemetry,
+            tier_evaluations: 1,
+            evaluation_offset: 0,
+            progress: &|_| {},
         };
         assert!(matches!(
             adapter.evaluate_rebuilt_problem(

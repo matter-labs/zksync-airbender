@@ -1,9 +1,15 @@
 mod common;
 
-use std::sync::OnceLock;
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::ops::RangeInclusive;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, ReadPlace, VirtualSetupKind};
-use gkr_eval_isa::bwd::distill::distill;
+use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ReadPlace, VirtualSetupKind};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
 use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
 use gkr_eval_isa::eval_plan::backward_search::{
@@ -12,12 +18,15 @@ use gkr_eval_isa::eval_plan::backward_search::{
 };
 use gkr_eval_isa::eval_plan::{
     BackwardArtifactCoordinate, BackwardArtifactError, BackwardEvaluationCircuitArtifact,
-    BackwardLayerArtifact, BackwardPlanArtifact, BackwardRegimeArtifact, BackwardScoreArtifact,
-    CanonicalU128, DomainCertificate, SourceCostArtifact, capture_backward_plan_artifact,
-    compile_backward_plan_artifact, load_backward_evaluation_artifact, select_backward_plan,
+    BackwardLayerArtifact, BackwardPlanArtifact, BackwardRegimeArtifact,
+    BackwardRegimeChainProgress, BackwardScoreArtifact, CanonicalU128, DomainCertificate,
+    SourceCostArtifact, capture_backward_plan_artifact, compile_backward_plan_artifact,
+    load_backward_evaluation_artifact, produce_backward_regime_chain_with_progress,
+    publish_backward_evaluation_artifact, select_backward_plan,
 };
 use gkr_eval_isa::fwd::encode::encode;
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
+use rayon::prelude::*;
 
 const R0_FEASIBILITY_FIXTURES: &[&str] = &[
     "bigint_with_extended_control_layout_gkr.json",
@@ -809,4 +818,688 @@ fn production_order_searches_a_representative_real_layer() {
         result.telemetry.evaluations
     );
     assert!(!result.telemetry.solver_kinds.is_empty());
+}
+
+#[test]
+fn generation_chain_is_ascending_and_reports_each_completed_budget() {
+    let fixture = common::FIXTURES[0];
+    let source = common::load_fixture(fixture);
+    let dag = cs::gkr_compiler::dag_ir::lower_dag(&source).unwrap();
+    let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture).next().unwrap();
+    let distilled = distill(&layer, BwdRegime::R0, &cross, None);
+    let identity = ProductionSearchIdentity {
+        circuit: common::schedule_stem(fixture).to_owned(),
+        layout_fixture: fixture.to_owned(),
+        layer: layer_index,
+        regime: BwdRegime::R0,
+    };
+
+    let events = std::sync::Mutex::new(Vec::new());
+    let chain = produce_backward_regime_chain_with_progress(
+        &identity,
+        &layer,
+        &distilled,
+        dag.globals.trace_len,
+        2..=3,
+        &|event| events.lock().unwrap().push(event),
+    )
+    .unwrap();
+    assert_eq!(
+        chain
+            .plans
+            .iter()
+            .map(|plan| plan.budget_cells)
+            .collect::<Vec<_>>(),
+        vec![2, 3]
+    );
+    assert_eq!(
+        events
+            .into_inner()
+            .unwrap()
+            .into_iter()
+            .filter_map(|event| match event {
+                BackwardRegimeChainProgress::Completed { budget_cells } => Some(budget_cells),
+                BackwardRegimeChainProgress::Search { .. } => None,
+            })
+            .collect::<Vec<_>>(),
+        vec![2, 3],
+    );
+}
+
+#[test]
+fn generation_constructor_validates_before_returning() {
+    let regime = sample_regime();
+    let artifact = BackwardEvaluationCircuitArtifact::new(
+        "fixture",
+        "fixture_layout",
+        vec![BackwardLayerArtifact {
+            layer: 0,
+            r0: regime.clone(),
+            ext: regime,
+        }],
+    )
+    .unwrap();
+    assert_eq!(artifact.circuit, "fixture");
+
+    assert!(matches!(
+        BackwardEvaluationCircuitArtifact::new("", "fixture_layout", Vec::new()),
+        Err(BackwardArtifactError::CircuitMismatch { .. })
+    ));
+}
+
+#[test]
+fn generation_atomic_publication_preserves_destination_on_validator_failure() {
+    let directory = std::env::temp_dir().join(format!(
+        "plan4-atomic-publication-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id(),
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let destination = directory.join("artifact.json");
+    let sentinel = b"existing-certified-artifact\n";
+    std::fs::write(&destination, sentinel).unwrap();
+    let regime = sample_regime();
+    let artifact = BackwardEvaluationCircuitArtifact::new(
+        "fixture",
+        "fixture_layout",
+        vec![BackwardLayerArtifact {
+            layer: 0,
+            r0: regime.clone(),
+            ext: regime,
+        }],
+    )
+    .unwrap();
+
+    let result = publish_backward_evaluation_artifact(&destination, &artifact, |_| {
+        Err(BackwardArtifactError::Publish(
+            "injected validator failure".to_owned(),
+        ))
+    });
+    assert!(matches!(result, Err(BackwardArtifactError::Publish(_))));
+    assert_eq!(std::fs::read(&destination).unwrap(), sentinel);
+    assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn generation_backward_artifact_path_is_exact() {
+    assert_eq!(
+        common::backward_artifact_path("add_sub_lui_auipc_mop_layout_gkr.json"),
+        common::compiled_circuit_dir().join("add_sub_lui_auipc_mop_bwd_eval_plan_c2-c16_gkr.json"),
+    );
+}
+
+#[test]
+fn generation_filters_force_diagnostic_tmp_output() {
+    let config = Plan4RunConfig::from_values(
+        Some("add_sub_lui_auipc_mop_layout_gkr.json"),
+        Some("3"),
+        Some("4"),
+        None,
+    )
+    .unwrap();
+    assert!(!config.may_publish_production);
+    assert!(config.diagnostic_dir.as_ref().unwrap().starts_with("/tmp"));
+    assert_eq!(config.budgets, 3..=4);
+    assert!(Plan4RunConfig::from_values(None, Some("2"), None, Some("1")).is_err());
+}
+
+#[test]
+fn generation_chain_queue_is_canonical_and_complete() {
+    let inputs = build_plan4_chain_inputs(common::FIXTURES);
+    assert_eq!(inputs.len(), 114);
+    assert!(
+        inputs
+            .iter()
+            .enumerate()
+            .all(|(ordinal, input)| input.ordinal == ordinal)
+    );
+    for pair in inputs.chunks_exact(2) {
+        assert_eq!(pair[0].fixture, pair[1].fixture);
+        assert_eq!(pair[0].layer_index, pair[1].layer_index);
+        assert_eq!(pair[0].regime, BwdRegime::R0);
+        assert_eq!(pair[1].regime, BwdRegime::Ext);
+    }
+}
+
+#[test]
+fn generation_rejects_production_publication_for_a_partial_corpus() {
+    let matrix = Plan4Matrix {
+        inputs: build_plan4_chain_inputs(&common::FIXTURES[..1]),
+        outputs: Vec::new(),
+        budgets: 2..=16,
+    };
+    assert!(matches!(
+        matrix.validate_production_scope(),
+        Err(BackwardArtifactError::Publish(_))
+    ));
+}
+
+#[test]
+#[ignore = "Plan 4 small shared-pool worker-invariance probe"]
+fn plan4_small_parallel_digest() {
+    let matrix = run_plan4_matrix(&common::FIXTURES[..1], 2..=2).unwrap();
+    println!("PLAN4-SMALL-DIGEST {:016x}", matrix.digest());
+}
+
+#[test]
+#[ignore = "Plan 4 full backward artifact generator"]
+fn plan4_generate_backward_artifacts() {
+    let config = Plan4RunConfig::from_env().unwrap();
+    let matrix = run_plan4_matrix(&config.fixtures, config.budgets.clone()).unwrap();
+    let digest = matrix.digest();
+    if let Some(directory) = &config.diagnostic_dir {
+        matrix.write_diagnostic(directory).unwrap();
+    } else if config.may_publish_production {
+        matrix.publish().unwrap();
+    }
+    println!("PLAN4-BWD-DIGEST {digest:016x}");
+}
+
+struct Plan4RunConfig {
+    fixtures: Vec<&'static str>,
+    budgets: RangeInclusive<usize>,
+    diagnostic_dir: Option<PathBuf>,
+    may_publish_production: bool,
+}
+
+impl Plan4RunConfig {
+    fn from_env() -> Result<Self, String> {
+        let fixture = std::env::var("GKR_PLAN4_FIXTURE").ok();
+        let budget_min = std::env::var("GKR_PLAN4_BUDGET_MIN").ok();
+        let budget_max = std::env::var("GKR_PLAN4_BUDGET_MAX").ok();
+        let digest_only = std::env::var("GKR_PLAN4_DIGEST_ONLY").ok();
+        Self::from_values(
+            fixture.as_deref(),
+            budget_min.as_deref(),
+            budget_max.as_deref(),
+            digest_only.as_deref(),
+        )
+    }
+
+    fn from_values(
+        fixture: Option<&str>,
+        budget_min: Option<&str>,
+        budget_max: Option<&str>,
+        digest_only: Option<&str>,
+    ) -> Result<Self, String> {
+        let filtered = fixture.is_some() || budget_min.is_some() || budget_max.is_some();
+        let digest_only = digest_only == Some("1");
+        if digest_only && filtered {
+            return Err("GKR_PLAN4_DIGEST_ONLY=1 requires the complete unfiltered matrix".into());
+        }
+        let parse_budget = |name: &str, value: Option<&str>, default| {
+            let value = value.map_or(Ok(default), |value| {
+                value
+                    .parse::<usize>()
+                    .map_err(|error| format!("invalid {name}={value}: {error}"))
+            })?;
+            (2..=16)
+                .contains(&value)
+                .then_some(value)
+                .ok_or_else(|| format!("{name} must be in 2..=16"))
+        };
+        let min = parse_budget("GKR_PLAN4_BUDGET_MIN", budget_min, 2)?;
+        let max = parse_budget("GKR_PLAN4_BUDGET_MAX", budget_max, 16)?;
+        if min > max {
+            return Err("GKR_PLAN4_BUDGET_MIN exceeds GKR_PLAN4_BUDGET_MAX".into());
+        }
+        let fixtures = match fixture {
+            Some(fixture) => vec![
+                *common::FIXTURES
+                    .iter()
+                    .find(|candidate| **candidate == fixture)
+                    .ok_or_else(|| format!("unknown GKR_PLAN4_FIXTURE={fixture}"))?,
+            ],
+            None => common::FIXTURES.to_vec(),
+        };
+        Ok(Self {
+            fixtures,
+            budgets: min..=max,
+            diagnostic_dir: filtered.then(|| {
+                std::env::temp_dir().join(format!("gkr-plan4-diagnostic-{}", std::process::id()))
+            }),
+            may_publish_production: !filtered && !digest_only,
+        })
+    }
+}
+
+struct Plan4ChainInput {
+    ordinal: usize,
+    fixture: &'static str,
+    circuit: String,
+    layer_index: usize,
+    trace_len: usize,
+    regime: BwdRegime,
+    canonical: DagLayer,
+    distilled: DistilledLayer,
+}
+
+struct Plan4ChainOutput {
+    ordinal: usize,
+    fixture: &'static str,
+    circuit: String,
+    layer_index: usize,
+    regime: BwdRegime,
+    artifact: BackwardRegimeArtifact,
+}
+
+fn build_plan4_chain_inputs(fixtures: &[&'static str]) -> Vec<Plan4ChainInput> {
+    let mut inputs = Vec::new();
+    for &fixture in fixtures {
+        let source = common::load_fixture(fixture);
+        let trace_len = cs::gkr_compiler::dag_ir::lower_dag(&source)
+            .expect("lower Plan 4 fixture")
+            .globals
+            .trace_len;
+        for (layer_index, canonical, cross) in common::layers_with_bwd_roots(fixture) {
+            for regime in [BwdRegime::R0, BwdRegime::Ext] {
+                let distilled = distill(&canonical, regime, &cross, None);
+                inputs.push(Plan4ChainInput {
+                    ordinal: inputs.len(),
+                    fixture,
+                    circuit: common::schedule_stem(fixture).to_owned(),
+                    layer_index,
+                    trace_len,
+                    regime,
+                    canonical: canonical.clone(),
+                    distilled,
+                });
+            }
+        }
+    }
+    inputs
+}
+
+#[derive(Clone)]
+struct ActiveChain {
+    fixture: &'static str,
+    layer: usize,
+    regime: BwdRegime,
+    budget_cells: usize,
+    search: gkr_eval_isa::eval_plan::backward_search::production::ProductionSearchProgress,
+}
+
+struct Plan4ProgressState {
+    active: BTreeMap<usize, ActiveChain>,
+    remaining_chains: BTreeMap<&'static str, usize>,
+    stopped: bool,
+}
+
+struct Plan4Progress {
+    started: Instant,
+    total_entries: usize,
+    total_circuits: usize,
+    completed: AtomicUsize,
+    completed_circuits: AtomicUsize,
+    state: Mutex<Plan4ProgressState>,
+    wake: Condvar,
+}
+
+impl Plan4Progress {
+    fn new(inputs: &[Plan4ChainInput], entries_per_chain: usize) -> Arc<Self> {
+        let mut remaining_chains = BTreeMap::new();
+        for input in inputs {
+            *remaining_chains.entry(input.fixture).or_insert(0) += 1;
+        }
+        Arc::new(Self {
+            started: Instant::now(),
+            total_entries: inputs.len() * entries_per_chain,
+            total_circuits: remaining_chains.len(),
+            completed: AtomicUsize::new(0),
+            completed_circuits: AtomicUsize::new(0),
+            state: Mutex::new(Plan4ProgressState {
+                active: BTreeMap::new(),
+                remaining_chains,
+                stopped: false,
+            }),
+            wake: Condvar::new(),
+        })
+    }
+
+    fn record(&self, input: &Plan4ChainInput, event: BackwardRegimeChainProgress) {
+        let mut state = self.state.lock().expect("lock Plan 4 progress");
+        match event {
+            BackwardRegimeChainProgress::Search {
+                budget_cells,
+                search,
+            } => {
+                state.active.insert(
+                    input.ordinal,
+                    ActiveChain {
+                        fixture: input.fixture,
+                        layer: input.layer_index,
+                        regime: input.regime,
+                        budget_cells,
+                        search,
+                    },
+                );
+            }
+            BackwardRegimeChainProgress::Completed { .. } => {
+                self.completed.fetch_add(1, Ordering::Relaxed);
+                state.active.remove(&input.ordinal);
+            }
+        }
+    }
+
+    fn chain_done(&self, input: &Plan4ChainInput) {
+        let mut state = self.state.lock().expect("lock Plan 4 progress");
+        state.active.remove(&input.ordinal);
+        let remaining = state
+            .remaining_chains
+            .get_mut(input.fixture)
+            .expect("fixture chain count exists");
+        *remaining -= 1;
+        if *remaining == 0 {
+            self.completed_circuits.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    fn monitor(self: Arc<Self>) {
+        let mut state = self.state.lock().expect("lock Plan 4 progress monitor");
+        loop {
+            let (next, timeout) = self
+                .wake
+                .wait_timeout(state, Duration::from_secs(30))
+                .expect("wait for Plan 4 progress");
+            state = next;
+            if state.stopped {
+                break;
+            }
+            if timeout.timed_out() {
+                drop(state);
+                self.emit();
+                state = self.state.lock().expect("relock Plan 4 progress monitor");
+            }
+        }
+    }
+
+    fn finish(&self) {
+        {
+            let mut state = self.state.lock().expect("lock Plan 4 final progress");
+            state.stopped = true;
+        }
+        self.emit();
+        self.wake.notify_all();
+    }
+
+    fn emit(&self) {
+        let state = self.state.lock().expect("lock Plan 4 progress snapshot");
+        let elapsed = self.started.elapsed();
+        let completed = self.completed.load(Ordering::Relaxed);
+        let completed_circuits = self.completed_circuits.load(Ordering::Relaxed);
+        let eta = if completed == 0 {
+            "unavailable".to_owned()
+        } else {
+            let remaining = self.total_entries.saturating_sub(completed) as u128;
+            let width = rayon::current_num_threads().max(1) as u128;
+            let nanos = elapsed
+                .as_nanos()
+                .saturating_mul(remaining)
+                .saturating_div(completed as u128)
+                .saturating_div(width);
+            format!(
+                "{:?}-estimate",
+                Duration::from_nanos(nanos.min(u64::MAX as u128) as u64)
+            )
+        };
+        let active = state.active.values().cloned().collect::<Vec<_>>();
+        let mut stderr = std::io::stderr().lock();
+        writeln!(
+            stderr,
+            "PLAN4 progress completed={}/{} circuits={}/{} active={} elapsed={elapsed:?} eta={eta}",
+            completed,
+            self.total_entries,
+            completed_circuits,
+            self.total_circuits,
+            active.len(),
+        )
+        .expect("write Plan 4 progress");
+        for active in active {
+            writeln!(
+                stderr,
+                "  {} L{} {:?} c{} eval={}/{} solver={:?} dp={}/{}",
+                active.fixture,
+                active.layer,
+                active.regime,
+                active.budget_cells,
+                active.search.tier_completed,
+                active.search.tier_evaluations,
+                active.search.solver,
+                active.search.dp_states,
+                active.search.peak_dp_states,
+            )
+            .expect("write Plan 4 active coordinate");
+        }
+        stderr.flush().expect("flush Plan 4 progress");
+    }
+}
+
+struct Plan4Matrix {
+    inputs: Vec<Plan4ChainInput>,
+    outputs: Vec<Plan4ChainOutput>,
+    budgets: RangeInclusive<usize>,
+}
+
+fn run_plan4_matrix(
+    fixtures: &[&'static str],
+    budgets: RangeInclusive<usize>,
+) -> Result<Plan4Matrix, BackwardArtifactError> {
+    let inputs = build_plan4_chain_inputs(fixtures);
+    let entries_per_chain = budgets.clone().count();
+    let progress = Plan4Progress::new(&inputs, entries_per_chain);
+    let monitor_progress = Arc::clone(&progress);
+    let monitor = std::thread::spawn(move || monitor_progress.monitor());
+    let results = inputs
+        .par_iter()
+        .map(|input| {
+            let identity = ProductionSearchIdentity {
+                circuit: input.circuit.clone(),
+                layout_fixture: input.fixture.to_owned(),
+                layer: input.layer_index,
+                regime: input.regime,
+            };
+            let result = produce_backward_regime_chain_with_progress(
+                &identity,
+                &input.canonical,
+                &input.distilled,
+                input.trace_len,
+                budgets.clone(),
+                &|event| progress.record(input, event),
+            )
+            .map(|artifact| Plan4ChainOutput {
+                ordinal: input.ordinal,
+                fixture: input.fixture,
+                circuit: input.circuit.clone(),
+                layer_index: input.layer_index,
+                regime: input.regime,
+                artifact,
+            });
+            progress.chain_done(input);
+            result
+        })
+        .collect::<Vec<_>>();
+    progress.finish();
+    monitor.join().expect("join Plan 4 progress monitor");
+
+    let mut outputs = Vec::with_capacity(results.len());
+    let mut failures = Vec::new();
+    for result in results {
+        match result {
+            Ok(output) => outputs.push(output),
+            Err(BackwardArtifactError::IncompleteGeneration {
+                failures: chain_failures,
+            }) => failures.extend(chain_failures),
+            Err(error) => return Err(error),
+        }
+    }
+    if !failures.is_empty() {
+        return Err(BackwardArtifactError::IncompleteGeneration { failures });
+    }
+    outputs.sort_by_key(|output| output.ordinal);
+    Ok(Plan4Matrix {
+        inputs,
+        outputs,
+        budgets,
+    })
+}
+
+impl Plan4Matrix {
+    fn validate_production_scope(&self) -> Result<(), BackwardArtifactError> {
+        let fixtures = self.inputs.iter().map(|input| input.fixture).fold(
+            Vec::new(),
+            |mut fixtures, fixture| {
+                if fixtures.last().copied() != Some(fixture) {
+                    fixtures.push(fixture);
+                }
+                fixtures
+            },
+        );
+        if self.budgets != (2..=16)
+            || self.inputs.len() != 114
+            || self.outputs.len() != 114
+            || fixtures != common::FIXTURES
+            || !self
+                .outputs
+                .iter()
+                .enumerate()
+                .all(|(ordinal, output)| output.ordinal == ordinal)
+        {
+            return Err(BackwardArtifactError::Publish(
+                "only the complete canonical 12-fixture, 114-chain c2-c16 matrix may publish"
+                    .to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn digest(&self) -> u64 {
+        let mut digest = 0xcbf2_9ce4_8422_2325u64;
+        for output in &self.outputs {
+            let regime = match output.regime {
+                BwdRegime::R0 => 0u8,
+                BwdRegime::Ext => 1u8,
+            };
+            let bytes = serde_json::to_vec(&(
+                output.ordinal,
+                output.fixture,
+                &output.circuit,
+                output.layer_index,
+                regime,
+                &output.artifact,
+            ))
+            .expect("serialize deterministic Plan 4 digest input");
+            for byte in bytes {
+                digest ^= u64::from(byte);
+                digest = digest.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        digest
+    }
+
+    fn artifacts(&self) -> Result<Vec<BackwardEvaluationCircuitArtifact>, BackwardArtifactError> {
+        self.validate_production_scope()?;
+        let mut artifacts = Vec::new();
+        for fixture in self
+            .inputs
+            .iter()
+            .map(|input| input.fixture)
+            .collect::<Vec<_>>()
+        {
+            if artifacts
+                .iter()
+                .any(|artifact: &BackwardEvaluationCircuitArtifact| {
+                    artifact.layout_fixture == fixture
+                })
+            {
+                continue;
+            }
+            let chains = self
+                .outputs
+                .iter()
+                .filter(|output| output.fixture == fixture)
+                .collect::<Vec<_>>();
+            let mut layers = Vec::new();
+            for pair in chains.chunks_exact(2) {
+                assert_eq!(pair[0].regime, BwdRegime::R0);
+                assert_eq!(pair[1].regime, BwdRegime::Ext);
+                layers.push(BackwardLayerArtifact {
+                    layer: pair[0].layer_index,
+                    r0: pair[0].artifact.clone(),
+                    ext: pair[1].artifact.clone(),
+                });
+            }
+            artifacts.push(BackwardEvaluationCircuitArtifact::new(
+                common::schedule_stem(fixture),
+                fixture,
+                layers,
+            )?);
+        }
+        Ok(artifacts)
+    }
+
+    fn publish(&self) -> Result<(), BackwardArtifactError> {
+        self.validate_production_scope()?;
+        for artifact in self.artifacts()? {
+            let path = common::backward_artifact_path(&artifact.layout_fixture);
+            publish_backward_evaluation_artifact(&path, &artifact, |reloaded| {
+                for layer in &reloaded.layers {
+                    for regime in [BwdRegime::R0, BwdRegime::Ext] {
+                        let input = self
+                            .inputs
+                            .iter()
+                            .find(|input| {
+                                input.fixture == reloaded.layout_fixture
+                                    && input.layer_index == layer.layer
+                                    && input.regime == regime
+                            })
+                            .expect("generated Plan 4 input exists for publication validation");
+                        let plans = match regime {
+                            BwdRegime::R0 => &layer.r0.plans,
+                            BwdRegime::Ext => &layer.ext.plans,
+                        };
+                        for plan in plans {
+                            compile_backward_plan_artifact(
+                                &reloaded.circuit,
+                                layer.layer,
+                                &input.canonical,
+                                &input.distilled,
+                                input.trace_len,
+                                plan,
+                            )?;
+                        }
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
+
+    fn write_diagnostic(&self, directory: &Path) -> Result<(), BackwardArtifactError> {
+        std::fs::create_dir_all(directory).map_err(|error| {
+            BackwardArtifactError::Publish(format!("create {}: {error}", directory.display()))
+        })?;
+        let values = self
+            .outputs
+            .iter()
+            .map(|output| {
+                serde_json::json!({
+                    "ordinal": output.ordinal,
+                    "fixture": output.fixture,
+                    "circuit": output.circuit,
+                    "layer": output.layer_index,
+                    "regime": match output.regime { BwdRegime::R0 => "R0", BwdRegime::Ext => "Ext" },
+                    "plans": output.artifact.plans,
+                })
+            })
+            .collect::<Vec<_>>();
+        let path = directory.join("backward-generation-diagnostic.json");
+        let bytes = serde_json::to_vec_pretty(&values).map_err(|error| {
+            BackwardArtifactError::Publish(format!("serialize {}: {error}", path.display()))
+        })?;
+        std::fs::write(&path, bytes).map_err(|error| {
+            BackwardArtifactError::Publish(format!("write {}: {error}", path.display()))
+        })
+    }
 }

@@ -46,9 +46,12 @@ pub use backward::{
 pub use backward_artifact::{
     BackwardArtifactCoordinate, BackwardArtifactError, BackwardEvaluationCircuitArtifact,
     BackwardLayerArtifact, BackwardPagingCertificateArtifact, BackwardPlanArtifact,
-    BackwardProblemCertificate, BackwardRegimeArtifact, BackwardScoreArtifact, CanonicalU128,
-    SourceCostArtifact, backward_problem_certificate, capture_backward_plan_artifact,
-    compile_backward_plan_artifact, load_backward_evaluation_artifact, select_backward_plan,
+    BackwardProblemCertificate, BackwardRegimeArtifact, BackwardRegimeChainProgress,
+    BackwardScoreArtifact, CanonicalU128, SourceCostArtifact, backward_problem_certificate,
+    capture_backward_plan_artifact,
+    compile_backward_plan_artifact, load_backward_evaluation_artifact,
+    produce_backward_regime_chain, produce_backward_regime_chain_with_progress,
+    publish_backward_evaluation_artifact, select_backward_plan,
 };
 pub use concrete::{
     ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, ConcreteTerminal,

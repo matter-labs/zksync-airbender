@@ -268,6 +268,13 @@ pub fn schedule_path(stem: &str) -> PathBuf {
     compiled_circuit_dir().join(format!("{stem}_schedule_b16_gkr.json"))
 }
 
+pub fn backward_artifact_path(fixture: &str) -> PathBuf {
+    compiled_circuit_dir().join(format!(
+        "{}_bwd_eval_plan_c2-c16_gkr.json",
+        schedule_stem(fixture),
+    ))
+}
+
 /// Map a layout fixture file name → its committed-schedule stem.
 ///
 /// The `_preprocessed` variants (only `inits_and_teardowns_preprocessed_layout_gkr.json`)

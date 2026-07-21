@@ -1,4 +1,7 @@
+use std::io::Write;
+use std::ops::RangeInclusive;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -15,7 +18,10 @@ use super::backward_search::problem::{
     BackwardSearchProblem, build_backward_search_problem, decode_order_indices,
     rebuild_problem_for_stable_order,
 };
-use super::backward_search::production::ProductionBackwardPlan;
+use super::backward_search::production::{
+    ProductionBackwardPlan, ProductionSearchIdentity, ProductionSearchProgress,
+    search_production_backward_with_progress,
+};
 use super::backward_search::{
     BackwardScore, BackwardSearchError, CertifiedBackwardCandidate, PagingCertificate, SourceCost,
     SourceOriginKind, compile_and_certify_paging, reconstruct_paging_plan,
@@ -24,6 +30,7 @@ use super::backward_search::{
 const MIN_BUDGET_CELLS: usize = 2;
 const MAX_BUDGET_CELLS: usize = 16;
 const BUDGET_PLAN_COUNT: usize = MAX_BUDGET_CELLS - MIN_BUDGET_CELLS + 1;
+static PUBLICATION_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CanonicalU128(u128);
@@ -198,6 +205,17 @@ pub struct BackwardRegimeArtifact {
     pub plans: Vec<BackwardPlanArtifact>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackwardRegimeChainProgress {
+    Search {
+        budget_cells: usize,
+        search: ProductionSearchProgress,
+    },
+    Completed {
+        budget_cells: usize,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BackwardLayerArtifact {
@@ -316,6 +334,20 @@ impl From<BackwardSearchError> for BackwardArtifactError {
 }
 
 impl BackwardEvaluationCircuitArtifact {
+    pub fn new(
+        circuit: impl Into<String>,
+        layout_fixture: impl Into<String>,
+        layers: Vec<BackwardLayerArtifact>,
+    ) -> Result<Self, BackwardArtifactError> {
+        let artifact = Self {
+            circuit: circuit.into(),
+            layout_fixture: layout_fixture.into(),
+            layers,
+        };
+        artifact.validate_self_consistency()?;
+        Ok(artifact)
+    }
+
     pub fn validate_self_consistency(&self) -> Result<(), BackwardArtifactError> {
         if self.circuit.is_empty() {
             return Err(BackwardArtifactError::CircuitMismatch {
@@ -342,6 +374,148 @@ impl BackwardEvaluationCircuitArtifact {
         }
         Ok(())
     }
+}
+
+fn produce_regime_chain_with<T>(
+    identity: &ProductionSearchIdentity,
+    budgets: RangeInclusive<usize>,
+    mut produce: impl FnMut(usize, Option<&[usize]>) -> Result<(T, Vec<usize>), BackwardArtifactError>,
+) -> Result<Vec<T>, BackwardArtifactError> {
+    let mut plans = Vec::new();
+    let mut preceding_order = None;
+    let mut failures = Vec::new();
+    for budget_cells in budgets {
+        match produce(budget_cells, preceding_order.as_deref()) {
+            Ok((plan, order)) => {
+                plans.push(plan);
+                preceding_order = Some(order);
+            }
+            Err(BackwardArtifactError::Search(
+                BackwardSearchError::ProductionPagerResourceLimit { .. },
+            )) => {
+                failures.push(BackwardArtifactCoordinate {
+                    circuit: identity.circuit.clone(),
+                    layer: identity.layer,
+                    regime: identity.regime,
+                    budget_cells,
+                });
+                preceding_order = None;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    if failures.is_empty() {
+        Ok(plans)
+    } else {
+        Err(BackwardArtifactError::IncompleteGeneration { failures })
+    }
+}
+
+pub fn produce_backward_regime_chain(
+    identity: &ProductionSearchIdentity,
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    trace_len: usize,
+    budgets: RangeInclusive<usize>,
+) -> Result<BackwardRegimeArtifact, BackwardArtifactError> {
+    produce_backward_regime_chain_with_progress(
+        identity,
+        canonical,
+        distilled,
+        trace_len,
+        budgets,
+        &|_| {},
+    )
+}
+
+pub fn produce_backward_regime_chain_with_progress(
+    identity: &ProductionSearchIdentity,
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    trace_len: usize,
+    budgets: RangeInclusive<usize>,
+    progress: &(dyn Fn(BackwardRegimeChainProgress) + Sync),
+) -> Result<BackwardRegimeArtifact, BackwardArtifactError> {
+    let plans = produce_regime_chain_with(identity, budgets, |budget_cells, preceding_order| {
+        let searched = search_production_backward_with_progress(
+            identity,
+            canonical,
+            distilled,
+            trace_len,
+            budget_cells,
+            preceding_order,
+            &|search| {
+                progress(BackwardRegimeChainProgress::Search {
+                    budget_cells,
+                    search,
+                });
+            },
+        )?;
+        let order = searched.order.clone();
+        let artifact = capture_backward_plan_artifact(&searched)?;
+        progress(BackwardRegimeChainProgress::Completed { budget_cells });
+        Ok((artifact, order))
+    })?;
+    Ok(BackwardRegimeArtifact { plans })
+}
+
+pub fn publish_backward_evaluation_artifact(
+    path: &Path,
+    artifact: &BackwardEvaluationCircuitArtifact,
+    validator: impl FnOnce(&BackwardEvaluationCircuitArtifact) -> Result<(), BackwardArtifactError>,
+) -> Result<(), BackwardArtifactError> {
+    artifact.validate_self_consistency()?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            BackwardArtifactError::Publish(format!("invalid destination {}", path.display()))
+        })?;
+    let nonce = PUBLICATION_NONCE.fetch_add(1, Ordering::Relaxed);
+    let temporary = parent.join(format!(".{file_name}.tmp-{}-{nonce}", std::process::id(),));
+
+    let publication = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| {
+                BackwardArtifactError::Publish(format!("create {}: {error}", temporary.display()))
+            })?;
+        serde_json::to_writer_pretty(&mut file, artifact).map_err(|error| {
+            BackwardArtifactError::Publish(format!("serialize {}: {error}", temporary.display()))
+        })?;
+        file.write_all(b"\n")
+            .and_then(|()| file.sync_all())
+            .map_err(|error| {
+                BackwardArtifactError::Publish(format!("sync {}: {error}", temporary.display()))
+            })?;
+        drop(file);
+
+        let reloaded = load_backward_evaluation_artifact(&temporary)?;
+        if reloaded != *artifact {
+            return Err(BackwardArtifactError::Publish(
+                "temporary artifact changed across serialization".to_owned(),
+            ));
+        }
+        validator(&reloaded)?;
+        std::fs::rename(&temporary, path).map_err(|error| {
+            BackwardArtifactError::Publish(format!(
+                "rename {} to {}: {error}",
+                temporary.display(),
+                path.display(),
+            ))
+        })?;
+        Ok(())
+    })();
+    if publication.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    publication
 }
 
 fn validate_regime(
@@ -1046,6 +1220,46 @@ pub fn backward_problem_certificate(
         budget_lanes: problem.budget_lanes,
     };
     certificate_from_serializable(problem.fragment_domain.len(), &projection).map_err(Into::into)
+}
+
+#[cfg(test)]
+mod generation_tests {
+    use super::*;
+
+    #[test]
+    fn generation_chain_clears_failed_seed_and_recovers_after_later_success() {
+        let identity = ProductionSearchIdentity {
+            circuit: "circuit".to_owned(),
+            layout_fixture: "fixture".to_owned(),
+            layer: 7,
+            regime: BwdRegime::Ext,
+        };
+        let mut observed = Vec::new();
+        let result = produce_regime_chain_with(&identity, 2..=5, |budget, preceding| {
+            observed.push((budget, preceding.map(<[usize]>::to_vec)));
+            if budget == 3 {
+                return Err(BackwardArtifactError::Search(
+                    BackwardSearchError::ProductionPagerResourceLimit { max_states: 99 },
+                ));
+            }
+            Ok((budget, vec![budget]))
+        });
+
+        assert_eq!(
+            observed,
+            vec![(2, None), (3, Some(vec![2])), (4, None), (5, Some(vec![4])),]
+        );
+        assert!(matches!(
+            result,
+            Err(BackwardArtifactError::IncompleteGeneration { failures })
+                if failures == vec![BackwardArtifactCoordinate {
+                    circuit: "circuit".to_owned(),
+                    layer: 7,
+                    regime: BwdRegime::Ext,
+                    budget_cells: 3,
+                }]
+        ));
+    }
 }
 
 #[cfg(test)]
