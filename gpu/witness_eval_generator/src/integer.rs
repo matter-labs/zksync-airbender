@@ -7,7 +7,7 @@ impl Generator {
             8 => "u8",
             16 => "u16",
             32 => "u32",
-            a @ _ => {
+            a => {
                 panic!("unknown bit width {}", a);
             }
         }

@@ -87,15 +87,13 @@ impl Generator {
                     condition_subexpr_idx,
                     ..
                 } = expr
-                {
-                    if let ColumnAddress::WitnessSubtree(idx) =
+                    && let ColumnAddress::WitnessSubtree(idx) =
                         self.get_column_address(into_variable)
-                    {
-                        if condition_subexpr_idx.is_some() {
-                            conditional.insert(idx);
-                        } else {
-                            unconditional.insert(idx);
-                        }
+                {
+                    if condition_subexpr_idx.is_some() {
+                        conditional.insert(idx);
+                    } else {
+                        unconditional.insert(idx);
                     }
                 }
             }
@@ -146,7 +144,7 @@ impl Generator {
             FixedWidthIntegerNodeExpression::U8SubExpression(idx)
             | FixedWidthIntegerNodeExpression::U16SubExpression(idx)
             | FixedWidthIntegerNodeExpression::U32SubExpression(idx) => *idx,
-            a @ _ => {
+            a => {
                 panic!("Trying to make variable from expression {:?}", a);
             }
         }
@@ -265,7 +263,7 @@ impl Generator {
                         "LOOKUP_ENFORCE({num_inputs}, {table_id}, {lookup_mapping_idx}"
                     ));
                 }
-                for input in input_subexpr_idxes.iter().copied() {
+                for input in input_subexpr_idxes {
                     self.push(&format!(", VAR({input})"));
                 }
                 self.push(")\n");
@@ -284,7 +282,7 @@ impl Generator {
                 self.push(&format!(
                     "MAYBE_LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {mask_id}"
                 ));
-                for input in input_subexpr_idxes.iter().copied() {
+                for input in input_subexpr_idxes {
                     self.push(&format!(", VAR({input})"));
                 }
                 self.push(")\n");
@@ -392,7 +390,7 @@ impl Generator {
         expressions: &[RawExpression<F>],
     ) {
         // quickly check that if all outputs are into memory, then we can skip such cases
-        if self.write_into_memory == false {
+        if !self.write_into_memory {
             let mut can_skip = true;
             for expr in expressions.iter() {
                 if let RawExpression::WriteVariable { into_variable, .. } = expr {
@@ -522,7 +520,7 @@ mod tests {
         let code = generate_from_files(&layout_path, &ssa_path, false).unwrap();
         File::create(&generated_cu_path)
             .unwrap()
-            .write_all(&code.as_bytes())
+            .write_all(code.as_bytes())
             .unwrap();
     }
 
