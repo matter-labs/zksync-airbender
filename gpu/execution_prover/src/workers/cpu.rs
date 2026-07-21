@@ -127,7 +127,16 @@ pub(crate) fn run_simulator<
             let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
             assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
             let total_cycles = (timestamp_diff / TIMESTAMP_STEP) as usize;
-            let empty_cycles = total_cycles - count;
+            // `count` (distinct RAM words dirtied) is not guaranteed to be
+            // <= `total_cycles`: a delegation dirties many fresh words per
+            // cycle (a Blake2s-with-compression call touches ~40 words while
+            // advancing only `num_rounds` timestamp cycles), so a
+            // delegation-heavy run over disjoint, never-reused buffers can
+            // invert the two. Saturate to avoid a release-mode underflow into an
+            // unbounded empty-circuit marker loop; when no spare cycles remain
+            // this yields zero padding circuits (the real I&T chunks below still
+            // emit). Behavior-identical whenever count <= total_cycles.
+            let empty_cycles = total_cycles.saturating_sub(count);
             let empty_circuits = empty_cycles / per_circuit_count;
             for sequence_id in 0..empty_circuits {
                 let data = InitsAndTeardownsData {
