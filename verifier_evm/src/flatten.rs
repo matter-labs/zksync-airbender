@@ -157,14 +157,14 @@ pub fn whir_calldata(
     let handoff_seed = crate::seed::gkr_whir_handoff_seed(proof);
     let whir_batching = wp
         .batching_challenge
-        .expect("whir_proof.batching_challenge not set — regenerate/migrate the proof");
+        .expect("whir_proof.batching_challenge not set — regenerate the proof");
     let batched_opening = wp
         .batched_opening
-        .expect("whir_proof.batched_opening not set — regenerate/migrate the proof");
+        .expect("whir_proof.batched_opening not set — regenerate the proof");
     let whir_point = wp
         .original_evaluation_point
         .as_ref()
-        .expect("whir_proof.original_evaluation_point not set — regenerate/migrate the proof");
+        .expect("whir_proof.original_evaluation_point not set — regenerate the proof");
 
     let num_rounds = folds.len();
 

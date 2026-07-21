@@ -690,7 +690,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
             
             // POINT CHECK
-            let acc");
+            let acc := 0"); // Horner accumulator starts at 0 (explicit init: the first chunk reads it)
         // Wrap this layer's cache computations (MemoryTuple / lookups / virtual-setup) in a
         // dedicated TOP-LEVEL function so their deep expressions (e.g. the 7-arg
         // gkr_memrel_compress) don't pile onto the layer function's already-tight stack —

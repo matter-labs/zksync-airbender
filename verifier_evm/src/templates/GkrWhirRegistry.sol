@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity =0.8.36;
 
 /// Third contract linking the two independent verifiers. The GKR verifier and the
 /// WHIR verifier each run in their OWN transaction with their OWN calldata, and each

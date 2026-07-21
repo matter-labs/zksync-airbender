@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity =0.8.36;
 
 contract GKRVerifier {
     // ── Generic (used throughout) ───────────────────────────────────────────
@@ -393,17 +393,11 @@ contract GKRVerifier {
             let SI := GKR_EQ_PTR() // reuse eq scratch as the sorted-index array (10 slots)
             for { let li := 0 } lt(li, 10) { li := add(li, 1) } {
             mstore(add(SI, mul(li, 32)), li) }
+            // Reorder the offset-stored LSB lines into logical (OutputType-group) order so
+            // grand-products land at slots 0,1,8,9. Generated from the artifact's
+            // global_output_map value offsets (iteration order).
             if boundary {
-                mstore(add(SI, 0), 6)
-                mstore(add(SI, 32), 7)
-                mstore(add(SI, 64), 0)
-                mstore(add(SI, 96), 1)
-                mstore(add(SI, 128), 2)
-                mstore(add(SI, 160), 3)
-                mstore(add(SI, 192), 4)
-                mstore(add(SI, 224), 5)
-                mstore(add(SI, 256), 8)
-                mstore(add(SI, 288), 9)
+                // __GKR_BOUNDARY_SI__
             }
             let g := 0
             let gb := 1
@@ -479,15 +473,12 @@ contract GKRVerifier {
 
         // __INLINE_CIRCUIT_YUL__
 
+        // Circuit sumcheck: run every circuit layer from the output layer (highest index,
+        // reads the dim-reduce output GKR_CLAIMS_PTR) down to layer 0. The call sequence is
+        // generated from the artifact's layer count so it can't drift when the circuit gains
+        // or loses a layer — see gkr_circuit_layer_calls in the generator.
         function gkr_circuit(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
-            ptr, claim,
-            alpha := sumcheck_circuit_layer3(ptr, claim, alpha)
-            ptr, claim,
-            alpha := sumcheck_circuit_layer2(ptr, claim, alpha)
-            ptr, claim,
-            alpha := sumcheck_circuit_layer1(ptr, claim, alpha)
-            ptr, claim,
-            alpha := sumcheck_circuit_layer0(ptr, claim, alpha)
+            // __GKR_CIRCUIT_LAYER_CALLS__
             next_ptr := ptr
             next_claim := claim
             next_alpha := alpha

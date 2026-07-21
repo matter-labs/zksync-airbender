@@ -113,6 +113,11 @@ impl<F: PrimeField> LookupRequest<F> {
             "LookupRequest has {} inputs, exceeds UNIFIED_LOOKUP_WIDTH={UNIFIED_LOOKUP_WIDTH}",
             inputs.len()
         );
+        assert!(table_id.degree() <= 2);
+        for inp in inputs.iter() {
+            assert!(inp.degree() <= 2);
+        }
+
         Self { table_id, inputs }
     }
 }

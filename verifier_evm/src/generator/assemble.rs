@@ -11,6 +11,7 @@
 
 use super::whir::WhirGenConfig;
 use super::{emit_circuit_yul, GeneratedContracts};
+use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::gkr::prover_config::ProverConfig;
@@ -21,6 +22,56 @@ const REGISTRY_TEMPLATE: &str = include_str!("../templates/GkrWhirRegistry.sol")
 
 /// Marker in `gkr.sol` where the generated `circuit.yul` is spliced.
 const INLINE_MARKER: &str = "// __INLINE_CIRCUIT_YUL__";
+
+/// Marker in `gkr.sol`'s `gkr_dr_final` where the boundary-layer LSB reorder (SI) is generated.
+const SI_MARKER: &str = "                // __GKR_BOUNDARY_SI__";
+
+/// Marker in `gkr.sol`'s `gkr_circuit` where the per-layer sumcheck calls are generated.
+const CIRCUIT_LAYER_CALLS_MARKER: &str = "            // __GKR_CIRCUIT_LAYER_CALLS__";
+
+/// Emit the `gkr_circuit` body: one `sumcheck_circuit_layer{i}` call per circuit layer, from
+/// the output layer (highest index — reads the dim-reduce output `GKR_CLAIMS_PTR`) down to
+/// layer 0. Generated from the artifact's layer count so the driver can't drift out of sync
+/// with the emitted `sumcheck_circuit_layer{i}` functions when the circuit changes depth.
+fn gkr_circuit_layer_calls(circuit: &GKRCircuitArtifact<Proth120>) -> String {
+    let n = circuit.layers.len();
+    assert!(n > 0, "circuit must have at least one layer");
+    (0..n)
+        .rev()
+        .map(|i| {
+            format!(
+                "            ptr, claim,\n            alpha := sumcheck_circuit_layer{i}(ptr, claim, alpha)\n"
+            )
+        })
+        .collect()
+}
+
+/// Emit the boundary-layer `SI` reorder as `mstore(add(SI, 32*i), offset)` lines. `SI[logical] =
+/// offset` = the artifact's `global_output_map` value offsets flattened in iteration
+/// (`BTreeMap<OutputType>`) order — the permutation from offset-stored LSB lines to logical
+/// (OutputType-group) order, so grand-products land at logical slots 0,1,8,9.
+fn boundary_si_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
+    let offsets: Vec<usize> = circuit
+        .global_output_map
+        .values()
+        .flatten()
+        .map(|addr| match addr {
+            GKRAddress::InnerLayer { offset, .. } => *offset,
+            other => panic!("unexpected output address {other:?} in global_output_map"),
+        })
+        .collect();
+    assert_eq!(
+        offsets.len(),
+        10,
+        "gkr_dr_final expects 10 GKR output LSB lines, got {}",
+        offsets.len()
+    );
+    offsets
+        .iter()
+        .enumerate()
+        .map(|(i, off)| format!("                mstore(add(SI, {}), {off})\n", i * 32))
+        .collect()
+}
 
 /// Replace the RHS of the single `uint256 constant <name> = <...>;` line with `= <value>;`,
 /// preserving indentation and any trailing `// comment`. Panics unless exactly one such line
@@ -178,6 +229,23 @@ pub fn generate_verifiers(
     ] {
         gkr = set_const(&gkr, name, value);
     }
+
+    // Boundary-layer LSB reorder for gkr_dr_final: the dim-reduce LSB lines are stored in
+    // GKRAddress-offset order, but the g-accumulator wants OutputType-group (iteration) order so
+    // grand-products land at logical slots 0,1,8,9. `SI[logical] = offset` = the artifact's
+    // global_output_map value offsets flattened in iteration (BTreeMap<OutputType>) order.
+    let gkr = gkr.replace(&format!("{SI_MARKER}\n"), &boundary_si_yul(circuit));
+
+    // Circuit-layer sumcheck driver: generate the per-layer call sequence so `gkr_circuit`
+    // always runs exactly the layers the artifact defines (output layer first, down to 0).
+    let gkr = gkr.replace(
+        &format!("{CIRCUIT_LAYER_CALLS_MARKER}\n"),
+        &gkr_circuit_layer_calls(circuit),
+    );
+    assert!(
+        !gkr.contains("__GKR_CIRCUIT_LAYER_CALLS__"),
+        "gkr.sol template missing the circuit-layer-calls marker"
+    );
 
     // Drop the trailing test/bench harness (GKRVerifierTest + the via_ir-only GKRStreamGen) so
     // the production source is just `contract GKRVerifier` and compiles under the legacy backend.

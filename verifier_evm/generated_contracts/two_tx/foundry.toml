@@ -3,6 +3,8 @@
 # out/ (build them first: `forge build` in ../gkr and ../whir). Calldata is read from
 # ../../debug_data. Run: `forge test`.
 [profile.default]
+solc_version = "0.8.36"
+auto_detect_solc = false
 src = "src"
 out = "out"
 via_ir = true

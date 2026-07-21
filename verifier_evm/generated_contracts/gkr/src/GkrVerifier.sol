@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity =0.8.36;
 
 contract GKRVerifier {
     // ── Generic (used throughout) ───────────────────────────────────────────
@@ -38,7 +38,7 @@ contract GKRVerifier {
     // 520 for this proof (unified_reduced_machine, 2^22, pack_log2=4). See gkr_transcript_reference.md.
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES = 916; // registers(384) + final_pc(12) + top_bits(8) + setup_cap(256) + memory_cap(256)
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS       = 20;  // external-challenge PoW difficulty (max(lookup, 20))
-    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC       = 384; // program's terminal PC — binds the verified statement to this program
+    uint256 constant __TEMPLATE_EXPECTED_FINAL_PC       = 3212; // program's terminal PC — binds the verified statement to this program
 
     // ── GKR init (fold the 8 init polys into the first sumcheck claim) ────────
     uint256 constant GKR_INIT_BYTES          = 2560; // 10 output polys * 16 elems * 16 bytes (Proth120)
@@ -393,15 +393,18 @@ contract GKRVerifier {
             let SI := GKR_EQ_PTR() // reuse eq scratch as the sorted-index array (10 slots)
             for { let li := 0 } lt(li, 10) { li := add(li, 1) } {
             mstore(add(SI, mul(li, 32)), li) }
+            // Reorder the offset-stored LSB lines into logical (OutputType-group) order so
+            // grand-products land at slots 0,1,8,9. Generated from the artifact's
+            // global_output_map value offsets (iteration order).
             if boundary {
-                mstore(add(SI, 0), 6)
-                mstore(add(SI, 32), 7)
+                mstore(add(SI, 0), 2)
+                mstore(add(SI, 32), 3)
                 mstore(add(SI, 64), 0)
                 mstore(add(SI, 96), 1)
-                mstore(add(SI, 128), 2)
-                mstore(add(SI, 160), 3)
-                mstore(add(SI, 192), 4)
-                mstore(add(SI, 224), 5)
+                mstore(add(SI, 128), 4)
+                mstore(add(SI, 160), 5)
+                mstore(add(SI, 192), 6)
+                mstore(add(SI, 224), 7)
                 mstore(add(SI, 256), 8)
                 mstore(add(SI, 288), 9)
             }
@@ -487,7 +490,7 @@ function sumcheck_circuit_layer4(ptr, claim, alpha) -> next_ptr, next_claim, nex
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
-    let acc
+    let acc := 0
             mstore(CIRCUIT_PTR, ptr)
             scl4_caches()
             acc := scl4_g0(alpha, acc)
@@ -561,7 +564,7 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
-    let acc
+    let acc := 0
             mstore(CIRCUIT_PTR, ptr)
             scl3_caches()
             acc := scl3_g0(alpha, acc)
@@ -637,7 +640,7 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
-    let acc
+    let acc := 0
             mstore(CIRCUIT_PTR, ptr)
             scl2_caches()
             acc := scl2_g0(alpha, acc)
@@ -742,7 +745,7 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
-    let acc
+    let acc := 0
             mstore(CIRCUIT_PTR, ptr)
             scl1_caches()
             acc := scl1_g0(alpha, acc)
@@ -943,7 +946,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
-    let acc
+    let acc := 0
             mstore(CIRCUIT_PTR, ptr)
             scl0_caches()
             // ── layer-0 max-quadratic gates: table-driven evaluation ──────────────────────
@@ -1896,7 +1899,13 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
     next_acc := pointcheck_update(acc, alpha, gate)
 }
 
+        // Circuit sumcheck: run every circuit layer from the output layer (highest index,
+        // reads the dim-reduce output GKR_CLAIMS_PTR) down to layer 0. The call sequence is
+        // generated from the artifact's layer count so it can't drift when the circuit gains
+        // or loses a layer — see gkr_circuit_layer_calls in the generator.
         function gkr_circuit(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {
+            ptr, claim,
+            alpha := sumcheck_circuit_layer4(ptr, claim, alpha)
             ptr, claim,
             alpha := sumcheck_circuit_layer3(ptr, claim, alpha)
             ptr, claim,

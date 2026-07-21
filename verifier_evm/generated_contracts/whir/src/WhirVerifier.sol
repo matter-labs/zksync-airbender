@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity =0.8.36;
 
 // =============================================================================
 // WHIR polynomial-commitment opening verifier (EVM skeleton)
@@ -190,6 +190,7 @@ contract WhirVerifier {
         // hp[i] = set_gen_inv^i, then the length-2^(fold-1) array is bit-reversed.
         function compute_hpo(fold, qib) {
             let logc := sub(fold, 1)         // log2(count)
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let count := shl(logc, 1)
             let sgi := exp_pow2(__TEMPLATE_WHIR_GEN_INV, qib) // order-2^fold generator inverse
             let pw := 1
@@ -204,6 +205,7 @@ contract WhirVerifier {
             }
         }
         function fold_coset(fold, base_root_inv) -> folded {
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let n := shl(fold, 1)
             let root_inv := base_root_inv
             for { let round := 0 } lt(round, fold) { round := add(round, 1) } {
@@ -229,6 +231,7 @@ contract WhirVerifier {
         // whose stored values fold as f = e0 + e1*ch per step (the prover's default
         // `eval_multilinear_with_monomial_tensor` path, no `evals_to_multilinear_coeffs`).
         function fold_multilinear(fold) -> folded {
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let n := shl(fold, 1)
             for { let round := 0 } lt(round, fold) { round := add(round, 1) } {
                 let half := shr(1, n)
@@ -261,6 +264,7 @@ contract WhirVerifier {
             let qib := add(depth, CAP_LOG2)
             let internal_bits := sub(qib, coset_bits)
             let internal_index := shr(coset_bits, qidx)
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let coset_index := and(qidx, sub(shl(coset_bits, 1), 1))
 
             let h := leaf_hash
@@ -428,6 +432,7 @@ contract WhirVerifier {
         }
 
         function do_final(fold, q, pow_bits, qib, vp, idx_mask, zi_off, rfin, cb) {
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let nmono := shl(rfin, 1)
             let cp := mload(REG_CD)
             calldatacopy(add(SEED_PTR, 32), cp, mul(nmono, 16))
@@ -551,6 +556,7 @@ contract WhirVerifier {
             case 3 { fold := 4 q := 6 pow_bits := 25 qib := 27 vp := 16 cb := 15 }
             case 4 { fold := 4 q := 5 pow_bits := 21 qib := 27 vp := 16 cb := 19 }
             default { fold := 4 q := 4 pow_bits := 24 qib := 27 vp := 16 cb := 23 }
+            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let idx_mask := sub(shl(qib, 1), 1)
 
             for { let s := 0 } lt(s, fold) { s := add(s, 1) } {

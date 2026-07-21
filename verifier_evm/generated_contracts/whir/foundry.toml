@@ -2,6 +2,8 @@
 # `cargo test -p verifier_evm --test generate_contracts`. Build with `forge build`; the two_tx
 # project reads out/WhirVerifier.sol/WhirVerifier.json::deployedBytecode.
 [profile.default]
+solc_version = "0.8.36"
+auto_detect_solc = false
 src = "src"
 out = "out"
 via_ir = true

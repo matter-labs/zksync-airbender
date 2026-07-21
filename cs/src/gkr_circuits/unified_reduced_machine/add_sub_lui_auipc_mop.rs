@@ -62,6 +62,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
             F::CHAR_BITS >= 68,
             "circuit field too small for two-field mop"
         );
+        assert!(MopF::IS_MONT_REPR, "mop.rr opcodes field must be in Montgomery representation");
     }
 
     let modulus_low = F::from_u32_unchecked((MopF::CHARACTERISTICS_U32 as u16) as u32);
@@ -599,6 +600,12 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
         let is_mul_like = Expr::<F>::Sum(vec![Expr::from(is_mulmod), Expr::from(is_fmamod)]);
         let mul_term = (out.clone() - Expr::var(mulmod_intermediate_var)) * is_mul_like;
         if two_field {
+            // in case of non-native field we perform just an addition with carry, and
+            // we assume that (2^32 - 1) * 2 (we accept non-canonical form) can not overflow 3 MopF chars
+            // (for addition), and also we do not need to add more than 3 chars for subtractions without underflow
+            assert!(((1u64 << 32) - 1) * 2 < (MopF::CHARACTERISTICS_U32 as u64) * 3);
+            assert!((u32::MAX as u64) < (MopF::CHARACTERISTICS_U32 as u64) * 3);
+            
             let [t0, t1, t2] = t_bit_vars.unwrap();
             let k_expr = Expr::var(t0)
                 + Expr::var(t1) * F::from_u32_with_reduction(2)

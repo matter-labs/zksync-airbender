@@ -9,10 +9,13 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use std::path::Path;
 
-// Deployment parameters for the current program/proof (Sec100). See gkr.sol constants.
-const EXTERNAL_POW_BITS: u32 = 20;
+// Deployment parameters for the program being verified. These are properties of the *program +
+// circuit*, NOT of any particular proof — verifier synthesis must never depend on proof/aux data.
+// `EXPECTED_FINAL_PC` is the program's terminal PC the verifier binds the statement to; the two
+// PoW difficulties are the verifier's soundness knobs. Update these when the program changes.
 const WHIR_BATCH_POW_BITS: u32 = 11;
-const FINAL_PC: u32 = 0x00000180;
+const EXTERNAL_POW_BITS: u32 = 20;
+const EXPECTED_FINAL_PC: u32 = 0x00000c8c;
 
 #[test]
 fn generate_contracts_into_dir() {
@@ -28,7 +31,7 @@ fn generate_contracts_into_dir() {
         PACK_LOG2,
         EXTERNAL_POW_BITS,
         WHIR_BATCH_POW_BITS,
-        FINAL_PC,
+        EXPECTED_FINAL_PC,
     );
 
     let root = Path::new("generated_contracts");
