@@ -80,6 +80,124 @@ fn node_key(node: &Node) -> (u128, u128, u32, u32, u64, PagingAction) {
     )
 }
 
+fn canonical_plan_key(plan: &ExactPagingPlan) -> (PagingObjective, &[PagingAction]) {
+    (plan.objective, &plan.actions)
+}
+
+pub fn reconstruct_paging_plan(
+    demands: &[BackwardDemand],
+    actions: &[PagingAction],
+) -> Result<ExactPagingPlan, BackwardSearchError> {
+    if actions.len() != demands.len() {
+        return Err(BackwardSearchError::PagingActionCount {
+            expected: demands.len(),
+            actual: actions.len(),
+        });
+    }
+    let mut residents = BTreeMap::<ExprId, u8>::new();
+    let mut live_lanes = 0u8;
+    let mut objective = PagingObjective::default();
+    let mut predicted_misses = 0u32;
+    let mut refused_retains = 0u32;
+    let mut live_lanes_after = Vec::with_capacity(demands.len());
+    let mut peak_live_lanes = 0u8;
+
+    for (position, (demand, action)) in demands.iter().zip(actions).enumerate() {
+        if residents.remove(&demand.expr).is_some() {
+            live_lanes = live_lanes
+                .checked_sub(demand.width_lanes)
+                .ok_or(BackwardSearchError::CostOverflow)?;
+            objective.evictions = checked_increment(objective.evictions)?;
+        } else {
+            objective.dram_bytes = objective
+                .dram_bytes
+                .checked_add(demand.miss_cost.dram_bytes()?)
+                .ok_or(BackwardSearchError::CostOverflow)?;
+            objective.primitive_source_ops = objective
+                .primitive_source_ops
+                .checked_add(demand.miss_cost.ops.primitive_equivalents()?)
+                .ok_or(BackwardSearchError::CostOverflow)?;
+            predicted_misses = checked_increment(predicted_misses)?;
+        }
+
+        match action {
+            PagingAction::Retain => {
+                let next = live_lanes
+                    .checked_add(demand.width_lanes)
+                    .ok_or(BackwardSearchError::CostOverflow)?;
+                if !demand.has_next || next > demand.gap_capacity_lanes {
+                    return Err(BackwardSearchError::IllegalPagingRetain {
+                        demand_position: position,
+                    });
+                }
+                residents.insert(demand.expr, demand.width_lanes);
+                live_lanes = next;
+                objective.admissions = checked_increment(objective.admissions)?;
+            }
+            PagingAction::Bypass => {
+                let retain_fits = demand.has_next
+                    && live_lanes
+                        .checked_add(demand.width_lanes)
+                        .ok_or(BackwardSearchError::CostOverflow)?
+                        <= demand.gap_capacity_lanes;
+                if demand.has_next && !retain_fits {
+                    refused_retains = checked_increment(refused_retains)?;
+                }
+                if live_lanes > demand.gap_capacity_lanes {
+                    return Err(BackwardSearchError::PagingLiveSetOverCapacity {
+                        demand_position: position,
+                    });
+                }
+            }
+        }
+        peak_live_lanes = peak_live_lanes.max(live_lanes);
+        live_lanes_after.push(live_lanes);
+    }
+
+    Ok(ExactPagingPlan {
+        actions: actions.to_vec(),
+        live_lanes_after,
+        objective,
+        predicted_misses,
+        refused_retains,
+        telemetry: PagingTelemetry {
+            peak_live_states: usize::from(!demands.is_empty()),
+            generated_states: demands
+                .len()
+                .try_into()
+                .map_err(|_| BackwardSearchError::CostOverflow)?,
+            merged_states: 0,
+            peak_live_lanes,
+        },
+    })
+}
+
+pub fn solve_retain_all_if_exact(
+    demands: &[BackwardDemand],
+) -> Result<Option<ExactPagingPlan>, BackwardSearchError> {
+    let actions = demands
+        .iter()
+        .map(|demand| {
+            let nonzero_miss_cost = demand.miss_cost.dram_bytes()? != 0
+                || demand.miss_cost.ops.primitive_equivalents()? != 0;
+            Ok(if demand.has_next && nonzero_miss_cost {
+                PagingAction::Retain
+            } else {
+                PagingAction::Bypass
+            })
+        })
+        .collect::<Result<Vec<_>, BackwardSearchError>>()?;
+
+    match reconstruct_paging_plan(demands, &actions) {
+        Ok(plan) => Ok(Some(plan)),
+        Err(
+            BackwardSearchError::IllegalPagingRetain { .. }
+            | BackwardSearchError::PagingLiveSetOverCapacity { .. },
+        ) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 pub fn solve_exact_paging(
     demands: &[BackwardDemand],
     state_cap: usize,
@@ -211,19 +329,28 @@ pub fn solve_exact_paging(
         }
     }
 
-    let (_, terminal) = current
-        .iter()
-        .min_by_key(|(residents, node)| (node.objective, node.lex_rank, *residents))
+    let minimum_objective = current
+        .values()
+        .map(|node| node.objective)
+        .min()
         .expect("the all-bypass state keeps every layer nonempty");
-    let (actions, live_lanes_after) = reconstruct(&arena, terminal.arena_index);
-    Ok(PagerOutcome::Solved(ExactPagingPlan {
-        actions,
-        live_lanes_after,
-        objective: terminal.objective,
-        predicted_misses: terminal.predicted_misses,
-        refused_retains: terminal.refused_retains,
-        telemetry,
-    }))
+    let mut canonical_plan = None;
+    for terminal in current
+        .values()
+        .filter(|node| node.objective == minimum_objective)
+    {
+        let (actions, _) = reconstruct(&arena, terminal.arena_index);
+        let plan = reconstruct_paging_plan(demands, &actions)?;
+        if canonical_plan
+            .as_ref()
+            .is_none_or(|incumbent| canonical_plan_key(&plan) < canonical_plan_key(incumbent))
+        {
+            canonical_plan = Some(plan);
+        }
+    }
+    let mut plan = canonical_plan.expect("the all-bypass state keeps every layer nonempty");
+    plan.telemetry = telemetry;
+    Ok(PagerOutcome::Solved(plan))
 }
 
 fn dense_leaf_domain(
@@ -344,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn bypass_wins_equal_cost_and_no_retention_optimum() {
+    fn zero_cost_retain_that_fits_canonically_prefers_bypass() {
         let demands = equal_cost_stream();
         let exact = solved(
             &demands,
@@ -354,6 +481,73 @@ mod tests {
             exact.actions,
             vec![PagingAction::Bypass; exact.actions.len()]
         );
+    }
+
+    #[test]
+    fn reconstructed_actions_match_exact_plan_observables() {
+        let demands = mixed_stream();
+        let exact = solved(
+            &demands,
+            solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap(),
+        );
+        let rebuilt = reconstruct_paging_plan(&demands, &exact.actions).unwrap();
+        assert_eq!(rebuilt.actions, exact.actions);
+        assert_eq!(rebuilt.live_lanes_after, exact.live_lanes_after);
+        assert_eq!(rebuilt.objective, exact.objective);
+        assert_eq!(rebuilt.predicted_misses, exact.predicted_misses);
+        assert_eq!(rebuilt.refused_retains, exact.refused_retains);
+    }
+
+    #[test]
+    fn reconstructed_actions_reject_illegal_retain_and_bad_length() {
+        let mut demands = mixed_stream();
+        demands[0].has_next = false;
+        assert!(matches!(
+            reconstruct_paging_plan(
+                &demands,
+                &[
+                    PagingAction::Retain,
+                    PagingAction::Bypass,
+                    PagingAction::Bypass,
+                    PagingAction::Bypass,
+                    PagingAction::Bypass,
+                    PagingAction::Bypass,
+                ],
+            ),
+            Err(BackwardSearchError::IllegalPagingRetain { demand_position: 0 })
+        ));
+        assert!(matches!(
+            reconstruct_paging_plan(&demands, &[]),
+            Err(BackwardSearchError::PagingActionCount { .. })
+        ));
+    }
+
+    #[test]
+    fn zero_demand_reconstruction_is_an_exact_empty_plan() {
+        let plan = reconstruct_paging_plan(&[], &[]).unwrap();
+        assert!(plan.actions.is_empty());
+        assert!(plan.live_lanes_after.is_empty());
+        assert_eq!(plan.objective, PagingObjective::default());
+    }
+
+    #[test]
+    fn retain_all_fast_path_rejects_overlapping_intervals() {
+        assert_eq!(
+            solve_retain_all_if_exact(&overlapping_retain_stream()).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn retain_all_fast_path_matches_exact_when_all_intervals_fit() {
+        let demands = all_fitting_stream();
+        let exact = solved(
+            &demands,
+            solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap(),
+        );
+        let retained = solve_retain_all_if_exact(&demands).unwrap().unwrap();
+        assert_eq!(retained.actions, exact.actions);
+        assert_eq!(retained.objective, exact.objective);
     }
 
     #[test]
@@ -565,6 +759,24 @@ mod tests {
             (0, 4, 5, 100, 20),
             (1, 1, 5, 30, 5),
             (0, 4, 0, 100, 20),
+        ])
+    }
+
+    fn overlapping_retain_stream() -> Vec<BackwardDemand> {
+        stream(&[
+            (0, 1, 1, 10, 1),
+            (1, 1, 1, 10, 1),
+            (0, 1, 1, 10, 1),
+            (1, 1, 0, 10, 1),
+        ])
+    }
+
+    fn all_fitting_stream() -> Vec<BackwardDemand> {
+        stream(&[
+            (0, 1, 2, 10, 1),
+            (1, 1, 2, 10, 1),
+            (0, 1, 2, 10, 1),
+            (1, 1, 0, 10, 1),
         ])
     }
 

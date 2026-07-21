@@ -19,7 +19,7 @@ pub use materialization::{
 };
 pub use pager::{
     ExactPagingPlan, PagerOutcome, PagingAction, PagingObjective, PagingTelemetry,
-    solve_exact_paging,
+    reconstruct_paging_plan, solve_exact_paging, solve_retain_all_if_exact,
 };
 pub use replay::{
     CertifiedBackwardCandidate, PagingCertificate, ScoredAcceptedBackwardCandidate,
@@ -212,6 +212,12 @@ pub enum BackwardSearchError {
     PagingActionCount {
         expected: usize,
         actual: usize,
+    },
+    IllegalPagingRetain {
+        demand_position: usize,
+    },
+    PagingLiveSetOverCapacity {
+        demand_position: usize,
     },
     PagingActionUnderflow {
         serve: usize,
