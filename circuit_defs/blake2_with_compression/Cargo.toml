@@ -1,5 +1,6 @@
 [package]
-name = "blake2_with_compression"
+name = "zksync-airbender-blake2_with_compression"
+description = "The blake2_with_compression crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -14,3 +15,6 @@ prover = { workspace = true, features = ["prover"] }
 verifier_generator = { workspace = true }
 serde = { workspace = true }
 serde_json = "1.0"
+
+[lib]
+name = "blake2_with_compression"

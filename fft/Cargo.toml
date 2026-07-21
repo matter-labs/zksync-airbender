@@ -1,5 +1,6 @@
 [package]
-name = "fft"
+name = "zksync-airbender-fft"
+description = "The fft crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -25,3 +26,6 @@ rand = { workspace = true, features = ["std", "std_rng"]}
 [[bench]]
 name = "bitreverse"
 harness = false
+
+[lib]
+name = "fft"

@@ -1,5 +1,6 @@
 [package]
-name = "worker"
+name = "zksync-airbender-worker"
+description = "The worker crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -12,3 +13,6 @@ categories.workspace = true
 [dependencies]
 rayon = "1"
 num_cpus = "1"
+
+[lib]
+name = "worker"

@@ -1,5 +1,6 @@
 [package]
-name = "non_determinism_source"
+name = "zksync-airbender-non_determinism_source"
+description = "The non_determinism_source crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,3 +11,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+
+[lib]
+name = "non_determinism_source"

@@ -1,5 +1,6 @@
 [package]
-name = "circuit_common"
+name = "zksync-airbender-circuit_common"
+description = "The circuit_common crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -13,3 +14,6 @@ categories.workspace = true
 field = { workspace = true }
 fft = { workspace = true }
 worker = { workspace = true }
+
+[lib]
+name = "circuit_common"

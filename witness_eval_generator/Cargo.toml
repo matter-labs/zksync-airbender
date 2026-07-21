@@ -1,5 +1,6 @@
 [package]
-name = "witness_eval_generator"
+name = "zksync-airbender-witness_eval_generator"
+description = "The witness_eval_generator crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition = "2024"
 authors.workspace = true
@@ -22,3 +23,6 @@ serde_json = { version = "1.0"  }
 bincode = { version = "1.3" }
 
 [features]
+
+[lib]
+name = "witness_eval_generator"

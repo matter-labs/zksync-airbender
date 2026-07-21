@@ -1,5 +1,6 @@
 [package]
-name = "reduced_risc_v_log_23_machine_verifier"
+name = "zksync-airbender-reduced_risc_v_log_23_machine_verifier"
+description = "The reduced_risc_v_log_23_machine_verifier crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -36,3 +37,6 @@ syn = { version = "2" }
 quote = { version = "1" }
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
 risc_v_simulator = { workspace = true, features = ["delegation"] }
+
+[lib]
+name = "reduced_risc_v_log_23_machine_verifier"

@@ -1,5 +1,6 @@
 [package]
 name = "zksmith"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -13,7 +14,7 @@ categories.workspace = true
 serde = { workspace = true }
 serde_json = "1.0"
 clap = { workspace = true }
-execution_utils = { path = "../../execution_utils"}
+execution_utils = { version = "0.1.0", package = "zksync-airbender-execution_utils", path = "../../execution_utils"}
 reqwest = { version = "0.12.12", features = ["blocking", "json"] }
 sha3 = { package = "sha3_ce", version = "=0.10.6" }
 cli = { path = "../cli" }

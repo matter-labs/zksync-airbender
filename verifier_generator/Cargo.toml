@@ -1,5 +1,6 @@
 [package]
-name = "verifier_generator"
+name = "zksync-airbender-verifier_generator"
+description = "The verifier_generator crate of the zksync-airbender RISC-V zero-knowledge proving system."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -20,3 +21,6 @@ serde_json = "1.0"
 
 # [lib]
 # proc-macro = true
+
+[lib]
+name = "verifier_generator"
