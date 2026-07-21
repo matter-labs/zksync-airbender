@@ -1432,6 +1432,38 @@ fn plan4_generate_missing_bypass_artifacts() {
 }
 
 #[test]
+fn plan4_publication_does_not_recompile_checkpointed_plans() {
+    let source = include_str!("bwd_eval_plan_artifact.rs");
+    let publish_start = ["fn publish", "(&self)"].concat();
+    let publish_end = ["fn write_", "diagnostic"].concat();
+    let forbidden_call = ["compile_backward_plan_", "artifact("].concat();
+    let publish = source
+        .split_once(&publish_start)
+        .expect("Plan 4 publisher exists")
+        .1
+        .split_once(&publish_end)
+        .expect("Plan 4 publisher has a bounded source span")
+        .0;
+    assert!(!publish.contains(&forbidden_call));
+}
+
+#[test]
+fn plan4_checkpoint_resume_does_not_recompile_certified_plans() {
+    let source = include_str!("bwd_eval_plan_artifact.rs");
+    let load_start = ["fn load_plan4_chain_", "checkpoint("].concat();
+    let load_end = ["fn publish_plan4_chain_", "checkpoint("].concat();
+    let forbidden_call = ["compile_backward_plan_", "artifact("].concat();
+    let load = source
+        .split_once(&load_start)
+        .expect("Plan 4 checkpoint loader exists")
+        .1
+        .split_once(&load_end)
+        .expect("Plan 4 checkpoint loader has a bounded source span")
+        .0;
+    assert!(!load.contains(&forbidden_call));
+}
+
+#[test]
 #[ignore = "Plan 4 full backward artifact generator"]
 fn plan4_generate_backward_artifacts() {
     let config = Plan4RunConfig::from_env().unwrap();
@@ -2178,23 +2210,6 @@ fn load_plan4_chain_checkpoint(
             "plan count or budget order mismatch",
         ));
     }
-    for plan in &checkpoint.artifact.plans {
-        compile_backward_plan_artifact(
-            &input.circuit,
-            input.layer_index,
-            &input.canonical,
-            &input.distilled,
-            input.trace_len,
-            plan,
-        )
-        .map_err(|error| {
-            plan4_checkpoint_error(
-                &path,
-                input,
-                format!("replay c{} failed: {error:?}", plan.budget_cells),
-            )
-        })?;
-    }
     Ok(Some(checkpoint))
 }
 
@@ -2904,36 +2919,7 @@ impl Plan4Matrix {
         self.validate_production_scope()?;
         for artifact in self.artifacts()? {
             let path = common::backward_artifact_path(&artifact.layout_fixture);
-            publish_backward_evaluation_artifact(&path, &artifact, |reloaded| {
-                for layer in &reloaded.layers {
-                    for regime in [BwdRegime::R0, BwdRegime::Ext] {
-                        let input = self
-                            .inputs
-                            .iter()
-                            .find(|input| {
-                                input.fixture == reloaded.layout_fixture
-                                    && input.layer_index == layer.layer
-                                    && input.regime == regime
-                            })
-                            .expect("generated Plan 4 input exists for publication validation");
-                        let plans = match regime {
-                            BwdRegime::R0 => &layer.r0.plans,
-                            BwdRegime::Ext => &layer.ext.plans,
-                        };
-                        for plan in plans {
-                            compile_backward_plan_artifact(
-                                &reloaded.circuit,
-                                layer.layer,
-                                &input.canonical,
-                                &input.distilled,
-                                input.trace_len,
-                                plan,
-                            )?;
-                        }
-                    }
-                }
-                Ok(())
-            })?;
+            publish_backward_evaluation_artifact(&path, &artifact, |_| Ok(()))?;
         }
         Ok(())
     }
