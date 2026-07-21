@@ -1,4 +1,8 @@
+use super::construct::relation_outputs;
 use super::*;
+use crate::address_audit::{collect_addresses_from_relation, AddressClass};
+use crate::upstream::{GKRAddress, GKRCircuitArtifact};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 fn compiled_circuit_dir() -> PathBuf {
