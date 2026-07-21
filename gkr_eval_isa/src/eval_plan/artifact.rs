@@ -250,10 +250,11 @@ fn forward_action_records(
     Ok(records)
 }
 
-fn domain_certificate<T: serde::Serialize>(
-    values: &[T],
+pub(crate) fn certificate_from_serializable<T: serde::Serialize + ?Sized>(
+    count: usize,
+    value: &T,
 ) -> Result<DomainCertificate, EvaluationArtifactError> {
-    let bytes = serde_json::to_vec(values)
+    let bytes = serde_json::to_vec(value)
         .map_err(|error| EvaluationArtifactError::DomainEncoding(error.to_string()))?;
     let mut digest = [
         0xcbf2_9ce4_8422_2325u64,
@@ -273,10 +274,13 @@ fn domain_certificate<T: serde::Serialize>(
             digest[lane] = digest[lane].wrapping_mul(primes[lane]);
         }
     }
-    Ok(DomainCertificate {
-        count: values.len(),
-        digest,
-    })
+    Ok(DomainCertificate { count, digest })
+}
+
+pub(crate) fn domain_certificate<T: serde::Serialize>(
+    values: &[T],
+) -> Result<DomainCertificate, EvaluationArtifactError> {
+    certificate_from_serializable(values.len(), values)
 }
 
 #[derive(Debug)]

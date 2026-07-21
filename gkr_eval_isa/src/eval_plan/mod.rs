@@ -6,6 +6,7 @@
 
 mod artifact;
 mod backward;
+mod backward_artifact;
 pub mod backward_search;
 mod concrete;
 mod fitness;
@@ -41,6 +42,12 @@ pub use backward::{
     BackwardEvaluationError, BackwardSymbolicEvaluation, CompiledBackwardEvaluation,
     compile_backward_fragments_replayed, compile_backward_fragments_uncached,
     elaborate_backward_fragments_uncached,
+};
+pub use backward_artifact::{
+    BackwardArtifactCoordinate, BackwardArtifactError, BackwardEvaluationCircuitArtifact,
+    BackwardLayerArtifact, BackwardPagingCertificateArtifact, BackwardPlanArtifact,
+    BackwardProblemCertificate, BackwardRegimeArtifact, BackwardScoreArtifact, CanonicalU128,
+    SourceCostArtifact, backward_problem_certificate, load_backward_evaluation_artifact,
 };
 pub use concrete::{
     ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, ConcreteTerminal,
