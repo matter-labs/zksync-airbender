@@ -1,6 +1,13 @@
 use super::*;
+use gpu_circuit_prover::UnsupportedGpuSecurityLevel;
 
 impl ExecutionProver {
+    // `new()` performs heavy, fallible-looking side effects (CUDA device
+    // enumeration, GPU manager + thread pool startup, pinned host allocation
+    // pool init below) before unwrapping the always-supported default
+    // configuration; a silent `impl Default` would make those costs invisible
+    // at the call site, so this stays an explicit constructor instead.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self::with_configuration(ExecutionProverConfiguration::default())
             .expect("default ExecutionProverConfiguration must use a supported GPU security level")

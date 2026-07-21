@@ -200,8 +200,10 @@ fn cpu_all_security_levels_supported_in_configuration() {
         SecurityLevel::ALL,
     );
     for &level in SecurityLevel::ALL {
-        let mut configuration = ExecutionProverConfiguration::default();
-        configuration.security_level = level;
+        let configuration = ExecutionProverConfiguration {
+            security_level: level,
+            ..Default::default()
+        };
         assert!(
             configuration.validate().is_ok(),
             "{level:?} must pass configuration validation"

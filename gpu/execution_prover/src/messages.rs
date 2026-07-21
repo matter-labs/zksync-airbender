@@ -34,6 +34,11 @@ pub(crate) struct SimulationResult {
     pub final_timestamp: TimestampScalar,
 }
 
+// Short-lived channel message: one value is sent and dropped per worker
+// event, so boxing `GpuWorkResult` to shrink the enum would trade a
+// heap-alloc/dealloc on every send for a smaller stack footprint that never
+// accumulates. Not worth it on this hot path.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum WorkerResult<A: GoodAllocator> {
     SnapshotProduced,
     InitsAndTeardownsData(InitsAndTeardownsData),
@@ -114,6 +119,10 @@ impl<A: GoodAllocator> GpuWorkRequest<A> {
     }
 }
 
+// Same rationale as `WorkerResult` above: this is a short-lived channel
+// message, not a long-lived collection, so boxing `ProofResult` to shrink the
+// enum would add a heap alloc per GPU-work result for no steady-state benefit.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum GpuWorkResult<A: GoodAllocator> {
     MemoryCommitment(MemoryCommitmentResult<A>),
     Proof(ProofResult<A>),

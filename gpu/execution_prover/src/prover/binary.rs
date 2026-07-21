@@ -84,10 +84,4 @@ impl ExecutionProver {
         assert!(self.binary_holders.insert(key, holder).is_none());
         BinaryHandle(key)
     }
-
-    pub fn remove_binary(&mut self, handle: BinaryHandle) {
-        let key = handle.0;
-        info!("PROVER removing binary with key {key:?}");
-        assert!(self.binary_holders.remove(&key).is_some());
-    }
 }

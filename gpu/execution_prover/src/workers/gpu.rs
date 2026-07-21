@@ -92,6 +92,11 @@ struct PhaseOne<'a> {
 
 /// Per-phase-1 bundle, scheduled on h2d_stream against a single shared
 /// `Transfer`. Variant matches the eventual phase-2 job type.
+// Short-lived per-request state moved through the worker's hot dispatch
+// loop (one instance per in-flight request, swapped every iteration), not a
+// long-lived collection; boxing `Proof` would add a heap alloc per request
+// for no steady-state benefit.
+#[allow(clippy::large_enum_variant)]
 enum PhaseOneInputs<'a> {
     Proof(gpu_circuit_prover::prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
     MemoryCommitment(
@@ -105,6 +110,11 @@ struct PhaseTwo<'a> {
     job: JobType<'a>,
 }
 
+// Same rationale as `PhaseOneInputs` above: one instance per in-flight
+// request, swapped through the worker's hot dispatch loop, so boxing `Proof`
+// would add a per-request heap alloc rather than shrink a steady-state
+// collection.
+#[allow(clippy::large_enum_variant)]
 enum JobType<'a> {
     MemoryCommitment(MemoryCommitmentJob<'a, A>),
     Proof(GpuGKRProofJob<'a, A>),
@@ -300,7 +310,6 @@ fn schedule_phase_one<'a>(
         let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
         let external_challenges_value = state
             .external_challenges
-            .clone()
             .expect("Proof requires external_challenges");
         let compiled_circuit = state.precomputations.compiled_circuit.as_ref();
         // ACTUAL top bits for this circuit: canonical (== the real top bits in
