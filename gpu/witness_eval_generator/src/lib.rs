@@ -87,15 +87,13 @@ impl Generator {
                     condition_subexpr_idx,
                     ..
                 } = expr
-                {
-                    if let ColumnAddress::WitnessSubtree(idx) =
+                    && let ColumnAddress::WitnessSubtree(idx) =
                         self.get_column_address(into_variable)
-                    {
-                        if condition_subexpr_idx.is_some() {
-                            conditional.insert(idx);
-                        } else {
-                            unconditional.insert(idx);
-                        }
+                {
+                    if condition_subexpr_idx.is_some() {
+                        conditional.insert(idx);
+                    } else {
+                        unconditional.insert(idx);
                     }
                 }
             }
@@ -146,7 +144,7 @@ impl Generator {
             FixedWidthIntegerNodeExpression::U8SubExpression(idx)
             | FixedWidthIntegerNodeExpression::U16SubExpression(idx)
             | FixedWidthIntegerNodeExpression::U32SubExpression(idx) => *idx,
-            a @ _ => {
+            a => {
                 panic!("Trying to make variable from expression {:?}", a);
             }
         }
@@ -164,6 +162,70 @@ impl Generator {
 
     fn push(&mut self, string: &str) {
         self.output.push_str(string);
+    }
+
+    /// Emit a generator-macro call `MACRO([type_tag, ]new_ident, operands...)\n`,
+    /// allocating and returning the fresh output variable `new_ident`. This is
+    /// the shape shared by nearly every field/integer/boolean node: a handful
+    /// of macros (e.g. `AND`, `NEGATE`) take no width tag, hence `Option`.
+    fn emit(&mut self, macro_name: &str, type_tag: Option<&str>, operands: &[usize]) -> usize {
+        let new_ident = self.create_var();
+        match type_tag {
+            Some(tag) => self.push(&format!("{macro_name}({tag}, {new_ident}")),
+            None => self.push(&format!("{macro_name}({new_ident}")),
+        }
+        for operand in operands {
+            self.push(&format!(", {operand}"));
+        }
+        self.push(")\n");
+        new_ident
+    }
+
+    /// Emit the `GET_{WITNESS,MEMORY,SCRATCH}_PLACE` read dispatch shared by
+    /// every `*Place` node kind (field/boolean/u8/u16), keyed by `type_tag`.
+    /// `SetupSubtree` reads are intentionally unimplemented (out of scope).
+    fn emit_place_read(&mut self, type_tag: &str, variable: &Variable) -> usize {
+        let new_ident = self.create_var();
+        let address = self.get_column_address(variable);
+        match address {
+            ColumnAddress::WitnessSubtree(idx) => {
+                self.push(&format!(
+                    "GET_WITNESS_PLACE({type_tag}, {new_ident}, {idx})\n"
+                ));
+            }
+            ColumnAddress::MemorySubtree(idx) => {
+                self.push(&format!(
+                    "GET_MEMORY_PLACE({type_tag}, {new_ident}, {idx})\n"
+                ));
+            }
+            ColumnAddress::SetupSubtree(_idx) => {
+                todo!();
+            }
+            ColumnAddress::OptimizedOut(idx) => {
+                assert!(self.scratch_size > idx);
+                self.push(&format!(
+                    "GET_SCRATCH_PLACE({type_tag}, {new_ident}, {idx})\n"
+                ));
+            }
+        }
+        new_ident
+    }
+
+    /// Emit `CONSTANT(type_tag, new_ident, literal)\n`.
+    fn emit_constant(&mut self, type_tag: &str, literal: impl std::fmt::Display) -> usize {
+        let new_ident = self.create_var();
+        self.push(&format!("CONSTANT({type_tag}, {new_ident}, {literal})\n"));
+        new_ident
+    }
+
+    /// Emit `GET_ORACLE_VALUE(type_tag, new_ident, placeholder_ident)\n`.
+    fn emit_oracle_value(&mut self, type_tag: &str, placeholder: &Placeholder) -> usize {
+        let new_ident = self.create_var();
+        let placeholder_ident = Self::get_placeholder_ident(placeholder);
+        self.push(&format!(
+            "GET_ORACLE_VALUE({type_tag}, {new_ident}, {placeholder_ident})\n"
+        ));
+        new_ident
     }
 
     fn add_expression(&mut self, expr: &RawExpression<F>) {
@@ -201,7 +263,7 @@ impl Generator {
                         "LOOKUP_ENFORCE({num_inputs}, {table_id}, {lookup_mapping_idx}"
                     ));
                 }
-                for input in input_subexpr_idxes.iter().copied() {
+                for input in input_subexpr_idxes {
                     self.push(&format!(", VAR({input})"));
                 }
                 self.push(")\n");
@@ -220,7 +282,7 @@ impl Generator {
                 self.push(&format!(
                     "MAYBE_LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {mask_id}"
                 ));
-                for input in input_subexpr_idxes.iter().copied() {
+                for input in input_subexpr_idxes {
                     self.push(&format!(", VAR({input})"));
                 }
                 self.push(")\n");
@@ -328,7 +390,7 @@ impl Generator {
         expressions: &[RawExpression<F>],
     ) {
         // quickly check that if all outputs are into memory, then we can skip such cases
-        if self.write_into_memory == false {
+        if !self.write_into_memory {
             let mut can_skip = true;
             for expr in expressions.iter() {
                 if let RawExpression::WriteVariable { into_variable, .. } = expr {
@@ -458,7 +520,7 @@ mod tests {
         let code = generate_from_files(&layout_path, &ssa_path, false).unwrap();
         File::create(&generated_cu_path)
             .unwrap()
-            .write_all(&code.as_bytes())
+            .write_all(code.as_bytes())
             .unwrap();
     }
 

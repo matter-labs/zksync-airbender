@@ -1,4 +1,8 @@
+use super::construct::relation_outputs;
 use super::*;
+use crate::address_audit::{collect_addresses_from_relation, AddressClass};
+use crate::upstream::{GKRAddress, GKRCircuitArtifact};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 fn compiled_circuit_dir() -> PathBuf {
@@ -74,9 +78,11 @@ fn tower_layout_covers_dim_reducing_outputs() {
             let initial_layer_idx = artifact.layers.len();
             let total_rounds = initial_trace_log_2 - final_trace_log_2;
             let mut layer_inputs = artifact.global_output_map.clone();
-            let mut current_layer_idx = initial_layer_idx;
             for round in 0..total_rounds {
-                let output_layer = current_layer_idx + 1;
+                // `output_layer` advances by exactly one storage layer per
+                // round past `initial_layer_idx`; no separate running counter
+                // is needed (mirrors `append_tower_layers`).
+                let output_layer = initial_layer_idx + round + 1;
                 let expected_log2_stride = (initial_trace_log_2 - 1 - round) as u32;
                 let layer_layout = layout.layers.get(output_layer).unwrap_or_else(|| {
                     panic!("layout missing tower layer {output_layer} for {basename}/{cached}")
@@ -121,7 +127,6 @@ fn tower_layout_covers_dim_reducing_outputs() {
                     next_inputs.insert(*arg_type, vec![out_a, out_b]);
                 }
                 layer_inputs = next_inputs;
-                current_layer_idx += 1;
             }
         }
     }
@@ -162,7 +167,7 @@ fn layout_matches_audit_for_all_circuits() {
             // resolve to it via `index`.
             for (layer_idx, layer_layout) in layout.layers.iter().enumerate() {
                 let mut expected: BTreeMap<StorageSlot, u32> = BTreeMap::new();
-                for (_, (class, field, poly_idx)) in layer_layout.index.iter() {
+                for (class, field, poly_idx) in layer_layout.index.values() {
                     let entry = expected
                         .entry(StorageSlot {
                             class: *class,
