@@ -212,6 +212,27 @@ impl ExecutionProver {
     }
 }
 
+/// Flattens the per-sequence-then-per-coset delegation memory caps into a
+/// flat per-sequence cap list, keyed by delegation type. Shared by
+/// `fs_transform_for_permutation_argument` and `fs_transform_unified`, which
+/// both need this exact reshape before handing the caps to `crate::upstream`.
+fn flatten_delegation_memory_caps(
+    delegation_circuits_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
+) -> Vec<(u32, Vec<MerkleTreeCapVarLength>)> {
+    delegation_circuits_memory_caps
+        .iter()
+        .map(|(delegation_type, per_sequence_caps)| {
+            (
+                *delegation_type,
+                per_sequence_caps
+                    .iter()
+                    .flat_map(|caps| caps.iter().cloned())
+                    .collect_vec(),
+            )
+        })
+        .collect_vec()
+}
+
 fn fs_transform_for_permutation_argument(
     final_register_values: &[FinalRegisterValue; 32],
     final_pc: u32,
@@ -236,18 +257,8 @@ fn fs_transform_for_permutation_argument(
         .iter()
         .flat_map(|caps| caps.iter().cloned())
         .collect_vec();
-    let delegation_circuits_memory_caps = delegation_circuits_memory_caps
-        .iter()
-        .map(|(delegation_type, per_sequence_caps)| {
-            (
-                *delegation_type,
-                per_sequence_caps
-                    .iter()
-                    .flat_map(|caps| caps.iter().cloned())
-                    .collect_vec(),
-            )
-        })
-        .collect_vec();
+    let delegation_circuits_memory_caps =
+        flatten_delegation_memory_caps(delegation_circuits_memory_caps);
     crate::upstream::fs_transform_for_permutation_argument::<true>(
         final_register_values,
         final_pc,
@@ -296,18 +307,8 @@ fn fs_transform_unified(
             (top_bits, cap)
         })
         .collect_vec();
-    let delegation_circuits_memory_caps = delegation_circuits_memory_caps
-        .iter()
-        .map(|(delegation_type, per_sequence_caps)| {
-            (
-                *delegation_type,
-                per_sequence_caps
-                    .iter()
-                    .flat_map(|caps| caps.iter().cloned())
-                    .collect_vec(),
-            )
-        })
-        .collect_vec();
+    let delegation_circuits_memory_caps =
+        flatten_delegation_memory_caps(delegation_circuits_memory_caps);
     crate::upstream::fs_transform_unified_for_permutation_argument::<true>(
         final_register_values,
         final_pc,
