@@ -239,11 +239,10 @@ pub enum BackwardArtifactError {
         layer: usize,
     },
     MissingLayer {
-        layer: usize,
+        coordinate: BackwardArtifactCoordinate,
     },
     InvalidBudgetCoverage {
-        layer: usize,
-        regime: BwdRegime,
+        coordinate: BackwardArtifactCoordinate,
     },
     BudgetOutOfRange {
         circuit: String,
@@ -362,12 +361,34 @@ fn validate_regime(
         }
     }
     if artifact.plans.len() != BUDGET_PLAN_COUNT {
-        return Err(BackwardArtifactError::InvalidBudgetCoverage { layer, regime });
+        let budget_cells = (MIN_BUDGET_CELLS..=MAX_BUDGET_CELLS)
+            .find(|&budget| {
+                artifact
+                    .plans
+                    .get(budget - MIN_BUDGET_CELLS)
+                    .is_none_or(|plan| plan.budget_cells != budget)
+            })
+            .unwrap_or(MAX_BUDGET_CELLS + 1);
+        return Err(BackwardArtifactError::InvalidBudgetCoverage {
+            coordinate: BackwardArtifactCoordinate {
+                circuit: circuit.to_owned(),
+                layer,
+                regime,
+                budget_cells,
+            },
+        });
     }
     for (offset, plan) in artifact.plans.iter().enumerate() {
         let expected = MIN_BUDGET_CELLS + offset;
         if plan.budget_cells != expected {
-            return Err(BackwardArtifactError::InvalidBudgetCoverage { layer, regime });
+            return Err(BackwardArtifactError::InvalidBudgetCoverage {
+                coordinate: BackwardArtifactCoordinate {
+                    circuit: circuit.to_owned(),
+                    layer,
+                    regime,
+                    budget_cells: expected,
+                },
+            });
         }
         if let Some(pair) = plan
             .retained_demands
@@ -419,7 +440,14 @@ pub fn select_backward_plan(
         .binary_search_by_key(&layer, |entry| entry.layer)
         .ok()
         .map(|index| &artifact.layers[index])
-        .ok_or(BackwardArtifactError::MissingLayer { layer })?;
+        .ok_or_else(|| BackwardArtifactError::MissingLayer {
+            coordinate: BackwardArtifactCoordinate {
+                circuit: artifact.circuit.clone(),
+                layer,
+                regime,
+                budget_cells,
+            },
+        })?;
     let regime_artifact = match regime {
         BwdRegime::R0 => &layer_artifact.r0,
         BwdRegime::Ext => &layer_artifact.ext,
@@ -427,9 +455,23 @@ pub fn select_backward_plan(
     let plan = regime_artifact
         .plans
         .get(budget_cells - MIN_BUDGET_CELLS)
-        .ok_or(BackwardArtifactError::InvalidBudgetCoverage { layer, regime })?;
+        .ok_or_else(|| BackwardArtifactError::InvalidBudgetCoverage {
+            coordinate: BackwardArtifactCoordinate {
+                circuit: artifact.circuit.clone(),
+                layer,
+                regime,
+                budget_cells,
+            },
+        })?;
     if plan.budget_cells != budget_cells {
-        return Err(BackwardArtifactError::InvalidBudgetCoverage { layer, regime });
+        return Err(BackwardArtifactError::InvalidBudgetCoverage {
+            coordinate: BackwardArtifactCoordinate {
+                circuit: artifact.circuit.clone(),
+                layer,
+                regime,
+                budget_cells,
+            },
+        });
     }
     Ok(plan)
 }
