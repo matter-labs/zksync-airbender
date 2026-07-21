@@ -48,7 +48,8 @@ build_variant() {
 }
 
 # Unrolled-machine recursive verifiers: blake round function or blake g function.
-for mode in blake2_with_compression blake2_g_function; do
+# for mode in blake2_with_compression blake2_g_function; do
+for mode in blake2_with_compression; do
     build_variant fsv_unrolled_base_layer_sec_80 "${mode}"
     build_variant fsv_unrolled_recursion_layer_sec_80 "${mode}"
 done
