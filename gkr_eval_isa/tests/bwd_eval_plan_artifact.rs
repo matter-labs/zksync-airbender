@@ -1,6 +1,7 @@
 mod common;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 use std::io::Write;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
@@ -9,20 +10,20 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ReadPlace, VirtualSetupKind};
-use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
+use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
 use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
 use gkr_eval_isa::eval_plan::backward_search::{
-    ProductionPagingSolver, ProductionSearchIdentity, search_production_backward,
-    solve_production_paging,
+    compulsory_read_floor, search_production_backward, solve_production_paging,
+    ProductionPagingSolver, ProductionSearchIdentity,
 };
 use gkr_eval_isa::eval_plan::{
-    BackwardArtifactCoordinate, BackwardArtifactError, BackwardEvaluationCircuitArtifact,
-    BackwardLayerArtifact, BackwardPlanArtifact, BackwardRegimeArtifact,
-    BackwardRegimeChainProgress, BackwardScoreArtifact, CanonicalU128, DomainCertificate,
-    SourceCostArtifact, capture_backward_plan_artifact, compile_backward_plan_artifact,
+    capture_backward_plan_artifact, compile_backward_plan_artifact,
     load_backward_evaluation_artifact, produce_backward_regime_chain_with_progress,
-    publish_backward_evaluation_artifact, select_backward_plan,
+    publish_backward_evaluation_artifact, select_backward_plan, BackwardArtifactCoordinate,
+    BackwardArtifactError, BackwardEvaluationCircuitArtifact, BackwardLayerArtifact,
+    BackwardPlanArtifact, BackwardRegimeArtifact, BackwardRegimeChainProgress,
+    BackwardScoreArtifact, CanonicalU128, DomainCertificate, SourceCostArtifact,
 };
 use gkr_eval_isa::fwd::encode::encode;
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
@@ -988,12 +989,10 @@ fn generation_eta_uses_observed_parallel_throughput_without_width_division() {
 fn generation_chain_queue_is_canonical_and_complete() {
     let inputs = build_plan4_chain_inputs(common::FIXTURES);
     assert_eq!(inputs.len(), 114);
-    assert!(
-        inputs
-            .iter()
-            .enumerate()
-            .all(|(ordinal, input)| input.ordinal == ordinal)
-    );
+    assert!(inputs
+        .iter()
+        .enumerate()
+        .all(|(ordinal, input)| input.ordinal == ordinal));
     for pair in inputs.chunks_exact(2) {
         assert_eq!(pair[0].fixture, pair[1].fixture);
         assert_eq!(pair[0].layer_index, pair[1].layer_index);
@@ -1037,11 +1036,69 @@ fn generation_progress_snapshot_releases_state_before_formatting() {
     let mut rendered = Vec::new();
     Plan4Progress::write_snapshot(&snapshot, &mut rendered).unwrap();
     drop(state);
-    assert!(
-        String::from_utf8(rendered)
-            .unwrap()
-            .contains("PLAN4 progress")
+    assert!(String::from_utf8(rendered)
+        .unwrap()
+        .contains("PLAN4 progress"));
+}
+
+#[test]
+fn chain_census_reports_dram_floor_percentages_and_attainment() {
+    let above_floor = Plan4CensusScore {
+        dram_bytes: 150,
+        source_ops: 5,
+        instructions: 4,
+        encoded_lanes: 3,
+        arithmetic_ops: 2,
+    };
+    let at_floor = Plan4CensusScore {
+        dram_bytes: 100,
+        ..above_floor.clone()
+    };
+    let scores = (0..15)
+        .map(|index| {
+            if index == 0 {
+                above_floor.clone()
+            } else {
+                at_floor.clone()
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut output = String::new();
+    render_plan4_chain_census(&mut output, "fixture", 0, BwdRegime::R0, 100, 5, &scores);
+    assert!(output.contains("DRAM above compulsory floor: c2=50.00% c3=0.00%"));
+
+    let mut totals = Plan4CorpusTotals {
+        chains: 1,
+        ..Default::default()
+    };
+    for (index, score) in scores.iter().enumerate() {
+        totals.record(index + 2, 100, score);
+    }
+    totals.render_aggregates(&mut output);
+    assert!(output.contains("floor attainment: c2=0/1 (0.00%) c3=1/1 (100.00%)"));
+
+    let zero_scores = vec![
+        Plan4CensusScore {
+            dram_bytes: 0,
+            ..above_floor
+        };
+        15
+    ];
+    render_plan4_chain_census(
+        &mut output,
+        "zero-floor-fixture",
+        0,
+        BwdRegime::R0,
+        0,
+        0,
+        &zero_scores,
     );
+    assert!(output.contains("DRAM above compulsory floor: c2=n/a (zero floor)"));
+}
+
+#[test]
+fn artifact_consumer_is_reconstruction_only() {
+    assert_plan4_artifact_consumer_is_reconstruction_only();
 }
 
 #[test]
@@ -1063,6 +1120,499 @@ fn plan4_generate_backward_artifacts() {
         matrix.publish().unwrap();
     }
     println!("PLAN4-BWD-DIGEST {digest:016x}");
+}
+
+#[test]
+#[ignore = "Plan 4 full backward artifact replay and budget-floor census"]
+fn plan4_backward_artifact_corpus_gate() {
+    assert_plan4_artifact_consumer_is_reconstruction_only();
+
+    let expected_paths = common::FIXTURES
+        .iter()
+        .map(|fixture| common::backward_artifact_path(fixture))
+        .collect::<Vec<_>>();
+    assert_eq!(expected_paths.len(), 12, "Plan 4 fixture count drifted");
+    assert_eq!(
+        expected_paths.iter().collect::<BTreeSet<_>>().len(),
+        12,
+        "Plan 4 artifact paths must be unique",
+    );
+    let expected_names = expected_paths
+        .iter()
+        .map(|path| path.file_name().unwrap().to_owned())
+        .collect::<BTreeSet<_>>();
+    let actual_names = std::fs::read_dir(common::compiled_circuit_dir())
+        .unwrap()
+        .filter_map(|entry| {
+            let name = entry.unwrap().file_name();
+            name.to_string_lossy()
+                .ends_with("_bwd_eval_plan_c2-c16_gkr.json")
+                .then_some(name)
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        actual_names, expected_names,
+        "the complete exact 12-file Plan 4 artifact corpus must be installed",
+    );
+
+    let started = Instant::now();
+    let mut totals = Plan4CorpusTotals::default();
+    let mut digest = 0xcbf2_9ce4_8422_2325u64;
+    let mut chain_ordinal = 0usize;
+    let mut census = String::new();
+    writeln!(
+        census,
+        "fixture | layer | regime | floor bytes | first floor budget | c2 ... c16 DRAM"
+    )
+    .unwrap();
+
+    for (&fixture, path) in common::FIXTURES.iter().zip(&expected_paths) {
+        let artifact = load_backward_evaluation_artifact(path).unwrap_or_else(|error| {
+            panic!("load exact Plan 4 artifact {}: {error:?}", path.display())
+        });
+        assert_eq!(artifact.layout_fixture, fixture);
+        assert_eq!(artifact.circuit, common::schedule_stem(fixture));
+        totals.files += 1;
+        totals.layers += artifact.layers.len();
+
+        let inputs = build_plan4_chain_inputs(&[fixture]);
+        assert_eq!(inputs.len(), artifact.layers.len() * 2);
+        for input in inputs {
+            let layer = artifact
+                .layers
+                .binary_search_by_key(&input.layer_index, |layer| layer.layer)
+                .ok()
+                .map(|index| &artifact.layers[index])
+                .expect("every canonical backward-bearing layer must be present");
+            let regime_artifact = match input.regime {
+                BwdRegime::R0 => &layer.r0,
+                BwdRegime::Ext => &layer.ext,
+            };
+            assert_eq!(regime_artifact.plans.len(), 15);
+            totals.chains += 1;
+
+            let digest_regime = match input.regime {
+                BwdRegime::R0 => 0u8,
+                BwdRegime::Ext => 1u8,
+            };
+            let digest_bytes = serde_json::to_vec(&(
+                chain_ordinal,
+                fixture,
+                &artifact.circuit,
+                input.layer_index,
+                digest_regime,
+                regime_artifact,
+            ))
+            .unwrap();
+            for byte in digest_bytes {
+                digest ^= u64::from(byte);
+                digest = digest.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            chain_ordinal += 1;
+
+            let (_, floor_problem) = build_backward_search_problem(
+                &input.canonical,
+                &input.distilled,
+                input.trace_len,
+                2,
+            )
+            .unwrap();
+            let floor = compulsory_read_floor(
+                floor_problem
+                    .as_ref()
+                    .expect("production artifact chains must have feasible problems"),
+            )
+            .unwrap();
+            let floor_bytes = floor.dram_bytes().unwrap();
+            let floor_ops = floor.ops.primitive_equivalents().unwrap();
+            let mut scores = Vec::with_capacity(15);
+
+            for budget_cells in 2..=16 {
+                let plan =
+                    select_backward_plan(&artifact, input.layer_index, input.regime, budget_cells)
+                        .unwrap();
+                assert_eq!(plan.budget_cells, budget_cells);
+                assert!(!plan.expected_score.infeasible);
+                assert_eq!(plan.expected_paging.diverged, None);
+                assert_eq!(plan.expected_paging.refused_retains, 0);
+
+                let replayed = compile_backward_plan_artifact(
+                    &artifact.circuit,
+                    input.layer_index,
+                    &input.canonical,
+                    &input.distilled,
+                    input.trace_len,
+                    plan,
+                )
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "certify {} L{} {:?} c{}: {error:?}",
+                        fixture, input.layer_index, input.regime, budget_cells,
+                    )
+                });
+                assert!(!replayed.score.infeasible);
+                assert_eq!(replayed.certificate.diverged, None);
+                assert_eq!(replayed.certificate.refused_retains, 0);
+                common::assert_bwd_value_parity(
+                    &replayed.compiled.compiled,
+                    &input.distilled,
+                    &input.canonical,
+                );
+
+                let score = Plan4CensusScore::from_artifact(plan);
+                assert!(score.dram_bytes >= floor_bytes);
+                assert!(score.source_ops >= floor_ops);
+                totals.record(budget_cells, floor_bytes, &score);
+                scores.push(score);
+                totals.entries += 1;
+                totals.certified += 1;
+                totals.semantic_parity += 1;
+            }
+            render_plan4_chain_census(
+                &mut census,
+                fixture,
+                input.layer_index,
+                input.regime,
+                floor_bytes,
+                floor_ops,
+                &scores,
+            );
+        }
+    }
+
+    assert_eq!(chain_ordinal, 114);
+    assert_eq!(totals.files, 12);
+    assert_eq!(totals.layers, 57);
+    assert_eq!(totals.chains, 114);
+    assert_eq!(totals.entries, 1_710);
+    assert_eq!(totals.certified, 1_710);
+    assert_eq!(totals.semantic_parity, 1_710);
+    totals.render_aggregates(&mut census);
+    print!("{census}");
+    println!(
+        "PLAN4-CORPUS files={} layers={} chains={} entries={} certified={} parity={} resource_limited=0 fallback=0 replay_diverged=0 replay_refused=0 certificate_failed=0 elapsed={:?}",
+        totals.files,
+        totals.layers,
+        totals.chains,
+        totals.entries,
+        totals.certified,
+        totals.semantic_parity,
+        started.elapsed(),
+    );
+    println!("PLAN4-BWD-DIGEST {digest:016x}");
+}
+
+#[derive(Clone, Debug)]
+struct Plan4CensusScore {
+    dram_bytes: u128,
+    source_ops: u128,
+    instructions: usize,
+    encoded_lanes: usize,
+    arithmetic_ops: usize,
+}
+
+impl Plan4CensusScore {
+    fn from_artifact(plan: &BackwardPlanArtifact) -> Self {
+        Self {
+            dram_bytes: plan.expected_score.whole_pass_dram_bytes.value(),
+            source_ops: plan.expected_score.primitive_source_ops.value(),
+            instructions: plan.expected_score.instructions,
+            encoded_lanes: plan.expected_score.encoded_lanes,
+            arithmetic_ops: plan.expected_score.arithmetic_ops,
+        }
+    }
+
+    fn secondary_key(&self) -> (u128, usize, usize, usize) {
+        (
+            self.source_ops,
+            self.instructions,
+            self.encoded_lanes,
+            self.arithmetic_ops,
+        )
+    }
+}
+
+#[derive(Default)]
+struct Plan4CorpusTotals {
+    files: usize,
+    layers: usize,
+    chains: usize,
+    entries: usize,
+    certified: usize,
+    semantic_parity: usize,
+    compulsory_dram_floor_bytes: u128,
+    dram_bytes: [u128; 15],
+    floor_attained: [usize; 15],
+    source_ops: [u128; 15],
+    instructions: [u128; 15],
+    encoded_lanes: [u128; 15],
+    arithmetic_ops: [u128; 15],
+}
+
+impl Plan4CorpusTotals {
+    fn record(&mut self, budget_cells: usize, floor_bytes: u128, score: &Plan4CensusScore) {
+        let index = budget_cells - 2;
+        if budget_cells == 2 {
+            self.compulsory_dram_floor_bytes += floor_bytes;
+        }
+        self.dram_bytes[index] += score.dram_bytes;
+        self.floor_attained[index] += usize::from(score.dram_bytes == floor_bytes);
+        self.source_ops[index] += score.source_ops;
+        self.instructions[index] += score.instructions as u128;
+        self.encoded_lanes[index] += score.encoded_lanes as u128;
+        self.arithmetic_ops[index] += score.arithmetic_ops as u128;
+    }
+
+    fn render_aggregates(&self, output: &mut String) {
+        writeln!(output, "PLAN4-CENSUS-AGGREGATE chains={}", self.chains).unwrap();
+        writeln!(
+            output,
+            "row/round-weighted DRAM totals: {}",
+            render_u128_budget_values(&self.dram_bytes),
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "aggregate DRAM above compulsory floor: {}",
+            self.dram_bytes
+                .iter()
+                .enumerate()
+                .map(|(index, dram_bytes)| format!(
+                    "c{}={}",
+                    index + 2,
+                    format_percentage_above_floor(*dram_bytes, self.compulsory_dram_floor_bytes),
+                ))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "floor attainment: {}",
+            self.floor_attained
+                .iter()
+                .enumerate()
+                .map(|(index, attained)| format!(
+                    "c{}={}/{} ({})",
+                    index + 2,
+                    attained,
+                    self.chains,
+                    format_percentage(*attained as u128, self.chains as u128),
+                ))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "row/round-weighted source-op totals: {}",
+            render_u128_budget_values(&self.source_ops),
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "equal-chain instruction totals: {}",
+            render_u128_budget_values(&self.instructions),
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "equal-chain encoded-lane totals: {}",
+            render_u128_budget_values(&self.encoded_lanes),
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "equal-chain arithmetic-op totals: {}",
+            render_u128_budget_values(&self.arithmetic_ops),
+        )
+        .unwrap();
+    }
+}
+
+fn render_plan4_chain_census(
+    output: &mut String,
+    fixture: &str,
+    layer: usize,
+    regime: BwdRegime,
+    floor_bytes: u128,
+    floor_ops: u128,
+    scores: &[Plan4CensusScore],
+) {
+    assert_eq!(scores.len(), 15);
+    let first_floor = scores
+        .iter()
+        .position(|score| score.dram_bytes == floor_bytes)
+        .map_or_else(|| ">16".to_owned(), |index| (index + 2).to_string());
+    let values = |select: fn(&Plan4CensusScore) -> u128| {
+        scores
+            .iter()
+            .enumerate()
+            .map(|(index, score)| format!("c{}={}", index + 2, select(score)))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    writeln!(
+        output,
+        "{fixture} | L{layer} | {regime:?} | {floor_bytes} | {first_floor} | {}",
+        values(|score| score.dram_bytes),
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "  source ops floor={floor_ops}: {}",
+        values(|score| score.source_ops),
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "  instructions: {}",
+        values(|score| score.instructions as u128),
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "  encoded lanes: {}",
+        values(|score| score.encoded_lanes as u128),
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "  arithmetic ops: {}",
+        values(|score| score.arithmetic_ops as u128),
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "  DRAM above compulsory floor: {}",
+        scores
+            .iter()
+            .enumerate()
+            .map(|(index, score)| format!(
+                "c{}={}",
+                index + 2,
+                format_percentage_above_floor(score.dram_bytes, floor_bytes),
+            ))
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+    .unwrap();
+
+    let mut improvements = Vec::new();
+    if let Some(floor_index) = scores
+        .iter()
+        .position(|score| score.dram_bytes == floor_bytes)
+    {
+        let mut best = scores[floor_index].secondary_key();
+        for (index, score) in scores.iter().enumerate().skip(floor_index + 1) {
+            if score.dram_bytes == floor_bytes && score.secondary_key() < best {
+                best = score.secondary_key();
+                improvements.push(format!("c{}={best:?}", index + 2));
+            }
+        }
+    }
+    writeln!(
+        output,
+        "  post-floor secondary improvements: {}",
+        if improvements.is_empty() {
+            "none".to_owned()
+        } else {
+            improvements.join(", ")
+        },
+    )
+    .unwrap();
+}
+
+fn render_u128_budget_values(values: &[u128; 15]) -> String {
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| format!("c{}={value}", index + 2))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn format_percentage_above_floor(value: u128, floor: u128) -> String {
+    if floor == 0 {
+        "n/a (zero floor)".to_owned()
+    } else {
+        format_percentage(
+            value
+                .checked_sub(floor)
+                .expect("DRAM must not be below floor"),
+            floor,
+        )
+    }
+}
+
+fn format_percentage(numerator: u128, denominator: u128) -> String {
+    if denominator == 0 {
+        return "n/a (zero denominator)".to_owned();
+    }
+    let basis_points = numerator
+        .checked_mul(10_000)
+        .expect("census percentage overflow")
+        / denominator;
+    format!("{}.{:02}%", basis_points / 100, basis_points % 100)
+}
+
+fn assert_plan4_artifact_consumer_is_reconstruction_only() {
+    let artifact_consumer = source_function_body(
+        include_str!("../src/eval_plan/backward_artifact.rs"),
+        "pub fn compile_backward_plan_artifact(",
+    );
+    assert!(artifact_consumer.contains("reconstruct_paging_plan"));
+    for (name, body) in [
+        ("artifact consumer", artifact_consumer),
+        (
+            "paging certification",
+            source_function_body(
+                include_str!("../src/eval_plan/backward_search/replay.rs"),
+                "pub fn compile_and_certify_paging(",
+            ),
+        ),
+        (
+            "paging reconstruction",
+            source_function_body(
+                include_str!("../src/eval_plan/backward_search/pager.rs"),
+                "pub fn reconstruct_paging_plan(",
+            ),
+        ),
+    ] {
+        for forbidden in [
+            "solve_production_paging",
+            "solve_exact_paging",
+            "run_search_driver",
+            "search_production",
+        ] {
+            assert!(
+                !body.contains(forbidden),
+                "{name} must not invoke {forbidden}",
+            );
+        }
+    }
+}
+
+fn source_function_body<'a>(source: &'a str, signature: &str) -> &'a str {
+    let function_start = source.find(signature).expect("function exists");
+    let body_start = source[function_start..]
+        .find('{')
+        .map(|offset| function_start + offset)
+        .expect("function body exists");
+    let mut depth = 0usize;
+    for (offset, byte) in source[body_start..].bytes().enumerate() {
+        match byte {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &source[body_start..=body_start + offset];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("function body is balanced")
 }
 
 struct Plan4RunConfig {
@@ -1114,12 +1664,10 @@ impl Plan4RunConfig {
             return Err("GKR_PLAN4_BUDGET_MIN exceeds GKR_PLAN4_BUDGET_MAX".into());
         }
         let fixtures = match fixture {
-            Some(fixture) => vec![
-                *common::FIXTURES
-                    .iter()
-                    .find(|candidate| **candidate == fixture)
-                    .ok_or_else(|| format!("unknown GKR_PLAN4_FIXTURE={fixture}"))?,
-            ],
+            Some(fixture) => vec![*common::FIXTURES
+                .iter()
+                .find(|candidate| **candidate == fixture)
+                .ok_or_else(|| format!("unknown GKR_PLAN4_FIXTURE={fixture}"))?],
             None => common::FIXTURES.to_vec(),
         };
         Ok(Self {
