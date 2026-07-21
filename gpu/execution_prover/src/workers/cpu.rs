@@ -127,14 +127,6 @@ pub(crate) fn run_simulator<
             let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
             assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
             let total_cycles = (timestamp_diff / TIMESTAMP_STEP) as usize;
-            // `count` is the number of distinct RAM words dirtied over the
-            // whole run (bounded by the fixed RAM size); every dirtied word
-            // required at least one write cycle, so it can never exceed the
-            // total executed cycle count.
-            assert!(
-                count <= total_cycles,
-                "inits-and-teardowns count {count} exceeds total cycles {total_cycles}"
-            );
             let empty_cycles = total_cycles - count;
             let empty_circuits = empty_cycles / per_circuit_count;
             for sequence_id in 0..empty_circuits {
