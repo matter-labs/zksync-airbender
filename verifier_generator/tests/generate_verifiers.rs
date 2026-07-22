@@ -47,7 +47,9 @@ fn generate_common<MW: FieldWrapper>() {
     let gkr_fns = gkr::generate_gkr_common::<MW>();
     let whir_fns = whir::generate_whir_common::<MW>(max_fold_steps);
 
+    let allow_header = verifier_generator::generated_lint_allow_header();
     let common = quote::quote! {
+        #allow_header
         use ::verifier_common::field_ops;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
@@ -171,7 +173,9 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
     let gkr_files = generate_gkr_verifier::<MW>(circuit, level, &dir);
     generate_whir_verifier::<MW>(circuit, level, &dir, &gkr_files);
 
+    let allow_header = verifier_generator::generated_lint_allow_header();
     let mod_rs = quote::quote! {
+        #allow_header
         pub mod constants;
         pub mod gkr;
         pub mod whir;

@@ -18,7 +18,6 @@ macro_rules! make_circuits {
             name: stringify!($name),
             layout_suffix: $layout_suffix,
             trace_len_log_2: $trace_len_log_2,
-            security_levels: [SecurityLevel::Sec80, SecurityLevel::Sec100],
             prover_configs_cache: [OnceLock::new(), OnceLock::new()],
             nds_cache: [OnceLock::new(), OnceLock::new()],
         }),*]
@@ -35,7 +34,6 @@ pub struct CircuitData {
     pub name: &'static str,
     pub layout_suffix: &'static str,
     pub trace_len_log_2: usize,
-    security_levels: [SecurityLevel; NUM_SECURITY_LEVELS],
     prover_configs_cache: [OnceLock<ProverConfig>; NUM_SECURITY_LEVELS],
     nds_cache: [OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
         NUM_SECURITY_LEVELS],

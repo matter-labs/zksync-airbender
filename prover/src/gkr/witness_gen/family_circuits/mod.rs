@@ -24,68 +24,6 @@ pub use self::witness::evaluate_gkr_witness_for_executor_family;
 pub use self::memory::GKRMemoryOnlyWitnessTrace;
 pub use self::witness::GKRFullWitnessTrace;
 
-pub(crate) fn chunk_vec_capacity_for_geometry<'a, T: Sized + 'static, A: Allocator>(
-    backing: &'a mut Vec<T, A>,
-    geometry: WorkerGeometry,
-    total_size: usize,
-) -> Vec<*mut T> {
-    assert!(total_size <= backing.capacity());
-    let mut result = Vec::with_capacity(geometry.len());
-    let mut ptr = backing.as_mut_ptr();
-    let mut total_chunked = 0;
-    for i in 0..geometry.len() {
-        unsafe {
-            result.push(ptr);
-            let chunk_size = geometry.get_chunk_size(i);
-            ptr = ptr.add(chunk_size);
-            total_chunked += chunk_size;
-        }
-    }
-    assert_eq!(total_chunked, total_size);
-
-    result
-}
-
-pub(crate) fn chunk_vec_vec_capacity_for_geometry<
-    'a,
-    T: Sized + 'static,
-    A: Allocator,
-    B: Allocator,
->(
-    backing: &'a mut Vec<Vec<T, A>, B>,
-    geometry: WorkerGeometry,
-    total_size: usize,
-) -> Vec<Box<[*mut T]>> {
-    let mut result = Vec::with_capacity(geometry.len());
-
-    let mut total_chunked = 0;
-    let mut start_pointers: Vec<_> = backing
-        .iter_mut()
-        .map(|el| {
-            assert!(total_size <= el.capacity());
-
-            el.as_mut_ptr()
-        })
-        .collect();
-
-    for chunk_idx in 0..geometry.len() {
-        let chunk_size = geometry.get_chunk_size(chunk_idx);
-        result.push(start_pointers.clone().into_boxed_slice());
-
-        for el in start_pointers.iter_mut() {
-            unsafe {
-                *el = el.add(chunk_size);
-            }
-        }
-
-        total_chunked += chunk_size;
-    }
-
-    assert_eq!(total_chunked, total_size);
-
-    result
-}
-
 pub(crate) fn evaluate_linear_relation<'a, F: PrimeField, O: Oracle<F> + 'a>(
     relation: &NoFieldLinearRelation,
     proxy: &ColumnMajorWitnessProxy<'a, O, F>,

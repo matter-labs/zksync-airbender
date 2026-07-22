@@ -414,17 +414,3 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
 
     result
 }
-
-fn evaluate_linear_relation<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldLinearRelation,
-    claims: &BTreeMap<GKRAddress, E>,
-) -> E {
-    let mut result = E::from_base(F::from_u32_unchecked(rel.constant));
-    for (c, address) in rel.linear_terms.iter() {
-        let mut t = claims[address];
-        t.mul_assign_by_base(&F::from_u32_unchecked(*c));
-        result.add_assign(&t);
-    }
-
-    result
-}

@@ -1860,16 +1860,48 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         }
     }
 
+    // The permutation and inits-and-teardowns product accumulators are populated
+    // by the `#output_checks` blocks below. When the corresponding product group
+    // is present, that block assigns the binding unconditionally, so we emit a
+    // deferred single-assignment `let` (no `mut`) and omit the `= ONE` seed that
+    // would otherwise be a never-read dead store (`unused_assignments`). When a
+    // group is absent the binding is read as ONE at the struct construction, so
+    // it keeps its initializer.
+    let has_permutation_product = output_groups
+        .iter()
+        .any(|g| matches!(g.output_type, OutputType::PermutationProduct));
+    let has_inits_and_teardowns_product = output_groups
+        .iter()
+        .any(|g| matches!(g.output_type, OutputType::InitsAndTeardownsProduct));
+    let permutation_product_decls = if has_permutation_product {
+        quote! {
+            let permutation_read_product: #quartic_struct;
+            let permutation_write_product: #quartic_struct;
+        }
+    } else {
+        quote! {
+            let permutation_read_product: #quartic_struct = #quartic_one;
+            let permutation_write_product: #quartic_struct = #quartic_one;
+        }
+    };
+    let inits_and_teardowns_product_decls = if has_inits_and_teardowns_product {
+        quote! {
+            let inits_and_teardowns_read_product: #quartic_struct;
+            let inits_and_teardowns_write_product: #quartic_struct;
+        }
+    } else {
+        quote! {
+            let inits_and_teardowns_read_product: #quartic_struct = #quartic_one;
+            let inits_and_teardowns_write_product: #quartic_struct = #quartic_one;
+        }
+    };
+
     main_body.extend(quote! {
         read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
         state.batching_challenge = draw_single_field_el_after_pow(ts);
 
-        let mut permutation_read_product: #quartic_struct = #quartic_one;
-        let mut permutation_write_product: #quartic_struct = #quartic_one;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_read_product: #quartic_struct = #quartic_one;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_write_product: #quartic_struct = #quartic_one;
+        #permutation_product_decls
+        #inits_and_teardowns_product_decls
 
         #output_checks
 

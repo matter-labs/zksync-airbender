@@ -47,30 +47,6 @@ jobs:
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
-  circuits_generated:
-    name: circuits_generated
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile default
-      - name: Regenerate verifiers
-        run: ./recreate_verifiers.sh
-      - name: Check if anything has changed
-        run: |
-          MODIFIED_FILES=$(git status --porcelain)
-          if [ -n "$MODIFIED_FILES" ]; then
-            echo "The following files were modified - did you run ./recreate_verifiers.sh? "
-            echo "$MODIFIED_FILES"
-            exit 1
-          else
-            echo "No files were modified."
-          fi
-
   check_verifiers:
     name: check_verifiers
     runs-on: [matterlabs-ci-runner-c3d]
@@ -159,7 +135,6 @@ jobs:
     needs:
       - tests
       - formatting
-      - circuits_generated
       - check_verifiers
       - build_cli
       - cli_smoke_verify

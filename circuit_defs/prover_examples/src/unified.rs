@@ -49,8 +49,6 @@ use trace_and_split::commit_memory_tree_for_delegation_circuit;
 use trace_and_split::commit_memory_tree_for_unified_circuits;
 use trace_and_split::fs_transform_unified_for_permutation_argument;
 
-type UnifiedProof = GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>;
-
 /// Replay the captured execution into a single unified-circuit witness buffer.
 /// Mirrors `replay_non_mem_circuit_family` from the unrolled example but emits
 /// the unified tracing-data layout for the single reduced-machine circuit.
