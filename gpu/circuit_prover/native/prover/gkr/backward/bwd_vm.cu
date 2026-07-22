@@ -188,6 +188,40 @@ DEVICE_FORCEINLINE e4 read_virtual(const bwd_vm_desc &desc, const u32 payload, c
   return role_combine(value, active_mask);
 }
 
+template <bool VALIDATE> DEVICE_FORCEINLINE u16 bwd_vm_lane(const bwd_vm_desc &desc, const u32 index, u32 &lane_error) {
+  if constexpr (VALIDATE) {
+    if (index >= desc.program_lanes || index >= BWD_VM_PROGRAM_CAP) {
+      lane_error |= BWD_VM_ERR_PROGRAM_OOB;
+      return 0xffffu;
+    }
+  }
+  return desc.program[index];
+}
+
+// VALIDATE-only structural pass through the exact shared decoder. Typed
+// operand/destination hooks are deliberately side-effect-free: this pass
+// proves every encoded lane can be consumed before the real adapter is allowed
+// to read or publish a source.
+struct BwdVmPreflightAdapter {
+  const bwd_vm_desc &desc;
+  mutable u32 lane_error;
+
+  DEVICE_FORCEINLINE u16 lane(const u32 index) const { return bwd_vm_lane<true>(desc, index, lane_error); }
+  DEVICE_FORCEINLINE bf read_bf(const u16, u32 &) { return bf::ZERO(); }
+  DEVICE_FORCEINLINE e4 read_e4(const u16, u32 &) { return e4::ZERO(); }
+  DEVICE_FORCEINLINE void write_bf(const u16, const bf, u32 &) {}
+  DEVICE_FORCEINLINE void write_e4(const u16, const e4, u32 &) {}
+};
+
+DEVICE_FORCEINLINE u32 preflight_error(const bwd_vm_desc &desc) {
+  BwdVmPreflightAdapter adapter{desc, 0};
+  const eval_vm_result result = eval_vm_execute<true, BwdVmPreflightAdapter>(adapter, desc.n_instr, desc.program_lanes);
+  u32 error = result.error;
+  if (adapter.lane_error != 0)
+    error &= ~EVAL_VM_ERR_TRAILING_LANES;
+  return error | adapter.lane_error;
+}
+
 template <bool VALIDATE> struct BwdVmAdapter {
   const bwd_vm_desc &desc;
   bf *cells;
@@ -196,15 +230,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
   size_t endpoint;
   mutable u32 lane_error;
 
-  DEVICE_FORCEINLINE u16 lane(const u32 index) const {
-    if constexpr (VALIDATE) {
-      if (index >= desc.program_lanes || index >= BWD_VM_PROGRAM_CAP) {
-        lane_error |= BWD_VM_ERR_PROGRAM_OOB;
-        return 0xffffu;
-      }
-    }
-    return desc.program[index];
-  }
+  DEVICE_FORCEINLINE u16 lane(const u32 index) const { return bwd_vm_lane<VALIDATE>(desc, index, lane_error); }
 
   DEVICE_FORCEINLINE bf read_bf(const u16 lane, u32 &error) {
     if constexpr (VALIDATE) {
@@ -425,6 +451,12 @@ template <bool VALIDATE> DEVICE_FORCEINLINE void bwd_vm_body(const bwd_vm_desc &
     if (error != 0) {
       if (threadIdx.x == 0)
         atomicOr(error_flag, error);
+      return;
+    }
+    const u32 structural_error = preflight_error(desc);
+    if (structural_error != 0) {
+      if (threadIdx.x == 0)
+        atomicOr(error_flag, structural_error);
       return;
     }
   }

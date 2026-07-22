@@ -364,6 +364,73 @@ fn truncated_multilane_instruction_fails_without_lane_oob(context: &ProverContex
     );
 }
 
+fn truncated_second_operand_preflights_before_publication(context: &ProverContext) {
+    let input = [e4(61), e4(63), e4(71), e4(73)];
+    let input_device = upload(&input, context);
+    let poison = e4(9_999);
+    let mut published_device = upload(&[poison; 4], context);
+    let mut diagnostic_device = upload(&[poison; 2], context);
+    let mut error_device = upload(&[0u32], context);
+    let program = encode(&Program {
+        instrs: vec![Instr::Add {
+            field: OperandField::Ext,
+            sign: Sign::Plus,
+            promote: true,
+            operands: vec![
+                OperandLine::Source {
+                    window: 0,
+                    column: 0,
+                    first_access: true,
+                },
+                OperandLine::Source {
+                    window: 0,
+                    column: 1,
+                    first_access: true,
+                },
+            ],
+        }],
+    })
+    .expect("two-source Ext Add must encode");
+    assert_eq!(program.len(), 3, "Add arity=2 is header plus two lanes");
+    let mut desc = blank_desc(&program, 1, 1);
+    desc.program_lanes = 2;
+    desc.n_source_windows = 1;
+    desc.source_windows[0] = BwdVmSourceWindow {
+        read_base: input_device.as_ptr().cast(),
+        publish_base: published_device.as_mut_ptr().cast(),
+        read_stride_bytes: (2 * size_of::<E4>()) as u32,
+        publish_stride_bytes: (2 * size_of::<E4>()) as u32,
+        backing_depth: 0,
+        target_depth: 0,
+        origin_field: BWD_VM_ORIGIN_FIELD_EXT,
+        materialize: 1,
+    };
+
+    launch_bwd_vm_validate(
+        &desc,
+        2,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        context,
+    )
+    .expect("truncated second operand validate launch");
+    assert_eq!(
+        download_u32(&error_device, context),
+        [BWD_VM_ERR_PROGRAM_OOB],
+        "late logical-lane OOB must retain the dedicated exact bit"
+    );
+    assert_e4_bits(
+        "preflight must prevent first-operand publication",
+        &download_e4(&published_device, context),
+        &[poison; 4],
+    );
+    assert_e4_bits(
+        "truncated Add must not write diagnostics",
+        &download_e4(&diagnostic_device, context),
+        &[poison; 2],
+    );
+}
+
 fn release_publication_feeds_a_later_physical_use(context: &ProverContext) {
     let rows = 7usize;
     let depth = 2u8;
@@ -464,6 +531,7 @@ fn bwd_vm_synthetic_source_parity() {
 
     malformed_program_bounds_fail_before_source_access(&context);
     truncated_multilane_instruction_fails_without_lane_oob(&context);
+    truncated_second_operand_preflights_before_publication(&context);
     release_publication_feeds_a_later_physical_use(&context);
 
     run_base_plain(&context, 17);
