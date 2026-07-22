@@ -257,7 +257,7 @@ pub enum UnrolledNonMemoryCircuitType {
     AddSubLuiAuipcMop,
     JumpBranchSlt,
     MulDivUnsigned,
-    ShiftBinaryCsr,
+    ShiftBinary,
 }
 
 impl UnrolledNonMemoryCircuitType {
@@ -272,7 +272,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::AddSubLuiAuipcMop => ADD_SUB_DOMAIN_SIZE_LOG2,
             Self::JumpBranchSlt => JUMP_BRANCH_DOMAIN_SIZE_LOG2,
             Self::MulDivUnsigned => MUL_DIV_UNSIGNED_DOMAIN_SIZE_LOG2,
-            Self::ShiftBinaryCsr => SHIFT_BINARY_DOMAIN_SIZE_LOG2,
+            Self::ShiftBinary => SHIFT_BINARY_DOMAIN_SIZE_LOG2,
         }
     }
 
@@ -282,7 +282,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::AddSubLuiAuipcMop => ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
             Self::JumpBranchSlt => JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
             Self::MulDivUnsigned => MUL_DIV_CIRCUIT_FAMILY_IDX,
-            Self::ShiftBinaryCsr => SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
+            Self::ShiftBinary => SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
         }
     }
 
@@ -294,12 +294,12 @@ impl UnrolledNonMemoryCircuitType {
                 Self::AddSubLuiAuipcMop,
                 Self::JumpBranchSlt,
                 Self::MulDivUnsigned,
-                Self::ShiftBinaryCsr,
+                Self::ShiftBinary,
             ],
             MachineType::Reduced => &[
                 Self::AddSubLuiAuipcMop,
                 Self::JumpBranchSlt,
-                Self::ShiftBinaryCsr,
+                Self::ShiftBinary,
             ],
         }
     }
@@ -319,7 +319,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::AddSubLuiAuipcMop => common_constants::PC_STEP as u32,
             Self::JumpBranchSlt => common_constants::PC_STEP as u32,
             Self::MulDivUnsigned => common_constants::PC_STEP as u32,
-            Self::ShiftBinaryCsr => common_constants::PC_STEP as u32,
+            Self::ShiftBinary => common_constants::PC_STEP as u32,
         }
     }
 }

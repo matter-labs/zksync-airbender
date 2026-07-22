@@ -153,7 +153,7 @@ fn prepare_shift_binop_proof_fixture() -> BasicUnrolledProofFixture {
     let (base, p) = prepare_unrolled_non_memory_proof_fixture::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+        UnrolledNonMemoryCircuitType::ShiftBinary,
         SHIFT_BINOP_LAYOUT_PATH,
         shift_binop_mod::witness_eval_fn,
         cs::gkr_circuits::binary_shifts_family::shift_binop_table_driver_fn::<BF>,
@@ -169,7 +169,7 @@ fn prepare_shift_binop_profiling_fixture() -> BasicUnrolledFixture {
     prepare_unrolled_non_memory_proof_fixture::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+        UnrolledNonMemoryCircuitType::ShiftBinary,
         SHIFT_BINOP_LAYOUT_PATH,
         shift_binop_mod::witness_eval_fn,
         cs::gkr_circuits::binary_shifts_family::shift_binop_table_driver_fn::<BF>,
