@@ -13,6 +13,8 @@ use gpu_core::primitives::field::{BF, E4};
 use gpu_ops::simple::pow;
 // Permanently compiled (Task 10): used by the promoted `debug.rs` builders.
 use crate::upstream::FieldExtension;
+// Only used by the #[cfg(test)] `pack_rows_for_whir_leaves_multi_coset` below.
+#[cfg(test)]
 use gpu_core::primitives::utils::GetChunksCount;
 use gpu_core::primitives::utils::{
     get_grid_block_dims_for_threads_count, get_grid_block_dims_for_warp_groups, WARP_SIZE,
@@ -177,7 +179,6 @@ pub(crate) fn accumulate_whir_base_columns(
 /// Fused `accumulate_whir_base_columns` + `serialize_whir_e4_columns`: writes
 /// the E4 result into `result` and the column-major BF vectorization (4
 /// columns of `rows` BFs each) into `serialized_bf` in a single pass.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn accumulate_whir_base_columns_with_serialized_bf(
     memory_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     witness_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -457,7 +458,7 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
             monomials,
             partial_evals,
             z_ptr,
-            log_count as i32,
+            log_count,
         );
         PartiallyEvaluateMonomialFormByRefSmallFunction(
             ab_partially_evaluate_monomial_form_by_ref_small_kernel,
@@ -476,7 +477,7 @@ pub(crate) fn partially_evaluate_monomials_by_ref(
         partial_evals,
         z_ptr,
         z_adjustment_ptr,
-        log_count as i32,
+        log_count,
     );
     PartiallyEvaluateMonomialFormByRefFunction(ab_partially_evaluate_monomial_form_by_ref_kernel)
         .launch(&config, &args)?;
@@ -718,7 +719,6 @@ pub(crate) fn batched_eq_factor_scratch_lens(num_queries: usize) -> (usize, usiz
 /// Builds per-query factored-eq slabs and folds
 /// `sum_q( eq(point_q, gid) * challenges[q] )` into `eq_poly[gid]` (RMW).
 /// Two launches regardless of `num_queries`.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn launch_batched_accumulate_eq_samples(
     claim_points: *const E4,
     challenges: *const E4,
@@ -818,7 +818,6 @@ fn launch_build_split_eq_table(
 /// using one E4 mul + one E4 add per query in the inner loop.
 /// Three launches total (one per slab build + accumulator), regardless of
 /// `num_queries`.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn launch_split_accumulate_eq_samples(
     claim_points: *const E4,
     challenges: *const E4,

@@ -276,7 +276,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
             .d_indexes[..];
         let log_lde_factor_base = memory_trace_holder.log_lde_factor;
         let coset_tree_size_log2 =
-            (memory_trace_holder.log_domain_size - memory_trace_holder.log_rows_per_leaf) as u32;
+            memory_trace_holder.log_domain_size - memory_trace_holder.log_rows_per_leaf;
         // The three base oracles (setup/memory/witness) sample the same
         // tree-space indices, so the slab stores a single shared range.
         // SAFETY: `whir_base_query_indices_device_mut` returns the live
@@ -714,13 +714,13 @@ pub fn schedule_gpu_whir_fold_with_sources(
             // other slab subrange and is exclusively written here by the
             // transpose, then by the subsequent in-place bit-reverse, all on
             // `exec_stream`, before the transcript commit reads it.
-            let mut slab_bf_view = unsafe {
+            let slab_bf_view = unsafe {
                 era_cudart::slice::DeviceSlice::from_raw_parts_mut(
                     dst_ptr as *mut BF,
                     dst_len * EXT4_DEGREE,
                 )
             };
-            let mut transpose_dst_matrix = DeviceMatrixMut::new(&mut slab_bf_view, EXT4_DEGREE);
+            let mut transpose_dst_matrix = DeviceMatrixMut::new(slab_bf_view, EXT4_DEGREE);
             let monomials_matrix_chunk = DeviceMatrixChunk::new(
                 state.sumchecked_poly_monomial_form.slice(),
                 state.original_trace_len,

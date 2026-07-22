@@ -1,5 +1,5 @@
+// Only consumed by the #[cfg(test)] `schedule_reduce_outputs_readback` below.
 #[cfg(test)]
-use core::marker::PhantomData;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -19,6 +19,9 @@ use crate::upstream::FieldExtension;
 use crate::GpuWhirExtensionOracle;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
+// Only consumed by #[cfg(test)] readback helpers (`schedule_reduce_outputs_readback`,
+// `schedule_monomial_eval_device`).
+#[cfg(test)]
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixOwnsAllocation,
@@ -27,8 +30,6 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_cub::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use gpu_cub::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
-#[cfg(test)]
-use gpu_hash::blake2s::Digest;
 use gpu_ntt::ntt::{
     hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
     natural_evals_to_bitreversed_monomials,
@@ -37,10 +38,11 @@ use gpu_ops::simple::{add, mul, mul_into_x};
 use gpu_ops::transpose::transpose;
 use gpu_prover_context::ProverContext;
 // Permanently imported (not #[cfg(test)]): the now-permanent `debug.rs` builders
-// consume these via `use super::*`.
+// consume most of these via `use super::*` (`debug.rs` imports `BaseFieldQuery`/
+// `DefaultTreeConstructor` itself now, so those two aren't re-exported here).
 use crate::upstream::{
-    add_whir_commitment_to_transcript, commit_field_els, draw_random_field_els, BaseFieldQuery,
-    DefaultTreeConstructor, Field, MerkleTreeCapVarLength, Seed, WhirCommitment,
+    add_whir_commitment_to_transcript, commit_field_els, draw_random_field_els, Field,
+    MerkleTreeCapVarLength, Seed, WhirCommitment,
 };
 use gpu_gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use gpu_gkr::proof_layout::ProofLayout;
@@ -176,6 +178,9 @@ impl GpuWhirState {
     }
 }
 
+// Only consumed by test-only reduce-output readback paths
+// (`schedule_monomial_eval_device`, `debug::schedule_special_three_point_eval_device`).
+#[cfg(test)]
 pub(super) fn schedule_reduce_outputs_readback(
     count: usize,
     state: &mut GpuWhirState,
@@ -190,6 +195,9 @@ pub(super) fn schedule_reduce_outputs_readback(
     Ok(host)
 }
 
+// Only consumed by `fold::tests::query_tests` and
+// `debug::schedule_query_base_trace_holder_for_folded_index` (test-only).
+#[cfg(test)]
 pub(super) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
         debug_assert_eq!(index, 0);
@@ -339,9 +347,9 @@ pub(super) fn schedule_initialize_batched_forms(
         &memory_values,
         &witness_values,
         &setup_values,
-        &device_memory_weights,
-        &device_witness_weights,
-        &device_setup_weights,
+        device_memory_weights,
+        device_witness_weights,
+        device_setup_weights,
         &mut state.sumchecked_poly_evaluation_form,
         &mut vectorized_scratch[..],
         stream,
@@ -431,10 +439,7 @@ pub(super) fn schedule_monomial_eval_device(
     let out = unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(reduce_out_ptr) };
     schedule_monomial_eval_device_impl(state, point, out, context)?;
 
-    let mut result = Vec::new();
-    result.push(schedule_reduce_outputs_readback(1, state, context)?);
-
-    Ok(result)
+    Ok(vec![schedule_reduce_outputs_readback(1, state, context)?])
 }
 
 /// Selects the WHIR query-eq accumulator backend. `true` uses the 2-chunk

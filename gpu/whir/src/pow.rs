@@ -101,12 +101,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     transcript_squeeze(device_seed, &mut d_raw_bits, stream)?;
 
     // Assemble query indexes on device; the caller D2Hs them.
-    assemble_query_indexes(
-        &d_raw_bits,
-        &mut d_indexes,
-        query_domain_log2 as u32,
-        stream,
-    )?;
+    assemble_query_indexes(&d_raw_bits, &mut d_indexes, query_domain_log2, stream)?;
 
     Ok(PowAndQueryIndexesState {
         d_raw_bits: Some(d_raw_bits),

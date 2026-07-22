@@ -63,8 +63,8 @@ fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
     )
     .unwrap();
 
-    let mut gpu_result = vec![E4::ZERO; 1];
-    memory_copy_async(&mut gpu_result[..], &mut reduce_result[..], &stream).unwrap();
+    let mut gpu_result = [E4::ZERO; 1];
+    memory_copy_async(&mut gpu_result[..], &reduce_result[..], &stream).unwrap();
     stream.synchronize().unwrap();
     assert_eq!(cpu_result, gpu_result[0]);
 }

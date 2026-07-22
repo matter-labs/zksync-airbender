@@ -4,6 +4,12 @@
 #![warn(clippy::manual_div_ceil)]
 #![warn(clippy::needless_pass_by_value)]
 #![allow(clippy::mut_from_ref)]
+// The WHIR scheduling/launcher functions here take one argument per distinct
+// device buffer / layout / stream input; splitting them into config structs
+// would obscure the pipeline wiring for a cosmetic win (same precedent as
+// gpu_hash's / gpu_ntt's / gpu_execution_prover's / gpu_trace's / gpu_gkr's
+// crate-level allow).
+#![allow(clippy::too_many_arguments)]
 
 pub mod fold;
 pub(crate) mod kernels;
@@ -170,8 +176,8 @@ impl GpuWhirExtensionOracle {
         );
 
         let trace_len_log2 = trace_len.trailing_zeros();
-        let log_lde_factor = lde_factor.trailing_zeros() as u32;
-        let log_values_per_leaf = values_per_leaf.trailing_zeros() as u32;
+        let log_lde_factor = lde_factor.trailing_zeros();
+        let log_values_per_leaf = values_per_leaf.trailing_zeros();
         let log_tree_cap_size = tree_cap_size.trailing_zeros();
         assert!(trace_len_log2 >= log_values_per_leaf);
         let packed_leaf_count = trace_len / values_per_leaf;
@@ -334,8 +340,7 @@ impl GpuWhirExtensionOracle {
                 let index = query_index_accessor.get()[0] as usize;
                 let coset_index = index & (lde_factor - 1);
                 let internal_index = index / lde_factor;
-                let coset_dest_index =
-                    bitreverse_index(coset_index, lde_factor.trailing_zeros() as u32);
+                let coset_dest_index = bitreverse_index(coset_index, lde_factor.trailing_zeros());
                 tree_index_accessor.get_mut()[0] =
                     (coset_dest_index * packed_leaf_count + internal_index) as u32;
             },
@@ -520,8 +525,7 @@ impl GpuWhirExtensionOracle {
 
         let coset_index = index & (self.lde_factor - 1);
         let internal_index = index / self.lde_factor;
-        let coset_dest_index =
-            bitreverse_index(coset_index, self.lde_factor.trailing_zeros() as u32);
+        let coset_dest_index = bitreverse_index(coset_index, self.lde_factor.trailing_zeros());
         // tree_index matches CPU `ColumnMajorExtensionOracleForLDE::query_for_folded_index`
         // (prover/src/gkr/whir/mod.rs). The extension oracle trace holder stores leaves in
         // this order, so both value and path lookups go through the same index.
@@ -611,6 +615,8 @@ impl GpuWhirExtensionOracle {
         Ok((scheduled.coset_index, leaf_values_concatenated, query))
     }
 
+    // Only consumed by this module's own `#[cfg(test)] mod tests` (CPU-parity checks).
+    #[cfg(test)]
     fn copy_coset_values(&self, coset_index: usize, context: &ProverContext) -> Vec<E4> {
         // The backing now holds the natural multi-coset NTT output.
         // Layout: column-major matrix with `trace_len` rows and
@@ -659,16 +665,12 @@ pub(crate) mod tests {
         commit_single_ext_poly_no_transform_for_test,
         commit_single_ext_poly_with_transform_for_test, ColumnMajorExtensionOracleForLDE,
     };
-    use prover::merkle_trees::{
-        ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
-    };
-    use prover::utils::extension_field_from_base_coeffs;
+    use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor};
     use rand::Rng;
     use worker::Worker;
 
     use super::*;
     use crate::test_utils::make_test_context;
-    use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
     use gpu_trace::trace::holder::TreesHolder;
 
     fn sample_monomial_coeffs(size: usize) -> Vec<E4> {
@@ -730,7 +732,7 @@ pub(crate) mod tests {
             lde_factor,
         );
 
-        let result = if transform_leaves_to_multilinear_coeffs {
+        if transform_leaves_to_multilinear_coeffs {
             commit_single_ext_poly_with_transform_for_test(
                 cosets,
                 values_per_leaf,
@@ -748,9 +750,7 @@ pub(crate) mod tests {
                 tree_cap_size,
                 worker,
             )
-        };
-
-        result
+        }
     }
 
     fn assert_recursive_oracle_caps_and_queries_match_cpu(

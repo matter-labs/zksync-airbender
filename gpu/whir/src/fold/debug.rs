@@ -10,11 +10,18 @@ use gpu_core::primitives::static_host::{
 };
 
 use crate::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
+use crate::upstream::DefaultTreeConstructor;
 use crate::upstream::PrimeField;
-use crate::upstream::{BaseFieldQuery, DefaultTreeConstructor};
+// Only consumed by the `#[cfg(test)]` query-parity helpers below.
+#[cfg(test)]
+use crate::upstream::BaseFieldQuery;
 use core::marker::PhantomData;
+// Only consumed by the `#[cfg(test)]` query-parity helpers below.
+#[cfg(test)]
 use gpu_core::primitives::callbacks::Callbacks;
+#[cfg(test)]
 use gpu_core::primitives::context::HostAllocation;
+#[cfg(test)]
 use gpu_hash::blake2s::Digest;
 
 pub(super) fn copy_small_to_device<T: Copy>(
@@ -54,6 +61,9 @@ pub(super) fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverConte
     unsafe { host.get_accessor().get().to_vec() }
 }
 
+// Only consumed (transitively, via `GpuScheduledBaseFieldQuery::decode`) by
+// `fold::tests::query_tests`.
+#[cfg(test)]
 pub(super) fn decode_base_leaf_values(
     leafs: &[BF],
     values_per_leaf: usize,
@@ -71,15 +81,21 @@ pub(super) fn decode_base_leaf_values(
     result
 }
 
+/// `(coset_index, decoded_leaf_columns, cpu_query)`.
+#[cfg(test)]
+type DecodedBaseTraceHolderQuery = (
+    usize,
+    Vec<Vec<BF>>,
+    BaseFieldQuery<BF, DefaultTreeConstructor>,
+);
+
+// Only consumed by `fold::tests::query_tests`.
+#[cfg(test)]
 pub(crate) fn query_base_trace_holder_for_folded_index(
     trace_holder: &mut TraceHolder<BF>,
     index: usize,
     context: &ProverContext,
-) -> CudaResult<(
-    usize,
-    Vec<Vec<BF>>,
-    BaseFieldQuery<BF, DefaultTreeConstructor>,
-)> {
+) -> CudaResult<DecodedBaseTraceHolderQuery> {
     let scheduled =
         schedule_query_base_trace_holder_for_folded_index(trace_holder, index, context)?;
     context.get_exec_stream().synchronize()?;
@@ -87,6 +103,8 @@ pub(crate) fn query_base_trace_holder_for_folded_index(
     Ok((scheduled.coset_index, decoded, cpu_query))
 }
 
+// Only consumed by `query_base_trace_holder_for_folded_index` above (test-only).
+#[cfg(test)]
 pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
     trace_holder: &mut TraceHolder<BF>,
     index: usize,
@@ -218,9 +236,9 @@ pub(super) fn build_initial_batched_evals_device_impl(
     let stream = context.get_exec_stream();
     let mut weight_buffers = Vec::with_capacity(3);
 
-    assert!(memory_weights.len() > 0);
-    assert!(witness_weights.len() > 0);
-    assert!(setup_weights.len() > 0);
+    assert!(!memory_weights.is_empty());
+    assert!(!witness_weights.is_empty());
+    assert!(!setup_weights.is_empty());
 
     let mut device_memory_weights =
         context.alloc(memory_weights.len(), AllocationPlacement::BestFit)?;
@@ -276,7 +294,7 @@ pub(super) fn build_initial_batched_evals_device(
         setup_weights,
         use_hypercube_evals,
         result,
-        |dst, values, context| copy_small_to_device(dst, values, context),
+        copy_small_to_device,
         context,
     )
 }
@@ -535,6 +553,8 @@ pub(super) fn special_three_point_eval_device(
     Ok((outputs[0], outputs[1], outputs[2]))
 }
 
+// Only consumed by `fold::tests` (`special_three_point_eval_device`'s CPU-parity test).
+#[cfg(test)]
 pub(super) fn schedule_special_three_point_eval_device(
     state: &mut GpuWhirState,
     context: &ProverContext,
@@ -609,7 +629,10 @@ pub(super) fn evaluate_monomial_form_device(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
+/// `(batch_challenges, claim, monomials, sumchecked_poly_evaluation_form, eq_poly)`.
+#[doc(hidden)]
+pub type DebugInitialStateForTest = ([Vec<E4>; 3], E4, Vec<E4>, Vec<E4>, Vec<E4>);
+
 #[doc(hidden)]
 pub fn debug_build_initial_state_for_test(
     memory_trace_holder: &TraceHolder<BF>,
@@ -622,7 +645,7 @@ pub fn debug_build_initial_state_for_test(
     batching_challenge: E4,
     use_hypercube_evals_for_batching: bool,
     context: &ProverContext,
-) -> CudaResult<([Vec<E4>; 3], E4, Vec<E4>, Vec<E4>, Vec<E4>)> {
+) -> CudaResult<DebugInitialStateForTest> {
     let trace_len = 1usize << memory_trace_holder.log_domain_size;
     let mut state = GpuWhirState::new(trace_len, context)?;
     let (batch_challenges, claim) = build_initial_state(
@@ -656,7 +679,6 @@ pub fn debug_build_initial_state_for_test(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
 #[doc(hidden)]
 pub fn debug_build_initial_state_snapshots_for_test(
     memory_trace_holder: &TraceHolder<BF>,
@@ -738,7 +760,6 @@ pub struct DebugWhirInitialFoldState {
     state: GpuWhirState,
 }
 
-#[allow(clippy::too_many_arguments)]
 #[doc(hidden)]
 pub fn debug_initial_round_checkpoint_for_test(
     memory_trace_holder: &TraceHolder<BF>,
@@ -842,7 +863,6 @@ pub fn debug_initial_round_checkpoint_for_test(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 #[doc(hidden)]
 pub fn debug_build_initial_fold_state_for_test(
     memory_trace_holder: &TraceHolder<BF>,
@@ -909,19 +929,19 @@ pub(super) fn vectorized_to_e4_coeffs(
     count: usize,
 ) -> Vec<E4> {
     use itertools::Itertools;
-    let coeffs = (0..count)
+    (0..count)
         .map(|i| {
             let coeffs = std::array::from_fn(|j| vectorized_coeffs[i + stride * j]);
             E4::from_array_of_base(coeffs)
         })
-        .collect_vec();
-    coeffs
+        .collect_vec()
 }
 
-// Relocated from `tests/query_tests.rs` (Task 10) so this permanently-compiled
-// query helper (`schedule_query_base_trace_holder_for_folded_index`) can name
-// its return type. Crate-internal (query parity tests only) — no apex consumer,
-// so it stays `pub(crate)`, not `#[doc(hidden)] pub`.
+// Relocated from `tests/query_tests.rs` (Task 10) so the query helper
+// (`schedule_query_base_trace_holder_for_folded_index`, `#[cfg(test)]` above)
+// can name its return type. Crate-internal (query parity tests only) — no
+// apex consumer, so it stays `pub(crate)`, not `#[doc(hidden)] pub`.
+#[cfg(test)]
 pub(crate) struct GpuScheduledBaseFieldQuery {
     pub(crate) index: usize,
     pub(crate) coset_index: usize,
@@ -936,6 +956,7 @@ pub(crate) struct GpuScheduledBaseFieldQuery {
     pub(crate) columns_count: usize,
 }
 
+#[cfg(test)]
 impl GpuScheduledBaseFieldQuery {
     pub(crate) fn decode(&self) -> (Vec<Vec<BF>>, BaseFieldQuery<BF, DefaultTreeConstructor>) {
         let leafs_accessor = self.leafs.get_accessor();

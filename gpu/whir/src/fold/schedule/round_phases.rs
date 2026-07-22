@@ -9,7 +9,6 @@ use gpu_ops::squaring::squaring_sequence_e4;
 /// the rolling device transcript seed via `transcript_commit` reading the same slab range.
 /// Production proof assembly sources `intermediate_whir_oracles[oracle_idx].commitment.cap`
 /// from the slab via `parse_whir_proof`.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn schedule_commit_next_oracle_phase(
     state: &GpuWhirState,
     oracle_idx: usize,
@@ -37,7 +36,7 @@ pub(super) fn schedule_commit_next_oracle_phase(
     // `schedule_from_device_monomial_coeffs_into_slab` writes it exclusively
     // on `exec_stream`; the subsequent `transcript_commit` reborrows it as a
     // shared `*const u32` view, stream-ordered after the gather.
-    let mut cap_dst_u32 =
+    let cap_dst_u32 =
         unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(cap_ptr, cap_len_u32) };
     let oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs_into_slab(
         &state.sumchecked_poly_monomial_form,
@@ -49,7 +48,7 @@ pub(super) fn schedule_commit_next_oracle_phase(
         // commits recursive WHIR oracles in coeff form); the `eval_leaves` feature
         // selects eval form to mirror the CPU prover's recursive-oracle encoding.
         !cfg!(feature = "eval_leaves"),
-        &mut cap_dst_u32,
+        cap_dst_u32,
         context,
     )?;
     // Device transcript commit: hash the slab-resident cap (viewed as a flat
@@ -72,7 +71,6 @@ pub(super) fn schedule_commit_next_oracle_phase(
 /// delinearization phase can read it without a host round-trip.
 ///
 /// Range tracking is the caller's responsibility.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn schedule_ood_sample_phase(
     state: &mut GpuWhirState,
     oracle_idx: usize,
@@ -119,7 +117,6 @@ pub(super) fn schedule_ood_sample_phase(
 /// slab's `whir.pow_nonces[pow_round_idx]` slot by `blake2s_pow`, and the
 /// transcript_commit that consumes the nonce as u32 words reads from that same
 /// slab slot — no intermediate `d_nonce` allocation, no D2D copy.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn schedule_pow_and_query_indexes_phase(
     device_seed: &mut DeviceSlice<u32>,
     num_queries: usize,

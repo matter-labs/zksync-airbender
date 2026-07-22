@@ -9,7 +9,6 @@ use worker::Worker;
 
 use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
 
 // helpers.rs was promoted to the permanent `crate::fold::debug` module (Task 10).
 use super::make_lde_trace_holder;
