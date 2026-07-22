@@ -142,7 +142,12 @@ pub mod trace;
 // test-reference readers: apex test suites reach `trace_delegation` across the crate boundary.
 pub mod trace_delegation;
 pub mod trace_unrolled;
+// pub: `gpu_gkr`'s stage1 (`gpu_gkr::stage1`) imports
+// `generate_witness_values_delegation` across the crate boundary.
 pub mod witness_delegation;
+// pub: `gpu_gkr`'s stage1 (`gpu_gkr::stage1`) imports
+// `generate_witness_values_unrolled_{memory,non_memory,unified}` across the
+// crate boundary.
 pub mod witness_unrolled;
 
 #[repr(C, u32)]
