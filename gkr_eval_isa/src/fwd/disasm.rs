@@ -97,13 +97,13 @@ fn fmt_operand(
                 Some(v) => format!("#{}", fmt_const(v)),
                 None => format!("#const?{idx}"),
             },
-            LdcSub::ConstChallenge => match ctx.challenges.get(LdcSub::ConstChallenge, *idx) {
-                Some(r) => format!("chalC({r:?})"),
-                None => format!("chalC?{idx}"),
+            LdcSub::ConstDerivedE4 => match ctx.derived_e4.get(LdcSub::ConstDerivedE4, *idx) {
+                Some(r) => format!("derivedC({r:?})"),
+                None => format!("derivedC?{idx}"),
             },
-            LdcSub::ArgChallenge => match ctx.challenges.get(LdcSub::ArgChallenge, *idx) {
-                Some(r) => format!("chalA({r:?})"),
-                None => format!("chalA?{idx}"),
+            LdcSub::ArgDerivedE4 => match ctx.derived_e4.get(LdcSub::ArgDerivedE4, *idx) {
+                Some(r) => format!("derivedA({r:?})"),
+                None => format!("derivedA?{idx}"),
             },
             LdcSub::Special => fmt_special_lit(*idx),
         },

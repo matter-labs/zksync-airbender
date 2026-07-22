@@ -70,7 +70,7 @@ pub enum Sign { Plus = 0, Minus = 1 }
 pub enum MovDir { AccFromSrc = 0, DstFromAcc = 1, DstFromSrc = 2 } // 3 reserved
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LdcSub { Const = 0, ConstChallenge = 1, ArgChallenge = 2, Special = 3 }
+pub enum LdcSub { Const = 0, ConstDerivedE4 = 1, ArgDerivedE4 = 2, Special = 3 }
 
 /// `LdcSub::Special` payloads — the special field elements, encoded inline instead
 /// of via the const bank (so they never occupy GPU `__constant__` storage). `NegOne`
@@ -138,5 +138,13 @@ mod tests {
         assert_eq!(TYPE_BITS + SLOT_BITS, 6); // operand Global col shift
         assert_eq!(TYPE_BITS + LDC_SUB_BITS, 4); // operand Ldc idx shift
         assert_eq!(DST_TAG_BITS + SLOT_BITS, 5); // dst GlobalMaterialize col shift
+    }
+
+    #[test]
+    fn ldc_sub_discriminants_pin_derived_e4_wire_tags() {
+        assert_eq!(LdcSub::Const as u8, 0);
+        assert_eq!(LdcSub::ConstDerivedE4 as u8, 1);
+        assert_eq!(LdcSub::ArgDerivedE4 as u8, 2);
+        assert_eq!(LdcSub::Special as u8, 3);
     }
 }

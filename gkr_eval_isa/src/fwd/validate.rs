@@ -1079,14 +1079,14 @@ mod tests {
         }
     }
 
-    /// Helper: `ADD{field}` of one ConstChallenge operand (avoids storage-field
+    /// Helper: `ADD{field}` of one ConstDerivedE4 operand (avoids storage-field
     /// identity interactions with the Global read in the MOV).
     fn add_challenge(field: OperandField, promote: bool) -> Instr {
         Instr::Add {
             field,
             sign: Sign::Plus,
             promote,
-            operands: vec![OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 0 }],
+            operands: vec![OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 }],
         }
     }
 
@@ -1150,7 +1150,7 @@ mod tests {
                 promote: false,
                 pairs: vec![(
                     OperandLine::Global { slot: 0, col: 0 },
-                    OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 0 },
+                    OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 },
                 )],
             },
         ];
@@ -1301,7 +1301,7 @@ mod tests {
                 dir: MovDir::AccFromSrc,
                 field: OperandField::Ext,
                 dst: None,
-                src: Some(OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 0 }),
+                src: Some(OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 }),
             },
             Instr::Mov {
                 dir: MovDir::DstFromAcc,

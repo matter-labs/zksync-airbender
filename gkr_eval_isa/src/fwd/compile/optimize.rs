@@ -663,7 +663,7 @@ mod tests {
             VInstr::Add {
                 field: OperandField::Ext,
                 sign: Sign::Plus,
-                reads: vec![VirtualOp::Ldc { sub: LdcSub::ConstChallenge, idx: 0 }],
+                reads: vec![VirtualOp::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 }],
                 defines: Some(ExprId(100)),
                 is_dram_read: false,
             },

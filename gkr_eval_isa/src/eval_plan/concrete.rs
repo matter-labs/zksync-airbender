@@ -1691,7 +1691,7 @@ impl Emitter<'_> {
                 },
             },
             SourceKind::Challenge { reference } => {
-                let (sub, idx) = self.ctx.challenges.intern(reference);
+                let (sub, idx) = self.ctx.derived_e4.intern(reference);
                 OperandLine::Ldc { sub, idx }
             }
             SourceKind::VirtualSetup { kind } => {
@@ -1979,7 +1979,7 @@ mod tests {
 
     impl ChallengeResolver for UnusedResolver {
         fn challenge(&self, _reference: &ChallengeRef) -> cs::gkr_compiler::dag_ir::Ext {
-            unreachable!("constant-only test layer has no challenges")
+            unreachable!("constant-only test layer has no derived_e4")
         }
     }
 
@@ -2357,7 +2357,7 @@ mod tests {
     #[test]
     fn load_mul_add_is_folded_to_canonical_signed_fma() {
         let loaded = OperandLine::Ldc {
-            sub: LdcSub::ConstChallenge,
+            sub: LdcSub::ConstDerivedE4,
             idx: 2,
         };
         let factor = OperandLine::Smem { cell: 3 };

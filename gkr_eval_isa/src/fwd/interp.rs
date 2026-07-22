@@ -226,11 +226,11 @@ fn resolve(
                 }
                 _ => return Err(InterpError::MalformedInstr("special idx".into())),
             }),
-            LdcSub::ConstChallenge | LdcSub::ArgChallenge => {
+            LdcSub::ConstDerivedE4 | LdcSub::ArgDerivedE4 => {
                 let cr = ctx
-                    .challenges
+                    .derived_e4
                     .get(sub, idx)
-                    .ok_or(InterpError::UnknownChallenge(idx))?;
+                    .ok_or(InterpError::UnknownDerivedE4(idx))?;
                 Ok(r.challenge.challenge(cr))
             }
         },
@@ -368,13 +368,13 @@ mod tests {
     }
 
     /// Build a minimal `CompiledLayer` with a one-backing `BackingTable` (BaseLayerMemory),
-    /// no consts/challenges/specials.
+    /// no consts/derived_e4/specials.
     fn minimal_compiled(program: Program, root_outputs: Vec<(RootId, RootOutput)>) -> CompiledLayer {
         let backings = identity_base_mem_backings();
         let ctx = DagForwardContext {
             specials: SpecialTable::default(),
             consts: ConstBank::default(),
-            challenges: crate::fwd::source::ChallengeBanks::default(),
+            derived_e4: crate::fwd::source::DerivedE4Banks::default(),
             backings,
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
@@ -685,7 +685,7 @@ mod tests {
 
     // ── v2: promote lifts a base acc (semantic no-op on the Ext-valued CPU) ──
 
-    /// Program: MOV{Base} acc ← Global{col=2}; ADD{Ext, promote} ConstChallenge.
+    /// Program: MOV{Base} acc ← Global{col=2}; ADD{Ext, promote} ConstDerivedE4.
     /// acc starts base-domain as lift(2); promote lifts it, then adds the e4
     /// challenge. On the Ext-valued CPU model values are already embedded, so
     /// the result must equal lift(2) + challenge exactly.
@@ -699,13 +699,13 @@ mod tests {
         let alpha_val = lift(Bf::from_u32_with_reduction(3));
 
         let backings = identity_base_mem_backings();
-        let mut challenges = crate::fwd::source::ChallengeBanks::default();
-        let (sub, idx) = challenges.intern(&alpha_ref);
+        let mut derived_e4 = crate::fwd::source::DerivedE4Banks::default();
+        let (sub, idx) = derived_e4.intern(&alpha_ref);
 
         let ctx = DagForwardContext {
             specials: SpecialTable::default(),
             consts: ConstBank::default(),
-            challenges,
+            derived_e4,
             backings,
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
@@ -758,7 +758,7 @@ mod tests {
 
     // ── Test 5: base-acc + Ext-challenge ADD (mixed promote) ─────────────────
 
-    /// Program: MOV acc ← Global{col=2}; ADD Ldc{ConstChallenge, idx=0}
+    /// Program: MOV acc ← Global{col=2}; ADD Ldc{ConstDerivedE4, idx=0}
     /// acc starts as lift(col=2, row=0) = lift(2).
     /// challenge returns alpha_val = lift(Bf(3)) i.e. [3,0,0,0].
     /// result = lift(2) + lift(3) = lift(5).
@@ -772,15 +772,15 @@ mod tests {
         };
         let alpha_val = lift(Bf::from_u32_with_reduction(3));
 
-        // Build compiled with alpha_ref in challenges bank.
+        // Build compiled with alpha_ref in derived_e4 bank.
         let backings = identity_base_mem_backings();
-        let mut challenges = crate::fwd::source::ChallengeBanks::default();
-        let (sub, idx) = challenges.intern(&alpha_ref);
+        let mut derived_e4 = crate::fwd::source::DerivedE4Banks::default();
+        let (sub, idx) = derived_e4.intern(&alpha_ref);
 
         let ctx = DagForwardContext {
             specials: SpecialTable::default(),
             consts: ConstBank::default(),
-            challenges,
+            derived_e4,
             backings,
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
@@ -914,7 +914,7 @@ mod tests {
         let ctx = crate::fwd::context::DagForwardContext {
             specials,
             consts: crate::fwd::source::ConstBank::default(),
-            challenges: crate::fwd::source::ChallengeBanks::default(),
+            derived_e4: crate::fwd::source::DerivedE4Banks::default(),
             backings,
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),

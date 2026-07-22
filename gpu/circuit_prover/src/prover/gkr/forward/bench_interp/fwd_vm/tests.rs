@@ -93,12 +93,12 @@ fn fwd_vm_ab_report() {
     use crate::allocator::tracker::AllocationPlacement;
     use crate::primitives::context::DeviceAllocation;
     use crate::prover::gkr::forward::vm::gpu_tests::{
-        build_header, const_challenge_values, resolve_storage_column, run_vm_parity,
+        build_header, const_derived_e4_values, resolve_storage_column, run_vm_parity,
     };
     use crate::prover::gkr::forward::vm::lower::lower_layer_desc;
     use crate::prover::gkr::forward::vm::{
         fwd_vm_s4_blocks_per_sm, launch_fwd_vm_s4, launch_fwd_vm_validate,
-        upload_const_challenges, FWD_VM_S4_BUDGET_LANES, FWD_VM_THREADS_PER_BLOCK,
+        upload_const_derived_e4, FWD_VM_S4_BUDGET_LANES, FWD_VM_THREADS_PER_BLOCK,
     };
 
     let device = query_fwd_vm_device_attrs();
@@ -149,8 +149,8 @@ fn fwd_vm_ab_report() {
                 setup.desc.program_ldg.is_null(),
                 "{stem} L{li}: corpus program unexpectedly overflowed the inline cap"
             );
-            upload_const_challenges(&const_challenge_values(&fixture, cl), context)
-                .unwrap_or_else(|e| panic!("{stem} L{li}: const-challenge upload: {e:?}"));
+            upload_const_derived_e4(&const_derived_e4_values(&fixture, cl), context)
+                .unwrap_or_else(|e| panic!("{stem} L{li}: const-derived-e4 upload: {e:?}"));
 
             // Fail-closed pre-check at FULL trace_len (desc.count is also the
             // mapping-arena column stride, so the structural checks must run
@@ -258,10 +258,10 @@ fn fwd_vm_interp_ncu_target() {
     use super::super::fixture::CircuitFixture;
     use super::super::harness::TIMING_COUNT_CAP;
     use crate::prover::gkr::forward::vm::gpu_tests::{
-        build_header, const_challenge_values, resolve_storage_column,
+        build_header, const_derived_e4_values, resolve_storage_column,
     };
     use crate::prover::gkr::forward::vm::lower::lower_layer_desc;
-    use crate::prover::gkr::forward::vm::{launch_fwd_vm_s4, upload_const_challenges};
+    use crate::prover::gkr::forward::vm::{launch_fwd_vm_s4, upload_const_derived_e4};
 
     let circuit =
         std::env::var("FWDVM_NCU_CIRCUIT").unwrap_or_else(|_| FWD_VM_CIRCUITS[0].to_string());
@@ -282,7 +282,7 @@ fn fwd_vm_interp_ncu_target() {
     let resolve = |addr| resolve_storage_column(&fixture, addr);
     let challenge = |r: &_| super::resolvers::challenge_value(&fixture, r);
     let mut setup = lower_layer_desc(cl, &header, &resolve, &challenge, None).unwrap();
-    upload_const_challenges(&const_challenge_values(&fixture, cl), context).unwrap();
+    upload_const_derived_e4(&const_derived_e4_values(&fixture, cl), context).unwrap();
     // Env-gated full-domain override for docs-compliant ncu captures: profile
     // the circuit's REAL trace_len (the fixture already allocates full-trace
     // storage). Default keeps the A/B timing cap for cross-history parity.

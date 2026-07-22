@@ -14,7 +14,7 @@ pub enum FoldState {
     /// Read the materialized previous-round buffer (depth-1 fold of it).
     Materialized,
     /// Recompute from original columns: 2^depth reads + fold tree with round
-    /// challenges. `depth` == current round index (1-based fold count).
+    /// derived_e4. `depth` == current round index (1-based fold count).
     LazyFromOriginals { depth: u8 },
 }
 

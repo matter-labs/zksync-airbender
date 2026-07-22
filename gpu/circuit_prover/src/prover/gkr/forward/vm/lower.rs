@@ -55,7 +55,7 @@ use crate::upstream::{ChallengeRef, GKRAddress, PrimeField, RangeWidth, ReadPlac
 
 use super::desc::{
     pack_desc, FwdVmDesc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP,
-    ARG_CHALLENGE_CAP, CONST_CAP, CONST_CHALLENGE_CAP, DESC_CAP, FILL_BANK_NONE,
+    ARG_DERIVED_E4_CAP, CONST_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, FILL_BANK_NONE,
     MAPPING_ARENA_COUNT, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN,
     SD_VIRTUAL, SLOT_COUNT,
 };
@@ -85,7 +85,7 @@ pub(crate) struct ResolvedColumn {
 /// layer's specials actually reference.
 ///
 /// The decoder FILL value is NOT a header input: the lowering only reserves
-/// its const-challenge bank slot (`FwdVmDesc::fill_bank_idx`); the caller
+/// its const-derived-e4 bank slot (`FwdVmDesc::fill_bank_idx`); the caller
 /// supplies the value in the bank upload (see [`lower_layer_desc`]).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FwdVmHeaderInputs {
@@ -112,10 +112,10 @@ pub(crate) enum FwdVmLowerError {
     ConstBankOverflow {
         n: usize,
     },
-    ArgChallengeOverflow {
+    ArgDerivedE4Overflow {
         n: usize,
     },
-    ConstChallengeOverflow {
+    ConstDerivedE4Overflow {
         n: usize,
     },
     DescOverflow {
@@ -211,8 +211,8 @@ impl core::fmt::Debug for FwdVmLayerSetup {
             .field("program_lanes", &self.desc.program_lanes)
             .field("program_inline", &self.desc.program_ldg.is_null())
             .field("n_consts", &self.desc.n_consts)
-            .field("n_arg_challenge", &self.desc.n_arg_challenge)
-            .field("n_const_challenge", &self.desc.n_const_challenge)
+            .field("n_arg_derived_e4", &self.desc.n_arg_derived_e4)
+            .field("n_const_derived_e4", &self.desc.n_const_derived_e4)
             .field("fill_bank_idx", &self.desc.fill_bank_idx)
             .field("n_descs", &self.desc.n_descs)
             .field("count", &self.desc.count)
@@ -457,10 +457,10 @@ fn rewrite_program(cl: &CompiledLayer, geom: &SlotGeometry) -> Result<Program, F
 /// `cap` structurally bounds the probe at `cap + 1`: the caller's own cap
 /// check (`n > cap` → hard error) fires right after, so a corrupt/oversized
 /// bank can never drive `n` past `cap + 1` and wrap `n as u16` into an
-/// infinite loop (`ARG_CHALLENGE_CAP`/`CONST_CHALLENGE_CAP` are both « 2^16).
-fn challenge_bank_len(cl: &CompiledLayer, sub: LdcSub, cap: usize) -> usize {
+/// infinite loop (`ARG_DERIVED_E4_CAP`/`CONST_DERIVED_E4_CAP` are both « 2^16).
+fn derived_e4_bank_len(cl: &CompiledLayer, sub: LdcSub, cap: usize) -> usize {
     let mut n = 0usize;
-    while n <= cap && cl.ctx.challenges.get(sub, n as u16).is_some() {
+    while n <= cap && cl.ctx.derived_e4.get(sub, n as u16).is_some() {
         n += 1;
     }
     n
@@ -471,17 +471,17 @@ fn challenge_bank_len(cl: &CompiledLayer, sub: LdcSub, cap: usize) -> usize {
 /// - `resolve_column` maps a flat `GKRAddress` to its resident storage column
 ///   (production: the consolidated `storage/views.rs` matrices; tests: mocks).
 /// - `challenge` yields the concrete `E4` value of a schedule-time
-///   (`ArgChallenge`) reference. `ConstChallenge` values are NOT part of the
-///   descriptor — upload them via [`super::upload_const_challenges`]; only the
-///   bank LENGTH rides the desc (`n_const_challenge`, VALIDATE bounds check).
+///   (`ArgDerivedE4`) reference. `ConstDerivedE4` values are NOT part of the
+///   descriptor — upload them via [`super::upload_const_derived_e4`]; only the
+///   bank LENGTH rides the desc (`n_const_derived_e4`, VALIDATE bounds check).
 /// - **Decoder fill**: for a layer with a `PeekDecoder` special, the lowering
-///   APPENDS one bank slot after the real `ConstChallenge` entries
-///   (`fill_bank_idx` = pre-append length, `n_const_challenge` includes it)
+///   APPENDS one bank slot after the real `ConstDerivedE4` entries
+///   (`fill_bank_idx` = pre-append length, `n_const_derived_e4` includes it)
 ///   but does NOT supply the value. ORDERING CONTRACT (mechanism (a), fill
 ///   value host-known): the caller must place the — final — fill value at
-///   `values[fill_bank_idx]` of the [`super::upload_const_challenges`] upload
+///   `values[fill_bank_idx]` of the [`super::upload_const_derived_e4`] upload
 ///   and enqueue that upload on `exec_stream` BEFORE any launch of this
-///   layer's descriptor (`gpu_tests::const_challenge_values` implements the
+///   layer's descriptor (`gpu_tests::const_derived_e4_values` implements the
 ///   append for the harness/gate callers). If a future production caller only
 ///   has the fill device-resident (`device_decoder_lookup_fill_value`), the
 ///   alternative is a 16-B D2D `memcpyToSymbolAsync` into bank slot
@@ -544,24 +544,24 @@ pub(crate) fn lower_layer_desc(
     }
     desc.n_consts = consts.len() as u32;
 
-    let n_arg = challenge_bank_len(cl, LdcSub::ArgChallenge, ARG_CHALLENGE_CAP);
-    if n_arg > ARG_CHALLENGE_CAP {
-        return Err(FwdVmLowerError::ArgChallengeOverflow { n: n_arg });
+    let n_arg = derived_e4_bank_len(cl, LdcSub::ArgDerivedE4, ARG_DERIVED_E4_CAP);
+    if n_arg > ARG_DERIVED_E4_CAP {
+        return Err(FwdVmLowerError::ArgDerivedE4Overflow { n: n_arg });
     }
     for i in 0..n_arg {
         let r = cl
             .ctx
-            .challenges
-            .get(LdcSub::ArgChallenge, i as u16)
+            .derived_e4
+            .get(LdcSub::ArgDerivedE4, i as u16)
             .unwrap();
-        desc.arg_challenge[i] = challenge(r);
+        desc.arg_derived_e4[i] = challenge(r);
     }
-    desc.n_arg_challenge = n_arg as u32;
+    desc.n_arg_derived_e4 = n_arg as u32;
 
     // The decoder fill slot (reserved below) also lives in this bank, so the
-    // final `n_const_challenge`/cap check happen after the specials loop.
-    let mut n_const_challenge =
-        challenge_bank_len(cl, LdcSub::ConstChallenge, CONST_CHALLENGE_CAP);
+    // final `n_const_derived_e4`/cap check happen after the specials loop.
+    let mut n_const_derived_e4 =
+        derived_e4_bank_len(cl, LdcSub::ConstDerivedE4, CONST_DERIVED_E4_CAP);
 
     // ----- special descriptors (packed u32 each) + header pointers. -----
     let n_descs = cl.ctx.specials.len();
@@ -602,12 +602,12 @@ pub(crate) fn lower_layer_desc(
             }
             SpecialStrategy::PeekDecoder { predicate, .. } => {
                 uses_table = true;
-                // Reserve ONE const-challenge bank slot for the per-circuit
+                // Reserve ONE const-derived-e4 bank slot for the per-circuit
                 // fill value (shared by every decoder desc of the layer);
                 // the caller uploads the value there (see the fn doc).
                 if fill_bank_idx == FILL_BANK_NONE {
-                    fill_bank_idx = n_const_challenge as u32;
-                    n_const_challenge += 1;
+                    fill_bank_idx = n_const_derived_e4 as u32;
+                    n_const_derived_e4 += 1;
                 }
                 let arena = require_arena(ARENA_GENERIC_FAMILY)?;
                 let col = header
@@ -635,12 +635,12 @@ pub(crate) fn lower_layer_desc(
         };
     }
     desc.n_descs = n_descs as u32;
-    if n_const_challenge > CONST_CHALLENGE_CAP {
-        return Err(FwdVmLowerError::ConstChallengeOverflow {
-            n: n_const_challenge,
+    if n_const_derived_e4 > CONST_DERIVED_E4_CAP {
+        return Err(FwdVmLowerError::ConstDerivedE4Overflow {
+            n: n_const_derived_e4,
         });
     }
-    desc.n_const_challenge = n_const_challenge as u32;
+    desc.n_const_derived_e4 = n_const_derived_e4 as u32;
     desc.fill_bank_idx = fill_bank_idx;
     desc.mapping_arena = header.mapping_arena;
     if uses_table {

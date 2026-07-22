@@ -30,16 +30,16 @@
 
 #include "fwd_vm.cuh"
 
-// Runtime-produced challenge bank (`LdcSub::ConstChallenge`) - the one
+// Runtime-produced derived-e4 bank (`LdcSub::ConstDerivedE4`) - the one
 // legitimately runtime-late input. Rust binds this symbol and uploads it with
 // `memcpyToSymbolAsync` on `exec_stream` (Task 9); all uploads and all
 // launches that read it are ordered on `exec_stream`, and the bank is
-// per-proof-instance state. `fwd_vm_desc::n_const_challenge` carries the used
+// per-proof-instance state. `fwd_vm_desc::n_const_derived_e4` carries the used
 // length so VALIDATE can bounds-check indices. The bank ALSO hosts the decoder
 // fill value (same class: one runtime challenge-dependent e4 per layer) at
-// `fwd_vm_desc::fill_bank_idx`, appended after the real ConstChallenge entries
+// `fwd_vm_desc::fill_bank_idx`, appended after the real ConstDerivedE4 entries
 // by the Rust lowering + upload (`vm/lower.rs`).
-__device__ __constant__ e4 ab_gkr_fwd_vm_const_challenge[airbender::prover::gkr::FWD_VM_CONST_CHALLENGE_CAP];
+__device__ __constant__ e4 ab_gkr_fwd_vm_const_derived_e4[airbender::prover::gkr::FWD_VM_CONST_DERIVED_E4_CAP];
 
 namespace airbender::prover::gkr {
 
@@ -59,8 +59,8 @@ constexpr u32 FWDVM_ERR_NULL_POINTER = 1024;  // null mapping arena / table / ma
 // (mirror gkr_eval_isa::fwd::isa::{LdcSub, Special}; UNCHANGED from v1). The
 // lane-layout shifts/masks/tags themselves are the FWD_VM_* block in fwd_vm.cuh.
 constexpr u32 LDC_CONST = 0;
-constexpr u32 LDC_CONST_CHALLENGE = 1;
-constexpr u32 LDC_ARG_CHALLENGE = 2;
+constexpr u32 LDC_CONST_DERIVED_E4 = 1;
+constexpr u32 LDC_ARG_DERIVED_E4 = 2;
 constexpr u32 LDC_SPECIAL = 3;
 constexpr u32 SPECIAL_ZERO = 0; // never emitted (elided upstream); VALIDATE rejects it
 constexpr u32 SPECIAL_ONE = 1;
@@ -219,10 +219,10 @@ template <bool VALIDATE> DEVICE_FORCEINLINE bool special_common_checks(const fwd
         return false;
       }
       // Fail-closed fill_bank_idx bound: the lowering appends the fill AFTER
-      // the real ConstChallenge entries, so a valid index is < n_const_challenge
+      // the real ConstDerivedE4 entries, so a valid index is < n_const_derived_e4
       // (and a fortiori < the cap); the FWD_VM_FILL_BANK_NONE sentinel of a
       // decoder-free layer trips this loudly if a decoder desc sneaks in.
-      if (d.fill_bank_idx >= FWD_VM_CONST_CHALLENGE_CAP || d.fill_bank_idx >= d.n_const_challenge) {
+      if (d.fill_bank_idx >= FWD_VM_CONST_DERIVED_E4_CAP || d.fill_bank_idx >= d.n_const_derived_e4) {
         err |= FWDVM_ERR_LDC_OOB;
         return false;
       }
@@ -268,7 +268,7 @@ template <bool VALIDATE> DEVICE_FORCEINLINE e4 read_special_e4(const fwd_vm_desc
       // Challenge-dependent fill from the __constant__ bank: the index is
       // warp-uniform (grid-constant desc), only the mask predicate is
       // per-lane, so this is a constant-cache broadcast.
-      return ::ab_gkr_fwd_vm_const_challenge[d.fill_bank_idx];
+      return ::ab_gkr_fwd_vm_const_derived_e4[d.fill_bank_idx];
     const u32 row = load<u32, ld_modifier::ca>(special_mapping(d, s), gid);
     if constexpr (VALIDATE) {
       if (row >= d.table_len) {
@@ -302,7 +302,7 @@ template <bool VALIDATE> DEVICE_FORCEINLINE bf read_special_bf(const fwd_vm_desc
   }
 }
 
-// --- Ldc{sub,idx}: consts / challenge banks / inline specials ----------------
+// --- Ldc{sub,idx}: consts / derived-e4 banks / inline specials ---------------
 
 template <bool VALIDATE> DEVICE_FORCEINLINE bf read_ldc_bf(const fwd_vm_desc &d, const u32 sub, const u32 idx, u32 &err) {
   switch (sub) {
@@ -322,7 +322,7 @@ template <bool VALIDATE> DEVICE_FORCEINLINE bf read_ldc_bf(const fwd_vm_desc &d,
     if constexpr (VALIDATE)
       err |= FWDVM_ERR_BAD_SPECIAL; // Zero is never emitted; > NegOne is malformed
     return bf::ZERO();
-  default: // challenge banks are e4 by definition - a bf-field read is malformed
+  default: // derived-e4 banks are e4 by definition - a bf-field read is malformed
     if constexpr (VALIDATE)
       err |= FWDVM_ERR_FIELD_MISMATCH;
     return bf::ZERO();
@@ -331,22 +331,22 @@ template <bool VALIDATE> DEVICE_FORCEINLINE bf read_ldc_bf(const fwd_vm_desc &d,
 
 template <bool VALIDATE> DEVICE_FORCEINLINE e4 read_ldc_e4(const fwd_vm_desc &d, const u32 sub, const u32 idx, u32 &err) {
   switch (sub) {
-  case LDC_CONST_CHALLENGE:
+  case LDC_CONST_DERIVED_E4:
     if constexpr (VALIDATE) {
-      if (idx >= d.n_const_challenge) {
+      if (idx >= d.n_const_derived_e4) {
         err |= FWDVM_ERR_LDC_OOB;
         return e4::ZERO();
       }
     }
-    return ::ab_gkr_fwd_vm_const_challenge[idx];
-  case LDC_ARG_CHALLENGE:
+    return ::ab_gkr_fwd_vm_const_derived_e4[idx];
+  case LDC_ARG_DERIVED_E4:
     if constexpr (VALIDATE) {
-      if (idx >= d.n_arg_challenge) {
+      if (idx >= d.n_arg_derived_e4) {
         err |= FWDVM_ERR_LDC_OOB;
         return e4::ZERO();
       }
     }
-    return d.arg_challenge[idx];
+    return d.arg_derived_e4[idx];
   case LDC_SPECIAL:
     if (idx == SPECIAL_ONE)
       return e4::ONE();

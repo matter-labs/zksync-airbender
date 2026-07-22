@@ -34,7 +34,7 @@ pub fn unpack_operand(lane: u16) -> Result<OperandLine, DecodeError> {
         TAG_SMEM => Ok(OperandLine::Smem { cell: (lane >> TYPE_BITS) & ((1 << CELL_BITS) - 1) }),
         TAG_LDC => {
             let sub = match (lane >> TYPE_BITS) & LDC_SUB_MASK {
-                0 => LdcSub::Const, 1 => LdcSub::ConstChallenge, 2 => LdcSub::ArgChallenge, _ => LdcSub::Special,
+                0 => LdcSub::Const, 1 => LdcSub::ConstDerivedE4, 2 => LdcSub::ArgDerivedE4, _ => LdcSub::Special,
             };
             Ok(OperandLine::Ldc { sub, idx: lane >> (TYPE_BITS + LDC_SUB_BITS) })
         }
@@ -75,7 +75,7 @@ mod tests {
         for c in [
             OperandLine::Global { slot: 15, col: 1023 },
             OperandLine::Smem { cell: 12 },
-            OperandLine::Ldc { sub: LdcSub::ArgChallenge, idx: 4095 },
+            OperandLine::Ldc { sub: LdcSub::ArgDerivedE4, idx: 4095 },
             OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 },
             OperandLine::Special { desc: 16383 },
         ] { assert_eq!(unpack_operand(pack_operand(c).unwrap()).unwrap(), c); }
@@ -205,7 +205,7 @@ mod header_tests {
             Instr::Mov { dir: MovDir::AccFromSrc, field: OperandField::Base, dst: None, src: Some(OperandLine::Global { slot: 0, col: 0 }) },
             Instr::Add { field: OperandField::Base, sign: Sign::Plus, promote: false, operands: vec![OperandLine::Global { slot: 0, col: 1 }, OperandLine::Smem { cell: 4 }] },
             Instr::Mul { field: OperandField::Ext, promote: false, negate_acc: false, operands: vec![OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 }] },
-            Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, sign: Sign::Minus, promote: false, pairs: vec![(OperandLine::Global { slot: 1, col: 2 }, OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 1 })] }, // canonical mixed (Base,Ext)
+            Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, sign: Sign::Minus, promote: false, pairs: vec![(OperandLine::Global { slot: 1, col: 2 }, OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 1 })] }, // canonical mixed (Base,Ext)
             Instr::Mov { dir: MovDir::DstFromAcc, field: OperandField::Ext, dst: Some(DstLine::Smem { cell: 0 }), src: None },
             Instr::Mov { dir: MovDir::DstFromSrc, field: OperandField::Base, dst: Some(DstLine::GlobalMaterialize { slot: 2, col: 5 }), src: Some(OperandLine::Global { slot: 0, col: 9 }) },
         ] }
@@ -217,7 +217,7 @@ mod header_tests {
         // round-trip the bit faithfully (semantics are validation's job).
         let p = Program { instrs: vec![
             Instr::Add { field: OperandField::Ext, sign: Sign::Plus, promote: true, operands: vec![OperandLine::Smem { cell: 4 }] },
-            Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, sign: Sign::Minus, promote: true, pairs: vec![(OperandLine::Global { slot: 0, col: 1 }, OperandLine::Ldc { sub: LdcSub::ConstChallenge, idx: 0 })] },
+            Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, sign: Sign::Minus, promote: true, pairs: vec![(OperandLine::Global { slot: 0, col: 1 }, OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 })] },
             Instr::Mul { field: OperandField::Ext, promote: true, negate_acc: false, operands: vec![OperandLine::Smem { cell: 8 }] },
         ] };
         assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);

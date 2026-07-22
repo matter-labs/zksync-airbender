@@ -11,7 +11,7 @@
 //!   * `T2 -> 2·v(2x+1) − v(2x)` (point 2 of the linear interpolant through
 //!     `v(2x)` at 0 and `v(2x+1)` at 1).
 //!
-//! Row-independent operands (`Ldc` consts/challenges) are role-invariant by
+//! Row-independent operands (`Ldc` consts/derived_e4) are role-invariant by
 //! construction (`2c − c = c`), so the transform is applied only where it can
 //! differ — reads that take a row. Smem cells hold values already resolved
 //! within THIS row's computation, so they are read straight.
@@ -207,11 +207,11 @@ fn resolve(
                 }
                 _ => return Err(InterpError::MalformedInstr("special idx".into())),
             }),
-            LdcSub::ConstChallenge | LdcSub::ArgChallenge => {
+            LdcSub::ConstDerivedE4 | LdcSub::ArgDerivedE4 => {
                 let cr = c
-                    .challenges
+                    .derived_e4
                     .get(sub, idx)
-                    .ok_or(InterpError::UnknownChallenge(idx))?;
+                    .ok_or(InterpError::UnknownDerivedE4(idx))?;
                 Ok(r.challenge.challenge(cr))
             }
         },
@@ -281,7 +281,7 @@ fn write_dst(dst: &DstLine, field: OperandField, v: Ext, cells: &mut Vec<Ext>) {
 /// `bindings` supplies the per-descriptor [`FoldState`] for this round/policy
 /// (a signature extension over the Task-6 draft — REV2 moved `FoldState` out of
 /// descriptors into per-run [`BwdBindings`], so it must be threaded in here).
-/// `round_challenges` are the fold challenges `r_0, r_1, …` consulted by
+/// `round_challenges` are the fold derived_e4 `r_0, r_1, …` consulted by
 /// `LazyFromOriginals` sources; `d` is the distilled layer the program was
 /// compiled from (its `specials` mirror `c.specials`).
 pub fn interpret_bwd_row(

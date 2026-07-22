@@ -1,4 +1,4 @@
-//! Typed source model + const/challenge banks + special-source descriptors (spec §8, §9).
+//! Typed source model + constant/derived-E4 banks + special-source descriptors (spec §8, §9).
 
 use super::isa::LdcSub;
 use cs::gkr_compiler::dag_ir::{
@@ -31,34 +31,35 @@ impl ConstBank {
     pub fn values(&self) -> &[u32] { &self.values }
 }
 
-/// Per-channel challenge banks holding the real `ChallengeRef`s (spec §7).
+/// Per-channel derived-E4 banks. The current forward recipes are `ChallengeRef`s;
+/// the bank name describes the resulting E4 values rather than their recipes.
 #[derive(Clone, Debug, Default)]
-pub struct ChallengeBanks {
-    const_refs: Vec<ChallengeRef>, // ConstChallenge channel
-    arg_refs: Vec<ChallengeRef>,   // ArgChallenge channel
+pub struct DerivedE4Banks {
+    const_refs: Vec<ChallengeRef>, // ConstDerivedE4 channel
+    arg_refs: Vec<ChallengeRef>,   // ArgDerivedE4 channel
     index: HashMap<ChallengeRef, (LdcSub, u16)>,
 }
-impl ChallengeBanks {
+impl DerivedE4Banks {
     pub fn intern(&mut self, r: &ChallengeRef) -> (LdcSub, u16) {
         if let Some(&hit) = self.index.get(r) { return hit; }
-        let sub = classify_challenge(r);
-        let bank = match sub { LdcSub::ConstChallenge => &mut self.const_refs, _ => &mut self.arg_refs };
+        let sub = classify_derived_e4(r);
+        let bank = match sub { LdcSub::ConstDerivedE4 => &mut self.const_refs, _ => &mut self.arg_refs };
         let idx = bank.len() as u16; bank.push(r.clone());
         self.index.insert(r.clone(), (sub, idx)); (sub, idx)
     }
     pub fn get(&self, sub: LdcSub, idx: u16) -> Option<&ChallengeRef> {
-        let bank = match sub { LdcSub::ConstChallenge => &self.const_refs, LdcSub::ArgChallenge => &self.arg_refs, _ => return None };
+        let bank = match sub { LdcSub::ConstDerivedE4 => &self.const_refs, LdcSub::ArgDerivedE4 => &self.arg_refs, _ => return None };
         bank.get(idx as usize)
     }
 }
 
 /// SP1 best-effort channel classification (SP3 confirms; does not affect SP1 correctness).
-pub fn classify_challenge(r: &ChallengeRef) -> LdcSub {
+pub fn classify_derived_e4(r: &ChallengeRef) -> LdcSub {
     match &r.key { // ChallengeKey is not Copy (PermutationLinearization payload) — match by ref
-        ChallengeKey::LookupAdditive | ChallengeKey::LookupMultiplicative | ChallengeKey::ConstraintAggregation => LdcSub::ConstChallenge,
+        ChallengeKey::LookupAdditive | ChallengeKey::LookupMultiplicative | ChallengeKey::ConstraintAggregation => LdcSub::ConstDerivedE4,
         ChallengeKey::PermutationAdditive
         | ChallengeKey::PermutationLinearization(_)
-        | ChallengeKey::ClaimBatching => LdcSub::ArgChallenge,
+        | ChallengeKey::ClaimBatching => LdcSub::ArgDerivedE4,
     }
 }
 
@@ -131,26 +132,26 @@ mod tests {
         assert_eq!(b.values(), &[7, 9]);
     }
     #[test]
-    fn challenge_bank_roundtrips_ref() {
-        let mut banks = ChallengeBanks::default();
+    fn derived_e4_bank_roundtrips_ref() {
+        let mut banks = DerivedE4Banks::default();
         let r = ChallengeRef { key: ChallengeKey::LookupAdditive, power: ChallengePower::One };
         let (sub, idx) = banks.intern(&r);
-        assert_eq!(sub, LdcSub::ConstChallenge);
+        assert_eq!(sub, LdcSub::ConstDerivedE4);
         assert_eq!(banks.get(sub, idx), Some(&r));
         // same ref reuses slot
         assert_eq!(banks.intern(&r), (sub, idx));
         // a permutation challenge goes to the arg channel
         let p = ChallengeRef { key: ChallengeKey::PermutationAdditive, power: ChallengePower::Static(2) };
-        assert_eq!(banks.intern(&p).0, LdcSub::ArgChallenge);
+        assert_eq!(banks.intern(&p).0, LdcSub::ArgDerivedE4);
     }
     #[test]
-    fn claim_batching_classifies_as_arg_challenge() {
+    fn claim_batching_classifies_as_arg_derived_e4() {
         // ClaimBatching is Ext-valued and, like PermutationAdditive, goes to the arg
         // channel — NOT the const channel (unlike ConstraintAggregation).
         let one = ChallengeRef { key: ChallengeKey::ClaimBatching, power: ChallengePower::One };
-        assert_eq!(classify_challenge(&one), LdcSub::ArgChallenge);
+        assert_eq!(classify_derived_e4(&one), LdcSub::ArgDerivedE4);
         let static3 = ChallengeRef { key: ChallengeKey::ClaimBatching, power: ChallengePower::Static(3) };
-        assert_eq!(classify_challenge(&static3), LdcSub::ArgChallenge);
+        assert_eq!(classify_derived_e4(&static3), LdcSub::ArgDerivedE4);
     }
     #[test]
     fn kind_order_and_code_roundtrip() {

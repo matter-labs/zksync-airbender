@@ -322,7 +322,7 @@ pub(crate) enum VirtualRootOutput {
 struct VirtualLower<'a> {
     ctx: &'a mut DagForwardContext,
     /// Owned clone of `ctx.cross_layer_fields` so `child_operand_field` can borrow it
-    /// immutably while `ctx` is mutated (interning backings/consts/challenges).
+    /// immutably while `ctx` is mutated (interning backings/consts/derived_e4).
     cross: HashMap<ReadPlace, cs::gkr_compiler::dag_ir::FieldKind>,
     out: Vec<VInstr>,
     step_of_instr: Vec<usize>,
@@ -813,7 +813,7 @@ impl<'a> VirtualLower<'a> {
     /// `emit_init_field` first) or already does (a just-recomputed compound/root).
     fn try_admit(&mut self, v: ExprId, field: OperandField) -> Option<ValueId> {
         // RR-invariant: admit into residency ONLY values the genome scores — cs's site
-        // domain (cacheable ∧ fan-out ≥ 2). Non-domain values (challenges, constants,
+        // domain (cacheable ∧ fan-out ≥ 2). Non-domain values (derived_e4, constants,
         // virtual-setup / lookup leaves, and fan-out-1 values) carry zero DRAM traffic,
         // so caching them cannot save a read — it only squats a residency slot that could
         // hold a genuine DRAM value. This `try_admit` is the SINGLE admission choke (leaf
@@ -1150,7 +1150,7 @@ impl<'a> VirtualLower<'a> {
                 }
             },
             SourceKind::Challenge { reference } => {
-                let (sub, idx) = self.ctx.challenges.intern(reference);
+                let (sub, idx) = self.ctx.derived_e4.intern(reference);
                 Ok(VirtualOp::Ldc { sub, idx })
             }
             SourceKind::LookupValue { .. } => Err(CompileError::UncoveredLookupLeaf(expr_id.0)),

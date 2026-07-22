@@ -20,9 +20,9 @@ use crate::primitives::field::{BF, E4};
 // --- caps (mirror the FWD_VM_* constexprs in fwd_vm.cuh) ---------------------
 pub(crate) const PROGRAM_CAP: usize = 12288; // u16 lanes, 24 KB inline
 pub(crate) const CONST_CAP: usize = 40; // BF constants
-pub(crate) const ARG_CHALLENGE_CAP: usize = 12; // schedule-time E4 challenges
+pub(crate) const ARG_DERIVED_E4_CAP: usize = 12; // schedule-time derived E4 values
 pub(crate) const DESC_CAP: usize = 370; // packed special descriptors
-pub(crate) const CONST_CHALLENGE_CAP: usize = 8; // Task-8 __constant__ E4 bank (not in this struct);
+pub(crate) const CONST_DERIVED_E4_CAP: usize = 8; // Task-8 __constant__ E4 bank (not in this struct);
                                                  // also hosts the decoder fill (see `fill_bank_idx`)
 
 /// `fill_bank_idx` sentinel: the layer has no `SD_DECODER` desc (mirrors
@@ -37,7 +37,7 @@ pub(crate) const SD_SINGLE_COLUMN: u32 = 0; // PeekSingleColumn: lift(mapping[ro
 pub(crate) const SD_AGGREGATE: u32 = 1; // PeekAggregate: table[mapping[row]]
 pub(crate) const SD_SETUP: u32 = 2; // PeekSetup: row < table_len ? table[row] : 0
 pub(crate) const SD_DECODER: u32 = 3; // PeekDecoder: mask[row] != 0 ? table[mapping[row]]
-                                      //                            : const_challenge[fill_bank_idx]
+                                      //                            : const_derived_e4[fill_bank_idx]
 pub(crate) const SD_VIRTUAL: u32 = 4; // VirtualSetup: lift(n(vkind, gid)), no memory reads
 
 // --- mapping-arena selectors (packed-desc `arena` field) ---------------------
@@ -139,8 +139,8 @@ pub(crate) fn unpack_desc(desc: u32) -> (u32, u32, u16, u32) {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct FwdVmDesc {
-    // schedule-time-known challenges, inline (16-aligned E4 first: zero padding)
-    pub arg_challenge: [E4; ARG_CHALLENGE_CAP], // 0, 192 B
+    // schedule-time-known derived E4 values, inline (16-aligned E4 first: zero padding)
+    pub arg_derived_e4: [E4; ARG_DERIVED_E4_CAP], // 0, 192 B
     // program oversize fallback; null when the program is inline (expected always)
     pub program_ldg: *const u16, // 192
     // column geometry: a slot IS one homogeneous matrix; ONE table serves both
@@ -152,8 +152,8 @@ pub(crate) struct FwdVmDesc {
     // E4 table (contents runtime-filled), and the per-circuit
     // execute-predicate mask column (or null). The decoder FILL value (also a
     // per-circuit singleton, runtime challenge-dependent) is NOT pointed to
-    // from here — it lives in the `ab_gkr_fwd_vm_const_challenge` bank at
-    // `fill_bank_idx` (same class as a ConstChallenge).
+    // from here — it lives in the `ab_gkr_fwd_vm_const_derived_e4` bank at
+    // `fill_bank_idx` (same class as a ConstDerivedE4).
     pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT], // 328
     pub table: *const E4,                                 // 352
     pub mask: *const BF,                                  // 360
@@ -165,13 +165,13 @@ pub(crate) struct FwdVmDesc {
     // banks, inline (schedule-time known)
     pub n_consts: u32,           // 440
     pub consts: [BF; CONST_CAP], // 444, Montgomery
-    pub n_arg_challenge: u32,    // 604
+    pub n_arg_derived_e4: u32,    // 604
     // special descriptors
     pub n_descs: u32, // 608
     // used length of the Task-8 __constant__ bank (INCLUDING the appended
     // decoder fill slot, if any); read only under VALIDATE
-    pub n_const_challenge: u32, // 612
-    // const-challenge bank slot of the decoder fill value, or
+    pub n_const_derived_e4: u32, // 612
+    // const-derived-e4 bank slot of the decoder fill value, or
     // `FILL_BANK_NONE` when the layer has no SD_DECODER desc; read only on
     // decoder-miss rows
     pub fill_bank_idx: u32, // 616
@@ -211,7 +211,7 @@ mod tests {
     #[test]
     fn desc_layout_offsets_match_the_documented_abi() {
         use core::mem::offset_of;
-        assert_eq!(offset_of!(FwdVmDesc, arg_challenge), 0);
+        assert_eq!(offset_of!(FwdVmDesc, arg_derived_e4), 0);
         assert_eq!(offset_of!(FwdVmDesc, program_ldg), 192);
         assert_eq!(offset_of!(FwdVmDesc, base), 200);
         assert_eq!(offset_of!(FwdVmDesc, mapping_arena), 328);
@@ -222,9 +222,9 @@ mod tests {
         assert_eq!(offset_of!(FwdVmDesc, stride_bytes), 376);
         assert_eq!(offset_of!(FwdVmDesc, n_consts), 440);
         assert_eq!(offset_of!(FwdVmDesc, consts), 444);
-        assert_eq!(offset_of!(FwdVmDesc, n_arg_challenge), 604);
+        assert_eq!(offset_of!(FwdVmDesc, n_arg_derived_e4), 604);
         assert_eq!(offset_of!(FwdVmDesc, n_descs), 608);
-        assert_eq!(offset_of!(FwdVmDesc, n_const_challenge), 612);
+        assert_eq!(offset_of!(FwdVmDesc, n_const_derived_e4), 612);
         assert_eq!(offset_of!(FwdVmDesc, fill_bank_idx), 616);
         assert_eq!(offset_of!(FwdVmDesc, table_len), 620);
         assert_eq!(offset_of!(FwdVmDesc, descs), 624);

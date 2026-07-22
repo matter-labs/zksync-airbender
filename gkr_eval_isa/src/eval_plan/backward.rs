@@ -328,7 +328,7 @@ fn compile_backward_symbolic(
         specials,
         backings: forward.ctx.backings,
         consts: forward.ctx.consts,
-        challenges: forward.ctx.challenges,
+        derived_e4: forward.ctx.derived_e4,
         budget: budget_lanes,
         stats,
         stats_ext,

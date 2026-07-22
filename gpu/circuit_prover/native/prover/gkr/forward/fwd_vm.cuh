@@ -23,22 +23,22 @@
 namespace airbender::prover::gkr {
 
 // --- caps (census maxima: lanes 6574, consts 27, argch 7, constch 1, descs 296)
-constexpr u32 FWD_VM_PROGRAM_CAP = 12288;     // u16 lanes, 24 KB inline
-constexpr u32 FWD_VM_CONST_CAP = 40;          // bf constants
-constexpr u32 FWD_VM_ARG_CHALLENGE_CAP = 12;  // schedule-time e4 challenges
-constexpr u32 FWD_VM_DESC_CAP = 370;          // packed special descriptors
-constexpr u32 FWD_VM_CONST_CHALLENGE_CAP = 8; // Task-8 __constant__ e4 bank (not in this struct);
-                                              // also hosts the decoder fill (see fill_bank_idx)
-constexpr u32 FWD_VM_FILL_BANK_NONE = ~0u;    // fill_bank_idx sentinel: layer has no SD_DECODER desc
-constexpr u32 FWD_VM_SLOT_COUNT = 16;         // field-qualified column slots
-constexpr u32 FWD_VM_MAPPING_ARENA_COUNT = 3; // generic_family / range_check_16 / timestamp
+constexpr u32 FWD_VM_PROGRAM_CAP = 12288;      // u16 lanes, 24 KB inline
+constexpr u32 FWD_VM_CONST_CAP = 40;           // bf constants
+constexpr u32 FWD_VM_ARG_DERIVED_E4_CAP = 12;  // schedule-time derived e4 values
+constexpr u32 FWD_VM_DESC_CAP = 370;           // packed special descriptors
+constexpr u32 FWD_VM_CONST_DERIVED_E4_CAP = 8; // Task-8 __constant__ e4 bank (not in this struct);
+                                               // also hosts the decoder fill (see fill_bank_idx)
+constexpr u32 FWD_VM_FILL_BANK_NONE = ~0u;     // fill_bank_idx sentinel: layer has no SD_DECODER desc
+constexpr u32 FWD_VM_SLOT_COUNT = 16;          // field-qualified column slots
+constexpr u32 FWD_VM_MAPPING_ARENA_COUNT = 3;  // generic_family / range_check_16 / timestamp
 
 // --- special-descriptor strategy kinds (descs[i] kind field) -----------------
 constexpr u32 SD_SINGLE_COLUMN = 0; // PeekSingleColumn: lift(mapping[row])
 constexpr u32 SD_AGGREGATE = 1;     // PeekAggregate: table[mapping[row]]
 constexpr u32 SD_SETUP = 2;         // PeekSetup: row < table_len ? table[row] : 0
 constexpr u32 SD_DECODER = 3;       // PeekDecoder: mask[row] != 0 ? table[mapping[row]]
-                                    //                            : const_challenge[fill_bank_idx]
+                                    //                            : const_derived_e4[fill_bank_idx]
 constexpr u32 SD_VIRTUAL = 4;       // VirtualSetup: lift(n(vkind, gid)), no memory reads
 
 // --- mapping-arena selectors (descs[i] arena field) ---------------------------
@@ -133,8 +133,8 @@ constexpr u32 FWD_VM_DST_COL_SHIFT = FWD_VM_DST_SLOT_SHIFT + FWD_VM_SLOT_BITS; /
 static_assert(FWD_VM_SLOT_COUNT == 1u << FWD_VM_SLOT_BITS, "slot-index field width vs slot-table size drift");
 
 struct fwd_vm_desc {
-  // schedule-time-known challenges, inline (16-aligned e4 first: zero padding)
-  e4 arg_challenge[FWD_VM_ARG_CHALLENGE_CAP]; // offset 0, 192 B
+  // schedule-time-known derived e4 values, inline (16-aligned e4 first: zero padding)
+  e4 arg_derived_e4[FWD_VM_ARG_DERIVED_E4_CAP]; // offset 0, 192 B
 
   // program oversize fallback; null when the program is inline (expected always)
   const u16 *program_ldg; // 192
@@ -150,8 +150,8 @@ struct fwd_vm_desc {
   // generic-lookup arena per layer (contents runtime-filled); mask
   // (execute-predicate column) is a per-circuit singleton. The decoder FILL
   // value (also a per-circuit singleton, runtime challenge-dependent) is NOT
-  // pointed to from here — it lives in the `ab_gkr_fwd_vm_const_challenge`
-  // bank at `fill_bank_idx` (same class as a ConstChallenge).
+  // pointed to from here — it lives in the `ab_gkr_fwd_vm_const_derived_e4`
+  // bank at `fill_bank_idx` (same class as a ConstDerivedE4).
   const u32 *mapping_arena[FWD_VM_MAPPING_ARENA_COUNT]; // 328
   const e4 *table;                                      // 352
   const bf *mask;                                       // 360, or null
@@ -166,17 +166,17 @@ struct fwd_vm_desc {
   // banks, inline (schedule-time known)
   u32 n_consts;                // 440
   bf consts[FWD_VM_CONST_CAP]; // 444, Montgomery
-  u32 n_arg_challenge;         // 604
+  u32 n_arg_derived_e4;        // 604
 
   // special descriptors
-  u32 n_descs;           // 608
-  u32 n_const_challenge; // 612: used length of the Task-8 __constant__ bank
-                         // (INCLUDING the appended decoder fill slot, if any);
-                         // read only under VALIDATE
-  u32 fill_bank_idx;     // 616: const-challenge bank slot of the decoder fill
-                         // value, or FWD_VM_FILL_BANK_NONE when the layer has
-                         // no SD_DECODER desc; read only on decoder-miss rows
-  u32 table_len;         // 620
+  u32 n_descs;            // 608
+  u32 n_const_derived_e4; // 612: used length of the Task-8 __constant__ bank
+                          // (INCLUDING the appended decoder fill slot, if any);
+                          // read only under VALIDATE
+  u32 fill_bank_idx;      // 616: const-derived-e4 bank slot of the decoder fill
+                          // value, or FWD_VM_FILL_BANK_NONE when the layer has
+                          // no SD_DECODER desc; read only on decoder-miss rows
+  u32 table_len;          // 620
 
   // per-desc packed u32 (bit split above)
   u32 descs[FWD_VM_DESC_CAP]; // 624, 1,480 B

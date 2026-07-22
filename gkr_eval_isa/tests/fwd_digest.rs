@@ -17,7 +17,7 @@
 //!        (a) every encoded `u16` lane, little-endian, in order, then
 //!        (b) all FOUR `DagForwardContext` tables (`context.rs`'s field order):
 //!            the descriptor table (`ctx.specials`), the const bank
-//!            (`ctx.consts`), the challenge banks (`ctx.challenges`), and the
+//!            (`ctx.consts`), the derived-E4 banks (`ctx.derived_e4`), and the
 //!            backing table (`ctx.backings`) — each hand-serialized
 //!            field-by-field (see `serialize_*` below), in table order.
 //!      The encoded lanes carry only INDICES into these four tables —
@@ -53,7 +53,7 @@ use gkr_eval_isa::fwd::context::DagForwardContext;
 use gkr_eval_isa::fwd::encode::encode;
 use gkr_eval_isa::fwd::isa::{LdcSub, OperandField};
 use gkr_eval_isa::fwd::source::{
-    virtual_setup_kind_code, ChallengeBanks, ConstBank, SpecialDescriptor, SpecialStrategy, SpecialTable,
+    virtual_setup_kind_code, DerivedE4Banks, ConstBank, SpecialDescriptor, SpecialStrategy, SpecialTable,
 };
 
 use cs::gkr_compiler::dag_ir::{
@@ -321,20 +321,20 @@ fn serialize_challenge_ref(buf: &mut Vec<u8>, r: &ChallengeRef) {
     serialize_challenge_power(buf, &r.power);
 }
 
-/// Explicit byte serialization of the challenge banks' CONTENT. An `Ldc { sub:
-/// ConstChallenge | ArgChallenge, idx }` lane carries only an index into the
-/// matching channel (`ChallengeBanks::intern`/`get`), so the digest must pin
+/// Explicit byte serialization of the derived-E4 banks' CONTENT. An `Ldc { sub:
+/// ConstDerivedE4 | ArgDerivedE4, idx }` lane carries only an index into the
+/// matching channel (`DerivedE4Banks::intern`/`get`), so the digest must pin
 /// the interned `ChallengeRef`s themselves, not just their counts.
 ///
-/// Both fields of `ChallengeBanks` are private, so this walks the public `get`
+/// Both fields of `DerivedE4Banks` are private, so this walks the public `get`
 /// accessor from `idx = 0` until it returns `None` rather than reaching into
 /// the struct — the internal `index: HashMap` is a pure lookup cache over
 /// the same two channels, so it carries no content the channels don't already
-/// pin. Per channel, `ConstChallenge` then `ArgChallenge` (declaration order —
+/// pin. Per channel, `ConstDerivedE4` then `ArgDerivedE4` (declaration order —
 /// `const_refs`/`arg_refs` in `source.rs`), length-prefixed (`u64` LE) then
 /// each ref serialized field-by-field.
-fn serialize_challenge_banks(buf: &mut Vec<u8>, banks: &ChallengeBanks) {
-    for sub in [LdcSub::ConstChallenge, LdcSub::ArgChallenge] {
+fn serialize_derived_e4_banks(buf: &mut Vec<u8>, banks: &DerivedE4Banks) {
+    for sub in [LdcSub::ConstDerivedE4, LdcSub::ArgDerivedE4] {
         let mut n: u16 = 0;
         while banks.get(sub, n).is_some() {
             n += 1;
@@ -350,7 +350,7 @@ fn serialize_challenge_banks(buf: &mut Vec<u8>, banks: &ChallengeBanks) {
 /// The full explicit byte serialization for one compiled layer's program:
 /// encoded `u16` lanes (little-endian, in order), then all four
 /// `DagForwardContext` tables in the struct's own field declaration order —
-/// `specials`, `consts`, `challenges`, `backings` (`context.rs`). Each table is
+/// `specials`, `consts`, `derived_e4`, `backings` (`context.rs`). Each table is
 /// length-prefixed (`u64` LE count) then its entries serialized field-by-field
 /// in table order (`specials`: `SpecialTable::iter()`'s natural `Vec` order).
 fn serialize_program_bytes(lanes: &[u16], ctx: &DagForwardContext) -> Vec<u8> {
@@ -364,7 +364,7 @@ fn serialize_program_bytes(lanes: &[u16], ctx: &DagForwardContext) -> Vec<u8> {
         serialize_descriptor(&mut buf, d);
     }
     serialize_const_bank(&mut buf, &ctx.consts);
-    serialize_challenge_banks(&mut buf, &ctx.challenges);
+    serialize_derived_e4_banks(&mut buf, &ctx.derived_e4);
     serialize_backing_table(&mut buf, &ctx.backings);
     buf
 }

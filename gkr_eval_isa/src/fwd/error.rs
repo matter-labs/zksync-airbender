@@ -62,7 +62,7 @@ impl From<EncodeError> for CompileError { fn from(e: EncodeError) -> Self { Comp
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InterpError {
-    UnknownSlot(u8), UnknownSpecial(u16), UnknownChallenge(u16),
+    UnknownSlot(u8), UnknownSpecial(u16), UnknownDerivedE4(u16),
     UnknownConst(u16), MalformedInstr(String),
     Peek(crate::fwd::peek::PeekError),
 }

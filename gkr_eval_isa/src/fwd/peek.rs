@@ -319,7 +319,7 @@ mod tests {
         let ctx = DagForwardContext {
             specials,
             consts: ConstBank::default(),
-            challenges: crate::fwd::source::ChallengeBanks::default(),
+            derived_e4: crate::fwd::source::DerivedE4Banks::default(),
             backings,
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),

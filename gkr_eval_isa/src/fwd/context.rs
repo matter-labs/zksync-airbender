@@ -3,7 +3,7 @@
 use super::binding::BackingTable;
 use super::error::CompileError;
 use super::isa::{DstLine, OperandLine, Program};
-use super::source::{ChallengeBanks, ConstBank, SpecialTable};
+use super::source::{DerivedE4Banks, ConstBank, SpecialTable};
 use super::stats::CompileStats;
 use cs::gkr_compiler::dag_ir::{DagLayer, Ext, ExprId, FieldKind, ReadPlace, Root, RootGroup, RootId};
 use cs::definitions::GKRAddress;
@@ -21,7 +21,7 @@ pub enum ForwardAction {
 pub struct DagForwardContext {
     pub specials: SpecialTable,
     pub consts: ConstBank,
-    pub challenges: ChallengeBanks,
+    pub derived_e4: DerivedE4Banks,
     pub backings: BackingTable,
     pub actions: HashMap<RootId, ForwardAction>,
     /// Each cache (materialization-only) root → the backing `(slot, col)` it materialized to.

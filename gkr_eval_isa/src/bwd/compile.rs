@@ -36,7 +36,7 @@ use crate::fwd::compile::{
 use crate::fwd::context::DagForwardContext;
 use crate::fwd::error::CompileError;
 use crate::fwd::isa::{DstLine, Instr, LdcSub, OperandField, OperandLine, Program};
-use crate::fwd::source::{ChallengeBanks, ConstBank};
+use crate::fwd::source::{DerivedE4Banks, ConstBank};
 use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 
 use super::distill::{distilled_site_domain, DistilledLayer};
@@ -85,7 +85,7 @@ pub struct BwdCompiledLayer {
     /// Backing slots for R0-regime `Global` reads.
     pub backings: BackingTable,
     pub consts: ConstBank,
-    pub challenges: ChallengeBanks,
+    pub derived_e4: DerivedE4Banks,
     /// Smem budget in bf lanes; v2 ext buckets = `budget / 4`.
     pub budget: usize,
     pub stats: CompileStats,
@@ -240,7 +240,7 @@ fn compile_distilled_at(
         specials: d.specials.clone(),
         backings: ctx.backings,
         consts: ctx.consts,
-        challenges: ctx.challenges,
+        derived_e4: ctx.derived_e4,
         budget: place_budget,
         stats,
         stats_ext,
@@ -372,7 +372,7 @@ fn compile_distilled_at_traced(
             specials: d.specials.clone(),
             backings: ctx.backings,
             consts: ctx.consts,
-            challenges: ctx.challenges,
+            derived_e4: ctx.derived_e4,
             budget: place_budget,
             stats,
             stats_ext,
@@ -528,7 +528,7 @@ pub fn compile_distilled_at_planned_lb(
             specials: d.specials.clone(),
             backings: ctx.backings,
             consts: ctx.consts,
-            challenges: ctx.challenges,
+            derived_e4: ctx.derived_e4,
             budget: place_budget,
             stats,
             stats_ext,
@@ -667,7 +667,7 @@ fn compile_distilled_fragments_at(
         specials,
         backings: ctx.backings,
         consts: ctx.consts,
-        challenges: ctx.challenges,
+        derived_e4: ctx.derived_e4,
         budget: place_budget,
         stats,
         stats_ext,
@@ -778,7 +778,7 @@ fn compile_distilled_fragments_at_traced(
             specials,
             backings: ctx.backings,
             consts: ctx.consts,
-            challenges: ctx.challenges,
+            derived_e4: ctx.derived_e4,
             budget: place_budget,
             stats,
             stats_ext,
@@ -908,7 +908,7 @@ fn compile_distilled_fragments_at_planned_lb(
             specials,
             backings: ctx.backings,
             consts: ctx.consts,
-            challenges: ctx.challenges,
+            derived_e4: ctx.derived_e4,
             budget: place_budget,
             stats,
             stats_ext,
@@ -1133,7 +1133,7 @@ fn compile_distilled_at_peak(
             specials: d.specials.clone(),
             backings: ctx.backings,
             consts: ctx.consts,
-            challenges: ctx.challenges,
+            derived_e4: ctx.derived_e4,
             budget: place_budget,
             stats,
             stats_ext,
@@ -1196,7 +1196,7 @@ pub(crate) fn tally_bwd_program(
                     }
                 }
                 // CS-M5a Task 3: Coefficient/AccInit are scalar-pure recipe
-                // values the interp evaluates locally from consts/challenges — no
+                // values the interp evaluates locally from consts/derived_e4 — no
                 // DRAM, no fold buffer. They read like an Ldc-class constant load:
                 // counted in `ldc_reads`, with ZERO dram_traffic / fold_uses /
                 // fold_traffic (and never a fold-side gather, so excluded from

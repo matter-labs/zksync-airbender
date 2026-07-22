@@ -6,7 +6,7 @@
 //!    the production forward preamble + a capturing flat pass, so the
 //!    consolidated storage matrices, stage-1 mapping arenas, and
 //!    generic-lookup table are all the true production buffers; the decoder
-//!    fill value rides the const-challenge bank upload).
+//!    fill value rides the const-derived-e4 bank upload).
 //! 2. Compile via the production stage-3 chain (committed b16 schedule) and
 //!    lower via `lower_layer_desc` with a resolver over the REAL
 //!    `GpuGKRStorage` consolidated matrices (true per-column `(base, stride)`).
@@ -47,11 +47,11 @@ use gkr_eval_isa::fwd::context::{CompiledLayer, OutputCell, RootOutput};
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub};
 use gkr_eval_isa::fwd::source::SpecialStrategy;
 
-use super::desc::{CONST_CHALLENGE_CAP, FILL_BANK_NONE};
+use super::desc::{CONST_DERIVED_E4_CAP, FILL_BANK_NONE};
 use super::lower::{
     lower_layer_desc, read_place_to_gkr_address, FwdVmHeaderInputs, ResolvedColumn,
 };
-use super::{launch_fwd_vm_s4, launch_fwd_vm_validate, upload_const_challenges};
+use super::{launch_fwd_vm_s4, launch_fwd_vm_validate, upload_const_derived_e4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
@@ -124,8 +124,8 @@ pub(crate) fn resolve_storage_column(
 /// Per-layer header inputs from the REAL prover buffers: the 3 stage-1 mapping
 /// arenas (column-major, column stride = trace_len), the decoder mapping
 /// column (`num_generic_sets`), and the shared α-folded generic-lookup table.
-/// The decoder fill VALUE is no header input — it rides the const-challenge
-/// bank upload ([`const_challenge_values`]).
+/// The decoder fill VALUE is no header input — it rides the const-derived-e4
+/// bank upload ([`const_derived_e4_values`]).
 pub(crate) fn build_header(fixture: &CircuitFixture) -> FwdVmHeaderInputs {
     let stage1 = fixture_stage1(fixture);
     let m = &stage1.lookup_mappings;
@@ -280,7 +280,7 @@ fn assert_columns_match(
 
 // ── the gate ──────────────────────────────────────────────────────────────────
 
-/// Values of the layer's `ConstChallenge` bank, via the SAME `ChallengeRef`
+/// Values of the layer's `ConstDerivedE4` bank, via the SAME `ChallengeRef`
 /// mapping the flat fixture/G-CPU harness uses (`challenge_value`) — PLUS the
 /// decoder fill value appended when the layer has a `PeekDecoder` special
 /// (mechanism (a) of the `lower_layer_desc` fill contract: the lowering
@@ -290,13 +290,13 @@ fn assert_columns_match(
 /// wrote into `device_decoder_lookup_fill_value`). The value is final here —
 /// the fixture's challenges are fixed before any lowering — satisfying the
 /// upload-before-launch ordering contract.
-pub(crate) fn const_challenge_values(fixture: &CircuitFixture, cl: &CompiledLayer) -> Vec<E4> {
+pub(crate) fn const_derived_e4_values(fixture: &CircuitFixture, cl: &CompiledLayer) -> Vec<E4> {
     let mut out = Vec::new();
     let mut i = 0usize;
-    while let Some(r) = cl.ctx.challenges.get(LdcSub::ConstChallenge, i as u16) {
+    while let Some(r) = cl.ctx.derived_e4.get(LdcSub::ConstDerivedE4, i as u16) {
         out.push(challenge_value(fixture, r));
         i += 1;
-        assert!(i <= CONST_CHALLENGE_CAP, "const-challenge bank exceeds cap");
+        assert!(i <= CONST_DERIVED_E4_CAP, "const-derived-e4 bank exceeds cap");
     }
     if cl
         .ctx
@@ -339,11 +339,11 @@ pub(crate) fn run_vm_parity(stem: &str) {
         );
         // Bank upload incl. the appended decoder fill; the two appends (this
         // one and the lowering's slot reservation) must agree exactly.
-        let bank = const_challenge_values(&fixture, cl);
+        let bank = const_derived_e4_values(&fixture, cl);
         assert_eq!(
             bank.len() as u32,
-            setup.desc.n_const_challenge,
-            "{stem} L{li}: uploaded bank length != desc n_const_challenge"
+            setup.desc.n_const_derived_e4,
+            "{stem} L{li}: uploaded bank length != desc n_const_derived_e4"
         );
         if setup.desc.fill_bank_idx != FILL_BANK_NONE {
             assert_eq!(
@@ -352,8 +352,8 @@ pub(crate) fn run_vm_parity(stem: &str) {
                 "{stem} L{li}: fill_bank_idx is not the appended (last) bank slot"
             );
         }
-        upload_const_challenges(&bank, context)
-            .unwrap_or_else(|e| panic!("{stem} L{li}: const-challenge upload: {e:?}"));
+        upload_const_derived_e4(&bank, context)
+            .unwrap_or_else(|e| panic!("{stem} L{li}: const-derived-e4 upload: {e:?}"));
 
         // Flat oracle snapshot BEFORE any VM launch (the kernel writes into
         // the very storage columns the flat pass produced).

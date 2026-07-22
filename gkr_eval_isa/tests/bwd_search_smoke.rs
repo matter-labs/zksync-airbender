@@ -159,7 +159,7 @@ struct Pick {
 
 #[test]
 fn search_bwd_layer_smoke() {
-    // Base-subfield round challenges (fold depth 1 exercises the fold transform).
+    // Base-subfield round derived_e4 (fold depth 1 exercises the fold transform).
     let round_challenges: Vec<Ext> = [3u32, 5, 7]
         .into_iter()
         .map(|k| lift(cs::gkr_compiler::dag_ir::Bf::from_u32_with_reduction(k)))

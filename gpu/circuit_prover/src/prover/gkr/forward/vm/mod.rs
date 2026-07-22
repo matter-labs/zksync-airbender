@@ -3,7 +3,7 @@
 //! Task 7 defined the descriptor ABI ([`desc`]), Task 8 the CUDA kernels
 //! (`native/prover/gkr/forward/fwd_vm.cu`: `ab_gkr_fwd_vm_s4_kernel` release +
 //! `ab_gkr_fwd_vm_validate_kernel`), Task 9 (this module level) the production
-//! lowering ([`lower`]), the `__constant__` challenge-bank binding/upload, and
+//! lowering ([`lower`]), the `__constant__` derived-E4 bank binding/upload, and
 //! the kernel launch wrappers. Task 10 wires the launchers against the flat
 //! oracle.
 
@@ -27,7 +27,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use era_cudart_sys::cuda_struct_and_stub;
 
-use self::desc::{FwdVmDesc, CONST_CHALLENGE_CAP};
+use self::desc::{FwdVmDesc, CONST_DERIVED_E4_CAP};
 use self::lower::FwdVmLayerSetup;
 use crate::primitives::field::E4;
 use crate::prover::ProverContext;
@@ -43,40 +43,40 @@ pub(crate) const FWD_VM_THREADS_PER_BLOCK: u32 = 128;
 /// b16 corpus budget).
 pub(crate) const FWD_VM_S4_BUDGET_LANES: u32 = 16;
 
-// --- __constant__ challenge bank (Task 8 kernel-side symbol) -----------------
-// Runtime-produced `LdcSub::ConstChallenge` values — the one legitimately
+// --- __constant__ derived-E4 bank (Task 8 kernel-side symbol) ----------------
+// Runtime-produced `LdcSub::ConstDerivedE4` values — the one legitimately
 // runtime-late descriptor input. Defined in fwd_vm.cu at global namespace:
-// `__device__ __constant__ e4 ab_gkr_fwd_vm_const_challenge[8]`.
-cuda_struct_and_stub! { static ab_gkr_fwd_vm_const_challenge: [E4; CONST_CHALLENGE_CAP]; }
+// `__device__ __constant__ e4 ab_gkr_fwd_vm_const_derived_e4[8]`.
+cuda_struct_and_stub! { static ab_gkr_fwd_vm_const_derived_e4: [E4; CONST_DERIVED_E4_CAP]; }
 
-/// Upload a layer's `ConstChallenge` bank into the kernel's `__constant__`
+/// Upload a layer's `ConstDerivedE4` bank into the kernel's `__constant__`
 /// symbol, STREAM-ORDERED on `exec_stream` (GPU scheduling contract: all
 /// uploads and all launches that read the mutable symbol are serialized on
 /// `exec_stream`; the bank is per-proof-instance state). For a layer with a
 /// decoder desc, `values` must also carry the decoder fill value at
-/// `FwdVmDesc::fill_bank_idx` (appended after the real `ConstChallenge`
+/// `FwdVmDesc::fill_bank_idx` (appended after the real `ConstDerivedE4`
 /// entries — see `lower::lower_layer_desc`'s fill contract). The unused tail
-/// of the 8-slot bank is zero-padded; `FwdVmDesc::n_const_challenge` carries
+/// of the 8-slot bank is zero-padded; `FwdVmDesc::n_const_derived_e4` carries
 /// the used length for the VALIDATE kernel's bounds check.
 ///
 /// The pageable stack-local source is safe with the async copy: CUDA stages
 /// pageable host sources before returning (see
 /// `gpu_core::primitives::utils::memcpy_to_symbol_async`).
 #[allow(dead_code)] // consumed by Task 10
-pub(crate) fn upload_const_challenges(values: &[E4], context: &ProverContext) -> CudaResult<()> {
+pub(crate) fn upload_const_derived_e4(values: &[E4], context: &ProverContext) -> CudaResult<()> {
     assert!(
-        values.len() <= CONST_CHALLENGE_CAP,
-        "const-challenge bank {} exceeds CONST_CHALLENGE_CAP {CONST_CHALLENGE_CAP}",
+        values.len() <= CONST_DERIVED_E4_CAP,
+        "const-derived-e4 bank {} exceeds CONST_DERIVED_E4_CAP {CONST_DERIVED_E4_CAP}",
         values.len()
     );
-    let padded: [E4; CONST_CHALLENGE_CAP] =
+    let padded: [E4; CONST_DERIVED_E4_CAP] =
         core::array::from_fn(|i| values.get(i).copied().unwrap_or(Field::ZERO));
-    // SAFETY: `ab_gkr_fwd_vm_const_challenge` is the kernel-side
-    // `__constant__ e4[CONST_CHALLENGE_CAP]` symbol; `[E4; CONST_CHALLENGE_CAP]`
+    // SAFETY: `ab_gkr_fwd_vm_const_derived_e4` is the kernel-side
+    // `__constant__ e4[CONST_DERIVED_E4_CAP]` symbol; `[E4; CONST_DERIVED_E4_CAP]`
     // is layout-identical (16-B aligned, 16 B per element).
     unsafe {
         crate::primitives::utils::memcpy_to_symbol_async(
-            &ab_gkr_fwd_vm_const_challenge,
+            &ab_gkr_fwd_vm_const_derived_e4,
             &padded,
             context.get_exec_stream(),
         )

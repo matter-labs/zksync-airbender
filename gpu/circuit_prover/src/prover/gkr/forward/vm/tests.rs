@@ -23,8 +23,8 @@ use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, Opera
 use gkr_eval_isa::fwd::source::{virtual_setup_kind_code, SpecialStrategy};
 
 use super::desc::{
-    unpack_desc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP, ARG_CHALLENGE_CAP,
-    CONST_CAP, CONST_CHALLENGE_CAP, DESC_CAP, FILL_BANK_NONE, PROGRAM_CAP, SD_AGGREGATE,
+    unpack_desc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP, ARG_DERIVED_E4_CAP,
+    CONST_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, FILL_BANK_NONE, PROGRAM_CAP, SD_AGGREGATE,
     SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN, SD_VIRTUAL, SLOT_COUNT,
 };
 use super::lower::{
@@ -138,9 +138,9 @@ fn mock_header() -> FwdVmHeaderInputs {
     }
 }
 
-fn challenge_bank_len(cl: &CompiledLayer, sub: LdcSub) -> usize {
+fn derived_e4_bank_len(cl: &CompiledLayer, sub: LdcSub) -> usize {
     let mut n = 0usize;
-    while cl.ctx.challenges.get(sub, n as u16).is_some() {
+    while cl.ctx.derived_e4.get(sub, n as u16).is_some() {
         n += 1;
     }
     n
@@ -308,19 +308,19 @@ fn fixture_lowering_struct_invariants() {
             .specials
             .iter()
             .any(|sd| matches!(sd.strategy, SpecialStrategy::PeekDecoder { .. }));
-        let n_arg = challenge_bank_len(cl, LdcSub::ArgChallenge);
-        let n_const_ch = challenge_bank_len(cl, LdcSub::ConstChallenge);
-        assert!(n_arg <= ARG_CHALLENGE_CAP && n_const_ch <= CONST_CHALLENGE_CAP);
+        let n_arg = derived_e4_bank_len(cl, LdcSub::ArgDerivedE4);
+        let n_const_ch = derived_e4_bank_len(cl, LdcSub::ConstDerivedE4);
+        assert!(n_arg <= ARG_DERIVED_E4_CAP && n_const_ch <= CONST_DERIVED_E4_CAP);
         assert_eq!(
-            d.n_arg_challenge as usize, n_arg,
-            "L{layer_idx}: arg-challenge split"
+            d.n_arg_derived_e4 as usize, n_arg,
+            "L{layer_idx}: arg-derived-e4 split"
         );
         // A decoder layer appends ONE bank slot for the fill value at
         // fill_bank_idx = the pre-append bank length (mechanism (a)).
         assert_eq!(
-            d.n_const_challenge as usize,
+            d.n_const_derived_e4 as usize,
             n_const_ch + has_decoder as usize,
-            "L{layer_idx}: const-challenge split (+ appended fill slot)"
+            "L{layer_idx}: const-derived-e4 split (+ appended fill slot)"
         );
         if has_decoder {
             assert_eq!(
@@ -336,11 +336,11 @@ fn fixture_lowering_struct_invariants() {
         for i in 0..n_arg {
             let r = cl
                 .ctx
-                .challenges
-                .get(LdcSub::ArgChallenge, i as u16)
+                .derived_e4
+                .get(LdcSub::ArgDerivedE4, i as u16)
                 .unwrap();
             assert_eq!(
-                d.arg_challenge[i],
+                d.arg_derived_e4[i],
                 mock_challenge(r),
                 "L{layer_idx}: arg challenge {i}"
             );
@@ -660,11 +660,11 @@ fn col_remap_collision_is_a_hard_error() {
 }
 
 #[test]
-fn arg_challenge_overflow_is_a_hard_error_and_terminates() {
+fn arg_derived_e4_overflow_is_a_hard_error_and_terminates() {
     use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengePower};
     let mut ctx = DagForwardContext::default();
-    for i in 0..(ARG_CHALLENGE_CAP as u32 + 1) {
-        ctx.challenges.intern(&ChallengeRef {
+    for i in 0..(ARG_DERIVED_E4_CAP as u32 + 1) {
+        ctx.derived_e4.intern(&ChallengeRef {
             key: ChallengeKey::PermutationAdditive,
             power: ChallengePower::Static(i),
         });
@@ -673,10 +673,10 @@ fn arg_challenge_overflow_is_a_hard_error_and_terminates() {
     // The probe loop must terminate (bounded at cap + 1) rather than wrap
     // `n as u16` and spin forever on an oversized bank.
     let err = lower_layer_desc(&cl, &mock_header(), &no_columns, &mock_challenge, None)
-        .expect_err("ARG_CHALLENGE_CAP+1 challenges must overflow");
+        .expect_err("ARG_DERIVED_E4_CAP+1 derived E4 values must overflow");
     assert!(matches!(
         err,
-        FwdVmLowerError::ArgChallengeOverflow { n } if n == ARG_CHALLENGE_CAP + 1
+        FwdVmLowerError::ArgDerivedE4Overflow { n } if n == ARG_DERIVED_E4_CAP + 1
     ));
 }
 

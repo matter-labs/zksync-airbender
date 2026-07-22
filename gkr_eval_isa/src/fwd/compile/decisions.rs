@@ -262,7 +262,7 @@ impl OccurrenceStreams {
         // re-parenting, elision reindex, neg-one fold) is irrelevant: `is_site` depends
         // only on the value, so every genuinely cacheable∧fan-out≥2 value stays
         // admissible with its existing per-occurrence priorities and no legitimate
-        // caching is lost; only challenges / constants / virtual-setup / lookup / and
+        // caching is lost; only derived_e4 / constants / virtual-setup / lookup / and
         // fan-out-1 values are refused.
         let admittable: BTreeSet<ExprId> =
             enumerate_site_domain(layer).into_iter().map(|k| k.value).collect();

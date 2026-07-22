@@ -294,7 +294,7 @@ fn eviction_respects_priority_and_width() {
 /// priority, `try_admit`'s `is_admittable` gate (cs `enumerate_site_domain`: cacheable ∧
 /// fan-out ≥ 2) refuses them. A genuinely cacheable reused DRAM leaf in the same layer is
 /// still admitted, so the gate is discriminating, not blanket-refusing. Pre-fix, the
-/// neutral/spare-budget path opportunistically cached these — the `chalA(...)`/`#2`-in-
+/// neutral/spare-budget path opportunistically cached these — the `derivedA(...)`/`#2`-in-
 /// smem disassembly that motivated this fix.
 #[test]
 fn interior_challenge_and_constant_are_never_admitted_even_with_high_priority_genes() {
