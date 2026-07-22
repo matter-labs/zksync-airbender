@@ -368,6 +368,7 @@ pub(crate) fn max_partials_len(max_acc_size: usize) -> usize {
 /// `high[0]` > `high[1]` > `low`.
 pub(crate) fn resolve_active_eq_slot(eq_sizes: &GkrEqSizes, eq_low: *mut E4) -> (*mut E4, u32) {
     if eq_sizes.high[0] > 0 {
+        #[allow(clippy::erasing_op)] // `0 * GKR_EQ_GROUP_TABLE_LEN` kept for symmetry with the implicit 1* sibling below
         let base = unsafe {
             super::launchers::get_eq_high_constant_device_ptr().add(0 * GKR_EQ_GROUP_TABLE_LEN)
         };
