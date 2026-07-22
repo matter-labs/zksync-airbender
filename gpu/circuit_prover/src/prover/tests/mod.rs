@@ -1,13 +1,3 @@
-use super::gkr::{
-    backward::{
-        GpuGKRDimensionReducingBackwardState, GpuGKRMainLayerKernelKind,
-        GpuGKRMainLayerSumcheckLayerPlan,
-    },
-    forward::schedule_forward_pass as schedule_forward_pass_impl,
-    setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
-    stage1::GpuGKRStage1Output,
-    GpuGKRStorage,
-};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::{set_by_ref, SetByRef};
 use crate::primitives::context::{DeviceAllocation, HostAllocation};
@@ -18,7 +8,6 @@ use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::proof::{
     grand_product_accumulator_from_explicit_evaluations, prove, GpuGKRProofJob,
 };
-use crate::prover::proof_layout::{GpuGKRTraceGeometry, ProofLayout};
 use crate::prover::test_utils::{
     make_test_context, make_test_context_with_device_allocator_block_log_size,
 };
@@ -29,6 +18,17 @@ use crate::prover::whir::fold::{
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::ProverContext;
+use gpu_gkr::proof_layout::{GpuGKRTraceGeometry, ProofLayout};
+use gpu_gkr::{
+    backward::{
+        GpuGKRDimensionReducingBackwardState, GpuGKRMainLayerKernelKind,
+        GpuGKRMainLayerSumcheckLayerPlan,
+    },
+    forward::schedule_forward_pass as schedule_forward_pass_impl,
+    setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
+    stage1::GpuGKRStage1Output,
+    GpuGKRStorage,
+};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::TraceHolder;
 use gpu_trace::trace::memory::commit_memory;
@@ -102,6 +102,7 @@ mod asserts;
 mod basic_unrolled_parity;
 mod commit_memory;
 mod delegation_asserts;
+mod dimension_reduction_purge;
 mod expected_specs;
 mod fixtures;
 mod inits_and_teardowns;
@@ -440,18 +441,18 @@ fn generate_stage1_output_for_test(
 fn schedule_forward_pass<E>(
     setup_transfer: &GpuGKRSetupTransfer<'_>,
     stage1: &mut GpuGKRStage1Output,
-    forward_setup: &mut super::gkr::setup::GpuGKRForwardSetup<E>,
+    forward_setup: &mut gpu_gkr::setup::GpuGKRForwardSetup<E>,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     external_challenges: &GKRExternalChallenges<BF, E>,
     final_trace_size_log_2: u32,
     context: &ProverContext,
-) -> CudaResult<super::gkr::forward::GpuGKRForwardOutput<BF, E>>
+) -> CudaResult<gpu_gkr::forward::GpuGKRForwardOutput<BF, E>>
 where
     E: FieldExtension<BF>
         + Field
         + crate::ops::simple::SetByRef
         + crate::ops::simple::SetByVal
-        + crate::prover::gkr::GpuKernels,
+        + gpu_gkr::GpuKernels,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<E, E, E>,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<BF, E, E>,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<E, BF, E>,
@@ -665,7 +666,7 @@ struct BasicUnrolledFixtureBuildConfig<'a> {
 }
 
 fn assert_generic_family_mapping_contract(
-    lookup_mappings: &crate::prover::gkr::stage1::GpuGKRLookupMappings,
+    lookup_mappings: &gpu_gkr::stage1::GpuGKRLookupMappings,
     cpu_trace: &GKRFullWitnessTrace<
         BF,
         impl std::alloc::Allocator + Clone,

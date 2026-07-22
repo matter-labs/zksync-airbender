@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::prover::proof_layout::{
+use gpu_gkr::proof_layout::{
     BackwardLayerDims, ProofLayoutInputs, WhirBaseLayerDims, WhirDims, WhirIntermediateDims,
 };
 
@@ -746,7 +746,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     // source seeds the slab cap ranges that WHIR (and the slab parser) now
     // expect.
     {
-        use crate::prover::proof_layout::WhirBaseLayerKind;
+        use gpu_gkr::proof_layout::WhirBaseLayerKind;
         let slab_base = proof_slab.as_ptr() as *mut u8;
         for (holder, kind) in [
             (&*gpu_mem_trace_holder, WhirBaseLayerKind::Memory),

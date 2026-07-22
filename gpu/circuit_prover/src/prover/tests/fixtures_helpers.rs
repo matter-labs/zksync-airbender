@@ -942,7 +942,7 @@ pub(crate) struct BasicUnrolledAsyncBackwardFixture {
     pub(crate) lookup_multiplicative_part: E4,
     pub(crate) lookup_additive_part: E4,
     pub(crate) expected_proof_layers: usize,
-    pub(crate) proof_layout: crate::prover::proof_layout::ProofLayout,
+    pub(crate) proof_layout: gpu_gkr::proof_layout::ProofLayout,
     pub(crate) proof_slab: crate::primitives::context::DeviceAllocation<E4>,
 }
 
@@ -1115,8 +1115,8 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
         &base.external_challenges,
         &base.prover_config.whir_schedule,
         base.final_trace_size_log_2,
-        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            crate::prover::proof_layout::GpuGKRTraceGeometry {
+        gpu_gkr::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            gpu_gkr::proof_layout::GpuGKRTraceGeometry {
                 log_domain_size: stage1_output.memory_trace_holder.log_domain_size,
                 log_lde_factor: stage1_output.memory_trace_holder.log_lde_factor,
                 log_rows_per_leaf: stage1_output.memory_trace_holder.log_rows_per_leaf,
@@ -1124,8 +1124,8 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
             },
             stage1_output.memory_trace_holder.columns_count,
         ),
-        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            crate::prover::proof_layout::GpuGKRTraceGeometry {
+        gpu_gkr::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            gpu_gkr::proof_layout::GpuGKRTraceGeometry {
                 log_domain_size: stage1_output.witness_trace_holder.log_domain_size,
                 log_lde_factor: stage1_output.witness_trace_holder.log_lde_factor,
                 log_rows_per_leaf: stage1_output.witness_trace_holder.log_rows_per_leaf,
@@ -1133,8 +1133,8 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
             },
             stage1_output.witness_trace_holder.columns_count,
         ),
-        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            crate::prover::proof_layout::GpuGKRTraceGeometry {
+        gpu_gkr::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            gpu_gkr::proof_layout::GpuGKRTraceGeometry {
                 log_domain_size: setup_ref.trace_holder.log_domain_size,
                 log_lde_factor: setup_ref.trace_holder.log_lde_factor,
                 log_rows_per_leaf: setup_ref.trace_holder.log_rows_per_leaf,
@@ -1143,7 +1143,7 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
             setup_ref.trace_holder.columns_count,
         ),
     );
-    let proof_layout = crate::prover::proof_layout::ProofLayout::new(&proof_layout_inputs);
+    let proof_layout = gpu_gkr::proof_layout::ProofLayout::new(&proof_layout_inputs);
     let proof_slab: crate::primitives::context::DeviceAllocation<E4> = base
         .context
         .alloc_with_extra_alignment::<E4, 4>(

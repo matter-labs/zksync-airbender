@@ -16,12 +16,12 @@ use crate::primitives::utils::GetChunksCount;
 use crate::primitives::utils::{
     get_grid_block_dims_for_threads_count, get_grid_block_dims_for_warp_groups, WARP_SIZE,
 };
-use crate::prover::gkr::backward::{
+use crate::prover::ProverContext;
+use crate::upstream::FieldExtension;
+use gpu_gkr::backward::{
     eq_group_count, gkr_dim_reducing_launch_config, make_eq_sizes, GkrEqSizes,
     GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS,
 };
-use crate::prover::ProverContext;
-use crate::upstream::FieldExtension;
 
 cuda_kernel_signature_arguments_and_function!(
     SerializeWhirE4Columns,

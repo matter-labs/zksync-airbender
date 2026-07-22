@@ -1,9 +1,9 @@
-#include "../gkr/support/eq_inline.cuh"
-#include "../gkr/support/kernel_helpers.cuh"
+#include "gkr/support/eq_inline.cuh"
+#include "gkr/support/kernel_helpers.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
-using namespace ::airbender::prover::gkr;
+using namespace ::airbender::gkr;
 
 namespace airbender::prover::whir {
 

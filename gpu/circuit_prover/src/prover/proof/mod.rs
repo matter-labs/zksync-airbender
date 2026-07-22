@@ -13,11 +13,11 @@ use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::UnsafeMutAccessor;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::backward::make_deferred_backward_workflow_state;
-use crate::prover::gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use crate::prover::proof::inputs::GpuGKRProofTransfer;
 use crate::prover::ProverContext;
 use crate::upstream::{GKRCircuitArtifact, ProverConfig};
+use gpu_gkr::backward::make_deferred_backward_workflow_state;
+use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_trace::witness::circuit_type::CircuitType;
 
 #[cfg(test)]

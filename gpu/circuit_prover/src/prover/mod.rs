@@ -1,10 +1,8 @@
 // GPU scheduling contract: see docs/gpu_scheduling_contract.md
 
 pub mod config;
-pub mod gkr;
 mod pow;
 pub mod proof;
-pub(crate) mod proof_layout;
 pub use gpu_trace::trace; // TEMPORARY split bridge — removed in Task 12.
 pub(crate) mod whir;
 
@@ -13,12 +11,11 @@ pub(crate) mod whir;
 // until Task 12.
 pub use gpu_prover_context::{ProverContext, ProverContextConfig};
 
-/// One-time kernel configuration that must run before the first `prove()` call.
-/// Called once from the prover-layer context builders (the GPU worker and the
-/// test-context helper); idempotent via a `Once` guard in `gkr::backward::flat`.
-pub fn configure_kernel_attributes() {
-    gkr::backward::flat::configure_flat_kernel_cache_preference();
+// TEMPORARY split bridge — removed in Task 12.
+pub mod gkr {
+    pub use gpu_gkr::setup;
 }
+pub use gpu_gkr::configure_kernel_attributes; // TEMPORARY split bridge — removed in Task 12.
 
 #[cfg(test)]
 pub(crate) mod test_utils;

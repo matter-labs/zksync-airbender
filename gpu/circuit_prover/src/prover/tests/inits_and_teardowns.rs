@@ -655,17 +655,16 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
                 .get_mut()
                 .copy_from_slice(&cpu_lookup_challenges);
         }
-        let mut gpu_forward_setup =
-            crate::prover::gkr::setup::schedule_forward_setup_for_shape::<E4>(
-                None,
-                compiled_circuit.trace_len,
-                compiled_circuit.generic_lookup_tables_width,
-                compiled_circuit.total_tables_size,
-                compiled_circuit.tables_ids_in_generic_lookups,
-                upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
-                &context,
-            )
-            .unwrap();
+        let mut gpu_forward_setup = gpu_gkr::setup::schedule_forward_setup_for_shape::<E4>(
+            None,
+            compiled_circuit.trace_len,
+            compiled_circuit.generic_lookup_tables_width,
+            compiled_circuit.total_tables_size,
+            compiled_circuit.tables_ids_in_generic_lookups,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+            &context,
+        )
+        .unwrap();
         let synthetic_setup_trace_holder = TraceHolder::new_without_cosets(
             geometry.log_domain_size,
             geometry.log_lde_factor,

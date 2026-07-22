@@ -2,12 +2,12 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::{
     blake2s_pow, reduce_raw_words_to_e4, transcript_commit, transcript_squeeze, STATE_SIZE,
 };
-use crate::ops::gkr_ops::assemble_query_indexes;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::E4;
 use crate::prover::ProverContext;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
+use gpu_gkr::gkr_ops::assemble_query_indexes;
 
 /// Device buffers produced by [`schedule_pow_verify_and_query_indexes`]. The
 /// rolling `device_seed` is owned by the WHIR scheduler and threaded in by the

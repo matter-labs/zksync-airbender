@@ -10,17 +10,15 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::STATE_SIZE;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::setup::{
-    schedule_forward_setup_for_shape, GpuGKRForwardSetup, GpuGKRSetupTransfer,
-};
-use crate::prover::gkr::stage1::GpuGKRStage1Output;
 use crate::prover::proof::inputs::EXTERNAL_CHALLENGES_E4_LEN;
 use crate::prover::proof::layout::build_proof_layout_inputs;
-use crate::prover::proof_layout::{
-    GpuGKRTraceGeometry, ProofLayout, ProofLayoutBaseLayerGeometry, WhirBaseLayerKind,
-};
 use crate::prover::ProverContext;
 use crate::upstream::{GKRCircuitArtifact, GKRExternalChallenges, ProverConfig, WhirSchedule};
+use gpu_gkr::proof_layout::{
+    GpuGKRTraceGeometry, ProofLayout, ProofLayoutBaseLayerGeometry, WhirBaseLayerKind,
+};
+use gpu_gkr::setup::{schedule_forward_setup_for_shape, GpuGKRForwardSetup, GpuGKRSetupTransfer};
+use gpu_gkr::stage1::GpuGKRStage1Output;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;

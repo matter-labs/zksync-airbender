@@ -7,12 +7,12 @@ use era_cudart::result::CudaResult;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, UnsafeMutAccessor};
 use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::base_layer_claims::{
-    clone_base_layer_extra_evaluations_from_slab, ScheduledBaseLayerClaimsState,
-};
-use crate::prover::proof_layout::ProofLayout;
 use crate::prover::ProverContext;
 use crate::upstream::{DefaultTreeConstructor, GKRExternalChallenges, GKRProof, WhirSchedule};
+use gpu_gkr::base_layer_claims::{
+    clone_base_layer_extra_evaluations_from_slab, ScheduledBaseLayerClaimsState,
+};
+use gpu_gkr::proof_layout::ProofLayout;
 
 use super::grand_product_accumulator_from_explicit_evaluations;
 

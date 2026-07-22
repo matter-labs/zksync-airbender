@@ -33,6 +33,7 @@ members = [
     "gpu/ops",
     "gpu/prover_context",
     "gpu/trace",
+    "gpu/gkr",
     "gpu/circuit_prover",
     "gpu/execution_prover",
     "gpu/program_prover",
@@ -167,6 +168,7 @@ gpu_ntt = { path = "./gpu/ntt" }
 gpu_ops = { path = "./gpu/ops" }
 gpu_prover_context = { path = "./gpu/prover_context" }
 gpu_trace = { path = "./gpu/trace" }
+gpu_gkr = { path = "./gpu/gkr" }
 gpu_circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
 gpu_execution_prover = { path = "./gpu/execution_prover", default-features = false }
 gpu_program_prover = { path = "./gpu/program_prover", default-features = false }

@@ -352,42 +352,42 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let memory_leaves_ptr = unsafe {
             proof_layout.whir_base_query_leaves_device_mut(
                 proof_slab.as_ptr() as *mut u8,
-                crate::prover::proof_layout::WhirBaseLayerKind::Memory,
+                gpu_gkr::proof_layout::WhirBaseLayerKind::Memory,
             )
         }
         .0 as u64;
         let memory_paths_ptr = unsafe {
             proof_layout.whir_base_query_paths_device_mut(
                 proof_slab.as_ptr() as *mut u8,
-                crate::prover::proof_layout::WhirBaseLayerKind::Memory,
+                gpu_gkr::proof_layout::WhirBaseLayerKind::Memory,
             )
         }
         .0 as u64;
         let witness_leaves_ptr = unsafe {
             proof_layout.whir_base_query_leaves_device_mut(
                 proof_slab.as_ptr() as *mut u8,
-                crate::prover::proof_layout::WhirBaseLayerKind::Witness,
+                gpu_gkr::proof_layout::WhirBaseLayerKind::Witness,
             )
         }
         .0 as u64;
         let witness_paths_ptr = unsafe {
             proof_layout.whir_base_query_paths_device_mut(
                 proof_slab.as_ptr() as *mut u8,
-                crate::prover::proof_layout::WhirBaseLayerKind::Witness,
+                gpu_gkr::proof_layout::WhirBaseLayerKind::Witness,
             )
         }
         .0 as u64;
         let setup_leaves_ptr = unsafe {
             proof_layout.whir_base_query_leaves_device_mut(
                 proof_slab.as_ptr() as *mut u8,
-                crate::prover::proof_layout::WhirBaseLayerKind::Setup,
+                gpu_gkr::proof_layout::WhirBaseLayerKind::Setup,
             )
         }
         .0 as u64;
         let setup_paths_ptr = unsafe {
             proof_layout.whir_base_query_paths_device_mut(
                 proof_slab.as_ptr() as *mut u8,
-                crate::prover::proof_layout::WhirBaseLayerKind::Setup,
+                gpu_gkr::proof_layout::WhirBaseLayerKind::Setup,
             )
         }
         .0 as u64;

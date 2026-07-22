@@ -5,20 +5,20 @@ use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::backward::kernels::ScheduledBackwardWorkflowStateHandle;
-use crate::prover::gkr::backward::GpuGKRBackwardScheduledExecution;
-use crate::prover::gkr::base_layer_claims::{
-    schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
-    ScheduledBaseLayerClaimsState,
-};
-use crate::prover::gkr::setup::GpuGKRSetupTransfer;
-use crate::prover::gkr::stage1::GpuGKRStage1Output;
-use crate::prover::proof_layout::ProofLayout;
 use crate::prover::whir::fold::{
     schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledExecution,
 };
 use crate::prover::ProverContext;
 use crate::upstream::{GKRCircuitArtifact, WhirSchedule};
+use gpu_gkr::backward::kernels::ScheduledBackwardWorkflowStateHandle;
+use gpu_gkr::backward::GpuGKRBackwardScheduledExecution;
+use gpu_gkr::base_layer_claims::{
+    schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
+    ScheduledBaseLayerClaimsState,
+};
+use gpu_gkr::proof_layout::ProofLayout;
+use gpu_gkr::setup::GpuGKRSetupTransfer;
+use gpu_gkr::stage1::GpuGKRStage1Output;
 use gpu_trace::trace::holder::{
     allocate_trees, TraceHolder, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
 };

@@ -1,0 +1,44 @@
+[package]
+name = "gpu_gkr"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+build = "build.rs"
+links = "gpu_gkr_native"
+
+[dependencies]
+gpu_core = { workspace = true }
+gpu_ntt = { workspace = true }
+gpu_ops = { workspace = true }
+gpu_hash = { workspace = true }
+gpu_cub = { workspace = true }
+gpu_prover_context = { workspace = true }
+gpu_trace = { workspace = true }
+gpu_gkr_model = { workspace = true }
+
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
+
+cs = { workspace = true, features = ["compiler"] }
+prover = { workspace = true, features = ["prover"] }
+field = { workspace = true }
+common_constants = { workspace = true }
+
+itertools = "0.14"
+log = "0.4.29"
+
+[build-dependencies]
+gpu_native_build = { workspace = true }
+
+[dev-dependencies]
+worker = { workspace = true }
+fft = { workspace = true }
+rand = "0.9"
+env_logger = "0.11"
+serde = { workspace = true }
+serde_json = "*"

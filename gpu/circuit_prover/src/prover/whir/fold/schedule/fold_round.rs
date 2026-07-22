@@ -68,7 +68,7 @@ pub(super) fn schedule_fold_round(
         // Fused kernel: reads reduce_out + device_seed, writes the round's
         // 3 coefficients straight into the slab, plus d_challenge and the
         // advanced device_seed — all device-side, no host roundtrip.
-        crate::ops::gkr_ops::whir_fold_round_update(
+        gpu_gkr::gkr_ops::whir_fold_round_update(
             &state.reduce_out[..3],
             device_seed,
             slab_round_dst,

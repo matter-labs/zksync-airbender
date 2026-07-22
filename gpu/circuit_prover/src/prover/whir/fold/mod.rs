@@ -28,9 +28,7 @@ use crate::primitives::device_structures::{
 };
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
-use crate::prover::proof_layout::ProofLayout;
 #[cfg(test)]
 use crate::prover::whir::kernels::whir_fold_split_half_in_place;
 use crate::prover::whir::kernels::{
@@ -48,6 +46,8 @@ use crate::upstream::{
     add_whir_commitment_to_transcript, commit_field_els, draw_random_field_els, BaseFieldQuery,
     DefaultTreeConstructor, Field, MerkleTreeCapVarLength, Seed, WhirCommitment,
 };
+use gpu_gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
+use gpu_gkr::proof_layout::ProofLayout;
 use gpu_trace::trace::holder::TraceHolder;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;

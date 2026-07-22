@@ -4,18 +4,18 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::backward::kernels::{
+use crate::prover::ProverContext;
+use crate::upstream::{GKRCircuitArtifact, GKRExternalChallenges};
+use gpu_gkr::backward::kernels::{
     eq_group_tables_len, launch_build_eq_values_from_point, ScheduledBackwardWorkflowStateHandle,
 };
-use crate::prover::gkr::backward::{
+use gpu_gkr::backward::{
     ClaimBufferLayout, GpuGKRBackwardScheduledExecution, GpuGKRDimensionReducingBackwardState,
     ScheduledBackwardWorkflowState,
 };
-use crate::prover::gkr::forward::{GpuGKRForwardOutput, GpuGKRTranscriptHandoff};
-use crate::prover::gkr::setup::{GpuGKRForwardSetup, GpuGKRForwardSetupHostKeepalive};
-use crate::prover::proof_layout::ProofLayout;
-use crate::prover::ProverContext;
-use crate::upstream::{GKRCircuitArtifact, GKRExternalChallenges};
+use gpu_gkr::forward::{GpuGKRForwardOutput, GpuGKRTranscriptHandoff};
+use gpu_gkr::proof_layout::ProofLayout;
+use gpu_gkr::setup::{GpuGKRForwardSetup, GpuGKRForwardSetupHostKeepalive};
 
 use super::top_layer_claim_layout;
 
@@ -137,7 +137,7 @@ pub(in crate::prover::proof) fn prepare_backward_handoff(
                 poly_idx += 1;
             }
         }
-        crate::prover::gkr::gkr_initial_inner_products::initial_inner_product_e4(
+        gpu_gkr::gkr_initial_inner_products::initial_inner_product_e4(
             device_flat_evaluations.as_ptr(),
             num_top_claims,
             &eq_values_for_init,

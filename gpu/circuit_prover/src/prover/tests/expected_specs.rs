@@ -2,10 +2,8 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExpectedMainLayerConstraintMetadata<E> {
-    pub(crate) quadratic_terms:
-        Vec<crate::prover::gkr::backward::GpuGKRMainLayerConstraintQuadraticTerm<E>>,
-    pub(crate) linear_terms:
-        Vec<crate::prover::gkr::backward::GpuGKRMainLayerConstraintLinearTerm<E>>,
+    pub(crate) quadratic_terms: Vec<gpu_gkr::backward::GpuGKRMainLayerConstraintQuadraticTerm<E>>,
+    pub(crate) linear_terms: Vec<gpu_gkr::backward::GpuGKRMainLayerConstraintLinearTerm<E>>,
     pub(crate) constant_offset: E,
 }
 
@@ -51,12 +49,12 @@ fn expected_single_max_quadratic_constraint_inputs_and_metadata<E: Field + Field
                 remap_expected_constraint_input(&mut mapping, &mut inputs, *rhs)
             };
             quadratic_terms.push(
-                crate::prover::gkr::backward::GpuGKRMainLayerConstraintQuadraticTerm {
+                gpu_gkr::backward::GpuGKRMainLayerConstraintQuadraticTerm {
                     lhs: lhs_idx as u32,
                     rhs: rhs_idx as u32,
                     challenge: E::from_base(coeff_bf),
                     immediate_recipe:
-                        crate::prover::gkr::immediate_factors::ImmediateFactorRecipeStructural::from_base(
+                        gpu_gkr::immediate_factors::ImmediateFactorRecipeStructural::from_base(
                             coeff_bf,
                         ),
                 },
@@ -67,16 +65,12 @@ fn expected_single_max_quadratic_constraint_inputs_and_metadata<E: Field + Field
     for (coeff, input) in relation.linear_terms.iter() {
         let coeff_bf = BF::from_u32_with_reduction(*coeff);
         let input_idx = remap_expected_constraint_input(&mut mapping, &mut inputs, *input);
-        linear_terms.push(
-            crate::prover::gkr::backward::GpuGKRMainLayerConstraintLinearTerm {
-                input: input_idx as u32,
-                challenge: E::from_base(coeff_bf),
-                immediate_recipe:
-                    crate::prover::gkr::immediate_factors::ImmediateFactorRecipeStructural::from_base(
-                        coeff_bf,
-                    ),
-            },
-        );
+        linear_terms.push(gpu_gkr::backward::GpuGKRMainLayerConstraintLinearTerm {
+            input: input_idx as u32,
+            challenge: E::from_base(coeff_bf),
+            immediate_recipe:
+                gpu_gkr::immediate_factors::ImmediateFactorRecipeStructural::from_base(coeff_bf),
+        });
     }
 
     (
@@ -105,16 +99,12 @@ fn expected_linear_base_kernel_inputs_and_metadata<E: Field + FieldExtension<BF>
     for (coeff, input) in relation.linear_terms.iter() {
         let coeff_bf = BF::from_u32_with_reduction(*coeff);
         let input_idx = remap_expected_constraint_input(&mut mapping, &mut inputs, *input);
-        linear_terms.push(
-            crate::prover::gkr::backward::GpuGKRMainLayerConstraintLinearTerm {
-                input: input_idx as u32,
-                challenge: E::from_base(coeff_bf),
-                immediate_recipe:
-                    crate::prover::gkr::immediate_factors::ImmediateFactorRecipeStructural::from_base(
-                        coeff_bf,
-                    ),
-            },
-        );
+        linear_terms.push(gpu_gkr::backward::GpuGKRMainLayerConstraintLinearTerm {
+            input: input_idx as u32,
+            challenge: E::from_base(coeff_bf),
+            immediate_recipe:
+                gpu_gkr::immediate_factors::ImmediateFactorRecipeStructural::from_base(coeff_bf),
+        });
     }
 
     (
@@ -207,7 +197,7 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 }
             }
             NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output } => {
-                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_initial_grand_product_without_caches_inputs_and_metadata::<E>(
+                let (inputs, constraint_metadata) = gpu_gkr::backward::build_initial_grand_product_without_caches_inputs_and_metadata::<E>(
                     input,
                     *output,
                     external_challenges,
@@ -277,11 +267,12 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 });
             }
             NoFieldGKRRelation::LookupPairFromBaseInputs { input, output, .. } => {
-                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_pair_from_base_inputs_inputs_and_metadata::<E>(
-                    input,
-                    *output,
-                    lookup_additive_challenge,
-                );
+                let (inputs, constraint_metadata) =
+                    gpu_gkr::backward::build_lookup_pair_from_base_inputs_inputs_and_metadata::<E>(
+                        input,
+                        *output,
+                        lookup_additive_challenge,
+                    );
                 specs.push(ExpectedMainLayerKernelSpec {
                     kind: GpuGKRMainLayerKernelKind::LookupPairFromBaseInputs,
                     inputs,
@@ -341,7 +332,7 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 setup,
                 output,
             } => {
-                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_with_dens_and_setup_expressions_inputs_and_metadata::<E>(
+                let (inputs, constraint_metadata) = gpu_gkr::backward::build_lookup_with_dens_and_setup_expressions_inputs_and_metadata::<E>(
                     input,
                     setup,
                     *output,
@@ -384,12 +375,13 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 });
             }
             NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
-                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_pair_from_vector_inputs_inputs_and_metadata::<E>(
-                    input,
-                    *output,
-                    _lookup_multiplicative_challenge,
-                    lookup_additive_challenge,
-                );
+                let (inputs, constraint_metadata) =
+                    gpu_gkr::backward::build_lookup_pair_from_vector_inputs_inputs_and_metadata::<E>(
+                        input,
+                        *output,
+                        _lookup_multiplicative_challenge,
+                        lookup_additive_challenge,
+                    );
                 specs.push(ExpectedMainLayerKernelSpec {
                     kind: GpuGKRMainLayerKernelKind::LookupPairFromVectorInputs,
                     inputs,
@@ -469,7 +461,7 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 remainder,
                 output,
             } => {
-                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_metadata::<E>(
+                let (inputs, constraint_metadata) = gpu_gkr::backward::build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_metadata::<E>(
                     *input,
                     remainder,
                     *output,
@@ -493,7 +485,7 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 setup,
                 output,
             } => {
-                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_from_vector_input_with_setup_inputs_and_metadata::<E>(
+                let (inputs, constraint_metadata) = gpu_gkr::backward::build_lookup_from_vector_input_with_setup_inputs_and_metadata::<E>(
                     input,
                     setup,
                     *output,
@@ -513,7 +505,7 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 });
             }
             NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output } => {
-                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_materialize_grand_product_term_expression_inputs_and_metadata::<E>(
+                let (inputs, constraint_metadata) = gpu_gkr::backward::build_materialize_grand_product_term_expression_inputs_and_metadata::<E>(
                     input,
                     *output,
                     external_challenges,
@@ -561,14 +553,15 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 let top_bits = set_idxes.map(|idx| idx as u32);
                 let high_bits_shift =
                     prover::gkr::high_bits_offset_for_inits_and_teardowns::<2>(trace_len);
-                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_inits_and_teardowns_initial_pair_inputs_and_metadata(
-                    timestamp_and_value,
-                    *setup,
-                    *output,
-                    top_bits,
-                    high_bits_shift,
-                    external_challenges,
-                );
+                let (inputs, constraint_metadata) =
+                    gpu_gkr::backward::build_inits_and_teardowns_initial_pair_inputs_and_metadata(
+                        timestamp_and_value,
+                        *setup,
+                        *output,
+                        top_bits,
+                        high_bits_shift,
+                        external_challenges,
+                    );
                 specs.push(ExpectedMainLayerKernelSpec {
                     kind: GpuGKRMainLayerKernelKind::InitsAndTeardownsInitialPair,
                     inputs,

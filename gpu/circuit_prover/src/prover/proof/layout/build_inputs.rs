@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::primitives::field::BF;
-use crate::prover::proof_layout::{
+use crate::upstream::{GKRAddress, GKRCircuitArtifact, WhirSchedule};
+use gpu_gkr::proof_layout::{
     BackwardLayerDims, ProofLayoutBaseLayerGeometry, ProofLayoutInputs, WhirBaseLayerDims,
     WhirDims, WhirIntermediateDims,
 };
-use crate::upstream::{GKRAddress, GKRCircuitArtifact, WhirSchedule};
 
 pub(crate) fn build_proof_layout_inputs<E>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -28,26 +28,26 @@ where
     // resulting `next_claim_layout` augmentation would never match
     // L-1's `claim_idx` lookup. The clone is paid once per proof.
     let compiled_circuit =
-        crate::prover::gkr::transform::normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
+        gpu_gkr::transform::normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
     let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros();
-    let dimension_reducing_inputs = crate::prover::gkr::backward::derive_dimension_reducing_inputs(
+    let dimension_reducing_inputs = gpu_gkr::backward::derive_dimension_reducing_inputs(
         compiled_circuit.layers.len(),
         &compiled_circuit.global_output_map,
         initial_trace_size_log_2,
         final_trace_size_log_2,
     );
     let main_layer_input_addresses_per_layer =
-        crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer::<E>(
+        gpu_gkr::backward::collect_main_layer_input_addresses_per_layer::<E>(
             &compiled_circuit,
             external_challenges,
         );
     let main_layer_outputs =
-        crate::prover::gkr::backward::collect_main_layer_kernel_output_addresses_per_layer::<E>(
+        gpu_gkr::backward::collect_main_layer_kernel_output_addresses_per_layer::<E>(
             &compiled_circuit,
             external_challenges,
         );
     let main_layer_orphan_output_addresses_per_layer =
-        crate::prover::gkr::backward::compute_main_layer_orphan_output_addresses_per_layer::<E>(
+        gpu_gkr::backward::compute_main_layer_orphan_output_addresses_per_layer::<E>(
             &main_layer_input_addresses_per_layer,
             &main_layer_outputs,
         );

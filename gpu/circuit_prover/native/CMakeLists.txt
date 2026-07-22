@@ -10,12 +10,12 @@ if (NOT DEFINED AB_CUDA_CMAKE_DIR)
     set(AB_CUDA_CMAKE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../native_build/cmake)
 endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
-# Main native archive (NTT now lives in the gpu_ntt crate's own archive).
+# Main native archive: WHIR protocol + PoW kernels. (NTT lives in gpu_ntt; the
+# GKR engine + gkr_ops moved to the gpu_gkr crate's own archive — WHIR's
+# accumulate_eq.cu includes gkr's eq/kernel headers via GPU_GKR_NATIVE_INCLUDE.)
 add_library(circuit_prover_native STATIC)
-add_subdirectory(ops)
 add_subdirectory(prover)
-add_subdirectory(primitives)
 ab_cuda_configure_target(circuit_prover_native
         PREFIX GPU_PROVER
         DETERMINISTIC_POW
-        INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE})
+        INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE} ${GPU_GKR_NATIVE_INCLUDE})

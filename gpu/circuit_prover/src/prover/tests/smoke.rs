@@ -95,7 +95,7 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
     // `normalize_compiled_circuit_for_gpu`. Match the expected helper to
     // that space so storage lookups resolve.
     let normalized_compiled_circuit =
-        crate::prover::gkr::transform::normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
+        gpu_gkr::transform::normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
 
     let mut main_layer_state = gpu_backward_state.into_main_layer_backward_state(
         compiled_circuit.clone(),
@@ -144,11 +144,10 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         .enumerate()
     {
         let base_inputs: Vec<
-            crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<BF, E4>,
+            gpu_gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<BF, E4>,
         > = copy_device_values(&context, &scheduled.device.base_field_inputs);
-        let ext_inputs: Vec<
-            crate::prover::gkr::GpuExtensionFieldPolyContinuingLaunchDescriptor<E4>,
-        > = copy_device_values(&context, &scheduled.device.extension_field_inputs);
+        let ext_inputs: Vec<gpu_gkr::GpuExtensionFieldPolyContinuingLaunchDescriptor<E4>> =
+            copy_device_values(&context, &scheduled.device.extension_field_inputs);
 
         for (descriptor, address) in base_inputs.iter().zip(kernel.inputs.inputs_in_base.iter()) {
             if *address == GKRAddress::placeholder() {

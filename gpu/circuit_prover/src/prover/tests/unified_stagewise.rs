@@ -565,7 +565,7 @@ fn run_unified_stagewise_parity_test() {
 
     // Build a real proof layout so the backward scheduler can write per-layer
     // sumcheck coefficients and final-step evaluations into the slab.
-    let memory_geometry = crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+    let memory_geometry = gpu_gkr::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
         GpuGKRTraceGeometry {
             log_domain_size: stage1_output.memory_trace_holder.log_domain_size,
             log_lde_factor: stage1_output.memory_trace_holder.log_lde_factor,
@@ -574,7 +574,7 @@ fn run_unified_stagewise_parity_test() {
         },
         stage1_output.memory_trace_holder.columns_count,
     );
-    let witness_geometry = crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+    let witness_geometry = gpu_gkr::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
         GpuGKRTraceGeometry {
             log_domain_size: stage1_output.witness_trace_holder.log_domain_size,
             log_lde_factor: stage1_output.witness_trace_holder.log_lde_factor,
@@ -583,16 +583,15 @@ fn run_unified_stagewise_parity_test() {
         },
         stage1_output.witness_trace_holder.columns_count,
     );
-    let setup_geometry_dims =
-        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            GpuGKRTraceGeometry {
-                log_domain_size: gpu_setup_transfer.trace_holder.log_domain_size,
-                log_lde_factor: gpu_setup_transfer.trace_holder.log_lde_factor,
-                log_rows_per_leaf: gpu_setup_transfer.trace_holder.log_rows_per_leaf,
-                log_tree_cap_size: gpu_setup_transfer.trace_holder.log_tree_cap_size,
-            },
-            gpu_setup_transfer.trace_holder.columns_count,
-        );
+    let setup_geometry_dims = gpu_gkr::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+        GpuGKRTraceGeometry {
+            log_domain_size: gpu_setup_transfer.trace_holder.log_domain_size,
+            log_lde_factor: gpu_setup_transfer.trace_holder.log_lde_factor,
+            log_rows_per_leaf: gpu_setup_transfer.trace_holder.log_rows_per_leaf,
+            log_tree_cap_size: gpu_setup_transfer.trace_holder.log_tree_cap_size,
+        },
+        gpu_setup_transfer.trace_holder.columns_count,
+    );
     let proof_layout_inputs = crate::prover::proof::layout::build_proof_layout_inputs::<E4>(
         &compiled_circuit,
         &external_challenges,
