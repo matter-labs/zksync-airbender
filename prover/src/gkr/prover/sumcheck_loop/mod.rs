@@ -312,10 +312,7 @@ where
     let final_step_evaluations: BTreeMap<GKRAddress, Vec<E>> =
         new_claims.iter().map(|(k, v)| (*k, vec![*v])).collect();
 
-    let transcript_inputs: Vec<E> = new_claims.values().copied().collect();
-    commit_field_els::<F, E, TR>(seed, &transcript_inputs);
-
-    let next_batching_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
+    let mut transcript_inputs: Vec<E> = new_claims.values().copied().collect();
 
     // self-check
     #[cfg(feature = "gkr_self_checks")]
@@ -432,12 +429,13 @@ where
         }
 
         if !extra_evaluations_from_caching_relations.is_empty() {
-            let transcript_input = extra_evaluations_from_caching_relations
-                .values()
-                .copied()
-                .collect::<Vec<_>>();
-            commit_field_els::<F, E, TR>(seed, &transcript_input);
+            // extend them to transcript seed
+            transcript_input.extend(extra_evaluations_from_caching_relations.values().copied());
         }
+
+        // after all claims for the next layer are ready - draw the next batching challenge
+        commit_field_els::<F, E, TR>(seed, &transcript_inputs);
+        let next_batching_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
 
         #[cfg(feature = "gkr_self_checks")]
         assert!(crate::gkr::prover::debug_utils::verify_cache_relations(
