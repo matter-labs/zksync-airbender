@@ -1595,28 +1595,30 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
             let read_extras = if n_extra > 0 {
                 quote! {
-                    // Append the extra cached-relation evals into `eval_buf`, right after the
-                    // `num_dedup` at-point evals, so a SINGLE commit below covers
-                    // `new_claims ++ extra` (the prover commits them together before drawing).
+                    // Number of extra cached-relation evals for this layer. They are appended into
+                    // `eval_buf` right after the `NUM_AT_POINT_EVALS` at-point evals, so a SINGLE
+                    // commit below covers `new_claims ++ extra` (the prover commits them together
+                    // before drawing the batching challenge).
+                    const NUM_EXTRA_EVALS: usize = #n_extra;
                     {
                         let mut i = 0;
-                        while i < #n_extra * EXT_DEGREE {
+                        while i < NUM_EXTRA_EVALS * EXT_DEGREE {
                             eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                             i += 1;
                         }
                     }
-                    let mut extra_evals = LazyVec::<#quartic_struct, #n_extra>::new();
+                    let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
                     {
                         let slice: &[#quartic_struct] =
-                            unsafe { eval_buf.data_as(#num_dedup_addrs + #n_extra) };
-                        let mut k = #num_dedup_addrs;
-                        while k < #num_dedup_addrs + #n_extra {
+                            unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                        let mut k = NUM_AT_POINT_EVALS;
+                        while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
                             extra_evals.push(unsafe { *slice.get_unchecked(k) });
                             k += 1;
                         }
                     }
                     // one commit of new_claims ++ extra, then (in main body) the draw.
-                    ts.commit(&mut eval_buf, data_words + #n_extra * EXT_DEGREE);
+                    ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
                 }
             } else {
                 quote! {
@@ -1629,7 +1631,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             // `read_extras` (read the extra evals + commit them) runs BEFORE the draw; it also
             // declares `extra_evals`, which the post-draw fold consumes (same enclosing block).
             let post_draw_fold = quote! {
-                let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
+                let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
                 state.prev_claims.clear();
                 {
                     const LAYOUT_KIND: [usize; #n_total] = [#( #layout_kind ),*];
@@ -1676,28 +1678,31 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 // at-point evals) and commit `new_claims ++ extra` in ONE shot (matching the
                 // prover). Declares `extra_evals`, consumed by the post-draw fold in the same block.
                 let pre_draw = quote! {
+                    // Number of extra cached-relation evals; appended after the at-point evals in
+                    // `eval_buf` so the single commit below covers `new_claims ++ extra`.
+                    const NUM_EXTRA_EVALS: usize = #num_extra;
                     {
                         let mut i = 0;
-                        while i < #num_extra * EXT_DEGREE {
+                        while i < NUM_EXTRA_EVALS * EXT_DEGREE {
                             eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                             i += 1;
                         }
                     }
-                    let mut extra_evals = LazyVec::<#quartic_struct, #num_extra>::new();
+                    let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
                     {
                         let slice: &[#quartic_struct] =
-                            unsafe { eval_buf.data_as(#num_dedup_addrs + #num_extra) };
-                        let mut k = #num_dedup_addrs;
-                        while k < #num_dedup_addrs + #num_extra {
+                            unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                        let mut k = NUM_AT_POINT_EVALS;
+                        while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
                             extra_evals.push(unsafe { *slice.get_unchecked(k) });
                             k += 1;
                         }
                     }
-                    ts.commit(&mut eval_buf, data_words + #num_extra * EXT_DEGREE);
+                    ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
                 };
                 // post-draw: fold the claims for the next layer (no transcript interaction).
                 let post_draw = quote! {
-                    let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
+                    let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
                     state.prev_claims.clear();
                     {
                         const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
@@ -1753,8 +1758,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
                 let fc_len = #num_regular_rounds;
+                // Number of at-point evaluations the prover sends for this layer (one per output
+                // poly). Named for readability; the extra cached-relation evals (if any) are
+                // appended right after these `NUM_AT_POINT_EVALS` in `eval_buf`.
+                const NUM_AT_POINT_EVALS: usize = #num_dedup_addrs;
                 // Half the data: one at-point evaluation per input poly (was two endpoints).
-                let data_words = #num_dedup_addrs * EXT_DEGREE;
+                let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
                 {
                     let mut i = 0;
                     while i < data_words {
@@ -1763,7 +1772,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     }
                 }
                 {
-                    let evals: &[[#quartic_struct; 1]] = eval_buf.data_as(#num_dedup_addrs);
+                    let evals: &[[#quartic_struct; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                     // Half the work: evaluate the GKR kernels at a single set of inputs.
                     let f = #final_step_fn(evals, state.batching_challenge,
                         lookup_additive_challenge, lookup_alpha,

@@ -9618,7 +9618,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            let data_words = 15usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 15usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -9627,7 +9628,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(15usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_5_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -9665,7 +9666,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            let data_words = 27usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 27usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -9674,7 +9676,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(27usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_4_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -9712,7 +9714,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            let data_words = 49usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 49usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -9721,7 +9724,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(49usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_3_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -9759,7 +9762,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            let data_words = 91usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 91usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -9768,7 +9772,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(91usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_2_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -9806,7 +9810,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            let data_words = 160usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 160usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -9815,7 +9820,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(160usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_1_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -9853,7 +9858,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 22usize;
-            let data_words = 357usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 357usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -9862,7 +9868,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(357usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_0_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -9875,9 +9881,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
+            const NUM_EXTRA_EVALS: usize = 46usize;
             {
                 let mut i = 0;
-                while i < 46usize * EXT_DEGREE {
+                while i < NUM_EXTRA_EVALS * EXT_DEGREE {
                     eval_buf.data_write(
                         data_words + i,
                         read_reduced_field_el::<I>(nd_source).as_u32_raw_repr(),
@@ -9885,18 +9892,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     i += 1;
                 }
             }
-            let mut extra_evals = LazyVec::<BabyBearExt4, 46usize>::new();
+            let mut extra_evals = LazyVec::<BabyBearExt4, NUM_EXTRA_EVALS>::new();
             {
-                let slice: &[BabyBearExt4] = unsafe { eval_buf.data_as(357usize + 46usize) };
-                let mut k = 357usize;
-                while k < 357usize + 46usize {
+                let slice: &[BabyBearExt4] =
+                    unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                let mut k = NUM_AT_POINT_EVALS;
+                while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
                     extra_evals.push(unsafe { *slice.get_unchecked(k) });
                     k += 1;
                 }
             }
-            ts.commit(&mut eval_buf, data_words + 46usize * EXT_DEGREE);
+            ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
             let next_batching = draw_single_field_el(ts);
-            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(357usize) };
+            let final_step_evals: &[[BabyBearExt4; 1]] =
+                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
                 const LAYOUT_KIND: [usize; 403usize] = [

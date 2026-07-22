@@ -3413,7 +3413,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 4usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 4usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3422,7 +3423,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(4usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_3_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3460,7 +3461,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 8usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 8usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3469,7 +3471,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(8usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_2_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3507,7 +3509,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 16usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 16usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3516,7 +3519,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(16usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_1_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3554,7 +3557,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 66usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 66usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -3563,7 +3567,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(66usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_0_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -3579,7 +3583,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             let extra_evals = LazyVec::<BabyBearExt4, 0usize>::new();
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(66usize) };
+            let final_step_evals: &[[BabyBearExt4; 1]] =
+                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
                 const LAYOUT_KIND: [usize; 66usize] = [
