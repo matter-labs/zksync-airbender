@@ -12,7 +12,7 @@ use crate::upstream::{
     config_for_security_level_under_pessimistic_conjecture, pow_bits, GKRCircuitArtifact,
     ProverConfig, SecurityLevel,
 };
-use crate::witness::circuit_type::CircuitType;
+use gpu_trace::witness::circuit_type::CircuitType;
 
 /// Security levels the GPU prover supports.
 pub const GPU_SUPPORTED_SECURITY_LEVELS: [SecurityLevel; 2] =
@@ -104,7 +104,7 @@ pub(crate) fn batched_proximity_check_pow_bits(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::witness::circuit_type::UnrolledCircuitType;
+    use gpu_trace::witness::circuit_type::UnrolledCircuitType;
 
     #[test]
     fn builds_prover_config_for_all_supported_security_levels() {

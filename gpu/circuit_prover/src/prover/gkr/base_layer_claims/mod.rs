@@ -18,9 +18,9 @@ use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::proof_layout::{ProofLayout, WhirBaseLayerKind};
-use crate::prover::trace::holder::TraceHolder;
 use crate::prover::ProverContext;
 use crate::upstream::{Field, FieldExtension, GKRAddress, GKRLayerDescription, VirtualSetupPoly};
+use gpu_trace::trace::holder::TraceHolder;
 
 /// Addresses for the four virtual setup polynomials that every layer adds to
 /// its claim set: [RangeCheck16, RangeCheckTimestamp, InitsAndTeardownsLow,

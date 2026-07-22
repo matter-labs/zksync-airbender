@@ -17,9 +17,9 @@ use crate::primitives::context::HostAllocation;
 use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl};
 use crate::primitives::field::{BF, E4};
-use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
 use crate::prover::ProverContext;
 use crate::upstream::FieldExtension;
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
@@ -403,7 +403,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
     use crate::prover::test_utils::make_test_context;
-    use crate::prover::trace::holder::TreesHolder;
+    use gpu_trace::trace::holder::TreesHolder;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub(crate) struct GpuWhirExtensionQuery {

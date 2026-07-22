@@ -559,9 +559,9 @@ fn prove_unified_delegation_factors(
 /// chunk, mirroring the unified/per-family `*_tracing_host_for_test` helpers.
 pub(super) fn make_delegation_tracing_host_for_test<W>(buffer: Vec<W>) -> TracingDataHost<Global>
 where
-    W: crate::prover::trace::tracing_data::DelegationTracingDataHostSource,
+    W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
-    let trace = crate::witness::trace_delegation::DelegationTraceHost::<W, Global> {
+    let trace = gpu_trace::witness::trace_delegation::DelegationTraceHost::<W, Global> {
         chunks: vec![Arc::new(buffer)],
     };
     TracingDataHost::Delegation(W::get(trace))
@@ -598,7 +598,7 @@ pub(super) fn prepare_delegation_proof_fixture<O, W>(
 ) -> BasicUnrolledProofFixture
 where
     O: cs::oracle::Oracle<BF>,
-    W: crate::prover::trace::tracing_data::DelegationTracingDataHostSource,
+    W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
@@ -721,7 +721,7 @@ pub(super) fn prepare_delegation_profiling_fixture<W>(
     num_delegation_cycles: usize,
 ) -> BasicUnrolledFixture
 where
-    W: crate::prover::trace::tracing_data::DelegationTracingDataHostSource,
+    W: gpu_trace::trace::tracing_data::DelegationTracingDataHostSource,
 {
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
     const HOST_POOL_SIZE_MB: usize = 1024;
@@ -1041,7 +1041,7 @@ fn prepare_unified_fixture(
         let tracing_data =
             Some(TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap());
 
-        let mut bundle = crate::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
+        let mut bundle = gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::new(
             decoder,
             inits_and_teardowns,
             tracing_data,
@@ -1050,7 +1050,7 @@ fn prepare_unified_fixture(
         .unwrap();
         bundle.schedule(&context).unwrap();
 
-        let job = crate::prover::trace::memory::commit_memory_from_transfers(
+        let job = gpu_trace::trace::memory::commit_memory_from_transfers(
             fixture_circuit_type,
             &compiled_circuit,
             bundle,

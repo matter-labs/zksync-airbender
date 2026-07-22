@@ -22,13 +22,6 @@ use crate::prover::proof_layout::{GpuGKRTraceGeometry, ProofLayout};
 use crate::prover::test_utils::{
     make_test_context, make_test_context_with_device_allocator_block_log_size,
 };
-use crate::prover::trace::decoder::DecoderTableTransfer;
-use crate::prover::trace::holder::TraceHolder;
-use crate::prover::trace::memory::commit_memory;
-use crate::prover::trace::tracing_data::{
-    DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataHost,
-    TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
-};
 use crate::prover::whir::fold::{
     debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,
     debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
@@ -36,12 +29,19 @@ use crate::prover::whir::fold::{
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::ProverContext;
-use crate::witness::circuit_type::{
+use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::holder::TraceHolder;
+use gpu_trace::trace::memory::commit_memory;
+use gpu_trace::trace::tracing_data::{
+    DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataHost,
+    TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
+};
+use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use crate::witness::trace::ChunkedTraceHolder;
-use crate::witness::trace_unrolled::{
+use gpu_trace::witness::trace::ChunkedTraceHolder;
+use gpu_trace::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceHost,
     UnrolledMemoryTraceDevice, UnrolledNonMemoryTraceDevice, UnrolledUnifiedTraceDevice,
     PAGE_SIZE_LOG2,
@@ -559,13 +559,13 @@ impl BasicUnrolledFixture {
             ),
         };
         let memory_transfer_host = Arc::new(
-            crate::prover::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
+            gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
                 &self.memory_tree_caps,
                 mem_log_lde_factor,
                 mem_log_tree_cap_size,
             )?,
         );
-        let memory_transfer = crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer::new(
+        let memory_transfer = gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer::new(
             memory_transfer_host,
             context,
         )?;

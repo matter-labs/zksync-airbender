@@ -10,14 +10,14 @@
 pub(crate) use gpu_core::allocator;
 pub(crate) use gpu_core::primitives;
 pub(crate) mod ops;
-// `prover` and `witness` are `pub` (not `pub(crate)`): `gpu_execution_prover` is
-// carved into its own crate and drives the proving pipeline through these
-// module paths. The proving entry points / host-transfer types it consumes are
-// individually widened to `pub`; the rest of the trees stay `pub(crate)`.
+// `prover` is `pub` (not `pub(crate)`): `gpu_execution_prover` is carved into
+// its own crate and drives the proving pipeline through these module paths. The
+// proving entry points / host-transfer types it consumes are individually
+// widened to `pub`; the rest of the tree stays `pub(crate)`.
 pub mod prover;
 #[allow(unused_imports)]
 pub(crate) mod upstream;
-pub mod witness;
+pub use gpu_trace::witness; // TEMPORARY split bridge — removed in Task 12.
 
 pub use prover::config::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
 

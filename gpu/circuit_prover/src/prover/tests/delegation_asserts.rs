@@ -421,7 +421,7 @@ pub(super) fn assert_bigint_delegation_workflow_matches_cpu(
         &table_driver,
         |tracing_data| {
             TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
-                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+                gpu_trace::witness::trace_delegation::DelegationTraceDevice { tracing_data },
             ))
         },
     );
@@ -470,7 +470,7 @@ pub(super) fn assert_blake2_delegation_workflow_matches_cpu(
         &table_driver,
         |tracing_data| {
             TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2WithCompression(
-                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+                gpu_trace::witness::trace_delegation::DelegationTraceDevice { tracing_data },
             ))
         },
     );
@@ -536,7 +536,7 @@ pub(super) fn assert_keccak_delegation_workflow_matches_cpu(
         &table_driver,
         |tracing_data| {
             TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(
-                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+                gpu_trace::witness::trace_delegation::DelegationTraceDevice { tracing_data },
             ))
         },
     );

@@ -5,7 +5,7 @@ pub mod gkr;
 mod pow;
 pub mod proof;
 pub(crate) mod proof_layout;
-pub mod trace;
+pub use gpu_trace::trace; // TEMPORARY split bridge — removed in Task 12.
 pub(crate) mod whir;
 
 // Rewires internal `crate::prover::ProverContext` users AND serves

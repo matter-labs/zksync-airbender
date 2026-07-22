@@ -8,8 +8,8 @@ use fft::{bitreverse_enumeration_inplace, Twiddles};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
 use crate::prover::test_utils::make_test_context;
-use crate::prover::trace::holder::TreesCacheMode;
 use crate::prover::whir::tests::e4_coeffs_to_vectorized;
+use gpu_trace::trace::holder::TreesCacheMode;
 
 use crate::upstream::{make_eq_poly_in_full, multivariate_coeffs_into_hypercube_evals, PrimeField};
 use worker::Worker;

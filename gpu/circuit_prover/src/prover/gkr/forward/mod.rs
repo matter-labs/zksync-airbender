@@ -230,8 +230,8 @@ use flat_plan::{
 };
 
 pub(crate) fn schedule_forward_pass<E>(
-    setup_trace_holder: Option<&crate::prover::trace::holder::TraceHolder<BF>>,
-    synthetic_setup_trace_holder: Option<&crate::prover::trace::holder::TraceHolder<BF>>,
+    setup_trace_holder: Option<&gpu_trace::trace::holder::TraceHolder<BF>>,
+    synthetic_setup_trace_holder: Option<&gpu_trace::trace::holder::TraceHolder<BF>>,
     stage1: &mut GpuGKRStage1Output,
     forward_setup: &mut GpuGKRForwardSetup<E>,
     compiled_circuit: &GKRCircuitArtifact<BF>,

@@ -14,13 +14,13 @@ use crate::primitives::context::DeviceAllocation;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
-use crate::prover::trace::holder::{TraceHolder, TreesCacheMode, TreesHolder};
 use crate::prover::ProverContext;
 use crate::upstream::{
     CpuGKRSetup, Field, FieldExtension, GKRAddress, GKRCircuitArtifact, TableType,
 };
 use era_cudart::slice::DeviceSlice;
 use gpu_prover_context::transfer::Transfer;
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, TreesHolder};
 
 pub(crate) mod kernels;
 pub use kernels::GpuGKRSetupHost;

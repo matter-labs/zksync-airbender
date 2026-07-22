@@ -18,7 +18,7 @@ use crate::prover::gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget
 use crate::prover::proof::inputs::GpuGKRProofTransfer;
 use crate::prover::ProverContext;
 use crate::upstream::{GKRCircuitArtifact, ProverConfig};
-use crate::witness::circuit_type::CircuitType;
+use gpu_trace::witness::circuit_type::CircuitType;
 
 #[cfg(test)]
 pub(crate) use orchestration::grand_product_accumulator_from_explicit_evaluations;

@@ -14,14 +14,14 @@ use crate::prover::gkr::base_layer_claims::{
 use crate::prover::gkr::setup::GpuGKRSetupTransfer;
 use crate::prover::gkr::stage1::GpuGKRStage1Output;
 use crate::prover::proof_layout::ProofLayout;
-use crate::prover::trace::holder::{
-    allocate_trees, TraceHolder, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
-};
 use crate::prover::whir::fold::{
     schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledExecution,
 };
 use crate::prover::ProverContext;
 use crate::upstream::{GKRCircuitArtifact, WhirSchedule};
+use gpu_trace::trace::holder::{
+    allocate_trees, TraceHolder, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
+};
 
 pub(in crate::prover::proof) struct WhirPhaseResult {
     pub(in crate::prover::proof) transition_ranges: Vec<Range>,

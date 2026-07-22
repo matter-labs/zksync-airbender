@@ -15,12 +15,12 @@ use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use crate::prover::gkr::setup::GpuGKRSetupTransfer;
-use crate::prover::trace::decoder::DecoderTableTransfer;
-use crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer;
-use crate::prover::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::ProverContext;
 use crate::upstream::{GKRExternalChallenges, NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES};
 use gpu_prover_context::transfer::Transfer;
+use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;
+use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 /// Number of `E4` slots needed to hold a `GKRExternalChallenges` value
 /// (the linearization-challenge vector + 1 additive part).

@@ -133,8 +133,8 @@ fn test_blake2_delegation_zero_call_commit_memory_matches_cpu() {
 #[test]
 #[ignore]
 fn run_unified_commit_memory_matches_cpu_test() {
-    use crate::prover::trace::memory::commit_memory_from_transfers;
-    use crate::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer;
+    use gpu_trace::trace::memory::commit_memory_from_transfers;
+    use gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer;
 
     let fixture = prepare_unified_proof_fixture();
     let base = &fixture.base;
@@ -196,7 +196,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     circuit_type: UnrolledNonMemoryCircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
 ) {
-    use crate::prover::trace::memory::commit_memory;
+    use gpu_trace::trace::memory::commit_memory;
     use prover::gkr::prover::stages::stage1::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
@@ -392,7 +392,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     circuit_type: UnrolledMemoryCircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
 ) {
-    use crate::prover::trace::memory::commit_memory;
+    use gpu_trace::trace::memory::commit_memory;
     use prover::gkr::prover::stages::stage1::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
@@ -696,7 +696,7 @@ fn assert_bigint_delegation_commit_memory_matches_cpu(
         &oracle,
         |tracing_data| {
             TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
-                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+                gpu_trace::witness::trace_delegation::DelegationTraceDevice { tracing_data },
             ))
         },
     );
@@ -738,7 +738,7 @@ fn assert_blake2_delegation_commit_memory_matches_cpu(
         &oracle,
         |tracing_data| {
             TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2WithCompression(
-                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+                gpu_trace::witness::trace_delegation::DelegationTraceDevice { tracing_data },
             ))
         },
     );
@@ -788,7 +788,7 @@ fn assert_keccak_delegation_commit_memory_matches_cpu(compiled_circuit: GKRCircu
         &oracle,
         |tracing_data| {
             TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(
-                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+                gpu_trace::witness::trace_delegation::DelegationTraceDevice { tracing_data },
             ))
         },
     );

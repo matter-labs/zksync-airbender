@@ -672,7 +672,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             geometry.log_rows_per_leaf,
             geometry.log_tree_cap_size,
             0,
-            crate::prover::trace::holder::TreesCacheMode::CachePartial,
+            gpu_trace::trace::holder::TreesCacheMode::CachePartial,
             &context,
         )
         .unwrap();
@@ -721,14 +721,14 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         InitsAndTeardownsTransfer::new(inits_and_teardowns_host, &context).unwrap();
     let tracing_data_transfer = TracingDataTransfer::new(tracing_data_host, &context).unwrap();
     let memory_transfer_host = Arc::new(
-        crate::prover::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
+        gpu_trace::trace::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
             &cpu_memory_caps,
             whir_schedule.base_lde_factor.trailing_zeros(),
             whir_schedule.cap_size.trailing_zeros(),
         )
         .unwrap(),
     );
-    let memory_transfer = crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer::new(
+    let memory_transfer = gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer::new(
         memory_transfer_host,
         &context,
     )

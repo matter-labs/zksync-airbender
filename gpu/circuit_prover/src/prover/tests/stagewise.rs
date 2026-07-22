@@ -938,7 +938,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     // here — the `commit_all` above only builds caps from a transient tree slab
     // and leaves `trees = None`.
     {
-        use crate::prover::trace::holder::{
+        use gpu_trace::trace::holder::{
             allocate_trees, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
         };
         let instances_count = 1usize << stage1_output.memory_trace_holder.log_lde_factor;

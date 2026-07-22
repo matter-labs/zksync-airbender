@@ -19,13 +19,13 @@ use crate::prover::proof::layout::build_proof_layout_inputs;
 use crate::prover::proof_layout::{
     GpuGKRTraceGeometry, ProofLayout, ProofLayoutBaseLayerGeometry, WhirBaseLayerKind,
 };
-use crate::prover::trace::decoder::DecoderTableTransfer;
-use crate::prover::trace::holder::{TraceHolder, TreesCacheMode};
-use crate::prover::trace::memory_transfer::GpuGKRMemoryTransfer;
-use crate::prover::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::ProverContext;
 use crate::upstream::{GKRCircuitArtifact, GKRExternalChallenges, ProverConfig, WhirSchedule};
-use crate::witness::circuit_type::CircuitType;
+use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
+use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;
+use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use gpu_trace::witness::circuit_type::CircuitType;
 
 pub(in crate::prover::proof) struct Stage1AndForwardPreparation {
     pub(in crate::prover::proof) stage1_output: GpuGKRStage1Output,

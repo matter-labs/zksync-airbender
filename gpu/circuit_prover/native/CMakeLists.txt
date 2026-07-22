@@ -15,7 +15,6 @@ add_library(circuit_prover_native STATIC)
 add_subdirectory(ops)
 add_subdirectory(prover)
 add_subdirectory(primitives)
-add_subdirectory(witness)
 ab_cuda_configure_target(circuit_prover_native
         PREFIX GPU_PROVER
         DETERMINISTIC_POW

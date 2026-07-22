@@ -15,9 +15,9 @@ use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::StaticPinnedBox;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::prover::trace::holder::TraceHolder;
 use crate::prover::ProverContext;
 use crate::upstream::{CpuGKRSetup, GKRAddress};
+use gpu_trace::trace::holder::TraceHolder;
 
 pub(super) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
 pub(super) const GKR_FORWARD_SETUP_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;

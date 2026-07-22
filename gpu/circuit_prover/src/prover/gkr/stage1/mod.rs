@@ -1,10 +1,7 @@
 use std::ops::DerefMut;
 use std::sync::Arc;
 
-use self::multiplicities::{
-    generate_generic_lookup_multiplicities, generate_range_check_lookup_mappings,
-    generate_range_check_multiplicities_from_mappings,
-};
+use self::multiplicities::generate_range_check_multiplicities_from_mappings;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::{set_to_ones, set_to_zero};
 use crate::primitives::context::DeviceAllocation;
@@ -14,24 +11,27 @@ use crate::primitives::device_structures::{
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::prover::proof_layout::GpuGKRTraceGeometry;
-use crate::prover::trace::holder::{TraceHolder, TreesCacheMode};
-use crate::prover::trace::tracing_data::{
+use crate::prover::ProverContext;
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
+use gpu_trace::trace::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
-use crate::prover::ProverContext;
-use crate::witness::circuit_type::{CircuitType, DelegationCircuitType, UnrolledCircuitType};
-use crate::witness::memory_delegation::generate_memory_and_witness_values_delegation;
-use crate::witness::memory_unrolled::{
+use gpu_trace::witness::circuit_type::{CircuitType, DelegationCircuitType, UnrolledCircuitType};
+use gpu_trace::witness::memory_delegation::generate_memory_and_witness_values_delegation;
+use gpu_trace::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_inits_and_teardowns,
     generate_memory_and_witness_values_unrolled_memory,
     generate_memory_and_witness_values_unrolled_non_memory,
     generate_memory_and_witness_values_unrolled_unified,
 };
-use crate::witness::trace_unrolled::{
+use gpu_trace::witness::multiplicities::{
+    generate_generic_lookup_multiplicities, generate_range_check_lookup_mappings,
+};
+use gpu_trace::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, PAGE_SIZE_LOG2,
 };
-use crate::witness::witness_delegation::generate_witness_values_delegation;
-use crate::witness::witness_unrolled::{
+use gpu_trace::witness::witness_delegation::generate_witness_values_delegation;
+use gpu_trace::witness::witness_unrolled::{
     generate_witness_values_unrolled_memory, generate_witness_values_unrolled_non_memory,
     generate_witness_values_unrolled_unified,
 };
