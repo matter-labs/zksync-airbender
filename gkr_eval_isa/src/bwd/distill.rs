@@ -482,7 +482,7 @@ pub struct BwdBindings {
 /// regardless of `policy`. WHY: the VirtualSetup resolver returns `Bf` and
 /// cannot carry an Ext folded buffer, so a `Materialized` VS binding would make
 /// the interpreter read a raw unfolded `Bf` VS value where a depth-`round` Ext
-/// fold is required — silently wrong under real Ext derived_e4. The lazy refold
+/// fold is required — silently wrong under real Ext challenges. The lazy refold
 /// from the originals is value-identical. The runtime binder and the Task-12
 /// cost model (`bwd/cost.rs::round_cost`'s VS short-circuit,
 /// `origin.is_vs()`) MIRROR this mapping — a materialized VS binding cannot
@@ -635,7 +635,7 @@ mod tests {
     }
 
     /// `ClaimBatching` powers of a fixed beta; any other key panics (the
-    /// distilled spine must only introduce ClaimBatching derived_e4).
+    /// distilled spine must only introduce ClaimBatching challenges).
     struct BetaChallenge(Ext);
     impl ChallengeResolver for BetaChallenge {
         fn challenge(&self, r: &ChallengeRef) -> Ext {

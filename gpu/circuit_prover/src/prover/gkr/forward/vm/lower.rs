@@ -450,7 +450,7 @@ fn rewrite_program(cl: &CompiledLayer, geom: &SlotGeometry) -> Result<Program, F
     Ok(Program { instrs })
 }
 
-/// Length of a `ChallengeBanks` channel — the banks expose no length accessor,
+/// Length of a `DerivedE4Banks` channel — the banks expose no length accessor,
 /// so probe `get` upward from 0 (dense `Vec` internally, terminates at the
 /// real length; same technique as the bench harness).
 ///

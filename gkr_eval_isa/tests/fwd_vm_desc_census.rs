@@ -73,7 +73,7 @@ fn fwd_vm_desc_corpus_census() {
     let mut m = Maxima::default();
     println!(
         "{:<52} {:>5} {:>6} {:>7} {:>7} {:>7} {:>6}",
-        "fixture/layer", "layer", "lanes", "consts", "argch", "constch", "descs"
+        "fixture/layer", "layer", "lanes", "consts", "arg_e4", "const_e4", "descs"
     );
     for name in FIXTURES {
         let (dag, sched, artifact) = load_dag_sched(name);

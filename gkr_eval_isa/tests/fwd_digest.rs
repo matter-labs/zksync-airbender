@@ -403,4 +403,5 @@ fn fwd_digest_pin() {
     }
     let all = fnv1a(&all_bytes);
     println!("DIGEST-ALL {all:016x}");
+    assert_eq!(all, 0xa09eefc7d8e81777, "forward aggregate digest drift");
 }

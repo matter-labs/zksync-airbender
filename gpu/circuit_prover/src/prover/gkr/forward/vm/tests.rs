@@ -292,7 +292,7 @@ fn fixture_lowering_struct_invariants() {
             assert_eq!(d.stride_bytes[w], 0);
         }
 
-        // -- banks: consts + the arg/const challenge split. --
+        // -- banks: consts + the argument/constant derived-E4 split. --
         let consts = cl.ctx.consts.values();
         assert!(consts.len() <= CONST_CAP);
         assert_eq!(d.n_consts as usize, consts.len());

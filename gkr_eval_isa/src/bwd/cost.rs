@@ -39,7 +39,7 @@
 //!
 //! Task 7 makes that lazy state *cheap*: VS polys are multilinear by
 //! construction, so a depth-`d` fold is the same `O(k)` multilinear closed form
-//! with the bound coordinates replaced by derived_e4
+//! with the bound coordinates replaced by fold challenges
 //! ([`cs::gkr_compiler::dag_ir::VirtualSetupResolver::virtual_setup_fold`]).
 //! The device implements that closed form, so a VS-origin fold moves **zero
 //! DRAM** — it is compute-only. This model therefore charges VS-origin folds 0
@@ -232,7 +232,7 @@ pub fn round_cost(
                 Some(BwdSpecial::FoldSource { origin }) => {
                     // VS-origin folds use the O(k) multilinear closed form
                     // (Task 7): the device evaluates them from a handful of
-                    // derived_e4, moving ZERO DRAM — no read bytes, no store.
+                    // fold challenges, moving ZERO DRAM — no read bytes, no store.
                     // Every other (Read) origin gathers originals / a folded
                     // buffer at its own field width, exactly as before. This
                     // short-circuit IS the cost model's side of the VS-ABI

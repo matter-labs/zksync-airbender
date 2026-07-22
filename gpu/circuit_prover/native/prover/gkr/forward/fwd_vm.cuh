@@ -22,7 +22,7 @@
 
 namespace airbender::prover::gkr {
 
-// --- caps (census maxima: lanes 6574, consts 27, argch 7, constch 1, descs 296)
+// --- caps (census maxima: lanes 6574, consts 27, arg-e4 7, const-e4 1, descs 296)
 constexpr u32 FWD_VM_PROGRAM_CAP = 12288;      // u16 lanes, 24 KB inline
 constexpr u32 FWD_VM_CONST_CAP = 40;           // bf constants
 constexpr u32 FWD_VM_ARG_DERIVED_E4_CAP = 12;  // schedule-time derived e4 values
@@ -191,5 +191,8 @@ struct fwd_vm_desc {
 static_assert(sizeof(fwd_vm_desc) == 26688, "fwd_vm_desc/FwdVmDesc ABI size drift");
 static_assert(sizeof(fwd_vm_desc) <= 32764, "fwd_vm_desc exceeds the __grid_constant__ param budget");
 static_assert(alignof(fwd_vm_desc) == 16, "fwd_vm_desc alignment drift (e4 is __align__(16))");
+static_assert(__builtin_offsetof(fwd_vm_desc, arg_derived_e4) == 0, "arg_derived_e4 ABI offset drift");
+static_assert(__builtin_offsetof(fwd_vm_desc, n_arg_derived_e4) == 604, "n_arg_derived_e4 ABI offset drift");
+static_assert(__builtin_offsetof(fwd_vm_desc, n_const_derived_e4) == 612, "n_const_derived_e4 ABI offset drift");
 
 } // namespace airbender::prover::gkr

@@ -281,7 +281,7 @@ fn write_dst(dst: &DstLine, field: OperandField, v: Ext, cells: &mut Vec<Ext>) {
 /// `bindings` supplies the per-descriptor [`FoldState`] for this round/policy
 /// (a signature extension over the Task-6 draft — REV2 moved `FoldState` out of
 /// descriptors into per-run [`BwdBindings`], so it must be threaded in here).
-/// `round_challenges` are the fold derived_e4 `r_0, r_1, …` consulted by
+/// `round_challenges` are the fold challenges `r_0, r_1, …` consulted by
 /// `LazyFromOriginals` sources; `d` is the distilled layer the program was
 /// compiled from (its `specials` mirror `c.specials`).
 pub fn interpret_bwd_row(

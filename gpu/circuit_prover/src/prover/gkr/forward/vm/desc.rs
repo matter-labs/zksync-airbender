@@ -11,7 +11,7 @@
 //!
 //! Caps come from the corpus census (`gkr_eval_isa/tests/fwd_vm_desc_census.rs`,
 //! maxima across all 11 committed with-caches fixtures: lanes 6574, consts 27,
-//! arg challenges 7, const challenges 1, descs 296) + margin. Overflow policy:
+//! arg-derived E4 values 7, const-derived E4 values 1, descs 296) + margin. Overflow policy:
 //! program overflow falls back to `program_ldg`; every other cap is a hard
 //! lowering error (no fallback).
 
