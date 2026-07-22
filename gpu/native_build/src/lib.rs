@@ -83,7 +83,7 @@ impl CudaArchive {
     /// Emit rerun directives, handle `no_cuda`, configure and build the CMake
     /// project under `native/`, and emit the link directives.
     pub fn build(self) {
-        println!("cargo::rustc-check-cfg=cfg(no_cuda)");
+        emit_no_cuda_cfg();
 
         let lineinfo_var = format!("{}_ENABLE_LINEINFO", self.env_prefix);
         let enable_lineinfo = env::var_os(&lineinfo_var).is_some();
@@ -112,7 +112,6 @@ impl CudaArchive {
 
         if is_no_cuda() {
             println!("cargo::warning={}", no_cuda_message!());
-            println!("cargo::rustc-cfg=no_cuda");
             return;
         }
 
@@ -173,6 +172,16 @@ impl CudaArchive {
         println!("cargo:rustc-link-lib=cudart");
         #[cfg(target_os = "linux")]
         println!("cargo:rustc-link-lib=stdc++");
+    }
+}
+
+/// Declare (and, in no-CUDA mode, set) the `no_cuda` cfg WITHOUT building any native archive.
+/// For crates that have `#[cfg(no_cuda)]`/`#[cfg(not(no_cuda))]` sites but own no CUDA code —
+/// build-script cfgs do not propagate from dependencies.
+pub fn emit_no_cuda_cfg() {
+    println!("cargo::rustc-check-cfg=cfg(no_cuda)");
+    if is_no_cuda() {
+        println!("cargo::rustc-cfg=no_cuda");
     }
 }
 
