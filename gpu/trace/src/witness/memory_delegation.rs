@@ -220,6 +220,12 @@ pub(crate) fn generate_memory_values_delegation<T: GenerateMemoryDelegation>(
     GenerateMemoryValuesFunction(T::MEMORY_SIGNATURE).launch(&config, &args)
 }
 
+// `private_bounds`: `GenerateMemoryDelegation` is a deliberately sealed
+// dispatch trait — only the marker witness types this file's macro impls
+// cover (e.g. `BigintDelegationWitness`) implement it. `gpu_gkr`'s production
+// call sites (`gkr::stage1`) never name the trait; `T` is inferred from a
+// `DelegationTraceDevice<T>` argument, so the bound stays private by design.
+#[allow(private_bounds)]
 pub fn generate_memory_and_witness_values_delegation<T: GenerateMemoryDelegation>(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     trace: &DelegationTraceDevice<T>,

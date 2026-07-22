@@ -11,6 +11,10 @@ impl<T, A: GoodAllocator> ChunkedTraceHolder<T, A> {
         self.chunks.iter().map(|chunk| chunk.len()).sum()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn into_allocators(self) -> Vec<A> {
         self.chunks
             .into_iter()

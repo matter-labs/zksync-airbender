@@ -90,8 +90,8 @@ fn commit_memory_inner<'a, A: GoodAllocator>(
     let range = Range::new("commit_memory")?;
     let stream = context.get_exec_stream();
     range.start(stream)?;
-    let mut evaluations = memory_holder.get_uninit_hypercube_evals_mut();
-    let memory = &mut DeviceMatrixMut::new(&mut evaluations, trace_len);
+    let evaluations = memory_holder.get_uninit_hypercube_evals_mut();
+    let memory = &mut DeviceMatrixMut::new(evaluations, trace_len);
     match (circuit_type, tracing_data.as_ref()) {
         (
             CircuitType::Delegation(circuit_type),

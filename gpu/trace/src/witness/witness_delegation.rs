@@ -69,6 +69,10 @@ generate_witness_values_impl!(blake2_g_function, Blake2sGFunctionDelegationWitne
 
 generate_witness_values_impl!(keccak_special5, KeccakSpecial5DelegationWitness);
 
+// `private_bounds`: `GenerateWitnessDelegation` is a deliberately sealed
+// dispatch trait, mirroring `GenerateMemoryDelegation` in
+// `memory_delegation.rs` — see the justification there.
+#[allow(private_bounds)]
 pub fn generate_witness_values_delegation<T: GenerateWitnessDelegation>(
     trace: &DelegationTraceDevice<T>,
     generic_lookup_tables: &impl DeviceMatrixImpl<BF>,

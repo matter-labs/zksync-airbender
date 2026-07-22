@@ -29,9 +29,11 @@ fn make_test_context(
     let default_block_log_size = ProverContextConfig::default().allocator_block_log_size;
     let arena_bytes = max_device_allocation_blocks_count << default_block_log_size;
     let test_blocks_count = arena_bytes >> TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
-    let mut config = ProverContextConfig::default();
-    config.allocator_block_log_size = TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
-    config.max_device_allocation_blocks_count = Some(test_blocks_count);
+    let mut config = ProverContextConfig {
+        allocator_block_log_size: TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE,
+        max_device_allocation_blocks_count: Some(test_blocks_count),
+        ..Default::default()
+    };
     let host_block_size = 1usize << config.host_allocator_block_log_size;
     config.host_allocator_blocks_count = (host_pool_size_mb * 1024 * 1024) / host_block_size;
     // Disable the small sub-allocator when the block size is too small for it.

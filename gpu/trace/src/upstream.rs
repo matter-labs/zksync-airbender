@@ -54,6 +54,8 @@ pub(crate) use cs::tables::TableType;
 // -----------------------------------------------------------------------
 
 pub(crate) use field::baby_bear::base::BabyBearField;
+// Trait methods only exercised by `trace::holder::tests` (LDE/coset host-side checks).
+#[cfg(test)]
 pub(crate) use field::{Field, PrimeField};
 
 // -----------------------------------------------------------------------
@@ -61,9 +63,15 @@ pub(crate) use field::{Field, PrimeField};
 // -----------------------------------------------------------------------
 
 pub(crate) use prover::gkr::prover_config::ProverConfig;
+// CPU-reference helper only exercised by `trace::holder::tests`.
+#[cfg(test)]
 pub(crate) use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+// CPU merkle-tree reference construction only exercised by `trace::holder::tests`.
+#[cfg(test)]
 pub(crate) use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
-pub(crate) use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength};
+#[cfg(test)]
+pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+pub(crate) use prover::merkle_trees::MerkleTreeCapVarLength;
 
 // -----------------------------------------------------------------------
 // `setups` — compiled-circuit binary loading

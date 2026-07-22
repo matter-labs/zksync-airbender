@@ -72,7 +72,11 @@ pub struct TraceHolder<T> {
     pub columns_count: usize,
     raw_hypercube_evals: std::sync::Arc<DeviceAllocation<T>>,
     cosets_materialized: bool,
-    pub cosets: CosetsHolder<T>,
+    // `pub(crate)`, not `pub`: unlike `trees`/`unified_device_cap`, nothing
+    // outside `gpu_trace` reads `cosets` directly (confirmed by grep across
+    // `gpu_gkr`/`gpu_whir`/`gpu_circuit_prover`), so this stays no wider than
+    // its `pub(crate)` `CosetsHolder<T>` type.
+    pub(crate) cosets: CosetsHolder<T>,
     pub trees: TreesHolder,
     /// Device-resident, contiguous Merkle cap of length `1 << log_tree_cap_size`,
     /// laid out in canonical bit-reversed coset order (`stage1_pos = 0..lde_factor`,

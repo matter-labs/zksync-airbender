@@ -33,6 +33,7 @@ const _: () = assert!(crate::upstream::NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP == 2);
 // `DelegationAbi`; the upstream values (in `common_constants::delegation_types::*`)
 // must match. `csr_offset` is taken relative to `NON_DETERMINISM_CSR` to keep the
 // per-circuit literal small.
+#[derive(Clone, Copy)]
 struct DelegationAbi {
     csr_offset: u32,
     reg_accesses: usize,

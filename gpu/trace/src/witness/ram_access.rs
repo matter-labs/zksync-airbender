@@ -23,18 +23,13 @@ pub(crate) struct RamWordU8Limbs {
 // FFI: payload limbs are consumed by GPU code via the `#[repr(C, u32)]` layout
 // rather than read from Rust; suppress the per-variant dead_code lint.
 #[repr(C, u32)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 #[allow(dead_code)]
 pub(crate) enum RamWordRepresentation {
+    #[default]
     Zero,
     U16Limbs(RamWordU16Limbs),
     U8Limbs(RamWordU8Limbs),
-}
-
-impl Default for RamWordRepresentation {
-    fn default() -> Self {
-        Self::Zero
-    }
 }
 
 impl From<CSRamWordRepresentation> for RamWordRepresentation {
@@ -196,7 +191,7 @@ pub(crate) struct RamReadQuery {
 impl From<CSRamReadQuery> for RamReadQuery {
     fn from(value: CSRamReadQuery) -> Self {
         Self {
-            in_cycle_write_index: value.in_cycle_write_index as u32,
+            in_cycle_write_index: value.in_cycle_write_index,
             address: value.address.into(),
             read_timestamp: value.read_timestamp.map(|x| x as u32),
             read_value: value.read_value.into(),
@@ -217,7 +212,7 @@ pub(crate) struct RamWriteQuery {
 impl From<CSRamWriteQuery> for RamWriteQuery {
     fn from(value: CSRamWriteQuery) -> Self {
         Self {
-            in_cycle_write_index: value.in_cycle_write_index as u32,
+            in_cycle_write_index: value.in_cycle_write_index,
             address: value.address.into(),
             read_timestamp: value.read_timestamp.map(|x| x as u32),
             read_value: value.read_value.into(),
