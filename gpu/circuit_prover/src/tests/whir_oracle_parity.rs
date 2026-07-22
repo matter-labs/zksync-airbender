@@ -231,7 +231,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         Vec::with_capacity(whir_schedule.whir_steps_schedule.iter().sum::<usize>());
     let mut cpu_recursive_caps = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
     let mut cpu_ood_samples = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
-    let transcript_seed_before_initial_rounds = transcript_seed.clone();
+    let transcript_seed_before_initial_rounds = transcript_seed;
 
     let num_initial_folding_rounds = whir_steps_schedule.next().unwrap();
     let initial_queries = whir_queries_schedule.next().unwrap();
@@ -306,7 +306,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     )
     .unwrap();
     assert_eq!(
-        gpu_rs_oracle.get_tree_cap(&context).unwrap(),
+        gpu_rs_oracle.get_tree_cap(context).unwrap(),
         <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
             &cpu_rs_oracle.tree,
         )
@@ -372,7 +372,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     .unwrap();
     assert_eq!(
         gpu_initial_round_checkpoint.recursive_cap,
-        gpu_materialized_initial_rs_oracle.get_tree_cap(&context).unwrap(),
+        gpu_materialized_initial_rs_oracle.get_tree_cap(context).unwrap(),
         "initial recursive WHIR commitment does not match the cap rebuilt from the materialized folded monomial form",
     );
     if gpu_initial_round_checkpoint.folded_monomial_form != sumchecked_poly_monomial_form {
@@ -521,7 +521,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         )
         .unwrap();
         assert_eq!(
-            next_gpu_oracle.get_tree_cap(&context).unwrap(),
+            next_gpu_oracle.get_tree_cap(context).unwrap(),
             <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
                 &next_cpu_oracle.tree,
             )

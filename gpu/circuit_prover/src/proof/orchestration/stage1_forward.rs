@@ -36,7 +36,9 @@ pub(in crate::proof) struct Stage1AndForwardPreparation {
 
 /// Pre-prepared device buffers that this function consumes via references
 /// (their owning wrappers live in the bundle keepalive for the proof job's
-/// lifetime).
+/// lifetime). Every field is a (possibly `Option`-wrapped) shared reference,
+/// so the bundle itself is trivially `Copy`.
+#[derive(Clone, Copy)]
 pub(in crate::proof) struct BundleDeviceRefs<'b, 'a> {
     pub setup: Option<&'b GpuGKRSetupTransfer<'a>>,
     pub decoder: Option<&'b DecoderTableTransfer<'a>>,
@@ -46,7 +48,6 @@ pub(in crate::proof) struct BundleDeviceRefs<'b, 'a> {
     pub external_challenges_device: &'b DeviceAllocation<E4>,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -160,7 +161,14 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             0,
             "proof slab base pointer must be 32-byte aligned for ProofLayout typed casts",
         );
-        Arc::new(slab)
+        // `DeviceAllocation` is `!Send + !Sync` (raw device pointer); `Arc`
+        // here is pure shared-ownership refcounting (the slab outlives this
+        // function in the proof job's keepalive) within the single
+        // scheduling thread, not cross-thread sharing.
+        #[allow(clippy::arc_with_non_send_sync)]
+        {
+            Arc::new(slab)
+        }
     };
 
     // Resolve slab cap destinations now that the slab is live. Stage 1 will

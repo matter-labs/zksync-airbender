@@ -158,7 +158,7 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
     let (final_device_seed_mut, _claim_point_for_squeeze) =
         backward_scheduled.final_device_seed_and_claim_point_mut();
     gpu_whir::pow::schedule_draw_e4_challenges_with_pow(
-        &mut **final_device_seed_mut,
+        final_device_seed_mut,
         &mut batching_challenge_device,
         batching_pow_bits,
         batching_nonce_dst,
@@ -180,7 +180,7 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
             &mut stage1_output.witness_trace_holder,
             setup_trace_holder,
             claim_point,
-            &mut **final_device_seed_mut,
+            final_device_seed_mut,
             &batching_challenge_device[..],
             whir_schedule.base_lde_factor,
             whir_schedule.whir_steps_schedule.clone(),

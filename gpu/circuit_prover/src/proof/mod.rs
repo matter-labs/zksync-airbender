@@ -39,7 +39,14 @@ use orchestration::{
 /// (`gkr/stage1/mod.rs`), commit-memory (`prover/trace/memory.rs`), setup
 /// (`gpu_execution_prover::precomputations`), and the claim-layout/accumulator
 /// arms.
-#[allow(clippy::too_many_arguments)]
+///
+/// `compiled_circuit` is by-value (not `&GKRCircuitArtifact<BF>`): this is
+/// the crate's top-level production entry point, called from
+/// `gpu_execution_prover`'s worker (`workers/gpu.rs`), which already clones
+/// its own `Arc<GKRCircuitArtifact<BF>>` to produce the owned value passed
+/// in. Switching to a reference would let that caller drop its clone, but
+/// `gpu_execution_prover` is a downstream crate outside this task's scope.
+#[allow(clippy::needless_pass_by_value)]
 pub fn prove<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
@@ -180,7 +187,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     } = schedule_backward_phase(
         backward_state,
         compiled_circuit.clone(),
-        external_challenges.value.clone(),
+        external_challenges.value,
         top_bits_host.clone(),
         external_challenges.device.as_ptr(),
         backward_shared_state,
@@ -232,7 +239,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         whir_schedule.clone(),
         base_layer_claims_shared_state,
         pending_aggregation,
-        external_challenges.value.clone(),
+        external_challenges.value,
         // The ACTUAL per-circuit top bits (all-zero for trivial unified
         // chunks): they land in `GKRProof::inits_and_teardowns_top_bits`,
         // which the full-statement verifier asserts to be zero for the

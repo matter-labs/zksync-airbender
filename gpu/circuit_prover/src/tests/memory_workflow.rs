@@ -61,7 +61,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     text_path: &str,
     non_determinism_reads: &[u32],
     circuit_type: UnrolledMemoryCircuitType,
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
     witness_eval_fn: fn(
         &mut prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<
             '_,
@@ -125,7 +125,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = MemDestinationHolder::<FAMILY_IDX> {
         buffers: &mut buffers[..],
     };
@@ -169,7 +169,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     let mut table_driver = TableDriver::new();
     populate_table_driver(&mut table_driver, &binary);
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
-        &compiled_circuit,
+        compiled_circuit,
         num_cycles_per_chunk,
         &oracle,
         &worker,
@@ -178,7 +178,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         Global,
     );
     let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
-        &compiled_circuit,
+        compiled_circuit,
         witness_eval_fn,
         num_cycles_per_chunk,
         &oracle,
@@ -197,9 +197,9 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &table_driver,
-        &decoder_table_data,
+        decoder_table_data,
         trace_len,
-        &compiled_circuit,
+        compiled_circuit,
     );
     let setup_commitment = setup.commit::<DefaultTreeConstructor>(
         &twiddles,
@@ -254,7 +254,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     ));
     let mut stage1_output = generate_stage1_output_for_test(
         CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
-        &compiled_circuit,
+        compiled_circuit,
         &gpu_setup_transfer,
         if compiled_circuit.has_decoder_lookup {
             Some(&d_decoder_table)
@@ -269,7 +269,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     context.get_exec_stream().synchronize().unwrap();
     let (gpu_memory_caps, _gpu_memory_commitment_ms) = commit_memory(
         memory_circuit_type,
-        &compiled_circuit,
+        compiled_circuit,
         if compiled_circuit.has_decoder_lookup {
             Some(&d_decoder_table)
         } else {
@@ -409,7 +409,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     }
     let mut gpu_forward_setup = gpu_setup_transfer
         .schedule_forward_setup(
-            &compiled_circuit,
+            compiled_circuit,
             upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
             &context,
         )
@@ -420,7 +420,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     insert_virtual_setup_polys_for_test(trace_len, &mut gkr_storage);
     let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
         .preprocess_generic_lookups(
-            &compiled_circuit,
+            compiled_circuit,
             lookup_alpha,
             trace_len,
             &mut gkr_storage,
@@ -448,7 +448,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
             layer_idx,
             layer,
             &mut gkr_storage,
-            &compiled_circuit,
+            compiled_circuit,
             &external_challenges,
             &mut witness_eval_data,
             &[],
@@ -464,7 +464,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(
             &mut gkr_storage,
-            &compiled_circuit,
+            compiled_circuit,
             trace_len.trailing_zeros() as usize,
             FINAL_TRACE_SIZE_LOG_2 as usize,
             &worker,
@@ -480,7 +480,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         &gpu_setup_transfer,
         &mut stage1_output,
         &mut gpu_forward_setup,
-        &compiled_circuit,
+        compiled_circuit,
         &external_challenges,
         FINAL_TRACE_SIZE_LOG_2,
         &context,
@@ -505,7 +505,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     assert_gpu_and_cpu_gkr_storage_match(
         &gpu_forward_output.storage,
         &gkr_storage,
-        &compiled_circuit,
+        compiled_circuit,
         &context,
     );
     assert_eq!(

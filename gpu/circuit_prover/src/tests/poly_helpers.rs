@@ -275,7 +275,11 @@ pub(super) fn fold_coset_for_test(
 ) -> E4 {
     let mut root_inv = *base_root_inv;
     let mut buffer = Vec::with_capacity(flattened_evals.len());
-    for folding_step in 0..num_folding_rounds {
+    for (folding_step, challenge) in folding_challenges
+        .iter()
+        .enumerate()
+        .take(num_folding_rounds)
+    {
         let (src, dst) = if folding_step % 2 == 0 {
             (&flattened_evals[..], &mut buffer)
         } else {
@@ -285,7 +289,7 @@ pub(super) fn fold_coset_for_test(
         for (set_idx, [a, b]) in src.as_chunks::<2>().0.iter().enumerate() {
             let mut t = *a;
             t.sub_assign(b);
-            t.mul_assign(&folding_challenges[folding_step]);
+            t.mul_assign(challenge);
             let mut root = root_inv;
             root.mul_assign(&high_powers_offsets[set_idx]);
             t.mul_assign_by_base(&root);

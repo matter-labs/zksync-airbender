@@ -4,12 +4,10 @@
 //! `proof::layout::build_proof_layout_inputs`, which stays in the apex),
 //! so it belongs in the apex e2e suite — see the split test-seam manifest gap note.
 
-use super::*;
 use crate::upstream::Field;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::CudaSlice;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::backward::kernels::{
     make_deferred_backward_workflow_state, populate_backward_workflow_state,
@@ -114,7 +112,7 @@ fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
 
     assert_eq!(purged_layers, expected_dimension_reducing_layers);
 
-    let fixture_external_challenges_for_device = fixture.external_challenges.clone();
+    let fixture_external_challenges_for_device = fixture.external_challenges;
     let mut main_state = backward_state.into_main_layer_backward_state(
         fixture.compiled_circuit,
         fixture.external_challenges,

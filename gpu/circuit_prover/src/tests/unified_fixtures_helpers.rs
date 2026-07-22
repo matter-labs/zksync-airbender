@@ -66,7 +66,15 @@ pub(super) fn build_unified_decoder_table(
 /// against the **non-test** prover surface (the test module is gated behind
 /// `prover/test`, which gpu_circuit_prover does not enable), and also returns the
 /// sparse RAM init/teardown triples the GPU page builder consumes.
-#[allow(clippy::too_many_arguments)]
+/// `(full_trace, table_driver, buffer, witness_gen_data, sparse_inits_and_teardowns)`.
+pub(super) type UnifiedFullTraceForTest = (
+    GKRFullWitnessTrace<BF, Global, Global>,
+    TableDriver<BF>,
+    Vec<UnifiedOpcodeTracingDataWithTimestamp>,
+    Vec<cs::gkr_circuits::ExecutorFamilyDecoderData>,
+    Vec<Vec<(u32, (common_constants::TimestampScalar, u32))>>,
+);
+
 pub(super) fn build_unified_full_trace_for_test(
     binary: &[u32],
     text_section: &[u32],
@@ -80,13 +88,7 @@ pub(super) fn build_unified_full_trace_for_test(
     num_calls: usize,
     run_memory_consistency_check: bool,
     worker: &Worker,
-) -> (
-    GKRFullWitnessTrace<BF, Global, Global>,
-    TableDriver<BF>,
-    Vec<UnifiedOpcodeTracingDataWithTimestamp>,
-    Vec<cs::gkr_circuits::ExecutorFamilyDecoderData>,
-    Vec<Vec<(u32, (common_constants::TimestampScalar, u32))>>,
-) {
+) -> UnifiedFullTraceForTest {
     let mut state = snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = snapshotter
         .reads_buffer
@@ -95,7 +97,7 @@ pub(super) fn build_unified_full_trace_for_test(
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = UnifiedDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -108,7 +110,6 @@ pub(super) fn build_unified_full_trace_for_test(
         &mut tracer,
     );
     assert_eq!(*expected_final_state, state);
-    drop(replay_ram);
 
     let option_decoder_table = build_unified_decoder_table(text_section);
     let oracle = UnifiedRiscvCircuitOracle {
@@ -204,7 +205,6 @@ pub(super) fn build_unified_full_trace_for_test(
 /// at `num_delegation_cycles.trailing_zeros()`) is bit-identical to
 /// `crate::config::prover_config(CircuitType::Delegation(_), Sec80)`,
 /// so the GPU `prove()` path reproduces this proof exactly.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn prove_delegation_proof<O>(
     circuit: &GKRCircuitArtifact<BF>,
     table_driver: &TableDriver<BF>,
@@ -273,7 +273,6 @@ where
 /// (`grand_product_accumulator_computed`, or `E4::ONE` when the delegation has
 /// no calls). Thin wrapper over `prove_delegation_proof` that preserves the
 /// empty-delegation short-circuit the unified closure path relies on.
-#[allow(clippy::too_many_arguments)]
 fn prove_delegation_factor<O>(
     circuit: &GKRCircuitArtifact<BF>,
     table_driver: &TableDriver<BF>,
@@ -365,7 +364,7 @@ fn prove_unified_delegation_factors(
             ram_log: &mut ram_log_buffers,
         };
         let mut buffer = vec![DelegationWitness::empty(); counters.blake_calls];
-        let mut buffers = vec![&mut buffer[..]];
+        let mut buffers = [&mut buffer[..]];
         let mut tracer = BlakeDelegationDestinationHolder {
             buffers: &mut buffers[..],
         };
@@ -378,7 +377,6 @@ fn prove_unified_delegation_factors(
             &mut tracer,
         );
         assert_eq!(*expected_final_state, state);
-        drop(replay_ram);
 
         let is_empty = buffer.is_empty();
         let oracle = Blake2sDelegationOracle {
@@ -416,7 +414,7 @@ fn prove_unified_delegation_factors(
             ram_log: &mut ram_log_buffers,
         };
         let mut buffer = vec![DelegationWitness::empty(); counters.bigint_calls];
-        let mut buffers = vec![&mut buffer[..]];
+        let mut buffers = [&mut buffer[..]];
         let mut tracer = BigintDelegationDestinationHolder {
             buffers: &mut buffers[..],
         };
@@ -429,7 +427,6 @@ fn prove_unified_delegation_factors(
             &mut tracer,
         );
         assert_eq!(*expected_final_state, state);
-        drop(replay_ram);
 
         let is_empty = buffer.is_empty();
         let oracle = BigintDelegationOracle {
@@ -466,7 +463,7 @@ fn prove_unified_delegation_factors(
             ram_log: &mut ram_log_buffers,
         };
         let mut buffer = vec![DelegationWitness::empty(); counters.keccak_calls];
-        let mut buffers = vec![&mut buffer[..]];
+        let mut buffers = [&mut buffer[..]];
         let mut tracer = KeccakDelegationDestinationHolder {
             buffers: &mut buffers[..],
         };
@@ -479,7 +476,6 @@ fn prove_unified_delegation_factors(
             &mut tracer,
         );
         assert_eq!(*expected_final_state, state);
-        drop(replay_ram);
 
         let is_empty = buffer.is_empty();
         let oracle = KeccakDelegationOracle {
@@ -516,7 +512,7 @@ fn prove_unified_delegation_factors(
             ram_log: &mut ram_log_buffers,
         };
         let mut buffer = vec![DelegationWitness::empty(); counters.blake_g_function_calls];
-        let mut buffers = vec![&mut buffer[..]];
+        let mut buffers = [&mut buffer[..]];
         let mut tracer = BlakeGFunctionDelegationDestinationHolder {
             buffers: &mut buffers[..],
         };
@@ -529,7 +525,6 @@ fn prove_unified_delegation_factors(
             &mut tracer,
         );
         assert_eq!(*expected_final_state, state);
-        drop(replay_ram);
 
         let is_empty = buffer.is_empty();
         let oracle = Blake2sGFunctionDelegationOracle {
@@ -584,13 +579,12 @@ where
 /// `prove_delegation_proof` selects internally), so the proof must be field-wise
 /// identical. The memory tree caps are split from the CPU proof's
 /// `memory_commitment.commitment.cap`, the same idiom the other fixtures use.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn prepare_delegation_proof_fixture<O, W>(
     circuit_type: DelegationCircuitType,
     layout_path: &str,
-    table_driver: TableDriver<BF>,
+    table_driver: &TableDriver<BF>,
     buffer: Vec<W>,
-    oracle: O,
+    oracle: &O,
     witness_eval_fn: fn(
         &mut prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<'_, O, BF>,
     ),
@@ -628,8 +622,8 @@ where
     // factor): the GPU `prove()` below must reproduce it bit-for-bit.
     let expected_cpu_proof = prove_delegation_proof(
         &compiled_circuit,
-        &table_driver,
-        &oracle,
+        table_driver,
+        oracle,
         witness_eval_fn,
         num_delegation_cycles,
         &external_challenges,
@@ -642,8 +636,7 @@ where
     // `whir_steps_schedule[0]` rows-per-leaf, matching `delegation_asserts.rs`'s
     // validated delegation setup. (`prove()` asserts this equals
     // `base_oracles_values_per_leaf.trailing_zeros()`.)
-    let setup =
-        CpuGKRSetup::construct(&table_driver, &[], num_delegation_cycles, &compiled_circuit);
+    let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
     let device_block_size = 1usize << device_allocator_block_log_size;
     let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(
@@ -716,7 +709,7 @@ where
 pub(super) fn prepare_delegation_profiling_fixture<W>(
     circuit_type: DelegationCircuitType,
     layout_path: &str,
-    table_driver: TableDriver<BF>,
+    table_driver: &TableDriver<BF>,
     buffer: Vec<W>,
     num_delegation_cycles: usize,
 ) -> BasicUnrolledFixture
@@ -741,8 +734,7 @@ where
     let prover_config = delegation_prover_config(circuit_type);
     let whir_schedule = prover_config.whir_schedule.clone();
 
-    let setup =
-        CpuGKRSetup::construct(&table_driver, &[], num_delegation_cycles, &compiled_circuit);
+    let setup = CpuGKRSetup::construct(table_driver, &[], num_delegation_cycles, &compiled_circuit);
     let device_block_size = 1usize << device_allocator_block_log_size;
     let max_device_allocation_blocks_count = device_allocator_arena_bytes / device_block_size;
     let context = make_test_context_with_device_allocator_block_log_size(

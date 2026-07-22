@@ -160,7 +160,6 @@ pub(crate) struct GpuGKRProofTransferKeepalive<'a, A: GoodAllocator> {
 }
 
 impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         setup: Option<GpuGKRSetupTransfer<'a>>,
         decoder: Option<DecoderTableTransfer<'a>>,

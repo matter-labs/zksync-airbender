@@ -17,7 +17,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     let binary: Vec<_> = binary
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -27,7 +27,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -110,7 +110,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
         buffers: &mut buffers[..],
     };
@@ -167,7 +167,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &TableDriver::new(),
-        &decoder_table_data,
+        decoder_table_data,
         trace_len,
         &add_sub_circuit,
     );

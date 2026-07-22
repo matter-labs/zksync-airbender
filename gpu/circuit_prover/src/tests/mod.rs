@@ -178,7 +178,7 @@ fn read_test_words(relative_path: &str) -> Vec<u32> {
     bytes
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect()
 }
@@ -652,6 +652,9 @@ impl BasicUnrolledProofFixture {
     }
 }
 
+// Every field is a shared reference or a small Copy value, so this is
+// trivially `Copy`.
+#[derive(Clone, Copy)]
 struct BasicUnrolledFixtureBuildConfig<'a> {
     binary_path: &'a str,
     text_path: &'a str,

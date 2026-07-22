@@ -16,7 +16,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     let binary: Vec<_> = binary
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -26,7 +26,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -112,7 +112,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX> {
         buffers: &mut buffers[..],
     };
@@ -171,7 +171,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &table_driver,
-        &decoder_table_data,
+        decoder_table_data,
         trace_len,
         &jump_branch_slt_circuit,
     );
@@ -517,7 +517,7 @@ fn run_load_store_word_only_workflow_input_parity_test() {
         "examples/hashed_fibonacci/app.text",
         &[15, 1],
         UnrolledMemoryCircuitType::LoadStoreWordOnly,
-        compiled_circuit,
+        &compiled_circuit,
         mem_word_only_mod::witness_eval_fn,
         add_mem_word_only_tables_for_test,
     );
@@ -535,7 +535,7 @@ fn run_load_store_subword_only_workflow_input_parity_test() {
         "riscv_transpiler/examples/keccak_f1600/app.text",
         &[],
         UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
-        compiled_circuit,
+        &compiled_circuit,
         mem_subword_only_mod::witness_eval_fn,
         add_mem_subword_only_tables_for_test,
     );
@@ -547,7 +547,7 @@ fn run_bigint_delegation_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
     );
-    assert_bigint_delegation_workflow_matches_cpu(compiled_circuit, false);
+    assert_bigint_delegation_workflow_matches_cpu(&compiled_circuit, false);
 }
 
 #[test]
@@ -556,7 +556,7 @@ fn run_blake2_delegation_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
     );
-    assert_blake2_delegation_workflow_matches_cpu(compiled_circuit, false);
+    assert_blake2_delegation_workflow_matches_cpu(&compiled_circuit, false);
 }
 
 #[test]
@@ -564,7 +564,7 @@ fn run_blake2_delegation_workflow_input_parity_test() {
 fn run_keccak_special5_delegation_workflow_input_parity_test() {
     let compiled_circuit =
         deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_gkr.json");
-    assert_keccak_delegation_workflow_matches_cpu(compiled_circuit);
+    assert_keccak_delegation_workflow_matches_cpu(&compiled_circuit);
 }
 
 #[test]
@@ -573,7 +573,7 @@ fn run_blake2_delegation_zero_call_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
     );
-    assert_blake2_delegation_workflow_matches_cpu(compiled_circuit, true);
+    assert_blake2_delegation_workflow_matches_cpu(&compiled_circuit, true);
 }
 
 #[test]
@@ -651,7 +651,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     let binary: Vec<_> = binary
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -661,7 +661,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -714,7 +714,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX> {
         buffers: &mut buffers[..],
     };
@@ -788,7 +788,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
         &table_driver,
-        &decoder_table_data,
+        decoder_table_data,
         trace_len,
         &shift_binop_circuit,
     );

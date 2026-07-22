@@ -3,7 +3,7 @@ use super::*;
 pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     label: &str,
     circuit_type: DelegationCircuitType,
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
     buffer: &[W],
     oracle: &O,
     witness_eval_fn: for<'a> fn(
@@ -24,7 +24,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     let num_calls = buffer.len();
 
     let memory_trace = evaluate_gkr_memory_witness_for_delegation_circuit(
-        &compiled_circuit,
+        compiled_circuit,
         circuit_type.get_domain_size(),
         oracle,
         &worker,
@@ -32,7 +32,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
         Global,
     );
     let full_trace = evaluate_gkr_witness_for_delegation_circuit(
-        &compiled_circuit,
+        compiled_circuit,
         witness_eval_fn,
         circuit_type.get_domain_size(),
         oracle,
@@ -44,7 +44,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let setup = CpuGKRSetup::construct(table_driver, &[], trace_len, &compiled_circuit);
+    let setup = CpuGKRSetup::construct(table_driver, &[], trace_len, compiled_circuit);
     let setup_commitment = setup.commit::<DefaultTreeConstructor>(
         &twiddles,
         whir_schedule.base_lde_factor,
@@ -89,7 +89,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
 
     let mut stage1_output = generate_stage1_output_for_test(
         CircuitType::Delegation(circuit_type),
-        &compiled_circuit,
+        compiled_circuit,
         &gpu_setup_transfer,
         None,
         None,
@@ -101,7 +101,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
 
     let (gpu_memory_caps, _gpu_memory_commitment_ms) = commit_memory(
         CircuitType::Delegation(circuit_type),
-        &compiled_circuit,
+        compiled_circuit,
         None,
         &gpu_trace,
         &prover_config,
@@ -267,7 +267,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
 
     let mut gpu_forward_setup = gpu_setup_transfer
         .schedule_forward_setup(
-            &compiled_circuit,
+            compiled_circuit,
             upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
             &context,
         )
@@ -278,7 +278,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     insert_virtual_setup_polys_for_test(trace_len, &mut gkr_storage);
     let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
         .preprocess_generic_lookups(
-            &compiled_circuit,
+            compiled_circuit,
             lookup_alpha,
             trace_len,
             &mut gkr_storage,
@@ -306,7 +306,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
             layer_idx,
             layer,
             &mut gkr_storage,
-            &compiled_circuit,
+            compiled_circuit,
             &external_challenges,
             &mut witness_eval_data,
             &[],
@@ -323,7 +323,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(
             &mut gkr_storage,
-            &compiled_circuit,
+            compiled_circuit,
             trace_len.trailing_zeros() as usize,
             final_trace_size_log_2 as usize,
             &worker,
@@ -340,7 +340,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
             &gpu_setup_transfer,
             &mut stage1_output,
             &mut gpu_forward_setup,
-            &compiled_circuit,
+            compiled_circuit,
             &external_challenges,
             final_trace_size_log_2,
             &context,
@@ -371,7 +371,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     assert_gpu_and_cpu_gkr_storage_match(
         &gpu_forward_output.storage,
         &gkr_storage,
-        &compiled_circuit,
+        compiled_circuit,
         &context,
     );
     assert_eq!(gpu_final_explicit_evaluations, final_explicit_evaluations);
@@ -379,7 +379,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
 }
 
 pub(super) fn assert_bigint_delegation_workflow_matches_cpu(
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
     zero_call: bool,
 ) {
     let mut table_driver = TableDriver::<BF>::new();
@@ -392,7 +392,7 @@ pub(super) fn assert_bigint_delegation_workflow_matches_cpu(
         |counters| counters.bigint_calls,
         BigintDelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = BigintDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };
@@ -428,7 +428,7 @@ pub(super) fn assert_bigint_delegation_workflow_matches_cpu(
 }
 
 pub(super) fn assert_blake2_delegation_workflow_matches_cpu(
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
     zero_call: bool,
 ) {
     let mut table_driver = TableDriver::<BF>::new();
@@ -441,7 +441,7 @@ pub(super) fn assert_blake2_delegation_workflow_matches_cpu(
         |counters| counters.blake_calls,
         Blake2sRoundFunctionDelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = BlakeDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };
@@ -477,7 +477,7 @@ pub(super) fn assert_blake2_delegation_workflow_matches_cpu(
 }
 
 pub(super) fn assert_keccak_delegation_workflow_matches_cpu(
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
 ) {
     let mut table_driver = TableDriver::<BF>::new();
     cs::gkr_circuits::delegation::keccak_special5::keccak_special5_delegation_circuit_table_driver_fn(
@@ -489,7 +489,7 @@ pub(super) fn assert_keccak_delegation_workflow_matches_cpu(
         |counters| counters.keccak_calls,
         KeccakSpecial5DelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = KeccakDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };

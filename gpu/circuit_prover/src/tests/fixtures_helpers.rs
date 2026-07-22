@@ -38,7 +38,7 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
     let binary: Vec<_> = binary
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -47,7 +47,7 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -101,7 +101,7 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<FAMILY_IDX> {
         buffers: &mut buffers[..],
     };
@@ -113,7 +113,6 @@ pub(super) fn extract_non_memory_family<const FAMILY_IDX: u8>(
         cycles_bound,
         &mut tracer,
     );
-    drop(replay_ram);
     drop(snapshotter);
     drop(ram);
     drop(non_determinism);
@@ -161,9 +160,9 @@ pub(super) fn finish_proof_fixture(
             BF,
         >,
     ),
-    table_driver: TableDriver<BF>,
-    decoder_table_data: Vec<Option<CSExecutorFamilyDecoderData>, Global>,
-    witness_gen_data: Vec<CSExecutorFamilyDecoderData>,
+    table_driver: &TableDriver<BF>,
+    decoder_table_data: &[Option<CSExecutorFamilyDecoderData>],
+    witness_gen_data: &[CSExecutorFamilyDecoderData],
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
     security_level: SecurityLevel,
@@ -201,8 +200,8 @@ pub(super) fn finish_proof_fixture(
     let prover_config = crate::config::prover_config(fixture_circuit_type, security_level).unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
-        &table_driver,
-        &decoder_table_data,
+        table_driver,
+        decoder_table_data,
         trace_len,
         &compiled_circuit,
     );
@@ -228,14 +227,14 @@ pub(super) fn finish_proof_fixture(
         )
         .unwrap(),
     );
-    let decoder_table_host = make_decoder_table_host_for_test(&witness_gen_data);
+    let decoder_table_host = make_decoder_table_host_for_test(witness_gen_data);
     eprintln!("fixture: decoder host ready");
 
     let expected_cpu_proof = if compute_cpu_reference {
         let worker = Worker::new_with_num_threads(8);
         let oracle = NonMemoryCircuitOracle {
             inner: &buffer[..],
-            decoder_table: &decoder_table_data,
+            decoder_table: decoder_table_data,
             default_pc_value_in_padding,
         };
 
@@ -253,7 +252,7 @@ pub(super) fn finish_proof_fixture(
             witness_eval_fn,
             trace_len,
             &oracle,
-            &table_driver,
+            table_driver,
             &worker,
             None,
             Global,
@@ -418,9 +417,9 @@ pub(super) fn prepare_unrolled_non_memory_proof_fixture<const FAMILY_IDX: u8>(
         buffer,
         default_pc_value_in_padding,
         witness_eval_fn,
-        table_driver,
-        ex.decoder_table_data,
-        ex.witness_gen_data,
+        &table_driver,
+        &ex.decoder_table_data,
+        &ex.witness_gen_data,
         compute_cpu_reference,
         default_fixture_device_allocator_block_log_size(),
         crate::upstream::SecurityLevel::Sec80,
@@ -447,7 +446,7 @@ pub(super) fn extract_memory_family<const FAMILY_IDX: u8>(
     let binary: Vec<_> = binary
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -456,7 +455,7 @@ pub(super) fn extract_memory_family<const FAMILY_IDX: u8>(
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -514,7 +513,7 @@ pub(super) fn extract_memory_family<const FAMILY_IDX: u8>(
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = MemDestinationHolder::<FAMILY_IDX> {
         buffers: &mut buffers[..],
     };
@@ -526,7 +525,6 @@ pub(super) fn extract_memory_family<const FAMILY_IDX: u8>(
         cycles_bound,
         &mut tracer,
     );
-    drop(replay_ram);
     drop(snapshotter);
     drop(ram);
     drop(non_determinism);
@@ -570,9 +568,9 @@ pub(super) fn finish_proof_fixture_memory(
             BF,
         >,
     ),
-    table_driver: TableDriver<BF>,
-    decoder_table_data: Vec<Option<CSExecutorFamilyDecoderData>, Global>,
-    witness_gen_data: Vec<CSExecutorFamilyDecoderData>,
+    table_driver: &TableDriver<BF>,
+    decoder_table_data: &[Option<CSExecutorFamilyDecoderData>],
+    witness_gen_data: &[CSExecutorFamilyDecoderData],
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
     security_level: SecurityLevel,
@@ -608,8 +606,8 @@ pub(super) fn finish_proof_fixture_memory(
     let prover_config = crate::config::prover_config(fixture_circuit_type, security_level).unwrap();
     let whir_schedule = prover_config.whir_schedule.clone();
     let setup = CpuGKRSetup::construct(
-        &table_driver,
-        &decoder_table_data,
+        table_driver,
+        decoder_table_data,
         trace_len,
         &compiled_circuit,
     );
@@ -635,14 +633,14 @@ pub(super) fn finish_proof_fixture_memory(
         )
         .unwrap(),
     );
-    let decoder_table_host = make_decoder_table_host_for_test(&witness_gen_data);
+    let decoder_table_host = make_decoder_table_host_for_test(witness_gen_data);
     eprintln!("fixture(memory): decoder host ready");
 
     let expected_cpu_proof = if compute_cpu_reference {
         let worker = Worker::new_with_num_threads(8);
         let oracle = MemoryCircuitOracle {
             inner: &buffer[..],
-            decoder_table: &decoder_table_data,
+            decoder_table: decoder_table_data,
         };
 
         let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
@@ -659,7 +657,7 @@ pub(super) fn finish_proof_fixture_memory(
             witness_eval_fn,
             trace_len,
             &oracle,
-            &table_driver,
+            table_driver,
             &worker,
             None,
             Global,
@@ -820,9 +818,9 @@ pub(super) fn prepare_unrolled_memory_proof_fixture<const FAMILY_IDX: u8>(
         compiled_circuit,
         buffer,
         witness_eval_fn,
-        table_driver,
-        ex.decoder_table_data,
-        ex.witness_gen_data,
+        &table_driver,
+        &ex.decoder_table_data,
+        &ex.witness_gen_data,
         compute_cpu_reference,
         default_fixture_device_allocator_block_log_size(),
         crate::upstream::SecurityLevel::Sec80,
@@ -851,9 +849,9 @@ pub(super) fn prepare_basic_unrolled_fixture(
         buffer,
         common_constants::PC_STEP as u32, // add_sub default_pc_value_in_padding
         add_sub_lui_auipc_mod::witness_eval_fn,
-        table_driver,
-        ex.decoder_table_data,
-        ex.witness_gen_data,
+        &table_driver,
+        &ex.decoder_table_data,
+        &ex.witness_gen_data,
         build_config.compute_cpu_reference,
         build_config.device_allocator_block_log_size,
         build_config.security_level,

@@ -50,7 +50,6 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
     let proof_host_mirror_accessor = mirror.get_accessor();
     callbacks.schedule(
         {
-            let external_challenges = external_challenges.clone();
             let proof_layout_for_parse = proof_layout.clone();
             move || {
                 // Publish base-layer-claims metadata first. Pure host work
@@ -86,7 +85,7 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
                         &final_explicit_evaluations,
                     );
                 unsafe { proof_slot.get_mut() }.replace(GKRProof {
-                    external_challenges: external_challenges.clone(),
+                    external_challenges,
                     final_explicit_evaluations,
                     sumcheck_intermediate_values,
                     whir_proof,

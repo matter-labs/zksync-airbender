@@ -77,7 +77,7 @@ pub(super) fn alloc_pinned_vec_from_slice_for_test<T: Copy>(
 ) -> Vec<T, gpu_core::allocator::host::ConcurrentStaticHostAllocator> {
     use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
     use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
-    let bytes = values.len() * std::mem::size_of::<T>();
+    let bytes = std::mem::size_of_val(values);
     let allocation = HostAllocation::alloc(bytes, CudaHostAllocFlags::DEFAULT).unwrap();
     let allocator = ConcurrentStaticHostAllocator::new([allocation], 0);
     let mut out: Vec<T, _> = Vec::with_capacity_in(values.len(), allocator);

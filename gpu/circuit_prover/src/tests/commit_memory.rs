@@ -15,7 +15,7 @@ fn test_commit_memory_matches_cpu() {
         &[],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-        compiled_circuit,
+        &compiled_circuit,
     );
 }
 
@@ -34,7 +34,7 @@ fn test_jump_branch_slt_commit_memory_matches_cpu() {
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::JumpBranchSlt,
-        compiled_circuit,
+        &compiled_circuit,
     );
 }
 
@@ -53,7 +53,7 @@ fn test_shift_binop_commit_memory_matches_cpu() {
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
         UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
-        compiled_circuit,
+        &compiled_circuit,
     );
 }
 
@@ -67,7 +67,7 @@ fn test_load_store_word_only_commit_memory_matches_cpu() {
         "examples/hashed_fibonacci/app.text",
         &[15, 1],
         UnrolledMemoryCircuitType::LoadStoreWordOnly,
-        compiled_circuit,
+        &compiled_circuit,
     );
 }
 
@@ -81,7 +81,7 @@ fn test_load_store_subword_only_commit_memory_matches_cpu() {
         "riscv_transpiler/examples/keccak_f1600/app.text",
         &[],
         UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
-        compiled_circuit,
+        &compiled_circuit,
     );
 }
 
@@ -91,7 +91,7 @@ fn test_bigint_delegation_commit_memory_matches_cpu() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
     );
-    assert_bigint_delegation_commit_memory_matches_cpu(compiled_circuit, false);
+    assert_bigint_delegation_commit_memory_matches_cpu(&compiled_circuit, false);
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn test_blake2_delegation_commit_memory_matches_cpu() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
     );
-    assert_blake2_delegation_commit_memory_matches_cpu(compiled_circuit, false);
+    assert_blake2_delegation_commit_memory_matches_cpu(&compiled_circuit, false);
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn test_blake2_delegation_commit_memory_matches_cpu() {
 fn test_keccak_special5_delegation_commit_memory_matches_cpu() {
     let compiled_circuit =
         deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_gkr.json");
-    assert_keccak_delegation_commit_memory_matches_cpu(compiled_circuit);
+    assert_keccak_delegation_commit_memory_matches_cpu(&compiled_circuit);
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn test_blake2_delegation_zero_call_commit_memory_matches_cpu() {
     let compiled_circuit = deserialize_json_for_test(
         "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
     );
-    assert_blake2_delegation_commit_memory_matches_cpu(compiled_circuit, true);
+    assert_blake2_delegation_commit_memory_matches_cpu(&compiled_circuit, true);
 }
 
 /// The unified proof fixture (`prepare_unified_proof_fixture`) injects the CPU
@@ -194,7 +194,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     non_determinism_reads: &[u32],
     default_pc_value_in_padding: u32,
     circuit_type: UnrolledNonMemoryCircuitType,
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
 ) {
     use gpu_trace::trace::memory::commit_memory;
     use prover::gkr::prover::stages::stage1::commit_trace_part;
@@ -208,14 +208,14 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let binary: Vec<_> = binary
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
     let text_section = std::fs::read(test_artifact_path(text_path)).unwrap();
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
     let instructions: Vec<Instruction> =
@@ -253,7 +253,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<FAMILY_IDX> {
         buffers: &mut buffers[..],
     };
@@ -265,7 +265,6 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         cycles_bound,
         &mut tracer,
     );
-    drop(replay_ram);
 
     let mut preprocessing_data = process_binary_into_separate_tables_ext::<
         BF,
@@ -299,7 +298,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     };
     let trace_len = compiled_circuit.trace_len;
     let cpu_memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
-        &compiled_circuit,
+        compiled_circuit,
         compiled_circuit.trace_len,
         &oracle,
         &worker,
@@ -359,7 +358,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
 
     let job = commit_memory(
         non_memory_circuit_type,
-        &compiled_circuit,
+        compiled_circuit,
         if compiled_circuit.has_decoder_lookup {
             Some(d_decoder_table.as_ref().unwrap())
         } else {
@@ -389,7 +388,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     text_path: &str,
     non_determinism_reads: &[u32],
     circuit_type: UnrolledMemoryCircuitType,
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
 ) {
     use gpu_trace::trace::memory::commit_memory;
     use prover::gkr::prover::stages::stage1::commit_trace_part;
@@ -403,14 +402,14 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     let binary: Vec<_> = binary
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
     let text_section = std::fs::read(test_artifact_path(text_path)).unwrap();
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
     let instructions: Vec<Instruction> =
@@ -449,7 +448,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = MemDestinationHolder::<FAMILY_IDX> {
         buffers: &mut buffers[..],
     };
@@ -461,7 +460,6 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         cycles_bound,
         &mut tracer,
     );
-    drop(replay_ram);
 
     let mut preprocessing_data = process_binary_into_separate_tables_ext::<
         BF,
@@ -494,7 +492,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     };
     let trace_len = compiled_circuit.trace_len;
     let cpu_memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
-        &compiled_circuit,
+        compiled_circuit,
         compiled_circuit.trace_len,
         &oracle,
         &worker,
@@ -554,7 +552,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
 
     let job = commit_memory(
         memory_circuit_type_value,
-        &compiled_circuit,
+        compiled_circuit,
         if compiled_circuit.has_decoder_lookup {
             Some(d_decoder_table.as_ref().unwrap())
         } else {
@@ -582,7 +580,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
 fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
     label: &str,
     circuit_type: DelegationCircuitType,
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
     buffer: &[W],
     oracle: &O,
     build_gpu_trace: F,
@@ -598,7 +596,7 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
     let worker = Worker::new_with_num_threads(8);
     let trace_len = compiled_circuit.trace_len;
     let cpu_memory_trace = evaluate_gkr_memory_witness_for_delegation_circuit(
-        &compiled_circuit,
+        compiled_circuit,
         circuit_type.get_domain_size(),
         oracle,
         &worker,
@@ -640,7 +638,7 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
 
     let job = commit_memory(
         CircuitType::Delegation(circuit_type),
-        &compiled_circuit,
+        compiled_circuit,
         None,
         &gpu_trace,
         &prover_config,
@@ -659,7 +657,7 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
     );
 }
 fn assert_bigint_delegation_commit_memory_matches_cpu(
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
     zero_call: bool,
 ) {
     let buffer = replay_delegation_trace_buffer(
@@ -667,7 +665,7 @@ fn assert_bigint_delegation_commit_memory_matches_cpu(
         |counters| counters.bigint_calls,
         BigintDelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = BigintDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };
@@ -701,7 +699,7 @@ fn assert_bigint_delegation_commit_memory_matches_cpu(
 }
 
 fn assert_blake2_delegation_commit_memory_matches_cpu(
-    compiled_circuit: GKRCircuitArtifact<BF>,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
     zero_call: bool,
 ) {
     let buffer = replay_delegation_trace_buffer(
@@ -709,7 +707,7 @@ fn assert_blake2_delegation_commit_memory_matches_cpu(
         |counters| counters.blake_calls,
         Blake2sRoundFunctionDelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = BlakeDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };
@@ -742,13 +740,13 @@ fn assert_blake2_delegation_commit_memory_matches_cpu(
     );
 }
 
-fn assert_keccak_delegation_commit_memory_matches_cpu(compiled_circuit: GKRCircuitArtifact<BF>) {
+fn assert_keccak_delegation_commit_memory_matches_cpu(compiled_circuit: &GKRCircuitArtifact<BF>) {
     let buffer = replay_delegation_trace_buffer(
         false,
         |counters| counters.keccak_calls,
         KeccakSpecial5DelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = KeccakDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };

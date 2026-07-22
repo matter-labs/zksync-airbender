@@ -22,7 +22,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let binary: Vec<_> = binary
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -32,7 +32,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
         .0
-        .into_iter()
+        .iter()
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
@@ -156,7 +156,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     };
 
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
         buffers: &mut buffers[..],
     };
@@ -217,7 +217,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let tree_cap_size = whir_schedule.cap_size;
     let setup = CpuGKRSetup::construct(
         &TableDriver::new(),
-        &decoder_table_data,
+        decoder_table_data,
         trace_len,
         &add_sub_circuit,
     );
@@ -714,7 +714,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         gpu_backward_state
             .schedule_execute_backward_workflow(
                 add_sub_circuit.clone(),
-                external_challenges.clone(),
+                external_challenges,
                 initial_layer_for_sumcheck + 1,
                 top_layer_claims.clone(),
                 evaluation_point.clone(),
@@ -976,7 +976,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             whir_batching_challenge,
             &whir_schedule,
             &twiddles,
-            seed.clone(),
+            seed,
             trace_len.trailing_zeros(),
             &worker,
             &context,

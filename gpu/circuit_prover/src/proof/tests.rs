@@ -26,8 +26,7 @@ fn draw_query_bits_with_external_nonce(
 }
 
 fn draw_query_bits_after_verified_pow(seed: &mut Seed, num_bits_for_queries: usize) -> BitSource {
-    let num_required_words =
-        num_bits_for_queries.next_multiple_of(u32::BITS as usize) / (u32::BITS as usize);
+    let num_required_words = num_bits_for_queries.div_ceil(u32::BITS as usize);
     let num_required_words_padded =
         (num_required_words + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
     let mut source = vec![0u32; num_required_words_padded];

@@ -5,7 +5,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Full GPU proof == CPU reference (single proof).
-pub(super) fn run_proof_parity(fixture: BasicUnrolledProofFixture) {
+pub(super) fn run_proof_parity(fixture: &BasicUnrolledProofFixture) {
     let proof_job = fixture.schedule_prove().unwrap();
     let (gpu_proof, _ms) = proof_job.finish().unwrap();
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
@@ -13,7 +13,7 @@ pub(super) fn run_proof_parity(fixture: BasicUnrolledProofFixture) {
 
 /// Two concurrently-scheduled proofs on a recycled-block arena (the
 /// uninitialized-witness regression guard). schedule -> schedule -> finish -> finish.
-pub(super) fn run_multi_schedule(fixture: BasicUnrolledProofFixture) {
+pub(super) fn run_multi_schedule(fixture: &BasicUnrolledProofFixture) {
     let baseline = fixture.base.context.get_used_mem_current();
     let job0 = fixture.schedule_prove().unwrap();
     let job1 = fixture.schedule_prove().unwrap();
@@ -33,7 +33,7 @@ pub(super) fn run_multi_schedule(fixture: BasicUnrolledProofFixture) {
 }
 
 /// Warmup + profiled prove; structure check only (no CPU reference needed).
-pub(super) fn run_profile(fixture: BasicUnrolledFixture) {
+pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
     let baseline = fixture.context.get_used_mem_current();
     let warm = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
@@ -71,7 +71,7 @@ pub(super) fn run_profile(fixture: BasicUnrolledFixture) {
 #[test]
 #[ignore]
 fn run_add_sub_proof_parity_test() {
-    run_proof_parity(prepare_basic_unrolled_proof_fixture());
+    run_proof_parity(&prepare_basic_unrolled_proof_fixture());
 }
 
 /// Full-proof parity at Sec100, where the lookup-challenge and WHIR-batching
@@ -79,19 +79,19 @@ fn run_add_sub_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_add_sub_proof_parity_test_sec100() {
-    run_proof_parity(prepare_basic_unrolled_proof_fixture_sec100());
+    run_proof_parity(&prepare_basic_unrolled_proof_fixture_sec100());
 }
 
 #[test]
 #[ignore]
 fn run_add_sub_multi_schedule_test() {
-    run_multi_schedule(prepare_basic_unrolled_proof_fixture());
+    run_multi_schedule(&prepare_basic_unrolled_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_add_sub_profile_test() {
-    run_profile(prepare_basic_unrolled_profiling_fixture());
+    run_profile(&prepare_basic_unrolled_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -130,19 +130,19 @@ fn prepare_jump_branch_slt_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_jump_branch_slt_proof_parity_test() {
-    run_proof_parity(prepare_jump_branch_slt_proof_fixture());
+    run_proof_parity(&prepare_jump_branch_slt_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_jump_branch_slt_multi_schedule_test() {
-    run_multi_schedule(prepare_jump_branch_slt_proof_fixture());
+    run_multi_schedule(&prepare_jump_branch_slt_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_jump_branch_slt_profile_test() {
-    run_profile(prepare_jump_branch_slt_profiling_fixture());
+    run_profile(&prepare_jump_branch_slt_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -181,19 +181,19 @@ fn prepare_shift_binop_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_shift_binop_proof_parity_test() {
-    run_proof_parity(prepare_shift_binop_proof_fixture());
+    run_proof_parity(&prepare_shift_binop_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_shift_binop_multi_schedule_test() {
-    run_multi_schedule(prepare_shift_binop_proof_fixture());
+    run_multi_schedule(&prepare_shift_binop_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_shift_binop_profile_test() {
-    run_profile(prepare_shift_binop_profiling_fixture());
+    run_profile(&prepare_shift_binop_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +207,7 @@ fn prepare_mul_div_proof_fixture() -> BasicUnrolledProofFixture {
         UnrolledNonMemoryCircuitType::MulDivUnsigned,
         UNSIGNED_MUL_DIV_LAYOUT_PATH,
         unsigned_mul_div_mod::witness_eval_fn,
-        |td| cs::gkr_circuits::mul_div::mul_div_table_driver_fn::<BF, false>(td),
+        cs::gkr_circuits::mul_div::mul_div_table_driver_fn::<BF, false>,
         true,
     );
     BasicUnrolledProofFixture {
@@ -223,7 +223,7 @@ fn prepare_mul_div_profiling_fixture() -> BasicUnrolledFixture {
         UnrolledNonMemoryCircuitType::MulDivUnsigned,
         UNSIGNED_MUL_DIV_LAYOUT_PATH,
         unsigned_mul_div_mod::witness_eval_fn,
-        |td| cs::gkr_circuits::mul_div::mul_div_table_driver_fn::<BF, false>(td),
+        cs::gkr_circuits::mul_div::mul_div_table_driver_fn::<BF, false>,
         false,
     )
     .0
@@ -232,19 +232,19 @@ fn prepare_mul_div_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_mul_div_proof_parity_test() {
-    run_proof_parity(prepare_mul_div_proof_fixture());
+    run_proof_parity(&prepare_mul_div_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_mul_div_multi_schedule_test() {
-    run_multi_schedule(prepare_mul_div_proof_fixture());
+    run_multi_schedule(&prepare_mul_div_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_mul_div_profile_test() {
-    run_profile(prepare_mul_div_profiling_fixture());
+    run_profile(&prepare_mul_div_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -299,19 +299,19 @@ fn prepare_load_store_word_only_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_load_store_word_only_proof_parity_test() {
-    run_proof_parity(prepare_load_store_word_only_proof_fixture());
+    run_proof_parity(&prepare_load_store_word_only_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_load_store_word_only_multi_schedule_test() {
-    run_multi_schedule(prepare_load_store_word_only_proof_fixture());
+    run_multi_schedule(&prepare_load_store_word_only_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_load_store_word_only_profile_test() {
-    run_profile(prepare_load_store_word_only_profiling_fixture());
+    run_profile(&prepare_load_store_word_only_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -369,19 +369,19 @@ fn prepare_load_store_subword_only_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_load_store_subword_only_proof_parity_test() {
-    run_proof_parity(prepare_load_store_subword_only_proof_fixture());
+    run_proof_parity(&prepare_load_store_subword_only_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_load_store_subword_only_multi_schedule_test() {
-    run_multi_schedule(prepare_load_store_subword_only_proof_fixture());
+    run_multi_schedule(&prepare_load_store_subword_only_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_load_store_subword_only_profile_test() {
-    run_profile(prepare_load_store_subword_only_profiling_fixture());
+    run_profile(&prepare_load_store_subword_only_profiling_fixture());
 }
 
 // ===========================================================================
@@ -431,7 +431,7 @@ fn replay_bigint_delegation_buffer() -> (Vec<BigintDelegationWitness>, TableDriv
         |counters| counters.bigint_calls,
         BigintDelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = BigintDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };
@@ -472,9 +472,9 @@ fn prepare_bigint_proof_fixture() -> BasicUnrolledProofFixture {
     let fixture = prepare_delegation_proof_fixture(
         DelegationCircuitType::BigIntWithControl,
         BIGINT_DELEGATION_LAYOUT_PATH,
-        table_driver,
+        &table_driver,
         buffer_for_host,
-        oracle,
+        &oracle,
         bigint_with_extended_control_mod::witness_eval_fn,
         1 << 22,
     );
@@ -487,7 +487,7 @@ fn prepare_bigint_profiling_fixture() -> BasicUnrolledFixture {
     prepare_delegation_profiling_fixture(
         DelegationCircuitType::BigIntWithControl,
         BIGINT_DELEGATION_LAYOUT_PATH,
-        table_driver,
+        &table_driver,
         buffer,
         1 << 22,
     )
@@ -498,19 +498,19 @@ fn prepare_bigint_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_bigint_proof_parity_test() {
-    run_proof_parity(prepare_bigint_proof_fixture());
+    run_proof_parity(&prepare_bigint_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_bigint_multi_schedule_test() {
-    run_multi_schedule(prepare_bigint_proof_fixture());
+    run_multi_schedule(&prepare_bigint_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_bigint_profile_test() {
-    run_profile(prepare_bigint_profiling_fixture());
+    run_profile(&prepare_bigint_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -534,7 +534,7 @@ fn replay_keccak_special5_delegation_buffer(
         |counters| counters.keccak_calls,
         KeccakSpecial5DelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = KeccakDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };
@@ -572,9 +572,9 @@ fn prepare_keccak_special5_proof_fixture() -> BasicUnrolledProofFixture {
     let fixture = prepare_delegation_proof_fixture(
         DelegationCircuitType::KeccakSpecial5,
         KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH,
-        table_driver,
+        &table_driver,
         buffer_for_host,
-        oracle,
+        &oracle,
         fixtures::keccak_special5_mod::witness_eval_fn,
         1 << 22,
     );
@@ -587,7 +587,7 @@ fn prepare_keccak_special5_profiling_fixture() -> BasicUnrolledFixture {
     prepare_delegation_profiling_fixture(
         DelegationCircuitType::KeccakSpecial5,
         KECCAK_SPECIAL5_DELEGATION_LAYOUT_PATH,
-        table_driver,
+        &table_driver,
         buffer,
         1 << 22,
     )
@@ -598,19 +598,19 @@ fn prepare_keccak_special5_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_keccak_special5_proof_parity_test() {
-    run_proof_parity(prepare_keccak_special5_proof_fixture());
+    run_proof_parity(&prepare_keccak_special5_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_keccak_special5_multi_schedule_test() {
-    run_multi_schedule(prepare_keccak_special5_proof_fixture());
+    run_multi_schedule(&prepare_keccak_special5_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_keccak_special5_profile_test() {
-    run_profile(prepare_keccak_special5_profiling_fixture());
+    run_profile(&prepare_keccak_special5_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -648,7 +648,7 @@ fn replay_blake2_with_compression_delegation_buffer(
         |counters| counters.blake_calls,
         Blake2sRoundFunctionDelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = BlakeDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };
@@ -690,9 +690,9 @@ fn prepare_blake2_with_compression_proof_fixture() -> BasicUnrolledProofFixture 
     let fixture = prepare_delegation_proof_fixture(
         DelegationCircuitType::Blake2WithCompression,
         BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
-        table_driver,
+        &table_driver,
         buffer_for_host,
-        oracle,
+        &oracle,
         fixtures::blake2_with_extended_control_mod::witness_eval_fn,
         BLAKE2_NUM_DELEGATION_CYCLES,
     );
@@ -705,7 +705,7 @@ fn prepare_blake2_with_compression_profiling_fixture() -> BasicUnrolledFixture {
     prepare_delegation_profiling_fixture(
         DelegationCircuitType::Blake2WithCompression,
         BLAKE2_WITH_COMPRESSION_LAYOUT_PATH,
-        table_driver,
+        &table_driver,
         buffer,
         BLAKE2_NUM_DELEGATION_CYCLES,
     )
@@ -717,19 +717,19 @@ fn prepare_blake2_with_compression_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_blake2_with_compression_proof_parity_test() {
-    run_proof_parity(prepare_blake2_with_compression_proof_fixture());
+    run_proof_parity(&prepare_blake2_with_compression_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_blake2_with_compression_multi_schedule_test() {
-    run_multi_schedule(prepare_blake2_with_compression_proof_fixture());
+    run_multi_schedule(&prepare_blake2_with_compression_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_blake2_with_compression_profile_test() {
-    run_profile(prepare_blake2_with_compression_profiling_fixture());
+    run_profile(&prepare_blake2_with_compression_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -757,7 +757,7 @@ fn replay_blake2_g_function_delegation_buffer(
         |counters| counters.blake_g_function_calls,
         Blake2sGFunctionDelegationWitness::empty(),
         |tape, cycles_bound, replay_state, replay_ram, buffer| {
-            let mut buffers = vec![buffer];
+            let mut buffers = [buffer];
             let mut tracer = BlakeGFunctionDelegationDestinationHolder {
                 buffers: &mut buffers[..],
             };
@@ -798,9 +798,9 @@ fn prepare_blake2_g_function_proof_fixture() -> BasicUnrolledProofFixture {
     let fixture = prepare_delegation_proof_fixture(
         DelegationCircuitType::Blake2GFunction,
         BLAKE2_G_FUNCTION_LAYOUT_PATH,
-        table_driver,
+        &table_driver,
         buffer_for_host,
-        oracle,
+        &oracle,
         fixtures::blake2_g_function_mod::witness_eval_fn,
         BLAKE2_G_FUNCTION_NUM_DELEGATION_CYCLES,
     );
@@ -813,7 +813,7 @@ fn prepare_blake2_g_function_profiling_fixture() -> BasicUnrolledFixture {
     prepare_delegation_profiling_fixture(
         DelegationCircuitType::Blake2GFunction,
         BLAKE2_G_FUNCTION_LAYOUT_PATH,
-        table_driver,
+        &table_driver,
         buffer,
         BLAKE2_G_FUNCTION_NUM_DELEGATION_CYCLES,
     )
@@ -825,19 +825,19 @@ fn prepare_blake2_g_function_profiling_fixture() -> BasicUnrolledFixture {
 #[test]
 #[ignore]
 fn run_blake2_g_function_proof_parity_test() {
-    run_proof_parity(prepare_blake2_g_function_proof_fixture());
+    run_proof_parity(&prepare_blake2_g_function_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_blake2_g_function_multi_schedule_test() {
-    run_multi_schedule(prepare_blake2_g_function_proof_fixture());
+    run_multi_schedule(&prepare_blake2_g_function_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_blake2_g_function_profile_test() {
-    run_profile(prepare_blake2_g_function_profiling_fixture());
+    run_profile(&prepare_blake2_g_function_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -933,7 +933,7 @@ fn run_unified_multi_schedule_test() {
 #[test]
 #[ignore]
 fn run_unified_proof_parity_test() {
-    run_proof_parity(prepare_unified_proof_fixture());
+    run_proof_parity(&prepare_unified_proof_fixture());
 }
 
 /// Unified circuit profile run (warmup + profiled prove, structure check only).
@@ -941,7 +941,7 @@ fn run_unified_proof_parity_test() {
 #[test]
 #[ignore]
 fn run_unified_profile_test() {
-    run_profile(prepare_unified_profiling_fixture());
+    run_profile(&prepare_unified_profiling_fixture());
 }
 
 // ---------------------------------------------------------------------------
@@ -970,13 +970,13 @@ fn prepare_inits_and_teardowns_matrix_profiling_fixture() -> BasicUnrolledFixtur
 #[test]
 #[ignore]
 fn run_inits_and_teardowns_proof_parity_test() {
-    run_proof_parity(prepare_inits_and_teardowns_matrix_proof_fixture());
+    run_proof_parity(&prepare_inits_and_teardowns_matrix_proof_fixture());
 }
 
 #[test]
 #[ignore]
 fn run_inits_and_teardowns_multi_schedule_test() {
-    run_multi_schedule(prepare_inits_and_teardowns_matrix_proof_fixture());
+    run_multi_schedule(&prepare_inits_and_teardowns_matrix_proof_fixture());
 }
 
 // run_profile checks proof structure + peak memory only (no CPU comparison),
@@ -984,5 +984,5 @@ fn run_inits_and_teardowns_multi_schedule_test() {
 #[test]
 #[ignore]
 fn run_inits_and_teardowns_profile_test() {
-    run_profile(prepare_inits_and_teardowns_matrix_profiling_fixture());
+    run_profile(&prepare_inits_and_teardowns_matrix_profiling_fixture());
 }

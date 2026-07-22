@@ -83,7 +83,6 @@ pub(super) fn replay_delegation_trace_buffer<W: Clone>(
 /// Workload-parameterized variant of [`replay_delegation_trace_buffer`]: each
 /// delegation replays against the program that actually calls it, rather than
 /// the hardcoded keccak_f1600 default.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn replay_delegation_trace_buffer_for_workload<W: Clone, OPT: DecodingOptions>(
     binary_path: &str,
     text_path: &str,
@@ -156,7 +155,10 @@ pub(super) fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod add_sub_lui_auipc_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -185,7 +187,10 @@ pub(super) mod add_sub_lui_auipc_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod unified_reduced_machine_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -214,7 +219,10 @@ pub(super) mod unified_reduced_machine_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod jump_branch_slt_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -243,7 +251,10 @@ pub(super) mod jump_branch_slt_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod shift_binop_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -272,7 +283,10 @@ pub(super) mod shift_binop_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod unsigned_mul_div_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -301,7 +315,10 @@ pub(super) mod unsigned_mul_div_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod mem_word_only_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -330,7 +347,10 @@ pub(super) mod mem_word_only_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod mem_subword_only_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -359,7 +379,10 @@ pub(super) mod mem_subword_only_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod blake2_with_extended_control_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -388,7 +411,10 @@ pub(super) mod blake2_with_extended_control_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod bigint_with_extended_control_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -417,7 +443,10 @@ pub(super) mod bigint_with_extended_control_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod keccak_special5_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
@@ -446,7 +475,10 @@ pub(super) mod keccak_special5_mod {
     }
 }
 
-#[allow(unused_imports)]
+// The included generated GKR files declare witness-eval helper fns whose
+// return-position `()` reads as a let-unit-value when bound locally by the
+// generated call sites; not worth hand-editing machine-generated code for.
+#[allow(unused_imports, clippy::let_unit_value)]
 pub(super) mod blake2_g_function_mod {
     use cs::oracle::Placeholder;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
