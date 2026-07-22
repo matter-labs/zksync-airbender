@@ -1,7 +1,5 @@
-use std::collections::BTreeMap;
 use std::mem::size_of;
 
-use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 
@@ -9,12 +7,10 @@ use super::*;
 use crate::gkr_address_audit_helpers::{
     KERNEL_ARG_HARD_CEILING_BYTES, KERNEL_ARG_SOFT_TARGET_BYTES,
 };
-use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
-use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
+use crate::upstream::Field;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
-use gpu_core::primitives::field::{BF, E4};
+use gpu_core::primitives::field::E4;
 use gpu_cub::cub::device_reduce::{reduce, Reduce, ReduceOperation};
 use gpu_ops::simple::{mul_into_y, BinaryOp, Mul};
 use gpu_prover_context::ProverContext;

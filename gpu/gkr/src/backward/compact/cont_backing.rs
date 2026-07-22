@@ -174,8 +174,7 @@ pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
     );
     compact.num_sources = term_desc.num_sources;
 
-    for i in 0..n {
-        let entry = &sources[i];
+    for (i, entry) in sources.iter().enumerate().take(n) {
         let prev_raw = entry.previous_layer_start;
         let cache_raw = entry.this_layer_cache_start as *const u8;
         let first_access = !prev_raw.is_null();
@@ -341,8 +340,8 @@ pub(crate) fn build_flat_continuation_unified_desc<E: Field>(
     if num_constant_terms < terms.len() {
         let mut current_key = tile_key(&terms[num_constant_terms]);
         let mut tile_start = num_constant_terms;
-        for i in (num_constant_terms + 1)..terms.len() {
-            let key = tile_key(&terms[i]);
+        for (i, term) in terms.iter().enumerate().skip(num_constant_terms + 1) {
+            let key = tile_key(term);
             if key != current_key {
                 tile_boundaries.push((tile_start, i));
                 current_key = key;

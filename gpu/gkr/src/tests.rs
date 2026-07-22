@@ -3,7 +3,6 @@ use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::{DeviceAllocation, HostAllocation};
-use gpu_core::primitives::device_structures::DeviceVectorChunk;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::ProverContext;
 
@@ -177,6 +176,10 @@ fn shared_views_support_subviews_and_drop_on_last_reference() {
     let context = make_test_context(64, 8);
     let baseline = context.get_used_mem_current();
 
+    // `DeviceAllocation` is `!Send + !Sync` (raw device pointer); `Arc` here is
+    // pure shared-ownership refcounting within this single scheduling thread,
+    // not cross-thread sharing.
+    #[allow(clippy::arc_with_non_send_sync)]
     let backing = Arc::new(alloc_and_copy(
         &context,
         &(0..16).map(|i| BF::new(i as u32 + 1)).collect::<Vec<_>>(),
@@ -213,6 +216,8 @@ fn round_builders_allocate_and_reuse_scratch() {
     let baseline = context.get_used_mem_current();
 
     let mut storage = GpuGKRStorage::<BF, E4>::default();
+    // See the `backing` allow above: shared-ownership refcounting only.
+    #[allow(clippy::arc_with_non_send_sync)]
     let base_backing = Arc::new(alloc_and_copy(
         &context,
         &(0..16).map(|i| BF::new(i as u32 + 1)).collect::<Vec<_>>(),

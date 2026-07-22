@@ -41,6 +41,10 @@ impl ProofLayout {
         (ptr, bytes / size_of::<T>())
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn backward_internal_coeffs_device_mut(
         &self,
         slab_base: *mut u8,
@@ -52,6 +56,10 @@ impl ProofLayout {
         )
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn backward_final_step_evals_device_mut(
         &self,
         slab_base: *mut u8,
@@ -63,6 +71,11 @@ impl ProofLayout {
     /// Per-layer-slot `extra_evaluations` range. Returns `(ptr, addresses_len)`
     /// — one `E4` per orphan address. Length is 0 for dim-reducing slots and
     /// for main layers without orphan outputs.
+    ///
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn backward_extra_evaluations_device_mut(
         &self,
         slab_base: *mut u8,
@@ -71,6 +84,10 @@ impl ProofLayout {
         Self::device_typed::<E4>(slab_base, &self.backward[layer_slot].extra_evaluations)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn output_evaluations_device_mut(
         &self,
         slab_base: *mut u8,
@@ -79,6 +96,10 @@ impl ProofLayout {
         Some(Self::device_typed::<E4>(slab_base, &block))
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_base_cap_device_mut(
         &self,
         slab_base: *mut u8,
@@ -87,6 +108,10 @@ impl ProofLayout {
         Self::device_typed::<u32>(slab_base, &self.whir_base(which).cap)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_base_evals_device_mut(
         &self,
         slab_base: *mut u8,
@@ -98,6 +123,11 @@ impl ProofLayout {
     /// Shared base-oracle `query_indices` range. The three base oracles
     /// (setup/memory/witness) reuse a single slab range — see
     /// `WhirLayout::base_query_indices`.
+    ///
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_base_query_indices_device_mut(
         &self,
         slab_base: *mut u8,
@@ -105,6 +135,10 @@ impl ProofLayout {
         Self::device_typed::<u32>(slab_base, &self.whir.base_query_indices)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_base_query_leaves_device_mut(
         &self,
         slab_base: *mut u8,
@@ -113,6 +147,10 @@ impl ProofLayout {
         Self::device_typed::<BF>(slab_base, &self.whir_base(which).query_leaves)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_base_query_paths_device_mut(
         &self,
         slab_base: *mut u8,
@@ -121,6 +159,10 @@ impl ProofLayout {
         Self::device_typed::<u32>(slab_base, &self.whir_base(which).query_paths)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_intermediate_cap_device_mut(
         &self,
         slab_base: *mut u8,
@@ -129,6 +171,10 @@ impl ProofLayout {
         Self::device_typed::<u32>(slab_base, &self.whir.intermediate[round].cap)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_intermediate_query_indices_device_mut(
         &self,
         slab_base: *mut u8,
@@ -137,6 +183,10 @@ impl ProofLayout {
         Self::device_typed::<u32>(slab_base, &self.whir.intermediate[round].query_indices)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_intermediate_query_leaves_device_mut(
         &self,
         slab_base: *mut u8,
@@ -145,6 +195,10 @@ impl ProofLayout {
         Self::device_typed::<E4>(slab_base, &self.whir.intermediate[round].query_leaves)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_intermediate_query_paths_device_mut(
         &self,
         slab_base: *mut u8,
@@ -153,26 +207,50 @@ impl ProofLayout {
         Self::device_typed::<u32>(slab_base, &self.whir.intermediate[round].query_paths)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_ood_samples_device_mut(&self, slab_base: *mut u8) -> (*mut E4, usize) {
         Self::device_typed::<E4>(slab_base, &self.whir.ood_samples)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_sumcheck_polys_device_mut(&self, slab_base: *mut u8) -> (*mut E4, usize) {
         Self::device_typed::<E4>(slab_base, &self.whir.sumcheck_polys)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_pow_nonces_device_mut(&self, slab_base: *mut u8) -> (*mut u64, usize) {
         Self::device_typed::<u64>(slab_base, &self.whir.pow_nonces)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn whir_final_monomials_device_mut(&self, slab_base: *mut u8) -> (*mut E4, usize) {
         Self::device_typed::<E4>(slab_base, &self.whir.final_monomials)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn lookup_pow_nonce_device_mut(&self, slab_base: *mut u8) -> (*mut u64, usize) {
         Self::device_typed::<u64>(slab_base, &self.lookup_pow_nonce)
     }
 
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
     pub unsafe fn batched_proximity_pow_nonce_device_mut(
         &self,
         slab_base: *mut u8,

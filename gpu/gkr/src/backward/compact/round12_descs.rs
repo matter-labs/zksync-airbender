@@ -316,8 +316,8 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
     if num_constant_terms < terms.len() {
         let mut current_key = tile_key(&terms[num_constant_terms]);
         let mut tile_start = num_constant_terms;
-        for i in (num_constant_terms + 1)..terms.len() {
-            let key = tile_key(&terms[i]);
+        for (i, term) in terms.iter().enumerate().skip(num_constant_terms + 1) {
+            let key = tile_key(term);
             if key != current_key {
                 tile_boundaries.push((tile_start, i));
                 current_key = key;
@@ -414,7 +414,7 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
 /// + size_after_one_fold)` — both within the consolidated ext-folding Arc.
 /// `previous_layer_start` is at sub_offset=0; `this_layer_cache_start` is at
 /// sub_offset=`size_after_one_fold`. sub_offset is not validated here
-/// (caller-specific).
+///   (caller-specific).
 fn resolve_round2_cache_pointer(
     cache_ranges: &[ContinuationBackingRange],
     ptr: *const u8,
@@ -661,8 +661,8 @@ pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
     if num_constant_terms < terms.len() {
         let mut current_key = tile_key(&terms[num_constant_terms]);
         let mut tile_start = num_constant_terms;
-        for i in (num_constant_terms + 1)..terms.len() {
-            let key = tile_key(&terms[i]);
+        for (i, term) in terms.iter().enumerate().skip(num_constant_terms + 1) {
+            let key = tile_key(term);
             if key != current_key {
                 tile_boundaries.push((tile_start, i));
                 current_key = key;

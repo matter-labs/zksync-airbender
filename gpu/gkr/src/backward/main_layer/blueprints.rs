@@ -927,7 +927,7 @@ where
     );
     let num_layers = inputs_per_layer.len();
     let mut per_layer: Vec<Vec<GKRAddress>> = Vec::with_capacity(num_layers);
-    for layer_idx in 0..num_layers {
+    for (layer_idx, layer_inputs) in inputs_per_layer.iter().enumerate() {
         // Bottom main layer (layer_idx == 0) has no layer-(-1) below to
         // produce orphan outputs; its IN claim layout is fully populated
         // from layer 1's transcript inputs and there is nothing to bridge.
@@ -937,7 +937,7 @@ where
         }
         let child_layer_idx = layer_idx - 1;
         let this_inputs: std::collections::BTreeSet<GKRAddress> =
-            inputs_per_layer[layer_idx].iter().copied().collect();
+            layer_inputs.iter().copied().collect();
         // BTreeSet keeps deterministic ordering and dedupes simultaneously;
         // downstream code relies on `BTreeMap::keys()`-equivalent iteration
         // order on the addresses produced here.

@@ -87,15 +87,17 @@ pub(crate) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::
     let mut src_remap: std::collections::HashMap<u32, (u32, bool)> =
         std::collections::HashMap::new();
     for a in assignments {
-        if !src_remap.contains_key(&a.source_table_idx) {
+        src_remap.entry(a.source_table_idx).or_insert_with(|| {
             if a.is_ext {
-                src_remap.insert(a.source_table_idx, (ext_count, true));
+                let idx = ext_count;
                 ext_count += 1;
+                (idx, true)
             } else {
-                src_remap.insert(a.source_table_idx, (base_count, false));
+                let idx = base_count;
                 base_count += 1;
+                (idx, false)
             }
-        }
+        });
     }
 
     log::info!("--- SOURCES ---");

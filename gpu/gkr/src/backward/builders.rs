@@ -195,7 +195,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                 let offset_challenge = ImmediateCoeff::challenge_scaled(
                     idx as u8,
                     external_challenges.permutation_argument_linearization_challenges[idx],
-                    BF::from_u32_unchecked(*low_offset as u32),
+                    BF::from_u32_unchecked(*low_offset),
                 );
                 constant_term.add_assign(&offset_challenge);
             }
@@ -227,7 +227,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                 let offset_challenge = ImmediateCoeff::challenge_scaled(
                     idx as u8,
                     external_challenges.permutation_argument_linearization_challenges[idx],
-                    BF::from_u32_unchecked(rel.timestamp_offset as u32),
+                    BF::from_u32_unchecked(rel.timestamp_offset),
                 );
                 constant_term.add_assign(&offset_challenge);
             }

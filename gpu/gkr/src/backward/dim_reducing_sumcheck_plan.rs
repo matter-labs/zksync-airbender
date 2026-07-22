@@ -608,9 +608,8 @@ where
             // SAFETY: E = E4 in every instantiation; the transmutes match the
             // kernel's `e4` view of both the packed evals and the challenges.
             // The TEMP eval buffer is alive through the kernel launch.
-            let transcript_inputs_e_view = unsafe {
-                DeviceSlice::from_raw_parts(device_last_evals.as_ptr() as *const E, last_evals_len)
-            };
+            let transcript_inputs_e_view =
+                unsafe { DeviceSlice::from_raw_parts(device_last_evals.as_ptr(), last_evals_len) };
             // SAFETY: the packed eval buffer is laid out as `E4` elements in
             // this scheduler instantiation.
             let transcript_inputs_e4: &era_cudart::slice::DeviceSlice<E4> =

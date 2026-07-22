@@ -6,6 +6,23 @@
 // `UnsafeMutAccessor::get_mut(&self) -> &mut T` is the documented contract
 // scaffolding for stream-scheduled callbacks — see gpu_core primitives/context.rs.
 #![allow(clippy::mut_from_ref)]
+// The scheduling/launcher functions here take one argument per distinct
+// device buffer / layout / stream input; splitting them into config structs
+// would obscure the pipeline wiring for a cosmetic win (same precedent as
+// gpu_hash's / gpu_ntt's / gpu_execution_prover's / gpu_trace's crate-level
+// allow).
+#![allow(clippy::too_many_arguments)]
+// `ForwardKernels`/`BackwardKernels`/`SetupKernels` (`{forward,backward,setup}::kernels`)
+// are deliberately sealed per-phase kernel-dispatch traits — `pub(crate)` on
+// purpose, implemented only for the concrete field types this crate wires up,
+// never named by another crate (every consumer, in or out of crate, only
+// ever infers the bound from a concrete type argument). Widening them would
+// contradict that sealing; demoting their many `pub` bound-holders
+// (`schedule_forward_pass`, the various `GpuGKR*Plan` impls, …) isn't
+// possible either — those genuinely are called from `gpu_circuit_prover`
+// production code and its e2e suites. This is the single root cause behind
+// every `private_bounds` warning in this crate.
+#![allow(private_bounds)]
 
 pub mod backward;
 pub mod base_layer_claims;

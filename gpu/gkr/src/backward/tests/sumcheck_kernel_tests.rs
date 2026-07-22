@@ -108,10 +108,10 @@ fn pairwise_round0_kernel_matches_cpu() {
     let actual = unsafe { host.get_accessor().get().to_vec() };
 
     let mut expected = Vec::new();
-    for output_index in 0..2 {
+    for (output_index, output_value) in output_values.iter().enumerate().take(2) {
         let index = output_index * 2;
         let mut c0 = batch_challenge;
-        c0.mul_assign(&output_values[output_index]);
+        c0.mul_assign(output_value);
         let mut a = input_values[4 + index];
         a.sub_assign(&input_values[index]);
         let mut b = input_values[4 + index + 1];
@@ -770,7 +770,7 @@ fn cpu_factored_eq(
         let g_size = remaining.min(GKR_EQ_GROUP_SIZE);
         let g_len = 1usize << g_size;
         let mut table = vec![E4::ONE; g_len];
-        for local in 0..g_len {
+        for (local, cell) in table.iter_mut().enumerate() {
             for bit in 0..g_size {
                 let shift_in_group = g_size - 1 - bit;
                 let is_one = ((local >> shift_in_group) & 1) == 1;
@@ -783,7 +783,7 @@ fn cpu_factored_eq(
                     one_minus.sub_assign(&r);
                     one_minus
                 };
-                table[local].mul_assign(&factor);
+                cell.mul_assign(&factor);
             }
         }
         groups.push(table);
@@ -806,7 +806,7 @@ fn cpu_eval_factored_eq(
 ) -> Vec<E4> {
     let n = 1usize << challenge_count;
     let mut out = vec![E4::ONE; n];
-    for gid in 0..n {
+    for (gid, out_val) in out.iter_mut().enumerate() {
         let mut acc = E4::ONE;
         let mut consumed = 0usize;
         for hg in high_groups {
@@ -819,7 +819,7 @@ fn cpu_eval_factored_eq(
         let low_size = low_group.len().trailing_zeros() as usize;
         let local_low = gid & ((1usize << low_size) - 1);
         acc.mul_assign(&low_group[local_low]);
-        out[gid] = acc;
+        *out_val = acc;
     }
     out
 }
@@ -977,7 +977,7 @@ fn fold_eq_high_group_matches_cpu() {
 
     // CPU expected result: fold the top high group in half.
     let (mut cpu_highs, _cpu_low) = cpu_factored_eq(&claim_point, 0, count);
-    let g0_size_before = (cpu_highs[0].len() as usize).trailing_zeros() as usize;
+    let g0_size_before = cpu_highs[0].len().trailing_zeros() as usize;
     let new_g0_size = g0_size_before - 1;
     let new_g0_len = 1usize << new_g0_size;
     let mut new_g0 = vec![E4::ZERO; new_g0_len];

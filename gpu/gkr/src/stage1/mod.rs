@@ -221,11 +221,11 @@ impl GpuGKRStage1Output {
         );
         let mut memory_matrix = DeviceMatrixMut::new(memory_raw, trace_len);
         let mut witness_matrix = DeviceMatrixMut::new(witness_raw, trace_len);
-        let mut empty_scratch = DeviceSlice::empty_mut();
+        let empty_scratch = DeviceSlice::empty_mut();
         let mut scratch_matrix = if let Some(scratch_space_trace) = scratch_space_trace.as_mut() {
             DeviceMatrixMut::new(scratch_space_trace.deref_mut(), trace_len)
         } else {
-            DeviceMatrixMut::new(&mut empty_scratch, trace_len)
+            DeviceMatrixMut::new(empty_scratch, trace_len)
         };
 
         {
@@ -439,7 +439,7 @@ impl GpuGKRStage1Output {
                     );
                     generate_memory_and_witness_values_unrolled_inits_and_teardowns(
                         &compiled_circuit.memory_layout,
-                        geometry.log_domain_size as u32,
+                        geometry.log_domain_size,
                         PAGE_SIZE_LOG2,
                         inits_and_teardowns,
                         &mut memory_matrix,
@@ -468,7 +468,7 @@ impl GpuGKRStage1Output {
                         Some(inits_and_teardowns) => {
                             generate_memory_and_witness_values_unrolled_inits_and_teardowns(
                                 &compiled_circuit.memory_layout,
-                                geometry.log_domain_size as u32,
+                                geometry.log_domain_size,
                                 PAGE_SIZE_LOG2,
                                 inits_and_teardowns,
                                 &mut memory_matrix,
@@ -560,9 +560,6 @@ impl GpuGKRStage1Output {
         )?;
         range_multiplicities_range.end(stream)?;
         tracing_ranges.push(range_multiplicities_range);
-
-        drop(memory_matrix);
-        drop(witness_matrix);
 
         // Memory commit is deferred: cosets and trees are materialized right before WHIR fold
         // queries. Tree caps for memory are provided externally to prove().

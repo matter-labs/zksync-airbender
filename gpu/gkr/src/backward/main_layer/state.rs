@@ -96,11 +96,13 @@ fn upload_flat_term_tables(
 /// 0-monomial immediate is skipped before any load), so the placeholder is never
 /// dereferenced. `alloc_static_pinned_box_uninit` requires a non-empty length, so
 /// the empty case must skip it.
+type StagedRecipeTable<T> = (Option<Arc<StaticPinnedBox<T>>>, DeviceAllocation<T>);
+
 fn stage_recipe_table<T: Copy>(
     src: &[T],
     context: &ProverContext,
     stream: &era_cudart::stream::CudaStream,
-) -> CudaResult<(Option<Arc<StaticPinnedBox<T>>>, DeviceAllocation<T>)> {
+) -> CudaResult<StagedRecipeTable<T>> {
     if src.is_empty() {
         return Ok((None, context.alloc::<T>(1, AllocationPlacement::BestFit)?));
     }

@@ -91,6 +91,7 @@ impl<B, E> GpuGKRStorage<B, E> {
     ///   2. Layout-driven canonical-layer lookup (handles `CopyIn`
     ///      aliases and addresses stored at a different canonical
     ///      layer than `layer`).
+    ///
     /// Panics with diagnostic context on miss in both.
     pub(crate) fn resolve_base_view_or_panic(
         &self,

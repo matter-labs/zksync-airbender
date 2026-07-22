@@ -242,9 +242,14 @@ pub(crate) struct WhirLayout {
 /// Complete slab byte layout.
 #[derive(Debug, Clone)]
 pub struct ProofLayout {
-    pub output_evaluations: BTreeMap<OutputType, OutputEvaluationsLayout>,
-    pub backward: Vec<BackwardLayerLayout>,
-    pub whir: WhirLayout,
+    // `pub(crate)`, not `pub`: their element types (`OutputEvaluationsLayout`,
+    // `BackwardLayerLayout`, `WhirLayout`) are `pub(crate)`, and grepping
+    // `gpu_whir`/`gpu_circuit_prover` confirms every cross-crate consumer goes
+    // through this module's `impl ProofLayout` accessors (below), never these
+    // fields directly.
+    pub(crate) output_evaluations: BTreeMap<OutputType, OutputEvaluationsLayout>,
+    pub(crate) backward: Vec<BackwardLayerLayout>,
+    pub(crate) whir: WhirLayout,
     /// `GKRProof::lookup_challenges_pow_nonce` — a single `u64` ground by the
     /// pow-aware lookup-challenge draw (0 at Sec80).
     pub lookup_pow_nonce: Range<usize>,

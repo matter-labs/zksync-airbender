@@ -225,6 +225,14 @@ use flat_plan::{
     commit_flat_forward_plan, release_forward_lookup_resources_after_layer,
 };
 
+// `output_evaluations_slab` is by-value (not `Option<&_>`): this is the
+// crate's own public dispatch entry point, called from many
+// `gpu_circuit_prover` production + test sites (`proof/mod.rs` + the apex e2e
+// suites). The only internal use is an `.as_ref()` forward to
+// `schedule_dimension_reduction_forward`, but switching this outer signature
+// would ripple a reference-taking edit across every one of those call sites
+// for a cosmetic win.
+#[allow(clippy::needless_pass_by_value)]
 pub fn schedule_forward_pass<E>(
     setup_trace_holder: Option<&gpu_trace::trace::holder::TraceHolder<BF>>,
     synthetic_setup_trace_holder: Option<&gpu_trace::trace::holder::TraceHolder<BF>>,
@@ -347,10 +355,10 @@ where
         schedule_dimension_reduction_forward(
             &mut storage,
             compiled_circuit.layers.len(),
-            compiled_circuit.global_output_map.clone(),
+            &compiled_circuit.global_output_map,
             trace_len.trailing_zeros(),
             final_trace_size_log_2,
-            output_evaluations_slab,
+            output_evaluations_slab.as_ref(),
             &mut tracing_ranges,
             context,
         )?;
@@ -643,7 +651,6 @@ where
                 context,
             )?;
         }
-        drop(dst_chunk);
         storage.insert_base_field_at_layer(expected_output_layer, *output, dst_view);
     }
 

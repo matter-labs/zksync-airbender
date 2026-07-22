@@ -1,18 +1,10 @@
 use super::super::*;
-use crate::GpuSumcheckRound1ScheduledLaunchDescriptors;
-use gpu_core::primitives::callbacks::Callbacks;
-use gpu_core::primitives::field::BF;
-use gpu_prover_context::ProverContext;
 
 use era_cudart::slice::CudaSlice;
 
 use std::collections::BTreeMap;
 
-use super::lookup_builders::build_materialized_vector_lookup_input_inputs_and_metadata;
-use crate::upstream::{
-    DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, GKRExternalChallenges,
-    GKRLayerDescription, NoFieldGKRRelation, OutputType,
-};
+use crate::upstream::{DimensionReducingInputOutput, Field, GKRAddress, OutputType};
 
 fn fill_round0_eq_pair_values<E: Field>(dst: &mut [E], claim_point: &[E]) {
     assert_eq!(

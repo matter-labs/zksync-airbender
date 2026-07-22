@@ -185,6 +185,10 @@ impl<B> GpuBaseFieldPoly<B> {
         self.len
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
     pub fn as_ptr(&self) -> *const B {
         unsafe { self.backing.as_ptr().add(self.offset) }
     }
@@ -261,6 +265,10 @@ impl<E> GpuExtensionFieldPoly<E> {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     pub fn as_ptr(&self) -> *const E {
@@ -754,11 +762,16 @@ impl<B, E> GpuGKRStorage<B, E> {
 // Relocated from `#[cfg(test)] mod tests` (row 39 test-reference): apex
 // stagewise/asserts read backing sharing + device chunks off polys.
 impl<B> GpuBaseFieldPoly<B> {
+    // Only this crate's own test files (`tests.rs`, `forward/tests/**`)
+    // construct/inspect polys via `new`/`offset` directly; production code
+    // and cross-crate test callers go through `from_arc`/`shares_backing_with`.
+    #[cfg(test)]
     pub(crate) fn new(backing: DeviceAllocation<B>) -> Self {
         let len = backing.len();
         Self::from_arc(Arc::new(backing), 0, len)
     }
 
+    #[cfg(test)]
     pub(crate) fn offset(&self) -> usize {
         self.offset
     }
@@ -770,11 +783,14 @@ impl<B> GpuBaseFieldPoly<B> {
 }
 
 impl<E> GpuExtensionFieldPoly<E> {
+    // See the `GpuBaseFieldPoly` impl above: test-only constructor/accessor.
+    #[cfg(test)]
     pub(crate) fn new(backing: DeviceAllocation<E>) -> Self {
         let len = backing.len();
         Self::from_arc(Arc::new(backing), 0, len)
     }
 
+    #[cfg(test)]
     pub(crate) fn offset(&self) -> usize {
         self.offset
     }

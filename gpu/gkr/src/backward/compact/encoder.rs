@@ -109,7 +109,9 @@ fn resolve_ext_consolidated<B, E: Field>(
             )
         });
     let resolved: *const E = unsafe {
-        (backing.as_ptr() as *const E).add((poly_idx as usize) << layer_layout.log2_stride)
+        backing
+            .as_ptr()
+            .add((poly_idx as usize) << layer_layout.log2_stride)
     };
     let legacy: *const E = storage
         .try_get_ext_poly(address)
@@ -206,8 +208,10 @@ pub(in crate::backward) fn build_round0_batch_compact<B, E: Field>(
 ) -> GpuGKRDimensionReducingRound0BatchCompact<E> {
     check_record_count(blueprints.len());
 
-    let mut batch = GpuGKRDimensionReducingRound0BatchCompact::<E>::default();
-    batch.record_count = blueprints.len() as u32;
+    let mut batch = GpuGKRDimensionReducingRound0BatchCompact::<E> {
+        record_count: blueprints.len() as u32,
+        ..Default::default()
+    };
     let mut tables = SlotTableBuilder::new();
     let mut payload_cursor = 0usize;
 
@@ -287,8 +291,10 @@ pub(in crate::backward) fn build_round1_batch_compact<B, E: Field>(
 ) -> GpuGKRDimensionReducingContinuationBatchCompact<E> {
     check_record_count(blueprints.len());
 
-    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E>::default();
-    batch.record_count = blueprints.len() as u32;
+    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E> {
+        record_count: blueprints.len() as u32,
+        ..Default::default()
+    };
     let mut tables = SlotTableBuilder::new();
     let mut payload_cursor = 0usize;
     let mut first_access_seen: BTreeSet<(usize, GKRAddress)> = BTreeSet::new();
@@ -350,8 +356,10 @@ pub(in crate::backward) fn build_continuation_batch_compact<B, E: Field>(
 ) -> GpuGKRDimensionReducingContinuationBatchCompact<E> {
     check_record_count(blueprints.len());
 
-    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E>::default();
-    batch.record_count = blueprints.len() as u32;
+    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E> {
+        record_count: blueprints.len() as u32,
+        ..Default::default()
+    };
     let mut tables = SlotTableBuilder::new();
     let mut payload_cursor = 0usize;
     let mut first_access_seen: BTreeSet<(usize, GKRAddress)> = BTreeSet::new();

@@ -56,20 +56,10 @@ use main_layer::state::{FlatContinuationLaunchSizes, FlatContinuationSizeCheck};
 pub use main_layer::extras::derive_dimension_reducing_inputs;
 
 #[cfg(test)]
-use crate::immediate_factors::ImmediateFactorRecipeStructural;
+use crate::upstream::GKRInputs;
 use crate::upstream::{
     high_bits_offset_for_inits_and_teardowns, DimensionReducingInputOutput, Field, FieldExtension,
     GKRAddress, GKRCircuitArtifact, GKRExternalChallenges, OutputType,
-};
-#[cfg(test)]
-use crate::upstream::{
-    BaseFieldCopyGKRRelation, BatchedGKRKernel, ExtensionCopyGKRRelation, GKRInputs,
-    LookupBaseExtMinusBaseExtGKRRelation, LookupBaseMinusMultiplicityByBaseGKRRelation,
-    LookupBasePairGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
-    LookupExtensionPairGKRRelation, LookupPairGKRRelation,
-    LookupRationalPairWithUnbalancedBaseGKRRelation,
-    LookupRationalPairWithUnbalancedExtensionGKRRelation, MaskIntoIdentityProductGKRRelation,
-    SameSizeProductGKRRelation,
 };
 // `mod builders` is private, so sibling modules reach its builders via this
 // re-export as `backward::*`. rustc's `unused_imports` lint mis-flags a
@@ -82,11 +72,6 @@ pub use builders::{
     build_initial_grand_product_without_caches_inputs_and_metadata,
     build_inits_and_teardowns_initial_pair_inputs_and_metadata,
     build_materialize_grand_product_term_expression_inputs_and_metadata,
-};
-#[cfg(test)]
-use builders::{
-    collect_no_cache_linear_form_inputs, validate_no_cache_linear_form_metadata,
-    NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL,
 };
 use main_layer::blueprints::build_dimension_reducing_kernel_blueprints_static;
 #[cfg(test)]
@@ -233,7 +218,7 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
     fn prepare_layer_from_blueprints(
         &mut self,
         layer_idx: usize,
-        blueprints: Vec<DimensionReducingKernelBlueprint<E>>,
+        blueprints: &[DimensionReducingKernelBlueprint<E>],
         batch_challenge_base: Option<E>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingSumcheckLayerPlan<B, E>> {
@@ -315,9 +300,9 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
 
         let kernel_plans: Vec<GpuGKRDimensionReducingKernelPlan<B, E>> = blueprints
             .iter()
-            .zip(round1_prepared_all.into_iter())
-            .zip(round2_prepared_all.into_iter())
-            .zip(round3_prepared_all.into_iter())
+            .zip(round1_prepared_all)
+            .zip(round2_prepared_all)
+            .zip(round3_prepared_all)
             .map(
                 |(((blueprint, round1_prepared), round2_prepared), round3_and_beyond_prepared)| {
                     GpuGKRDimensionReducingKernelPlan {
@@ -335,11 +320,11 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
             .collect();
 
         let round0_batch_template_compact =
-            self::compact::encoder::build_round0_batch_compact(&blueprints, &self.storage);
+            self::compact::encoder::build_round0_batch_compact(blueprints, &self.storage);
         let round1_batch_template_compact =
-            self::compact::encoder::build_round1_batch_compact(&blueprints, &self.storage);
+            self::compact::encoder::build_round1_batch_compact(blueprints, &self.storage);
         let continuation_batch_template_compact =
-            self::compact::encoder::build_continuation_batch_compact(&blueprints, &self.storage);
+            self::compact::encoder::build_continuation_batch_compact(blueprints, &self.storage);
 
         let max_acc_size = trace_len_after_reduction / 2;
         let reduction_temp_storage_bytes =
@@ -386,7 +371,10 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
         };
         let blueprints = build_dimension_reducing_kernel_blueprints_static::<E>(&layer);
         Ok(Some(self.prepare_layer_from_blueprints(
-            layer_idx, blueprints, None, context,
+            layer_idx,
+            &blueprints,
+            None,
+            context,
         )?))
     }
 }

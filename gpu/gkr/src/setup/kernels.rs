@@ -259,11 +259,13 @@ pub(super) fn pack_forward_setup_generic_lookup_batch<E>(
         GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS
     );
 
-    let mut batch = GpuGKRForwardSetupGenericLookupBatch::default();
-    batch.column_count = setup_columns.len() as u32;
-    batch.decoder_table_id = decoder_table_id;
-    batch.output = output;
-    batch.decoder_fill_value_out = decoder_fill_value_out;
+    let mut batch = GpuGKRForwardSetupGenericLookupBatch {
+        column_count: setup_columns.len() as u32,
+        decoder_table_id,
+        output,
+        decoder_fill_value_out,
+        ..Default::default()
+    };
     for (input, descriptor) in setup_columns.iter().zip(batch.descriptors.iter_mut()) {
         descriptor.input = *input;
     }

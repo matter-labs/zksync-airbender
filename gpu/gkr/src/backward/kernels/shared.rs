@@ -66,6 +66,10 @@ impl ClaimBufferLayout {
         self.addresses.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.addresses.is_empty()
+    }
+
     pub fn claim_idx(&self, address: &GKRAddress) -> u32 {
         self.index_by_address
             .get(address)
@@ -234,20 +238,6 @@ where
     E: FieldExtension<BF> + Field,
 {
     Box::new(ScheduledBackwardWorkflowState::deferred())
-}
-
-#[cfg(test)]
-mod cap_tests {
-    use super::GKR_BACKWARD_MAX_KERNELS_PER_LAYER;
-
-    // Lockstep guard, mirroring `gkr_dim_reducing_caps_lockstep`: this value is
-    // mirrored verbatim into native/prover/gkr/support/descriptors.cuh:51. It
-    // sizes no shared array, so there is no ABI tie to catch drift — if you
-    // change one side you MUST change the other; this test fails loudly to force it.
-    #[test]
-    fn gkr_backward_max_kernels_lockstep() {
-        assert_eq!(GKR_BACKWARD_MAX_KERNELS_PER_LAYER, 1024);
-    }
 }
 
 // ---- Relocated from `#[cfg(test)] mod tests` (cluster A/gap): production-
@@ -449,5 +439,19 @@ where
         points_for_claims_at_layer: std::mem::take(&mut state.points_for_claims_at_layer),
         next_batching_challenge: state.current_batching_challenge,
         updated_seed: state.seed,
+    }
+}
+
+#[cfg(test)]
+mod cap_tests {
+    use super::GKR_BACKWARD_MAX_KERNELS_PER_LAYER;
+
+    // Lockstep guard, mirroring `gkr_dim_reducing_caps_lockstep`: this value is
+    // mirrored verbatim into native/prover/gkr/support/descriptors.cuh:51. It
+    // sizes no shared array, so there is no ABI tie to catch drift — if you
+    // change one side you MUST change the other; this test fails loudly to force it.
+    #[test]
+    fn gkr_backward_max_kernels_lockstep() {
+        assert_eq!(GKR_BACKWARD_MAX_KERNELS_PER_LAYER, 1024);
     }
 }

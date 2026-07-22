@@ -423,7 +423,7 @@ pub(crate) struct FlatTermTablesHost {
 impl GpuFlatRound1UnifiedDesc {
     /// Copy the small (non-term/tile) fields into the device-pointer companion.
     /// The `terms`/`tile_*` arrays are omitted — they live in device memory.
-    pub(crate) fn to_devptr(&self) -> GpuFlatRound1UnifiedDescDevptr {
+    pub(crate) fn to_devptr(self) -> GpuFlatRound1UnifiedDescDevptr {
         GpuFlatRound1UnifiedDescDevptr {
             tables: self.tables,
             base_layer_half_size: self.base_layer_half_size,
@@ -441,7 +441,7 @@ impl GpuFlatRound1UnifiedDesc {
 }
 
 impl GpuFlatRound2UnifiedDesc {
-    pub(crate) fn to_devptr(&self) -> GpuFlatRound2UnifiedDescDevptr {
+    pub(crate) fn to_devptr(self) -> GpuFlatRound2UnifiedDescDevptr {
         GpuFlatRound2UnifiedDescDevptr {
             tables: self.tables,
             base_layer_half_size: self.base_layer_half_size,
@@ -460,7 +460,7 @@ impl GpuFlatRound2UnifiedDesc {
 }
 
 impl GpuFlatContinuationUnifiedDesc {
-    pub(crate) fn to_devptr(&self) -> GpuFlatContinuationUnifiedDescDevptr {
+    pub(crate) fn to_devptr(self) -> GpuFlatContinuationUnifiedDescDevptr {
         GpuFlatContinuationUnifiedDescDevptr {
             tables: self.tables,
             prev_per_poly_offset: self.prev_per_poly_offset,

@@ -784,6 +784,15 @@ where
         result
     }
 
+    // `device_lookup_and_constraint_ptr`/`device_external_challenges_ptr` are
+    // opaque device pointers (into GPU memory the caller allocated): this
+    // function only does host-side pointer arithmetic (`.add`) to derive
+    // kernel-argument offsets, the same as the offsets it hands to
+    // `KernelFunction::launch`. They are never dereferenced on the host, so
+    // marking this `unsafe` would misrepresent the contract — the actual
+    // safety precondition (a valid, sufficiently-large device allocation)
+    // is on the GPU side, enforced by the kernels these offsets feed.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn schedule_execute_main_layer_from_workflow_state(
         &mut self,
         workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
@@ -1002,7 +1011,7 @@ where
             // back to the unfused round-0 path (`launch_round0_kernels`), which
             // supports the device-buffer coeff loader. Fast-path circuits keep
             // the warp-partial path (their round-0 fits `__constant__`).
-            let use_warp_partial = acc_size >= 32 && !(step == 0 && !self.flat_use_constant);
+            let use_warp_partial = (self.flat_use_constant || step != 0) && acc_size >= 32;
 
             // Round-kernel launch.
             if use_warp_partial {

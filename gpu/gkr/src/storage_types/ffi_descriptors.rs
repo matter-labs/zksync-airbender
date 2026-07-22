@@ -2,9 +2,18 @@ use std::ptr::null;
 
 use crate::upstream::{GKRAddress, VirtualSetupPoly};
 
-#[derive(Debug, PartialEq, Eq)]
+// `#[doc(hidden)] pub` (not `pub(crate)`): this is the `source_kind` field
+// type of the `#[doc(hidden)] pub` FFI descriptors below
+// (`GpuBaseFieldPolySource`, `GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor`),
+// which apex e2e tests D2H-copy and inspect field-by-field across the crate
+// boundary — keeping this narrower than its siblings would leave `source_kind`
+// the one field on an otherwise uniformly-inspectable descriptor that
+// couldn't be named. // test-reference readers
+#[derive(Debug, PartialEq, Eq, Default)]
 #[repr(u32)]
-pub(crate) enum GpuBaseFieldSourceKind {
+#[doc(hidden)]
+pub enum GpuBaseFieldSourceKind {
+    #[default]
     Empty = 0,
     Real = 1,
     VirtualRangeCheck16Bits = 2,
@@ -20,12 +29,6 @@ impl Clone for GpuBaseFieldSourceKind {
 }
 
 impl Copy for GpuBaseFieldSourceKind {}
-
-impl Default for GpuBaseFieldSourceKind {
-    fn default() -> Self {
-        Self::Empty
-    }
-}
 
 impl GpuBaseFieldSourceKind {
     pub(crate) const fn from_virtual_setup(poly: VirtualSetupPoly) -> Self {

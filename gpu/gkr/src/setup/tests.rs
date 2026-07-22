@@ -79,9 +79,12 @@ fn make_test_cpu_setup(
         columns.push(vec![BF::ZERO; trace_len].into_boxed_slice());
     }
 
-    for row in 0..total_tables_size {
-        for column in 0..generic_lookup_width {
-            columns[column][row] = BF::from_u32_unchecked(10 * (column as u32 + 1) + row as u32);
+    // Iterates column-major (vs. the original row-major order) — the writes
+    // are independent per cell, so this only changes iteration order, not
+    // the resulting `columns` contents.
+    for (column, col_data) in columns.iter_mut().enumerate() {
+        for (row, cell) in col_data.iter_mut().enumerate().take(total_tables_size) {
+            *cell = BF::from_u32_unchecked(10 * (column as u32 + 1) + row as u32);
         }
     }
 
@@ -188,9 +191,9 @@ fn expected_generic_lookup_preprocessing(
     let mut result = Vec::with_capacity(generic_lookup_len);
     for row in 0..generic_lookup_len {
         let mut value = E4::ZERO;
-        for column in 0..generic_lookup_width {
-            let mut contribution = powers[column];
-            contribution.mul_assign_by_base(&setup.hypercube_evals[column][row]);
+        for (coeff, column_data) in powers.iter().zip(setup.hypercube_evals.iter()) {
+            let mut contribution = *coeff;
+            contribution.mul_assign_by_base(&column_data[row]);
             value.add_assign(&contribution);
         }
         result.push(value);

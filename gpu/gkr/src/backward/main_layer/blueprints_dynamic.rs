@@ -3,8 +3,6 @@
 //! `GpuGKRMainLayerBackwardState::prepare_next_layer` (the dynamic-challenge
 //! form), which builds blueprints through this. `pub(in crate::backward)` —
 //! only reachable via that `#[doc(hidden)] pub` method + gpu_gkr's own tests.
-use std::collections::BTreeMap;
-
 use gpu_core::primitives::field::BF;
 
 // `backward::*` brings the `#[allow(unused_imports)] pub(crate) use builders::*`

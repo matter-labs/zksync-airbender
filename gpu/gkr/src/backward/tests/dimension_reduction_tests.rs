@@ -1,14 +1,9 @@
 use super::super::*;
-use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::field::E4;
-
-use era_cudart::memory::memory_copy_async;
-use era_cudart::slice::CudaSlice;
 
 use std::collections::BTreeMap;
 
 use super::{build_dimension_reducing_kernel_blueprints, sample_ext, successive_powers};
-use crate::upstream::{DimensionReducingInputOutput, Field, OutputType};
+use crate::upstream::{DimensionReducingInputOutput, OutputType};
 
 #[test]
 fn main_layer_kind_batch_challenge_count_matches_all_supported_kinds() {

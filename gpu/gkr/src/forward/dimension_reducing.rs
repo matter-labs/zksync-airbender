@@ -26,19 +26,22 @@ pub(super) struct LoweredDimReducingForwardRound<E> {
     pub(super) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
 }
 
+/// `(final_layer_idx, per-layer layer_description map)`.
+pub(super) type DimensionReductionForwardResult = (
+    usize,
+    BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
+);
+
 pub(super) fn schedule_dimension_reduction_forward<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     initial_layer_idx: usize,
-    initial_output_map: BTreeMap<OutputType, Vec<GKRAddress>>,
+    initial_output_map: &BTreeMap<OutputType, Vec<GKRAddress>>,
     initial_trace_log_2: u32,
     final_trace_log_2: u32,
-    output_evaluations_slab: Option<ForwardOutputSlabTarget<E>>,
+    output_evaluations_slab: Option<&ForwardOutputSlabTarget<E>>,
     tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
-) -> CudaResult<(
-    usize,
-    BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
-)>
+) -> CudaResult<DimensionReductionForwardResult>
 where
     E: FieldExtension<BF> + Field + SetByRef + SetByVal,
     E: crate::ForwardKernels,
@@ -88,7 +91,7 @@ where
             output_trace_len,
             storage,
             if is_final_round {
-                output_evaluations_slab.as_ref()
+                output_evaluations_slab
             } else {
                 None
             },
@@ -196,10 +199,12 @@ where
 {
     match slot_input {
         LoweredSlotInitialInput::PairwiseProduct { input } => {
-            let mut batch = GpuGKRDimensionReducingForwardTowerPairwiseBatch::<E>::default();
-            batch.input = input;
-            batch.input_len = chunk_input_len;
-            batch.round_count = chunk_rounds;
+            let mut batch = GpuGKRDimensionReducingForwardTowerPairwiseBatch::<E> {
+                input,
+                input_len: chunk_input_len,
+                round_count: chunk_rounds,
+                ..Default::default()
+            };
             for local_r in 0..chunk_rounds as usize {
                 let round_idx = chunk_start_round as usize + local_r;
                 match per_round_slot_outputs[round_idx][slot_idx] {
@@ -215,11 +220,13 @@ where
             launch_dimension_reducing_forward_tower_pairwise(&batch, stream)
         }
         LoweredSlotInitialInput::LookupPair { num, den } => {
-            let mut batch = GpuGKRDimensionReducingForwardTowerLookupBatch::<E>::default();
-            batch.input_num = num;
-            batch.input_den = den;
-            batch.input_len = chunk_input_len;
-            batch.round_count = chunk_rounds;
+            let mut batch = GpuGKRDimensionReducingForwardTowerLookupBatch::<E> {
+                input_num: num,
+                input_den: den,
+                input_len: chunk_input_len,
+                round_count: chunk_rounds,
+                ..Default::default()
+            };
             for local_r in 0..chunk_rounds as usize {
                 let round_idx = chunk_start_round as usize + local_r;
                 match per_round_slot_outputs[round_idx][slot_idx] {

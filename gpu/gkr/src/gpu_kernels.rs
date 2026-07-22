@@ -11,8 +11,11 @@ use crate::forward::kernels::ForwardKernels;
 use crate::setup::kernels::SetupKernels;
 
 // `#[doc(hidden)] pub` so the apex e2e test suite can name it as a generic
-// bound; its `pub(crate)` supertraits stay internal (a `private_bounds`
-// warn-lint, cleaned up in a later task).
+// bound; its `pub(crate)` supertraits stay internal by design (sealed
+// per-phase kernel-dispatch traits — nothing outside this crate names
+// `ForwardKernels`/`BackwardKernels`/`SetupKernels` directly, they only ever
+// appear as inferred generic bounds). See the crate-level `private_bounds`
+// allow in `lib.rs` for the full rationale.
 #[doc(hidden)]
 pub trait GpuKernels: ForwardKernels + BackwardKernels + SetupKernels {}
 

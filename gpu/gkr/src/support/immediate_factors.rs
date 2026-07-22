@@ -9,21 +9,11 @@ pub(crate) const IMMEDIATE_FACTOR_ADDITIVE_PART_IDX: u8 =
 
 /// CUDA mirror: `immediate_factor_recipe_header`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct ImmediateFactorRecipeHeader {
     pub monomial_offset: u16,
     pub monomial_count: u8,
     pub _pad: u8,
-}
-
-impl Default for ImmediateFactorRecipeHeader {
-    fn default() -> Self {
-        Self {
-            monomial_offset: 0,
-            monomial_count: 0,
-            _pad: 0,
-        }
-    }
 }
 
 /// CUDA mirror: `immediate_factor_monomial`.
@@ -130,7 +120,10 @@ impl ImmediateFactorRecipeStructural {
         result
     }
 
-    pub fn monomials(&self) -> &[ImmediateFactorMonomial] {
+    // `pub(crate)`, not `pub`: exposes the internal `ImmediateFactorMonomial`
+    // representation, which nothing outside this crate names or needs — the
+    // sanctioned public introspection API is `key()` (plain tuples).
+    pub(crate) fn monomials(&self) -> &[ImmediateFactorMonomial] {
         &self.monomials
     }
 
@@ -196,9 +189,14 @@ impl Default for ImmediateFactorRecipeStructural {
     }
 }
 
+/// One entry per monomial: `(coeff_raw, challenge_idx_0, challenge_idx_1,
+/// power_0, power_1)`, matching `ImmediateFactorRecipeStructural::key`'s
+/// tuple shape.
+type ImmediateFactorInternKey = Vec<(u32, u8, u8, u8, u8)>;
+
 #[derive(Default)]
 pub(crate) struct ImmediateFactorInterner {
-    keys: BTreeMap<Vec<(u32, u8, u8, u8, u8)>, u16>,
+    keys: BTreeMap<ImmediateFactorInternKey, u16>,
     recipes: Vec<ImmediateFactorRecipeStructural>,
 }
 

@@ -375,7 +375,7 @@ pub(crate) fn resolve_active_eq_slot(eq_sizes: &GkrEqSizes, eq_low: *mut E4) -> 
         };
         (base, eq_sizes.high[0])
     } else if eq_sizes.high[1] > 0 {
-        assert!(GKR_EQ_HIGH_SLOTS >= 2);
+        const { assert!(GKR_EQ_HIGH_SLOTS >= 2) };
         let base = unsafe {
             super::launchers::get_eq_high_constant_device_ptr().add(GKR_EQ_GROUP_TABLE_LEN)
         };

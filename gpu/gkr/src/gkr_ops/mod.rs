@@ -313,8 +313,10 @@ pub(crate) fn build_combined_claim(
         num_pairs,
         GKR_COMBINED_CLAIM_MAX_PAIRS,
     );
-    let mut desc = GpuCombinedClaimDesc::default();
-    desc.num_terms = num_pairs as u32;
+    let mut desc = GpuCombinedClaimDesc {
+        num_terms: num_pairs as u32,
+        ..Default::default()
+    };
     desc.entries[..desc_pairs.len()].copy_from_slice(desc_pairs);
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = BuildCombinedClaimArguments::new(

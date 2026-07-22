@@ -327,6 +327,10 @@ pub(crate) fn log_circuit_audit(audit: &CircuitAudit) {
 /// to the dim-reducing batch's `record_count` budget. Layer 0's gates fold
 /// into a single main-layer flat-path kernel via term tables; `record_count`
 /// is bounded structurally by `OutputType` slots on dim-reducing layers.
+// `enum_variant_names`: every variant is deliberately an "overflow" kind
+// (slot/poly-index/source counts exceeding a structural budget) — the shared
+// suffix names the error category and dropping it would lose that meaning.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 pub(crate) enum AuditError {
     SlotOverflow {

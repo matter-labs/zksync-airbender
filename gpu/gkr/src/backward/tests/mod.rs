@@ -121,9 +121,6 @@ mod sumcheck_kernel_tests;
 
 pub(crate) use super::lookup_builders::{
     build_lookup_from_vector_input_with_setup_inputs_and_metadata,
-    build_lookup_pair_from_base_inputs_inputs_and_metadata,
-    build_lookup_pair_from_vector_inputs_inputs_and_metadata,
-    build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_metadata,
     build_lookup_with_dens_and_setup_expressions_inputs_and_metadata,
 };
 pub(super) use super::main_layer::blueprints_dynamic::build_main_layer_kernel_blueprints;

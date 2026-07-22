@@ -39,8 +39,10 @@ fn forward_cache_single_column_lookup_synthesizes_virtual_setup_values() {
     let mut out_range16 = context.alloc(trace_len, AllocationPlacement::Top).unwrap();
     let mut out_timestamp = context.alloc(trace_len, AllocationPlacement::Top).unwrap();
 
-    let mut batch: GpuGKRForwardCacheBatch<E4> = GpuGKRForwardCacheBatch::default();
-    batch.count = 2;
+    let mut batch: GpuGKRForwardCacheBatch<E4> = GpuGKRForwardCacheBatch {
+        count: 2,
+        ..Default::default()
+    };
     batch.descriptors[0] = GpuGKRForwardCacheDescriptor {
         kind: GpuGKRForwardCacheKind::SingleColumnLookup,
         mapping: range16_dev.as_ptr(),
@@ -864,7 +866,7 @@ fn dimension_reducing_forward_tower_matches_reference() {
     let (final_layer_idx, dim_reducing_inputs) = schedule_dimension_reduction_forward::<E4>(
         &mut storage,
         current_layer_idx,
-        initial_output_map,
+        &initial_output_map,
         initial_trace_log_2,
         final_trace_log_2,
         None,

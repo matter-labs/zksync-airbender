@@ -172,7 +172,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             None => return Ok(()),
         };
         let n_layers = self.layers.len();
-        if !(layer < n_layers) {
+        if layer >= n_layers {
             panic!(
                 "register_flat_base_folding_for_layer called for layer {layer} but storage has only {n_layers} layers"
             );

@@ -138,7 +138,7 @@ pub(super) fn attach_test_dim_reducing_tower_layout(
     // entry lets `allocate_ext_view` resolve them back when the dim-reducing
     // scheduler walks the input set.
     let mut initial_layer_layout = GpuGKRLayerLayout {
-        log2_stride: initial_trace_log_2 as u32,
+        log2_stride: initial_trace_log_2,
         ..GpuGKRLayerLayout::default()
     };
     let mut initial_poly_count = 0u32;
@@ -172,7 +172,7 @@ pub(super) fn attach_test_dim_reducing_tower_layout(
     for round in 0..total_rounds {
         let output_layer = current_layer_idx + 1;
         let input_size_log_2 = initial_trace_log_2 - round;
-        let output_log2_stride = (input_size_log_2 - 1) as u32;
+        let output_log2_stride = input_size_log_2 - 1;
 
         let mut new_layer_layout = GpuGKRLayerLayout {
             log2_stride: output_log2_stride,
@@ -234,7 +234,7 @@ pub(super) fn attach_test_dim_reducing_tower_layout(
 
     storage.set_layout(Arc::new(GpuGKRStorageLayout {
         trace_len,
-        artifact_log2_stride: initial_trace_log_2 as u32,
+        artifact_log2_stride: initial_trace_log_2,
         layers,
         aliases: BTreeMap::new(),
         scratch_space_mapping_rev: BTreeMap::new(),

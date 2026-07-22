@@ -330,12 +330,12 @@ fn typed_accessors_match_ranges() {
         }
         let host = layout.backward_final_step_evals_host(&slab, i);
         assert_eq!(
-            host.len() * size_of::<E4>(),
+            std::mem::size_of_val(host),
             bw_layout.final_step_evaluations.end - bw_layout.final_step_evaluations.start
         );
         let extra_host = layout.backward_extra_evaluations_host(&slab, i);
         assert_eq!(
-            extra_host.len() * size_of::<E4>(),
+            std::mem::size_of_val(extra_host),
             bw_layout.extra_evaluations.end - bw_layout.extra_evaluations.start,
         );
     }
