@@ -28,6 +28,7 @@
 // v1-style fail-closed checks and atomicOr's FWDVM_ERR_* bits into
 // `error_flag`; it is launched only by the test/parity harness.
 
+#include "../eval_vm_exec.cuh"
 #include "fwd_vm.cuh"
 
 // Runtime-produced derived-e4 bank (`LdcSub::ConstDerivedE4`) - the one
@@ -44,16 +45,13 @@ __device__ __constant__ e4 ab_gkr_fwd_vm_const_derived_e4[airbender::prover::gkr
 namespace airbender::prover::gkr {
 
 // --- error bits (VALIDATE only; atomicOr'd into error_flag; 0 = clean) ------
-constexpr u32 FWDVM_ERR_TRAILING_LANES = 1;   // decoded lanes != program_lanes
-constexpr u32 FWDVM_ERR_BAD_HEADER = 2;       // reserved bits / bad Mov dir / bad arity / non-canonical fields
-constexpr u32 FWDVM_ERR_NULL_COLUMN = 8;      // base[slot] is null on a Global access
-constexpr u32 FWDVM_ERR_LDC_OOB = 16;         // Ldc idx (or decoder fill_bank_idx) >= its bank length
-constexpr u32 FWDVM_ERR_BAD_SPECIAL = 32;     // bad inline special / desc kind / arena / vkind
-constexpr u32 FWDVM_ERR_DESC_OOB = 64;        // Special desc >= n_descs
-constexpr u32 FWDVM_ERR_TABLE_OOB = 128;      // mapped lookup index >= table_len
-constexpr u32 FWDVM_ERR_CELL_OOB = 256;       // cell (bf lane / ext bucket) exceeds the smem budget
-constexpr u32 FWDVM_ERR_FIELD_MISMATCH = 512; // bf-field read of an e4-intrinsic bank/desc, or Base DstFromAcc off an ext acc
-constexpr u32 FWDVM_ERR_NULL_POINTER = 1024;  // null mapping arena / table / mask
+constexpr u32 FWDVM_ERR_NULL_COLUMN = 8;     // base[slot] is null on a Global access
+constexpr u32 FWDVM_ERR_LDC_OOB = 16;        // Ldc idx (or decoder fill_bank_idx) >= its bank length
+constexpr u32 FWDVM_ERR_BAD_SPECIAL = 32;    // bad inline special / desc kind / arena / vkind
+constexpr u32 FWDVM_ERR_DESC_OOB = 64;       // Special desc >= n_descs
+constexpr u32 FWDVM_ERR_TABLE_OOB = 128;     // mapped lookup index >= table_len
+constexpr u32 FWDVM_ERR_CELL_OOB = 256;      // cell (bf lane / ext bucket) exceeds the smem budget
+constexpr u32 FWDVM_ERR_NULL_POINTER = 1024; // null mapping arena / table / mask
 
 // --- Ldc sub-source / inline-special payload values ---------------------------
 // (mirror gkr_eval_isa::fwd::isa::{LdcSub, Special}; UNCHANGED from v1). The
@@ -297,7 +295,7 @@ template <bool VALIDATE> DEVICE_FORCEINLINE bf read_special_bf(const fwd_vm_desc
     return gkr_virtual_base_value(static_cast<gkr_base_source_kind>(s.vkind), gid);
   default:
     if constexpr (VALIDATE)
-      err |= FWDVM_ERR_FIELD_MISMATCH;
+      err |= EVAL_VM_ERR_FIELD_MISMATCH;
     return bf::ZERO();
   }
 }
@@ -324,7 +322,7 @@ template <bool VALIDATE> DEVICE_FORCEINLINE bf read_ldc_bf(const fwd_vm_desc &d,
     return bf::ZERO();
   default: // derived-e4 banks are e4 by definition - a bf-field read is malformed
     if constexpr (VALIDATE)
-      err |= FWDVM_ERR_FIELD_MISMATCH;
+      err |= EVAL_VM_ERR_FIELD_MISMATCH;
     return bf::ZERO();
   }
 }
@@ -357,7 +355,7 @@ template <bool VALIDATE> DEVICE_FORCEINLINE e4 read_ldc_e4(const fwd_vm_desc &d,
     return e4::ZERO();
   default: // consts are bf by definition - an e4-field read is malformed
     if constexpr (VALIDATE)
-      err |= FWDVM_ERR_FIELD_MISMATCH;
+      err |= EVAL_VM_ERR_FIELD_MISMATCH;
     return e4::ZERO();
   }
 }
@@ -487,168 +485,34 @@ DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const u32 
   }
 }
 
-// --- interpreter core ---------------------------------------------------------
-// SS1.3 dispatch on (opcode, f0/f1, warp-uniform acc-domain flag). The release
-// instantiation (VALIDATE=false) has ZERO checks: no error flag, no bounds, no
-// header validity - `err` and every `if constexpr (VALIDATE)` branch compile
-// away.
+// --- forward adapter ----------------------------------------------------------
+
+template <bool VALIDATE, bool LDG> struct FwdVmAdapter {
+  const fwd_vm_desc &desc;
+  bf *cells;
+  u32 budget_buckets;
+  u32 budget_lanes;
+  unsigned gid;
+
+  DEVICE_FORCEINLINE u16 lane(const u32 index) const { return vm_lane<LDG>(desc, index); }
+
+  DEVICE_FORCEINLINE bf read_bf(const u16 lane, u32 &error) { return read_operand_bf<VALIDATE>(desc, cells, budget_buckets, budget_lanes, gid, lane, error); }
+
+  DEVICE_FORCEINLINE e4 read_e4(const u16 lane, u32 &error) { return read_operand_e4<VALIDATE>(desc, cells, budget_buckets, budget_lanes, gid, lane, error); }
+
+  DEVICE_FORCEINLINE void write_bf(const u16 dst, const bf value, u32 &error) {
+    write_dst_bf<VALIDATE>(desc, cells, budget_buckets, budget_lanes, gid, dst, value, error);
+  }
+
+  DEVICE_FORCEINLINE void write_e4(const u16 dst, const e4 value, u32 &error) {
+    write_dst_e4<VALIDATE>(desc, cells, budget_buckets, budget_lanes, gid, dst, value, error);
+  }
+};
+
 template <bool VALIDATE, bool LDG>
-DEVICE_FORCEINLINE void vm_core(const fwd_vm_desc &d, bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, u32 *error_flag) {
-#define FWDVM_LANE() vm_lane<LDG>(d, i++)
-#define FWDVM_READ_BF() read_operand_bf<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, FWDVM_LANE(), err)
-#define FWDVM_READ_E4() read_operand_e4<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, FWDVM_LANE(), err)
-  u32 i = 0;   // lane cursor (warp-uniform)
-  u32 err = 0; // dead in release (never written, checks compiled out)
-  e4 acc = e4::ZERO();
-  bool acc_ext = false; // warp-uniform acc-domain flag (SS1.1)
-
-  for (u32 k = 0; k < d.n_instr; k++) {
-    if constexpr (VALIDATE) {
-      if (err != 0)
-        break;
-    }
-    const u16 h = FWDVM_LANE();
-    const u32 op = h & FWD_VM_OP_MASK;
-
-    if (op == FWD_VM_OP_MOV) {
-      // --- Mov: [field:1@4][dir:2@2][op=3:2]; bits 5+ reserved. The field bit
-      // types the transfer width (bf = limb 0 / 1 lane; ext = 16 B).
-      const u32 dir = (h >> FWD_VM_MOV_DIR_SHIFT) & FWD_VM_MOV_DIR_MASK;
-      const bool fe4 = ((h >> FWD_VM_MOV_FIELD_SHIFT) & 1) != 0;
-      if constexpr (VALIDATE) {
-        if ((h >> FWD_VM_MOV_RSVD_SHIFT) != 0 || dir == FWD_VM_MOV_DIR_RESERVED) {
-          err |= FWDVM_ERR_BAD_HEADER;
-          break;
-        }
-      }
-      switch (dir) {
-      case FWD_VM_MOV_ACC_FROM_SRC: // sets the acc domain from the field bit
-        if (fe4) {
-          acc = FWDVM_READ_E4();
-        } else {
-          acc = e4::from_scalar(FWDVM_READ_BF()); // zeroes limbs 1-3: the base-domain invariant
-        }
-        acc_ext = fe4;
-        break;
-      case FWD_VM_MOV_DST_FROM_ACC: {
-        if constexpr (VALIDATE) {
-          if (!fe4 && acc_ext) { // no implicit truncation
-            err |= FWDVM_ERR_FIELD_MISMATCH;
-            break;
-          }
-        }
-        const u16 dl = FWDVM_LANE();
-        if (fe4)
-          write_dst_e4<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, dl, acc, err);
-        else
-          write_dst_bf<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, dl, acc[0][0], err);
-        break;
-      }
-      default: { // FWD_VM_MOV_DST_FROM_SRC: dst lane, then src lane (encode order)
-        const u16 dl = FWDVM_LANE();
-        if (fe4) {
-          const e4 v = FWDVM_READ_E4();
-          write_dst_e4<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, dl, v, err);
-        } else {
-          const bf v = FWDVM_READ_BF();
-          write_dst_bf<VALIDATE>(d, cells, budget_buckets, budget_lanes, gid, dl, v, err);
-        }
-        break;
-      }
-      }
-      continue;
-    }
-
-    // --- Arith: [rsvd:3][sign:1@12][promote:1@11][f1:1@10][f0:1@9][arity:7@2][op:2]
-    const u32 arity = (h >> FWD_VM_HDR_ARITY_SHIFT) & FWD_VM_HDR_ARITY_MASK;
-    const bool f0 = ((h >> FWD_VM_HDR_F0_SHIFT) & 1) != 0;
-    const bool minus = ((h >> FWD_VM_HDR_SIGN_SHIFT) & 1) != 0;
-    if constexpr (VALIDATE) {
-      const bool f1v = ((h >> FWD_VM_HDR_F1_SHIFT) & 1) != 0;
-      const bool zero_arity_ok = op == FWD_VM_OP_MUL && minus; // zero-arity Mul-minus = pure negation
-      if ((h >> FWD_VM_HDR_RSVD_SHIFT) != 0 || (op != FWD_VM_OP_FMA && f1v) || (arity == 0 && !zero_arity_ok) ||
-          (op == FWD_VM_OP_FMA && f0 && !f1v) /* (Ext,Base) FMA is non-canonical */) {
-        err |= FWDVM_ERR_BAD_HEADER;
-        break;
-      }
-    }
-    // promote (bit 11): the base->ext acc lift. Representationally free (limbs
-    // 1-3 are already zero); it flips the domain flag BEFORE the op executes.
-    acc_ext |= ((h >> FWD_VM_HDR_PROMOTE_SHIFT) & 1) != 0;
-
-    if (op == FWD_VM_OP_ADD) {
-      // Add: limb-0 bf add/sub for {Base} (identical in both domains - a
-      // lifted bf only touches limb 0), full e4 add/sub for {Ext}.
-      if (f0) {
-        for (u32 t = 0; t < arity; t++) {
-          const e4 v = FWDVM_READ_E4();
-          acc = minus ? e4::sub(acc, v) : e4::add(acc, v);
-        }
-      } else {
-        for (u32 t = 0; t < arity; t++) {
-          const bf v = FWDVM_READ_BF();
-          acc = minus ? e4::sub(acc, v) : e4::add(acc, v); // e4 +/- bf = limb-0 only
-        }
-      }
-    } else if (op == FWD_VM_OP_MUL) {
-      // Mul: sign bit = NEGATE ACC FIRST, typed by the (post-promote) domain.
-      if (minus) {
-        if (acc_ext)
-          acc = e4::neg(acc);
-        else
-          acc[0][0] = bf::neg(acc[0][0]);
-      }
-      if (f0) {
-        // Mul{Ext}: full e4 mul (requires an ext acc - promote guarantees it).
-        for (u32 t = 0; t < arity; t++)
-          acc = e4::mul(acc, FWDVM_READ_E4());
-      } else if (acc_ext) {
-        // Mul{Base} on an ext acc: 4-limb scale (4 bf muls).
-        for (u32 t = 0; t < arity; t++)
-          acc = e4::mul(acc, FWDVM_READ_BF());
-      } else {
-        // Mul{Base} on a base acc: bf mul on limb 0.
-        for (u32 t = 0; t < arity; t++)
-          acc[0][0] = bf::mul(acc[0][0], FWDVM_READ_BF());
-      }
-    } else {
-      // Fma: acc +/-= sum of L*R pairs; per-side fields, canonical (Base,Ext)
-      // mixed order only.
-      const bool f1 = ((h >> FWD_VM_HDR_F1_SHIFT) & 1) != 0;
-      if (!f0 && !f1) {
-        // Fma{B,B}: bf mul + limb-0 add/sub (identical in both domains).
-        for (u32 t = 0; t < arity; t++) {
-          const bf l = FWDVM_READ_BF();
-          const bf r = FWDVM_READ_BF();
-          acc[0][0] = minus ? bf::sub(acc[0][0], bf::mul(l, r)) : bf::fma(l, r, acc[0][0]);
-        }
-      } else if (!f0) {
-        // Fma{B,E}: scale product (4 bf muls) + full e4 add/sub.
-        for (u32 t = 0; t < arity; t++) {
-          const bf l = FWDVM_READ_BF();
-          const e4 r = FWDVM_READ_E4();
-          acc = minus ? e4::sub(acc, e4::mul(r, l)) : e4::fma(r, l, acc);
-        }
-      } else {
-        // Fma{E,E}: full product + full e4 add/sub.
-        for (u32 t = 0; t < arity; t++) {
-          const e4 l = FWDVM_READ_E4();
-          const e4 r = FWDVM_READ_E4();
-          acc = minus ? e4::sub(acc, e4::mul(l, r)) : e4::fma(l, r, acc);
-        }
-      }
-    }
-  }
-
-  if constexpr (VALIDATE) {
-    if (err == 0 && i != d.program_lanes)
-      err |= FWDVM_ERR_TRAILING_LANES;
-    if (err != 0)
-      atomicOr(error_flag, err);
-  }
-#undef FWDVM_READ_E4
-#undef FWDVM_READ_BF
-#undef FWDVM_LANE
+DEVICE_FORCEINLINE eval_vm_result execute_fwd_vm(const fwd_vm_desc &desc, bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid) {
+  FwdVmAdapter<VALIDATE, LDG> adapter{desc, cells, budget_buckets, budget_lanes, gid};
+  return eval_vm_execute<VALIDATE, FwdVmAdapter<VALIDATE, LDG>>(adapter, desc.n_instr, desc.program_lanes);
 }
 
 // --- kernel bodies -------------------------------------------------------------
@@ -676,7 +540,9 @@ template <bool LDG> DEVICE_FORCEINLINE void vm_body_validate(const fwd_vm_desc &
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= d.count)
     return;
-  vm_core<true, LDG>(d, cells, budget_buckets, budget_lanes, gid, error_flag);
+  const eval_vm_result result = execute_fwd_vm<true, LDG>(d, cells, budget_buckets, budget_lanes, gid);
+  if (result.error != 0)
+    atomicOr(error_flag, result.error);
 }
 
 // Static-smem body (release, 128 threads): BUCKETS is a compile-time constant.
@@ -692,7 +558,7 @@ template <bool LDG, u32 BUCKETS> DEVICE_FORCEINLINE void vm_body_static(const fw
   const unsigned gid = blockIdx.x * 128 + threadIdx.x;
   if (gid >= d.count)
     return;
-  vm_core<false, LDG>(d, cells, BUCKETS, BUCKETS * FWD_VM_BF_PER_BUCKET, gid, nullptr);
+  execute_fwd_vm<false, LDG>(d, cells, BUCKETS, BUCKETS * FWD_VM_BF_PER_BUCKET, gid);
 }
 
 // minBlocks = the occupancy the static smem permits: SM shared capacity
