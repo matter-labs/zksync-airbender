@@ -52,8 +52,34 @@ use crate::upstream::{
 };
 
 use cs::gkr_compiler::codegen_ir::{CodegenLayer, ExprNode, ProducerId};
+use cs::gkr_compiler::dag_ir::{
+    ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver, DagLayer, LookupResolver,
+    LookupValueKind, ReadPlace, ReadResolver, Resolvers, VirtualSetupKind, VirtualSetupResolver,
+};
 use field::{Field, FieldExtension, PrimeField};
 use gkr_design_space::graph::{AnalysisGraph, Origin};
+use gkr_eval_isa::bwd::fragment::MergedRecipe;
+
+use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
+
+/// Fixed, deterministic values for backward-only transcript challenges. The
+/// fixture captures forward storage and forward challenges, but intentionally
+/// has no backward transcript; the CPU oracle and VM lowering both use this
+/// helper for the two values a backward transcript would have supplied.
+pub(crate) fn deterministic_backward_challenge_value(reference: &ChallengeRef) -> E4 {
+    let base = match &reference.key {
+        ChallengeKey::ConstraintAggregation => BF::from_u32_with_reduction(0x3141_5926),
+        ChallengeKey::ClaimBatching => BF::from_u32_with_reduction(0x2718_2818),
+        _ => panic!(
+            "deterministic backward resolver received captured forward challenge: {reference:?}"
+        ),
+    };
+    let power = match &reference.power {
+        ChallengePower::One => 1,
+        ChallengePower::Static(power) => *power,
+    };
+    <E4 as FieldExtension<BF>>::from_base(base).pow(power)
+}
 
 /// All challenge values a forward payload table consumes, assembled from the
 /// fixture's captured Fiat-Shamir challenges (see `bench_challenges`). Mirrored
@@ -433,6 +459,40 @@ impl CircuitKeepalive {
     }
 }
 
+/// Recipe evaluation only visits scalar-pure Constant/Challenge expressions.
+/// The other resolver methods fail loudly if that invariant ever drifts.
+struct FixtureBackwardRecipeResolver<'a>(&'a CircuitFixture);
+
+impl ReadResolver for FixtureBackwardRecipeResolver<'_> {
+    fn read(&self, place: &ReadPlace, row: usize) -> E4 {
+        panic!("backward coefficient recipe read non-scalar source {place:?} at row {row}")
+    }
+}
+
+impl LookupResolver for FixtureBackwardRecipeResolver<'_> {
+    fn lookup(
+        &self,
+        kind: &LookupValueKind,
+        set_index: usize,
+        _evaluated_query: E4,
+        row: usize,
+    ) -> BF {
+        panic!("backward coefficient recipe read lookup {kind:?} set {set_index} at row {row}")
+    }
+}
+
+impl VirtualSetupResolver for FixtureBackwardRecipeResolver<'_> {
+    fn virtual_setup(&self, kind: &VirtualSetupKind, row: usize) -> BF {
+        panic!("backward coefficient recipe read virtual setup {kind:?} at row {row}")
+    }
+}
+
+impl ChallengeResolver for FixtureBackwardRecipeResolver<'_> {
+    fn challenge(&self, reference: &ChallengeRef) -> E4 {
+        self.0.backward_challenge_value(reference)
+    }
+}
+
 impl CircuitFixture {
     /// The decoder execute-predicate address (`BaseLayerMemory(machine_state.
     /// execute)`), or `None` when the circuit has no machine state (delegation).
@@ -468,6 +528,56 @@ impl CircuitFixture {
                 .try_get_ext_poly(addr)
                 .map(|p| (true, p.as_ptr() as *const u8))
         }
+    }
+
+    /// Resolve one resident column together with its consolidated matrix
+    /// geometry. Backward final binding uses this to construct explicitly keyed
+    /// [`ResolvedBwdSourceWindow`](crate::prover::gkr::backward::vm::lower::ResolvedBwdSourceWindow)
+    /// records; ownership remains with this fixture.
+    pub(crate) fn resolved_storage_column(&self, addr: GKRAddress) -> Option<ResolvedColumn> {
+        if let Some(column) = self.storage.try_get_base_poly(addr) {
+            return Some(ResolvedColumn {
+                is_e4: false,
+                ptr: column.as_ptr() as *const u8,
+                matrix_base: column.backing.as_ptr() as *mut u8,
+                stride_bytes: (column.len * core::mem::size_of::<BF>()) as u32,
+            });
+        }
+        self.storage
+            .try_get_ext_poly(addr)
+            .map(|column| ResolvedColumn {
+                is_e4: true,
+                ptr: column.as_ptr() as *const u8,
+                matrix_base: column.backing.as_ptr() as *mut u8,
+                stride_bytes: (column.len * core::mem::size_of::<E4>()) as u32,
+            })
+    }
+
+    /// Resolve captured forward challenges exactly as the forward harness does
+    /// and supply deterministic values for the two backward-transcript-only
+    /// challenges absent from [`CircuitFixture`].
+    pub(crate) fn backward_challenge_value(&self, reference: &ChallengeRef) -> E4 {
+        match &reference.key {
+            ChallengeKey::ConstraintAggregation | ChallengeKey::ClaimBatching => {
+                deterministic_backward_challenge_value(reference)
+            }
+            _ => super::fwd_vm::resolvers::challenge_value(self, reference),
+        }
+    }
+
+    /// Evaluate one normalized coefficient/AccInit recipe with the same
+    /// challenge resolver used by the harness's backward CPU oracle.
+    pub(crate) fn evaluate_backward_recipe(&self, layer: &DagLayer, recipe: &MergedRecipe) -> E4 {
+        let resolver = FixtureBackwardRecipeResolver(self);
+        recipe.evaluate(
+            layer,
+            &Resolvers {
+                read: &resolver,
+                lookup: &resolver,
+                virtual_setup: &resolver,
+                challenge: &resolver,
+            },
+        )
     }
 
     /// The owning `ProverContext` for this fixture's replay/A-B launches.
