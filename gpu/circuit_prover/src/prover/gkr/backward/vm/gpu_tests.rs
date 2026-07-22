@@ -4,10 +4,11 @@ use std::ptr;
 use era_cudart::memory::memory_copy_async;
 use gkr_eval_isa::bwd::interp::{role_combine, sumcheck_fold_point, Role};
 use gkr_eval_isa::fwd::encode::encode;
-use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program};
+use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program, Sign};
 
 use super::desc::{
     BwdVmDesc, BwdVmSourceWindow, BWD_VM_ORIGIN_FIELD_BASE, BWD_VM_ORIGIN_FIELD_EXT,
+    BWD_VM_PROGRAM_CAP,
 };
 use super::{launch_bwd_vm_release, launch_bwd_vm_validate, BWD_VM_ERR_SOURCE_OOB};
 use crate::allocator::tracker::AllocationPlacement;
@@ -16,6 +17,9 @@ use crate::primitives::field::{BF, E4};
 use crate::prover::test_utils::make_test_context;
 use crate::prover::ProverContext;
 use crate::upstream::{Field, FieldExtension, PrimeField};
+
+const BWD_VM_ERR_DESC_BOUNDS: u32 = 8192;
+const BWD_VM_ERR_PROGRAM_OOB: u32 = 16384;
 
 fn bf(seed: u32) -> BF {
     BF::from_u32_with_reduction(seed)
@@ -46,6 +50,22 @@ fn assert_e4_bits(label: &str, got: &[E4], expected: &[E4]) {
     }
 }
 
+fn source_program_with_first_access(field: OperandField, first_access: bool) -> Vec<u16> {
+    encode(&Program {
+        instrs: vec![Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field,
+            dst: None,
+            src: Some(OperandLine::Source {
+                window: 0,
+                column: 0,
+                first_access,
+            }),
+        }],
+    })
+    .expect("synthetic source program must encode")
+}
+
 fn source_program(field: OperandField, repeated: bool) -> Vec<u16> {
     let source = |first_access| OperandLine::Source {
         window: 0,
@@ -59,11 +79,11 @@ fn source_program(field: OperandField, repeated: bool) -> Vec<u16> {
         src: Some(source(true)),
     }];
     if repeated {
-        instrs.push(Instr::Mov {
-            dir: MovDir::AccFromSrc,
+        instrs.push(Instr::Add {
             field,
-            dst: None,
-            src: Some(source(false)),
+            sign: Sign::Plus,
+            promote: false,
+            operands: vec![source(false)],
         });
     }
     encode(&Program { instrs }).expect("synthetic source program must encode")
@@ -97,6 +117,17 @@ fn download_e4(device: &DeviceAllocation<E4>, context: &ProverContext) -> Vec<E4
         .get_exec_stream()
         .synchronize()
         .expect("synthetic stream sync");
+    host
+}
+
+fn download_u32(device: &DeviceAllocation<u32>, context: &ProverContext) -> Vec<u32> {
+    let mut host = vec![0; device.len()];
+    memory_copy_async(&mut host[..], &device[..], context.get_exec_stream())
+        .expect("synthetic u32 D2H");
+    context
+        .get_exec_stream()
+        .synchronize()
+        .expect("synthetic u32 stream sync");
     host
 }
 
@@ -137,7 +168,13 @@ fn run_ext_case(
     let challenges = (0..depth)
         .map(|round| e4(round as u32 + 101))
         .collect::<Vec<_>>();
-    let expected = expected_roles(&input, rows, depth, &challenges);
+    let mut expected = expected_roles(&input, rows, depth, &challenges);
+    if repeated {
+        for value in &mut expected {
+            let first = *value;
+            value.add_assign(&first);
+        }
+    }
     let expected_published = (0..endpoint_count)
         .map(|index| {
             sumcheck_fold_point(&|source| input[source], index, depth, &challenges)
@@ -243,12 +280,191 @@ fn run_base_plain(context: &ProverContext, rows: usize) {
     assert_e4_bits("BF plain T0/T2", &diagnostic, &expected);
 }
 
+fn malformed_program_bounds_fail_before_source_access(context: &ProverContext) {
+    let input = [e4(41), e4(43)];
+    let input_device = upload(&input, context);
+    let poison = e4(9_999);
+    let mut published_device = upload(&[poison; 2], context);
+    let mut diagnostic_device = upload(&[poison; 2], context);
+    let mut error_device = upload(&[0u32], context);
+    let program = source_program(OperandField::Ext, false);
+    let mut desc = blank_desc(&program, 1, 1);
+    desc.program_lanes = BWD_VM_PROGRAM_CAP as u32 + 1;
+    desc.n_source_windows = 1;
+    desc.source_windows[0] = BwdVmSourceWindow {
+        read_base: input_device.as_ptr().cast(),
+        publish_base: published_device.as_mut_ptr().cast(),
+        read_stride_bytes: (input.len() * size_of::<E4>()) as u32,
+        publish_stride_bytes: (2 * size_of::<E4>()) as u32,
+        backing_depth: 0,
+        target_depth: 0,
+        origin_field: BWD_VM_ORIGIN_FIELD_EXT,
+        materialize: 1,
+    };
+
+    launch_bwd_vm_validate(
+        &desc,
+        2,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        context,
+    )
+    .expect("oversized descriptor validate launch");
+    assert_eq!(
+        download_u32(&error_device, context),
+        [BWD_VM_ERR_DESC_BOUNDS],
+        "oversized program count must report only the fatal descriptor bound"
+    );
+    assert_e4_bits(
+        "fatal descriptor bound must prevent source publication",
+        &download_e4(&published_device, context),
+        &[poison; 2],
+    );
+}
+
+fn truncated_multilane_instruction_fails_without_lane_oob(context: &ProverContext) {
+    let input = [e4(51), e4(53)];
+    let input_device = upload(&input, context);
+    let poison = e4(9_999);
+    let mut diagnostic_device = upload(&[poison; 2], context);
+    let mut error_device = upload(&[0u32], context);
+    let program = source_program(OperandField::Ext, false);
+    assert_eq!(program.len(), 2, "Mov AccFromSrc is a two-lane instruction");
+    let mut desc = blank_desc(&program, 1, 1);
+    desc.program_lanes = 1;
+    desc.n_source_windows = 1;
+    desc.source_windows[0] = BwdVmSourceWindow {
+        read_base: input_device.as_ptr().cast(),
+        publish_base: ptr::null_mut(),
+        read_stride_bytes: (input.len() * size_of::<E4>()) as u32,
+        publish_stride_bytes: 0,
+        backing_depth: 0,
+        target_depth: 0,
+        origin_field: BWD_VM_ORIGIN_FIELD_EXT,
+        materialize: 0,
+    };
+
+    launch_bwd_vm_validate(
+        &desc,
+        2,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        context,
+    )
+    .expect("truncated program validate launch");
+    assert_eq!(
+        download_u32(&error_device, context),
+        [BWD_VM_ERR_PROGRAM_OOB],
+        "truncated operand fetch must fail with the exact logical-lane bound"
+    );
+    assert_e4_bits(
+        "truncated program must not write diagnostics",
+        &download_e4(&diagnostic_device, context),
+        &[poison; 2],
+    );
+}
+
+fn release_publication_feeds_a_later_physical_use(context: &ProverContext) {
+    let rows = 7usize;
+    let depth = 2u8;
+    let endpoint_count = 2 * rows;
+    let original = (0..endpoint_count * (1usize << depth))
+        .map(|index| e4(index as u32 + 301))
+        .collect::<Vec<_>>();
+    let challenges = [e4(401), e4(403)];
+    let expected_roles = expected_roles(&original, rows, depth, &challenges);
+    let expected_published = (0..endpoint_count)
+        .map(|index| {
+            sumcheck_fold_point(&|source| original[source], index, depth, &challenges)
+                .expect("release publication fold")
+        })
+        .collect::<Vec<_>>();
+
+    let mut input_device = upload(&original, context);
+    let challenge_device = upload(&challenges, context);
+    let poison = e4(9_999);
+    let mut published_device = upload(&vec![poison; endpoint_count], context);
+    let mut diagnostic_device = upload(&vec![poison; 2 * rows], context);
+    let mut error_device = upload(&[0u32], context);
+    let first_program = source_program_with_first_access(OperandField::Ext, true);
+    let mut desc = blank_desc(&first_program, 1, rows);
+    desc.round_challenges = challenge_device.as_ptr();
+    desc.n_round_challenges = depth as u32;
+    desc.n_source_windows = 1;
+    desc.source_windows[0] = BwdVmSourceWindow {
+        read_base: input_device.as_ptr().cast(),
+        publish_base: published_device.as_mut_ptr().cast(),
+        read_stride_bytes: (original.len() * size_of::<E4>()) as u32,
+        publish_stride_bytes: (endpoint_count * size_of::<E4>()) as u32,
+        backing_depth: 0,
+        target_depth: depth,
+        origin_field: BWD_VM_ORIGIN_FIELD_EXT,
+        materialize: 1,
+    };
+
+    // RELEASE runs first, with a poisoned publish backing. Its publication is
+    // the observable result of this independent launch phase.
+    launch_bwd_vm_release(&desc, 6, context).expect("release-only publication launch");
+    assert_e4_bits(
+        "release-only raw endpoint publication",
+        &download_e4(&published_device, context),
+        &expected_published,
+    );
+
+    // Destroy the original read values, then execute a single later physical
+    // use. Correct materialization semantics must load the prior publication.
+    let mutated = (0..original.len())
+        .map(|index| e4(index as u32 + 7_001))
+        .collect::<Vec<_>>();
+    memory_copy_async(
+        &mut input_device[..],
+        &mutated[..],
+        context.get_exec_stream(),
+    )
+    .expect("mutated read backing H2D");
+    memory_copy_async(
+        &mut diagnostic_device[..],
+        &vec![poison; 2 * rows],
+        context.get_exec_stream(),
+    )
+    .expect("diagnostic poison H2D");
+    memory_copy_async(&mut error_device[..], &[0u32], context.get_exec_stream())
+        .expect("error reset H2D");
+    let later_program = source_program_with_first_access(OperandField::Ext, false);
+    desc.program.fill(0);
+    desc.program[..later_program.len()].copy_from_slice(&later_program);
+    desc.program_lanes = later_program.len() as u32;
+    desc.n_instr = 1;
+    launch_bwd_vm_validate(
+        &desc,
+        6,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        context,
+    )
+    .expect("later materialized-use validate launch");
+    assert_eq!(
+        download_u32(&error_device, context),
+        [0],
+        "later materialized source validation"
+    );
+    assert_e4_bits(
+        "later source use must ignore mutated read backing",
+        &download_e4(&diagnostic_device, context),
+        &expected_roles,
+    );
+}
+
 #[test]
 #[ignore] // GPU; compile unlocked, run the built executable under with_gpu_lock.sh.
 #[cfg(not(no_cuda))]
 #[serial_test::serial]
 fn bwd_vm_synthetic_source_parity() {
     let context = make_test_context(16, 16);
+
+    malformed_program_bounds_fail_before_source_access(&context);
+    truncated_multilane_instruction_fails_without_lane_oob(&context);
+    release_publication_feeds_a_later_physical_use(&context);
 
     run_base_plain(&context, 17);
 

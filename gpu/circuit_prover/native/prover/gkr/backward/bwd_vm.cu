@@ -194,10 +194,23 @@ template <bool VALIDATE> struct BwdVmAdapter {
   u32 budget_cells;
   u32 active_mask;
   size_t endpoint;
+  mutable u32 lane_error;
 
-  DEVICE_FORCEINLINE u16 lane(const u32 index) const { return desc.program[index]; }
+  DEVICE_FORCEINLINE u16 lane(const u32 index) const {
+    if constexpr (VALIDATE) {
+      if (index >= desc.program_lanes || index >= BWD_VM_PROGRAM_CAP) {
+        lane_error |= BWD_VM_ERR_PROGRAM_OOB;
+        return 0xffffu;
+      }
+    }
+    return desc.program[index];
+  }
 
   DEVICE_FORCEINLINE bf read_bf(const u16 lane, u32 &error) {
+    if constexpr (VALIDATE) {
+      if (lane_error != 0)
+        return bf::ZERO();
+    }
     switch (lane & FWD_VM_OPERAND_TAG_MASK) {
     case FWD_VM_OPERAND_SOURCE:
       return read_source<VALIDATE>(desc, lane, active_mask, endpoint, true, error)[0][0];
@@ -258,6 +271,10 @@ template <bool VALIDATE> struct BwdVmAdapter {
   }
 
   DEVICE_FORCEINLINE e4 read_e4(const u16 lane, u32 &error) {
+    if constexpr (VALIDATE) {
+      if (lane_error != 0)
+        return e4::ZERO();
+    }
     switch (lane & FWD_VM_OPERAND_TAG_MASK) {
     case FWD_VM_OPERAND_SOURCE:
       return read_source<VALIDATE>(desc, lane, active_mask, endpoint, false, error);
@@ -335,6 +352,10 @@ template <bool VALIDATE> struct BwdVmAdapter {
   }
 
   DEVICE_FORCEINLINE void write_bf(const u16 dst, const bf value, u32 &error) {
+    if constexpr (VALIDATE) {
+      if (lane_error != 0)
+        return;
+    }
     if ((dst & FWD_VM_DST_TAG_MASK) != FWD_VM_DST_SMEM) {
       if constexpr (VALIDATE)
         error |= BWD_VM_ERR_BAD_DST;
@@ -351,6 +372,10 @@ template <bool VALIDATE> struct BwdVmAdapter {
   }
 
   DEVICE_FORCEINLINE void write_e4(const u16 dst, const e4 value, u32 &error) {
+    if constexpr (VALIDATE) {
+      if (lane_error != 0)
+        return;
+    }
     if ((dst & FWD_VM_DST_TAG_MASK) != FWD_VM_DST_SMEM) {
       if constexpr (VALIDATE)
         error |= BWD_VM_ERR_BAD_DST;
@@ -394,6 +419,15 @@ template <bool VALIDATE> DEVICE_FORCEINLINE void bwd_vm_body(const bwd_vm_desc &
     smem_st_bf(cells, cell, budget_cells, bf::ZERO());
 
   u32 error = descriptor_error<VALIDATE>(desc, budget_cells, smem_bytes);
+  if constexpr (VALIDATE) {
+    // Descriptor-level bounds are uniform and fatal. In particular, do not
+    // let a malformed count reach adapter lane fetches or source side effects.
+    if (error != 0) {
+      if (threadIdx.x == 0)
+        atomicOr(error_flag, error);
+      return;
+    }
+  }
   const u32 lane = threadIdx.x & BWD_VM_LANE_MASK;
   const size_t global_warp = static_cast<size_t>(blockIdx.x) * (blockDim.x / BWD_VM_WARP_LANES) + (threadIdx.x >> BWD_VM_WARP_SHIFT);
   const size_t logical_row = global_warp * BWD_VM_HALF_WARP_LANES + (lane & BWD_VM_HALF_WARP_MASK);
@@ -408,9 +442,17 @@ template <bool VALIDATE> DEVICE_FORCEINLINE void bwd_vm_body(const bwd_vm_desc &
   }
 
   const size_t endpoint = 2 * logical_row + (lane >= BWD_VM_HALF_WARP_LANES ? 1 : 0);
-  BwdVmAdapter<VALIDATE> adapter{desc, cells, budget_cells, active_mask, endpoint};
+  BwdVmAdapter<VALIDATE> adapter{desc, cells, budget_cells, active_mask, endpoint, 0};
   const eval_vm_result result = eval_vm_execute<VALIDATE, BwdVmAdapter<VALIDATE>>(adapter, desc.n_instr, desc.program_lanes);
-  error |= result.error;
+  u32 executor_error = result.error;
+  if constexpr (VALIDATE) {
+    // A logical lane overrun is more precise than the executor's final
+    // consumption mismatch and proves no inline-array OOB occurred.
+    if (adapter.lane_error != 0)
+      executor_error &= ~EVAL_VM_ERR_TRAILING_LANES;
+    error |= adapter.lane_error;
+  }
+  error |= executor_error;
   if constexpr (VALIDATE) {
     if (diagnostic_t0_t2 != nullptr && error == 0) {
       const size_t role_offset = lane >= BWD_VM_HALF_WARP_LANES ? desc.logical_rows : 0;

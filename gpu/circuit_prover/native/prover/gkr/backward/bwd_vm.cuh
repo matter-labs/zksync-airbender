@@ -28,6 +28,7 @@ constexpr u32 BWD_VM_ERR_NULL_POINTER = 1024;
 constexpr u32 BWD_VM_ERR_BUDGET = 2048;
 constexpr u32 BWD_VM_ERR_BAD_DST = 4096;
 constexpr u32 BWD_VM_ERR_DESC_BOUNDS = 8192;
+constexpr u32 BWD_VM_ERR_PROGRAM_OOB = 16384;
 
 // These channels reuse existing exact shared ABI banks. Their add/sub census
 // maxima are zero; the capacities are not growth margin.
