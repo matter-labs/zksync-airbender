@@ -953,6 +953,68 @@ fn sum_half(values: &[E4]) -> E4 {
     })
 }
 
+fn independent_lagrange_round_oracle(q0: E4, q1: E4, q2: E4, z: E4) -> ([E4; 3], [E4; 4]) {
+    let mut two = E4::ONE;
+    two.add_assign(&E4::ONE);
+    let points = [E4::ZERO, E4::ONE, two];
+    let evaluations = [q0, q1, q2];
+    let mut q_coefficients = [E4::ZERO; 3];
+
+    // Construct each Lagrange basis polynomial from its roots. This deliberately
+    // avoids the closed-form c/d recovery equations exercised below.
+    for basis_index in 0..points.len() {
+        let mut basis = [E4::ZERO; 3];
+        basis[0] = E4::ONE;
+        let mut basis_degree = 0;
+        let mut denominator = E4::ONE;
+        for other_index in 0..points.len() {
+            if basis_index == other_index {
+                continue;
+            }
+
+            let mut next_basis = [E4::ZERO; 3];
+            for degree in 0..=basis_degree {
+                let mut constant_term = basis[degree];
+                constant_term.mul_assign(&points[other_index]);
+                constant_term.negate();
+                next_basis[degree].add_assign(&constant_term);
+                next_basis[degree + 1].add_assign(&basis[degree]);
+            }
+            basis = next_basis;
+            basis_degree += 1;
+
+            let mut denominator_factor = points[basis_index];
+            denominator_factor.sub_assign(&points[other_index]);
+            denominator.mul_assign(&denominator_factor);
+        }
+
+        let mut scale = evaluations[basis_index];
+        scale.mul_assign(&denominator.inverse().expect("distinct Lagrange points"));
+        for (coefficient, basis_coefficient) in q_coefficients.iter_mut().zip(basis) {
+            let mut term = basis_coefficient;
+            term.mul_assign(&scale);
+            coefficient.add_assign(&term);
+        }
+    }
+
+    let mut eq_constant = E4::ONE;
+    eq_constant.sub_assign(&z);
+    let mut eq_linear = z;
+    eq_linear.double();
+    eq_linear.sub_assign(&E4::ONE);
+    let eq_coefficients = [eq_constant, eq_linear];
+    let mut round_coefficients = [E4::ZERO; 4];
+    for (q_degree, q_coefficient) in q_coefficients.iter().enumerate() {
+        for (eq_degree, eq_coefficient) in eq_coefficients.iter().enumerate() {
+            let mut term = *q_coefficient;
+            term.mul_assign(eq_coefficient);
+            round_coefficients[q_degree + eq_degree].add_assign(&term);
+        }
+    }
+
+    (q_coefficients, round_coefficients)
+}
+
 fn assert_recovery_and_production_coefficients(
     budget_cells: usize,
     q0: E4,
@@ -999,15 +1061,10 @@ fn assert_recovery_and_production_coefficients(
     recovered_d.sub_assign(&q0);
     recovered_d.sub_assign(&recovered_c);
 
-    let mut oracle_two_q1 = q1_oracle;
-    oracle_two_q1.double();
-    let mut oracle_c = q2;
-    oracle_c.sub_assign(&oracle_two_q1);
-    oracle_c.add_assign(&q0);
-    oracle_c.mul_assign(&two.inverse().expect("nonzero oracle two"));
-    let mut oracle_d = q1_oracle;
-    oracle_d.sub_assign(&q0);
-    oracle_d.sub_assign(&oracle_c);
+    let (oracle_q_coefficients, oracle_round_coefficients) =
+        independent_lagrange_round_oracle(q0, q1_oracle, q2, z);
+    let oracle_d = oracle_q_coefficients[1];
+    let oracle_c = oracle_q_coefficients[2];
     assert_eq!(recovered_c, oracle_c, "c{budget_cells} recovered c");
     assert_eq!(recovered_d, oracle_d, "c{budget_cells} recovered d");
 
@@ -1024,6 +1081,11 @@ fn assert_recovery_and_production_coefficients(
         BF,
         E4,
     >(z, normalized_claim, q0, recovered_c);
+    assert_e4_bits(
+        &format!("c{budget_cells} independent CPU coefficients"),
+        &cpu_coefficients,
+        &oracle_round_coefficients,
+    );
 
     let reduction_device = upload(&[q0, recovered_c], context);
     let prev_coord_device = upload(&[z], context);
@@ -1044,6 +1106,11 @@ fn assert_recovery_and_production_coefficients(
     )
     .expect("production backward round-update launch");
     let gpu_coefficients = download_e4(&coefficients_device, context);
+    assert_e4_bits(
+        &format!("c{budget_cells} independent GPU coefficients"),
+        &gpu_coefficients,
+        &oracle_round_coefficients,
+    );
     assert_e4_bits(
         &format!("c{budget_cells} production four coefficients"),
         &gpu_coefficients,
