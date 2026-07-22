@@ -118,7 +118,7 @@ impl TracingDataProducers for SplitTracingDataProducers {
         let binary_shift_csr_family_producer =
             TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp>::new(
                 CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-                    UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+                    UnrolledNonMemoryCircuitType::ShiftBinary,
                 )),
                 free_allocators.clone(),
                 results.clone(),

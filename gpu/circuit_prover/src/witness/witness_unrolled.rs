@@ -94,7 +94,7 @@ generate_witness_unrolled_non_memory_kernel!(
 );
 generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_jump_branch_slt_kernel);
 generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_mul_div_unsigned_kernel);
-generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_shift_binary_csr_kernel);
+generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_shift_binary_kernel);
 
 pub(crate) fn generate_witness_values_unrolled_non_memory(
     circuit_type: UnrolledNonMemoryCircuitType,
@@ -144,8 +144,8 @@ pub(crate) fn generate_witness_values_unrolled_non_memory(
         UnrolledNonMemoryCircuitType::MulDivUnsigned => {
             ab_generate_witness_values_mul_div_unsigned_kernel
         }
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsr => {
-            ab_generate_witness_values_shift_binary_csr_kernel
+        UnrolledNonMemoryCircuitType::ShiftBinary => {
+            ab_generate_witness_values_shift_binary_kernel
         }
     };
     GenerateWitnessUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)

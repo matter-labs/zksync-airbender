@@ -576,7 +576,7 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     },
     GeneratedCircuit {
         id: "shift_binop",
-        committed_cuh: "circuit_defs/unrolled_circuits/shift_binary_csr/generated/witness_generation_fn.cuh",
+        committed_cuh: "circuit_defs/unrolled_circuits/shift_binary/generated/witness_generation_fn.cuh",
     },
     GeneratedCircuit {
         id: "unified_reduced_machine",

@@ -203,7 +203,7 @@ fn build_unrolled_setup(
                 crate::upstream::jump_branch_slt_circuit_setup::<Global>(&table_data, true, worker);
             wrap_non_memory_setup(s.compiled_circuit, s.setup, decoder_data_from_table)
         }
-        UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinaryCsr) => {
+        UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinary) => {
             let s =
                 crate::upstream::shift_binary_circuit_setup::<Global>(&table_data, true, worker);
             wrap_non_memory_setup(s.compiled_circuit, s.setup, decoder_data_from_table)
