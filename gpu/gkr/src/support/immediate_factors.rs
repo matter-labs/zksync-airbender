@@ -46,13 +46,19 @@ pub struct ImmediateFactorRecipeStructural {
 }
 
 impl ImmediateFactorRecipeStructural {
-    pub fn zero() -> Self {
+    // `pub(crate)`: every constructor/combinator below has consumers only
+    // inside this crate (`backward::builders`, `backward::flat::*`,
+    // `gkr_address_audit_helpers`, …) — grepped across `gpu/` for Task 14.
+    // `from_base` is the sole exception: the apex `gpu_circuit_prover` test
+    // fixture (`tests/expected_specs.rs`) names it across the crate boundary,
+    // so it stays `pub`.
+    pub(crate) fn zero() -> Self {
         Self {
             monomials: Vec::new(),
         }
     }
 
-    pub fn one() -> Self {
+    pub(crate) fn one() -> Self {
         Self::from_base(BF::ONE)
     }
 
@@ -72,11 +78,11 @@ impl ImmediateFactorRecipeStructural {
         }
     }
 
-    pub fn challenge(idx: u8) -> Self {
+    pub(crate) fn challenge(idx: u8) -> Self {
         Self::challenge_scaled(idx, BF::ONE)
     }
 
-    pub fn challenge_scaled(idx: u8, coeff: BF) -> Self {
+    pub(crate) fn challenge_scaled(idx: u8, coeff: BF) -> Self {
         if coeff.is_zero() {
             Self::zero()
         } else {
@@ -92,14 +98,14 @@ impl ImmediateFactorRecipeStructural {
         }
     }
 
-    pub fn add(&self, other: &Self) -> Self {
+    pub(crate) fn add(&self, other: &Self) -> Self {
         let mut monomials = Vec::with_capacity(self.monomials.len() + other.monomials.len());
         monomials.extend_from_slice(&self.monomials);
         monomials.extend_from_slice(&other.monomials);
         Self { monomials }.normalized()
     }
 
-    pub fn mul(&self, other: &Self) -> Self {
+    pub(crate) fn mul(&self, other: &Self) -> Self {
         if self.monomials.is_empty() || other.monomials.is_empty() {
             return Self::zero();
         }
@@ -112,7 +118,7 @@ impl ImmediateFactorRecipeStructural {
         Self { monomials }.normalized()
     }
 
-    pub fn negated(&self) -> Self {
+    pub(crate) fn negated(&self) -> Self {
         let mut result = self.clone();
         for monomial in &mut result.monomials {
             monomial.coeff.negate();
@@ -121,13 +127,15 @@ impl ImmediateFactorRecipeStructural {
     }
 
     // `pub(crate)`, not `pub`: exposes the internal `ImmediateFactorMonomial`
-    // representation, which nothing outside this crate names or needs — the
-    // sanctioned public introspection API is `key()` (plain tuples).
+    // representation, which nothing outside this crate names or needs.
     pub(crate) fn monomials(&self) -> &[ImmediateFactorMonomial] {
         &self.monomials
     }
 
-    pub fn key(&self) -> Vec<(u32, u8, u8, u8, u8)> {
+    // `pub(crate)`, not `pub`: the plain-tuple introspection API used by
+    // `ImmediateFactorInterner`'s dedup key — no consumer outside this crate
+    // names it (grepped across `gpu/` for Task 14).
+    pub(crate) fn key(&self) -> Vec<(u32, u8, u8, u8, u8)> {
         self.monomials
             .iter()
             .map(|m| {
@@ -201,7 +209,12 @@ pub(crate) struct ImmediateFactorInterner {
 }
 
 impl ImmediateFactorInterner {
-    pub fn new() -> Self {
+    // `pub(crate)`: `ImmediateFactorInterner` itself is `pub(crate)`, so these
+    // could never be reachable outside this crate regardless of keyword —
+    // `pub(crate)` here just makes the already-capped effective visibility
+    // textually honest (grepped across `gpu/`: `backward::flat::compile` +
+    // `gkr_address_audit_helpers`, both in-crate).
+    pub(crate) fn new() -> Self {
         let mut interner = Self::default();
         let one = ImmediateFactorRecipeStructural::one();
         interner.keys.insert(one.key(), 0);
@@ -209,7 +222,7 @@ impl ImmediateFactorInterner {
         interner
     }
 
-    pub fn intern(&mut self, recipe: ImmediateFactorRecipeStructural) -> u16 {
+    pub(crate) fn intern(&mut self, recipe: ImmediateFactorRecipeStructural) -> u16 {
         let key = recipe.key();
         if let Some(idx) = self.keys.get(&key).copied() {
             return idx;
@@ -225,7 +238,7 @@ impl ImmediateFactorInterner {
         idx
     }
 
-    pub fn materialize(
+    pub(crate) fn materialize(
         &self,
     ) -> (
         Vec<ImmediateFactorRecipeHeader>,
