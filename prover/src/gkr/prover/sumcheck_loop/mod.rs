@@ -433,10 +433,6 @@ where
             transcript_inputs.extend(extra_evaluations_from_caching_relations.values().copied());
         }
 
-        // after all claims for the next layer are ready - draw the next batching challenge
-        commit_field_els::<F, E, TR>(seed, &transcript_inputs);
-        let next_batching_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
-
         #[cfg(feature = "gkr_self_checks")]
         assert!(crate::gkr::prover::debug_utils::verify_cache_relations(
             layer,
@@ -445,6 +441,10 @@ where
             lookup_challenges_multiplicative_part,
         ));
     }
+
+    // after all claims for the next layer are ready - draw the next batching challenge
+    commit_field_els::<F, E, TR>(seed, &transcript_inputs);
+    let next_batching_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
 
     claims_storage.insert(layer_idx, new_claims);
     claim_points.insert(layer_idx, folding_challenges);
