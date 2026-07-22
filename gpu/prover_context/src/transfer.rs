@@ -76,6 +76,12 @@ impl<'a> Transfer<'a> {
             .wait_event(&self.allocated, CudaStreamWaitEventFlags::DEFAULT)
     }
 
+    // `needless_pass_by_value`: clippy's `&Arc` + internal-clone suggestion is
+    // equivalent, but by-value keeps the ownership transfer explicit at every
+    // `schedule` call site across the `gpu_trace`/`gpu_circuit_prover`
+    // boundary (the callback below moves `src` directly instead of an extra
+    // clone-then-move, so this is not a wasted allocation either way).
+    #[allow(clippy::needless_pass_by_value)]
     pub fn schedule<T>(
         &mut self,
         src: Arc<impl CudaSlice<T> + Send + Sync + ?Sized + 'a>,
@@ -86,7 +92,9 @@ impl<'a> Transfer<'a> {
         self.ensure_allocated(context)?;
         let stream = context.get_h2d_stream();
         memory_copy_async(dst, src.as_ref(), stream)?;
-        let src = src.clone();
+        // `src` is already owned here, so move it into the callback directly
+        // instead of cloning: the callback's only job is to keep the H2D
+        // source alive until the copy completes.
         let f = move || {
             let _ = src;
         };
@@ -172,12 +180,14 @@ mod tests {
 
     #[test]
     fn test_transfer() -> CudaResult<()> {
-        let mut config = ProverContextConfig::default();
         // 32 MB device arena (32 × default 1 MB blocks). Needs to be larger
         // than the default `small_allocator_pool_blocks << block_log_size`
         // (16 × 1 MB) carved out of it; everything beyond that is room for
         // the 1 KB transfer this test actually exercises.
-        config.max_device_allocation_blocks_count = Some(32);
+        let config = ProverContextConfig {
+            max_device_allocation_blocks_count: Some(32),
+            ..Default::default()
+        };
         let context = ProverContext::new(&config)?;
         let src = Arc::new(vec![0; 1024]);
         let mut transfer = Transfer::new()?;
