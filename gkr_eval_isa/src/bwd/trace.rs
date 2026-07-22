@@ -15,11 +15,11 @@ use std::hash::{Hash, Hasher};
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
 
-use crate::fwd::binding::BackingTable;
+use crate::fwd::binding::{BackingTable, SourceWindowTable};
 use crate::fwd::isa::{DstLine, Instr, OperandField, OperandLine, Program};
 
-use super::compile::{spine_terms, BwdCompiledLayer};
-use super::distill::{distilled_site_domain, DistilledLayer};
+use super::compile::{BwdCompiledLayer, spine_terms};
+use super::distill::{DistilledLayer, distilled_site_domain};
 use super::source::{BwdSpecial, BwdSpecialTable};
 
 /// Plan ABI version — bumped whenever the plan/trace stream encoding changes so a
@@ -75,7 +75,10 @@ pub enum BwdServedFrom {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BwdEvent {
     /// A demand was served (root-output or operand).
-    Serve { fp: BwdFingerprint, from: BwdServedFrom },
+    Serve {
+        fp: BwdFingerprint,
+        from: BwdServedFrom,
+    },
     /// A real DRAM read the objective counts: a `Global` operand (`cells` = its
     /// field width, 1 Base / 4 Ext) or a READ-origin `FoldSource` operand
     /// (`cells` = 4). VS-origin folds emit NO `TrafficRead` — they use the O(k)
@@ -252,22 +255,33 @@ pub fn live_profile(p: &Program) -> Vec<usize> {
         OperandField::Ext => (cell as u32 * 4, 4u32),
     };
     let mut lanes: BTreeMap<u32, Vec<(usize, Ev)>> = BTreeMap::new();
-    let mut push = |lanes: &mut BTreeMap<u32, Vec<(usize, Ev)>>, cell: u16, f: OperandField, t, ev| {
-        let (base, width) = span(cell, f);
-        for l in base..base + width {
-            lanes.entry(l).or_default().push((t, ev));
-        }
-    };
+    let mut push =
+        |lanes: &mut BTreeMap<u32, Vec<(usize, Ev)>>, cell: u16, f: OperandField, t, ev| {
+            let (base, width) = span(cell, f);
+            for l in base..base + width {
+                lanes.entry(l).or_default().push((t, ev));
+            }
+        };
     for (t, i) in p.instrs.iter().enumerate() {
         match i {
-            Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
+            Instr::Add {
+                field, operands, ..
+            }
+            | Instr::Mul {
+                field, operands, ..
+            } => {
                 for op in operands {
                     if let OperandLine::Smem { cell } = op {
                         push(&mut lanes, *cell, *field, t, Ev::Read);
                     }
                 }
             }
-            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                pairs,
+                ..
+            } => {
                 for (l, r) in pairs {
                     if let OperandLine::Smem { cell } = l {
                         push(&mut lanes, *cell, *field_lhs, t, Ev::Read);
@@ -277,7 +291,9 @@ pub fn live_profile(p: &Program) -> Vec<usize> {
                     }
                 }
             }
-            Instr::Mov { field, dst, src, .. } => {
+            Instr::Mov {
+                field, dst, src, ..
+            } => {
                 if let Some(OperandLine::Smem { cell }) = src {
                     push(&mut lanes, *cell, *field, t, Ev::Read);
                 }
@@ -326,65 +342,110 @@ pub(crate) fn positioned_physical_traffic_events(
     specials: &BwdSpecialTable,
     leaf_descs: &BTreeMap<ExprId, u16>,
     backings: &BackingTable,
+    source_windows: &SourceWindowTable,
 ) -> Option<Vec<PositionedPhysicalTrafficEvent>> {
-    let desc_to_leaf: BTreeMap<u16, ExprId> =
-        leaf_descs.iter().map(|(&leaf, &desc)| (desc, leaf)).collect();
+    let desc_to_leaf: BTreeMap<u16, ExprId> = leaf_descs
+        .iter()
+        .map(|(&leaf, &desc)| (desc, leaf))
+        .collect();
     let mut events = Vec::new();
     let mut record =
         |instruction: usize, operand: OperandLine, field: OperandField| -> Option<()> {
-        let (value, cells) = match operand {
-            OperandLine::Global { slot, col } => {
-                let place = backings.slot_col_to_read_place(slot, col)?;
-                let value = layer.exprs.iter().enumerate().find_map(|(index, expr)| {
-                    let Expr::Source(source) = expr else {
-                        return None;
-                    };
-                    match &layer.sources[source.0 as usize].kind {
-                        SourceKind::Read { place: candidate } if *candidate == place => {
-                            Some(ExprId(index as u32))
+            let (value, cells) = match operand {
+                OperandLine::LogicalGlobal { slot, col } => {
+                    let place = backings.slot_col_to_read_place(slot, col)?;
+                    let value = layer.exprs.iter().enumerate().find_map(|(index, expr)| {
+                        let Expr::Source(source) = expr else {
+                            return None;
+                        };
+                        match &layer.sources[source.0 as usize].kind {
+                            SourceKind::Read { place: candidate } if *candidate == place => {
+                                Some(ExprId(index as u32))
+                            }
+                            _ => None,
                         }
-                        _ => None,
-                    }
-                })?;
-                let cells = match field {
-                    OperandField::Base => 1,
-                    OperandField::Ext => 4,
-                };
-                (value, cells)
-            }
-            OperandLine::Special { desc } => match specials.get(desc) {
-                Some(BwdSpecial::FoldSource { origin }) if !origin.is_vs() => {
-                    (*desc_to_leaf.get(&desc)?, 4)
+                    })?;
+                    let cells = match field {
+                        OperandField::Base => 1,
+                        OperandField::Ext => 4,
+                    };
+                    (value, cells)
                 }
-                _ => return Some(()),
-            },
-            OperandLine::Smem { .. } | OperandLine::Ldc { .. } => return Some(()),
+                OperandLine::LogicalFold { desc, .. } => match specials.get(desc) {
+                    Some(BwdSpecial::FoldSource { .. }) => (*desc_to_leaf.get(&desc)?, 4),
+                    _ => return Some(()),
+                },
+                OperandLine::Source { window, column, .. } => {
+                    if let Some(desc) = source_windows.fold_desc(window, column) {
+                        match specials.get(desc) {
+                            Some(BwdSpecial::FoldSource { .. }) => (*desc_to_leaf.get(&desc)?, 4),
+                            _ => return Some(()),
+                        }
+                    } else {
+                        let place = source_windows.resolve_read_place(window, column)?;
+                        let value = layer.exprs.iter().enumerate().find_map(|(index, expr)| {
+                            let Expr::Source(source) = expr else {
+                                return None;
+                            };
+                            match &layer.sources[source.0 as usize].kind {
+                                SourceKind::Read { place: candidate } if *candidate == place => {
+                                    Some(ExprId(index as u32))
+                                }
+                                _ => None,
+                            }
+                        })?;
+                        let cells = match field {
+                            OperandField::Base => 1,
+                            OperandField::Ext => 4,
+                        };
+                        (value, cells)
+                    }
+                }
+                OperandLine::Special { desc } => match specials.get(desc) {
+                    Some(BwdSpecial::FoldSource { origin }) if !origin.is_vs() => {
+                        (*desc_to_leaf.get(&desc)?, 4)
+                    }
+                    _ => return Some(()),
+                },
+                OperandLine::Smem { .. } | OperandLine::Ldc { .. } => return Some(()),
+            };
+            let physical_ordinal = events.len();
+            events.push(PositionedPhysicalTrafficEvent {
+                instruction,
+                physical_ordinal,
+                event: BwdEvent::TrafficRead { value, cells },
+            });
+            Some(())
         };
-        let physical_ordinal = events.len();
-        events.push(PositionedPhysicalTrafficEvent {
-            instruction,
-            physical_ordinal,
-            event: BwdEvent::TrafficRead { value, cells },
-        });
-        Some(())
-    };
 
     for (instruction, instr) in program.instrs.iter().enumerate() {
         match instr {
-            Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
+            Instr::Add {
+                field, operands, ..
+            }
+            | Instr::Mul {
+                field, operands, ..
+            } => {
                 for &operand in operands {
                     record(instruction, operand, *field)?;
                 }
             }
-            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                pairs,
+                ..
+            } => {
                 for &(lhs, rhs) in pairs {
                     record(instruction, lhs, *field_lhs)?;
                     record(instruction, rhs, *field_rhs)?;
                 }
             }
-            Instr::Mov { field, src: Some(operand), .. } => {
-                record(instruction, *operand, *field)?
-            }
+            Instr::Mov {
+                field,
+                src: Some(operand),
+                ..
+            } => record(instruction, *operand, *field)?,
             Instr::Mov { src: None, .. } => {}
         }
     }
@@ -397,15 +458,22 @@ pub(crate) fn physical_traffic_events(
     specials: &BwdSpecialTable,
     leaf_descs: &BTreeMap<ExprId, u16>,
     backings: &BackingTable,
+    source_windows: &SourceWindowTable,
 ) -> Option<Vec<BwdEvent>> {
-    positioned_physical_traffic_events(layer, program, specials, leaf_descs, backings).map(
-        |events| {
-            events
-                .into_iter()
-                .map(|positioned| positioned.event)
-                .collect()
-        },
+    positioned_physical_traffic_events(
+        layer,
+        program,
+        specials,
+        leaf_descs,
+        backings,
+        source_windows,
     )
+    .map(|events| {
+        events
+            .into_iter()
+            .map(|positioned| positioned.event)
+            .collect()
+    })
 }
 
 /// Preserve the source-resolution traffic anchors only when their complete
@@ -500,6 +568,7 @@ pub fn freeze_demand(
     program: &Program,
     specials: &BwdSpecialTable,
     backings: &BackingTable,
+    source_windows: &SourceWindowTable,
 ) -> Option<FrozenDemand> {
     freeze_demand_with(
         d,
@@ -507,6 +576,7 @@ pub fn freeze_demand(
         program,
         specials,
         backings,
+        source_windows,
         DirectTopCorrection::Term,
     )
 }
@@ -521,18 +591,19 @@ pub fn freeze_demand_with(
     program: &Program,
     specials: &BwdSpecialTable,
     backings: &BackingTable,
+    source_windows: &SourceWindowTable,
     correction: DirectTopCorrection,
 ) -> Option<FrozenDemand> {
-    let domain_values: BTreeSet<ExprId> =
-        distilled_site_domain(d).into_iter().map(|site| site.value).collect();
+    let domain_values: BTreeSet<ExprId> = distilled_site_domain(d)
+        .into_iter()
+        .map(|site| site.value)
+        .collect();
 
     let domain_serves: Vec<(BwdFingerprint, BwdServedFrom)> = trace
         .events
         .iter()
         .filter_map(|e| match e {
-            BwdEvent::Serve { fp, from } if domain_values.contains(&fp.value) => {
-                Some((*fp, *from))
-            }
+            BwdEvent::Serve { fp, from } if domain_values.contains(&fp.value) => Some((*fp, *from)),
             _ => None,
         })
         .collect();
@@ -548,8 +619,8 @@ pub fn freeze_demand_with(
         specials,
         &d.leaf_descs,
         backings,
-    )
-    ?;
+        source_windows,
+    )?;
     let mut nondomain_gather_cells = 0usize;
     let mut leaf_traffic = BTreeMap::<ExprId, Vec<(usize, usize, u32)>>::new();
     for positioned in physical {
@@ -557,10 +628,11 @@ pub fn freeze_demand_with(
             unreachable!("the physical traffic scan emits only TrafficRead events");
         };
         if domain_values.contains(&value) {
-            leaf_traffic
-                .entry(value)
-                .or_default()
-                .push((positioned.instruction, positioned.physical_ordinal, cells));
+            leaf_traffic.entry(value).or_default().push((
+                positioned.instruction,
+                positioned.physical_ordinal,
+                cells,
+            ));
         } else {
             checked_add_gather_cells(&mut nondomain_gather_cells, cells)?;
         }
@@ -612,8 +684,12 @@ pub fn freeze_demand_with(
     let leaf_instants = leaf_traffic
         .iter()
         .filter_map(|(&value, traffic)| {
-            (!traffic.is_empty())
-                .then(|| (value, traffic.iter().map(|&(position, _, _)| position).collect()))
+            (!traffic.is_empty()).then(|| {
+                (
+                    value,
+                    traffic.iter().map(|&(position, _, _)| position).collect(),
+                )
+            })
         })
         .collect();
     let leaf_accesses = leaf_traffic
@@ -672,7 +748,10 @@ pub struct CertificateReport {
 /// EXACTLY equals the compile's reported traffic tally (no tolerance); `Err(report)`
 /// otherwise, carrying the same fields for diagnosis. Plan-compliance fields
 /// (`diverged`, `refusals`, `evictions`) never affect which variant is returned.
-pub fn certify(c: &BwdCompiledLayer, trace: &BwdCompileTrace) -> Result<CertificateReport, CertificateReport> {
+pub fn certify(
+    c: &BwdCompiledLayer,
+    trace: &BwdCompileTrace,
+) -> Result<CertificateReport, CertificateReport> {
     let counted_traffic: usize = trace
         .events
         .iter()
@@ -686,10 +765,24 @@ pub fn certify(c: &BwdCompiledLayer, trace: &BwdCompileTrace) -> Result<Certific
         BwdEvent::Diverge { at_entry } => Some(*at_entry),
         _ => None,
     });
-    let refusals = trace.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
-    let evictions = trace.events.iter().filter(|e| matches!(e, BwdEvent::Evict { .. })).count();
+    let refusals = trace
+        .events
+        .iter()
+        .filter(|e| matches!(e, BwdEvent::Refuse { .. }))
+        .count();
+    let evictions = trace
+        .events
+        .iter()
+        .filter(|e| matches!(e, BwdEvent::Evict { .. }))
+        .count();
 
-    let report = CertificateReport { counted_traffic, reported_traffic, diverged, refusals, evictions };
+    let report = CertificateReport {
+        counted_traffic,
+        reported_traffic,
+        diverged,
+        refusals,
+        evictions,
+    };
     if counted_traffic == reported_traffic {
         Ok(report)
     } else {
@@ -700,8 +793,8 @@ pub fn certify(c: &BwdCompiledLayer, trace: &BwdCompileTrace) -> Result<Certific
 #[cfg(test)]
 mod tests {
     use super::{
-        BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom,
-        checked_add_gather_cells, retain_physical_traffic_events,
+        BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom, checked_add_gather_cells,
+        retain_physical_traffic_events,
     };
     use cs::gkr_compiler::dag_ir::ExprId;
 

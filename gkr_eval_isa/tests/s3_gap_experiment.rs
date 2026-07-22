@@ -1055,4 +1055,3 @@ fn query_edge_counts_as_site_consumer() {
          exactly its two demand sites, both in root 0's context"
     );
 }
-

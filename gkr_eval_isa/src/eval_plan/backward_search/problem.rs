@@ -255,6 +255,7 @@ fn build_problem_from_compiled(
         &compiled.compiled.program,
         &compiled.compiled.specials,
         &compiled.compiled.backings,
+        &compiled.compiled.source_windows,
         DirectTopCorrection::None,
     );
     let frozen = frozen.ok_or(BackwardSearchError::PagingCertificateMismatch {
@@ -273,6 +274,7 @@ fn build_problem_from_compiled(
         &replayed.compiled.program,
         &replayed.compiled.specials,
         &replayed.compiled.backings,
+        &replayed.compiled.source_windows,
         DirectTopCorrection::None,
     );
     let frozen = frozen.ok_or(BackwardSearchError::PagingCertificateMismatch {

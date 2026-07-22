@@ -15,15 +15,17 @@
 //!   2. `encode`s the compiled program to its wire `u16` lanes;
 //!   3. hashes an EXPLICIT byte serialization — NEVER `Debug` formatting:
 //!        (a) every encoded `u16` lane, little-endian, in order, then
-//!        (b) all FOUR `DagForwardContext` tables (`context.rs`'s field order):
+//!        (b) all FIVE indexed `DagForwardContext` tables (`context.rs` field order):
 //!            the descriptor table (`ctx.specials`), the const bank
 //!            (`ctx.consts`), the derived-E4 banks (`ctx.derived_e4`), and the
-//!            backing table (`ctx.backings`) — each hand-serialized
+//!            backing table (`ctx.backings`), and final source-window table
+//!            (`ctx.source_windows`) — each hand-serialized
 //!            field-by-field (see `serialize_*` below), in table order.
-//!      The encoded lanes carry only INDICES into these four tables —
-//!      `OperandLine::Special { desc }`, `Ldc { sub, idx }`, `Global { slot, col }`
+//!      The encoded lanes carry only INDICES into these five tables —
+//!      `OperandLine::Special { desc }`, `Ldc { sub, idx }`, and
+//!      `Source { window, column, .. }`
 //!      (see `gkr_eval_isa::fwd::encode::pack_operand`) — table CONTENT is never
-//!      inlined into the lane stream, so all four parts are required to pin the
+//!      inlined into the lane stream, so all five parts are required to pin the
 //!      program's full semantics: content drift in any one of them (e.g. a
 //!      `ConstBank` value or a `BackingTable` slot's meaning changing) would
 //!      leave every lane byte-identical while silently changing what the
@@ -47,13 +49,14 @@
 mod common;
 use common::load_dag_sched;
 
-use gkr_eval_isa::fwd::binding::{BackingKey, BackingTable};
+use gkr_eval_isa::fwd::binding::{BackingKey, BackingTable, SourceWindowTable};
 use gkr_eval_isa::fwd::compile::compile_circuit;
 use gkr_eval_isa::fwd::context::DagForwardContext;
 use gkr_eval_isa::fwd::encode::encode;
 use gkr_eval_isa::fwd::isa::{LdcSub, OperandField};
 use gkr_eval_isa::fwd::source::{
-    virtual_setup_kind_code, DerivedE4Banks, ConstBank, SpecialDescriptor, SpecialStrategy, SpecialTable,
+    ConstBank, DerivedE4Banks, SpecialDescriptor, SpecialStrategy, SpecialTable,
+    virtual_setup_kind_code,
 };
 
 use cs::gkr_compiler::dag_ir::{
@@ -226,13 +229,10 @@ fn serialize_backing_key(buf: &mut Vec<u8>, k: &BackingKey) {
     }
 }
 
-/// Explicit byte serialization of the backing table's CONTENT. A `Global {
-/// slot, col }` operand lane (`gkr_eval_isa::fwd::isa::OperandLine::Global`)
-/// carries only a `(slot, col)` INDEX pair into this table
-/// (`BackingTable::read_slot_col`/`slot_col`) — the digest must therefore pin
-/// what each slot actually names (its `BackingKey`) and its dense column →
-/// original-offset mapping (`slot_columns`), not just the slot count, or slot
-/// content could drift while every lane stays byte-identical.
+/// Explicit byte serialization of the compiler backing table's content. The
+/// final source-window table and materialization destinations refer to these
+/// entries indirectly, so the digest also pins every backing and dense-column
+/// assignment.
 ///
 /// Length-prefixed (`u64` LE slot count), then per slot in slot-index order:
 /// the `BackingKey`, then its dense-ordered original offsets (`u64` LE
@@ -253,6 +253,31 @@ fn serialize_backing_table(buf: &mut Vec<u8>, t: &BackingTable) {
         push_u64(buf, cols.len() as u64);
         for &offset in cols {
             push_u64(buf, offset as u64);
+        }
+    }
+}
+
+/// Explicit serialization of the final program-local source-window table.
+/// Encoded `Source` lanes carry only `(window, column)`, so the digest must
+/// also pin each freely assigned window's backing, base column, referenced
+/// columns, and optional backward fold descriptors.
+fn serialize_source_window_table(buf: &mut Vec<u8>, t: &SourceWindowTable) {
+    push_u64(buf, t.len() as u64);
+    for window in t.windows() {
+        serialize_backing_key(buf, &window.backing);
+        push_u64(buf, window.first_column as u64);
+
+        let columns: Vec<_> = window.referenced_columns().collect();
+        push_u64(buf, columns.len() as u64);
+        for column in columns {
+            push_u64(buf, column as u64);
+        }
+
+        let folds: Vec<_> = window.fold_descriptors().collect();
+        push_u64(buf, folds.len() as u64);
+        for (column, desc) in folds {
+            push_u64(buf, column as u64);
+            buf.extend_from_slice(&desc.to_le_bytes());
         }
     }
 }
@@ -348,9 +373,10 @@ fn serialize_derived_e4_banks(buf: &mut Vec<u8>, banks: &DerivedE4Banks) {
 }
 
 /// The full explicit byte serialization for one compiled layer's program:
-/// encoded `u16` lanes (little-endian, in order), then all four
+/// encoded `u16` lanes (little-endian, in order), then the five indexed
 /// `DagForwardContext` tables in the struct's own field declaration order —
-/// `specials`, `consts`, `derived_e4`, `backings` (`context.rs`). Each table is
+/// `specials`, `consts`, `derived_e4`, `backings`, `source_windows`
+/// (`context.rs`). Each table is
 /// length-prefixed (`u64` LE count) then its entries serialized field-by-field
 /// in table order (`specials`: `SpecialTable::iter()`'s natural `Vec` order).
 fn serialize_program_bytes(lanes: &[u16], ctx: &DagForwardContext) -> Vec<u8> {
@@ -366,6 +392,7 @@ fn serialize_program_bytes(lanes: &[u16], ctx: &DagForwardContext) -> Vec<u8> {
     serialize_const_bank(&mut buf, &ctx.consts);
     serialize_derived_e4_banks(&mut buf, &ctx.derived_e4);
     serialize_backing_table(&mut buf, &ctx.backings);
+    serialize_source_window_table(&mut buf, &ctx.source_windows);
     buf
 }
 
@@ -385,7 +412,8 @@ fn fwd_digest_pin() {
         );
 
         for (li, cl) in compiled.layers.iter().enumerate() {
-            let lanes = encode(&cl.program).unwrap_or_else(|e| panic!("[{name}] layer {li}: encode: {e:?}"));
+            let lanes = encode(&cl.program)
+                .unwrap_or_else(|e| panic!("[{name}] layer {li}: encode: {e:?}"));
             let bytes = serialize_program_bytes(&lanes, &cl.ctx);
             let d = fnv1a(&bytes);
             per_program_digests.push(d);
@@ -393,7 +421,10 @@ fn fwd_digest_pin() {
         }
     }
 
-    assert!(!per_program_digests.is_empty(), "digest pin compared 0 programs — vacuous");
+    assert!(
+        !per_program_digests.is_empty(),
+        "digest pin compared 0 programs — vacuous"
+    );
 
     // See module doc: DIGEST-ALL folds over this test's own iteration order, not
     // the pin command's post-hoc `sort`.
@@ -403,5 +434,5 @@ fn fwd_digest_pin() {
     }
     let all = fnv1a(&all_bytes);
     println!("DIGEST-ALL {all:016x}");
-    assert_eq!(all, 0xa09eefc7d8e81777, "forward aggregate digest drift");
+    assert_eq!(all, 0x1b0abf417154da9f, "forward aggregate digest drift");
 }

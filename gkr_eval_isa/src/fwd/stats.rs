@@ -52,13 +52,13 @@ pub struct CompileStats {
     pub recomputes: usize,     // SP1: not yet counted
     pub special_gathers: usize,
     pub max_live_cells: usize,
-    pub split_count: usize,    // SP1: not yet counted
-    pub avg_chunk: f64,        // SP1: not yet counted
-    pub dram_reads: usize,     // SP1: not yet counted
-    pub ldc_reads: usize,      // SP1: not yet counted
-    pub special_reads: usize,  // SP1: not yet counted
+    pub split_count: usize,   // SP1: not yet counted
+    pub avg_chunk: f64,       // SP1: not yet counted
+    pub dram_reads: usize,    // SP1: not yet counted
+    pub ldc_reads: usize,     // SP1: not yet counted
+    pub special_reads: usize, // SP1: not yet counted
     /// Width-weighted DRAM traffic in cells: each real-DRAM read operand
-    /// (`OperandLine::Global`, i.e. a Read/Prior backing) contributes its field width
+    /// (`OperandLine::LogicalGlobal`, i.e. a Read/Prior backing) contributes its field width
     /// (Ext=4, Base=1). VirtualSetup is a computed `Special` strategy (0 traffic), not a
     /// Global backing — see `compile::tally_operand`. This is the Phase-1 / S3 primary
     /// objective. `dram_reads` above stays the per-operand transaction count
@@ -109,8 +109,8 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use cs::gkr_compiler::dag_ir::{lower_dag, validate, CircuitSchedule};
     use cs::gkr_compiler::GKRCircuitArtifact;
+    use cs::gkr_compiler::dag_ir::{CircuitSchedule, lower_dag, validate};
     use field::baby_bear::base::BabyBearField;
 
     use crate::fwd::compile::compile_circuit;
@@ -166,25 +166,41 @@ mod tests {
         let stats = &compiled.stats;
 
         // program_lanes > 0: at least one instruction was emitted
-        assert!(stats.program_lanes > 0,
-            "expected program_lanes > 0, got {}", stats.program_lanes);
+        assert!(
+            stats.program_lanes > 0,
+            "expected program_lanes > 0, got {}",
+            stats.program_lanes
+        );
 
         // op_counts.sum() > 0: at least one opcode counted
         let total_ops: usize = stats.op_counts.iter().sum();
-        assert!(total_ops > 0,
-            "expected op_counts sum > 0, got {:?}", stats.op_counts);
+        assert!(
+            total_ops > 0,
+            "expected op_counts sum > 0, got {:?}",
+            stats.op_counts
+        );
 
         // program_lanes == total instruction count
-        assert_eq!(stats.program_lanes, compiled.program.instrs.len(),
-            "program_lanes mismatch");
+        assert_eq!(
+            stats.program_lanes,
+            compiled.program.instrs.len(),
+            "program_lanes mismatch"
+        );
 
         // op_counts sum equals program_lanes
-        assert_eq!(total_ops, stats.program_lanes,
-            "op_counts sum {} != program_lanes {}", total_ops, stats.program_lanes);
+        assert_eq!(
+            total_ops, stats.program_lanes,
+            "op_counts sum {} != program_lanes {}",
+            total_ops, stats.program_lanes
+        );
 
         // max_live_cells within budget
-        assert!(stats.max_live_cells <= budget,
-            "max_live_cells {} > budget {}", stats.max_live_cells, budget);
+        assert!(
+            stats.max_live_cells <= budget,
+            "max_live_cells {} > budget {}",
+            stats.max_live_cells,
+            budget
+        );
 
         // special_gathers == number of non-VirtualSetup (peek) descriptors in ctx.specials
         let expected_peek = compiled
@@ -193,27 +209,44 @@ mod tests {
             .iter()
             .filter(|d| !matches!(d.strategy, SpecialStrategy::VirtualSetup { .. }))
             .count();
-        assert_eq!(stats.special_gathers, expected_peek,
-            "special_gathers {} != expected_peek {}", stats.special_gathers, expected_peek);
+        assert_eq!(
+            stats.special_gathers, expected_peek,
+            "special_gathers {} != expected_peek {}",
+            stats.special_gathers, expected_peek
+        );
         // Non-vacuity: add_sub L0 has VirtualSetup descriptors (RC16 + RCTimestamp), so the
         // peek-only count must be strictly less than the full specials table — otherwise the
         // filter above would be a no-op tautology.
-        assert!(expected_peek < compiled.ctx.specials.len(),
-            "add_sub L0 has VirtualSetup descriptors, so peek-only special_gathers must be strictly less than the full specials table");
+        assert!(
+            expected_peek < compiled.ctx.specials.len(),
+            "add_sub L0 has VirtualSetup descriptors, so peek-only special_gathers must be strictly less than the full specials table"
+        );
 
         // report contains the per-layer header
         let r = report(stats);
-        assert!(r.contains("layer stats:"),
-            "report missing 'layer stats:' header: {}", r);
+        assert!(
+            r.contains("layer stats:"),
+            "report missing 'layer stats:' header: {}",
+            r
+        );
     }
 
     fn count_global_reads(instr: &crate::fwd::isa::Instr) -> usize {
         use crate::fwd::isa::{Instr, OperandLine};
         let mut n = 0;
-        let mut tally = |op: &OperandLine| if matches!(op, OperandLine::Global { .. }) { n += 1 };
+        let mut tally = |op: &OperandLine| {
+            if matches!(op, OperandLine::Source { .. }) {
+                n += 1
+            }
+        };
         match instr {
-            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => operands.iter().for_each(&mut tally),
-            Instr::Fma { pairs, .. } => pairs.iter().for_each(|(l, r)| { tally(l); tally(r); }),
+            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                operands.iter().for_each(&mut tally)
+            }
+            Instr::Fma { pairs, .. } => pairs.iter().for_each(|(l, r)| {
+                tally(l);
+                tally(r);
+            }),
             Instr::Mov { src: Some(op), .. } => tally(op),
             Instr::Mov { src: None, .. } => {}
         }
@@ -229,14 +262,22 @@ mod tests {
         };
         let s = &compiled.stats;
         // add_sub L0 reads real BaseLayerMemory/Witness/Setup columns + Prior caches.
-        assert!(s.dram_reads > 0, "expected dram_reads > 0, got {}", s.dram_reads);
+        assert!(
+            s.dram_reads > 0,
+            "expected dram_reads > 0, got {}",
+            s.dram_reads
+        );
         // dram_reads counts each Global operand IN THE PROGRAM exactly once, and EXCLUDES
         // zero-lane CopyAlias reads (free pointer views on device — not DRAM traffic).
         let mut manual = 0usize;
         for instr in &compiled.program.instrs {
             manual += count_global_reads(instr); // helper below, test-local
         }
-        assert_eq!(s.dram_reads, manual, "dram_reads {} != in-program Global-operand count {}", s.dram_reads, manual);
+        assert_eq!(
+            s.dram_reads, manual,
+            "dram_reads {} != in-program Global-operand count {}",
+            s.dram_reads, manual
+        );
         // Non-vacuity: add_sub L0 DOES have Global CopyAlias roots (excluded above), so the
         // exclusion is a real, tested property — not a no-op.
         let alias_globals = compiled
@@ -245,13 +286,17 @@ mod tests {
             .filter(|(_, out)| {
                 matches!(
                     out,
-                    crate::fwd::context::RootOutput::Alias(crate::fwd::isa::OperandLine::Global { .. })
+                    crate::fwd::context::RootOutput::Alias(
+                        crate::fwd::isa::OperandLine::LogicalGlobal { .. }
+                    )
                 )
             })
             .count();
-        assert!(alias_globals > 0, "expected >=1 Global CopyAlias root in add_sub L0 (else exclusion is vacuous), got {alias_globals}");
+        assert!(
+            alias_globals > 0,
+            "expected >=1 Global CopyAlias root in add_sub L0 (else exclusion is vacuous), got {alias_globals}"
+        );
     }
-
 
     #[test]
     fn report_renders_dram_ldc_and_special_read_counters() {
@@ -262,6 +307,9 @@ mod tests {
         let r = report(&s);
         assert!(r.contains("dram_reads=7"), "report missing dram_reads: {r}");
         assert!(r.contains("ldc_reads=3"), "report missing ldc_reads: {r}");
-        assert!(r.contains("special_reads=5"), "report missing special_reads: {r}");
+        assert!(
+            r.contains("special_reads=5"),
+            "report missing special_reads: {r}"
+        );
     }
 }

@@ -220,13 +220,42 @@ pub fn round_cost(
 
     for instr in &c.program.instrs {
         for_each_operand(instr, |op, field| match op {
-            OperandLine::Global { .. } => {
+            OperandLine::LogicalGlobal { .. } => {
                 let w = match field {
                     OperandField::Base => 1,
                     OperandField::Ext => EXT_CELLS,
                 };
                 cost.t0_read_bytes += r0_read_bytes(Role::T0, w);
                 cost.t2_read_bytes += r0_read_bytes(Role::T2, w);
+            }
+            OperandLine::LogicalFold { desc, .. } => tally_fold_cost(
+                c,
+                *desc,
+                policy,
+                round,
+                cross_fields,
+                &mut cost,
+                &mut materialized_descs,
+            ),
+            OperandLine::Source { window, column, .. } => {
+                if let Some(desc) = c.source_windows.fold_desc(*window, *column) {
+                    tally_fold_cost(
+                        c,
+                        desc,
+                        policy,
+                        round,
+                        cross_fields,
+                        &mut cost,
+                        &mut materialized_descs,
+                    );
+                } else {
+                    let w = match field {
+                        OperandField::Base => 1,
+                        OperandField::Ext => EXT_CELLS,
+                    };
+                    cost.t0_read_bytes += r0_read_bytes(Role::T0, w);
+                    cost.t2_read_bytes += r0_read_bytes(Role::T2, w);
+                }
             }
             OperandLine::Special { desc } => match c.specials.get(*desc) {
                 Some(BwdSpecial::FoldSource { origin }) => {
@@ -263,6 +292,30 @@ pub fn round_cost(
 
     cost.fold_store_bytes = materialized_descs.len() * EXT_BYTES;
     cost
+}
+
+fn tally_fold_cost(
+    c: &BwdCompiledLayer,
+    desc: u16,
+    policy: MaterializationPolicy,
+    round: u8,
+    cross_fields: &HashMap<ReadPlace, FieldKind>,
+    cost: &mut RoundCost,
+    materialized_descs: &mut BTreeSet<u16>,
+) {
+    let Some(BwdSpecial::FoldSource { origin }) = c.specials.get(desc) else {
+        return;
+    };
+    if origin.is_vs() {
+        return;
+    }
+    let state = read_fold_state(policy, round);
+    let width = origin_width_cells(origin, cross_fields);
+    cost.t0_read_bytes += fold_read_bytes(Role::T0, state, width);
+    cost.t2_read_bytes += fold_read_bytes(Role::T2, state, width);
+    if state == FoldState::Materialized {
+        materialized_descs.insert(desc);
+    }
 }
 
 /// Geometric-sum DRAM byte total over the backward round sequence
@@ -660,7 +713,7 @@ mod tests {
         assert!(matches!(
             &c.program.instrs[0],
             Instr::Mov {
-                src: Some(OperandLine::Global { .. }),
+                src: Some(OperandLine::Source { .. }),
                 ..
             }
         ));

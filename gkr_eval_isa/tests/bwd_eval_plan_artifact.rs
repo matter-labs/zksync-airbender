@@ -26,7 +26,9 @@ use gkr_eval_isa::eval_plan::{
     BackwardPlanArtifact, BackwardRegimeArtifact, BackwardRegimeChainProgress,
     BackwardScoreArtifact, CanonicalU128, DomainCertificate, SourceCostArtifact,
 };
+use gkr_eval_isa::fwd::binding::{BackingKey, SourceWindowTable};
 use gkr_eval_isa::fwd::encode::encode;
+use gkr_eval_isa::fwd::isa::OperandField;
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -124,6 +126,7 @@ fn captured_real_plan() -> &'static CapturedRealPlan {
         let instruction_bytes = oracle_instruction_bytes(
             &instruction_lanes,
             &searched.candidate.compiled.compiled.specials,
+            &searched.candidate.compiled.compiled.source_windows,
         );
         let artifact = capture_backward_plan_artifact(&searched).unwrap();
         CapturedRealPlan {
@@ -139,7 +142,11 @@ fn oracle_encoded_bytes(encoded: &[u16]) -> Vec<u8> {
     encoded.iter().flat_map(|lane| lane.to_le_bytes()).collect()
 }
 
-fn oracle_instruction_bytes(encoded: &[u16], specials: &BwdSpecialTable) -> Vec<u8> {
+fn oracle_instruction_bytes(
+    encoded: &[u16],
+    specials: &BwdSpecialTable,
+    source_windows: &SourceWindowTable,
+) -> Vec<u8> {
     let mut bytes = oracle_encoded_bytes(encoded);
     bytes.extend_from_slice(&(specials.len() as u64).to_le_bytes());
     for index in 0..specials.len() {
@@ -150,7 +157,52 @@ fn oracle_instruction_bytes(encoded: &[u16], specials: &BwdSpecialTable) -> Vec<
                 .expect("oracle descriptor index must resolve"),
         );
     }
+    oracle_serialize_source_windows(&mut bytes, source_windows);
     bytes
+}
+
+fn oracle_serialize_source_windows(bytes: &mut Vec<u8>, table: &SourceWindowTable) {
+    bytes.extend_from_slice(&(table.len() as u64).to_le_bytes());
+    for window in table.windows() {
+        oracle_serialize_backing_key(bytes, &window.backing);
+        bytes.extend_from_slice(&(window.first_column as u64).to_le_bytes());
+        let columns: Vec<_> = window.referenced_columns().collect();
+        bytes.extend_from_slice(&(columns.len() as u64).to_le_bytes());
+        for column in columns {
+            bytes.extend_from_slice(&(column as u64).to_le_bytes());
+        }
+        let folds: Vec<_> = window.fold_descriptors().collect();
+        bytes.extend_from_slice(&(folds.len() as u64).to_le_bytes());
+        for (column, desc) in folds {
+            bytes.extend_from_slice(&(column as u64).to_le_bytes());
+            bytes.extend_from_slice(&desc.to_le_bytes());
+        }
+    }
+}
+
+fn oracle_serialize_backing_key(bytes: &mut Vec<u8>, key: &BackingKey) {
+    match key {
+        BackingKey::BaseLayerMemory => bytes.push(0),
+        BackingKey::BaseLayerWitness => bytes.push(1),
+        BackingKey::Setup => bytes.push(2),
+        BackingKey::Scratch => bytes.push(3),
+        BackingKey::LayerOutput { layer, field } => {
+            bytes.push(4);
+            bytes.extend_from_slice(&(*layer as u64).to_le_bytes());
+            bytes.push(match field {
+                OperandField::Base => 0,
+                OperandField::Ext => 1,
+            });
+        }
+        BackingKey::CacheOutput { layer, field } => {
+            bytes.push(5);
+            bytes.extend_from_slice(&(*layer as u64).to_le_bytes());
+            bytes.push(match field {
+                OperandField::Base => 0,
+                OperandField::Ext => 1,
+            });
+        }
+    }
 }
 
 fn oracle_serialize_bwd_special(bytes: &mut Vec<u8>, special: &BwdSpecial) {
@@ -321,7 +373,7 @@ fn backend_neutrality_oracle_pins_special_lengths_tags_fields_and_endianness() {
     });
     specials.intern(BwdSpecial::AccInit);
 
-    let bytes = oracle_instruction_bytes(&[0x0201, 0x0403], &specials);
+    let bytes = oracle_instruction_bytes(&[0x0201, 0x0403], &specials, &SourceWindowTable::default());
     let mut cursor = 0usize;
     let mut take = |expected: &[u8]| {
         assert_eq!(&bytes[cursor..cursor + expected.len()], expected);
@@ -350,6 +402,7 @@ fn backend_neutrality_oracle_pins_special_lengths_tags_fields_and_endianness() {
     take(&[2]);
     take(&0x1413_1211u32.to_le_bytes());
     take(&[3]);
+    take(&0u64.to_le_bytes());
     assert_eq!(cursor, bytes.len());
 }
 

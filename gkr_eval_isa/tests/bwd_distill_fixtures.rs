@@ -23,15 +23,15 @@ mod common;
 use std::collections::{BTreeSet, HashMap};
 
 use common::{
-    cache_consistent_resolvers, load_fixture, resolvers, CacheConsistentResolvers,
-    SyntheticResolvers,
+    CacheConsistentResolvers, SyntheticResolvers, cache_consistent_resolvers, load_fixture,
+    resolvers,
 };
 use cs::gkr_compiler::dag_ir::{
-    bwd_roots, eval_layer_root, lower_dag, validate, BwdRegime, ChallengeKey, ChallengePower,
-    ChallengeRef, DagLayer, Expr, ExprId, Ext, Resolvers, SourceKind,
+    BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, DagLayer, Expr, ExprId, Ext, Resolvers,
+    SourceKind, bwd_roots, eval_layer_root, lower_dag, validate,
 };
 use field::Field;
-use gkr_eval_isa::bwd::compile::{compile_distilled, spine_terms, BwdCompiledLayer};
+use gkr_eval_isa::bwd::compile::{BwdCompiledLayer, compile_distilled, spine_terms};
 use gkr_eval_isa::bwd::source::BwdSpecial;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine, Program};
@@ -144,8 +144,15 @@ fn eval_rewritten(
 
 /// beta^i challenge value as the distilled spine resolves it (i >= 1).
 fn beta_i(r: &Resolvers<'_>, i: usize) -> Ext {
-    let power = if i == 1 { ChallengePower::One } else { ChallengePower::Static(i as u32) };
-    r.challenge.challenge(&ChallengeRef { key: ChallengeKey::ClaimBatching, power })
+    let power = if i == 1 {
+        ChallengePower::One
+    } else {
+        ChallengePower::Static(i as u32)
+    };
+    r.challenge.challenge(&ChallengeRef {
+        key: ChallengeKey::ClaimBatching,
+        power,
+    })
 }
 
 #[test]
@@ -216,7 +223,10 @@ fn distill_all_fixtures_both_regimes() {
     for s in &skipped {
         println!("  {s}");
     }
-    let pinned: BTreeSet<String> = PINNED_SKIPPED_DECODER.iter().map(|s| s.to_string()).collect();
+    let pinned: BTreeSet<String> = PINNED_SKIPPED_DECODER
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         skipped, pinned,
         "skipped_decoder set drifted from the pinned expectation — update deliberately"
@@ -235,13 +245,20 @@ fn distill_all_fixtures_both_regimes() {
 fn assert_result_in_acc(p: &Program, ctx: &str) {
     assert!(!p.instrs.is_empty(), "[{ctx}] empty bwd program");
     for i in &p.instrs {
-        if let Instr::Mov { dst: Some(DstLine::GlobalMaterialize { .. }), .. } = i {
+        if let Instr::Mov {
+            dst: Some(DstLine::GlobalMaterialize { .. }),
+            ..
+        } = i
+        {
             panic!("[{ctx}] bwd program must never emit GlobalMaterialize: {i:?}");
         }
     }
     match p.instrs.last().unwrap() {
         Instr::Add { .. } | Instr::Mul { .. } | Instr::Fma { .. } => {}
-        Instr::Mov { dir: MovDir::AccFromSrc, .. } => {}
+        Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            ..
+        } => {}
         other => panic!("[{ctx}] terminal instruction must leave the value in acc: {other:?}"),
     }
 }
@@ -324,7 +341,10 @@ fn compile_distilled_all_fixtures_b16() {
                 );
                 // A multi-term spine spills at least one partial → live cells.
                 if spine_terms(&d).len() >= 2 {
-                    assert!(c.stats.max_live_cells > 0, "[{ctx}] compound layer used no cells");
+                    assert!(
+                        c.stats.max_live_cells > 0,
+                        "[{ctx}] compound layer used no cells"
+                    );
                 }
                 // Traffic-tally consistency (search-facing extension): every
                 // Read-origin FoldSource use tallies 4 cells; VS-origin folds use
@@ -356,7 +376,7 @@ fn compile_distilled_all_fixtures_b16() {
                         let mut global_ops = 0usize;
                         for instr in &c.program.instrs {
                             let mut f = |op: &OperandLine| {
-                                if matches!(op, OperandLine::Global { .. }) {
+                                if matches!(op, OperandLine::Source { .. }) {
                                     global_ops += 1;
                                 }
                             };
@@ -382,14 +402,25 @@ fn compile_distilled_all_fixtures_b16() {
             }
         }
     }
-    println!("compiled {compiled} distilled layer x regime instances; {fold_layers} Ext instances with fold uses");
+    println!(
+        "compiled {compiled} distilled layer x regime instances; {fold_layers} Ext instances with fold uses"
+    );
     println!("b16-infeasible ({}):", infeasible.len());
     for s in &infeasible {
         println!("  {s}");
     }
-    assert!(compiled > 0, "smoke must compile at least one distillable layer");
-    assert!(fold_layers > 0, "at least one Ext layer must exercise FoldSource operands");
-    let pinned: BTreeSet<String> = PINNED_B16_INFEASIBLE.iter().map(|s| s.to_string()).collect();
+    assert!(
+        compiled > 0,
+        "smoke must compile at least one distillable layer"
+    );
+    assert!(
+        fold_layers > 0,
+        "at least one Ext layer must exercise FoldSource operands"
+    );
+    let pinned: BTreeSet<String> = PINNED_B16_INFEASIBLE
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         infeasible, pinned,
         "b16-infeasible set drifted from the pinned expectation — update deliberately"

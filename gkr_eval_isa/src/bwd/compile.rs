@@ -27,24 +27,24 @@ use std::collections::BTreeMap;
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId};
 
-use crate::fwd::binding::BackingTable;
+use crate::fwd::binding::{BackingTable, SourceMarkerMode, SourceWindowTable, bind_final_sources};
 use crate::fwd::compile::decisions::OccurrenceStreams;
 use crate::fwd::compile::{
-    compile_bwd_fragments_program, compile_bwd_program, compile_bwd_program_peak, PlanInput,
-    SiteDecisions,
+    PlanInput, SiteDecisions, compile_bwd_fragments_program, compile_bwd_program,
+    compile_bwd_program_peak,
 };
 use crate::fwd::context::DagForwardContext;
 use crate::fwd::error::CompileError;
 use crate::fwd::isa::{DstLine, Instr, LdcSub, OperandField, OperandLine, Program};
-use crate::fwd::source::{DerivedE4Banks, ConstBank};
+use crate::fwd::source::{ConstBank, DerivedE4Banks};
 use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 
-use super::distill::{distilled_site_domain, DistilledLayer};
-use super::plan::{plan_entries_fnv, BwdOccurrencePlan};
+use super::distill::{DistilledLayer, distilled_site_domain};
+use super::plan::{BwdOccurrencePlan, plan_entries_fnv};
 use super::source::{BwdSpecial, BwdSpecialTable};
 use super::trace::{
-    freeze_demand_with, live_profile, plan_epoch, plan_epoch_fragment, BwdCompileTrace,
-    DirectTopCorrection, FrozenDemand,
+    BwdCompileTrace, DirectTopCorrection, FrozenDemand, freeze_demand_with, live_profile,
+    plan_epoch, plan_epoch_fragment,
 };
 
 // ── BwdTrafficStats ───────────────────────────────────────────────────────────
@@ -84,12 +84,21 @@ pub struct BwdCompiledLayer {
     pub specials: BwdSpecialTable,
     /// Backing slots for R0-regime `Global` reads.
     pub backings: BackingTable,
+    pub source_windows: SourceWindowTable,
     pub consts: ConstBank,
     pub derived_e4: DerivedE4Banks,
     /// Smem budget in bf lanes; v2 ext buckets = `budget / 4`.
     pub budget: usize,
     pub stats: CompileStats,
     pub stats_ext: BwdTrafficStats,
+}
+
+fn bind_bwd_sources(
+    program: &mut Program,
+    ctx: &mut DagForwardContext,
+) -> Result<(), CompileError> {
+    ctx.source_windows = bind_final_sources(program, &ctx.backings, SourceMarkerMode::Backward)?;
+    Ok(())
 }
 
 // ── spine terms ───────────────────────────────────────────────────────────────
@@ -210,7 +219,7 @@ fn compile_distilled_at(
         )
     });
 
-    let (program, max_live_cells, _trace) = compile_bwd_program(
+    let (mut program, max_live_cells, _trace) = compile_bwd_program(
         layer,
         root_expr,
         &terms,
@@ -224,21 +233,26 @@ fn compile_distilled_at(
         None, // trace
         None, // plan (gene / uncached path)
     )?;
+    bind_bwd_sources(&mut program, &mut ctx)?;
 
     // The bwd lowering runs the fwd resolution hook with empty materialize maps
     // and CLEARED resolutions, so it must never intern a fwd SpecialDescriptor:
     // bwd Special operands index `d.specials` (the BWD table), a disjoint
     // namespace. A non-empty fwd table here means a resolution fence leaked into
     // the fwd descriptor namespace.
-    assert!(ctx.specials.is_empty(), "bwd compile leaked into the fwd descriptor namespace");
+    assert!(
+        ctx.specials.is_empty(),
+        "bwd compile leaked into the fwd descriptor namespace"
+    );
 
-    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials);
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials, &ctx.source_windows);
     stats.max_live_cells = max_live_cells;
 
     Ok(BwdCompiledLayer {
         program,
         specials: d.specials.clone(),
         backings: ctx.backings,
+        source_windows: ctx.source_windows,
         consts: ctx.consts,
         derived_e4: ctx.derived_e4,
         budget: place_budget,
@@ -338,7 +352,7 @@ fn compile_distilled_at_traced(
         free: Vec::new(),
     };
 
-    let (program, max_live_cells, trace) = compile_bwd_program(
+    let (mut program, max_live_cells, trace) = compile_bwd_program(
         layer,
         root_expr,
         &terms,
@@ -352,8 +366,12 @@ fn compile_distilled_at_traced(
         Some(seed),
         None, // plan (gene / uncached traced path)
     )?;
+    bind_bwd_sources(&mut program, &mut ctx)?;
 
-    assert!(ctx.specials.is_empty(), "bwd compile leaked into the fwd descriptor namespace");
+    assert!(
+        ctx.specials.is_empty(),
+        "bwd compile leaked into the fwd descriptor namespace"
+    );
 
     let mut trace = trace.expect("a Some-seeded traced compile returns its trace");
     // free[t] = budget - live lanes at t (saturating): the spare-lane envelope a later
@@ -363,7 +381,7 @@ fn compile_distilled_at_traced(
         .map(|occ| place_budget.saturating_sub(occ))
         .collect();
 
-    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials);
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials, &ctx.source_windows);
     stats.max_live_cells = max_live_cells;
 
     Ok((
@@ -371,6 +389,7 @@ fn compile_distilled_at_traced(
             program,
             specials: d.specials.clone(),
             backings: ctx.backings,
+            source_windows: ctx.source_windows,
             consts: ctx.consts,
             derived_e4: ctx.derived_e4,
             budget: place_budget,
@@ -413,7 +432,8 @@ pub fn compile_distilled_planned(
     );
     let expected_fnv = plan_entries_fnv(&plan.entries);
     assert_eq!(
-        plan.entries_fnv, expected_fnv,
+        plan.entries_fnv,
+        expected_fnv,
         "plan entries_fnv mismatch: plan carries {} but its {} entries re-hash to \
          {expected_fnv} — corrupted plan",
         plan.entries_fnv,
@@ -485,8 +505,10 @@ pub fn compile_distilled_at_planned_lb(
 
     // The distilled site-domain value set — only these serves drive the matcher
     // (mirrors `OccurrenceStreams::admittable`; same set `freeze_demand` filters on).
-    let domain: std::collections::BTreeSet<ExprId> =
-        distilled_site_domain(d).into_iter().map(|s| s.value).collect();
+    let domain: std::collections::BTreeSet<ExprId> = distilled_site_domain(d)
+        .into_iter()
+        .map(|s| s.value)
+        .collect();
 
     let seed = BwdCompileTrace {
         epoch: plan_epoch(d, place_budget, stream_reductions),
@@ -496,7 +518,7 @@ pub fn compile_distilled_at_planned_lb(
         free: Vec::new(),
     };
 
-    let (program, max_live_cells, trace) = compile_bwd_program(
+    let (mut program, max_live_cells, trace) = compile_bwd_program(
         layer,
         root_expr,
         &terms,
@@ -510,8 +532,12 @@ pub fn compile_distilled_at_planned_lb(
         Some(seed),
         Some(PlanInput { plan, domain }),
     )?;
+    bind_bwd_sources(&mut program, &mut ctx)?;
 
-    assert!(ctx.specials.is_empty(), "bwd compile leaked into the fwd descriptor namespace");
+    assert!(
+        ctx.specials.is_empty(),
+        "bwd compile leaked into the fwd descriptor namespace"
+    );
 
     let mut trace = trace.expect("a Some-seeded planned compile returns its trace");
     trace.free = live_profile(&program)
@@ -519,7 +545,7 @@ pub fn compile_distilled_at_planned_lb(
         .map(|occ| place_budget.saturating_sub(occ))
         .collect();
 
-    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials);
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials, &ctx.source_windows);
     stats.max_live_cells = max_live_cells;
 
     Ok((
@@ -527,6 +553,7 @@ pub fn compile_distilled_at_planned_lb(
             program,
             specials: d.specials.clone(),
             backings: ctx.backings,
+            source_windows: ctx.source_windows,
             consts: ctx.consts,
             derived_e4: ctx.derived_e4,
             budget: place_budget,
@@ -548,7 +575,9 @@ pub fn compile_distilled_at_planned_lb(
 /// recipe, or an `AccInit` for an empty `c_init`, would be an orphan the value gate rejects.
 /// The interned descs land BEYOND `d.specials.len()` (the distilled table never holds a
 /// `Coefficient`/`AccInit`), so `bind`'s per-run `states` stay dense over `d.specials`.
-pub(crate) fn fragment_descs(d: &DistilledLayer) -> (BwdSpecialTable, Vec<Option<u16>>, Option<u16>) {
+pub(crate) fn fragment_descs(
+    d: &DistilledLayer,
+) -> (BwdSpecialTable, Vec<Option<u16>>, Option<u16>) {
     let mut specials = d.specials.clone();
     let acc_init_desc = if d.fragments.c_init.terms.is_empty() {
         None
@@ -639,7 +668,7 @@ fn compile_distilled_fragments_at(
     let mut ctx = DagForwardContext::default();
     ctx.cross_layer_fields = d.cross_fields.clone();
 
-    let (program, max_live_cells, _trace) = compile_bwd_fragments_program(
+    let (mut program, max_live_cells, _trace) = compile_bwd_fragments_program(
         layer,
         &d.fragments,
         order,
@@ -654,18 +683,23 @@ fn compile_distilled_fragments_at(
         None, // trace
         None, // plan (uncached path)
     )?;
+    bind_bwd_sources(&mut program, &mut ctx)?;
 
     // Same namespace fence as the term path: the bwd hook + cleared resolutions must never
     // intern a fwd SpecialDescriptor; Coefficient/AccInit live in the CLONED bwd table only.
-    assert!(ctx.specials.is_empty(), "bwd fragment compile leaked into the fwd descriptor namespace");
+    assert!(
+        ctx.specials.is_empty(),
+        "bwd fragment compile leaked into the fwd descriptor namespace"
+    );
 
-    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials);
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials, &ctx.source_windows);
     stats.max_live_cells = max_live_cells;
 
     Ok(BwdCompiledLayer {
         program,
         specials,
         backings: ctx.backings,
+        source_windows: ctx.source_windows,
         consts: ctx.consts,
         derived_e4: ctx.derived_e4,
         budget: place_budget,
@@ -745,7 +779,7 @@ fn compile_distilled_fragments_at_traced(
         free: Vec::new(),
     };
 
-    let (program, max_live_cells, trace) = compile_bwd_fragments_program(
+    let (mut program, max_live_cells, trace) = compile_bwd_fragments_program(
         layer,
         &d.fragments,
         order,
@@ -760,8 +794,12 @@ fn compile_distilled_fragments_at_traced(
         Some(seed),
         None, // plan (uncached traced path)
     )?;
+    bind_bwd_sources(&mut program, &mut ctx)?;
 
-    assert!(ctx.specials.is_empty(), "bwd fragment compile leaked into the fwd descriptor namespace");
+    assert!(
+        ctx.specials.is_empty(),
+        "bwd fragment compile leaked into the fwd descriptor namespace"
+    );
 
     let mut trace = trace.expect("a Some-seeded traced compile returns its trace");
     trace.free = live_profile(&program)
@@ -769,7 +807,7 @@ fn compile_distilled_fragments_at_traced(
         .map(|occ| place_budget.saturating_sub(occ))
         .collect();
 
-    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials);
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials, &ctx.source_windows);
     stats.max_live_cells = max_live_cells;
 
     Ok((
@@ -777,6 +815,7 @@ fn compile_distilled_fragments_at_traced(
             program,
             specials,
             backings: ctx.backings,
+            source_windows: ctx.source_windows,
             consts: ctx.consts,
             derived_e4: ctx.derived_e4,
             budget: place_budget,
@@ -807,7 +846,8 @@ pub fn compile_distilled_fragments_planned(
     );
     let expected_fnv = plan_entries_fnv(&plan.entries);
     assert_eq!(
-        plan.entries_fnv, expected_fnv,
+        plan.entries_fnv,
+        expected_fnv,
         "plan entries_fnv mismatch: plan carries {} but its {} entries re-hash to \
          {expected_fnv} — corrupted plan",
         plan.entries_fnv,
@@ -864,8 +904,10 @@ fn compile_distilled_fragments_at_planned_lb(
     let mut ctx = DagForwardContext::default();
     ctx.cross_layer_fields = d.cross_fields.clone();
 
-    let domain: std::collections::BTreeSet<ExprId> =
-        distilled_site_domain(d).into_iter().map(|s| s.value).collect();
+    let domain: std::collections::BTreeSet<ExprId> = distilled_site_domain(d)
+        .into_iter()
+        .map(|s| s.value)
+        .collect();
 
     let seed = BwdCompileTrace {
         epoch: plan_epoch_fragment(d, place_budget, stream_reductions),
@@ -875,7 +917,7 @@ fn compile_distilled_fragments_at_planned_lb(
         free: Vec::new(),
     };
 
-    let (program, max_live_cells, trace) = compile_bwd_fragments_program(
+    let (mut program, max_live_cells, trace) = compile_bwd_fragments_program(
         layer,
         &d.fragments,
         order,
@@ -890,8 +932,12 @@ fn compile_distilled_fragments_at_planned_lb(
         Some(seed),
         Some(PlanInput { plan, domain }),
     )?;
+    bind_bwd_sources(&mut program, &mut ctx)?;
 
-    assert!(ctx.specials.is_empty(), "bwd fragment compile leaked into the fwd descriptor namespace");
+    assert!(
+        ctx.specials.is_empty(),
+        "bwd fragment compile leaked into the fwd descriptor namespace"
+    );
 
     let mut trace = trace.expect("a Some-seeded planned compile returns its trace");
     trace.free = live_profile(&program)
@@ -899,7 +945,7 @@ fn compile_distilled_fragments_at_planned_lb(
         .map(|occ| place_budget.saturating_sub(occ))
         .collect();
 
-    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials);
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials, &ctx.source_windows);
     stats.max_live_cells = max_live_cells;
 
     Ok((
@@ -907,6 +953,7 @@ fn compile_distilled_fragments_at_planned_lb(
             program,
             specials,
             backings: ctx.backings,
+            source_windows: ctx.source_windows,
             consts: ctx.consts,
             derived_e4: ctx.derived_e4,
             budget: place_budget,
@@ -981,6 +1028,7 @@ impl BwdCompileBackend for TermBackend {
             &c.program,
             &c.specials,
             &c.backings,
+            &c.source_windows,
             DirectTopCorrection::Term,
         )
     }
@@ -1022,6 +1070,7 @@ impl BwdCompileBackend for FragmentBackend {
             &c.program,
             &c.specials,
             &c.backings,
+            &c.source_windows,
             DirectTopCorrection::None,
         )
     }
@@ -1109,7 +1158,7 @@ fn compile_distilled_at_peak(
         )
     });
 
-    let (program, max_live_cells, peak_instr, peak_live) = compile_bwd_program_peak(
+    let (mut program, max_live_cells, peak_instr, peak_live) = compile_bwd_program_peak(
         layer,
         root_expr,
         &terms,
@@ -1121,10 +1170,14 @@ fn compile_distilled_at_peak(
         lower_budget,
         stream_reductions,
     )?;
+    bind_bwd_sources(&mut program, &mut ctx)?;
 
-    assert!(ctx.specials.is_empty(), "bwd compile leaked into the fwd descriptor namespace");
+    assert!(
+        ctx.specials.is_empty(),
+        "bwd compile leaked into the fwd descriptor namespace"
+    );
 
-    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials);
+    let (mut stats, stats_ext) = tally_bwd_program(&program, &d.specials, &ctx.source_windows);
     stats.max_live_cells = max_live_cells;
 
     Ok((
@@ -1132,6 +1185,7 @@ fn compile_distilled_at_peak(
             program,
             specials: d.specials.clone(),
             backings: ctx.backings,
+            source_windows: ctx.source_windows,
             consts: ctx.consts,
             derived_e4: ctx.derived_e4,
             budget: place_budget,
@@ -1164,20 +1218,40 @@ fn width_of(field: OperandField) -> usize {
 pub(crate) fn tally_bwd_program(
     program: &Program,
     specials: &BwdSpecialTable,
+    source_windows: &SourceWindowTable,
 ) -> (CompileStats, BwdTrafficStats) {
     let mut stats = CompileStats::default();
     let mut ext = BwdTrafficStats::default();
     stats.program_lanes = program.instrs.len();
-    let mut tally = |op: &OperandLine, field: OperandField, stats: &mut CompileStats, ext: &mut BwdTrafficStats| {
+    let mut tally = |op: &OperandLine,
+                     field: OperandField,
+                     stats: &mut CompileStats,
+                     ext: &mut BwdTrafficStats| {
         match op {
-            OperandLine::Global { .. } => {
+            OperandLine::LogicalGlobal { .. } => {
                 stats.dram_reads += 1;
                 let w = width_of(field);
                 stats.dram_traffic += w;
                 ext.global += w;
             }
+            OperandLine::LogicalFold { desc, .. } => {
+                tally_fold_source(*desc, specials, stats, ext);
+            }
+            OperandLine::Source { window, column, .. } => {
+                if let Some(desc) = source_windows.fold_desc(*window, *column) {
+                    tally_fold_source(desc, specials, stats, ext);
+                } else {
+                    stats.dram_reads += 1;
+                    let w = width_of(field);
+                    stats.dram_traffic += w;
+                    ext.global += w;
+                }
+            }
             OperandLine::Smem { .. } => stats.cell_reads += 1,
-            OperandLine::Ldc { sub: LdcSub::Special, .. } => {} // inline literal
+            OperandLine::Ldc {
+                sub: LdcSub::Special,
+                ..
+            } => {} // inline literal
             OperandLine::Ldc { .. } => stats.ldc_reads += 1,
             OperandLine::Special { desc } => match specials.get(*desc) {
                 Some(BwdSpecial::VirtualSetup { .. }) => {} // resolver-computed, 0 traffic
@@ -1212,7 +1286,13 @@ pub(crate) fn tally_bwd_program(
     };
     for instr in &program.instrs {
         match instr {
-            Instr::Mov { dir, dst, src, field, .. } => {
+            Instr::Mov {
+                dir,
+                dst,
+                src,
+                field,
+                ..
+            } => {
                 stats.op_counts[OP_MOV] += 1;
                 if let Some(op) = src {
                     tally(op, *field, &mut stats, &mut ext);
@@ -1225,19 +1305,28 @@ pub(crate) fn tally_bwd_program(
                     stats.cell_stores += 1;
                 }
             }
-            Instr::Add { field, operands, .. } => {
+            Instr::Add {
+                field, operands, ..
+            } => {
                 stats.op_counts[OP_ADD] += 1;
                 for op in operands {
                     tally(op, *field, &mut stats, &mut ext);
                 }
             }
-            Instr::Mul { field, operands, .. } => {
+            Instr::Mul {
+                field, operands, ..
+            } => {
                 stats.op_counts[OP_MUL] += 1;
                 for op in operands {
                     tally(op, *field, &mut stats, &mut ext);
                 }
             }
-            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                pairs,
+                ..
+            } => {
                 stats.op_counts[OP_FMA] += 1;
                 for (l, r) in pairs {
                     tally(l, *field_lhs, &mut stats, &mut ext);
@@ -1252,6 +1341,22 @@ pub(crate) fn tally_bwd_program(
         .filter(|&i| matches!(specials.get(i), Some(BwdSpecial::FoldSource { .. })))
         .count();
     (stats, ext)
+}
+
+fn tally_fold_source(
+    desc: u16,
+    specials: &BwdSpecialTable,
+    stats: &mut CompileStats,
+    ext: &mut BwdTrafficStats,
+) {
+    stats.special_reads += 1;
+    ext.fold_uses += 1;
+    if matches!(
+        specials.get(desc),
+        Some(BwdSpecial::FoldSource { origin }) if !origin.is_vs()
+    ) {
+        ext.fold_traffic += 4;
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1272,7 +1377,11 @@ mod tests {
     // ── layer-building helpers (claim-only roots — bwd shape) ────────────────
 
     fn read_src(column: usize) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column } } }
+        SourceInfo {
+            kind: SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column },
+            },
+        }
     }
 
     fn claim_only_root(expr: ExprId, relation_index: usize) -> Root {
@@ -1298,7 +1407,13 @@ mod tests {
                 .map(|(i, _)| cs::gkr_compiler::dag_ir::RootId(i as u32))
                 .collect(),
         };
-        DagLayer { sources, exprs, roots, batching, resolutions: BTreeMap::new() }
+        DagLayer {
+            sources,
+            exprs,
+            roots,
+            batching,
+            resolutions: BTreeMap::new(),
+        }
     }
 
     /// All-sites decisions at priority 1.0 over the DISTILLED domain.
@@ -1313,13 +1428,20 @@ mod tests {
     fn assert_result_in_acc(p: &Program) {
         assert!(!p.instrs.is_empty(), "bwd program must not be empty");
         for i in &p.instrs {
-            if let Instr::Mov { dst: Some(DstLine::GlobalMaterialize { .. }), .. } = i {
+            if let Instr::Mov {
+                dst: Some(DstLine::GlobalMaterialize { .. }),
+                ..
+            } = i
+            {
                 panic!("bwd program must never emit GlobalMaterialize: {i:?}");
             }
         }
         match p.instrs.last().unwrap() {
             Instr::Add { .. } | Instr::Mul { .. } | Instr::Fma { .. } => {}
-            Instr::Mov { dir: MovDir::AccFromSrc, .. } => {}
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                ..
+            } => {}
             other => panic!("terminal instruction must leave the root value in acc: {other:?}"),
         }
     }
@@ -1392,12 +1514,18 @@ mod tests {
             ],
         };
 
-        let (stats, ext) = tally_bwd_program(&program, &specials);
+        let (stats, ext) = tally_bwd_program(&program, &specials, &SourceWindowTable::default());
 
-        assert_eq!(stats.ldc_reads, 3, "1 AccInit + 2 Coefficient reads count as ldc_reads");
+        assert_eq!(
+            stats.ldc_reads, 3,
+            "1 AccInit + 2 Coefficient reads count as ldc_reads"
+        );
         assert_eq!(stats.dram_reads, 0);
         assert_eq!(stats.dram_traffic, 0);
-        assert_eq!(stats.special_reads, 0, "coeff/acc-init are not fold-side special gathers");
+        assert_eq!(
+            stats.special_reads, 0,
+            "coeff/acc-init are not fold-side special gathers"
+        );
         assert_eq!(stats.special_gathers, 0);
         assert_eq!(stats.cell_reads, 0);
         assert_eq!(
@@ -1417,23 +1545,36 @@ mod tests {
             vec![Expr::Source(SourceId(0))],
             vec![claim_only_root(ExprId(0), 0)],
         );
-        // (a) R0: the leaf stays an ordinary Global backing read.
+        // (a) R0: the leaf is a final plain source read.
         let d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
         let c = compile_distilled(&d, 16, None).expect("R0 compile");
         assert_result_in_acc(&c.program);
-        assert_eq!(c.program.instrs.len(), 1, "source-only root is one Mov AccFromSrc");
+        assert_eq!(
+            c.program.instrs.len(),
+            1,
+            "source-only root is one Mov AccFromSrc"
+        );
         assert!(
             matches!(
                 &c.program.instrs[0],
-                Instr::Mov { dir: MovDir::AccFromSrc, src: Some(OperandLine::Global { .. }), .. }
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    src: Some(OperandLine::Source {
+                        first_access: true,
+                        ..
+                    }),
+                    ..
+                }
             ),
-            "R0 bare Read root must be Mov AccFromSrc <- Global, got {:?}",
+            "R0 bare Read root must be Mov AccFromSrc <- first Source, got {:?}",
             c.program.instrs[0]
         );
         assert_eq!(c.stats_ext.fold_uses, 0);
         assert!(c.stats_ext.global > 0);
 
-        // (c) Ext: the leaf is a FoldSource Special in the BWD namespace.
+        // (c) Ext: this legacy compiler represents the leaf as a FoldSource
+        // Special in the BWD namespace. The shared eval-plan compiler moves
+        // read-origin folds onto final Source lanes instead.
         let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled(&d, 16, None).expect("Ext compile");
         assert_result_in_acc(&c.program);
@@ -1445,13 +1586,23 @@ mod tests {
             ..
         } = &c.program.instrs[0]
         else {
-            panic!("Ext bare Read root must be Mov{{Ext}} AccFromSrc <- Special, got {:?}", c.program.instrs[0]);
+            panic!(
+                "Ext bare Read root must be Mov{{Ext}} AccFromSrc <- Special, got {:?}",
+                c.program.instrs[0]
+            );
         };
         assert!(
             matches!(c.specials.get(*desc), Some(BwdSpecial::FoldSource { .. })),
             "the desc must be a FoldSource in the BWD table"
         );
-        assert_eq!(c.stats_ext, BwdTrafficStats { global: 0, fold_uses: 1, fold_traffic: 4 });
+        assert_eq!(
+            c.stats_ext,
+            BwdTrafficStats {
+                global: 0,
+                fold_uses: 1,
+                fold_traffic: 4
+            }
+        );
     }
 
     // ── (b): bare Challenge root ──────────────────────────────────────────────
@@ -1477,7 +1628,11 @@ mod tests {
             assert!(
                 matches!(
                     &c.program.instrs[0],
-                    Instr::Mov { dir: MovDir::AccFromSrc, src: Some(OperandLine::Ldc { .. }), .. }
+                    Instr::Mov {
+                        dir: MovDir::AccFromSrc,
+                        src: Some(OperandLine::Ldc { .. }),
+                        ..
+                    }
                 ),
                 "challenge root must load from an Ldc bank, got {:?}",
                 c.program.instrs[0]
@@ -1546,8 +1701,15 @@ mod tests {
         let decisions = all_sites(&d);
         let c = compile_distilled(&d, 8, Some(&decisions)).expect("b8 compile under pressure");
         assert_result_in_acc(&c.program);
-        assert!(c.stats.max_live_cells <= 8, "placement must fit b8, got {}", c.stats.max_live_cells);
-        assert!(c.stats.cell_reads > 0, "spill/residency traffic expected under pressure");
+        assert!(
+            c.stats.max_live_cells <= 8,
+            "placement must fit b8, got {}",
+            c.stats.max_live_cells
+        );
+        assert!(
+            c.stats.cell_reads > 0,
+            "spill/residency traffic expected under pressure"
+        );
         assert!(c.stats.cell_stores > 0);
     }
 
@@ -1563,7 +1725,9 @@ mod tests {
                 read_src(1),
                 SourceInfo {
                     kind: SourceKind::LookupValue {
-                        kind: cs::gkr_compiler::dag_ir::LookupValueKind::GenericColumn { column: 0 },
+                        kind: cs::gkr_compiler::dag_ir::LookupValueKind::GenericColumn {
+                            column: 0,
+                        },
                         set_index: 0,
                         query: ExprId(2),
                     },
@@ -1589,8 +1753,9 @@ mod tests {
         let mut w = BTreeMap::new(); // column -> leaf ExprId
         for (i, e) in d.layer.exprs.iter().enumerate() {
             if let Expr::Source(sid) = e {
-                if let SourceKind::Read { place: ReadPlace::BaseLayerWitness { column } } =
-                    &d.layer.sources[sid.0 as usize].kind
+                if let SourceKind::Read {
+                    place: ReadPlace::BaseLayerWitness { column },
+                } = &d.layer.sources[sid.0 as usize].kind
                 {
                     w.insert(*column, ExprId(i as u32));
                 }
@@ -1627,11 +1792,12 @@ mod tests {
         let l = lookup_fold_layer();
         let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
         // The LookupValue leaf must be gone (rewritten to its query).
-        assert!(!d
-            .layer
-            .sources
-            .iter()
-            .any(|s| matches!(s.kind, SourceKind::LookupValue { .. })));
+        assert!(
+            !d.layer
+                .sources
+                .iter()
+                .any(|s| matches!(s.kind, SourceKind::LookupValue { .. }))
+        );
         let (w0, w1, w2, q) = find_distilled_ids(&d);
         let root_expr = d.layer.roots[d.root.0 as usize].expr;
         let terms = spine_terms(&d);
@@ -1648,8 +1814,16 @@ mod tests {
             &distilled_site_domain(&d),
         );
         assert_eq!(drain(&mut streams, root_expr), 1, "one RootOutput serve");
-        assert_eq!(drain(&mut streams, q), 2, "q demanded once per Mul operand slot");
-        assert_eq!(drain(&mut streams, w0), 2, "w0 demanded once per q recompute");
+        assert_eq!(
+            drain(&mut streams, q),
+            2,
+            "q demanded once per Mul operand slot"
+        );
+        assert_eq!(
+            drain(&mut streams, w0),
+            2,
+            "w0 demanded once per q recompute"
+        );
         assert_eq!(drain(&mut streams, w1), 2);
         assert_eq!(
             drain(&mut streams, w2),
@@ -1663,7 +1837,11 @@ mod tests {
         let desc_of = |e: ExprId| *d.leaf_descs.get(&e).expect("fold leaf desc");
         assert_eq!(count_desc_uses(&c.program, desc_of(w0)), 2);
         assert_eq!(count_desc_uses(&c.program, desc_of(w1)), 2);
-        assert_eq!(count_desc_uses(&c.program, desc_of(w2)), 1, "one use as a term");
+        assert_eq!(
+            count_desc_uses(&c.program, desc_of(w2)),
+            1,
+            "one use as a term"
+        );
         assert_eq!(c.stats_ext.fold_uses, 5);
         assert_eq!(c.stats_ext.fold_traffic, 20);
     }
@@ -1679,10 +1857,17 @@ mod tests {
         let c = compile_distilled(&d, 16, Some(&decisions)).expect("cached compile");
         assert_result_in_acc(&c.program);
         let desc_of = |e: ExprId| *d.leaf_descs.get(&e).expect("fold leaf desc");
-        assert_eq!(count_desc_uses(&c.program, desc_of(w0)), 1, "q recomputed once (admitted)");
+        assert_eq!(
+            count_desc_uses(&c.program, desc_of(w0)),
+            1,
+            "q recomputed once (admitted)"
+        );
         assert_eq!(count_desc_uses(&c.program, desc_of(w1)), 1);
         assert_eq!(count_desc_uses(&c.program, desc_of(w2)), 1);
-        assert!(count_smem_reads(&c.program) > 0, "q's second use must read its cell");
+        assert!(
+            count_smem_reads(&c.program) > 0,
+            "q's second use must read its cell"
+        );
     }
 
     // ── bindings invariance ───────────────────────────────────────────────────
@@ -1696,11 +1881,17 @@ mod tests {
         let c1 = compile_distilled(&d, 16, Some(&decisions)).expect("compile 1");
         let b0 = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
         let b1 = bind(&d, MaterializationPolicy::LazyUpTo(2), 5);
-        assert_ne!(b0.states, b1.states, "bindings genuinely vary (non-vacuous)");
+        assert_ne!(
+            b0.states, b1.states,
+            "bindings genuinely vary (non-vacuous)"
+        );
 
         let c2 = compile_distilled(&d, 16, Some(&decisions)).expect("compile 2");
         let e1 = encode(&c1.program).expect("encode 1");
         let e2 = encode(&c2.program).expect("encode 2");
-        assert_eq!(e1, e2, "compile takes no bindings: bytes identical across bind() variations");
+        assert_eq!(
+            e1, e2,
+            "compile takes no bindings: bytes identical across bind() variations"
+        );
     }
 }

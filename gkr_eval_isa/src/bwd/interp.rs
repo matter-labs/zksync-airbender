@@ -110,9 +110,9 @@ pub fn sumcheck_fold_point(
     if depth == 0 {
         return Ok(base(y));
     }
-    let c = ch
-        .get(depth as usize - 1)
-        .ok_or_else(|| InterpError::MalformedInstr("round_challenges shorter than fold depth".into()))?;
+    let c = ch.get(depth as usize - 1).ok_or_else(|| {
+        InterpError::MalformedInstr("round_challenges shorter than fold depth".into())
+    })?;
     let a = sumcheck_fold_point(base, 2 * y, depth - 1, ch)?;
     let b = sumcheck_fold_point(base, 2 * y + 1, depth - 1, ch)?;
     // a + c·(b − a)
@@ -181,7 +181,7 @@ fn resolve(
     round_challenges: &[Ext],
 ) -> Result<Ext, InterpError> {
     match *o {
-        OperandLine::Global { slot, col } => {
+        OperandLine::LogicalGlobal { slot, col } => {
             // R0-regime origin backing: role-combine the pair of the previous
             // representation directly (single read per element, no fold).
             let place = c
@@ -190,6 +190,46 @@ fn resolve(
                 .ok_or(InterpError::UnknownSlot(slot))?;
             let a = r.read.read(&place, 2 * row);
             let b = r.read.read(&place, 2 * row + 1);
+            Ok(role_combine(role, a, b))
+        }
+        OperandLine::LogicalFold { slot, col, desc } => Err(InterpError::MalformedInstr(format!(
+            "unbound fold source {slot}:{col} descriptor {desc}"
+        ))),
+        OperandLine::Source { window, column, .. } => {
+            let place = c
+                .source_windows
+                .resolve_read_place(window, column)
+                .ok_or_else(|| {
+                    InterpError::MalformedInstr(format!(
+                        "unknown backward source window {window} column {column}"
+                    ))
+                })?;
+            let (a, b) = if let Some(desc) = c.source_windows.fold_desc(window, column) {
+                match c.specials.get(desc) {
+                    Some(BwdSpecial::FoldSource {
+                        origin: OriginLeaf::Read(expected),
+                    }) if *expected == place => {}
+                    _ => {
+                        return Err(InterpError::MalformedInstr(format!(
+                            "source {window}:{column} has invalid fold descriptor {desc}"
+                        )));
+                    }
+                }
+                let state = *bindings
+                    .states
+                    .get(desc as usize)
+                    .ok_or_else(|| InterpError::MalformedInstr("desc has no binding".into()))?;
+                let prim = ReadPrim::Read(&place);
+                (
+                    fold_element(&prim, state, 2 * row, round_challenges, r)?,
+                    fold_element(&prim, state, 2 * row + 1, round_challenges, r)?,
+                )
+            } else {
+                (
+                    r.read.read(&place, 2 * row),
+                    r.read.read(&place, 2 * row + 1),
+                )
+            };
             Ok(role_combine(role, a, b))
         }
         OperandLine::Smem { cell } => Ok(cells[smem_lane(cell, field)]),
@@ -216,7 +256,10 @@ fn resolve(
             }
         },
         OperandLine::Special { desc } => {
-            let spec = c.specials.get(desc).ok_or(InterpError::UnknownSpecial(desc))?;
+            let spec = c
+                .specials
+                .get(desc)
+                .ok_or(InterpError::UnknownSpecial(desc))?;
             // CS-M5a Task 3: match the descriptor KIND first. Coefficient/AccInit
             // are scalar-pure recipe values — row- and role-invariant — resolved
             // via `MergedRecipe::evaluate` over the distilled arena. They do NOT
@@ -303,13 +346,29 @@ pub fn interpret_bwd_row(
 
     macro_rules! res {
         ($op:expr, $field:expr) => {
-            resolve($op, $field, &cells, c, d, bindings, r, role, row, round_challenges)?
+            resolve(
+                $op,
+                $field,
+                &cells,
+                c,
+                d,
+                bindings,
+                r,
+                role,
+                row,
+                round_challenges,
+            )?
         };
     }
 
     for instr in &c.program.instrs {
         match instr {
-            Instr::Mov { dir, field, dst, src } => match dir {
+            Instr::Mov {
+                dir,
+                field,
+                dst,
+                src,
+            } => match dir {
                 MovDir::AccFromSrc => {
                     acc = res!(&src.unwrap(), *field);
                 }
@@ -321,7 +380,12 @@ pub fn interpret_bwd_row(
                     write_dst(&dst.unwrap(), *field, v, &mut cells);
                 }
             },
-            Instr::Add { field, sign, operands, .. } => {
+            Instr::Add {
+                field,
+                sign,
+                operands,
+                ..
+            } => {
                 for o in operands {
                     let v = res!(o, *field);
                     match sign {
@@ -334,7 +398,12 @@ pub fn interpret_bwd_row(
                     }
                 }
             }
-            Instr::Mul { field, negate_acc, operands, .. } => {
+            Instr::Mul {
+                field,
+                negate_acc,
+                operands,
+                ..
+            } => {
                 // Sign bit = negate acc FIRST (spec §1.2); zero operands = pure negation.
                 if *negate_acc {
                     acc.negate();
@@ -344,7 +413,13 @@ pub fn interpret_bwd_row(
                     acc.mul_assign(&v);
                 }
             }
-            Instr::Fma { field_lhs, field_rhs, sign, pairs, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                sign,
+                pairs,
+                ..
+            } => {
                 for (l, rhs) in pairs {
                     let mut prod = res!(l, *field_lhs);
                     prod.mul_assign(&res!(rhs, *field_rhs));
@@ -373,10 +448,10 @@ mod tests {
     use crate::bwd::fragment::{FragmentSpec, FragmentTable, MergedRecipe, ProductRecipe};
     use crate::bwd::source::MaterializationPolicy;
     use cs::gkr_compiler::dag_ir::{
-        eval_layer_root, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
-        DagLayer, Expr, ExprId, FieldKind, LookupValueKind, ReadPlace, ReadResolver, RootGroup,
-        RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
-        VirtualSetupKind,
+        BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagLayer, Expr,
+        ExprId, FieldKind, LookupValueKind, ReadPlace, ReadResolver, RootGroup, RootId, RootOrigin,
+        RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
+        eval_layer_root,
     };
     use cs::gkr_compiler::dag_ir::{
         BwdRegime, ChallengeResolver, LookupResolver, Root, VirtualSetupResolver,
@@ -390,9 +465,9 @@ mod tests {
     impl ReadResolver for WitnessRead {
         fn read(&self, place: &ReadPlace, row: usize) -> Ext {
             match place {
-                ReadPlace::BaseLayerWitness { column } => {
-                    lift(Bf::from_u32_with_reduction(7 * *column as u32 + row as u32 + 1))
-                }
+                ReadPlace::BaseLayerWitness { column } => lift(Bf::from_u32_with_reduction(
+                    7 * *column as u32 + row as u32 + 1,
+                )),
                 other => panic!("unexpected read place {other:?}"),
             }
         }
@@ -425,7 +500,11 @@ mod tests {
     }
     impl ReadResolver for RoleRead<'_> {
         fn read(&self, place: &ReadPlace, x: usize) -> Ext {
-            role_combine(self.role, self.base.read(place, 2 * x), self.base.read(place, 2 * x + 1))
+            role_combine(
+                self.role,
+                self.base.read(place, 2 * x),
+                self.base.read(place, 2 * x + 1),
+            )
         }
     }
 
@@ -445,7 +524,11 @@ mod tests {
     struct BetaChallenge(Ext);
     impl ChallengeResolver for BetaChallenge {
         fn challenge(&self, r: &ChallengeRef) -> Ext {
-            assert_eq!(r.key, ChallengeKey::ClaimBatching, "unexpected challenge {r:?}");
+            assert_eq!(
+                r.key,
+                ChallengeKey::ClaimBatching,
+                "unexpected challenge {r:?}"
+            );
             match r.power {
                 ChallengePower::One => self.0,
                 ChallengePower::Static(i) => pow(self.0, i),
@@ -456,7 +539,12 @@ mod tests {
     fn resolvers<'a>(read: &'a dyn ReadResolver, ch: &'a BetaChallenge) -> Resolvers<'a> {
         static LOOKUP: ZeroLookup = ZeroLookup;
         static VS: ZeroVs = ZeroVs;
-        Resolvers { read, lookup: &LOOKUP, virtual_setup: &VS, challenge: ch }
+        Resolvers {
+            read,
+            lookup: &LOOKUP,
+            virtual_setup: &VS,
+            challenge: ch,
+        }
     }
 
     fn pow(base: Ext, n: u32) -> Ext {
@@ -470,7 +558,11 @@ mod tests {
     // ── Layer helpers ─────────────────────────────────────────────────────────
 
     fn read_src(column: usize) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column } } }
+        SourceInfo {
+            kind: SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column },
+            },
+        }
     }
 
     fn claim_only_root(expr: ExprId, relation_index: usize) -> Root {
@@ -491,7 +583,10 @@ mod tests {
         Root {
             expr,
             materialize: Some(SinkInfo {
-                kind: SinkKind::Inner { layer: 1, offset: relation_index },
+                kind: SinkKind::Inner {
+                    layer: 1,
+                    offset: relation_index,
+                },
                 field: FieldKind::Ext,
             }),
             claim: Some(ClaimInfo {
@@ -513,7 +608,13 @@ mod tests {
                 .map(|(i, _)| RootId(i as u32))
                 .collect(),
         };
-        DagLayer { sources, exprs, roots, batching, resolutions: BTreeMap::new() }
+        DagLayer {
+            sources,
+            exprs,
+            roots,
+            batching,
+            resolutions: BTreeMap::new(),
+        }
     }
 
     /// Single bare-Read-leaf claim-only root.
@@ -557,13 +658,19 @@ mod tests {
             expected_t2.add_assign(&v_odd);
             expected_t2.sub_assign(&v_even);
             let t2 = interpret_bwd_row(&c, &d, &b, &r, Role::T2, x, &[]).unwrap();
-            assert_eq!(t2, expected_t2, "R0/T2 must equal 2·v(2x+1)−v(2x) at row {x}");
+            assert_eq!(
+                t2, expected_t2,
+                "R0/T2 must equal 2·v(2x+1)−v(2x) at row {x}"
+            );
 
             // Ext round-0 fold source gives the same finite-point values.
             let t0e = interpret_bwd_row(&ce, &de, &be, &r, Role::T0, x, &[]).unwrap();
             let t2e = interpret_bwd_row(&ce, &de, &be, &r, Role::T2, x, &[]).unwrap();
             assert_eq!(t0e, v_even, "Ext round-0 FoldSource T0 mismatch at row {x}");
-            assert_eq!(t2e, expected_t2, "Ext round-0 FoldSource T2 mismatch at row {x}");
+            assert_eq!(
+                t2e, expected_t2,
+                "Ext round-0 FoldSource T2 mismatch at row {x}"
+            );
         }
     }
 
@@ -587,8 +694,12 @@ mod tests {
         //   c_init recipe = [[5]] -> 5 ; fragment[0] recipe = [[3]] -> 3.
         let crafted = layer(
             vec![
-                SourceInfo { kind: SourceKind::Constant { value: 5 } }, // 0
-                SourceInfo { kind: SourceKind::Constant { value: 3 } }, // 1
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 5 },
+                }, // 0
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 3 },
+                }, // 1
             ],
             vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
             vec![],
@@ -599,16 +710,27 @@ mod tests {
                 // atom identity is irrelevant to the coefficient path (only the
                 // recipe is evaluated), but must be a valid expr for realism.
                 atoms: vec![ExprId(1)],
-                recipe: MergedRecipe { terms: vec![ProductRecipe { factors: vec![ExprId(1)] }] },
+                recipe: MergedRecipe {
+                    terms: vec![ProductRecipe {
+                        factors: vec![ExprId(1)],
+                    }],
+                },
             }],
-            c_init: MergedRecipe { terms: vec![ProductRecipe { factors: vec![ExprId(0)] }] },
+            c_init: MergedRecipe {
+                terms: vec![ProductRecipe {
+                    factors: vec![ExprId(0)],
+                }],
+            },
         };
 
         // Task-5 cloning model: intern the emitted descs into the COMPILED table.
         let n_before = d.specials.len();
         let acc_desc = c.specials.intern(BwdSpecial::AccInit);
         let coeff_desc = c.specials.intern(BwdSpecial::Coefficient { fragment: 0 });
-        assert!(acc_desc as usize >= n_before, "emitted descs sit beyond d.specials.len()");
+        assert!(
+            acc_desc as usize >= n_before,
+            "emitted descs sit beyond d.specials.len()"
+        );
         assert!(coeff_desc as usize >= n_before);
 
         c.program = Program {
@@ -632,7 +754,11 @@ mod tests {
         let ch = BetaChallenge(Ext::ZERO);
         let r = resolvers(&read, &ch);
         let b = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
-        assert_eq!(b.states.len(), d.specials.len(), "bindings stay dense over d.specials");
+        assert_eq!(
+            b.states.len(),
+            d.specials.len(),
+            "bindings stay dense over d.specials"
+        );
 
         let c_init_value = d.fragments.c_init.evaluate(&d.layer, &r);
         let coeff_value = d.fragments.fragments[0].recipe.evaluate(&d.layer, &r);
@@ -647,7 +773,10 @@ mod tests {
         // Coefficients are role-invariant: both finite points give the product.
         for role in [Role::T0, Role::T2] {
             let got = interpret_bwd_row(&c, &d, &b, &r, role, 0, &[]).unwrap();
-            assert_eq!(got, expected, "row must equal c_init * coeff at role {role:?}");
+            assert_eq!(
+                got, expected,
+                "row must equal c_init * coeff at role {role:?}"
+            );
         }
     }
 
@@ -666,7 +795,12 @@ mod tests {
         let chl = BetaChallenge(Ext::ZERO);
         let r_orig = resolvers(&orig, &chl);
         let lazy_b = bind(&d, MaterializationPolicy::LazyUpTo(1), 1);
-        assert!(lazy_b.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 1 }));
+        assert!(
+            lazy_b
+                .states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 1 })
+        );
 
         // Materialized run: resolver serves the depth-1 BUFFER, state = Materialized.
         let buf = BufferRead { r0 };
@@ -679,7 +813,10 @@ mod tests {
             for x in 0..5 {
                 let lazy = interpret_bwd_row(&c, &d, &lazy_b, &r_orig, role, x, &[r0]).unwrap();
                 let mat = interpret_bwd_row(&c, &d, &mat_b, &r_buf, role, x, &[r0]).unwrap();
-                assert_eq!(lazy, mat, "lazy vs materialized mismatch role {role:?} row {x}");
+                assert_eq!(
+                    lazy, mat,
+                    "lazy vs materialized mismatch role {role:?} row {x}"
+                );
             }
         }
     }
@@ -719,7 +856,11 @@ mod tests {
         };
 
         let b2 = bind(&d, MaterializationPolicy::LazyUpTo(2), 2);
-        assert!(b2.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 2 }));
+        assert!(
+            b2.states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 })
+        );
         for x in 0..4 {
             let got = interpret_bwd_row(&c, &d, &b2, &r, Role::T0, x, &[r0, r1]).unwrap();
             assert_eq!(got, f2(2 * x), "depth-2 T0 fold mismatch at row {x}");
@@ -752,7 +893,9 @@ mod tests {
                 claim_root(ExprId(4), 1),
                 claim_only_root(ExprId(5), 2),
             ],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1), RootId(2)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1), RootId(2)],
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -784,7 +927,10 @@ mod tests {
                 expected.add_assign(&t2);
 
                 let got = interpret_bwd_row(&c, &d, &b, &r, role, x, &[]).unwrap();
-                assert_eq!(got, expected, "alpha spine role {role:?} mismatch at row {x}");
+                assert_eq!(
+                    got, expected,
+                    "alpha spine role {role:?} mismatch at row {x}"
+                );
             }
         }
     }
@@ -794,7 +940,9 @@ mod tests {
     // ── VS lazy fold routes through the resolver's virtual_setup_fold ───────────
 
     fn vs_src(kind: VirtualSetupKind) -> SourceInfo {
-        SourceInfo { kind: SourceKind::VirtualSetup { kind } }
+        SourceInfo {
+            kind: SourceKind::VirtualSetup { kind },
+        }
     }
 
     /// Single VS-leaf claim-only root (an Ext-regime FoldSource with a VS origin).
@@ -835,31 +983,56 @@ mod tests {
 
         let kind = VirtualSetupKind::RangeCheck16Bits;
         let wrong = lift(Bf::from_u32_with_reduction(123_456));
-        let vs = OverrideVsFold { vs: Bf::from_u32_with_reduction(9), wrong };
+        let vs = OverrideVsFold {
+            vs: Bf::from_u32_with_reduction(9),
+            wrong,
+        };
         let read = WitnessRead;
         let lk = ZeroLookup;
         let ch = BetaChallenge(Ext::ZERO);
-        let r = Resolvers { read: &read, lookup: &lk, virtual_setup: &vs, challenge: &ch };
+        let r = Resolvers {
+            read: &read,
+            lookup: &lk,
+            virtual_setup: &vs,
+            challenge: &ch,
+        };
 
         // Round 0: depth-0 fold (empty ch) → plain virtual_setup lifted. VS is
         // row-constant, so the role combine collapses to that single value.
         let b0 = bind(&d, MaterializationPolicy::LazyUpTo(2), 0);
-        assert!(b0.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 0 }));
+        assert!(
+            b0.states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 0 })
+        );
         let plain = lift(vs.virtual_setup(&kind, 0));
         for x in 0..4 {
             let t0 = interpret_bwd_row(&c, &d, &b0, &r, Role::T0, x, &[]).unwrap();
-            assert_eq!(t0, plain, "depth-0 VS must equal plain virtual_setup at row {x}");
+            assert_eq!(
+                t0, plain,
+                "depth-0 VS must equal plain virtual_setup at row {x}"
+            );
         }
 
         // Round 2: depth-2 fold (non-empty ch) → the override's WRONG constant
         // for both pair elements; role_combine(T0)=w, (T2)=2w−w=w.
-        let rr = [lift(Bf::from_u32_with_reduction(3)), lift(Bf::from_u32_with_reduction(5))];
+        let rr = [
+            lift(Bf::from_u32_with_reduction(3)),
+            lift(Bf::from_u32_with_reduction(5)),
+        ];
         let b2 = bind(&d, MaterializationPolicy::LazyUpTo(2), 2);
-        assert!(b2.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 2 }));
+        assert!(
+            b2.states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 })
+        );
         for role in [Role::T0, Role::T2] {
             for x in 0..4 {
                 let got = interpret_bwd_row(&c, &d, &b2, &r, role, x, &rr).unwrap();
-                assert_eq!(got, wrong, "depth-2 VS must route through the override, role {role:?} row {x}");
+                assert_eq!(
+                    got, wrong,
+                    "depth-2 VS must route through the override, role {role:?} row {x}"
+                );
             }
         }
     }

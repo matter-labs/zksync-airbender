@@ -10,6 +10,8 @@ use crate::bwd::distill::{DistilledLayer, StableBwdConsumer, StableBwdExprKey, S
 use crate::bwd::fragment::FactorKey;
 use crate::bwd::source::{BwdSpecial, FoldState, OriginLeaf};
 use crate::eval_plan::backward::CompiledBackwardEvaluation;
+use crate::fwd::binding::{BackingKey, SourceWindowTable};
+use crate::fwd::isa::OperandField;
 use crate::fwd::source::virtual_setup_kind_code;
 
 use super::artifact::{DomainCertificate, EvaluationArtifactError, certificate_from_serializable};
@@ -890,10 +892,56 @@ fn backward_output_digests(
             .expect("descriptor index below table length must resolve");
         serialize_bwd_special(&mut instruction_bytes, special);
     }
+    serialize_source_windows(&mut instruction_bytes, &compiled.compiled.source_windows);
     Ok((
         four_lane_digest(&instruction_bytes)?,
         four_lane_digest(&encoded_bytes)?,
     ))
+}
+
+fn serialize_source_windows(bytes: &mut Vec<u8>, table: &SourceWindowTable) {
+    push_u64(bytes, table.len() as u64);
+    for window in table.windows() {
+        serialize_backing_key(bytes, &window.backing);
+        push_u64(bytes, window.first_column as u64);
+        let columns: Vec<_> = window.referenced_columns().collect();
+        push_u64(bytes, columns.len() as u64);
+        for column in columns {
+            push_u64(bytes, column as u64);
+        }
+        let folds: Vec<_> = window.fold_descriptors().collect();
+        push_u64(bytes, folds.len() as u64);
+        for (column, desc) in folds {
+            push_u64(bytes, column as u64);
+            bytes.extend_from_slice(&desc.to_le_bytes());
+        }
+    }
+}
+
+fn serialize_backing_key(bytes: &mut Vec<u8>, key: &BackingKey) {
+    match key {
+        BackingKey::BaseLayerMemory => bytes.push(0),
+        BackingKey::BaseLayerWitness => bytes.push(1),
+        BackingKey::Setup => bytes.push(2),
+        BackingKey::Scratch => bytes.push(3),
+        BackingKey::LayerOutput { layer, field } => {
+            bytes.push(4);
+            push_u64(bytes, *layer as u64);
+            serialize_operand_field(bytes, *field);
+        }
+        BackingKey::CacheOutput { layer, field } => {
+            bytes.push(5);
+            push_u64(bytes, *layer as u64);
+            serialize_operand_field(bytes, *field);
+        }
+    }
+}
+
+fn serialize_operand_field(bytes: &mut Vec<u8>, field: OperandField) {
+    bytes.push(match field {
+        OperandField::Base => 0,
+        OperandField::Ext => 1,
+    });
 }
 
 fn encoded_lane_bytes(lanes: &[u16]) -> Vec<u8> {

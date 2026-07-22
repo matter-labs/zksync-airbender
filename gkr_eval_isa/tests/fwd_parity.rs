@@ -344,4 +344,3 @@ fn all_roots_write_through() {
         }
     }
 }
-

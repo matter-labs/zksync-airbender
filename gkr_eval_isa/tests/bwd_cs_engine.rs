@@ -2,23 +2,23 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 
 use common::*;
+use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ExprId, bwd_roots};
 use gkr_eval_isa::bwd::compile::{
     compile_distilled, compile_distilled_at_planned_lb, compile_distilled_fragments_planned,
     compile_distilled_planned, compile_distilled_traced,
 };
 use gkr_eval_isa::bwd::construct::construct_unit_order;
-use gkr_eval_isa::bwd::engine::{cs_schedule_bwd_layer, cs_schedule_bwd_layer_research, CsOutcome};
-use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain, DistilledLayer};
-use gkr_eval_isa::bwd::fif::{feasible_leaf_plan, fif_select, oracle_saved, plan_leaves, Gap};
-use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, distill, stable_distilled_site_domain};
+use gkr_eval_isa::bwd::engine::{CsOutcome, cs_schedule_bwd_layer, cs_schedule_bwd_layer_research};
+use gkr_eval_isa::bwd::fif::{Gap, feasible_leaf_plan, fif_select, oracle_saved, plan_leaves};
+use gkr_eval_isa::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
 use gkr_eval_isa::bwd::price::{
-    compound_batch_plan, compound_candidates, modeled_traffic_full, planner_signature, price_pin,
-    priced_rounds, suppression_ranges, value_width, RECLAIM_N,
+    RECLAIM_N, compound_batch_plan, compound_candidates, modeled_traffic_full, planner_signature,
+    price_pin, priced_rounds, suppression_ranges, value_width,
 };
 use gkr_eval_isa::bwd::trace::{
-    certify, freeze_demand, live_profile, BwdEvent, BwdServedFrom, BwdServeKind, FrozenDemand,
+    BwdEvent, BwdServeKind, BwdServedFrom, FrozenDemand, certify, freeze_demand, live_profile,
 };
-use cs::gkr_compiler::dag_ir::{bwd_roots, BwdRegime, DagLayer, ExprId};
 
 /// Tracing is observation only: program byte-identical to the untraced compile.
 #[test]
@@ -30,7 +30,13 @@ fn traced_compile_is_byte_identical() {
         assert_eq!(encode(&base.program), encode(&traced.program), "L{li}");
         assert_eq!(trace.budget, 16);
         assert_eq!(trace.free.len(), traced.program.instrs.len(), "L{li}");
-        assert!(trace.events.iter().any(|e| matches!(e, BwdEvent::Serve { .. })), "L{li}");
+        assert!(
+            trace
+                .events
+                .iter()
+                .any(|e| matches!(e, BwdEvent::Serve { .. })),
+            "L{li}"
+        );
     }
 }
 
@@ -40,10 +46,19 @@ fn trace_traffic_reads_match_tally() {
     for (li, layer, cross) in layers_with_bwd_roots("add_sub_lui_auipc_mop_layout_gkr.json") {
         let d = distill(&layer, BwdRegime::Ext, &cross, None);
         let (c, trace) = compile_distilled_traced(&d, 16, None).unwrap();
-        let counted: usize = trace.events.iter()
-            .filter_map(|e| match e { BwdEvent::TrafficRead { cells, .. } => Some(*cells as usize), _ => None })
+        let counted: usize = trace
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                BwdEvent::TrafficRead { cells, .. } => Some(*cells as usize),
+                _ => None,
+            })
             .sum();
-        assert_eq!(counted, c.stats_ext.global + c.stats_ext.fold_traffic, "L{li}");
+        assert_eq!(
+            counted,
+            c.stats_ext.global + c.stats_ext.fold_traffic,
+            "L{li}"
+        );
     }
 }
 
@@ -71,10 +86,20 @@ fn frozen_leaf_instants_align_with_serves() {
     for (li, layer, cross) in layers_with_bwd_roots("add_sub_lui_auipc_mop_layout_gkr.json") {
         let d = distill(&layer, BwdRegime::Ext, &cross, None);
         let (c, trace) = compile_distilled_traced(&d, 16, None).unwrap();
-        let frozen = freeze_demand(&d, &trace, &c.program, &c.specials, &c.backings).unwrap();
+        let frozen = freeze_demand(
+            &d,
+            &trace,
+            &c.program,
+            &c.specials,
+            &c.backings,
+            &c.source_windows,
+        )
+        .unwrap();
         assert_eq!(frozen.epoch, trace.epoch);
         for (v, instants) in &frozen.leaf_instants {
-            let serves = frozen.domain_serves.iter()
+            let serves = frozen
+                .domain_serves
+                .iter()
                 .filter(|(fp, from)| fp.value == *v && matches!(from, BwdServedFrom::Recomputed))
                 .count();
             assert_eq!(instants.len(), serves, "L{li} leaf {v:?}");
@@ -86,7 +111,9 @@ fn frozen_leaf_instants_align_with_serves() {
 // ── Task 5 (CS-M0): FiF leaf planner (`plan_leaves`) ──────────────────────────
 
 fn lcg(state: &mut u64, m: u64) -> u64 {
-    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*state >> 33) % m
 }
 
@@ -111,7 +138,11 @@ fn fif_fuzz_matches_oracle() {
             }
             pos.sort_unstable();
             for w in pos.windows(2) {
-                gaps.push(Gap { origin: ExprId(o as u32), start: w[0], end: w[1] });
+                gaps.push(Gap {
+                    origin: ExprId(o as u32),
+                    start: w[0],
+                    end: w[1],
+                });
             }
         }
         gaps.truncate(12); // oracle is 2^|gaps|
@@ -141,6 +172,7 @@ fn leaf_plan_beats_baseline_on_shared_leaf() {
         &baseline_c.program,
         &baseline_c.specials,
         &baseline_c.backings,
+        &baseline_c.source_windows,
     )
     .unwrap();
     let plan = plan_leaves(&frozen);
@@ -172,7 +204,11 @@ fn feasible_leaf_plan_retains_with_headroom() {
 
     let (plan, planned_c, planned_trace) =
         feasible_leaf_plan(&d, BUDGET).expect("feasible_leaf_plan must return Ok");
-    let kept_gaps = plan.entries.iter().filter(|e| e.action == PlanAction::Retain).count();
+    let kept_gaps = plan
+        .entries
+        .iter()
+        .filter(|e| e.action == PlanAction::Retain)
+        .count();
 
     assert!(
         kept_gaps > 0,
@@ -180,10 +216,16 @@ fn feasible_leaf_plan_retains_with_headroom() {
          coordinate-correct freeze + discount retained nothing; report as a finding"
     );
 
-    let diverge = planned_trace.events.iter().find(|e| matches!(e, BwdEvent::Diverge { .. }));
+    let diverge = planned_trace
+        .events
+        .iter()
+        .find(|e| matches!(e, BwdEvent::Diverge { .. }));
     assert!(diverge.is_none(), "returned compile diverged: {diverge:?}");
-    let refusals =
-        planned_trace.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
+    let refusals = planned_trace
+        .events
+        .iter()
+        .filter(|e| matches!(e, BwdEvent::Refuse { .. }))
+        .count();
     assert_eq!(refusals, 0, "returned compile had {refusals} Refuse events");
 
     assert_synthetic_value_exact_planned(&planned_c, &d);
@@ -215,9 +257,16 @@ fn feasible_leaf_plan_never_diverges() {
 
     let (_plan, _c, trace) =
         feasible_leaf_plan(&d, 16).expect("feasible_leaf_plan must always return Ok");
-    let diverge = trace.events.iter().find(|e| matches!(e, BwdEvent::Diverge { .. }));
+    let diverge = trace
+        .events
+        .iter()
+        .find(|e| matches!(e, BwdEvent::Diverge { .. }));
     assert!(diverge.is_none(), "returned compile diverged: {diverge:?}");
-    let refusals = trace.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
+    let refusals = trace
+        .events
+        .iter()
+        .filter(|e| matches!(e, BwdEvent::Refuse { .. }))
+        .count();
     assert_eq!(refusals, 0, "returned compile had {refusals} Refuse events");
 }
 
@@ -238,21 +287,39 @@ fn feasible_leaf_plan_never_diverges() {
 /// report, per RR's instruction.
 #[test]
 fn feasible_leaf_plan_fidelity_heavy() {
-    const HEAVY: &[&str] =
-        &["bigint_with_extended_control_layout_gkr.json", "keccak_special5_layout_gkr.json"];
+    const HEAVY: &[&str] = &[
+        "bigint_with_extended_control_layout_gkr.json",
+        "keccak_special5_layout_gkr.json",
+    ];
     for &name in HEAVY {
         let (layer, cross) = load_layer(name, 0);
         let d = distill(&layer, BwdRegime::Ext, &cross, None);
 
         let (plan, planned_c, planned_trace) = feasible_leaf_plan(&d, 16)
             .unwrap_or_else(|e| panic!("{name}: feasible_leaf_plan must return Ok, got {e:?}"));
-        let kept_gaps = plan.entries.iter().filter(|e| e.action == PlanAction::Retain).count();
+        let kept_gaps = plan
+            .entries
+            .iter()
+            .filter(|e| e.action == PlanAction::Retain)
+            .count();
 
-        let diverge = planned_trace.events.iter().find(|e| matches!(e, BwdEvent::Diverge { .. }));
-        assert!(diverge.is_none(), "{name}: returned compile diverged: {diverge:?}");
-        let refusals =
-            planned_trace.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
-        assert_eq!(refusals, 0, "{name}: {refusals} Refuse events (model/compiler mismatch)");
+        let diverge = planned_trace
+            .events
+            .iter()
+            .find(|e| matches!(e, BwdEvent::Diverge { .. }));
+        assert!(
+            diverge.is_none(),
+            "{name}: returned compile diverged: {diverge:?}"
+        );
+        let refusals = planned_trace
+            .events
+            .iter()
+            .filter(|e| matches!(e, BwdEvent::Refuse { .. }))
+            .count();
+        assert_eq!(
+            refusals, 0,
+            "{name}: {refusals} Refuse events (model/compiler mismatch)"
+        );
 
         // Coordinate-correct baseline: the all-Bypass planned compile at lower==place==b16.
         let baseline_c = coordinate_correct_baseline(&d, 16);
@@ -274,7 +341,9 @@ fn feasible_leaf_plan_fidelity_heavy() {
             baseline_traffic - planned_traffic,
             4 * kept_gaps,
         );
-        eprintln!("{name}: kept_gaps={kept_gaps} baseline_fold={baseline_fold} planned_fold={planned_fold} traffic {baseline_traffic}->{planned_traffic}");
+        eprintln!(
+            "{name}: kept_gaps={kept_gaps} baseline_fold={baseline_fold} planned_fold={planned_fold} traffic {baseline_traffic}->{planned_traffic}"
+        );
     }
 }
 
@@ -286,14 +355,24 @@ fn coordinate_correct_baseline(
     d: &gkr_eval_isa::bwd::distill::DistilledLayer,
     budget: usize,
 ) -> gkr_eval_isa::bwd::compile::BwdCompiledLayer {
-    use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanEntry};
+    use gkr_eval_isa::bwd::plan::{BwdOccurrencePlan, PlanEntry, plan_entries_fnv};
     let (ft_c, ft_trace) = compile_distilled_traced(d, budget, None).expect("baseline traced");
-    let frozen =
-        freeze_demand(d, &ft_trace, &ft_c.program, &ft_c.specials, &ft_c.backings).unwrap();
+    let frozen = freeze_demand(
+        d,
+        &ft_trace,
+        &ft_c.program,
+        &ft_c.specials,
+        &ft_c.backings,
+        &ft_c.source_windows,
+    )
+    .unwrap();
     let entries: Vec<PlanEntry> = frozen
         .domain_serves
         .iter()
-        .map(|&(fp, _from)| PlanEntry { fp, action: PlanAction::Bypass })
+        .map(|&(fp, _from)| PlanEntry {
+            fp,
+            action: PlanAction::Bypass,
+        })
         .collect();
     let all_bypass = BwdOccurrencePlan {
         epoch: frozen.epoch,
@@ -301,7 +380,9 @@ fn coordinate_correct_baseline(
         stream_reductions: frozen.stream_reductions,
         entries,
     };
-    compile_distilled_planned(d, budget, &all_bypass).expect("all-Bypass compile feasible").0
+    compile_distilled_planned(d, budget, &all_bypass)
+        .expect("all-Bypass compile feasible")
+        .0
 }
 
 // ── Task 6 (CS-M0): schedule certificate (`certify`) ──────────────────────────
@@ -348,7 +429,10 @@ fn certificate_exact_on_baseline_and_planned() {
 
         checked += 1;
     }
-    assert!(checked > 0, "no fixture's L0 had bwd roots — enumeration broke");
+    assert!(
+        checked > 0,
+        "no fixture's L0 had bwd roots — enumeration broke"
+    );
     println!(
         "certificate_exact_on_baseline_and_planned: {checked}/{} fixtures held (Ext L0)",
         FIXTURES.len()
@@ -371,7 +455,10 @@ fn certificate_rejects_doctored_trace() {
     assert!(certify(&c, &trace).is_ok(), "untouched trace must certify");
 
     let reported = c.stats_ext.global + c.stats_ext.fold_traffic;
-    trace.events.push(BwdEvent::TrafficRead { value: ExprId(0), cells: 1 });
+    trace.events.push(BwdEvent::TrafficRead {
+        value: ExprId(0),
+        cells: 1,
+    });
 
     let report = certify(&c, &trace);
     let err = report.expect_err("doctored trace must fail certification");
@@ -408,9 +495,16 @@ fn construct_order_is_permutation_all_fixtures() {
                 unit < n_units,
                 "{name}: unit {unit} out of range (n_units={n_units})"
             );
-            assert!(seen.insert(unit), "{name}: unit {unit} repeated in permutation");
+            assert!(
+                seen.insert(unit),
+                "{name}: unit {unit} repeated in permutation"
+            );
         }
-        assert_eq!(seen.len(), n_units, "{name}: permutation must cover every unit");
+        assert_eq!(
+            seen.len(),
+            n_units,
+            "{name}: permutation must cover every unit"
+        );
 
         let reordered = distill(&layer, BwdRegime::Ext, &cross, Some(&order));
         compile_distilled(&reordered, 16, None).unwrap_or_else(|e| {
@@ -419,7 +513,10 @@ fn construct_order_is_permutation_all_fixtures() {
 
         checked += 1;
     }
-    assert!(checked > 0, "no fixture's L0 had bwd roots — enumeration broke");
+    assert!(
+        checked > 0,
+        "no fixture's L0 had bwd roots — enumeration broke"
+    );
     println!(
         "construct_order_is_permutation_all_fixtures: {checked}/{} fixtures held (Ext L0)",
         FIXTURES.len()
@@ -464,7 +561,12 @@ fn suppression_ranges_exclusive_reachability() {
     let covered = |ranges: &[std::ops::Range<usize>]| -> Vec<Vec<ExprId>> {
         ranges
             .iter()
-            .map(|r| frozen.domain_serves[r.clone()].iter().map(|(fp, _)| fp.value).collect())
+            .map(|r| {
+                frozen.domain_serves[r.clone()]
+                    .iter()
+                    .map(|(fp, _)| fp.value)
+                    .collect()
+            })
             .collect()
     };
 
@@ -474,14 +576,25 @@ fn suppression_ranges_exclusive_reachability() {
 
     // V has 2 occurrences → 1 non-producer → 1 range, covering [W, U] (pre-order).
     assert_eq!(rv.len(), 1, "V ranges: {rv:?}");
-    assert_eq!(covered(&rv), vec![vec![w, u]], "V's non-producer cone re-expansion = [W, U]");
+    assert_eq!(
+        covered(&rv),
+        vec![vec![w, u]],
+        "V's non-producer cone re-expansion = [W, U]"
+    );
 
     // W has 3 occurrences → 2 non-producer → 2 ranges, each covering exactly [U].
     assert_eq!(rw.len(), 2, "W ranges: {rw:?}");
-    assert_eq!(covered(&rw), vec![vec![u], vec![u]], "each W cone re-expansion = [U]");
+    assert_eq!(
+        covered(&rw),
+        vec![vec![u], vec![u]],
+        "each W cone re-expansion = [U]"
+    );
 
     // U has no domain descendants → every cone re-expansion is empty → dropped.
-    assert!(ru.is_empty(), "U ranges must be empty (no domain descendants): {ru:?}");
+    assert!(
+        ru.is_empty(),
+        "U ranges must be empty (no domain descendants): {ru:?}"
+    );
 
     // Nested-pin case: V's range strictly contains one of W's ranges.
     let vr = rv[0].clone();
@@ -507,7 +620,12 @@ fn priced_oracle_gap() {
 
     let mut ranked: Vec<(i64, ExprId)> = compound_candidates(&d, &frozen)
         .into_iter()
-        .map(|c| (price_pin(&frozen, &BTreeSet::new(), c, value_width(&d, c)), c))
+        .map(|c| {
+            (
+                price_pin(&frozen, &BTreeSet::new(), c, value_width(&d, c)),
+                c,
+            )
+        })
         .collect();
     ranked.sort_by(|a, b| b.0.cmp(&a.0));
     ranked.truncate(12);
@@ -548,14 +666,18 @@ fn priced_oracle_gap() {
             None => break,
         }
     }
-    let celf_traffic = modeled_traffic_full(&frozen, &widths(&committed)).expect("CELF set feasible");
+    let celf_traffic =
+        modeled_traffic_full(&frozen, &widths(&committed)).expect("CELF set feasible");
 
     assert!(
         (celf_traffic as f64) <= oracle as f64 * 1.01,
         "CELF traffic {celf_traffic} > 1% above oracle {oracle} (baseline {baseline}, top {})",
         top.len()
     );
-    eprintln!("priced_oracle_gap: baseline={baseline} oracle={oracle} celf={celf_traffic} candidates={}", top.len());
+    eprintln!(
+        "priced_oracle_gap: baseline={baseline} oracle={oracle} celf={celf_traffic} candidates={}",
+        top.len()
+    );
 }
 
 /// (c) Priced rounds converge or cap: add_sub + keccak Ext L0 @ b16 — `rounds <= 3`,
@@ -564,7 +686,10 @@ fn priced_oracle_gap() {
 /// `PlannerSignature`s (never a hash).
 #[test]
 fn priced_rounds_converge_or_cap() {
-    for name in ["add_sub_lui_auipc_mop_layout_gkr.json", "keccak_special5_layout_gkr.json"] {
+    for name in [
+        "add_sub_lui_auipc_mop_layout_gkr.json",
+        "keccak_special5_layout_gkr.json",
+    ] {
         let (layer, cross) = load_layer(name, 0);
         let d = distill(&layer, BwdRegime::Ext, &cross, None);
         let frozen0 = coordinate_correct_frozen(&d, 16);
@@ -586,16 +711,28 @@ fn priced_rounds_converge_or_cap() {
         let (c, t) = compile_distilled_planned(&d, 16, &outcome.plan)
             .unwrap_or_else(|e| panic!("{name}: returned plan must compile, got {e:?}"));
         let report = certify(&c, &t);
-        assert!(report.is_ok(), "{name}: returned plan certify diverged: {report:?}");
         assert!(
-            !t.events.iter().any(|e| matches!(e, BwdEvent::Diverge { .. })),
+            report.is_ok(),
+            "{name}: returned plan certify diverged: {report:?}"
+        );
+        assert!(
+            !t.events
+                .iter()
+                .any(|e| matches!(e, BwdEvent::Diverge { .. })),
             "{name}: returned plan diverged"
         );
 
         // `priced_rounds` is deterministic (no wall-clock / hashmap-order dependence).
-        let outcome2 = priced_rounds(&d, 16, frozen0.clone(), 1, RECLAIM_N, true).expect("second run");
-        assert_eq!(outcome.plan.entries, outcome2.plan.entries, "{name}: plan not deterministic");
-        assert_eq!(outcome.pins, outcome2.pins, "{name}: pins not deterministic");
+        let outcome2 =
+            priced_rounds(&d, 16, frozen0.clone(), 1, RECLAIM_N, true).expect("second run");
+        assert_eq!(
+            outcome.plan.entries, outcome2.plan.entries,
+            "{name}: plan not deterministic"
+        );
+        assert_eq!(
+            outcome.pins, outcome2.pins,
+            "{name}: pins not deterministic"
+        );
 
         // Two identical rounds → structurally-== signatures (independent compiles).
         let pins: BTreeSet<ExprId> = outcome.pins.iter().copied().collect();
@@ -603,7 +740,10 @@ fn priced_rounds_converge_or_cap() {
         let (_c_b, t_b) = compile_distilled_planned(&d, 16, &outcome.plan).expect("compile b");
         let sig_a = planner_signature(&frozen0, &t_a, &pins, &outcome.plan);
         let sig_b = planner_signature(&frozen0, &t_b, &pins, &outcome.plan);
-        assert_eq!(sig_a, sig_b, "{name}: PlannerSignature must be structurally equal (never a hash)");
+        assert_eq!(
+            sig_a, sig_b,
+            "{name}: PlannerSignature must be structurally equal (never a hash)"
+        );
 
         eprintln!(
             "priced_rounds_converge_or_cap {name}: rounds={} converged={} pins={} \
@@ -632,18 +772,37 @@ fn compound_batch_prediction_realized() {
 
     let plan = compound_batch_plan(&frozen, &pins);
     assert!(
-        plan.entries.iter().any(|e| e.fp.value == v && e.action == PlanAction::Retain),
+        plan.entries
+            .iter()
+            .any(|e| e.fp.value == v && e.action == PlanAction::Retain),
         "V must be retained at its producer occurrence"
     );
 
     let (c, t) = compile_distilled_planned(&d, 16, &plan).expect("compound-batch compile");
-    let diverge = t.events.iter().find(|e| matches!(e, BwdEvent::Diverge { .. }));
-    assert!(diverge.is_none(), "compound batch diverged (Task-4 machinery?): {diverge:?}");
+    let diverge = t
+        .events
+        .iter()
+        .find(|e| matches!(e, BwdEvent::Diverge { .. }));
+    assert!(
+        diverge.is_none(),
+        "compound batch diverged (Task-4 machinery?): {diverge:?}"
+    );
 
-    let observed = freeze_demand(&d, &t, &c.program, &c.specials, &c.backings).unwrap();
+    let observed = freeze_demand(
+        &d,
+        &t,
+        &c.program,
+        &c.specials,
+        &c.backings,
+        &c.source_windows,
+    )
+    .unwrap();
     let predicted: Vec<_> = plan.entries.iter().map(|e| e.fp).collect();
     let realized: Vec<_> = observed.domain_serves.iter().map(|(fp, _)| *fp).collect();
-    assert_eq!(predicted, realized, "predicted suppressed stream != observed re-frozen stream");
+    assert_eq!(
+        predicted, realized,
+        "predicted suppressed stream != observed re-frozen stream"
+    );
 
     assert!(
         observed.domain_serves.len() < frozen.domain_serves.len(),
@@ -687,8 +846,10 @@ fn compound_batch_prediction_realized() {
 /// inert outcome (0 kept) must be visible, not silently green.
 #[test]
 fn priced_reclaim_capture_heavy() {
-    const HEAVY: &[&str] =
-        &["bigint_with_extended_control_layout_gkr.json", "keccak_special5_layout_gkr.json"];
+    const HEAVY: &[&str] = &[
+        "bigint_with_extended_control_layout_gkr.json",
+        "keccak_special5_layout_gkr.json",
+    ];
     println!(
         "priced_reclaim_capture_heavy capture table (b16):\n  \
          fixture | pins_kept | compound_attempted | compound_kept | \
@@ -713,9 +874,15 @@ fn priced_reclaim_capture_heavy() {
         let (final_c, final_trace) = compile_distilled_planned(&d, 16, &outcome.plan)
             .unwrap_or_else(|e| panic!("{name}: returned plan must compile, got {e:?}"));
         let report = certify(&final_c, &final_trace);
-        assert!(report.is_ok(), "{name}: returned round certify diverged: {report:?}");
         assert!(
-            !final_trace.events.iter().any(|e| matches!(e, BwdEvent::Diverge { .. })),
+            report.is_ok(),
+            "{name}: returned round certify diverged: {report:?}"
+        );
+        assert!(
+            !final_trace
+                .events
+                .iter()
+                .any(|e| matches!(e, BwdEvent::Diverge { .. })),
             "{name}: returned round diverged"
         );
         let final_traffic = final_c.stats_ext.global + final_c.stats_ext.fold_traffic;
@@ -743,7 +910,10 @@ fn priced_reclaim_capture_heavy() {
         );
         // The greedy reclaim must actually have run on this fixture (visibility: an
         // inert 0-attempted round would silently defeat the point of this gate).
-        assert!(outcome.reclaim_attempted > 0, "{name}: reclaim_attempted == 0 — reclaim did not run");
+        assert!(
+            outcome.reclaim_attempted > 0,
+            "{name}: reclaim_attempted == 0 — reclaim did not run"
+        );
         // Compounds must be genuinely COMPILER-tried (hint-ranked, compile+certify-validated),
         // not model-dismissed at `i64::MIN`. `compound_kept` may be 0 at b16 (compounds
         // inert — no compound span fits) and that is a correct, honest outcome; the point
@@ -780,7 +950,10 @@ fn winner_label(outcome: &CsOutcome) -> &'static str {
 fn assert_shipped_value_parity(layer: &DagLayer, cross: &CrossFields, outcome: &CsOutcome) {
     if let Some(order) = &outcome.fragment_order {
         let d = distill(layer, BwdRegime::Ext, cross, None);
-        let plan = outcome.plan.as_ref().expect("a fragment winner always carries a plan");
+        let plan = outcome
+            .plan
+            .as_ref()
+            .expect("a fragment winner always carries a plan");
         let (compiled, _t) = compile_distilled_fragments_planned(&d, 16, plan, Some(order))
             .expect("fragment-winner replay must recompile cleanly");
         assert_bwd_value_parity(&compiled, &d, layer);
@@ -788,7 +961,12 @@ fn assert_shipped_value_parity(layer: &DagLayer, cross: &CrossFields, outcome: &
         let bl_d = distill(layer, BwdRegime::Ext, cross, None);
         assert_bwd_value_parity(&outcome.compiled, &bl_d, layer);
     } else {
-        let d = distill(layer, BwdRegime::Ext, cross, Some(&outcome.unit_permutation));
+        let d = distill(
+            layer,
+            BwdRegime::Ext,
+            cross,
+            Some(&outcome.unit_permutation),
+        );
         assert_bwd_value_parity(&outcome.compiled, &d, layer);
     }
 }
@@ -807,8 +985,10 @@ fn assert_shipped_value_parity(layer: &DagLayer, cross: &CrossFields, outcome: &
 /// (the constructed-order `d` when it improved, the canonical `bl_d` when it fell back).
 #[test]
 fn engine_runs_all_fixtures_b16() {
-    const VALUE_PARITY: &[&str] =
-        &["add_sub_lui_auipc_mop_layout_gkr.json", "keccak_special5_layout_gkr.json"];
+    const VALUE_PARITY: &[&str] = &[
+        "add_sub_lui_auipc_mop_layout_gkr.json",
+        "keccak_special5_layout_gkr.json",
+    ];
     // CS-M4 T7 (spec §12) regression guard: the 4 G-M0-tracked fixtures' shipped CS traffic
     // must never regress above the CS-M4 banked values. These are the `gap_cap=1200`
     // (PRODUCTION_GAP_CAP) milestone results — Tier 0 (all four) + Tier 1 (blake2 8348),
@@ -866,7 +1046,10 @@ fn engine_runs_all_fixtures_b16() {
             outcome.certificate.counted_traffic, outcome.certificate.reported_traffic,
             "{name}: shipped program certificate must be Ok (counted == reported)"
         );
-        assert!(outcome.certificate.diverged.is_none(), "{name}: shipped program diverged");
+        assert!(
+            outcome.certificate.diverged.is_none(),
+            "{name}: shipped program diverged"
+        );
 
         // Never worse than the canonical baseline (fallback guarantees this), rounds capped.
         let cs_traffic = outcome.stats.global + outcome.stats.fold_traffic;
@@ -878,8 +1061,9 @@ fn engine_runs_all_fixtures_b16() {
 
         // CS-M4 banked-value regression guard (present-fixture only; a fixture in the
         // table that never runs here is simply not checked, not silently skipped).
-        if let Some(&(_, ceiling)) =
-            CS_M4_TRAFFIC_CEILINGS.iter().find(|&&(fixture, _)| fixture == name)
+        if let Some(&(_, ceiling)) = CS_M4_TRAFFIC_CEILINGS
+            .iter()
+            .find(|&&(fixture, _)| fixture == name)
         {
             assert!(
                 cs_traffic <= ceiling,
@@ -896,12 +1080,14 @@ fn engine_runs_all_fixtures_b16() {
         // A candidate that errored out (`None`) had no completed priced run — trivially
         // within any ceiling. Violations are collected and asserted after the census prints,
         // so the full per-candidate leaf_calls table is always visible.
-        if let Some(&(_, hard_max)) =
-            LEAF_CALL_HARD_MAX.iter().find(|&&(fixture, _)| fixture == name)
+        if let Some(&(_, hard_max)) = LEAF_CALL_HARD_MAX
+            .iter()
+            .find(|&&(fixture, _)| fixture == name)
         {
-            for (which, lc) in
-                [("term", outcome.term_leaf_calls), ("fragment", outcome.fragment_leaf_calls)]
-            {
+            for (which, lc) in [
+                ("term", outcome.term_leaf_calls),
+                ("fragment", outcome.fragment_leaf_calls),
+            ] {
                 if let Some(lc) = lc {
                     if lc > hard_max {
                         leaf_violations.push(format!(
@@ -926,7 +1112,11 @@ fn engine_runs_all_fixtures_b16() {
         println!(
             "  {name} | {} | winner {} | {baseline_traffic} -> {cs_traffic} | pins {} | \
              leaf_calls(ship {} term {:?} frag {:?}) | swaps {}/{} | wo_kept {} | r{} | {}",
-            if outcome.fell_back_to_baseline { "FELL_BACK" } else { "IMPROVED " },
+            if outcome.fell_back_to_baseline {
+                "FELL_BACK"
+            } else {
+                "IMPROVED "
+            },
             winner_label(&outcome),
             outcome.pins.len(),
             outcome.leaf_calls,
@@ -944,7 +1134,10 @@ fn engine_runs_all_fixtures_b16() {
         leaf_violations.is_empty(),
         "per-candidate leaf-search cost bound broke: {leaf_violations:?}"
     );
-    assert!(checked > 0, "no fixture's L0 had bwd roots — enumeration broke");
+    assert!(
+        checked > 0,
+        "no fixture's L0 had bwd roots — enumeration broke"
+    );
     println!(
         "engine_runs_all_fixtures_b16: {checked}/{} fixtures held (Ext L0)",
         FIXTURES.len()
@@ -1042,8 +1235,10 @@ fn phase0b_leaf_call_baseline() {
 #[test]
 #[ignore] // heavy (~minutes): full keccak + blake2 priced runs at b16 (research entry, gap_cap=512).
 fn stage_a_whole_origin_lowers_or_holds() {
-    for (name, m3_ceiling) in [("keccak_special5_layout_gkr.json", 16240usize),
-                               ("blake2_with_extended_control_layout_gkr.json", 9528)] {
+    for (name, m3_ceiling) in [
+        ("keccak_special5_layout_gkr.json", 16240usize),
+        ("blake2_with_extended_control_layout_gkr.json", 9528),
+    ] {
         let (layer, cross) = load_layer(name, 0);
         // Stage A is active only at the CS-M3-reproducing `gap_cap=512`; PRODUCTION's
         // `gap_cap=1200` ships the `best_B` floor (whole_origin_kept=0). Use the RESEARCH
@@ -1058,14 +1253,27 @@ fn stage_a_whole_origin_lowers_or_holds() {
             /*enforce_budget*/ true,
         );
         let traffic = out.stats.global + out.stats.fold_traffic;
-        assert!(out.certificate.counted_traffic == out.certificate.reported_traffic, "{name} cert");
-        assert!(traffic <= m3_ceiling, "{name} traffic {traffic} regressed past {m3_ceiling}");
+        assert!(
+            out.certificate.counted_traffic == out.certificate.reported_traffic,
+            "{name} cert"
+        );
+        assert!(
+            traffic <= m3_ceiling,
+            "{name} traffic {traffic} regressed past {m3_ceiling}"
+        );
         // whole-origin activity + normalized invariant surfaced via counters:
-        eprintln!("{name}: traffic={traffic} whole_kept={} residual_kept={} saw_incomplete={}",
-                  out.counters.whole_origin_kept, out.counters.residual_gap_kept, out.saw_incomplete_round);
+        eprintln!(
+            "{name}: traffic={traffic} whole_kept={} residual_kept={} saw_incomplete={}",
+            out.counters.whole_origin_kept,
+            out.counters.residual_gap_kept,
+            out.saw_incomplete_round
+        );
         assert!(!out.saw_incomplete_round, "{name} saw an Incomplete round");
         if name.starts_with("keccak") {
-            assert!(out.counters.whole_origin_kept > 0, "Stage A must retain ≥1 whole origin on keccak (depth)");
+            assert!(
+                out.counters.whole_origin_kept > 0,
+                "Stage A must retain ≥1 whole origin on keccak (depth)"
+            );
         }
     }
 }
@@ -1124,10 +1332,19 @@ fn engine_deterministic() {
     let a = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
     let b = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
 
-    assert_eq!(a.unit_permutation, b.unit_permutation, "permutation not deterministic");
-    assert_eq!(a.fell_back_to_baseline, b.fell_back_to_baseline, "fallback verdict not deterministic");
+    assert_eq!(
+        a.unit_permutation, b.unit_permutation,
+        "permutation not deterministic"
+    );
+    assert_eq!(
+        a.fell_back_to_baseline, b.fell_back_to_baseline,
+        "fallback verdict not deterministic"
+    );
     // CS-M5a Task 10: the winner identity + any persisted fragment order are deterministic.
-    assert_eq!(a.fragment_order, b.fragment_order, "fragment_order not deterministic");
+    assert_eq!(
+        a.fragment_order, b.fragment_order,
+        "fragment_order not deterministic"
+    );
     assert_eq!(a.pins, b.pins, "pins not deterministic");
     assert_eq!(a.stats, b.stats, "stats not deterministic");
     assert_eq!(a.instrs, b.instrs, "instrs not deterministic");
@@ -1138,8 +1355,14 @@ fn engine_deterministic() {
         (Some(pa), Some(pb)) => {
             assert_eq!(pa.entries, pb.entries, "plan entries not deterministic");
             assert_eq!(pa.epoch, pb.epoch, "plan epoch not deterministic");
-            assert_eq!(pa.entries_fnv, pb.entries_fnv, "plan entries_fnv not deterministic");
-            assert_eq!(pa.stream_reductions, pb.stream_reductions, "plan regime not deterministic");
+            assert_eq!(
+                pa.entries_fnv, pb.entries_fnv,
+                "plan entries_fnv not deterministic"
+            );
+            assert_eq!(
+                pa.stream_reductions, pb.stream_reductions,
+                "plan regime not deterministic"
+            );
         }
         (None, None) => {}
         _ => panic!("plan Option mismatch between identical runs"),
@@ -1168,7 +1391,9 @@ fn engine_deterministic() {
 #[test]
 fn engine_value_parity_all_fixtures() {
     let mut checked = 0usize;
-    println!("engine_value_parity_all_fixtures (Ext L0, b16):\n  fixture | fell_back | value_parity");
+    println!(
+        "engine_value_parity_all_fixtures (Ext L0, b16):\n  fixture | fell_back | value_parity"
+    );
     for &name in FIXTURES {
         let (layer, cross) = load_layer(name, 0);
         if bwd_roots(&layer).is_empty() {
@@ -1191,12 +1416,19 @@ fn engine_value_parity_all_fixtures() {
 
         println!(
             "  {name} | {} | winner {} | value_parity OK",
-            if outcome.fell_back_to_baseline { "FELL_BACK" } else { "IMPROVED " },
+            if outcome.fell_back_to_baseline {
+                "FELL_BACK"
+            } else {
+                "IMPROVED "
+            },
             winner_label(&outcome),
         );
         checked += 1;
     }
-    assert!(checked > 0, "no fixture's L0 had bwd roots — enumeration broke");
+    assert!(
+        checked > 0,
+        "no fixture's L0 had bwd roots — enumeration broke"
+    );
     println!(
         "engine_value_parity_all_fixtures: {checked}/{} fixtures held (Ext L0)",
         FIXTURES.len()
@@ -1224,8 +1456,10 @@ fn engine_value_parity_all_fixtures() {
 /// structural-improvement evidence (reported, not asserted as a hardcoded constant).
 #[test]
 fn planned_fill_then_trim_monotone() {
-    const HEAVY: &[&str] =
-        &["keccak_special5_layout_gkr.json", "blake2_with_extended_control_layout_gkr.json"];
+    const HEAVY: &[&str] = &[
+        "keccak_special5_layout_gkr.json",
+        "blake2_with_extended_control_layout_gkr.json",
+    ];
     const BUDGET: usize = 16;
     for &name in HEAVY {
         let (layer, cross) = load_layer(name, 0);
@@ -1236,7 +1470,11 @@ fn planned_fill_then_trim_monotone() {
         let outcome = priced_rounds(&d, BUDGET, frozen0, 1, RECLAIM_N, true)
             .unwrap_or_else(|e| panic!("{name}: priced_rounds must return Ok, got {e:?}"));
         let plan = &outcome.plan;
-        let retains = plan.entries.iter().filter(|e| e.action == PlanAction::Retain).count();
+        let retains = plan
+            .entries
+            .iter()
+            .filter(|e| e.action == PlanAction::Retain)
+            .count();
 
         // baseline = the pre-Stage-2 `lower == place == budget` single lowering (inner).
         let (baseline_c, baseline_t) = compile_distilled_at_planned_lb(&d, BUDGET, BUDGET, plan)
@@ -1246,12 +1484,24 @@ fn planned_fill_then_trim_monotone() {
             .unwrap_or_else(|e| panic!("{name}: fill-then-trim compile failed: {e:?}"));
 
         // (a) Both certify exactly (counted == reported).
-        assert!(certify(&baseline_c, &baseline_t).is_ok(), "{name}: baseline certificate must be Ok");
-        assert!(certify(&realized_c, &realized_t).is_ok(), "{name}: realized certificate must be Ok");
+        assert!(
+            certify(&baseline_c, &baseline_t).is_ok(),
+            "{name}: baseline certificate must be Ok"
+        );
+        assert!(
+            certify(&realized_c, &realized_t).is_ok(),
+            "{name}: realized certificate must be Ok"
+        );
 
         // (b) The realized (winning) trace never diverges.
-        let diverge = realized_t.events.iter().find(|e| matches!(e, BwdEvent::Diverge { .. }));
-        assert!(diverge.is_none(), "{name}: realized trace diverged: {diverge:?}");
+        let diverge = realized_t
+            .events
+            .iter()
+            .find(|e| matches!(e, BwdEvent::Diverge { .. }));
+        assert!(
+            diverge.is_none(),
+            "{name}: realized trace diverged: {diverge:?}"
+        );
 
         // (c) Monotone: fill-then-trim is never worse than the lower==budget baseline.
         let baseline_traffic = baseline_c.stats_ext.global + baseline_c.stats_ext.fold_traffic;
@@ -1263,10 +1513,16 @@ fn planned_fill_then_trim_monotone() {
 
         // Diagnostics: traffic can be pinned at a `global`-DRAM floor (keccak) even when
         // the structural fix bites — so also surface refusals eliminated / fold_uses.
-        let baseline_refusals =
-            baseline_t.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
-        let realized_refusals =
-            realized_t.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { .. })).count();
+        let baseline_refusals = baseline_t
+            .events
+            .iter()
+            .filter(|e| matches!(e, BwdEvent::Refuse { .. }))
+            .count();
+        let realized_refusals = realized_t
+            .events
+            .iter()
+            .filter(|e| matches!(e, BwdEvent::Refuse { .. }))
+            .count();
         eprintln!(
             "planned_fill_then_trim_monotone {name}: retains={retains} \
              traffic {baseline_traffic}->{realized_traffic} (drop={}) \
@@ -1351,7 +1607,10 @@ fn synthetic_layer_with_refusable_whole_origin() -> (
 fn trial_budget_stub() -> gkr_eval_isa::bwd::price::TrialBudget {
     // Large `available` + enforcing so `normalize` never runs out of credit here; the
     // enriched (Task 2) fields default to the zero/enforce state via `..Default::default()`.
-    gkr_eval_isa::bwd::price::TrialBudget { available: 1 << 20, ..Default::default() }
+    gkr_eval_isa::bwd::price::TrialBudget {
+        available: 1 << 20,
+        ..Default::default()
+    }
 }
 
 /// The realized-retention model unit gate (CS-M4 Task 1). On the deterministic synthetic
@@ -1368,7 +1627,10 @@ fn normalize_demotes_refused_retain_and_is_idempotent() {
     let (d, budget, plan0, c0, trace0) = synthetic_layer_with_refusable_whole_origin();
 
     // (a) refusals do not gate the certificate.
-    assert!(certify(&c0, &trace0).is_ok(), "refusals do not gate certify");
+    assert!(
+        certify(&c0, &trace0).is_ok(),
+        "refusals do not gate certify"
+    );
 
     // (b) off-by-one guard: a refused opening is EXCLUDED, a first-admission opening INCLUDED.
     let realized0 = realized_openings(&plan0, &trace0);
@@ -1379,8 +1641,14 @@ fn normalize_demotes_refused_retain_and_is_idempotent() {
         .filter(|(_, e)| e.action == PlanAction::Retain)
         .map(|(k, _)| k)
         .collect();
-    assert!(requested.iter().any(|k| !realized0.contains(k)), "test must exercise a refusal");
-    assert!(requested.iter().any(|k| realized0.contains(k)), "a successful retention must stay");
+    assert!(
+        requested.iter().any(|k| !realized0.contains(k)),
+        "test must exercise a refusal"
+    );
+    assert!(
+        requested.iter().any(|k| realized0.contains(k)),
+        "a successful retention must stay"
+    );
 
     // (c) normalize demotes only the refused Retains, once, traffic-neutral.
     let mut budget_ctr = trial_budget_stub(); // Task 1: permissive stub; real TrialBudget in Task 2
@@ -1388,7 +1656,10 @@ fn normalize_demotes_refused_retain_and_is_idempotent() {
     let (plan1, c1, trace1, demoted, unrealized1) =
         normalize(&d, budget, plan0, c0, trace0, &mut budget_ctr).unwrap();
     assert!(demoted >= 1, "at least one refused Retain demoted");
-    assert_eq!(unrealized1, 0, "permissive stub budget → normalize fully completes");
+    assert_eq!(
+        unrealized1, 0,
+        "permissive stub budget → normalize fully completes"
+    );
     assert_eq!(
         c1.stats_ext.global + c1.stats_ext.fold_traffic,
         base_traffic,
@@ -1397,7 +1668,10 @@ fn normalize_demotes_refused_retain_and_is_idempotent() {
     let realized1 = realized_openings(&plan1, &trace1);
     for (k, e) in plan1.entries.iter().enumerate() {
         if e.action == PlanAction::Retain {
-            assert!(realized1.contains(&k), "no unrealized Retain remains after normalize");
+            assert!(
+                realized1.contains(&k),
+                "no unrealized Retain remains after normalize"
+            );
         }
     }
 
@@ -1407,7 +1681,10 @@ fn normalize_demotes_refused_retain_and_is_idempotent() {
         normalize(&d, budget, plan1, c1, trace1, &mut budget_ctr).unwrap();
     assert_eq!(demoted2, 0, "normalize is idempotent");
     assert_eq!(unrealized2, 0);
-    assert_eq!(budget_ctr.available, available_before, "idempotent normalize spends no budget");
+    assert_eq!(
+        budget_ctr.available, available_before,
+        "idempotent normalize spends no budget"
+    );
     let _ = plan2;
 }
 
@@ -1438,7 +1715,7 @@ fn normalize_demotes_refused_retain_and_is_idempotent() {
 #[test]
 fn terminal_normalize_cleans_stage_b_stranded_retain() {
     use gkr_eval_isa::bwd::price::{
-        normalize, realized_openings, reclaim_leaves, LeafReclaimResult, TrialBudget,
+        LeafReclaimResult, TrialBudget, normalize, realized_openings, reclaim_leaves,
     };
 
     // ── Part A: the terminal normalize cleans a stranded (Stage-B-shaped) plan ──────────
@@ -1450,18 +1727,33 @@ fn terminal_normalize_cleans_stage_b_stranded_retain() {
         .enumerate()
         .filter(|(k, e)| e.action == PlanAction::Retain && !realized_before.contains(k))
         .count();
-    assert!(unreal_before >= 1, "witness must carry ≥1 stranded (unrealized) Retain BEFORE");
+    assert!(
+        unreal_before >= 1,
+        "witness must carry ≥1 stranded (unrealized) Retain BEFORE"
+    );
     let traffic_before = c.stats_ext.global + c.stats_ext.fold_traffic;
 
-    let mut tb = TrialBudget { available: 1 << 20, ..Default::default() };
+    let mut tb = TrialBudget {
+        available: 1 << 20,
+        ..Default::default()
+    };
     let (clean_plan, clean_c, clean_trace, demoted, unrealized_after) =
         normalize(&d, budget, stranded_plan, c, trace, &mut tb).unwrap();
-    assert!(demoted >= 1, "terminal normalize must demote the stranded Retain(s)");
-    assert_eq!(unrealized_after, 0, "terminal normalize must leave ZERO unrealized");
+    assert!(
+        demoted >= 1,
+        "terminal normalize must demote the stranded Retain(s)"
+    );
+    assert_eq!(
+        unrealized_after, 0,
+        "terminal normalize must leave ZERO unrealized"
+    );
     let realized_after = realized_openings(&clean_plan, &clean_trace);
     for (k, e) in clean_plan.entries.iter().enumerate() {
         if e.action == PlanAction::Retain {
-            assert!(realized_after.contains(&k), "unrealized Retain @ {k} survived terminal normalize");
+            assert!(
+                realized_after.contains(&k),
+                "unrealized Retain @ {k} survived terminal normalize"
+            );
         }
     }
     assert_eq!(
@@ -1477,26 +1769,51 @@ fn terminal_normalize_cleans_stage_b_stranded_retain() {
     let frozen0 = coordinate_correct_frozen(&dq, bud);
     let base0 = compound_batch_plan(&frozen0, &BTreeSet::new());
     let (bc0, bt0) = compile_distilled_planned(&dq, bud, &base0).unwrap();
-    let observed = freeze_demand(&dq, &bt0, &bc0.program, &bc0.specials, &bc0.backings).unwrap();
+    let observed = freeze_demand(
+        &dq,
+        &bt0,
+        &bc0.program,
+        &bc0.specials,
+        &bc0.backings,
+        &bc0.source_windows,
+    )
+    .unwrap();
     let base = compound_batch_plan(&observed, &BTreeSet::new());
     let (bc, bt) = compile_distilled_planned(&dq, bud, &base).unwrap();
-    let mut tb2 = TrialBudget { available: 1 << 20, ..Default::default() };
+    let mut tb2 = TrialBudget {
+        available: 1 << 20,
+        ..Default::default()
+    };
     let res = reclaim_leaves(&dq, bud, &observed, &base, bc, bt, RECLAIM_N, &mut tb2).unwrap();
     let (plan, trace, counters) = match res {
-        LeafReclaimResult::Complete { plan, trace, counters, .. } => (plan, trace, counters),
+        LeafReclaimResult::Complete {
+            plan,
+            trace,
+            counters,
+            ..
+        } => (plan, trace, counters),
         LeafReclaimResult::Incomplete { unrealized, .. } => {
-            panic!("reclaim_leaves must return Complete on the ample-budget synthetic, got Incomplete({unrealized})")
+            panic!(
+                "reclaim_leaves must return Complete on the ample-budget synthetic, got Incomplete({unrealized})"
+            )
         }
     };
     let realized = realized_openings(&plan, &trace);
     for (k, e) in plan.entries.iter().enumerate() {
         if e.action == PlanAction::Retain {
-            assert!(realized.contains(&k), "reclaim_leaves shipped an unrealized Retain @ {k}");
+            assert!(
+                realized.contains(&k),
+                "reclaim_leaves shipped an unrealized Retain @ {k}"
+            );
         }
     }
     // The terminal normalize always runs (spec §3): it is +1 `normalize_calls` over the
     // pre-terminal count (0 for the B-only floor, 2 for the A+B path). Removing it drops this.
-    let expected = if counters.safety_net_chose_b_only { 1 } else { 3 };
+    let expected = if counters.safety_net_chose_b_only {
+        1
+    } else {
+        3
+    };
     assert_eq!(
         counters.normalize_calls, expected,
         "terminal normalize must be counted (sn_b={})",
@@ -1524,8 +1841,14 @@ fn pipeline_returns_complete_zero_unrealized() {
         let out = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, 16);
 
         // (a) no round exhausted its normalization budget; none of the four falls back.
-        assert!(!out.saw_incomplete_round, "{name}: a round returned Incomplete");
-        assert!(!out.fell_back_to_baseline, "{name}: CS path unexpectedly fell back to baseline");
+        assert!(
+            !out.saw_incomplete_round,
+            "{name}: a round returned Incomplete"
+        );
+        assert!(
+            !out.fell_back_to_baseline,
+            "{name}: CS path unexpectedly fell back to baseline"
+        );
 
         // (b) zero unrealized Retain on the shipped plan (re-distill + recompile for the trace).
         if let Some(plan) = out.plan.as_ref() {

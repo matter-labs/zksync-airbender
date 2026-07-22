@@ -546,6 +546,15 @@ pub fn assert_bwd_value_parity(c: &BwdCompiledLayer, d: &DistilledLayer, oracle_
             used.insert(*desc);
         }
     });
+    for window in c.source_windows.windows() {
+        for (_, desc) in window.fold_descriptors() {
+            assert!(
+                (desc as usize) < n_specials,
+                "Source fold desc {desc} >= specials.len() {n_specials}"
+            );
+            used.insert(desc);
+        }
+    }
     for i in 0..n_specials as u16 {
         assert!(used.contains(&i), "orphan descriptor {i} of {n_specials} is never referenced");
     }

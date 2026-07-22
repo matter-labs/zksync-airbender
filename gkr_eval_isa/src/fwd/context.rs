@@ -1,20 +1,25 @@
 //! Forward execution contract dag_ir arithmetic does not carry (spec §10) + output model.
 
-use super::binding::BackingTable;
+use super::binding::{BackingTable, SourceWindowTable};
 use super::error::CompileError;
 use super::isa::{DstLine, OperandLine, Program};
-use super::source::{DerivedE4Banks, ConstBank, SpecialTable};
+use super::source::{ConstBank, DerivedE4Banks, SpecialTable};
 use super::stats::CompileStats;
-use cs::gkr_compiler::dag_ir::{DagLayer, Ext, ExprId, FieldKind, ReadPlace, Root, RootGroup, RootId};
 use cs::definitions::GKRAddress;
+use cs::gkr_compiler::dag_ir::{
+    DagLayer, ExprId, Ext, FieldKind, ReadPlace, Root, RootGroup, RootId,
+};
 use cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ForwardAction {
     Compute,
-    CopyAlias { src_addr: GKRAddress, dst_addr: GKRAddress }, // storage view alias (no kernel work)
-    SkipScratchPrefill,                                       // emit nothing; excluded from value parity
+    CopyAlias {
+        src_addr: GKRAddress,
+        dst_addr: GKRAddress,
+    }, // storage view alias (no kernel work)
+    SkipScratchPrefill, // emit nothing; excluded from value parity
 }
 
 #[derive(Clone, Debug, Default)]
@@ -23,6 +28,8 @@ pub struct DagForwardContext {
     pub consts: ConstBank,
     pub derived_e4: DerivedE4Banks,
     pub backings: BackingTable,
+    /// Final program-local source-window geometry. Program source lanes index this table.
+    pub source_windows: SourceWindowTable,
     pub actions: HashMap<RootId, ForwardAction>,
     /// Each cache (materialization-only) root → the backing `(slot, col)` it materialized to.
     /// Same-layer reuse of a cached value is now a shared `ExprId` the forward DFS
@@ -62,10 +69,10 @@ pub enum RootOutput {
 
 #[derive(Clone, Debug, Default)]
 pub struct CompileTrace {
-    pub reached_lookup_leaves: Vec<ExprId>,   // LookupValue leaves emitted-code reached (must be covered)
+    pub reached_lookup_leaves: Vec<ExprId>, // LookupValue leaves emitted-code reached (must be covered)
     pub pruned_resolution_exprs: Vec<ExprId>, // exprs pruned because they carry a ResolutionStrategy
     pub max_live_cells: usize,
-    pub nested_subexprs: usize,               // compound children lowered to a cell (§11 general fallback)
+    pub nested_subexprs: usize, // compound children lowered to a cell (§11 general fallback)
     /// Compaction relocations the cell allocator emitted (one per relocated Base), each
     /// annotated with the triggering Ext + both live ranges. Empty when no quad had to
     /// be cleared. Instrumentation only — not serialized, not part of value/traffic parity.
@@ -159,7 +166,10 @@ fn classify_relation(
         }
         NoFieldGKRRelation::CopyInBaseField { input, output }
         | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
-            Ok(ForwardAction::CopyAlias { src_addr: *input, dst_addr: *output })
+            Ok(ForwardAction::CopyAlias {
+                src_addr: *input,
+                dst_addr: *output,
+            })
         }
         _ => Ok(ForwardAction::Compute),
     }
@@ -169,13 +179,13 @@ fn classify_relation(
 mod tests {
     use super::*;
     use cs::definitions::GKRAddress;
-    use cs::gkr_compiler::{
-        GateArtifacts, GKRLayerDescription, NoFieldGKRRelation,
-        NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression,
-    };
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, ClaimInfo, DagLayer, Root, RootGroup, RootId, RootOrigin, RootSlot,
-        SinkInfo, SinkKind, FieldKind, SourceInfo, SourceKind,
+        BatchingOrder, ClaimInfo, DagLayer, FieldKind, Root, RootGroup, RootId, RootOrigin,
+        RootSlot, SinkInfo, SinkKind, SourceInfo, SourceKind,
+    };
+    use cs::gkr_compiler::{
+        GKRLayerDescription, GateArtifacts, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
+        NoFieldStructuredExpression,
     };
     use std::collections::BTreeMap;
 
@@ -207,7 +217,10 @@ mod tests {
     fn make_artifact_layer(relations: Vec<NoFieldGKRRelation>) -> GKRLayerDescription {
         let gates: Vec<GateArtifacts> = relations
             .into_iter()
-            .map(|r| GateArtifacts { output_layer: 0, enforced_relation: r })
+            .map(|r| GateArtifacts {
+                output_layer: 0,
+                enforced_relation: r,
+            })
             .collect();
         GKRLayerDescription {
             layer: 0,
@@ -224,22 +237,46 @@ mod tests {
     fn copy_in_base_field_yields_copy_alias() {
         let src = GKRAddress::ScratchSpace(0);
         let dst = GKRAddress::ScratchSpace(1);
-        let relation = NoFieldGKRRelation::CopyInBaseField { input: src, output: dst };
+        let relation = NoFieldGKRRelation::CopyInBaseField {
+            input: src,
+            output: dst,
+        };
         let mapping = BTreeMap::new();
         let action = classify_relation(RootId(0), &relation, &mapping).unwrap();
-        assert_eq!(action, ForwardAction::CopyAlias { src_addr: src, dst_addr: dst });
+        assert_eq!(
+            action,
+            ForwardAction::CopyAlias {
+                src_addr: src,
+                dst_addr: dst
+            }
+        );
     }
 
     // ── classify_relation: CopyInExtensionField ──────────────────────────────
 
     #[test]
     fn copy_in_extension_field_yields_copy_alias() {
-        let src = GKRAddress::InnerLayer { layer: 0, offset: 0 };
-        let dst = GKRAddress::InnerLayer { layer: 1, offset: 0 };
-        let relation = NoFieldGKRRelation::CopyInExtensionField { input: src, output: dst };
+        let src = GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 0,
+        };
+        let dst = GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 0,
+        };
+        let relation = NoFieldGKRRelation::CopyInExtensionField {
+            input: src,
+            output: dst,
+        };
         let mapping = BTreeMap::new();
         let action = classify_relation(RootId(0), &relation, &mapping).unwrap();
-        assert_eq!(action, ForwardAction::CopyAlias { src_addr: src, dst_addr: dst });
+        assert_eq!(
+            action,
+            ForwardAction::CopyAlias {
+                src_addr: src,
+                dst_addr: dst
+            }
+        );
     }
 
     // ── classify_relation: MaxQuadratic in scratch mapping ───────────────────
@@ -273,7 +310,13 @@ mod tests {
         // Cache root: materializes but carries no claim/origin → cache (materialization-only).
         layer.roots.push(Root {
             expr: cs::gkr_compiler::dag_ir::ExprId(0),
-            materialize: Some(SinkInfo { kind: SinkKind::Cache { layer: 0, offset: 0 }, field: FieldKind::Ext }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Cache {
+                    layer: 0,
+                    offset: 0,
+                },
+                field: FieldKind::Ext,
+            }),
             claim: None,
         });
 
@@ -291,13 +334,19 @@ mod tests {
     fn claim_root_with_copy_relation_yields_copy_alias() {
         let src = GKRAddress::BaseLayerWitness(0);
         let dst = GKRAddress::BaseLayerWitness(1);
-        let relation = NoFieldGKRRelation::CopyInBaseField { input: src, output: dst };
+        let relation = NoFieldGKRRelation::CopyInBaseField {
+            input: src,
+            output: dst,
+        };
         let artifact_layer = make_artifact_layer(vec![relation]);
 
         let mut layer = empty_layer();
         layer.roots.push(Root {
             expr: cs::gkr_compiler::dag_ir::ExprId(0),
-            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Ext }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot: 0 },
+                field: FieldKind::Ext,
+            }),
             claim: Some(ClaimInfo {
                 origin: RootOrigin {
                     group: RootGroup::Gates,
@@ -312,7 +361,13 @@ mod tests {
         let actions = build_forward_actions(&layer, &artifact_layer, &mapping).unwrap();
 
         assert_eq!(actions.len(), 1);
-        assert_eq!(actions[&rid], ForwardAction::CopyAlias { src_addr: src, dst_addr: dst });
+        assert_eq!(
+            actions[&rid],
+            ForwardAction::CopyAlias {
+                src_addr: src,
+                dst_addr: dst
+            }
+        );
     }
 
     // ── NOTE: build_forward_actions + MaxQuadratic classification exercised on

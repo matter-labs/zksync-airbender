@@ -14,7 +14,7 @@ use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind, ReadPlace, bwd_roots, lower
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
 use gkr_eval_isa::eval_plan::compile_backward_fragments_uncached;
-use gkr_eval_isa::fwd::binding::{BackingKey, BackingTable};
+use gkr_eval_isa::fwd::binding::{BackingKey, BackingTable, SourceWindowTable};
 use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_circuit};
 use gkr_eval_isa::fwd::isa::{Instr, OperandField, OperandLine, Program};
 
@@ -143,7 +143,7 @@ fn referenced_columns(
 ) -> BTreeMap<SourceFamily, BTreeSet<usize>> {
     let mut columns = BTreeMap::new();
     visit_operands(program, |operand| {
-        let OperandLine::Global { slot, col } = operand else {
+        let OperandLine::LogicalGlobal { slot, col } = operand else {
             return;
         };
         let place = backings
@@ -197,6 +197,44 @@ fn source_windows(columns: &BTreeMap<SourceFamily, BTreeSet<usize>>) -> usize {
         .values()
         .map(|family_columns| window_count(family_columns.iter().copied()))
         .sum()
+}
+
+fn assert_final_sources(program: &Program, table: &SourceWindowTable, expect_first_access: bool) {
+    let mut occurrences = BTreeMap::<(u8, u8), (usize, usize)>::new();
+    visit_operands(program, |operand| match *operand {
+        OperandLine::LogicalGlobal { .. } | OperandLine::LogicalFold { .. } => {
+            panic!("final program contains an unbound logical source: {operand:?}")
+        }
+        OperandLine::Source {
+            window,
+            column,
+            first_access,
+        } => {
+            assert!(
+                table.resolve_read_place(window, column).is_some(),
+                "source {window}:{column} is absent from its table"
+            );
+            let counts = occurrences.entry((window, column)).or_default();
+            counts.0 += 1;
+            counts.1 += usize::from(first_access);
+            if !expect_first_access {
+                assert!(
+                    !first_access,
+                    "forward source unexpectedly marks first access"
+                );
+            }
+        }
+        _ => {}
+    });
+    if expect_first_access {
+        for (source, (uses, firsts)) in occurrences {
+            assert!(uses > 0);
+            assert_eq!(
+                firsts, 1,
+                "backward source {source:?} must have exactly one first marker"
+            );
+        }
+    }
 }
 
 /// The committed forward corpus: 11 scheduled layouts, each compiled at its
@@ -260,8 +298,8 @@ fn source_window_corpus_census() {
             "{name}: expected committed four-cell budget"
         );
         for (layer, program) in compiled.layers.iter().enumerate() {
-            let windows =
-                source_windows(&referenced_columns(&program.program, &program.ctx.backings));
+            assert_final_sources(&program.program, &program.ctx.source_windows, false);
+            let windows = program.ctx.source_windows.len();
             println!("{name} L{layer:<3} forward {:>7}", windows);
             maximum = maximum.max(windows);
             forward_programs += 1;
@@ -299,21 +337,24 @@ fn source_window_corpus_census() {
                     .unwrap_or_else(|error| {
                         panic!("{name} L{layer} {regime:?}: four-cell no-cache compile: {error:?}")
                     });
-                let mut columns =
-                    referenced_columns(&compiled.compiled.program, &compiled.compiled.backings);
+                assert_final_sources(
+                    &compiled.compiled.program,
+                    &compiled.compiled.source_windows,
+                    true,
+                );
                 visit_operands(&compiled.compiled.program, |operand| {
-                    let OperandLine::Special { desc } = operand else {
-                        return;
-                    };
-                    let Some(BwdSpecial::FoldSource {
-                        origin: OriginLeaf::Read(place),
-                    }) = compiled.compiled.specials.get(*desc)
-                    else {
-                        return;
-                    };
-                    record_read_origin(&mut columns, place, &distilled.cross_fields);
+                    if let OperandLine::Special { desc } = operand
+                        && matches!(
+                            compiled.compiled.specials.get(*desc),
+                            Some(BwdSpecial::FoldSource {
+                                origin: OriginLeaf::Read(_),
+                            })
+                        )
+                    {
+                        panic!("read-origin fold descriptor {desc} remained Special");
+                    }
                 });
-                let windows = source_windows(&columns);
+                let windows = compiled.compiled.source_windows.len();
                 println!("{name} L{layer:<3} {regime:?} {:>7}", windows);
                 maximum = maximum.max(windows);
                 backward_programs += 1;

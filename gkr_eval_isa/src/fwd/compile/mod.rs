@@ -10,33 +10,36 @@ pub mod schedule;
 
 pub use self::arith::build_cross_layer_field_map;
 pub use self::decisions::SiteDecisions;
-pub use self::place::MoveCtx;
 /// Task 4 (CS-M0): the plan-driven bwd lowering input, threaded by `bwd::compile`.
 pub(crate) use self::lower::PlanInput;
 use self::lower::lower_layer_virtual;
-use self::place::{plan_placement, plan_placement_with_peak, PlacementInput, RelocStep, ResidencyStep, ValueId, VInstrKind, VirtualOp};
-use super::binding::BackingKey;
-use super::context::{
-    build_forward_actions, CompileTrace, CompiledLayer, DagForwardContext, ForwardAction,
-    OutputCell, RootOutput,
+use self::lower::{VDst, VInstr, VirtualRootOutput};
+pub use self::place::MoveCtx;
+use self::place::{
+    PlacementInput, RelocStep, ResidencyStep, VInstrKind, ValueId, VirtualOp, plan_placement,
+    plan_placement_with_peak,
 };
-use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
+use super::binding::{BackingKey, SourceMarkerMode, bind_final_sources};
+use super::context::{
+    CompileTrace, CompiledLayer, DagForwardContext, ForwardAction, OutputCell, RootOutput,
+    build_forward_actions,
+};
 use super::error::CompileError;
 use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
-use self::lower::{VDst, VInstr, VirtualRootOutput};
+use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use crate::bwd::trace::BwdCompileTrace;
+use cs::definitions::GKRAddress;
 use cs::gkr_compiler::dag_ir::{
     CircuitSchedule, DagCircuit, DagLayer, ExprId, FieldKind, LayerSchedule, ReadPlace, RootId,
     SinkInfo, SinkKind,
 };
 use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription};
-use cs::definitions::GKRAddress;
 use field::baby_bear::base::BabyBearField;
 use std::collections::{BTreeMap, HashMap};
 
 /// Classification of a read operand for traffic-counter tallying (spec §11).
 pub(crate) enum OperandClass {
-    /// `OperandLine::Global` — a DRAM read (backing slot+col).
+    /// `OperandLine::LogicalGlobal` — a DRAM read (backing slot+col).
     Dram,
     /// `OperandLine::Ldc` with `sub != LdcSub::Special` — a load-constant read.
     Ldc,
@@ -52,9 +55,14 @@ pub(crate) enum OperandClass {
 /// Classify a single read operand into its traffic category.
 pub(crate) fn classify_operand(op: &OperandLine) -> OperandClass {
     match op {
-        OperandLine::Global { .. } => OperandClass::Dram,
+        OperandLine::LogicalGlobal { .. }
+        | OperandLine::LogicalFold { .. }
+        | OperandLine::Source { .. } => OperandClass::Dram,
         OperandLine::Smem { .. } => OperandClass::Smem,
-        OperandLine::Ldc { sub: LdcSub::Special, .. } => OperandClass::SpecialLit,
+        OperandLine::Ldc {
+            sub: LdcSub::Special,
+            ..
+        } => OperandClass::SpecialLit,
         OperandLine::Ldc { .. } => OperandClass::Ldc,
         OperandLine::Special { .. } => OperandClass::SpecialGather,
     }
@@ -120,7 +128,13 @@ fn sink_to_backing(sink: &SinkInfo, this_layer: usize) -> (BackingKey, usize) {
     match sink.kind {
         SinkKind::Cache { layer, offset } => (BackingKey::CacheOutput { layer, field }, offset),
         SinkKind::Inner { layer, offset } => (BackingKey::LayerOutput { layer, field }, offset),
-        SinkKind::Export { slot } => (BackingKey::LayerOutput { layer: this_layer, field }, slot),
+        SinkKind::Export { slot } => (
+            BackingKey::LayerOutput {
+                layer: this_layer,
+                field,
+            },
+            slot,
+        ),
         SinkKind::Scratch { slot } => (BackingKey::Scratch, slot),
     }
 }
@@ -223,8 +237,14 @@ pub fn lower_layer_stream(
     let mut ctx = DagForwardContext::default();
     ctx.actions = build_forward_actions(layer, artifact_layer, scratch_mapping)?;
     ctx.cross_layer_fields = cross_layer_fields.clone();
-    let (vinstrs, step_of, _vouts, _rr) =
-        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, budget)?;
+    let (vinstrs, step_of, _vouts, _rr) = lower_layer_virtual(
+        layer,
+        schedule,
+        &mut ctx,
+        artifact_layer.layer,
+        decisions,
+        budget,
+    )?;
     Ok(vinstrs
         .iter()
         .zip(step_of)
@@ -244,7 +264,12 @@ pub fn lower_layer_stream(
                     _ => None,
                 })
                 .collect();
-            LoweredInstr { step, kind, defines: pv.defines, value_reads }
+            LoweredInstr {
+                step,
+                kind,
+                defines: pv.defines,
+                value_reads,
+            }
         })
         .collect())
 }
@@ -299,7 +324,13 @@ pub fn compile_layer(
     const FILL: usize = 1 << 20;
     let at = |lb: usize| {
         compile_layer_at(
-            layer, artifact_layer, scratch_mapping, cross_layer_fields, schedule, budget, lb,
+            layer,
+            artifact_layer,
+            scratch_mapping,
+            cross_layer_fields,
+            schedule,
+            budget,
+            lb,
             decisions,
         )
     };
@@ -350,8 +381,14 @@ fn compile_layer_at(
     ctx.cross_layer_fields = cross_layer_fields.clone();
 
     // Phase 1 — lower to a rich virtual-instruction stream.
-    let (vinstrs, step_of, vouts, resident_realized) =
-        lower_layer_virtual(layer, schedule, &mut ctx, artifact_layer.layer, decisions, lower_budget)?;
+    let (vinstrs, step_of, vouts, resident_realized) = lower_layer_virtual(
+        layer,
+        schedule,
+        &mut ctx,
+        artifact_layer.layer,
+        decisions,
+        lower_budget,
+    )?;
 
     // Phase 1.5 — value-preserving peephole (F1/F4/F2/F5). `resident_realized` above stays
     // the lowering-time admission diagnostic (pre-optimization; consumed by decisions_policy).
@@ -374,9 +411,11 @@ fn compile_layer_at(
     // v2 (Task 4) has no persisted per-step residency at all to inject phantom cells
     // from). The realized residency is recorded separately in `resident_realized` (H5).
     // Step boundaries derive from `schedule.atom_order()` (one step per ordered atom root).
-    let free_steps: Vec<ResidencyStep> =
-        (0..schedule.atom_order().len()).map(|_| ResidencyStep::default()).collect();
-    let place_instrs: Vec<self::place::VirtualInstr> = vinstrs.iter().map(|vi| vi.to_place()).collect();
+    let free_steps: Vec<ResidencyStep> = (0..schedule.atom_order().len())
+        .map(|_| ResidencyStep::default())
+        .collect();
+    let place_instrs: Vec<self::place::VirtualInstr> =
+        vinstrs.iter().map(|vi| vi.to_place()).collect();
     let placement = plan_placement(&PlacementInput {
         instrs: &place_instrs,
         steps: &free_steps,
@@ -407,13 +446,17 @@ fn compile_layer_at(
             }
         }
         prog_idx_of_vinstr.push(program.instrs.len());
-        program.instrs.push(materialize_vinstr(vi, i, &placement.cell_of)?);
+        program
+            .instrs
+            .push(materialize_vinstr(vi, i, &placement.cell_of)?);
     }
 
     // Phase 3.5 — v2 promote emission (spec §1.2 iff rule). Runs over the FINAL concrete
     // stream (post-optimizer, post-placement, relocation MOVs included) so the tracked
     // acc domain reflects exactly what the VM will execute.
     apply_promote(&mut program);
+    ctx.source_windows =
+        bind_final_sources(&mut program, &ctx.backings, SourceMarkerMode::Forward)?;
 
     // Root outputs from the virtual outputs. Task 5 (spec §3): every materialized root
     // is a GlobalMaterialize write-through (or a zero-lane alias of one) — there is no
@@ -444,7 +487,13 @@ fn compile_layer_at(
     stats.program_lanes = program.instrs.len();
     for instr in &program.instrs {
         match instr {
-            Instr::Mov { dir, dst, src, field, .. } => {
+            Instr::Mov {
+                dir,
+                dst,
+                src,
+                field,
+                ..
+            } => {
                 stats.op_counts[OP_MOV] += 1;
                 if let Some(op) = src {
                     tally_operand(op, *field, &ctx.specials, &mut stats);
@@ -455,19 +504,28 @@ fn compile_layer_at(
                     stats.cell_stores += 1;
                 }
             }
-            Instr::Add { field, operands, .. } => {
+            Instr::Add {
+                field, operands, ..
+            } => {
                 stats.op_counts[OP_ADD] += 1;
                 for op in operands {
                     tally_operand(op, *field, &ctx.specials, &mut stats);
                 }
             }
-            Instr::Mul { field, operands, .. } => {
+            Instr::Mul {
+                field, operands, ..
+            } => {
                 stats.op_counts[OP_MUL] += 1;
                 for op in operands {
                     tally_operand(op, *field, &ctx.specials, &mut stats);
                 }
             }
-            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                pairs,
+                ..
+            } => {
                 stats.op_counts[OP_FMA] += 1;
                 for (l, r) in pairs {
                     tally_operand(l, *field_lhs, &ctx.specials, &mut stats);
@@ -486,7 +544,12 @@ fn compile_layer_at(
     stats.special_gathers = ctx
         .specials
         .iter()
-        .filter(|d| !matches!(d.strategy, super::source::SpecialStrategy::VirtualSetup { .. }))
+        .filter(|d| {
+            !matches!(
+                d.strategy,
+                super::source::SpecialStrategy::VirtualSetup { .. }
+            )
+        })
         .count();
     stats.max_live_cells = placement.max_live_cells;
 
@@ -554,8 +617,17 @@ pub(crate) fn compile_bwd_program(
 ) -> Result<(Program, usize, Option<BwdCompileTrace>), CompileError> {
     // Phase 1 — the bwd one-root driver (result-in-acc terminal convention).
     let (vinstrs, step_of, trace) = self::lower::lower_bwd_root_virtual(
-        layer, root_expr, terms, ctx, leaf_descs, field_overrides, streams, lower_budget,
-        stream_reductions, trace, plan,
+        layer,
+        root_expr,
+        terms,
+        ctx,
+        leaf_descs,
+        field_overrides,
+        streams,
+        lower_budget,
+        stream_reductions,
+        trace,
+        plan,
     )?;
 
     // Phase 1.5 — the shared value-preserving peephole. Safe for the terminal-acc
@@ -601,7 +673,9 @@ pub(crate) fn compile_bwd_program(
                 });
             }
         }
-        program.instrs.push(materialize_vinstr(vi, i, &placement.cell_of)?);
+        program
+            .instrs
+            .push(materialize_vinstr(vi, i, &placement.cell_of)?);
     }
 
     // Phase 3.5 — v2 promote annotation (value-inert), same machine as fwd.
@@ -638,8 +712,18 @@ pub(crate) fn compile_bwd_fragments_program(
 ) -> Result<(Program, usize, Option<BwdCompileTrace>), CompileError> {
     // Phase 1 — the bwd fragment-decomposition driver (result-in-acc terminal convention).
     let (vinstrs, step_of, trace) = self::lower::lower_bwd_fragments_virtual(
-        layer, table, order, coeff_descs, acc_init_desc, ctx, leaf_descs, field_overrides,
-        lower_budget, stream_reductions, trace, plan,
+        layer,
+        table,
+        order,
+        coeff_descs,
+        acc_init_desc,
+        ctx,
+        leaf_descs,
+        field_overrides,
+        lower_budget,
+        stream_reductions,
+        trace,
+        plan,
     )?;
 
     // Phase 1.5 — the shared value-preserving peephole (same rules as `compile_bwd_program`).
@@ -682,7 +766,9 @@ pub(crate) fn compile_bwd_fragments_program(
                 });
             }
         }
-        program.instrs.push(materialize_vinstr(vi, i, &placement.cell_of)?);
+        program
+            .instrs
+            .push(materialize_vinstr(vi, i, &placement.cell_of)?);
     }
 
     // Phase 3.5 — v2 promote annotation (value-inert), same machine as fwd.
@@ -714,8 +800,17 @@ pub(crate) fn compile_bwd_program_peak(
     // Phase 1 — the bwd one-root driver (result-in-acc terminal convention).
     // Peak diagnostics never trace: pass `None` and discard the (empty) trace slot.
     let (vinstrs, step_of, _trace) = self::lower::lower_bwd_root_virtual(
-        layer, root_expr, terms, ctx, leaf_descs, field_overrides, streams, lower_budget,
-        stream_reductions, None, None,
+        layer,
+        root_expr,
+        terms,
+        ctx,
+        leaf_descs,
+        field_overrides,
+        streams,
+        lower_budget,
+        stream_reductions,
+        None,
+        None,
     )?;
 
     // Phase 1.5 — the shared value-preserving peephole (identical to `compile_bwd_program`).
@@ -758,7 +853,9 @@ pub(crate) fn compile_bwd_program_peak(
                 });
             }
         }
-        program.instrs.push(materialize_vinstr(vi, i, &placement.cell_of)?);
+        program
+            .instrs
+            .push(materialize_vinstr(vi, i, &placement.cell_of)?);
     }
 
     // Phase 3.5 — v2 promote annotation (value-inert), same machine as fwd.
@@ -778,7 +875,11 @@ fn apply_promote(program: &mut Program) {
     let mut acc_is_ext = false;
     for instr in &mut program.instrs {
         match instr {
-            Instr::Mov { dir: MovDir::AccFromSrc, field, .. } => {
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field,
+                ..
+            } => {
                 acc_is_ext = *field == OperandField::Ext;
             }
             Instr::Mov { .. } => {} // stores/copies never change the acc domain
@@ -787,14 +888,21 @@ fn apply_promote(program: &mut Program) {
                 *promote = requires_ext && !acc_is_ext;
                 acc_is_ext |= requires_ext;
             }
-            Instr::Mul { field, promote, operands, .. } => {
+            Instr::Mul {
+                field,
+                promote,
+                operands,
+                ..
+            } => {
                 // Mul{Base} dispatches (scale) and zero-arity Mul is pure negation —
                 // neither requires an ext acc; only Mul{Ext} with operands does.
                 let requires_ext = *field == OperandField::Ext && !operands.is_empty();
                 *promote = requires_ext && !acc_is_ext;
                 acc_is_ext |= requires_ext;
             }
-            Instr::Fma { field_rhs, promote, .. } => {
+            Instr::Fma {
+                field_rhs, promote, ..
+            } => {
                 // Fma{B,B} is a bf-product + limb-0 add; Fma{B,E}/{E,E} fold a full e4
                 // product into acc (canonical order puts Ext on the rhs).
                 let requires_ext = *field_rhs == OperandField::Ext;
@@ -838,21 +946,32 @@ fn materialize_vinstr(
     };
     let op_of = |op: &VirtualOp, field: OperandField| -> Result<OperandLine, CompileError> {
         match op {
-            VirtualOp::Value(v) => {
-                Ok(OperandLine::Smem { cell: smem_wire_index(lane_of(v)?, field)? })
-            }
-            VirtualOp::Global { slot, col } => Ok(OperandLine::Global { slot: *slot, col: *col }),
-            VirtualOp::Ldc { sub, idx } => Ok(OperandLine::Ldc { sub: *sub, idx: *idx }),
+            VirtualOp::Value(v) => Ok(OperandLine::Smem {
+                cell: smem_wire_index(lane_of(v)?, field)?,
+            }),
+            VirtualOp::Global { slot, col } => Ok(OperandLine::LogicalGlobal {
+                slot: *slot,
+                col: *col,
+            }),
+            VirtualOp::Ldc { sub, idx } => Ok(OperandLine::Ldc {
+                sub: *sub,
+                idx: *idx,
+            }),
             VirtualOp::Special { desc } => Ok(OperandLine::Special { desc: *desc }),
             VirtualOp::Acc => Err(CompileError::FieldMismatch("unexpected Acc operand".into())),
         }
     };
     Ok(match vi {
-        VInstr::Add { field, sign, reads, .. } => Instr::Add {
+        VInstr::Add {
+            field, sign, reads, ..
+        } => Instr::Add {
             field: *field,
             sign: *sign,
             promote: false,
-            operands: reads.iter().map(|o| op_of(o, *field)).collect::<Result<_, _>>()?,
+            operands: reads
+                .iter()
+                .map(|o| op_of(o, *field))
+                .collect::<Result<_, _>>()?,
         },
         VInstr::Mul { field, reads, .. } => Instr::Mul {
             field: *field,
@@ -861,30 +980,57 @@ fn materialize_vinstr(
             // is "arity 0 iff negate_acc", and the lowering emits an empty-reads Mul
             // only from `emit_unary_negate`). Non-empty Muls never negate.
             negate_acc: reads.is_empty(),
-            operands: reads.iter().map(|o| op_of(o, *field)).collect::<Result<_, _>>()?,
+            operands: reads
+                .iter()
+                .map(|o| op_of(o, *field))
+                .collect::<Result<_, _>>()?,
         },
-        VInstr::Fma { field_lhs, field_rhs, sign, pairs, .. } => {
+        VInstr::Fma {
+            field_lhs,
+            field_rhs,
+            sign,
+            pairs,
+            ..
+        } => {
             let mut out = Vec::with_capacity(pairs.len());
             for (l, r) in pairs {
                 out.push((op_of(l, *field_lhs)?, op_of(r, *field_rhs)?));
             }
-            Instr::Fma { field_lhs: *field_lhs, field_rhs: *field_rhs, sign: *sign, promote: false, pairs: out }
+            Instr::Fma {
+                field_lhs: *field_lhs,
+                field_rhs: *field_rhs,
+                sign: *sign,
+                promote: false,
+                pairs: out,
+            }
         }
-        VInstr::Mov { dir, field, dst, src, .. } => {
+        VInstr::Mov {
+            dir,
+            field,
+            dst,
+            src,
+            ..
+        } => {
             let dst = match dst {
                 None => None,
-                Some(VDst::Cell(v)) => {
-                    Some(DstLine::Smem { cell: smem_wire_index(lane_of(v)?, *field)? })
-                }
-                Some(VDst::GlobalMaterialize { slot, col }) => {
-                    Some(DstLine::GlobalMaterialize { slot: *slot, col: *col })
-                }
+                Some(VDst::Cell(v)) => Some(DstLine::Smem {
+                    cell: smem_wire_index(lane_of(v)?, *field)?,
+                }),
+                Some(VDst::GlobalMaterialize { slot, col }) => Some(DstLine::GlobalMaterialize {
+                    slot: *slot,
+                    col: *col,
+                }),
             };
             let src = match src {
                 None => None,
                 Some(op) => Some(op_of(op, *field)?),
             };
-            Instr::Mov { dir: *dir, field: *field, dst, src }
+            Instr::Mov {
+                dir: *dir,
+                field: *field,
+                dst,
+                src,
+            }
         }
     })
 }
@@ -911,12 +1057,10 @@ pub fn layer_needs_compile(order_is_empty: bool, layer: &DagLayer) -> bool {
 /// (on-demand production is an explicit caller act via
 /// `schedule_search::producer::produce_circuit_schedule`).
 pub fn load_committed_schedule(path: &std::path::Path) -> Result<CircuitSchedule, CompileError> {
-    let bytes = std::fs::read(path).map_err(|e| {
-        CompileError::InvalidSchedule(format!("read {}: {e}", path.display()))
-    })?;
-    serde_json::from_slice(&bytes).map_err(|e| {
-        CompileError::InvalidSchedule(format!("parse {}: {e}", path.display()))
-    })
+    let bytes = std::fs::read(path)
+        .map_err(|e| CompileError::InvalidSchedule(format!("read {}: {e}", path.display())))?;
+    serde_json::from_slice(&bytes)
+        .map_err(|e| CompileError::InvalidSchedule(format!("parse {}: {e}", path.display())))
 }
 
 /// Compile a whole circuit from its committed `CircuitSchedule` (OP-3): the single
@@ -966,7 +1110,11 @@ pub fn compile_circuit(
             )?);
         }
     }
-    Ok(CompiledCircuit { circuit: schedule.circuit.clone(), budget: schedule.budget, layers })
+    Ok(CompiledCircuit {
+        circuit: schedule.circuit.clone(),
+        budget: schedule.budget,
+        layers,
+    })
 }
 
 #[cfg(test)]
@@ -984,19 +1132,35 @@ mod tests {
     /// stays consistent with `compile_circuit`'s ground-truth skip decision.
     #[test]
     fn layer_needs_compile_true_for_materialize_only_root_with_empty_order() {
-        let sink = SinkInfo { kind: SinkKind::Cache { layer: 0, offset: 0 }, field: FieldKind::Ext };
+        let sink = SinkInfo {
+            kind: SinkKind::Cache {
+                layer: 0,
+                offset: 0,
+            },
+            field: FieldKind::Ext,
+        };
         let layer = DagLayer {
             sources: vec![],
             exprs: vec![Expr::Source(SourceId(0))],
-            roots: vec![Root { expr: ExprId(7), materialize: Some(sink), claim: None }],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            roots: vec![Root {
+                expr: ExprId(7),
+                materialize: Some(sink),
+                claim: None,
+            }],
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
 
         // Producer's proxy for "would this layer's order be empty": no atom
         // (materialize+claim) roots.
-        let order_would_be_empty = crate::schedule_search::structure::relation_units(&layer).is_empty();
-        assert!(order_would_be_empty, "materialize-only root has no claim, so it is not an atom root");
+        let order_would_be_empty =
+            crate::schedule_search::structure::relation_units(&layer).is_empty();
+        assert!(
+            order_would_be_empty,
+            "materialize-only root has no claim, so it is not an atom root"
+        );
 
         // Ground truth: `compile_circuit` must NOT skip this layer.
         assert!(

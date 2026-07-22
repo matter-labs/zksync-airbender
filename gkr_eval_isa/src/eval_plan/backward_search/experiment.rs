@@ -1726,6 +1726,7 @@ fn accepted_measurements(
         &candidate.compiled.compiled.specials,
         &d.leaf_descs,
         &candidate.compiled.compiled.backings,
+        &candidate.compiled.compiled.source_windows,
     )
     .ok_or(BackwardSearchError::PagingCertificateMismatch {
         observable: "incumbent physical traffic source mapping",
@@ -2937,6 +2938,7 @@ mod tests {
             &scored.compiled.compiled.specials,
             &distilled.leaf_descs,
             &scored.compiled.compiled.backings,
+            &scored.compiled.compiled.source_windows,
         )
         .unwrap();
         let expected_reads = physical

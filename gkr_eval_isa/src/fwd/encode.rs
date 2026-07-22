@@ -5,21 +5,44 @@ use super::isa::*;
 
 pub fn pack_operand(o: OperandLine) -> Result<u16, EncodeError> {
     match o {
-        OperandLine::Global { slot, col } => {
-            if (slot as u32) >= MAX_SLOTS { return Err(EncodeError::SlotOutOfRange(slot)); }
-            if (col as u32) >= MAX_COLS { return Err(EncodeError::ColOutOfRange(col)); }
-            Ok(TAG_GLOBAL | ((slot as u16) << TYPE_BITS) | (col << (TYPE_BITS + SLOT_BITS)))
+        OperandLine::LogicalGlobal { slot, col } => {
+            Err(EncodeError::UnboundLogicalSource { slot, col })
+        }
+        OperandLine::LogicalFold { slot, col, desc } => {
+            Err(EncodeError::UnboundLogicalFold { slot, col, desc })
+        }
+        OperandLine::Source {
+            window,
+            column,
+            first_access,
+        } => {
+            if (window as u32) >= MAX_SOURCE_WINDOWS {
+                return Err(EncodeError::SourceWindowOutOfRange(window));
+            }
+            if (column as u32) >= SOURCE_WINDOW_COLUMNS {
+                return Err(EncodeError::SourceColumnOutOfRange(column));
+            }
+            Ok(TAG_SOURCE
+                | ((first_access as u16) << FIRST_ACCESS_SHIFT)
+                | ((window as u16) << SOURCE_WINDOW_SHIFT)
+                | ((column as u16) << SOURCE_COLUMN_SHIFT))
         }
         OperandLine::Smem { cell } => {
-            if (cell as u32) >= MAX_CELL { return Err(EncodeError::CellOutOfRange(cell)); }
+            if (cell as u32) >= MAX_CELL {
+                return Err(EncodeError::CellOutOfRange(cell));
+            }
             Ok(TAG_SMEM | (cell << TYPE_BITS))
         }
         OperandLine::Ldc { sub, idx } => {
-            if (idx as u32) >= MAX_LDC_IDX { return Err(EncodeError::LdcIdxOutOfRange(idx)); }
+            if (idx as u32) >= MAX_LDC_IDX {
+                return Err(EncodeError::LdcIdxOutOfRange(idx));
+            }
             Ok(TAG_LDC | ((sub as u16) << TYPE_BITS) | (idx << (TYPE_BITS + LDC_SUB_BITS)))
         }
         OperandLine::Special { desc } => {
-            if (desc as u32) >= MAX_DESC { return Err(EncodeError::DescOutOfRange(desc)); }
+            if (desc as u32) >= MAX_DESC {
+                return Err(EncodeError::DescOutOfRange(desc));
+            }
             Ok(TAG_SPECIAL | (desc << TYPE_BITS))
         }
     }
@@ -27,38 +50,59 @@ pub fn pack_operand(o: OperandLine) -> Result<u16, EncodeError> {
 
 pub fn unpack_operand(lane: u16) -> Result<OperandLine, DecodeError> {
     match lane & TYPE_MASK {
-        TAG_GLOBAL => Ok(OperandLine::Global {
-            slot: ((lane >> TYPE_BITS) & ((1 << SLOT_BITS) - 1)) as u8,
-            col: lane >> (TYPE_BITS + SLOT_BITS),
+        TAG_SOURCE => Ok(OperandLine::Source {
+            window: ((lane >> SOURCE_WINDOW_SHIFT) & SOURCE_WINDOW_MASK) as u8,
+            column: ((lane >> SOURCE_COLUMN_SHIFT) & SOURCE_COLUMN_MASK) as u8,
+            first_access: ((lane >> FIRST_ACCESS_SHIFT) & 1) != 0,
         }),
-        TAG_SMEM => Ok(OperandLine::Smem { cell: (lane >> TYPE_BITS) & ((1 << CELL_BITS) - 1) }),
+        TAG_SMEM => Ok(OperandLine::Smem {
+            cell: (lane >> TYPE_BITS) & ((1 << CELL_BITS) - 1),
+        }),
         TAG_LDC => {
             let sub = match (lane >> TYPE_BITS) & LDC_SUB_MASK {
-                0 => LdcSub::Const, 1 => LdcSub::ConstDerivedE4, 2 => LdcSub::ArgDerivedE4, _ => LdcSub::Special,
+                0 => LdcSub::Const,
+                1 => LdcSub::ConstDerivedE4,
+                2 => LdcSub::ArgDerivedE4,
+                _ => LdcSub::Special,
             };
-            Ok(OperandLine::Ldc { sub, idx: lane >> (TYPE_BITS + LDC_SUB_BITS) })
+            Ok(OperandLine::Ldc {
+                sub,
+                idx: lane >> (TYPE_BITS + LDC_SUB_BITS),
+            })
         }
-        _ => Ok(OperandLine::Special { desc: lane >> TYPE_BITS }), // TAG_SPECIAL
+        _ => Ok(OperandLine::Special {
+            desc: lane >> TYPE_BITS,
+        }), // TAG_SPECIAL
     }
 }
 
 pub fn pack_dst(d: DstLine) -> Result<u16, EncodeError> {
     match d {
         DstLine::Smem { cell } => {
-            if (cell as u32) >= MAX_CELL { return Err(EncodeError::CellOutOfRange(cell)); }
+            if (cell as u32) >= MAX_CELL {
+                return Err(EncodeError::CellOutOfRange(cell));
+            }
             Ok(DST_TAG_SMEM | (cell << DST_TAG_BITS))
         }
         DstLine::GlobalMaterialize { slot, col } => {
-            if (slot as u32) >= MAX_SLOTS { return Err(EncodeError::SlotOutOfRange(slot)); }
-            if (col as u32) >= MAX_COLS { return Err(EncodeError::ColOutOfRange(col)); }
-            Ok(DST_TAG_GLOBAL | ((slot as u16) << DST_TAG_BITS) | (col << (DST_TAG_BITS + SLOT_BITS)))
+            if (slot as u32) >= MAX_SLOTS {
+                return Err(EncodeError::SlotOutOfRange(slot));
+            }
+            if (col as u32) >= MAX_COLS {
+                return Err(EncodeError::ColOutOfRange(col));
+            }
+            Ok(DST_TAG_GLOBAL
+                | ((slot as u16) << DST_TAG_BITS)
+                | (col << (DST_TAG_BITS + SLOT_BITS)))
         }
     }
 }
 
 pub fn unpack_dst(lane: u16) -> Result<DstLine, DecodeError> {
     if lane & DST_TAG_MASK == DST_TAG_SMEM {
-        Ok(DstLine::Smem { cell: (lane >> DST_TAG_BITS) & ((1 << CELL_BITS) - 1) })
+        Ok(DstLine::Smem {
+            cell: (lane >> DST_TAG_BITS) & ((1 << CELL_BITS) - 1),
+        })
     } else {
         Ok(DstLine::GlobalMaterialize {
             slot: ((lane >> DST_TAG_BITS) & ((1 << SLOT_BITS) - 1)) as u8,
@@ -73,31 +117,131 @@ mod tests {
     #[test]
     fn operand_roundtrip_all_variants() {
         for c in [
-            OperandLine::Global { slot: 15, col: 1023 },
+            OperandLine::Source {
+                window: 63,
+                column: 127,
+                first_access: true,
+            },
             OperandLine::Smem { cell: 12 },
-            OperandLine::Ldc { sub: LdcSub::ArgDerivedE4, idx: 4095 },
-            OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 },
+            OperandLine::Ldc {
+                sub: LdcSub::ArgDerivedE4,
+                idx: 4095,
+            },
+            OperandLine::Ldc {
+                sub: LdcSub::Special,
+                idx: Special::NegOne as u16,
+            },
             OperandLine::Special { desc: 16383 },
-        ] { assert_eq!(unpack_operand(pack_operand(c).unwrap()).unwrap(), c); }
+        ] {
+            assert_eq!(unpack_operand(pack_operand(c).unwrap()).unwrap(), c);
+        }
     }
     #[test]
     fn dst_roundtrip_both_kinds() {
-        for d in [DstLine::Smem { cell: 8 }, DstLine::GlobalMaterialize { slot: 3, col: 100 }] {
+        for d in [
+            DstLine::Smem { cell: 8 },
+            DstLine::GlobalMaterialize { slot: 3, col: 100 },
+        ] {
             assert_eq!(unpack_dst(pack_dst(d).unwrap()).unwrap(), d);
         }
     }
     #[test]
     fn cap_guards_reject_out_of_range() {
-        assert_eq!(pack_operand(OperandLine::Global { slot: 16, col: 0 }), Err(EncodeError::SlotOutOfRange(16)));
-        assert_eq!(pack_operand(OperandLine::Global { slot: 0, col: 1024 }), Err(EncodeError::ColOutOfRange(1024)));
-        assert_eq!(pack_operand(OperandLine::Ldc { sub: LdcSub::Const, idx: 4096 }), Err(EncodeError::LdcIdxOutOfRange(4096)));
+        assert_eq!(
+            pack_operand(OperandLine::Source {
+                window: 64,
+                column: 0,
+                first_access: false
+            }),
+            Err(EncodeError::SourceWindowOutOfRange(64))
+        );
+        assert_eq!(
+            pack_operand(OperandLine::Source {
+                window: 0,
+                column: 128,
+                first_access: false
+            }),
+            Err(EncodeError::SourceColumnOutOfRange(128))
+        );
+        assert_eq!(
+            pack_operand(OperandLine::LogicalGlobal { slot: 3, col: 7 }),
+            Err(EncodeError::UnboundLogicalSource { slot: 3, col: 7 })
+        );
+        assert_eq!(
+            pack_operand(OperandLine::Ldc {
+                sub: LdcSub::Const,
+                idx: 4096
+            }),
+            Err(EncodeError::LdcIdxOutOfRange(4096))
+        );
+    }
+
+    #[test]
+    fn source_lane_uses_the_exact_6_plus_7_layout() {
+        assert_eq!(
+            pack_operand(OperandLine::Source {
+                window: 0x2a,
+                column: 0x55,
+                first_access: true,
+            }),
+            Ok((0x55 << 9) | (0x2a << 3) | (1 << 2)),
+        );
+        assert_eq!(
+            unpack_operand(0xffff & !TYPE_MASK).unwrap(),
+            OperandLine::Source {
+                window: 63,
+                column: 127,
+                first_access: true,
+            },
+        );
+    }
+
+    #[test]
+    fn structural_lane_count_does_not_encode_logical_sources() {
+        let program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::LogicalGlobal { slot: 7, col: 900 }),
+                },
+                Instr::Fma {
+                    field_lhs: OperandField::Base,
+                    field_rhs: OperandField::Ext,
+                    sign: Sign::Plus,
+                    promote: true,
+                    pairs: vec![(
+                        OperandLine::LogicalGlobal { slot: 0, col: 1 },
+                        OperandLine::Ldc {
+                            sub: LdcSub::Const,
+                            idx: 0,
+                        },
+                    )],
+                },
+            ],
+        };
+        assert_eq!(encoded_lane_count(&program), Ok(5));
+        assert!(matches!(
+            encode(&program),
+            Err(EncodeError::UnboundLogicalSource { .. })
+        ));
     }
 }
 
-fn pack_arith_header(op: Opcode, arity: usize, f0: OperandField, f1: OperandField, promote: bool, sign: Sign) -> Result<u16, EncodeError> {
+fn pack_arith_header(
+    op: Opcode,
+    arity: usize,
+    f0: OperandField,
+    f1: OperandField,
+    promote: bool,
+    sign: Sign,
+) -> Result<u16, EncodeError> {
     // Zero arity is legal only for Mul-minus (pure acc negation, §1.2).
     let zero_arity_ok = op == Opcode::Mul && sign == Sign::Minus;
-    if (arity == 0 && !zero_arity_ok) || arity > MAX_ARITY { return Err(EncodeError::ArityOutOfRange(arity)); }
+    if (arity == 0 && !zero_arity_ok) || arity > MAX_ARITY {
+        return Err(EncodeError::ArityOutOfRange(arity));
+    }
     Ok((op as u16)
         | ((arity as u16) << ARITY_SHIFT)
         | ((f0 as u16) << F0_SHIFT)
@@ -110,28 +254,84 @@ pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
     let mut out = Vec::new();
     for instr in &p.instrs {
         match instr {
-            Instr::Add { field, sign, promote, operands } => {
-                out.push(pack_arith_header(Opcode::Add, operands.len(), *field, OperandField::Base, *promote, *sign)?);
-                for o in operands { out.push(pack_operand(*o)?); }
+            Instr::Add {
+                field,
+                sign,
+                promote,
+                operands,
+            } => {
+                out.push(pack_arith_header(
+                    Opcode::Add,
+                    operands.len(),
+                    *field,
+                    OperandField::Base,
+                    *promote,
+                    *sign,
+                )?);
+                for o in operands {
+                    out.push(pack_operand(*o)?);
+                }
             }
-            Instr::Mul { field, promote, negate_acc, operands } => {
+            Instr::Mul {
+                field,
+                promote,
+                negate_acc,
+                operands,
+            } => {
                 let sign = if *negate_acc { Sign::Minus } else { Sign::Plus };
-                out.push(pack_arith_header(Opcode::Mul, operands.len(), *field, OperandField::Base, *promote, sign)?);
-                for o in operands { out.push(pack_operand(*o)?); }
+                out.push(pack_arith_header(
+                    Opcode::Mul,
+                    operands.len(),
+                    *field,
+                    OperandField::Base,
+                    *promote,
+                    sign,
+                )?);
+                for o in operands {
+                    out.push(pack_operand(*o)?);
+                }
             }
-            Instr::Fma { field_lhs, field_rhs, sign, promote, pairs } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                sign,
+                promote,
+                pairs,
+            } => {
                 if *field_lhs == OperandField::Ext && *field_rhs == OperandField::Base {
                     return Err(EncodeError::NonCanonicalFmaOrder);
                 }
-                out.push(pack_arith_header(Opcode::Fma, pairs.len(), *field_lhs, *field_rhs, *promote, *sign)?);
-                for (l, r) in pairs { out.push(pack_operand(*l)?); out.push(pack_operand(*r)?); }
+                out.push(pack_arith_header(
+                    Opcode::Fma,
+                    pairs.len(),
+                    *field_lhs,
+                    *field_rhs,
+                    *promote,
+                    *sign,
+                )?);
+                for (l, r) in pairs {
+                    out.push(pack_operand(*l)?);
+                    out.push(pack_operand(*r)?);
+                }
             }
-            Instr::Mov { dir, field, dst, src } => {
-                out.push((Opcode::Mov as u16) | ((*dir as u16) << MOV_DIR_SHIFT) | ((*field as u16) << MOV_FIELD_SHIFT));
+            Instr::Mov {
+                dir,
+                field,
+                dst,
+                src,
+            } => {
+                out.push(
+                    (Opcode::Mov as u16)
+                        | ((*dir as u16) << MOV_DIR_SHIFT)
+                        | ((*field as u16) << MOV_FIELD_SHIFT),
+                );
                 match dir {
                     MovDir::AccFromSrc => out.push(pack_operand(src.expect("AccFromSrc src"))?),
                     MovDir::DstFromAcc => out.push(pack_dst(dst.expect("DstFromAcc dst"))?),
-                    MovDir::DstFromSrc => { out.push(pack_dst(dst.expect("DstFromSrc dst"))?); out.push(pack_operand(src.expect("DstFromSrc src"))?); }
+                    MovDir::DstFromSrc => {
+                        out.push(pack_dst(dst.expect("DstFromSrc dst"))?);
+                        out.push(pack_operand(src.expect("DstFromSrc src"))?);
+                    }
                 }
             }
         }
@@ -139,55 +339,195 @@ pub fn encode(p: &Program) -> Result<Vec<u16>, EncodeError> {
     Ok(out)
 }
 
+/// Count the lanes an instruction stream will occupy without attempting to
+/// encode compiler-private logical source payloads.
+pub fn encoded_lane_count(p: &Program) -> Result<usize, EncodeError> {
+    let mut lanes = 0usize;
+    for instr in &p.instrs {
+        lanes += match instr {
+            Instr::Add {
+                field,
+                sign,
+                promote,
+                operands,
+            } => {
+                pack_arith_header(
+                    Opcode::Add,
+                    operands.len(),
+                    *field,
+                    OperandField::Base,
+                    *promote,
+                    *sign,
+                )?;
+                1 + operands.len()
+            }
+            Instr::Mul {
+                field,
+                promote,
+                negate_acc,
+                operands,
+            } => {
+                let sign = if *negate_acc { Sign::Minus } else { Sign::Plus };
+                pack_arith_header(
+                    Opcode::Mul,
+                    operands.len(),
+                    *field,
+                    OperandField::Base,
+                    *promote,
+                    sign,
+                )?;
+                1 + operands.len()
+            }
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                sign,
+                promote,
+                pairs,
+            } => {
+                if *field_lhs == OperandField::Ext && *field_rhs == OperandField::Base {
+                    return Err(EncodeError::NonCanonicalFmaOrder);
+                }
+                pack_arith_header(
+                    Opcode::Fma,
+                    pairs.len(),
+                    *field_lhs,
+                    *field_rhs,
+                    *promote,
+                    *sign,
+                )?;
+                1 + 2 * pairs.len()
+            }
+            Instr::Mov { dir, .. } => match dir {
+                MovDir::AccFromSrc | MovDir::DstFromAcc => 2,
+                MovDir::DstFromSrc => 3,
+            },
+        };
+    }
+    Ok(lanes)
+}
+
 pub fn decode(lanes: &[u16]) -> Result<Program, DecodeError> {
     let mut instrs = Vec::new();
     let mut i = 0usize;
     fn next(lanes: &[u16], i: &mut usize) -> Result<u16, DecodeError> {
-        let v = *lanes.get(*i).ok_or(DecodeError::Truncated)?; *i += 1; Ok(v)
+        let v = *lanes.get(*i).ok_or(DecodeError::Truncated)?;
+        *i += 1;
+        Ok(v)
     }
     while i < lanes.len() {
         let h = next(lanes, &mut i)?;
         let op = h & OPCODE_MASK;
         if op == Opcode::Mov as u16 {
-            if (h >> MOV_RSVD_SHIFT) != 0 { return Err(DecodeError::NonZeroReserved); } // acc_sel + high bits
-            let dir = match (h >> MOV_DIR_SHIFT) & MOV_DIR_MASK { 0 => MovDir::AccFromSrc, 1 => MovDir::DstFromAcc, 2 => MovDir::DstFromSrc, d => return Err(DecodeError::BadMovDir(d)) };
-            let field = if (h >> MOV_FIELD_SHIFT) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
+            if (h >> MOV_RSVD_SHIFT) != 0 {
+                return Err(DecodeError::NonZeroReserved);
+            } // acc_sel + high bits
+            let dir = match (h >> MOV_DIR_SHIFT) & MOV_DIR_MASK {
+                0 => MovDir::AccFromSrc,
+                1 => MovDir::DstFromAcc,
+                2 => MovDir::DstFromSrc,
+                d => return Err(DecodeError::BadMovDir(d)),
+            };
+            let field = if (h >> MOV_FIELD_SHIFT) & 1 == 1 {
+                OperandField::Ext
+            } else {
+                OperandField::Base
+            };
             let (dst, src) = match dir {
                 MovDir::AccFromSrc => (None, Some(unpack_operand(next(lanes, &mut i)?)?)),
                 MovDir::DstFromAcc => (Some(unpack_dst(next(lanes, &mut i)?)?), None),
-                MovDir::DstFromSrc => { let d = unpack_dst(next(lanes, &mut i)?)?; (Some(d), Some(unpack_operand(next(lanes, &mut i)?)?)) }
+                MovDir::DstFromSrc => {
+                    let d = unpack_dst(next(lanes, &mut i)?)?;
+                    (Some(d), Some(unpack_operand(next(lanes, &mut i)?)?))
+                }
             };
-            instrs.push(Instr::Mov { dir, field, dst, src });
+            instrs.push(Instr::Mov {
+                dir,
+                field,
+                dst,
+                src,
+            });
             continue;
         }
-        if (h >> ARITH_RSVD_SHIFT) != 0 { return Err(DecodeError::NonZeroReserved); }
+        if (h >> ARITH_RSVD_SHIFT) != 0 {
+            return Err(DecodeError::NonZeroReserved);
+        }
         let arity = ((h >> ARITY_SHIFT) & ARITY_MASK) as usize;
-        let f0 = if (h >> F0_SHIFT) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
-        let f1 = if (h >> F1_SHIFT) & 1 == 1 { OperandField::Ext } else { OperandField::Base };
+        let f0 = if (h >> F0_SHIFT) & 1 == 1 {
+            OperandField::Ext
+        } else {
+            OperandField::Base
+        };
+        let f1 = if (h >> F1_SHIFT) & 1 == 1 {
+            OperandField::Ext
+        } else {
+            OperandField::Base
+        };
         let promote = (h >> PROMOTE_SHIFT) & 1 == 1;
-        let sign = if (h >> SIGN_SHIFT) & 1 == 1 { Sign::Minus } else { Sign::Plus };
+        let sign = if (h >> SIGN_SHIFT) & 1 == 1 {
+            Sign::Minus
+        } else {
+            Sign::Plus
+        };
         match op {
             x if x == Opcode::Add as u16 => {
-                if f1 != OperandField::Base { return Err(DecodeError::NonCanonicalField); }
-                if arity == 0 { return Err(DecodeError::ZeroArity); }
-                let operands = (0..arity).map(|_| unpack_operand(next(lanes, &mut i)?)).collect::<Result<_,_>>()?;
-                instrs.push(Instr::Add { field: f0, sign, promote, operands });
+                if f1 != OperandField::Base {
+                    return Err(DecodeError::NonCanonicalField);
+                }
+                if arity == 0 {
+                    return Err(DecodeError::ZeroArity);
+                }
+                let operands = (0..arity)
+                    .map(|_| unpack_operand(next(lanes, &mut i)?))
+                    .collect::<Result<_, _>>()?;
+                instrs.push(Instr::Add {
+                    field: f0,
+                    sign,
+                    promote,
+                    operands,
+                });
             }
             x if x == Opcode::Mul as u16 => {
-                if f1 != OperandField::Base { return Err(DecodeError::NonCanonicalField); }
+                if f1 != OperandField::Base {
+                    return Err(DecodeError::NonCanonicalField);
+                }
                 let negate_acc = sign == Sign::Minus;
                 // Zero-arity Mul = pure acc negation, legal iff negate_acc (§1.2).
-                if arity == 0 && !negate_acc { return Err(DecodeError::ZeroArity); }
-                let operands = (0..arity).map(|_| unpack_operand(next(lanes, &mut i)?)).collect::<Result<_,_>>()?;
-                instrs.push(Instr::Mul { field: f0, promote, negate_acc, operands });
+                if arity == 0 && !negate_acc {
+                    return Err(DecodeError::ZeroArity);
+                }
+                let operands = (0..arity)
+                    .map(|_| unpack_operand(next(lanes, &mut i)?))
+                    .collect::<Result<_, _>>()?;
+                instrs.push(Instr::Mul {
+                    field: f0,
+                    promote,
+                    negate_acc,
+                    operands,
+                });
             }
-            _ => { // Fma
+            _ => {
+                // Fma
                 // Mixed FMA is canonical (Base, Ext); EB is the swapped duplicate — reject it.
-                if f0 == OperandField::Ext && f1 == OperandField::Base { return Err(DecodeError::NonCanonicalField); }
-                if arity == 0 { return Err(DecodeError::ZeroArity); }
+                if f0 == OperandField::Ext && f1 == OperandField::Base {
+                    return Err(DecodeError::NonCanonicalField);
+                }
+                if arity == 0 {
+                    return Err(DecodeError::ZeroArity);
+                }
                 let mut pairs = Vec::with_capacity(arity);
-                for _ in 0..arity { let l = unpack_operand(next(lanes, &mut i)?)?; let r = unpack_operand(next(lanes, &mut i)?)?; pairs.push((l, r)); }
-                instrs.push(Instr::Fma { field_lhs: f0, field_rhs: f1, sign, promote, pairs });
+                for _ in 0..arity {
+                    let l = unpack_operand(next(lanes, &mut i)?)?;
+                    let r = unpack_operand(next(lanes, &mut i)?)?;
+                    pairs.push((l, r));
+                }
+                instrs.push(Instr::Fma {
+                    field_lhs: f0,
+                    field_rhs: f1,
+                    sign,
+                    promote,
+                    pairs,
+                });
             }
         }
     }
@@ -200,35 +540,124 @@ mod header_tests {
     // wire format independently of the isa.rs constants (a swapped constant
     // pair must fail here, not be silently self-consistent).
     use super::*;
-    fn sample() -> Program {
-        Program { instrs: vec![
-            Instr::Mov { dir: MovDir::AccFromSrc, field: OperandField::Base, dst: None, src: Some(OperandLine::Global { slot: 0, col: 0 }) },
-            Instr::Add { field: OperandField::Base, sign: Sign::Plus, promote: false, operands: vec![OperandLine::Global { slot: 0, col: 1 }, OperandLine::Smem { cell: 4 }] },
-            Instr::Mul { field: OperandField::Ext, promote: false, negate_acc: false, operands: vec![OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 }] },
-            Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, sign: Sign::Minus, promote: false, pairs: vec![(OperandLine::Global { slot: 1, col: 2 }, OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 1 })] }, // canonical mixed (Base,Ext)
-            Instr::Mov { dir: MovDir::DstFromAcc, field: OperandField::Ext, dst: Some(DstLine::Smem { cell: 0 }), src: None },
-            Instr::Mov { dir: MovDir::DstFromSrc, field: OperandField::Base, dst: Some(DstLine::GlobalMaterialize { slot: 2, col: 5 }), src: Some(OperandLine::Global { slot: 0, col: 9 }) },
-        ] }
+    fn source(window: u8, column: u8) -> OperandLine {
+        OperandLine::Source {
+            window,
+            column,
+            first_access: false,
+        }
     }
-    #[test] fn full_program_roundtrip() { let p = sample(); assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p); }
+    fn sample() -> Program {
+        Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(source(0, 0)),
+                },
+                Instr::Add {
+                    field: OperandField::Base,
+                    sign: Sign::Plus,
+                    promote: false,
+                    operands: vec![source(0, 1), OperandLine::Smem { cell: 4 }],
+                },
+                Instr::Mul {
+                    field: OperandField::Ext,
+                    promote: false,
+                    negate_acc: false,
+                    operands: vec![OperandLine::Ldc {
+                        sub: LdcSub::Special,
+                        idx: Special::NegOne as u16,
+                    }],
+                },
+                Instr::Fma {
+                    field_lhs: OperandField::Base,
+                    field_rhs: OperandField::Ext,
+                    sign: Sign::Minus,
+                    promote: false,
+                    pairs: vec![(
+                        source(1, 2),
+                        OperandLine::Ldc {
+                            sub: LdcSub::ConstDerivedE4,
+                            idx: 1,
+                        },
+                    )],
+                }, // canonical mixed (Base,Ext)
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Ext,
+                    dst: Some(DstLine::Smem { cell: 0 }),
+                    src: None,
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromSrc,
+                    field: OperandField::Base,
+                    dst: Some(DstLine::GlobalMaterialize { slot: 2, col: 5 }),
+                    src: Some(source(0, 9)),
+                },
+            ],
+        }
+    }
+    #[test]
+    fn full_program_roundtrip() {
+        let p = sample();
+        assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);
+    }
     #[test]
     fn promote_roundtrips() {
         // v2: promote (bit 11) is legal on every arith header; encode/decode
         // round-trip the bit faithfully (semantics are validation's job).
-        let p = Program { instrs: vec![
-            Instr::Add { field: OperandField::Ext, sign: Sign::Plus, promote: true, operands: vec![OperandLine::Smem { cell: 4 }] },
-            Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, sign: Sign::Minus, promote: true, pairs: vec![(OperandLine::Global { slot: 0, col: 1 }, OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 })] },
-            Instr::Mul { field: OperandField::Ext, promote: true, negate_acc: false, operands: vec![OperandLine::Smem { cell: 8 }] },
-        ] };
+        let p = Program {
+            instrs: vec![
+                Instr::Add {
+                    field: OperandField::Ext,
+                    sign: Sign::Plus,
+                    promote: true,
+                    operands: vec![OperandLine::Smem { cell: 4 }],
+                },
+                Instr::Fma {
+                    field_lhs: OperandField::Base,
+                    field_rhs: OperandField::Ext,
+                    sign: Sign::Minus,
+                    promote: true,
+                    pairs: vec![(
+                        source(0, 1),
+                        OperandLine::Ldc {
+                            sub: LdcSub::ConstDerivedE4,
+                            idx: 0,
+                        },
+                    )],
+                },
+                Instr::Mul {
+                    field: OperandField::Ext,
+                    promote: true,
+                    negate_acc: false,
+                    operands: vec![OperandLine::Smem { cell: 8 }],
+                },
+            ],
+        };
         assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);
     }
     #[test]
     fn mul_minus_negates() {
         // Mul sign bit = negate-acc-first; zero-arity Mul is legal iff negate_acc.
-        let zero_arity = Instr::Mul { field: OperandField::Base, promote: false, negate_acc: true, operands: vec![] };
-        let unary = Instr::Mul { field: OperandField::Ext, promote: false, negate_acc: true, operands: vec![OperandLine::Smem { cell: 4 }] };
+        let zero_arity = Instr::Mul {
+            field: OperandField::Base,
+            promote: false,
+            negate_acc: true,
+            operands: vec![],
+        };
+        let unary = Instr::Mul {
+            field: OperandField::Ext,
+            promote: false,
+            negate_acc: true,
+            operands: vec![OperandLine::Smem { cell: 4 }],
+        };
         for instr in [zero_arity, unary] {
-            let p = Program { instrs: vec![instr] };
+            let p = Program {
+                instrs: vec![instr],
+            };
             assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);
         }
     }
@@ -237,21 +666,53 @@ mod header_tests {
         // decode: Mul header, arity 0, sign=Plus.
         assert_eq!(decode(&[Opcode::Mul as u16]), Err(DecodeError::ZeroArity));
         // encode: zero-arity Mul without negate_acc.
-        let p = Program { instrs: vec![Instr::Mul { field: OperandField::Base, promote: false, negate_acc: false, operands: vec![] }] };
+        let p = Program {
+            instrs: vec![Instr::Mul {
+                field: OperandField::Base,
+                promote: false,
+                negate_acc: false,
+                operands: vec![],
+            }],
+        };
         assert_eq!(encode(&p), Err(EncodeError::ArityOutOfRange(0)));
     }
-    #[test] fn rejects_mov_reserved() { assert_eq!(decode(&[(Opcode::Mov as u16) | (1 << 5), 0]), Err(DecodeError::NonZeroReserved)); }
-    #[test] fn rejects_add_field1() { let h = (Opcode::Add as u16) | (1 << 2) | (1 << 10); assert_eq!(decode(&[h, 0]), Err(DecodeError::NonCanonicalField)); }
+    #[test]
+    fn rejects_mov_reserved() {
+        assert_eq!(
+            decode(&[(Opcode::Mov as u16) | (1 << 5), 0]),
+            Err(DecodeError::NonZeroReserved)
+        );
+    }
+    #[test]
+    fn rejects_add_field1() {
+        let h = (Opcode::Add as u16) | (1 << 2) | (1 << 10);
+        assert_eq!(decode(&[h, 0]), Err(DecodeError::NonCanonicalField));
+    }
     #[test]
     fn rejects_zero_arity_add() {
         assert_eq!(decode(&[Opcode::Add as u16]), Err(DecodeError::ZeroArity));
         // Zero-arity Add stays illegal even with sign=Minus (no Add analogue of Mul-minus).
-        assert_eq!(decode(&[(Opcode::Add as u16) | (1 << 12)]), Err(DecodeError::ZeroArity));
-        let p = Program { instrs: vec![Instr::Add { field: OperandField::Base, sign: Sign::Minus, promote: false, operands: vec![] }] };
+        assert_eq!(
+            decode(&[(Opcode::Add as u16) | (1 << 12)]),
+            Err(DecodeError::ZeroArity)
+        );
+        let p = Program {
+            instrs: vec![Instr::Add {
+                field: OperandField::Base,
+                sign: Sign::Minus,
+                promote: false,
+                operands: vec![],
+            }],
+        };
         assert_eq!(encode(&p), Err(EncodeError::ArityOutOfRange(0)));
     }
-    #[test] fn rejects_eb_fma() { let h = (Opcode::Fma as u16) | (1 << 2) | (1 << 9); /* f0=Ext,f1=Base */ assert_eq!(decode(&[h, 0, 0]), Err(DecodeError::NonCanonicalField)); }
-    #[test] fn encode_rejects_eb_fma_order() {
+    #[test]
+    fn rejects_eb_fma() {
+        let h = (Opcode::Fma as u16) | (1 << 2) | (1 << 9); /* f0=Ext,f1=Base */
+        assert_eq!(decode(&[h, 0, 0]), Err(DecodeError::NonCanonicalField));
+    }
+    #[test]
+    fn encode_rejects_eb_fma_order() {
         // EB (Ext,Base) is the non-canonical duplicate of canonical BE (Base,Ext).
         // encode must reject it so the compiler can never produce a bytestream decode refuses.
         let eb_fma = Instr::Fma {
@@ -259,29 +720,64 @@ mod header_tests {
             field_rhs: OperandField::Base,
             sign: Sign::Plus,
             promote: false,
-            pairs: vec![(OperandLine::Global { slot: 0, col: 0 }, OperandLine::Global { slot: 0, col: 1 })],
+            pairs: vec![(source(0, 0), source(0, 1))],
         };
         assert_eq!(
-            encode(&Program { instrs: vec![eb_fma] }),
+            encode(&Program {
+                instrs: vec![eb_fma]
+            }),
             Err(EncodeError::NonCanonicalFmaOrder),
         );
         // Canonical BE (Base,Ext) must still encode Ok and round-trip.
         let p = sample();
-        assert!(p.instrs.iter().any(|i| matches!(i, Instr::Fma { field_lhs: OperandField::Base, field_rhs: OperandField::Ext, .. })),
-            "sample() must include a canonical BE FMA for this assertion to be meaningful");
+        assert!(
+            p.instrs.iter().any(|i| matches!(
+                i,
+                Instr::Fma {
+                    field_lhs: OperandField::Base,
+                    field_rhs: OperandField::Ext,
+                    ..
+                }
+            )),
+            "sample() must include a canonical BE FMA for this assertion to be meaningful"
+        );
         assert_eq!(decode(&encode(&p).unwrap()).unwrap(), p);
     }
-    #[test] fn rejects_truncated() { let h = pack_arith_header(Opcode::Add, 2, OperandField::Base, OperandField::Base, false, Sign::Plus).unwrap(); assert_eq!(decode(&[h, 0]), Err(DecodeError::Truncated)); }
+    #[test]
+    fn rejects_truncated() {
+        let h = pack_arith_header(
+            Opcode::Add,
+            2,
+            OperandField::Base,
+            OperandField::Base,
+            false,
+            Sign::Plus,
+        )
+        .unwrap();
+        assert_eq!(decode(&[h, 0]), Err(DecodeError::Truncated));
+    }
     #[test]
     fn pins_negate_acc_bit12() {
         // Raw-bit pin: sign/negate_acc must live at bit 12, not swapped with promote (bit 11).
         let lane = pack_operand(OperandLine::Smem { cell: 0 }).unwrap();
         let h = (Opcode::Mul as u16) | (1 << 2) | (1 << 12);
         let decoded = decode(&[h, lane]).unwrap();
-        assert!(matches!(decoded.instrs[0], Instr::Mul { negate_acc: true, .. }));
+        assert!(matches!(
+            decoded.instrs[0],
+            Instr::Mul {
+                negate_acc: true,
+                ..
+            }
+        ));
         let h_without = (Opcode::Mul as u16) | (1 << 2);
         let decoded_without = decode(&[h_without, lane]).unwrap();
-        assert!(matches!(decoded_without.instrs[0], Instr::Mul { negate_acc: false, .. }));
+        assert!(matches!(
+            decoded_without.instrs[0],
+            Instr::Mul {
+                negate_acc: false,
+                ..
+            }
+        ));
     }
     #[test]
     fn pins_promote_bit11() {
@@ -289,9 +785,15 @@ mod header_tests {
         let lane = pack_operand(OperandLine::Smem { cell: 0 }).unwrap();
         let h = (Opcode::Add as u16) | (1 << 2) | (1 << 11);
         let decoded = decode(&[h, lane]).unwrap();
-        assert!(matches!(decoded.instrs[0], Instr::Add { promote: true, .. }));
+        assert!(matches!(
+            decoded.instrs[0],
+            Instr::Add { promote: true, .. }
+        ));
         let h_without = (Opcode::Add as u16) | (1 << 2);
         let decoded_without = decode(&[h_without, lane]).unwrap();
-        assert!(matches!(decoded_without.instrs[0], Instr::Add { promote: false, .. }));
+        assert!(matches!(
+            decoded_without.instrs[0],
+            Instr::Add { promote: false, .. }
+        ));
     }
 }

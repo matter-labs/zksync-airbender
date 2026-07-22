@@ -2,7 +2,7 @@
 //! invariants. Called after `compile_layer` succeeds; also useful as a standalone
 //! correctness oracle over hand-built programs.
 
-use super::context::{CompiledLayer, CompileTrace, DagForwardContext, ForwardAction, RootOutput};
+use super::context::{CompileTrace, CompiledLayer, DagForwardContext, ForwardAction, RootOutput};
 use super::encode::encode;
 use super::error::CompileError;
 use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Special};
@@ -35,7 +35,10 @@ fn walk_coverage(layer: &DagLayer, id: ExprId) -> Result<(), CompileError> {
     if layer.resolutions.contains_key(&id) {
         return Ok(());
     }
-    let expr = layer.exprs.get(id.0 as usize).ok_or(CompileError::UncoveredLookupLeaf(id.0))?;
+    let expr = layer
+        .exprs
+        .get(id.0 as usize)
+        .ok_or(CompileError::UncoveredLookupLeaf(id.0))?;
     match expr {
         Expr::Source(src_id) => {
             let src = layer
@@ -64,7 +67,10 @@ fn walk_coverage(layer: &DagLayer, id: ExprId) -> Result<(), CompileError> {
 
 /// Every materialize-bearing (forward-emitted) root has exactly one action in
 /// `compiled.ctx.actions`.
-fn check_action_completeness(compiled: &CompiledLayer, layer: &DagLayer) -> Result<(), CompileError> {
+fn check_action_completeness(
+    compiled: &CompiledLayer,
+    layer: &DagLayer,
+) -> Result<(), CompileError> {
     for (idx, root) in layer.roots.iter().enumerate() {
         if root.materialize.is_none() {
             continue;
@@ -85,10 +91,17 @@ fn check_action_completeness(compiled: &CompiledLayer, layer: &DagLayer) -> Resu
 /// `field=Base` for cross-layer reads (LayerOutput/CacheOutput) by convention;
 /// re-deriving from dag_ir would spuriously reject valid programs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AccField { Base, Ext, Uninit }
+enum AccField {
+    Base,
+    Ext,
+    Uninit,
+}
 
 fn operand_field_to_acc(f: OperandField) -> AccField {
-    match f { OperandField::Base => AccField::Base, OperandField::Ext => AccField::Ext }
+    match f {
+        OperandField::Base => AccField::Base,
+        OperandField::Ext => AccField::Ext,
+    }
 }
 
 fn check_field_transitions(compiled: &CompiledLayer) -> Result<(), CompileError> {
@@ -96,7 +109,9 @@ fn check_field_transitions(compiled: &CompiledLayer) -> Result<(), CompileError>
 
     for instr in &compiled.program.instrs {
         match instr {
-            Instr::Mov { dir, field, dst, .. } => {
+            Instr::Mov {
+                dir, field, dst, ..
+            } => {
                 match dir {
                     MovDir::AccFromSrc => {
                         // Load into acc — sets acc domain from the MOV field bit (§1.1).
@@ -131,7 +146,12 @@ fn check_field_transitions(compiled: &CompiledLayer) -> Result<(), CompileError>
                 // §1.3: Add{Ext} requires an ext acc; Add{Base} never does.
                 acc = step_acc_domain_strict(acc, *field == OperandField::Ext, *promote)?;
             }
-            Instr::Mul { field, promote, operands, .. } => {
+            Instr::Mul {
+                field,
+                promote,
+                operands,
+                ..
+            } => {
                 // §1.3: Mul{Base} dispatches on the acc domain (bf mul vs
                 // 4-limb scale) — it never REQUIRES ext. Zero-arity Mul is
                 // pure acc negation, typed by the acc domain: no requirement
@@ -140,7 +160,12 @@ fn check_field_transitions(compiled: &CompiledLayer) -> Result<(), CompileError>
                 let requires_ext = *field == OperandField::Ext && !operands.is_empty();
                 acc = step_acc_domain_strict(acc, requires_ext, *promote)?;
             }
-            Instr::Fma { field_lhs, field_rhs, promote, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                promote,
+                ..
+            } => {
                 // EB order is non-canonical — reject structurally (check 7 also
                 // catches this, but assert here as well for field-consistency).
                 if *field_lhs == OperandField::Ext && *field_rhs == OperandField::Base {
@@ -196,7 +221,12 @@ fn for_each_smem_ref(
 ) -> Result<(), CompileError> {
     for (i, instr) in program.instrs.iter().enumerate() {
         match instr {
-            Instr::Mov { dir, field, dst, src } => {
+            Instr::Mov {
+                dir,
+                field,
+                dst,
+                src,
+            } => {
                 if let MovDir::AccFromSrc | MovDir::DstFromSrc = dir {
                     if let Some(OperandLine::Smem { cell }) = src {
                         f(i, *cell, *field)?;
@@ -208,14 +238,24 @@ fn for_each_smem_ref(
                     }
                 }
             }
-            Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
+            Instr::Add {
+                field, operands, ..
+            }
+            | Instr::Mul {
+                field, operands, ..
+            } => {
                 for op in operands {
                     if let OperandLine::Smem { cell } = op {
                         f(i, *cell, *field)?;
                     }
                 }
             }
-            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                pairs,
+                ..
+            } => {
                 for (l, r) in pairs {
                     if let OperandLine::Smem { cell } = l {
                         f(i, *cell, *field_lhs)?;
@@ -242,7 +282,10 @@ fn check_smem_bounds(compiled: &CompiledLayer) -> Result<(), CompileError> {
             OperandField::Base => cell as usize + 1,
         };
         if floor > compiled.budget {
-            return Err(CompileError::BudgetBelowFloor { floor, budget: compiled.budget });
+            return Err(CompileError::BudgetBelowFloor {
+                floor,
+                budget: compiled.budget,
+            });
         }
         Ok(())
     })
@@ -256,12 +299,19 @@ fn check_smem_bounds(compiled: &CompiledLayer) -> Result<(), CompileError> {
 /// from dag_ir, to avoid spurious rejection of the cross-layer Base convention.
 fn check_storage_field_identity(compiled: &CompiledLayer) -> Result<(), CompileError> {
     use std::collections::HashMap;
-    // Track field seen for each (slot, col) pair.
-    let mut seen: HashMap<(u8, u16), OperandField> = HashMap::new();
+    // Track field seen for each logical or final physical source coordinate.
+    let mut seen: HashMap<(bool, u8, u16), OperandField> = HashMap::new();
 
-    let mut record = |slot: u8, col: u16, field: OperandField| -> Result<(), CompileError> {
-        match seen.get(&(slot, col)) {
-            None => { seen.insert((slot, col), field); Ok(()) }
+    let mut record = |physical: bool,
+                      slot: u8,
+                      col: u16,
+                      field: OperandField|
+     -> Result<(), CompileError> {
+        match seen.get(&(physical, slot, col)) {
+            None => {
+                seen.insert((physical, slot, col), field);
+                Ok(())
+            }
             Some(&prev) if prev == field => Ok(()),
             Some(&prev) => Err(CompileError::FieldMismatch(format!(
                 "Global (slot={slot}, col={col}) used as both {prev:?} and {field:?} in same layer"
@@ -272,11 +322,18 @@ fn check_storage_field_identity(compiled: &CompiledLayer) -> Result<(), CompileE
     // Determine the effective field for a global operand from the containing instruction.
     for instr in &compiled.program.instrs {
         match instr {
-            Instr::Mov { field, src, dst, dir } => {
+            Instr::Mov {
+                field,
+                src,
+                dst,
+                dir,
+            } => {
                 match dir {
                     MovDir::AccFromSrc | MovDir::DstFromSrc => {
-                        if let Some(OperandLine::Global { slot, col }) = src {
-                            record(*slot, *col, *field)?;
+                        if let Some(OperandLine::LogicalGlobal { slot, col }) = src {
+                            record(false, *slot, *col, *field)?;
+                        } else if let Some(OperandLine::Source { window, column, .. }) = src {
+                            record(true, *window, *column as u16, *field)?;
                         }
                     }
                     _ => {}
@@ -284,38 +341,55 @@ fn check_storage_field_identity(compiled: &CompiledLayer) -> Result<(), CompileE
                 match dir {
                     MovDir::DstFromSrc => {
                         if let Some(DstLine::GlobalMaterialize { slot, col }) = dst {
-                            record(*slot, *col, *field)?;
+                            record(false, *slot, *col, *field)?;
                         }
                     }
                     MovDir::DstFromAcc => {
                         if let Some(DstLine::GlobalMaterialize { slot, col }) = dst {
-                            record(*slot, *col, *field)?;
+                            record(false, *slot, *col, *field)?;
                         }
                     }
                     _ => {}
                 }
             }
-            Instr::Add { field, operands, .. } => {
+            Instr::Add {
+                field, operands, ..
+            } => {
                 for op in operands {
-                    if let OperandLine::Global { slot, col } = op {
-                        record(*slot, *col, *field)?;
+                    if let OperandLine::LogicalGlobal { slot, col } = op {
+                        record(false, *slot, *col, *field)?;
+                    } else if let OperandLine::Source { window, column, .. } = op {
+                        record(true, *window, *column as u16, *field)?;
                     }
                 }
             }
-            Instr::Mul { field, operands, .. } => {
+            Instr::Mul {
+                field, operands, ..
+            } => {
                 for op in operands {
-                    if let OperandLine::Global { slot, col } = op {
-                        record(*slot, *col, *field)?;
+                    if let OperandLine::LogicalGlobal { slot, col } = op {
+                        record(false, *slot, *col, *field)?;
+                    } else if let OperandLine::Source { window, column, .. } = op {
+                        record(true, *window, *column as u16, *field)?;
                     }
                 }
             }
-            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                pairs,
+                ..
+            } => {
                 for (l, r) in pairs {
-                    if let OperandLine::Global { slot, col } = l {
-                        record(*slot, *col, *field_lhs)?;
+                    if let OperandLine::LogicalGlobal { slot, col } = l {
+                        record(false, *slot, *col, *field_lhs)?;
+                    } else if let OperandLine::Source { window, column, .. } = l {
+                        record(true, *window, *column as u16, *field_lhs)?;
                     }
-                    if let OperandLine::Global { slot, col } = r {
-                        record(*slot, *col, *field_rhs)?;
+                    if let OperandLine::LogicalGlobal { slot, col } = r {
+                        record(false, *slot, *col, *field_rhs)?;
+                    } else if let OperandLine::Source { window, column, .. } = r {
+                        record(true, *window, *column as u16, *field_rhs)?;
                     }
                 }
             }
@@ -343,13 +417,31 @@ fn check_field_storage_agreement(compiled: &CompiledLayer) -> Result<(), Compile
             _ => Ok(()),
         }
     };
+    let check_source = |window: u8, column: u8, field: OperandField| -> Result<(), CompileError> {
+        match compiled.ctx.source_windows.source_field(window) {
+            Some(source_field) if source_field != field => {
+                Err(CompileError::FieldStorageMismatch {
+                    slot: window,
+                    col: column as u16,
+                })
+            }
+            _ => Ok(()),
+        }
+    };
 
     for instr in &compiled.program.instrs {
         match instr {
-            Instr::Mov { field, src, dst, dir } => {
+            Instr::Mov {
+                field,
+                src,
+                dst,
+                dir,
+            } => {
                 if let MovDir::AccFromSrc | MovDir::DstFromSrc = dir {
-                    if let Some(OperandLine::Global { slot, col }) = src {
+                    if let Some(OperandLine::LogicalGlobal { slot, col }) = src {
                         check(*slot, *col, *field)?;
+                    } else if let Some(OperandLine::Source { window, column, .. }) = src {
+                        check_source(*window, *column, *field)?;
                     }
                 }
                 if let MovDir::DstFromAcc | MovDir::DstFromSrc = dir {
@@ -358,20 +450,36 @@ fn check_field_storage_agreement(compiled: &CompiledLayer) -> Result<(), Compile
                     }
                 }
             }
-            Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
+            Instr::Add {
+                field, operands, ..
+            }
+            | Instr::Mul {
+                field, operands, ..
+            } => {
                 for op in operands {
-                    if let OperandLine::Global { slot, col } = op {
+                    if let OperandLine::LogicalGlobal { slot, col } = op {
                         check(*slot, *col, *field)?;
+                    } else if let OperandLine::Source { window, column, .. } = op {
+                        check_source(*window, *column, *field)?;
                     }
                 }
             }
-            Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                pairs,
+                ..
+            } => {
                 for (l, r) in pairs {
-                    if let OperandLine::Global { slot, col } = l {
+                    if let OperandLine::LogicalGlobal { slot, col } = l {
                         check(*slot, *col, *field_lhs)?;
+                    } else if let OperandLine::Source { window, column, .. } = l {
+                        check_source(*window, *column, *field_lhs)?;
                     }
-                    if let OperandLine::Global { slot, col } = r {
+                    if let OperandLine::LogicalGlobal { slot, col } = r {
                         check(*slot, *col, *field_rhs)?;
+                    } else if let OperandLine::Source { window, column, .. } = r {
+                        check_source(*window, *column, *field_rhs)?;
                     }
                 }
             }
@@ -401,7 +509,11 @@ fn check_budget(compiled: &CompiledLayer) -> Result<(), CompileError> {
 fn check_canonical_operands(compiled: &CompiledLayer) -> Result<(), CompileError> {
     for instr in &compiled.program.instrs {
         match instr {
-            Instr::Fma { field_lhs, field_rhs, .. } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                ..
+            } => {
                 if *field_lhs == OperandField::Ext && *field_rhs == OperandField::Base {
                     return Err(CompileError::FieldMismatch(
                         "FMA in non-canonical EB order".to_string(),
@@ -412,7 +524,11 @@ fn check_canonical_operands(compiled: &CompiledLayer) -> Result<(), CompileError
         }
         // Check all operand lines.
         for op in instr_operands(instr) {
-            if let OperandLine::Ldc { sub: LdcSub::Special, idx } = op {
+            if let OperandLine::Ldc {
+                sub: LdcSub::Special,
+                idx,
+            } = op
+            {
                 if *idx == Special::Zero as u16 {
                     return Err(CompileError::FieldMismatch(
                         "Special(Zero) must be elided, not emitted as an operand".to_string(),
@@ -496,14 +612,18 @@ pub fn validate_compiled(compiled: &CompiledLayer, layer: &DagLayer) -> Result<(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::context::{CompileTrace, DagForwardContext, ForwardAction, RootOutput, OutputCell};
+    use super::super::context::{
+        CompileTrace, DagForwardContext, ForwardAction, OutputCell, RootOutput,
+    };
+    use super::super::isa::{
+        DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Special,
+    };
     use super::super::stats::CompileStats;
-    use super::super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Special};
+    use super::*;
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root,
-        RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo,
-        SourceKind, LookupValueKind, ResolutionStrategy, RangeWidth,
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, LookupValueKind, RangeWidth,
+        ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo,
+        SinkKind, SourceId, SourceInfo, SourceKind,
     };
     use std::collections::BTreeMap;
 
@@ -524,13 +644,18 @@ mod tests {
     fn simple_compute_layer() -> DagLayer {
         let mut layer = empty_layer();
         // Source 0: constant
-        layer.sources.push(SourceInfo { kind: SourceKind::Constant { value: 42 } });
+        layer.sources.push(SourceInfo {
+            kind: SourceKind::Constant { value: 42 },
+        });
         // Expr 0: Source(0)
         layer.exprs.push(Expr::Source(SourceId(0)));
         // Root 0: claim-bearing materialized Output root.
         layer.roots.push(Root {
             expr: ExprId(0),
-            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot: 0 },
+                field: FieldKind::Base,
+            }),
             claim: Some(ClaimInfo {
                 origin: RootOrigin {
                     group: RootGroup::Gates,
@@ -554,7 +679,7 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 0 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 0 }),
                 },
                 Instr::Mov {
                     dir: MovDir::DstFromAcc,
@@ -568,13 +693,56 @@ mod tests {
         CompiledLayer {
             program,
             ctx,
-            root_outputs: vec![(RootId(0), RootOutput::Cell(OutputCell::Global { slot: 0, col: 1 }))],
+            root_outputs: vec![(
+                RootId(0),
+                RootOutput::Cell(OutputCell::Global { slot: 0, col: 1 }),
+            )],
             skipped: vec![],
             trace: CompileTrace::default(),
             budget: 16,
             stats: CompileStats::default(),
             resident_realized: vec![],
         }
+    }
+
+    fn validate_test(compiled: &CompiledLayer, layer: &DagLayer) -> Result<(), CompileError> {
+        use super::super::binding::{SourceMarkerMode, bind_final_sources};
+
+        let mut compiled = compiled.clone();
+        if compiled.ctx.backings.n_slots() == 0 {
+            for instr in &mut compiled.program.instrs {
+                let mut bind = |operand: &mut OperandLine| {
+                    if let OperandLine::LogicalGlobal { slot, col } = *operand {
+                        *operand = OperandLine::Source {
+                            window: slot,
+                            column: u8::try_from(col).expect("test source column fits final lane"),
+                            first_access: false,
+                        };
+                    }
+                };
+                match instr {
+                    Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                        operands.iter_mut().for_each(&mut bind);
+                    }
+                    Instr::Fma { pairs, .. } => {
+                        for (lhs, rhs) in pairs {
+                            bind(lhs);
+                            bind(rhs);
+                        }
+                    }
+                    Instr::Mov { src: Some(src), .. } => bind(src),
+                    Instr::Mov { src: None, .. } => {}
+                }
+            }
+        } else {
+            compiled.ctx.source_windows = bind_final_sources(
+                &mut compiled.program,
+                &compiled.ctx.backings,
+                SourceMarkerMode::Forward,
+            )
+            .expect("valid test source binding");
+        }
+        validate_compiled(&compiled, layer)
     }
 
     // ── Check 1: coverage ─────────────────────────────────────────────────────
@@ -594,7 +762,10 @@ mod tests {
         layer.exprs.push(Expr::Source(SourceId(0))); // ExprId(0) = LookupValue
         layer.roots.push(Root {
             expr: ExprId(0),
-            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Ext }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot: 0 },
+                field: FieldKind::Ext,
+            }),
             claim: Some(ClaimInfo {
                 origin: RootOrigin {
                     group: RootGroup::Gates,
@@ -609,14 +780,14 @@ mod tests {
             let mut ctx = DagForwardContext::default();
             ctx.actions.insert(RootId(0), ForwardAction::Compute);
             CompiledLayer {
-                program: Program { instrs: vec![
-                    Instr::Mov {
+                program: Program {
+                    instrs: vec![Instr::Mov {
                         dir: MovDir::AccFromSrc,
                         field: OperandField::Base,
                         dst: None,
-                        src: Some(OperandLine::Global { slot: 0, col: 0 }),
-                    },
-                ] },
+                        src: Some(OperandLine::LogicalGlobal { slot: 0, col: 0 }),
+                    }],
+                },
                 ctx,
                 root_outputs: vec![],
                 skipped: vec![],
@@ -627,7 +798,7 @@ mod tests {
             }
         };
 
-        let result = validate_compiled(&compiled, &layer);
+        let result = validate_test(&compiled, &layer);
         assert_eq!(result, Err(CompileError::UncoveredLookupLeaf(0)));
     }
 
@@ -648,13 +819,19 @@ mod tests {
         // Expr 1: Add([ExprId(0)]) — the parent, which carries the resolution
         layer.exprs.push(Expr::Add(vec![ExprId(0)]));
         // Resolution at ExprId(1) → prune the whole subtree
-        layer.resolutions.insert(ExprId(1), ResolutionStrategy::PeekSingleColumn {
-            set_index: 0,
-            width: RangeWidth::Bits16,
-        });
+        layer.resolutions.insert(
+            ExprId(1),
+            ResolutionStrategy::PeekSingleColumn {
+                set_index: 0,
+                width: RangeWidth::Bits16,
+            },
+        );
         layer.roots.push(Root {
             expr: ExprId(1),
-            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot: 0 },
+                field: FieldKind::Base,
+            }),
             claim: Some(ClaimInfo {
                 origin: RootOrigin {
                     group: RootGroup::Gates,
@@ -667,14 +844,14 @@ mod tests {
         let mut ctx = DagForwardContext::default();
         ctx.actions.insert(RootId(0), ForwardAction::Compute);
         let compiled = CompiledLayer {
-            program: Program { instrs: vec![
-                Instr::Mov {
+            program: Program {
+                instrs: vec![Instr::Mov {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
                     src: Some(OperandLine::Special { desc: 0 }),
-                },
-            ] },
+                }],
+            },
             ctx,
             root_outputs: vec![],
             skipped: vec![],
@@ -684,7 +861,7 @@ mod tests {
             resident_realized: vec![],
         };
 
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     // ── Check 2: output action completeness ───────────────────────────────────
@@ -697,7 +874,7 @@ mod tests {
         // Remove the action for root 0 so it has no entry.
         compiled.ctx.actions.remove(&RootId(0));
 
-        let result = validate_compiled(&compiled, &layer);
+        let result = validate_test(&compiled, &layer);
         assert_eq!(result, Err(CompileError::OutputUnresolved(RootId(0))));
     }
 
@@ -716,8 +893,12 @@ mod tests {
             src: None,
         };
 
-        let result = validate_compiled(&compiled, &layer);
-        assert!(matches!(result, Err(CompileError::FieldMismatch(_))), "got: {:?}", result);
+        let result = validate_test(&compiled, &layer);
+        assert!(
+            matches!(result, Err(CompileError::FieldMismatch(_))),
+            "got: {:?}",
+            result
+        );
     }
 
     /// Base acc + Base operand, then Base store → field consistent → Ok.
@@ -725,7 +906,7 @@ mod tests {
     fn field_consistent_base_ok() {
         let layer = simple_compute_layer();
         let compiled = clean_compiled(&layer);
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     /// Cross-layer Base convention: a Global operand labeled field=Base even though
@@ -737,13 +918,19 @@ mod tests {
         let mut layer = empty_layer();
         layer.sources.push(SourceInfo {
             kind: SourceKind::Read {
-                place: ReadPlace::LayerOutput { layer: 0, offset: 0 },
+                place: ReadPlace::LayerOutput {
+                    layer: 0,
+                    offset: 0,
+                },
             },
         });
         layer.exprs.push(Expr::Source(SourceId(0)));
         layer.roots.push(Root {
             expr: ExprId(0),
-            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot: 0 },
+                field: FieldKind::Base,
+            }),
             claim: Some(ClaimInfo {
                 origin: RootOrigin {
                     group: RootGroup::Gates,
@@ -763,7 +950,7 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base, // cross-layer Base convention
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 0 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 0 }),
                 },
                 Instr::Mov {
                     dir: MovDir::DstFromAcc,
@@ -785,7 +972,7 @@ mod tests {
         };
 
         // Must not spuriously reject due to dag_ir field re-derivation.
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     // ── Check 4: Smem wire-index bounds (v2 units: bf → lane, ext → bucket) ───
@@ -798,17 +985,21 @@ mod tests {
         let layer = simple_compute_layer();
         let mut compiled = clean_compiled(&layer);
         compiled.budget = 16; // 4 buckets: valid ext indices are 0..=3
-        compiled.program.instrs = vec![
-            Instr::Mov {
-                dir: MovDir::AccFromSrc,
-                field: OperandField::Ext,
-                dst: None,
-                src: Some(OperandLine::Smem { cell: 4 }), // bucket 4 → lanes 16..19 ✗
-            },
-        ];
+        compiled.program.instrs = vec![Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Ext,
+            dst: None,
+            src: Some(OperandLine::Smem { cell: 4 }), // bucket 4 → lanes 16..19 ✗
+        }];
 
-        let result = validate_compiled(&compiled, &layer);
-        assert_eq!(result, Err(CompileError::BudgetBelowFloor { floor: 20, budget: 16 }));
+        let result = validate_test(&compiled, &layer);
+        assert_eq!(
+            result,
+            Err(CompileError::BudgetBelowFloor {
+                floor: 20,
+                budget: 16
+            })
+        );
     }
 
     /// In-bounds bucket indices → Ok. At budget 32 (8 buckets), buckets 0 and 4
@@ -833,7 +1024,7 @@ mod tests {
             },
         ];
 
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     // ── Check 5: storage-field identity ──────────────────────────────────────
@@ -849,18 +1040,22 @@ mod tests {
                 dir: MovDir::AccFromSrc,
                 field: OperandField::Base,
                 dst: None,
-                src: Some(OperandLine::Global { slot: 0, col: 5 }),
+                src: Some(OperandLine::LogicalGlobal { slot: 0, col: 5 }),
             },
             Instr::Mov {
                 dir: MovDir::AccFromSrc,
-                field: OperandField::Ext,  // same (slot=0, col=5) but Ext
+                field: OperandField::Ext, // same (slot=0, col=5) but Ext
                 dst: None,
-                src: Some(OperandLine::Global { slot: 0, col: 5 }),
+                src: Some(OperandLine::LogicalGlobal { slot: 0, col: 5 }),
             },
         ];
 
-        let result = validate_compiled(&compiled, &layer);
-        assert!(matches!(result, Err(CompileError::FieldMismatch(_))), "got: {:?}", result);
+        let result = validate_test(&compiled, &layer);
+        assert!(
+            matches!(result, Err(CompileError::FieldMismatch(_))),
+            "got: {:?}",
+            result
+        );
     }
 
     /// Same (slot, col) consistently Base in all uses → Ok.
@@ -868,7 +1063,7 @@ mod tests {
     fn consistent_storage_field_ok() {
         let layer = simple_compute_layer();
         let compiled = clean_compiled(&layer); // uses (0,0) and (0,1) both Base
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     // ── Check 6: structural budget ────────────────────────────────────────────
@@ -880,17 +1075,19 @@ mod tests {
         let mut compiled = clean_compiled(&layer);
         compiled.budget = 4; // only 4 cells
         // Smem cell 10 is way beyond budget of 4.
-        compiled.program.instrs = vec![
-            Instr::Mov {
-                dir: MovDir::AccFromSrc,
-                field: OperandField::Base,
-                dst: None,
-                src: Some(OperandLine::Smem { cell: 10 }),
-            },
-        ];
+        compiled.program.instrs = vec![Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(OperandLine::Smem { cell: 10 }),
+        }];
 
-        let result = validate_compiled(&compiled, &layer);
-        assert!(matches!(result, Err(CompileError::BudgetBelowFloor { .. })), "got: {:?}", result);
+        let result = validate_test(&compiled, &layer);
+        assert!(
+            matches!(result, Err(CompileError::BudgetBelowFloor { .. })),
+            "got: {:?}",
+            result
+        );
     }
 
     /// Program with no smem refs in a budget of 16 → Ok (clean encode roundtrip).
@@ -898,7 +1095,7 @@ mod tests {
     fn budget_ok_clean_encode_roundtrip() {
         let layer = simple_compute_layer();
         let compiled = clean_compiled(&layer);
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     // ── Check 7: canonical operands ───────────────────────────────────────────
@@ -908,19 +1105,22 @@ mod tests {
     fn special_zero_operand_rejected() {
         let layer = simple_compute_layer();
         let mut compiled = clean_compiled(&layer);
-        compiled.program.instrs = vec![
-            Instr::Add {
-                field: OperandField::Base,
-                sign: super::super::isa::Sign::Plus,
-                promote: false,
-                operands: vec![
-                    OperandLine::Ldc { sub: LdcSub::Special, idx: Special::Zero as u16 },
-                ],
-            },
-        ];
+        compiled.program.instrs = vec![Instr::Add {
+            field: OperandField::Base,
+            sign: super::super::isa::Sign::Plus,
+            promote: false,
+            operands: vec![OperandLine::Ldc {
+                sub: LdcSub::Special,
+                idx: Special::Zero as u16,
+            }],
+        }];
 
-        let result = validate_compiled(&compiled, &layer);
-        assert!(matches!(result, Err(CompileError::FieldMismatch(_))), "got: {:?}", result);
+        let result = validate_test(&compiled, &layer);
+        assert!(
+            matches!(result, Err(CompileError::FieldMismatch(_))),
+            "got: {:?}",
+            result
+        );
     }
 
     /// `Special(1)` (One) IS a valid arithmetic operand — additive 1, encoded inline
@@ -934,15 +1134,16 @@ mod tests {
                 dir: MovDir::AccFromSrc,
                 field: OperandField::Base,
                 dst: None,
-                src: Some(OperandLine::Global { slot: 0, col: 0 }),
+                src: Some(OperandLine::LogicalGlobal { slot: 0, col: 0 }),
             },
             Instr::Add {
                 field: OperandField::Base,
                 sign: super::super::isa::Sign::Plus,
                 promote: false,
-                operands: vec![
-                    OperandLine::Ldc { sub: LdcSub::Special, idx: Special::One as u16 },
-                ],
+                operands: vec![OperandLine::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::One as u16,
+                }],
             },
             Instr::Mov {
                 dir: MovDir::DstFromAcc,
@@ -952,7 +1153,7 @@ mod tests {
             },
         ];
 
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     /// `Special(NegOne)` (−1) as a unary MUL operand → Ok (the only valid Special).
@@ -965,15 +1166,16 @@ mod tests {
                 dir: MovDir::AccFromSrc,
                 field: OperandField::Base,
                 dst: None,
-                src: Some(OperandLine::Global { slot: 0, col: 0 }),
+                src: Some(OperandLine::LogicalGlobal { slot: 0, col: 0 }),
             },
             Instr::Mul {
                 field: OperandField::Base,
                 promote: false,
                 negate_acc: false,
-                operands: vec![
-                    OperandLine::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 },
-                ],
+                operands: vec![OperandLine::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::NegOne as u16,
+                }],
             },
             Instr::Mov {
                 dir: MovDir::DstFromAcc,
@@ -983,7 +1185,7 @@ mod tests {
             },
         ];
 
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     /// FMA with `field_lhs=Ext, field_rhs=Base` (EB order) → FieldMismatch.
@@ -991,21 +1193,23 @@ mod tests {
     fn fma_eb_order_rejected() {
         let layer = simple_compute_layer();
         let mut compiled = clean_compiled(&layer);
-        compiled.program.instrs = vec![
-            Instr::Fma {
-                field_lhs: OperandField::Ext,  // EB = non-canonical
-                field_rhs: OperandField::Base,
-                sign: super::super::isa::Sign::Plus,
-                promote: false,
-                pairs: vec![(
-                    OperandLine::Global { slot: 0, col: 0 },
-                    OperandLine::Global { slot: 0, col: 1 },
-                )],
-            },
-        ];
+        compiled.program.instrs = vec![Instr::Fma {
+            field_lhs: OperandField::Ext, // EB = non-canonical
+            field_rhs: OperandField::Base,
+            sign: super::super::isa::Sign::Plus,
+            promote: false,
+            pairs: vec![(
+                OperandLine::LogicalGlobal { slot: 0, col: 0 },
+                OperandLine::LogicalGlobal { slot: 0, col: 1 },
+            )],
+        }];
 
-        let result = validate_compiled(&compiled, &layer);
-        assert!(matches!(result, Err(CompileError::FieldMismatch(_))), "got: {:?}", result);
+        let result = validate_test(&compiled, &layer);
+        assert!(
+            matches!(result, Err(CompileError::FieldMismatch(_))),
+            "got: {:?}",
+            result
+        );
     }
 
     /// FMA with canonical `field_lhs=Base, field_rhs=Ext` (BE order) → Ok.
@@ -1015,20 +1219,18 @@ mod tests {
         let layer = simple_compute_layer();
         let mut compiled = clean_compiled(&layer);
         compiled.budget = 16;
-        compiled.program.instrs = vec![
-            Instr::Fma {
-                field_lhs: OperandField::Base,  // canonical BE
-                field_rhs: OperandField::Ext,
-                sign: super::super::isa::Sign::Plus,
-                promote: true,
-                pairs: vec![(
-                    OperandLine::Global { slot: 0, col: 0 },
-                    OperandLine::Global { slot: 0, col: 1 },
-                )],
-            },
-        ];
+        compiled.program.instrs = vec![Instr::Fma {
+            field_lhs: OperandField::Base, // canonical BE
+            field_rhs: OperandField::Ext,
+            sign: super::super::isa::Sign::Plus,
+            promote: true,
+            pairs: vec![(
+                OperandLine::LogicalGlobal { slot: 0, col: 0 },
+                OperandLine::LogicalGlobal { slot: 0, col: 1 },
+            )],
+        }];
 
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     // ── Source-residency load primitive ──────────────────────────────────────
@@ -1045,14 +1247,19 @@ mod tests {
         let mut compiled = clean_compiled(&layer);
         // Prepend the load into the passing program (Base field needs no cell alignment).
         // Global(0,0) is already read as Base in clean_compiled — same field, no conflict.
-        compiled.program.instrs.insert(0, Instr::Mov {
-            dir: MovDir::DstFromSrc,
-            field: OperandField::Base,
-            dst: Some(DstLine::Smem { cell: 0 }),
-            src: Some(OperandLine::Global { slot: 0, col: 0 }),
-        });
-        assert!(validate_compiled(&compiled, &layer).is_ok(),
-            "DstFromSrc into a Smem cell (the source-residency load) must validate");
+        compiled.program.instrs.insert(
+            0,
+            Instr::Mov {
+                dir: MovDir::DstFromSrc,
+                field: OperandField::Base,
+                dst: Some(DstLine::Smem { cell: 0 }),
+                src: Some(OperandLine::LogicalGlobal { slot: 0, col: 0 }),
+            },
+        );
+        assert!(
+            validate_test(&compiled, &layer).is_ok(),
+            "DstFromSrc into a Smem cell (the source-residency load) must validate"
+        );
     }
 
     // ── Full clean pass ───────────────────────────────────────────────────────
@@ -1062,7 +1269,7 @@ mod tests {
     fn clean_layer_passes_all_checks() {
         let layer = simple_compute_layer();
         let compiled = clean_compiled(&layer);
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     // ── Check 3 strict v2: promote-iff acc-domain rules (§1.2–§1.4) ──────────
@@ -1075,7 +1282,7 @@ mod tests {
             dir: MovDir::AccFromSrc,
             field,
             dst: None,
-            src: Some(OperandLine::Global { slot: 0, col: 0 }),
+            src: Some(OperandLine::LogicalGlobal { slot: 0, col: 0 }),
         }
     }
 
@@ -1086,7 +1293,10 @@ mod tests {
             field,
             sign: Sign::Plus,
             promote,
-            operands: vec![OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 }],
+            operands: vec![OperandLine::Ldc {
+                sub: LdcSub::ConstDerivedE4,
+                idx: 0,
+            }],
         }
     }
 
@@ -1101,7 +1311,7 @@ mod tests {
             add_challenge(OperandField::Base, true), // promote but Add{Base} never requires ext
         ];
         assert_eq!(
-            validate_compiled(&compiled, &layer),
+            validate_test(&compiled, &layer),
             Err(CompileError::PromoteNotRequired)
         );
     }
@@ -1116,7 +1326,7 @@ mod tests {
             add_challenge(OperandField::Ext, true), // promote on an already-ext acc
         ];
         assert_eq!(
-            validate_compiled(&compiled, &layer),
+            validate_test(&compiled, &layer),
             Err(CompileError::PromoteNotRequired)
         );
     }
@@ -1131,7 +1341,7 @@ mod tests {
             add_challenge(OperandField::Ext, false), // Add{Ext} requires ext acc
         ];
         assert_eq!(
-            validate_compiled(&compiled, &layer),
+            validate_test(&compiled, &layer),
             Err(CompileError::ExtAccWithoutPromote)
         );
     }
@@ -1149,13 +1359,16 @@ mod tests {
                 sign: Sign::Plus,
                 promote: false,
                 pairs: vec![(
-                    OperandLine::Global { slot: 0, col: 0 },
-                    OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 },
+                    OperandLine::LogicalGlobal { slot: 0, col: 0 },
+                    OperandLine::Ldc {
+                        sub: LdcSub::ConstDerivedE4,
+                        idx: 0,
+                    },
                 )],
             },
         ];
         assert_eq!(
-            validate_compiled(&compiled, &layer),
+            validate_test(&compiled, &layer),
             Err(CompileError::ExtAccWithoutPromote)
         );
     }
@@ -1176,7 +1389,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            validate_compiled(&compiled, &layer),
+            validate_test(&compiled, &layer),
             Err(CompileError::AccTruncation)
         );
     }
@@ -1197,7 +1410,7 @@ mod tests {
                 src: None,
             },
         ];
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     /// `Mul{Base}` dispatches on the acc domain and never REQUIRES ext (§1.3):
@@ -1212,7 +1425,10 @@ mod tests {
                 field: OperandField::Base, // scale — dispatches, no promote needed
                 promote: false,
                 negate_acc: false,
-                operands: vec![OperandLine::Ldc { sub: LdcSub::Const, idx: 0 }],
+                operands: vec![OperandLine::Ldc {
+                    sub: LdcSub::Const,
+                    idx: 0,
+                }],
             },
             Instr::Mov {
                 dir: MovDir::DstFromAcc,
@@ -1221,7 +1437,7 @@ mod tests {
                 src: None,
             },
         ];
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     /// Zero-arity `Mul{negate_acc}` (pure acc negation) dispatches on the acc
@@ -1245,7 +1461,7 @@ mod tests {
                 src: None,
             },
         ];
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     // ── Check 5b: field-vs-storage agreement (v2) ─────────────────────────────
@@ -1258,7 +1474,13 @@ mod tests {
         ctx.actions.insert(RootId(0), ForwardAction::Compute);
         for off in 0..2usize {
             ctx.backings
-                .slot_col(BackingKey::LayerOutput { layer: 0, field: OperandField::Base }, off)
+                .slot_col(
+                    BackingKey::LayerOutput {
+                        layer: 0,
+                        field: OperandField::Base,
+                    },
+                    off,
+                )
                 .unwrap();
         }
         CompiledLayer {
@@ -1277,16 +1499,14 @@ mod tests {
     #[test]
     fn field_storage_mismatch_read_rejected() {
         let layer = simple_compute_layer();
-        let compiled = compiled_with_base_layer_output_slot(vec![
-            Instr::Mov {
-                dir: MovDir::AccFromSrc,
-                field: OperandField::Ext, // slot 0's matrix is Base
-                dst: None,
-                src: Some(OperandLine::Global { slot: 0, col: 0 }),
-            },
-        ]);
+        let compiled = compiled_with_base_layer_output_slot(vec![Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Ext, // slot 0's matrix is Base
+            dst: None,
+            src: Some(OperandLine::LogicalGlobal { slot: 0, col: 0 }),
+        }]);
         assert_eq!(
-            validate_compiled(&compiled, &layer),
+            validate_test(&compiled, &layer),
             Err(CompileError::FieldStorageMismatch { slot: 0, col: 0 })
         );
     }
@@ -1301,7 +1521,10 @@ mod tests {
                 dir: MovDir::AccFromSrc,
                 field: OperandField::Ext,
                 dst: None,
-                src: Some(OperandLine::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 }),
+                src: Some(OperandLine::Ldc {
+                    sub: LdcSub::ConstDerivedE4,
+                    idx: 0,
+                }),
             },
             Instr::Mov {
                 dir: MovDir::DstFromAcc,
@@ -1311,7 +1534,7 @@ mod tests {
             },
         ]);
         assert_eq!(
-            validate_compiled(&compiled, &layer),
+            validate_test(&compiled, &layer),
             Err(CompileError::FieldStorageMismatch { slot: 0, col: 1 })
         );
     }
@@ -1352,7 +1575,7 @@ mod tests {
             ],
         );
         assert_eq!(
-            validate_compiled(&compiled, &layer),
+            validate_test(&compiled, &layer),
             Err(CompileError::SmemRegionMismatch { cell: 1 })
         );
     }
@@ -1371,7 +1594,7 @@ mod tests {
         }];
         let compiled = with_placed(compiled, &[((0, 4), OperandField::Base)]);
         assert_eq!(
-            validate_compiled(&compiled, &layer),
+            validate_test(&compiled, &layer),
             Err(CompileError::SmemRegionMismatch { cell: 1 })
         );
     }
@@ -1408,7 +1631,7 @@ mod tests {
                 ((1, 4), OperandField::Base),
             ],
         );
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
 
         // Empty map: the same "wrong" shape as smem_base_read_of_ext_lane_rejected
         // passes when there is no placement metadata to check against.
@@ -1419,7 +1642,7 @@ mod tests {
             dst: None,
             src: Some(OperandLine::Smem { cell: 1 }),
         }];
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
 
     /// Field bits agreeing with the slot's storage field → Ok (both modes' walk).
@@ -1431,7 +1654,7 @@ mod tests {
                 dir: MovDir::AccFromSrc,
                 field: OperandField::Base,
                 dst: None,
-                src: Some(OperandLine::Global { slot: 0, col: 0 }),
+                src: Some(OperandLine::LogicalGlobal { slot: 0, col: 0 }),
             },
             Instr::Mov {
                 dir: MovDir::DstFromAcc,
@@ -1440,7 +1663,6 @@ mod tests {
                 src: None,
             },
         ]);
-        assert_eq!(validate_compiled(&compiled, &layer), Ok(()));
+        assert_eq!(validate_test(&compiled, &layer), Ok(()));
     }
-
 }

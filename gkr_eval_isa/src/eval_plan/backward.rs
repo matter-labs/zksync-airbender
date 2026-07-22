@@ -302,6 +302,7 @@ fn compile_backward_symbolic(
         d.root,
         budget_lanes,
         &d.leaf_descs,
+        &symbolic.specials,
     )
     .map_err(|error| map_compile_concrete_error(error, replayed))?;
     let ConcreteEvalProgram {
@@ -321,12 +322,14 @@ fn compile_backward_symbolic(
     let specials = symbolic.specials.clone();
     let live = live_profile(&program);
     let max_live_lanes = live.iter().copied().max().unwrap_or(0);
-    let (mut stats, stats_ext) = tally_bwd_program(&program, &specials);
+    let (mut stats, stats_ext) =
+        tally_bwd_program(&program, &specials, &forward.ctx.source_windows);
     stats.max_live_cells = max_live_lanes;
     let compiled = BwdCompiledLayer {
         program,
         specials,
         backings: forward.ctx.backings,
+        source_windows: forward.ctx.source_windows,
         consts: forward.ctx.consts,
         derived_e4: forward.ctx.derived_e4,
         budget: budget_lanes,
@@ -340,6 +343,7 @@ fn compile_backward_symbolic(
         &compiled.specials,
         &d.leaf_descs,
         &compiled.backings,
+        &compiled.source_windows,
     )
     .ok_or(BackwardEvaluationError::TrafficSourceMapping)?;
     let events = retain_physical_traffic_events(symbolic.demand_events.clone(), &physical_events)

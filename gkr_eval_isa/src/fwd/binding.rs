@@ -17,15 +17,83 @@
 //! outside its table.
 
 use super::error::BindError;
-use super::isa::{OperandField, MAX_COLS, MAX_SLOTS};
+use super::isa::{
+    Instr, MAX_COLS, MAX_SLOTS, MAX_SOURCE_WINDOWS, OperandField, OperandLine, Program,
+    SOURCE_WINDOW_COLUMNS,
+};
 use cs::gkr_compiler::dag_ir::ReadPlace;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BackingKey {
-    BaseLayerMemory, BaseLayerWitness, Setup, Scratch, // intrinsically bf matrices
+    BaseLayerMemory,
+    BaseLayerWitness,
+    Setup,
+    Scratch, // intrinsically bf matrices
     LayerOutput { layer: usize, field: OperandField },
     CacheOutput { layer: usize, field: OperandField },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceMarkerMode {
+    Forward,
+    Backward,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceWindow {
+    pub backing: BackingKey,
+    pub first_column: usize,
+    referenced_columns: BTreeSet<usize>,
+    fold_descs: BTreeMap<usize, u16>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SourceWindowTable {
+    windows: Vec<SourceWindow>,
+}
+
+impl SourceWindowTable {
+    pub fn len(&self) -> usize {
+        self.windows.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.windows.is_empty()
+    }
+    pub fn windows(&self) -> &[SourceWindow] {
+        &self.windows
+    }
+
+    pub fn source_field(&self, window: u8) -> Option<OperandField> {
+        self.windows
+            .get(window as usize)
+            .map(|entry| entry.backing.field())
+    }
+
+    pub fn resolve_read_place(&self, window: u8, column: u8) -> Option<ReadPlace> {
+        let entry = self.windows.get(window as usize)?;
+        let absolute = entry.first_column.checked_add(column as usize)?;
+        entry
+            .referenced_columns
+            .contains(&absolute)
+            .then(|| backing_to_read_place(&entry.backing, absolute))
+    }
+
+    pub fn fold_desc(&self, window: u8, column: u8) -> Option<u16> {
+        let entry = self.windows.get(window as usize)?;
+        let absolute = entry.first_column.checked_add(column as usize)?;
+        entry.fold_descs.get(&absolute).copied()
+    }
+}
+
+impl SourceWindow {
+    pub fn referenced_columns(&self) -> impl Iterator<Item = usize> + '_ {
+        self.referenced_columns.iter().copied()
+    }
+
+    pub fn fold_descriptors(&self) -> impl Iterator<Item = (usize, u16)> + '_ {
+        self.fold_descs.iter().map(|(&column, &desc)| (column, desc))
+    }
 }
 
 impl BackingKey {
@@ -58,13 +126,19 @@ pub struct BackingTable {
 
 impl BackingTable {
     pub fn intern(&mut self, key: BackingKey) -> Result<u8, BindError> {
-        if let Some(i) = self.slots.iter().position(|k| *k == key) { return Ok(i as u8); }
-        if self.slots.len() as u32 >= MAX_SLOTS { return Err(BindError::SlotOverflow); }
+        if let Some(i) = self.slots.iter().position(|k| *k == key) {
+            return Ok(i as u8);
+        }
+        if self.slots.len() as u32 >= MAX_SLOTS {
+            return Err(BindError::SlotOverflow);
+        }
         self.slots.push(key);
         self.cols.push(SlotCols::default());
         Ok((self.slots.len() - 1) as u8)
     }
-    pub fn backing(&self, slot: u8) -> Option<&BackingKey> { self.slots.get(slot as usize) }
+    pub fn backing(&self, slot: u8) -> Option<&BackingKey> {
+        self.slots.get(slot as usize)
+    }
 
     /// The storage field of `slot`'s matrix (validation: every `Global`
     /// operand/dst field bit must agree with this).
@@ -73,7 +147,9 @@ impl BackingTable {
     }
 
     /// Number of interned slots (≤ `MAX_SLOTS`).
-    pub fn n_slots(&self) -> usize { self.slots.len() }
+    pub fn n_slots(&self) -> usize {
+        self.slots.len()
+    }
 
     /// Intern `(key, original offset)` → `(slot, dense col)`. The SINGLE
     /// renumbering authority: reads (`read_slot_col`) and GlobalMaterialize
@@ -82,9 +158,13 @@ impl BackingTable {
     pub fn slot_col(&mut self, key: BackingKey, offset: usize) -> Result<(u8, u16), BindError> {
         let slot = self.intern(key)?;
         let sc = &mut self.cols[slot as usize];
-        if let Some(&c) = sc.dense_of.get(&offset) { return Ok((slot, c)); }
+        if let Some(&c) = sc.dense_of.get(&offset) {
+            return Ok((slot, c));
+        }
         let c = sc.offsets.len();
-        if c as u32 >= MAX_COLS { return Err(BindError::ColOverflow(offset)); }
+        if c as u32 >= MAX_COLS {
+            return Err(BindError::ColOverflow(offset));
+        }
         sc.dense_of.insert(offset, c as u16);
         sc.offsets.push(offset);
         Ok((slot, c as u16))
@@ -123,8 +203,146 @@ impl BackingTable {
     /// is the original offset of dense col `c`). Empty for an unknown slot.
     /// The descriptor lowering orders matrix columns with this.
     pub fn slot_columns(&self, slot: u8) -> &[usize] {
-        self.cols.get(slot as usize).map(|sc| sc.offsets.as_slice()).unwrap_or(&[])
+        self.cols
+            .get(slot as usize)
+            .map(|sc| sc.offsets.as_slice())
+            .unwrap_or(&[])
     }
+}
+
+/// Rewrite compiler-private logical reads after all source-moving peepholes.
+/// Windows are freely based, deterministic, and contain only surviving reads.
+pub fn bind_final_sources(
+    program: &mut Program,
+    backings: &BackingTable,
+    marker_mode: SourceMarkerMode,
+) -> Result<SourceWindowTable, BindError> {
+    let mut referenced = BTreeMap::<BackingKey, BTreeMap<usize, Option<u16>>>::new();
+    visit_operands_mut(program, |operand| {
+        let logical = match *operand {
+            OperandLine::LogicalGlobal { slot, col } => Some((slot, col, None)),
+            OperandLine::LogicalFold { slot, col, desc } => Some((slot, col, Some(desc))),
+            _ => None,
+        };
+        if let Some((slot, col, desc)) = logical {
+            let backing = backings
+                .backing(slot)
+                .cloned()
+                .ok_or(BindError::UnknownLogicalSource { slot, col })?;
+            let absolute = backings
+                .slot_columns(slot)
+                .get(col as usize)
+                .copied()
+                .ok_or(BindError::UnknownLogicalSource { slot, col })?;
+            let entry = referenced.entry(backing).or_default().entry(absolute);
+            match entry {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(desc);
+                }
+                std::collections::btree_map::Entry::Occupied(entry) if *entry.get() != desc => {
+                    return Err(BindError::ConflictingSourceBinding { slot, col });
+                }
+                std::collections::btree_map::Entry::Occupied(_) => {}
+            }
+        }
+        Ok(())
+    })?;
+
+    let mut table = SourceWindowTable::default();
+    let mut locations = BTreeMap::<(BackingKey, usize), (u8, u8)>::new();
+    for (backing, columns) in referenced {
+        let mut active_window = None::<(u8, usize)>;
+        for (&absolute, &fold_desc) in &columns {
+            let (window, first_column) = match active_window {
+                Some((window, first)) if absolute < first + SOURCE_WINDOW_COLUMNS as usize => {
+                    (window, first)
+                }
+                _ => {
+                    if table.windows.len() as u32 >= MAX_SOURCE_WINDOWS {
+                        return Err(BindError::SourceWindowOverflow);
+                    }
+                    let window = table.windows.len() as u8;
+                    table.windows.push(SourceWindow {
+                        backing: backing.clone(),
+                        first_column: absolute,
+                        referenced_columns: BTreeSet::new(),
+                        fold_descs: BTreeMap::new(),
+                    });
+                    active_window = Some((window, absolute));
+                    (window, absolute)
+                }
+            };
+            table.windows[window as usize]
+                .referenced_columns
+                .insert(absolute);
+            if let Some(desc) = fold_desc {
+                table.windows[window as usize]
+                    .fold_descs
+                    .insert(absolute, desc);
+            }
+            locations.insert(
+                (backing.clone(), absolute),
+                (window, (absolute - first_column) as u8),
+            );
+        }
+    }
+
+    let mut seen = HashSet::<(BackingKey, usize)>::new();
+    visit_operands_mut(program, |operand| {
+        let (slot, col) = match *operand {
+            OperandLine::LogicalGlobal { slot, col }
+            | OperandLine::LogicalFold { slot, col, .. } => (slot, col),
+            _ => return Ok(()),
+        };
+        let backing = backings
+            .backing(slot)
+            .cloned()
+            .ok_or(BindError::UnknownLogicalSource { slot, col })?;
+        let absolute = backings
+            .slot_columns(slot)
+            .get(col as usize)
+            .copied()
+            .ok_or(BindError::UnknownLogicalSource { slot, col })?;
+        let &(window, column) = locations
+            .get(&(backing.clone(), absolute))
+            .ok_or(BindError::UnknownLogicalSource { slot, col })?;
+        let first_access =
+            marker_mode == SourceMarkerMode::Backward && seen.insert((backing, absolute));
+        *operand = OperandLine::Source {
+            window,
+            column,
+            first_access,
+        };
+        Ok(())
+    })?;
+    Ok(table)
+}
+
+fn visit_operands_mut(
+    program: &mut Program,
+    mut visit: impl FnMut(&mut OperandLine) -> Result<(), BindError>,
+) -> Result<(), BindError> {
+    for instr in &mut program.instrs {
+        match instr {
+            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                for operand in operands {
+                    visit(operand)?;
+                }
+            }
+            Instr::Fma { pairs, .. } => {
+                for (lhs, rhs) in pairs {
+                    visit(lhs)?;
+                    visit(rhs)?;
+                }
+            }
+            Instr::Mov { src, .. } => {
+                if let Some(src) = src {
+                    visit(src)?;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The field-qualified backing key + ORIGINAL offset of a read. `field` is the
@@ -135,31 +353,219 @@ pub fn read_place_to_backing(place: &ReadPlace, field: OperandField) -> (Backing
         ReadPlace::BaseLayerWitness { column } => (BackingKey::BaseLayerWitness, column),
         ReadPlace::Setup { column } => (BackingKey::Setup, column),
         ReadPlace::Scratch { slot } => (BackingKey::Scratch, slot),
-        ReadPlace::LayerOutput { layer, offset } => (BackingKey::LayerOutput { layer, field }, offset),
-        ReadPlace::CacheOutput { layer, offset } => (BackingKey::CacheOutput { layer, field }, offset),
+        ReadPlace::LayerOutput { layer, offset } => {
+            (BackingKey::LayerOutput { layer, field }, offset)
+        }
+        ReadPlace::CacheOutput { layer, offset } => {
+            (BackingKey::CacheOutput { layer, field }, offset)
+        }
+    }
+}
+
+fn backing_to_read_place(backing: &BackingKey, offset: usize) -> ReadPlace {
+    match *backing {
+        BackingKey::BaseLayerMemory => ReadPlace::BaseLayerMemory { column: offset },
+        BackingKey::BaseLayerWitness => ReadPlace::BaseLayerWitness { column: offset },
+        BackingKey::Setup => ReadPlace::Setup { column: offset },
+        BackingKey::Scratch => ReadPlace::Scratch { slot: offset },
+        BackingKey::LayerOutput { layer, .. } => ReadPlace::LayerOutput { layer, offset },
+        BackingKey::CacheOutput { layer, .. } => ReadPlace::CacheOutput { layer, offset },
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fwd::isa::{Instr, MovDir, Program};
+
+    fn load_program(operands: Vec<OperandLine>) -> Program {
+        Program {
+            instrs: operands
+                .into_iter()
+                .map(|src| Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(src),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn final_source_windows_have_free_bases_and_ignore_unreferenced_columns() {
+        let mut backings = BackingTable::default();
+        let (slot, col1) = backings
+            .read_slot_col(
+                &ReadPlace::BaseLayerMemory { column: 1 },
+                OperandField::Base,
+            )
+            .unwrap();
+        let (_, col128) = backings
+            .read_slot_col(
+                &ReadPlace::BaseLayerMemory { column: 128 },
+                OperandField::Base,
+            )
+            .unwrap();
+        let _unused = backings
+            .read_slot_col(
+                &ReadPlace::BaseLayerMemory { column: 4096 },
+                OperandField::Base,
+            )
+            .unwrap();
+        let mut program = load_program(vec![
+            OperandLine::LogicalGlobal { slot, col: col128 },
+            OperandLine::LogicalGlobal { slot, col: col1 },
+        ]);
+
+        let table = bind_final_sources(&mut program, &backings, SourceMarkerMode::Forward).unwrap();
+
+        assert_eq!(table.len(), 1);
+        assert_eq!(
+            table.resolve_read_place(0, 0),
+            Some(ReadPlace::BaseLayerMemory { column: 1 })
+        );
+        assert_eq!(
+            table.resolve_read_place(0, 127),
+            Some(ReadPlace::BaseLayerMemory { column: 128 })
+        );
+        assert_eq!(table.resolve_read_place(0, 126), None);
+        assert_eq!(
+            program.instrs,
+            load_program(vec![
+                OperandLine::Source {
+                    window: 0,
+                    column: 127,
+                    first_access: false
+                },
+                OperandLine::Source {
+                    window: 0,
+                    column: 0,
+                    first_access: false
+                },
+            ])
+            .instrs,
+        );
+    }
+
+    #[test]
+    fn final_source_windows_are_deterministic_and_backward_marks_one_first_use() {
+        let mut backings = BackingTable::default();
+        let (slot, col) = backings
+            .read_slot_col(&ReadPlace::Setup { column: 9 }, OperandField::Base)
+            .unwrap();
+        let logical = OperandLine::LogicalGlobal { slot, col };
+        let mut program = load_program(vec![logical, logical]);
+        let table =
+            bind_final_sources(&mut program, &backings, SourceMarkerMode::Backward).unwrap();
+
+        assert_eq!(table.len(), 1);
+        assert_eq!(
+            program.instrs,
+            load_program(vec![
+                OperandLine::Source {
+                    window: 0,
+                    column: 0,
+                    first_access: true
+                },
+                OperandLine::Source {
+                    window: 0,
+                    column: 0,
+                    first_access: false
+                },
+            ])
+            .instrs,
+        );
+    }
+
+    #[test]
+    fn final_source_binding_rejects_a_sixty_fifth_window() {
+        let mut backings = BackingTable::default();
+        let mut operands = Vec::new();
+        for column in (0..65).map(|index| index * SOURCE_WINDOW_COLUMNS as usize) {
+            let (slot, col) = backings
+                .read_slot_col(&ReadPlace::BaseLayerMemory { column }, OperandField::Base)
+                .unwrap();
+            operands.push(OperandLine::LogicalGlobal { slot, col });
+        }
+        let mut program = load_program(operands);
+        assert_eq!(
+            bind_final_sources(&mut program, &backings, SourceMarkerMode::Forward),
+            Err(BindError::SourceWindowOverflow),
+        );
+    }
+
+    #[test]
+    fn final_fold_source_binding_keeps_descriptor_and_marks_only_first_occurrence() {
+        let mut backings = BackingTable::default();
+        let (slot, col) = backings
+            .read_slot_col(
+                &ReadPlace::BaseLayerWitness { column: 17 },
+                OperandField::Base,
+            )
+            .unwrap();
+        let fold = OperandLine::LogicalFold { slot, col, desc: 9 };
+        let mut program = Program {
+            instrs: vec![Instr::Fma {
+                field_lhs: OperandField::Ext,
+                field_rhs: OperandField::Ext,
+                sign: crate::fwd::isa::Sign::Plus,
+                promote: false,
+                pairs: vec![(fold, fold)],
+            }],
+        };
+
+        let table =
+            bind_final_sources(&mut program, &backings, SourceMarkerMode::Backward).unwrap();
+        assert_eq!(table.fold_desc(0, 0), Some(9));
+        assert_eq!(
+            program.instrs,
+            vec![Instr::Fma {
+                field_lhs: OperandField::Ext,
+                field_rhs: OperandField::Ext,
+                sign: crate::fwd::isa::Sign::Plus,
+                promote: false,
+                pairs: vec![(
+                    OperandLine::Source {
+                        window: 0,
+                        column: 0,
+                        first_access: true
+                    },
+                    OperandLine::Source {
+                        window: 0,
+                        column: 0,
+                        first_access: false
+                    },
+                )],
+            }],
+        );
+    }
 
     #[test]
     fn read_place_maps_and_reuses_slot() {
         let mut t = BackingTable::default();
         let (s, c) = t
-            .read_slot_col(&ReadPlace::BaseLayerMemory { column: 5 }, OperandField::Base)
+            .read_slot_col(
+                &ReadPlace::BaseLayerMemory { column: 5 },
+                OperandField::Base,
+            )
             .unwrap();
         assert_eq!(c, 0, "first column of a slot is dense col 0");
         assert_eq!(t.backing(s), Some(&BackingKey::BaseLayerMemory));
         let (s2, c2) = t
-            .read_slot_col(&ReadPlace::BaseLayerMemory { column: 9 }, OperandField::Base)
+            .read_slot_col(
+                &ReadPlace::BaseLayerMemory { column: 9 },
+                OperandField::Base,
+            )
             .unwrap();
         assert_eq!(s2, s);
         assert_eq!(c2, 1);
         // Re-reading an already-interned offset returns the SAME dense col.
         let (s3, c3) = t
-            .read_slot_col(&ReadPlace::BaseLayerMemory { column: 5 }, OperandField::Base)
+            .read_slot_col(
+                &ReadPlace::BaseLayerMemory { column: 5 },
+                OperandField::Base,
+            )
             .unwrap();
         assert_eq!((s3, c3), (s, 0));
     }
@@ -170,29 +576,66 @@ mod tests {
     fn mixed_layer_output_uses_two_slots() {
         let mut t = BackingTable::default();
         let (sb, cb) = t
-            .read_slot_col(&ReadPlace::LayerOutput { layer: 3, offset: 7 }, OperandField::Base)
+            .read_slot_col(
+                &ReadPlace::LayerOutput {
+                    layer: 3,
+                    offset: 7,
+                },
+                OperandField::Base,
+            )
             .unwrap();
         let (se, ce) = t
-            .read_slot_col(&ReadPlace::LayerOutput { layer: 3, offset: 8 }, OperandField::Ext)
+            .read_slot_col(
+                &ReadPlace::LayerOutput {
+                    layer: 3,
+                    offset: 8,
+                },
+                OperandField::Ext,
+            )
             .unwrap();
-        assert_ne!(sb, se, "base and ext halves of one layer output are separate slots");
-        assert_eq!((cb, ce), (0, 0), "each slot's dense column space starts at 0");
+        assert_ne!(
+            sb, se,
+            "base and ext halves of one layer output are separate slots"
+        );
+        assert_eq!(
+            (cb, ce),
+            (0, 0),
+            "each slot's dense column space starts at 0"
+        );
         assert_eq!(
             t.backing(sb),
-            Some(&BackingKey::LayerOutput { layer: 3, field: OperandField::Base })
+            Some(&BackingKey::LayerOutput {
+                layer: 3,
+                field: OperandField::Base
+            })
         );
         assert_eq!(
             t.backing(se),
-            Some(&BackingKey::LayerOutput { layer: 3, field: OperandField::Ext })
+            Some(&BackingKey::LayerOutput {
+                layer: 3,
+                field: OperandField::Ext
+            })
         );
         assert_eq!(t.slot_field(sb), Some(OperandField::Base));
         assert_eq!(t.slot_field(se), Some(OperandField::Ext));
         // CacheOutput splits the same way.
         let (scb, _) = t
-            .read_slot_col(&ReadPlace::CacheOutput { layer: 3, offset: 0 }, OperandField::Base)
+            .read_slot_col(
+                &ReadPlace::CacheOutput {
+                    layer: 3,
+                    offset: 0,
+                },
+                OperandField::Base,
+            )
             .unwrap();
         let (sce, _) = t
-            .read_slot_col(&ReadPlace::CacheOutput { layer: 3, offset: 0 }, OperandField::Ext)
+            .read_slot_col(
+                &ReadPlace::CacheOutput {
+                    layer: 3,
+                    offset: 0,
+                },
+                OperandField::Ext,
+            )
             .unwrap();
         assert_ne!(scb, sce);
     }
@@ -222,14 +665,44 @@ mod tests {
     #[test]
     fn reverse_map_roundtrips() {
         let places: Vec<(ReadPlace, OperandField)> = vec![
-            (ReadPlace::BaseLayerMemory { column: 22 }, OperandField::Base),
-            (ReadPlace::BaseLayerWitness { column: 17 }, OperandField::Base),
+            (
+                ReadPlace::BaseLayerMemory { column: 22 },
+                OperandField::Base,
+            ),
+            (
+                ReadPlace::BaseLayerWitness { column: 17 },
+                OperandField::Base,
+            ),
             (ReadPlace::Setup { column: 1023 }, OperandField::Base),
             (ReadPlace::Scratch { slot: 4 }, OperandField::Base),
-            (ReadPlace::LayerOutput { layer: 2, offset: 9 }, OperandField::Base),
-            (ReadPlace::LayerOutput { layer: 2, offset: 10 }, OperandField::Ext),
-            (ReadPlace::CacheOutput { layer: 5, offset: 0 }, OperandField::Base),
-            (ReadPlace::CacheOutput { layer: 5, offset: 3 }, OperandField::Ext),
+            (
+                ReadPlace::LayerOutput {
+                    layer: 2,
+                    offset: 9,
+                },
+                OperandField::Base,
+            ),
+            (
+                ReadPlace::LayerOutput {
+                    layer: 2,
+                    offset: 10,
+                },
+                OperandField::Ext,
+            ),
+            (
+                ReadPlace::CacheOutput {
+                    layer: 5,
+                    offset: 0,
+                },
+                OperandField::Base,
+            ),
+            (
+                ReadPlace::CacheOutput {
+                    layer: 5,
+                    offset: 3,
+                },
+                OperandField::Ext,
+            ),
         ];
         let mut t = BackingTable::default();
         for (place, field) in &places {
@@ -243,11 +716,20 @@ mod tests {
         // Writes renumber identically to reads: the sink path (`slot_col`) on the
         // same (key, offset) resolves to the same (slot, col).
         let (s, c) = t
-            .slot_col(BackingKey::CacheOutput { layer: 5, field: OperandField::Ext }, 3)
+            .slot_col(
+                BackingKey::CacheOutput {
+                    layer: 5,
+                    field: OperandField::Ext,
+                },
+                3,
+            )
             .unwrap();
         assert_eq!(
             t.slot_col_to_read_place(s, c),
-            Some(ReadPlace::CacheOutput { layer: 5, offset: 3 })
+            Some(ReadPlace::CacheOutput {
+                layer: 5,
+                offset: 3
+            })
         );
         // Unknown slot / unassigned col → None.
         assert_eq!(t.slot_col_to_read_place(15, 0), None);
@@ -260,7 +742,8 @@ mod tests {
         // Cols are dense per slot: the 1025th DISTINCT column overflows (the
         // original offset no longer matters — offset 1024 alone is dense col 0).
         for col in 0..MAX_COLS as usize {
-            t.read_slot_col(&ReadPlace::Setup { column: col * 7 }, OperandField::Base).unwrap();
+            t.read_slot_col(&ReadPlace::Setup { column: col * 7 }, OperandField::Base)
+                .unwrap();
         }
         assert_eq!(
             t.read_slot_col(&ReadPlace::Setup { column: 99999 }, OperandField::Base),
@@ -268,15 +751,25 @@ mod tests {
         );
         let mut t = BackingTable::default();
         for l in 0..16 {
-            t.intern(BackingKey::LayerOutput { layer: l, field: OperandField::Base }).unwrap();
+            t.intern(BackingKey::LayerOutput {
+                layer: l,
+                field: OperandField::Base,
+            })
+            .unwrap();
         }
         assert_eq!(
-            t.intern(BackingKey::CacheOutput { layer: 0, field: OperandField::Base }),
+            t.intern(BackingKey::CacheOutput {
+                layer: 0,
+                field: OperandField::Base
+            }),
             Err(BindError::SlotOverflow)
         );
         // A field-qualified twin of an existing layer counts as a NEW slot.
         assert_eq!(
-            t.intern(BackingKey::LayerOutput { layer: 0, field: OperandField::Ext }),
+            t.intern(BackingKey::LayerOutput {
+                layer: 0,
+                field: OperandField::Ext
+            }),
             Err(BindError::SlotOverflow)
         );
     }

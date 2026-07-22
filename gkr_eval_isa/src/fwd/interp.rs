@@ -83,30 +83,69 @@ fn interpret_layer_row_impl(
 
     for instr in &compiled.program.instrs {
         match instr {
-            Instr::Mov { dir, field, dst, src } => match dir {
+            Instr::Mov {
+                dir,
+                field,
+                dst,
+                src,
+            } => match dir {
                 MovDir::AccFromSrc => {
-                    acc = resolve(&src.unwrap(), *field, &cells, &globals, ctx, r, row, layer, mode)?;
+                    acc = resolve(
+                        &src.unwrap(),
+                        *field,
+                        &cells,
+                        &globals,
+                        ctx,
+                        r,
+                        row,
+                        layer,
+                        mode,
+                    )?;
                     acc_is_ext = *field == OperandField::Ext;
                 }
                 MovDir::DstFromAcc => {
                     write_dst(&dst.unwrap(), *field, acc, &mut cells, &mut globals);
                 }
                 MovDir::DstFromSrc => {
-                    let v = resolve(&src.unwrap(), *field, &cells, &globals, ctx, r, row, layer, mode)?;
+                    let v = resolve(
+                        &src.unwrap(),
+                        *field,
+                        &cells,
+                        &globals,
+                        ctx,
+                        r,
+                        row,
+                        layer,
+                        mode,
+                    )?;
                     write_dst(&dst.unwrap(), *field, v, &mut cells, &mut globals);
                 }
             },
-            Instr::Add { field, sign, promote, operands } => {
+            Instr::Add {
+                field,
+                sign,
+                promote,
+                operands,
+            } => {
                 acc_is_ext |= *promote;
                 for o in operands {
                     let v = resolve(o, *field, &cells, &globals, ctx, r, row, layer, mode)?;
                     match sign {
-                        Sign::Plus => { acc.add_assign(&v); }
-                        Sign::Minus => { acc.sub_assign(&v); }
+                        Sign::Plus => {
+                            acc.add_assign(&v);
+                        }
+                        Sign::Minus => {
+                            acc.sub_assign(&v);
+                        }
                     }
                 }
             }
-            Instr::Mul { field, promote, negate_acc, operands } => {
+            Instr::Mul {
+                field,
+                promote,
+                negate_acc,
+                operands,
+            } => {
                 acc_is_ext |= *promote;
                 // Sign bit = negate acc FIRST (spec §1.2); zero operands = pure negation.
                 if *negate_acc {
@@ -117,14 +156,27 @@ fn interpret_layer_row_impl(
                     acc.mul_assign(&v);
                 }
             }
-            Instr::Fma { field_lhs, field_rhs, sign, promote, pairs } => {
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                sign,
+                promote,
+                pairs,
+            } => {
                 acc_is_ext |= *promote;
                 for (l, rhs) in pairs {
-                    let mut prod = resolve(l, *field_lhs, &cells, &globals, ctx, r, row, layer, mode)?;
-                    prod.mul_assign(&resolve(rhs, *field_rhs, &cells, &globals, ctx, r, row, layer, mode)?);
+                    let mut prod =
+                        resolve(l, *field_lhs, &cells, &globals, ctx, r, row, layer, mode)?;
+                    prod.mul_assign(&resolve(
+                        rhs, *field_rhs, &cells, &globals, ctx, r, row, layer, mode,
+                    )?);
                     match sign {
-                        Sign::Plus => { acc.add_assign(&prod); }
-                        Sign::Minus => { acc.sub_assign(&prod); }
+                        Sign::Plus => {
+                            acc.add_assign(&prod);
+                        }
+                        Sign::Minus => {
+                            acc.sub_assign(&prod);
+                        }
                     }
                 }
             }
@@ -152,15 +204,21 @@ fn row_outputs(
     for (rid, out) in &compiled.root_outputs {
         let v = match out {
             RootOutput::Cell(OutputCell::Smem(c)) => cells[*c as usize],
-            RootOutput::Cell(OutputCell::Global { slot, col }) => {
-                globals[&(*slot, *col)]
-            }
+            RootOutput::Cell(OutputCell::Global { slot, col }) => globals[&(*slot, *col)],
             // CopyAlias: resolved OUTSIDE the ISA stream (zero lanes). Always a
             // stable-storage operand (Global/Ldc/Special — never Smem, see
             // `copy_src_read_place`), so the field bit passed here is inert.
-            RootOutput::Alias(op) => {
-                resolve(op, OperandField::Base, cells, globals, ctx, r, row, layer, mode)?
-            }
+            RootOutput::Alias(op) => resolve(
+                op,
+                OperandField::Base,
+                cells,
+                globals,
+                ctx,
+                r,
+                row,
+                layer,
+                mode,
+            )?,
         };
         by_root.insert(*rid, v);
     }
@@ -196,7 +254,7 @@ fn resolve(
     mode: &SpecialMode<'_>,
 ) -> Result<Ext, InterpError> {
     match *o {
-        OperandLine::Global { slot, col } => {
+        OperandLine::LogicalGlobal { slot, col } => {
             // VM materialized this backing this row (incl. Prior re-read of a cache).
             if let Some(v) = globals.get(&(slot, col)) {
                 return Ok(*v);
@@ -209,6 +267,20 @@ fn resolve(
                 .backings
                 .slot_col_to_read_place(slot, col)
                 .ok_or(InterpError::UnknownSlot(slot))?;
+            Ok(r.read.read(&place, row))
+        }
+        OperandLine::LogicalFold { slot, col, desc } => Err(InterpError::MalformedInstr(format!(
+            "unbound fold source {slot}:{col} descriptor {desc}"
+        ))),
+        OperandLine::Source { window, column, .. } => {
+            let place = ctx
+                .source_windows
+                .resolve_read_place(window, column)
+                .ok_or_else(|| {
+                    InterpError::MalformedInstr(format!(
+                        "unknown source window {window} column {column}"
+                    ))
+                })?;
             Ok(r.read.read(&place, row))
         }
         OperandLine::Smem { cell } => Ok(cells[smem_lane(cell, field)]),
@@ -274,14 +346,15 @@ fn write_dst(
 mod tests {
     use super::*;
     use crate::fwd::binding::BackingTable;
-    use crate::fwd::context::{CompiledLayer, CompileTrace, DagForwardContext, OutputCell, RootOutput, RowOutputs};
-    use crate::fwd::stats::CompileStats;
+    use crate::fwd::context::{
+        CompileTrace, CompiledLayer, DagForwardContext, OutputCell, RootOutput, RowOutputs,
+    };
     use crate::fwd::error::InterpError;
     use crate::fwd::isa::*;
     use crate::fwd::source::{ConstBank, SpecialTable};
+    use crate::fwd::stats::CompileStats;
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, ChallengeRef, DagLayer, Ext, ReadPlace, Resolvers, RootId,
-        VirtualSetupKind,
+        BatchingOrder, ChallengeRef, DagLayer, Ext, ReadPlace, Resolvers, RootId, VirtualSetupKind,
     };
     use std::collections::BTreeMap;
 
@@ -361,7 +434,10 @@ mod tests {
         let mut backings = BackingTable::default();
         for c in 0..32 {
             backings
-                .read_slot_col(&ReadPlace::BaseLayerMemory { column: c }, OperandField::Base)
+                .read_slot_col(
+                    &ReadPlace::BaseLayerMemory { column: c },
+                    OperandField::Base,
+                )
                 .unwrap();
         }
         backings
@@ -369,13 +445,17 @@ mod tests {
 
     /// Build a minimal `CompiledLayer` with a one-backing `BackingTable` (BaseLayerMemory),
     /// no consts/derived_e4/specials.
-    fn minimal_compiled(program: Program, root_outputs: Vec<(RootId, RootOutput)>) -> CompiledLayer {
+    fn minimal_compiled(
+        program: Program,
+        root_outputs: Vec<(RootId, RootOutput)>,
+    ) -> CompiledLayer {
         let backings = identity_base_mem_backings();
         let ctx = DagForwardContext {
             specials: SpecialTable::default(),
             consts: ConstBank::default(),
             derived_e4: crate::fwd::source::DerivedE4Banks::default(),
             backings,
+            source_windows: Default::default(),
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
             cross_layer_fields: std::collections::HashMap::new(),
@@ -406,13 +486,13 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 3 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 3 }),
                 },
                 Instr::Add {
                     field: OperandField::Base,
                     sign: Sign::Plus,
                     promote: false,
-                    operands: vec![OperandLine::Global { slot: 0, col: 5 }],
+                    operands: vec![OperandLine::LogicalGlobal { slot: 0, col: 5 }],
                 },
             ],
         };
@@ -439,13 +519,13 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 3 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 3 }),
                 },
                 Instr::Add {
                     field: OperandField::Base,
                     sign: Sign::Plus,
                     promote: false,
-                    operands: vec![OperandLine::Global { slot: 0, col: 5 }],
+                    operands: vec![OperandLine::LogicalGlobal { slot: 0, col: 5 }],
                 },
                 Instr::Mov {
                     dir: MovDir::DstFromAcc,
@@ -476,13 +556,13 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 2 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 2 }),
                 },
                 Instr::Mul {
                     field: OperandField::Base,
                     promote: false,
                     negate_acc: false,
-                    operands: vec![OperandLine::Global { slot: 0, col: 3 }],
+                    operands: vec![OperandLine::LogicalGlobal { slot: 0, col: 3 }],
                 },
                 Instr::Mov {
                     dir: MovDir::DstFromAcc,
@@ -522,8 +602,14 @@ mod tests {
                     sign: Sign::Plus,
                     promote: false,
                     pairs: vec![
-                        (OperandLine::Global { slot: 0, col: 1 }, OperandLine::Global { slot: 0, col: 2 }),
-                        (OperandLine::Global { slot: 0, col: 3 }, OperandLine::Global { slot: 0, col: 4 }),
+                        (
+                            OperandLine::LogicalGlobal { slot: 0, col: 1 },
+                            OperandLine::LogicalGlobal { slot: 0, col: 2 },
+                        ),
+                        (
+                            OperandLine::LogicalGlobal { slot: 0, col: 3 },
+                            OperandLine::LogicalGlobal { slot: 0, col: 4 },
+                        ),
                     ],
                 },
                 Instr::Mov {
@@ -546,7 +632,11 @@ mod tests {
         let out = interpret_layer_row(&compiled, &layer, &r, 0).unwrap();
         // 1*2 + 3*4 = 2 + 12 = 14
         let expected = lift(Bf::from_u32_with_reduction(14));
-        assert_eq!(out.by_root[&RootId(0)], expected, "FMA dot-product mismatch");
+        assert_eq!(
+            out.by_root[&RootId(0)],
+            expected,
+            "FMA dot-product mismatch"
+        );
     }
 
     // ── Test 4: unary MUL Special(NegOne) negates acc ───────────────────────
@@ -561,7 +651,7 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 5 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 5 }),
                 },
                 Instr::Mul {
                     field: OperandField::Base,
@@ -609,7 +699,7 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 5 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 5 }),
                 },
                 Instr::Mul {
                     field: OperandField::Base,
@@ -637,7 +727,11 @@ mod tests {
         let out = interpret_layer_row(&compiled, &layer, &r, 0).unwrap();
         let mut expected = lift(Bf::from_u32_with_reduction(5));
         expected.negate();
-        assert_eq!(out.by_root[&RootId(0)], expected, "Mul-minus negation mismatch");
+        assert_eq!(
+            out.by_root[&RootId(0)],
+            expected,
+            "Mul-minus negation mismatch"
+        );
     }
 
     /// Program: MOV acc ← Global{col=2}; MUL{negate_acc, [Global{col=3}]}
@@ -651,13 +745,13 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 2 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 2 }),
                 },
                 Instr::Mul {
                     field: OperandField::Base,
                     promote: false,
                     negate_acc: true,
-                    operands: vec![OperandLine::Global { slot: 0, col: 3 }],
+                    operands: vec![OperandLine::LogicalGlobal { slot: 0, col: 3 }],
                 },
                 Instr::Mov {
                     dir: MovDir::DstFromAcc,
@@ -680,7 +774,11 @@ mod tests {
         let mut expected = lift(Bf::from_u32_with_reduction(3)); // col 2 + row 1
         expected.negate();
         expected.mul_assign(&lift(Bf::from_u32_with_reduction(4))); // col 3 + row 1
-        assert_eq!(out.by_root[&RootId(0)], expected, "Mul-minus-then-mul mismatch");
+        assert_eq!(
+            out.by_root[&RootId(0)],
+            expected,
+            "Mul-minus-then-mul mismatch"
+        );
     }
 
     // ── v2: promote lifts a base acc (semantic no-op on the Ext-valued CPU) ──
@@ -691,7 +789,7 @@ mod tests {
     /// the result must equal lift(2) + challenge exactly.
     #[test]
     fn promote_lifts_base_acc() {
-        use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengeRef, ChallengePower};
+        use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengePower, ChallengeRef};
         let alpha_ref = ChallengeRef {
             key: ChallengeKey::LookupAdditive,
             power: ChallengePower::One,
@@ -707,6 +805,7 @@ mod tests {
             consts: ConstBank::default(),
             derived_e4,
             backings,
+            source_windows: Default::default(),
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
             cross_layer_fields: std::collections::HashMap::new(),
@@ -718,7 +817,7 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 2 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 2 }),
                 },
                 Instr::Add {
                     field: OperandField::Ext,
@@ -765,7 +864,7 @@ mod tests {
     #[test]
     fn base_acc_plus_ext_challenge_add() {
         // We need a challenge in the bank.
-        use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengeRef, ChallengePower};
+        use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengePower, ChallengeRef};
         let alpha_ref = ChallengeRef {
             key: ChallengeKey::LookupAdditive,
             power: ChallengePower::One,
@@ -782,6 +881,7 @@ mod tests {
             consts: ConstBank::default(),
             derived_e4,
             backings,
+            source_windows: Default::default(),
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
             cross_layer_fields: std::collections::HashMap::new(),
@@ -793,7 +893,7 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 2 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 2 }),
                 },
                 Instr::Add {
                     field: OperandField::Ext,
@@ -843,7 +943,7 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 7 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 7 }),
                 },
                 // Write acc to Smem{0}
                 Instr::Mov {
@@ -870,7 +970,10 @@ mod tests {
         };
         let compiled = minimal_compiled(
             program,
-            vec![(RootId(0), RootOutput::Cell(OutputCell::Global { slot: 0, col: 0 }))],
+            vec![(
+                RootId(0),
+                RootOutput::Cell(OutputCell::Global { slot: 0, col: 0 }),
+            )],
         );
         let layer = empty_layer();
         let read = ColPlusRowReadResolver;
@@ -891,7 +994,10 @@ mod tests {
         use cs::gkr_compiler::dag_ir::ExprId;
 
         let mut specials = crate::fwd::source::SpecialTable::default();
-        specials.push(SpecialDescriptor { strategy: SpecialStrategy::PeekSetup, origin_expr: ExprId(0) });
+        specials.push(SpecialDescriptor {
+            strategy: SpecialStrategy::PeekSetup,
+            origin_expr: ExprId(0),
+        });
 
         let program = Program {
             instrs: vec![
@@ -916,6 +1022,7 @@ mod tests {
             consts: crate::fwd::source::ConstBank::default(),
             derived_e4: crate::fwd::source::DerivedE4Banks::default(),
             backings,
+            source_windows: Default::default(),
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
             cross_layer_fields: std::collections::HashMap::new(),
@@ -941,7 +1048,12 @@ mod tests {
         use crate::fwd::source::SpecialDescriptor;
         struct FixedPeek(Ext);
         impl PeekResolver for FixedPeek {
-            fn peek(&self, _d: &SpecialDescriptor, _row: usize, _r: &Resolvers<'_>) -> Result<Ext, PeekError> {
+            fn peek(
+                &self,
+                _d: &SpecialDescriptor,
+                _row: usize,
+                _r: &Resolvers<'_>,
+            ) -> Result<Ext, PeekError> {
                 Ok(self.0)
             }
         }
@@ -949,8 +1061,11 @@ mod tests {
         let read = ColPlusRowReadResolver;
         let challenge = FixedChallengeResolver(Ext::ZERO);
         let r = make_resolvers(&read, &challenge);
-        let sentinel = lift(Bf::from_u32_with_reduction(123456 % ((1u64 << 31) as u32 - 1) as u32));
-        let out = interpret_layer_row_with_peeks(&compiled, &layer, &r, &FixedPeek(sentinel), 0).unwrap();
+        let sentinel = lift(Bf::from_u32_with_reduction(
+            123456 % ((1u64 << 31) as u32 - 1) as u32,
+        ));
+        let out =
+            interpret_layer_row_with_peeks(&compiled, &layer, &r, &FixedPeek(sentinel), 0).unwrap();
         assert_eq!(*out.by_root.values().next().unwrap(), sentinel);
     }
 
@@ -967,7 +1082,7 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 10 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 10 }),
                 },
                 Instr::Mov {
                     dir: MovDir::DstFromAcc,
@@ -980,7 +1095,7 @@ mod tests {
                     dir: MovDir::AccFromSrc,
                     field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Global { slot: 0, col: 20 }),
+                    src: Some(OperandLine::LogicalGlobal { slot: 0, col: 20 }),
                 },
                 Instr::Mov {
                     dir: MovDir::DstFromAcc,
@@ -1003,7 +1118,15 @@ mod tests {
         let r = make_resolvers(&read, &challenge);
 
         let out = interpret_layer_row(&compiled, &layer, &r, 3).unwrap();
-        assert_eq!(out.by_root[&RootId(0)], lift(Bf::from_u32_with_reduction(13)), "root 0 mismatch");
-        assert_eq!(out.by_root[&RootId(1)], lift(Bf::from_u32_with_reduction(23)), "root 1 mismatch");
+        assert_eq!(
+            out.by_root[&RootId(0)],
+            lift(Bf::from_u32_with_reduction(13)),
+            "root 0 mismatch"
+        );
+        assert_eq!(
+            out.by_root[&RootId(1)],
+            lift(Bf::from_u32_with_reduction(23)),
+            "root 1 mismatch"
+        );
     }
 }

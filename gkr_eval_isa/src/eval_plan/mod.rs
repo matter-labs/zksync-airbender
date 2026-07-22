@@ -48,10 +48,10 @@ pub use backward_artifact::{
     BackwardLayerArtifact, BackwardPagingCertificateArtifact, BackwardPlanArtifact,
     BackwardProblemCertificate, BackwardRegimeArtifact, BackwardRegimeChainProgress,
     BackwardScoreArtifact, CanonicalU128, SourceCostArtifact, backward_problem_certificate,
-    capture_backward_plan_artifact,
-    compile_backward_plan_artifact, load_backward_evaluation_artifact,
-    produce_backward_regime_chain, produce_backward_regime_chain_with_progress,
-    publish_backward_evaluation_artifact, select_backward_plan,
+    capture_backward_plan_artifact, compile_backward_plan_artifact,
+    load_backward_evaluation_artifact, produce_backward_regime_chain,
+    produce_backward_regime_chain_with_progress, publish_backward_evaluation_artifact,
+    select_backward_plan,
 };
 pub use concrete::{
     ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, ConcreteTerminal,
@@ -3453,7 +3453,7 @@ mod tests {
                 .root_outputs
                 .iter()
                 .find(|(root, _)| *root == RootId(1)),
-            Some((_, RootOutput::Alias(OperandLine::Global { .. })))
+            Some((_, RootOutput::Alias(OperandLine::LogicalGlobal { .. })))
         ));
 
         let resolvers = test_resolvers();

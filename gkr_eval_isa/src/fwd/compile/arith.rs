@@ -326,4 +326,3 @@ pub(crate) fn is_zero_expr(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprI
         Expr::Add(_) => false,
     }
 }
-

@@ -29,7 +29,13 @@ pub enum PeekError {
     /// Identity oracle saw an evaluated query with non-base limbs (field/encoding bug).
     NonBaseQueryFold,
     /// `peek(desc,row) != query-fold(origin_expr,row)`. Carries the full spec §7 diagnostic.
-    Mismatch { desc: u16, row: usize, strategy: SpecialStrategy, peek: Ext, fold: Ext },
+    Mismatch {
+        desc: u16,
+        row: usize,
+        strategy: SpecialStrategy,
+        peek: Ext,
+        fold: Ext,
+    },
 }
 
 /// Returns the base coefficient of `e` iff its three higher limbs are zero.
@@ -54,7 +60,9 @@ pub struct IdentityLookupResolver {
 
 impl IdentityLookupResolver {
     pub fn new() -> Self {
-        Self { violation: Cell::new(None) }
+        Self {
+            violation: Cell::new(None),
+        }
     }
     /// The first violation recorded during evaluation, if any.
     pub fn took_violation(&self) -> Option<PeekError> {
@@ -81,7 +89,13 @@ impl TakeWithClone for Cell<Option<PeekError>> {
 }
 
 impl LookupResolver for IdentityLookupResolver {
-    fn lookup(&self, kind: &LookupValueKind, _set_index: usize, evaluated_query: Ext, _row: usize) -> Bf {
+    fn lookup(
+        &self,
+        kind: &LookupValueKind,
+        _set_index: usize,
+        evaluated_query: Ext,
+        _row: usize,
+    ) -> Bf {
         match kind {
             LookupValueKind::DecoderColumn { .. } => {
                 self.record(PeekError::DecoderColumnUnsupported);
@@ -103,14 +117,19 @@ impl LookupResolver for IdentityLookupResolver {
 /// Resolves a static `SpecialDescriptor` to its real array-mapped value at `row`.
 /// Implemented prover-side (circuit_prover); `gkr_eval_isa` only defines the contract.
 pub trait PeekResolver {
-    fn peek(&self, desc: &SpecialDescriptor, row: usize, r: &Resolvers<'_>) -> Result<Ext, PeekError>;
+    fn peek(
+        &self,
+        desc: &SpecialDescriptor,
+        row: usize,
+        r: &Resolvers<'_>,
+    ) -> Result<Ext, PeekError>;
 }
 
 // ── SP2: referenced_descriptors + validate_special_bindings ──────────────────
 
 use crate::fwd::context::{CompiledLayer, RootOutput};
 use crate::fwd::isa::{Instr, OperandLine, Program};
-use cs::gkr_compiler::dag_ir::{eval_layer_expr, DagLayer};
+use cs::gkr_compiler::dag_ir::{DagLayer, eval_layer_expr};
 use std::collections::BTreeSet;
 
 /// Every distinct `desc` referenced by an emitted `Special { desc }` operand — from BOTH
@@ -141,9 +160,22 @@ pub fn referenced_descriptors(compiled: &CompiledLayer) -> BTreeSet<u16> {
 /// `Fma` carries `pairs: Vec<(OperandLine, OperandLine)>`).
 fn for_each_operand(instr: &Instr, f: &mut dyn FnMut(&OperandLine)) {
     match instr {
-        Instr::Mov { src, .. } => { if let Some(src) = src { f(src); } }
-        Instr::Add { operands, .. } | Instr::Mul { operands, .. } => { for op in operands { f(op); } }
-        Instr::Fma { pairs, .. } => { for (a, b) in pairs { f(a); f(b); } }
+        Instr::Mov { src, .. } => {
+            if let Some(src) = src {
+                f(src);
+            }
+        }
+        Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+            for op in operands {
+                f(op);
+            }
+        }
+        Instr::Fma { pairs, .. } => {
+            for (a, b) in pairs {
+                f(a);
+                f(b);
+            }
+        }
     }
 }
 
@@ -191,7 +223,13 @@ pub fn validate_special_bindings(
             }
             let peeked = peek.peek(d, row, r)?;
             if peeked != fold {
-                return Err(PeekError::Mismatch { desc, row, strategy: d.strategy.clone(), peek: peeked, fold });
+                return Err(PeekError::Mismatch {
+                    desc,
+                    row,
+                    strategy: d.strategy.clone(),
+                    peek: peeked,
+                    fold,
+                });
             }
             count += 1;
         }
@@ -205,18 +243,22 @@ mod tests {
     use crate::fwd::context::CompiledLayer;
     use crate::fwd::isa::{Instr, OperandLine, Program};
     use crate::fwd::source::{SpecialDescriptor, SpecialStrategy};
-    use cs::gkr_compiler::dag_ir::{Bf, Ext, ExprId, LookupResolver, LookupValueKind, RangeWidth};
+    use cs::gkr_compiler::dag_ir::{Bf, ExprId, Ext, LookupResolver, LookupValueKind, RangeWidth};
     use field::{Field, FieldExtension, PrimeField};
 
-    fn lift(b: Bf) -> Ext { <Ext as FieldExtension<Bf>>::from_base(b) }
+    fn lift(b: Bf) -> Ext {
+        <Ext as FieldExtension<Bf>>::from_base(b)
+    }
 
     #[test]
     fn base_coeff_pure_accepts_pure_base_rejects_mixed() {
         let pure = lift(Bf::from_u32_with_reduction(7));
         assert_eq!(base_coeff_pure(pure), Some(Bf::from_u32_with_reduction(7)));
         let mixed = Ext::from_array_of_base([
-            Bf::from_u32_with_reduction(1), Bf::from_u32_with_reduction(2),
-            Bf::ZERO, Bf::ZERO,
+            Bf::from_u32_with_reduction(1),
+            Bf::from_u32_with_reduction(2),
+            Bf::ZERO,
+            Bf::ZERO,
         ]);
         assert_eq!(base_coeff_pure(mixed), None);
     }
@@ -225,9 +267,18 @@ mod tests {
     fn identity_resolver_returns_query_base_for_generic_and_range_kinds() {
         let id = IdentityLookupResolver::new();
         let q = lift(Bf::from_u32_with_reduction(42));
-        assert_eq!(id.lookup(&LookupValueKind::GenericColumn { column: 0 }, 3, q, 0), Bf::from_u32_with_reduction(42));
-        assert_eq!(id.lookup(&LookupValueKind::RangeCheck16Index, 0, q, 0), Bf::from_u32_with_reduction(42));
-        assert_eq!(id.lookup(&LookupValueKind::TimestampIndex, 0, q, 0), Bf::from_u32_with_reduction(42));
+        assert_eq!(
+            id.lookup(&LookupValueKind::GenericColumn { column: 0 }, 3, q, 0),
+            Bf::from_u32_with_reduction(42)
+        );
+        assert_eq!(
+            id.lookup(&LookupValueKind::RangeCheck16Index, 0, q, 0),
+            Bf::from_u32_with_reduction(42)
+        );
+        assert_eq!(
+            id.lookup(&LookupValueKind::TimestampIndex, 0, q, 0),
+            Bf::from_u32_with_reduction(42)
+        );
         assert!(id.took_violation().is_none());
     }
 
@@ -236,7 +287,10 @@ mod tests {
         let id = IdentityLookupResolver::new();
         let q = lift(Bf::from_u32_with_reduction(1));
         let _ = id.lookup(&LookupValueKind::DecoderColumn { column: 0 }, 0, q, 0);
-        assert_eq!(id.took_violation(), Some(PeekError::DecoderColumnUnsupported));
+        assert_eq!(
+            id.took_violation(),
+            Some(PeekError::DecoderColumnUnsupported)
+        );
     }
 
     #[test]
@@ -252,7 +306,12 @@ mod tests {
     // A PeekResolver stub that returns a fixed value, to drive the differential logic.
     struct StubPeek(Ext);
     impl PeekResolver for StubPeek {
-        fn peek(&self, _d: &SpecialDescriptor, _row: usize, _r: &Resolvers<'_>) -> Result<Ext, PeekError> {
+        fn peek(
+            &self,
+            _d: &SpecialDescriptor,
+            _row: usize,
+            _r: &Resolvers<'_>,
+        ) -> Result<Ext, PeekError> {
             Ok(self.0)
         }
     }
@@ -261,8 +320,8 @@ mod tests {
 
     use crate::fwd::binding::{BackingKey, BackingTable};
     use crate::fwd::context::{CompileTrace, DagForwardContext, OutputCell, RootOutput};
-    use crate::fwd::stats::CompileStats;
     use crate::fwd::source::{ConstBank, SpecialTable};
+    use crate::fwd::stats::CompileStats;
     use cs::gkr_compiler::dag_ir::{
         ArenaBuilder, BatchingOrder, ChallengeRef, DagLayer, ReadPlace, Resolvers, RootId,
         SourceKind, VirtualSetupKind,
@@ -271,19 +330,33 @@ mod tests {
 
     struct ZeroReadResolver;
     impl cs::gkr_compiler::dag_ir::ReadResolver for ZeroReadResolver {
-        fn read(&self, _place: &ReadPlace, _row: usize) -> Ext { Ext::ZERO }
+        fn read(&self, _place: &ReadPlace, _row: usize) -> Ext {
+            Ext::ZERO
+        }
     }
     struct ZeroLookupResolverSp2;
     impl cs::gkr_compiler::dag_ir::LookupResolver for ZeroLookupResolverSp2 {
-        fn lookup(&self, _kind: &LookupValueKind, _set_index: usize, _evaluated_query: Ext, _row: usize) -> Bf { Bf::ZERO }
+        fn lookup(
+            &self,
+            _kind: &LookupValueKind,
+            _set_index: usize,
+            _evaluated_query: Ext,
+            _row: usize,
+        ) -> Bf {
+            Bf::ZERO
+        }
     }
     struct ZeroVirtualSetupResolver;
     impl cs::gkr_compiler::dag_ir::VirtualSetupResolver for ZeroVirtualSetupResolver {
-        fn virtual_setup(&self, _kind: &VirtualSetupKind, _row: usize) -> Bf { Bf::ZERO }
+        fn virtual_setup(&self, _kind: &VirtualSetupKind, _row: usize) -> Bf {
+            Bf::ZERO
+        }
     }
     struct ZeroChallengeResolver;
     impl cs::gkr_compiler::dag_ir::ChallengeResolver for ZeroChallengeResolver {
-        fn challenge(&self, _r: &ChallengeRef) -> Ext { Ext::ZERO }
+        fn challenge(&self, _r: &ChallengeRef) -> Ext {
+            Ext::ZERO
+        }
     }
 
     fn make_resolvers_sp2<'a>(
@@ -321,6 +394,7 @@ mod tests {
             consts: ConstBank::default(),
             derived_e4: crate::fwd::source::DerivedE4Banks::default(),
             backings,
+            source_windows: Default::default(),
             actions: std::collections::HashMap::new(),
             cache_loc: std::collections::HashMap::new(),
             cross_layer_fields: std::collections::HashMap::new(),
@@ -386,7 +460,10 @@ mod tests {
             origin_expr: ExprId(0),
         });
         let program = Program { instrs: vec![] };
-        let root_outputs = vec![(RootId(0), RootOutput::Alias(OperandLine::Special { desc: 0 }))];
+        let root_outputs = vec![(
+            RootId(0),
+            RootOutput::Alias(OperandLine::Special { desc: 0 }),
+        )];
         minimal_compiled_with_specials(program, root_outputs, specials)
     }
 
@@ -419,7 +496,10 @@ mod tests {
                 operands: vec![OperandLine::Special { desc: 0 }],
             }],
         };
-        (minimal_compiled_with_specials(program, vec![], specials), layer)
+        (
+            minimal_compiled_with_specials(program, vec![], specials),
+            layer,
+        )
     }
 
     /// Build a CompiledLayer identical to `compiled_peek_setup_desc0_origin_const` except that
@@ -444,13 +524,29 @@ mod tests {
             origin_expr: const_expr,
         });
         let program = Program { instrs: vec![] };
-        let root_outputs = vec![(RootId(0), RootOutput::Alias(OperandLine::Special { desc: 0 }))];
-        (minimal_compiled_with_specials(program, root_outputs, specials), layer)
+        let root_outputs = vec![(
+            RootId(0),
+            RootOutput::Alias(OperandLine::Special { desc: 0 }),
+        )];
+        (
+            minimal_compiled_with_specials(program, root_outputs, specials),
+            layer,
+        )
     }
 
     /// Returns the zero resolvers and a single-element rows slice for const-fold tests.
-    fn stub_resolvers_rows() -> (impl cs::gkr_compiler::dag_ir::ReadResolver, impl cs::gkr_compiler::dag_ir::LookupResolver, impl cs::gkr_compiler::dag_ir::ChallengeResolver, Vec<usize>) {
-        (ZeroReadResolver, ZeroLookupResolverSp2, ZeroChallengeResolver, vec![0usize])
+    fn stub_resolvers_rows() -> (
+        impl cs::gkr_compiler::dag_ir::ReadResolver,
+        impl cs::gkr_compiler::dag_ir::LookupResolver,
+        impl cs::gkr_compiler::dag_ir::ChallengeResolver,
+        Vec<usize>,
+    ) {
+        (
+            ZeroReadResolver,
+            ZeroLookupResolverSp2,
+            ZeroChallengeResolver,
+            vec![0usize],
+        )
     }
 
     // ── SP2 tests ─────────────────────────────────────────────────────────────
@@ -467,7 +563,10 @@ mod tests {
     fn referenced_descriptors_includes_root_output_aliases() {
         let compiled = compiled_with_alias_special_desc0_no_program_ref();
         let refs = referenced_descriptors(&compiled);
-        assert!(refs.contains(&0), "alias Special operand must be a referenced descriptor");
+        assert!(
+            refs.contains(&0),
+            "alias Special operand must be a referenced descriptor"
+        );
     }
 
     #[test]
@@ -476,8 +575,15 @@ mod tests {
         let layer = empty_dag_layer();
         let (read, lookup, challenge, rows) = stub_resolvers_rows();
         let r = make_resolvers_sp2(&read, &lookup, &challenge);
-        let err = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(Ext::ZERO)).unwrap_err();
-        assert_eq!(err, PeekError::DescriptorOutOfRange { desc: 5, table_len: 1 });
+        let err = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(Ext::ZERO))
+            .unwrap_err();
+        assert_eq!(
+            err,
+            PeekError::DescriptorOutOfRange {
+                desc: 5,
+                table_len: 1
+            }
+        );
     }
 
     #[test]
@@ -486,7 +592,8 @@ mod tests {
         let layer = empty_dag_layer();
         let (read, lookup, challenge, rows) = stub_resolvers_rows();
         let r = make_resolvers_sp2(&read, &lookup, &challenge);
-        let err = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(Ext::ZERO)).unwrap_err();
+        let err = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(Ext::ZERO))
+            .unwrap_err();
         assert_eq!(err, PeekError::OrphanDescriptor { desc: 1 });
     }
 
@@ -496,9 +603,12 @@ mod tests {
         let (read, lookup, challenge, rows) = stub_resolvers_rows();
         let r = make_resolvers_sp2(&read, &lookup, &challenge);
         let wrong = lift(Bf::from_u32_with_reduction(999));
-        let err = validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(wrong)).unwrap_err();
-        assert!(matches!(err, PeekError::Mismatch { desc: 0, row, .. } if row == rows[0]),
-                "got {err:?}");
+        let err =
+            validate_special_bindings(&compiled, &layer, &rows, &r, &StubPeek(wrong)).unwrap_err();
+        assert!(
+            matches!(err, PeekError::Mismatch { desc: 0, row, .. } if row == rows[0]),
+            "got {err:?}"
+        );
     }
 
     #[test]

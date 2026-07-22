@@ -4,12 +4,13 @@ use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkInfo, SinkKind, SourceKind,
 };
 
-use crate::fwd::binding::BackingKey;
+use crate::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
+use crate::fwd::binding::{BackingKey, SourceMarkerMode, bind_final_sources};
 use crate::fwd::compile::{copy_src_read_place, read_place_operand_field};
 use crate::fwd::context::{
     CompileTrace, CompiledLayer, DagForwardContext, ForwardAction, OutputCell, RootOutput,
 };
-use crate::fwd::encode::{decode, encode};
+use crate::fwd::encode::{decode, encode, encoded_lane_count};
 use crate::fwd::error::{BindError, DecodeError, EncodeError};
 use crate::fwd::isa::{
     DstLine, Instr, LdcSub, MAX_CELL, MAX_DESC, MovDir, OperandField, OperandLine, Program, Sign,
@@ -314,10 +315,10 @@ pub fn bind_packed_plan_with_actions(
                     .ctx
                     .backings
                     .read_slot_col(&place, field)?;
-                concrete
-                    .compiled
-                    .root_outputs
-                    .push((root, RootOutput::Alias(OperandLine::Global { slot, col })));
+                concrete.compiled.root_outputs.push((
+                    root,
+                    RootOutput::Alias(OperandLine::LogicalGlobal { slot, col }),
+                ));
             }
             ForwardAction::SkipScratchPrefill => concrete.compiled.skipped.push(root),
         }
@@ -374,6 +375,7 @@ enum ConcreteSourceMode<'a> {
     Forward,
     Backward {
         leaf_descs: &'a BTreeMap<ExprId, u16>,
+        specials: &'a BwdSpecialTable,
     },
 }
 
@@ -402,6 +404,7 @@ pub(super) fn bind_backward_packed_plan(
     root: RootId,
     budget_lanes: usize,
     leaf_descs: &BTreeMap<ExprId, u16>,
+    specials: &BwdSpecialTable,
 ) -> Result<ConcreteEvalProgram, ConcreteBindError> {
     bind_packed_plan_with_source_mode(
         packed,
@@ -410,7 +413,10 @@ pub(super) fn bind_backward_packed_plan(
         0,
         budget_lanes,
         PlacementMode::Exact,
-        ConcreteSourceMode::Backward { leaf_descs },
+        ConcreteSourceMode::Backward {
+            leaf_descs,
+            specials,
+        },
     )
 }
 
@@ -536,22 +542,25 @@ fn bind_packed_plan_with_source_mode(
             emitted: emitted_program.instrs.len(),
         });
     }
-    let emitted_encoded = encode(&emitted_program)?;
+    let emitted_encoded_lanes = encoded_lane_count(&emitted_program)?;
     let expected_encoded_lanes = packed.stats.encoded_lanes + 3 * relocation_moves;
-    if emitted_encoded.len() != expected_encoded_lanes {
+    if emitted_encoded_lanes != expected_encoded_lanes {
         return Err(ConcreteBindError::EncodedLaneMismatch {
             predicted: expected_encoded_lanes,
-            emitted: emitted_encoded.len(),
+            emitted: emitted_encoded_lanes,
         });
-    }
-    if decode(&emitted_encoded)? != emitted_program {
-        return Err(ConcreteBindError::EncodeRoundtripMismatch);
     }
 
     let mut program = emitted_program;
     fold_direct_source_stores(&mut program);
     fold_load_mul_add(&mut program);
     elide_accumulator_cell_roundtrips(&mut program);
+    let marker_mode = match source_mode {
+        ConcreteSourceMode::Forward => SourceMarkerMode::Forward,
+        ConcreteSourceMode::Backward { .. } => SourceMarkerMode::Backward,
+    };
+    emitter.ctx.source_windows =
+        bind_final_sources(&mut program, &emitter.ctx.backings, marker_mode)?;
     let encoded = encode(&program)?;
     let encoded_lanes = encoded.len();
     if decode(&encoded)? != program {
@@ -1652,9 +1661,22 @@ impl Emitter<'_> {
     }
 
     fn bind_source(&mut self, value: ValueRef) -> Result<OperandLine, ConcreteBindError> {
-        if let ConcreteSourceMode::Backward { leaf_descs } = self.source_mode
+        if let ConcreteSourceMode::Backward {
+            leaf_descs,
+            specials,
+        } = self.source_mode
             && let Some(&desc) = leaf_descs.get(&value.expr)
         {
+            if let Some(BwdSpecial::FoldSource {
+                origin: OriginLeaf::Read(place),
+            }) = specials.get(desc)
+            {
+                let (slot, col) = self
+                    .ctx
+                    .backings
+                    .read_slot_col(place, to_operand_field(value.field))?;
+                return Ok(OperandLine::LogicalFold { slot, col, desc });
+            }
             return Ok(OperandLine::Special { desc });
         }
         if matches!(self.source_mode, ConcreteSourceMode::Forward)
@@ -1673,7 +1695,7 @@ impl Emitter<'_> {
                     .ctx
                     .backings
                     .read_slot_col(place, to_operand_field(value.field))?;
-                OperandLine::Global { slot, col }
+                OperandLine::LogicalGlobal { slot, col }
             }
             SourceKind::Constant { value: constant } => match *constant {
                 0 => return Err(ConcreteBindError::UnencodableZero(value.expr)),
@@ -1912,7 +1934,9 @@ fn tally_operand(
     stats: &mut CompileStats,
 ) {
     match operand {
-        OperandLine::Global { .. } => {
+        OperandLine::LogicalGlobal { .. }
+        | OperandLine::LogicalFold { .. }
+        | OperandLine::Source { .. } => {
             stats.dram_reads += 1;
             stats.dram_traffic += match field {
                 OperandField::Base => 1,

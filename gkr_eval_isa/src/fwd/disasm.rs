@@ -56,15 +56,23 @@ fn fmt_special_lit(idx: u16) -> String {
 /// `LookupValue TimestampIndex set=35 query=e779` — the lookup table + query the forward
 /// VM peeks the precomputed resolution of. Returns `None` if the DAG isn't supplied or
 /// the origin isn't a plain source leaf.
-fn describe_peek_origin(layer: Option<&DagLayer>, origin: cs::gkr_compiler::dag_ir::ExprId) -> Option<String> {
+fn describe_peek_origin(
+    layer: Option<&DagLayer>,
+    origin: cs::gkr_compiler::dag_ir::ExprId,
+) -> Option<String> {
     let layer = layer?;
     let Expr::Source(sid) = layer.exprs.get(origin.0 as usize)? else {
         return None;
     };
     match &layer.sources.get(sid.0 as usize)?.kind {
-        SourceKind::LookupValue { kind, set_index, query } => {
-            Some(format!("LookupValue {kind:?} set={set_index} query=e{}", query.0))
-        }
+        SourceKind::LookupValue {
+            kind,
+            set_index,
+            query,
+        } => Some(format!(
+            "LookupValue {kind:?} set={set_index} query=e{}",
+            query.0
+        )),
         other => Some(format!("{other:?}")),
     }
 }
@@ -90,7 +98,24 @@ fn fmt_operand(
     layer: Option<&DagLayer>,
 ) -> String {
     match op {
-        OperandLine::Global { slot, col } => fmt_global(*slot, *col, ctx),
+        OperandLine::LogicalGlobal { slot, col } => fmt_global(*slot, *col, ctx),
+        OperandLine::LogicalFold { slot, col, desc } => {
+            format!("logical-fold[{slot}:{col}] desc={desc}")
+        }
+        OperandLine::Source {
+            window,
+            column,
+            first_access,
+        } => match ctx.source_windows.resolve_read_place(*window, *column) {
+            Some(place) => format!(
+                "source[{window}:{column}]={place:?}{}{}",
+                ctx.source_windows
+                    .fold_desc(*window, *column)
+                    .map_or_else(String::new, |desc| format!(" fold={desc}")),
+                if *first_access { " first" } else { "" }
+            ),
+            None => format!("source?[{window}:{column}]"),
+        },
         OperandLine::Smem { cell } => fmt_smem(*cell, field),
         OperandLine::Ldc { sub, idx } => match sub {
             LdcSub::Const => match ctx.consts.get(*idx) {
@@ -195,24 +220,45 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
             } else {
                 "+"
             };
-            let lanes: Vec<String> =
-                operands.iter().map(|o| fmt_operand(o, *field, ctx, layer)).collect();
+            let lanes: Vec<String> = operands
+                .iter()
+                .map(|o| fmt_operand(o, *field, ctx, layer))
+                .collect();
             fmt_lanes(
-                &format!("ADD.{}{} acc {s}= ", field_tag(field), promote_tag(*promote)),
+                &format!(
+                    "ADD.{}{} acc {s}= ",
+                    field_tag(field),
+                    promote_tag(*promote)
+                ),
                 &lanes,
                 '+',
             )
         }
-        Instr::Mul { field, promote, negate_acc, operands } => {
+        Instr::Mul {
+            field,
+            promote,
+            negate_acc,
+            operands,
+        } => {
             let neg = if *negate_acc { ".neg" } else { "" };
             if operands.is_empty() {
                 // Zero-arity Mul-minus: pure acc negation (v2 §1.2).
-                format!("MUL.{}{neg}{} acc = -acc", field_tag(field), promote_tag(*promote))
+                format!(
+                    "MUL.{}{neg}{} acc = -acc",
+                    field_tag(field),
+                    promote_tag(*promote)
+                )
             } else {
-                let lanes: Vec<String> =
-                    operands.iter().map(|o| fmt_operand(o, *field, ctx, layer)).collect();
+                let lanes: Vec<String> = operands
+                    .iter()
+                    .map(|o| fmt_operand(o, *field, ctx, layer))
+                    .collect();
                 fmt_lanes(
-                    &format!("MUL.{}{neg}{} acc *= ", field_tag(field), promote_tag(*promote)),
+                    &format!(
+                        "MUL.{}{neg}{} acc *= ",
+                        field_tag(field),
+                        promote_tag(*promote)
+                    ),
                     &lanes,
                     '*',
                 )
@@ -300,7 +346,11 @@ pub fn disassemble_layer(
 
     // ---- source DAG (optional) ----
     if let Some(layer) = layer {
-        let materializes = layer.roots.iter().filter(|r| r.materialize.is_some()).count();
+        let materializes = layer
+            .roots
+            .iter()
+            .filter(|r| r.materialize.is_some())
+            .count();
         let _ = writeln!(
             o,
             "\n--- DAG: {} sources, {} exprs, {} roots, {} materializes ---",

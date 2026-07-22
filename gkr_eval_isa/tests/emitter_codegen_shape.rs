@@ -29,10 +29,19 @@ fn add_sub_l0_instrs() -> Vec<Instr> {
 fn acc_reused_after(instrs: &[Instr], from: usize) -> bool {
     for vi in &instrs[from + 1..] {
         match vi {
-            Instr::Mov { dir: MovDir::AccFromSrc, .. } => return false, // fresh acc write => dead
-            Instr::Mov { dir: MovDir::DstFromAcc, .. } => return true,  // reads acc (stores it)
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                ..
+            } => return false, // fresh acc write => dead
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                ..
+            } => return true, // reads acc (stores it)
             Instr::Add { .. } | Instr::Mul { .. } | Instr::Fma { .. } => return true, // reads acc
-            Instr::Mov { dir: MovDir::DstFromSrc, .. } => {}            // does not touch acc
+            Instr::Mov {
+                dir: MovDir::DstFromSrc,
+                ..
+            } => {} // does not touch acc
         }
     }
     false // acc never read again => dead
@@ -50,8 +59,14 @@ fn no_leaf_load_through_acc() {
     let instrs = add_sub_l0_instrs();
     for i in 0..instrs.len().saturating_sub(1) {
         let load_leaf = matches!(&instrs[i], Instr::Mov { dir: MovDir::AccFromSrc, src: Some(s), .. }
-            if matches!(s, OperandLine::Global { .. } | OperandLine::Special { .. } | OperandLine::Ldc { .. }));
-        let store = matches!(&instrs[i + 1], Instr::Mov { dir: MovDir::DstFromAcc, .. });
+            if matches!(s, OperandLine::Source { .. } | OperandLine::Special { .. } | OperandLine::Ldc { .. }));
+        let store = matches!(
+            &instrs[i + 1],
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                ..
+            }
+        );
         if load_leaf && store && !acc_reused_after(&instrs, i + 1) {
             panic!(
                 "F1 violated: AccFromSrc(leaf) then DstFromAcc with acc dead after:\n  {:?}\n  {:?}",
@@ -105,7 +120,9 @@ fn no_cache_output_from_held_cell() {
             ..
         } = instr
         {
-            panic!("F3 violated: cache/output materialized from a held smem cell (deferred hold): {instr:?}");
+            panic!(
+                "F3 violated: cache/output materialized from a held smem cell (deferred hold): {instr:?}"
+            );
         }
     }
 }
@@ -184,7 +201,7 @@ fn no_single_use_leaf_copy_cell() {
                 ..
             } if matches!(
                 s,
-                OperandLine::Global { .. } | OperandLine::Special { .. } | OperandLine::Ldc { .. }
+                OperandLine::Source { .. } | OperandLine::Special { .. } | OperandLine::Ldc { .. }
             ) =>
             {
                 *cell

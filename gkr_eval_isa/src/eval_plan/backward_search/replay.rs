@@ -170,6 +170,7 @@ pub fn compile_and_certify_paging(
         &compiled.compiled.specials,
         &d.leaf_descs,
         &compiled.compiled.backings,
+        &compiled.compiled.source_windows,
     )
     .ok_or(BackwardSearchError::PagingCertificateMismatch {
         observable: "physical traffic source mapping",
@@ -334,6 +335,7 @@ fn score_compiled_backward(
         &compiled.compiled.specials,
         &d.leaf_descs,
         &compiled.compiled.backings,
+        &compiled.compiled.source_windows,
     )
     .ok_or(BackwardSearchError::PagingCertificateMismatch {
         observable: "physical traffic source mapping",
@@ -793,6 +795,7 @@ mod tests {
             &candidate.compiled.compiled.specials,
             &distilled.leaf_descs,
             &candidate.compiled.compiled.backings,
+            &candidate.compiled.compiled.source_windows,
         )
         .unwrap()
         .into_iter()

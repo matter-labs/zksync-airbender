@@ -37,19 +37,17 @@ use cs::gkr_compiler::dag_ir::{
 };
 
 use super::super::context::{DagForwardContext, ForwardAction};
-use super::super::isa::{LdcSub, MovDir, OperandField, OperandLine, Sign, Special, MAX_ARITY};
+use super::super::isa::{LdcSub, MAX_ARITY, MovDir, OperandField, OperandLine, Sign, Special};
 use super::analyze::{analyze_layer, materialize_descriptors};
 use super::arith::{
-    child_operand_field, child_operand_field_overridden, classify_additive_child, field_from_u8,
-    is_constant_one, is_neg_one_factor, is_zero_expr, sign_from_u8, AdditiveChild,
+    AdditiveChild, child_operand_field, child_operand_field_overridden, classify_additive_child,
+    field_from_u8, is_constant_one, is_neg_one_factor, is_zero_expr, sign_from_u8,
 };
 use super::decisions::{OccurrenceStreams, SiteDecisions};
-use super::place::{ValueId, VInstrKind, VirtualInstr, VirtualOp};
+use super::place::{VInstrKind, ValueId, VirtualInstr, VirtualOp};
 use super::schedule::split_reduction;
 use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanRun};
-use crate::bwd::trace::{
-    BwdCompileTrace, BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom,
-};
+use crate::bwd::trace::{BwdCompileTrace, BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom};
 use crate::fwd::compile::CompileError;
 
 /// Width (in cells) of a value's residency footprint under the `Decisions` residency
@@ -223,10 +221,35 @@ pub(crate) enum VDst {
 /// for folds and materialize writes). `is_dram_read` is Task-5 traffic metadata.
 #[derive(Clone, Debug)]
 pub(crate) enum VInstr {
-    Add { field: OperandField, sign: Sign, reads: Vec<VirtualOp>, defines: Option<ValueId>, is_dram_read: bool },
-    Mul { field: OperandField, reads: Vec<VirtualOp>, defines: Option<ValueId>, is_dram_read: bool },
-    Fma { field_lhs: OperandField, field_rhs: OperandField, sign: Sign, pairs: Vec<(VirtualOp, VirtualOp)>, defines: Option<ValueId>, is_dram_read: bool },
-    Mov { dir: MovDir, field: OperandField, dst: Option<VDst>, src: Option<VirtualOp>, defines: Option<ValueId>, is_dram_read: bool },
+    Add {
+        field: OperandField,
+        sign: Sign,
+        reads: Vec<VirtualOp>,
+        defines: Option<ValueId>,
+        is_dram_read: bool,
+    },
+    Mul {
+        field: OperandField,
+        reads: Vec<VirtualOp>,
+        defines: Option<ValueId>,
+        is_dram_read: bool,
+    },
+    Fma {
+        field_lhs: OperandField,
+        field_rhs: OperandField,
+        sign: Sign,
+        pairs: Vec<(VirtualOp, VirtualOp)>,
+        defines: Option<ValueId>,
+        is_dram_read: bool,
+    },
+    Mov {
+        dir: MovDir,
+        field: OperandField,
+        dst: Option<VDst>,
+        src: Option<VirtualOp>,
+        defines: Option<ValueId>,
+        is_dram_read: bool,
+    },
 }
 
 impl VInstr {
@@ -428,7 +451,10 @@ impl<'a> VirtualLower<'a> {
                         }
                         if ds.pending_temps.remove(id) {
                             let width = resident_width(
-                                *self.widths.get(id).expect("pending temp must have a recorded width"),
+                                *self
+                                    .widths
+                                    .get(id)
+                                    .expect("pending temp must have a recorded width"),
                             );
                             ds.live_width = ds.live_width.saturating_sub(width);
                         }
@@ -552,7 +578,9 @@ impl<'a> VirtualLower<'a> {
         let resident = self.defined.contains(&fp.value);
         let mut newly_diverged = None;
         {
-            let Some(plan) = self.plan.as_mut() else { return };
+            let Some(plan) = self.plan.as_mut() else {
+                return;
+            };
             if !plan.domain.contains(&fp.value) {
                 return;
             }
@@ -611,7 +639,10 @@ impl<'a> VirtualLower<'a> {
         let expired = {
             let plan = self.plan.as_mut().expect("checked Some above");
             plan.pending_bypass_release = None;
-            let freed = plan.resident.remove(&v).map_or(0, |s| resident_width(s.field));
+            let freed = plan
+                .resident
+                .remove(&v)
+                .map_or(0, |s| resident_width(s.field));
             plan.live_width = plan.live_width.saturating_sub(freed);
             // Record the eviction so a LATER re-admission of `v` (a `Retain, Bypass,
             // Retain` gapped chain) mints a FRESH generation id (`plan_try_admit` reads
@@ -658,14 +689,31 @@ impl<'a> VirtualLower<'a> {
         let need = resident_width(field);
         if !self.plan_evict_to_fit(need) {
             if let Some(trace) = &mut self.bwd_trace {
-                trace.events.push(BwdEvent::Refuse { value: v, need: need as u32 });
+                trace.events.push(BwdEvent::Refuse {
+                    value: v,
+                    need: need as u32,
+                });
             }
             return None;
         }
-        let evicted_before = self.plan.as_ref().expect("plan Some").evicted_ever.contains(&v);
-        let gen_id = if evicted_before { self.fresh_internal() } else { v };
-        let closes_at =
-            self.plan.as_ref().expect("plan Some").run.retention(v).unwrap_or(usize::MAX);
+        let evicted_before = self
+            .plan
+            .as_ref()
+            .expect("plan Some")
+            .evicted_ever
+            .contains(&v);
+        let gen_id = if evicted_before {
+            self.fresh_internal()
+        } else {
+            v
+        };
+        let closes_at = self
+            .plan
+            .as_ref()
+            .expect("plan Some")
+            .run
+            .retention(v)
+            .unwrap_or(usize::MAX);
         {
             let plan = self.plan.as_mut().expect("plan Some");
             plan.resident.insert(v, ResidentSlot { field, closes_at });
@@ -676,7 +724,10 @@ impl<'a> VirtualLower<'a> {
         }
         self.defined.insert(v);
         if let Some(trace) = &mut self.bwd_trace {
-            trace.events.push(BwdEvent::Admit { value: v, width: need as u8 });
+            trace.events.push(BwdEvent::Admit {
+                value: v,
+                width: need as u8,
+            });
         }
         Some(gen_id)
     }
@@ -689,7 +740,9 @@ impl<'a> VirtualLower<'a> {
     /// victim. No-op-true outside plan mode.
     fn plan_evict_to_fit(&mut self, need: usize) -> bool {
         let to_evict = {
-            let Some(plan) = self.plan.as_ref() else { return true };
+            let Some(plan) = self.plan.as_ref() else {
+                return true;
+            };
             if plan.live_width + need <= plan.budget {
                 return true;
             }
@@ -737,7 +790,10 @@ impl<'a> VirtualLower<'a> {
             }
             self.defined.remove(&rv);
             if let Some(trace) = &mut self.bwd_trace {
-                trace.events.push(BwdEvent::Evict { value: rv, expired: true });
+                trace.events.push(BwdEvent::Evict {
+                    value: rv,
+                    expired: true,
+                });
             }
         }
         true
@@ -840,9 +896,17 @@ impl<'a> VirtualLower<'a> {
         if !self.evict_to_fit(need, Some(admitting_priority)) {
             return None;
         }
-        let evicted_before =
-            self.decisions.as_ref().expect("checked Some above").evicted_ever.contains(&v);
-        let gen_id = if evicted_before { self.fresh_internal() } else { v };
+        let evicted_before = self
+            .decisions
+            .as_ref()
+            .expect("checked Some above")
+            .evicted_ever
+            .contains(&v);
+        let gen_id = if evicted_before {
+            self.fresh_internal()
+        } else {
+            v
+        };
         let ds = self.decisions.as_mut().expect("checked Some above");
         ds.resident.insert(v, field);
         ds.generation.insert(v, gen_id);
@@ -858,11 +922,19 @@ impl<'a> VirtualLower<'a> {
     /// directly), so it lands on the physical cell the CURRENT generation's
     /// `defines` instruction produced.
     fn current_value_id(&self, real: ExprId) -> ValueId {
-        if let Some(g) = self.decisions.as_ref().and_then(|ds| ds.generation.get(&real).copied()) {
+        if let Some(g) = self
+            .decisions
+            .as_ref()
+            .and_then(|ds| ds.generation.get(&real).copied())
+        {
             return g;
         }
         // Task 4: plan mode carries its own re-admission generations.
-        if let Some(g) = self.plan.as_ref().and_then(|p| p.generation.get(&real).copied()) {
+        if let Some(g) = self
+            .plan
+            .as_ref()
+            .and_then(|p| p.generation.get(&real).copied())
+        {
             return g;
         }
         real
@@ -887,7 +959,9 @@ impl<'a> VirtualLower<'a> {
     /// Every evicted `ExprId` is recorded in `evicted_ever` (see its doc) so its NEXT
     /// admission, if any, mints a fresh generation id instead of reusing `id`.
     fn evict_to_fit(&mut self, need: usize, admitting_priority: Option<f64>) -> bool {
-        let Some(ds) = &self.decisions else { return false };
+        let Some(ds) = &self.decisions else {
+            return false;
+        };
         if ds.live_width + need <= ds.budget {
             return true;
         }
@@ -915,7 +989,10 @@ impl<'a> VirtualLower<'a> {
                 ds.pending_reads.get(&gen_id).copied().unwrap_or(0) == 0
             })
             .map(|(&id, &f)| {
-                let p = ds.streams.effective_priority(id).unwrap_or(f64::NEG_INFINITY);
+                let p = ds
+                    .streams
+                    .effective_priority(id)
+                    .unwrap_or(f64::NEG_INFINITY);
                 (p, id, f)
             })
             .collect();
@@ -1008,9 +1085,20 @@ impl<'a> VirtualLower<'a> {
     fn push_fold(&mut self, field: OperandField, ops: Vec<VirtualOp>, is_add: bool, sign: Sign) {
         let is_dram = ops.iter().any(is_dram_op);
         if is_add {
-            self.emit(VInstr::Add { field, sign, reads: ops, defines: None, is_dram_read: is_dram });
+            self.emit(VInstr::Add {
+                field,
+                sign,
+                reads: ops,
+                defines: None,
+                is_dram_read: is_dram,
+            });
         } else {
-            self.emit(VInstr::Mul { field, reads: ops, defines: None, is_dram_read: is_dram });
+            self.emit(VInstr::Mul {
+                field,
+                reads: ops,
+                defines: None,
+                is_dram_read: is_dram,
+            });
         }
     }
 
@@ -1046,10 +1134,15 @@ impl<'a> VirtualLower<'a> {
         if let Some(&d) = self.virtual_setup_descs.get(&kind) {
             return d;
         }
-        let desc = self.ctx.specials.push(super::super::source::SpecialDescriptor {
-            strategy: super::super::source::SpecialStrategy::VirtualSetup { kind: kind.clone() },
-            origin_expr,
-        });
+        let desc = self
+            .ctx
+            .specials
+            .push(super::super::source::SpecialDescriptor {
+                strategy: super::super::source::SpecialStrategy::VirtualSetup {
+                    kind: kind.clone(),
+                },
+                origin_expr,
+            });
         self.virtual_setup_descs.insert(kind, desc);
         desc
     }
@@ -1060,12 +1153,7 @@ impl<'a> VirtualLower<'a> {
     /// walk (`child_operand_field_overridden`) that forces fold-leaf fields and
     /// joins them up the tree. ALL in-lowerer field classification goes through
     /// here so the two paths cannot drift per call site.
-    fn operand_field(
-        &self,
-        layer: &DagLayer,
-        id: ExprId,
-        expected: OperandField,
-    ) -> OperandField {
+    fn operand_field(&self, layer: &DagLayer, id: ExprId, expected: OperandField) -> OperandField {
         if self.field_overrides.is_empty() {
             child_operand_field(layer, id, expected, &self.cross)
         } else {
@@ -1095,7 +1183,10 @@ impl<'a> VirtualLower<'a> {
             if let Some(trace) = &mut self.bwd_trace {
                 if let Expr::Source(sid) = &layer.exprs[expr_id.0 as usize] {
                     if matches!(layer.sources[sid.0 as usize].kind, SourceKind::Read { .. }) {
-                        trace.events.push(BwdEvent::TrafficRead { value: expr_id, cells: 4 });
+                        trace.events.push(BwdEvent::TrafficRead {
+                            value: expr_id,
+                            cells: 4,
+                        });
                     }
                 }
             }
@@ -1131,7 +1222,10 @@ impl<'a> VirtualLower<'a> {
                         OperandField::Base => 1,
                         OperandField::Ext => 4,
                     };
-                    trace.events.push(BwdEvent::TrafficRead { value: expr_id, cells });
+                    trace.events.push(BwdEvent::TrafficRead {
+                        value: expr_id,
+                        cells,
+                    });
                 }
                 Ok(VirtualOp::Global { slot, col })
             }
@@ -1140,13 +1234,20 @@ impl<'a> VirtualLower<'a> {
                 Ok(VirtualOp::Special { desc })
             }
             SourceKind::Constant { value } => match *value {
-                1 => Ok(VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::One as u16 }),
-                v if v == BABYBEAR_NEG_ONE => {
-                    Ok(VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::NegOne as u16 })
-                }
+                1 => Ok(VirtualOp::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::One as u16,
+                }),
+                v if v == BABYBEAR_NEG_ONE => Ok(VirtualOp::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::NegOne as u16,
+                }),
                 v => {
                     let idx = self.ctx.consts.intern(v);
-                    Ok(VirtualOp::Ldc { sub: LdcSub::Const, idx })
+                    Ok(VirtualOp::Ldc {
+                        sub: LdcSub::Const,
+                        idx,
+                    })
                 }
             },
             SourceKind::Challenge { reference } => {
@@ -1310,7 +1411,12 @@ impl<'a> VirtualLower<'a> {
         for &atom in &atoms[1..] {
             let p = self.alloc_temp_evicting(OperandField::Ext)?;
             self.lower_bwd_top_atom(layer, atom, OperandField::Ext)?;
-            self.push_fold(OperandField::Ext, vec![VirtualOp::Value(p)], /* is_add */ false, Sign::Plus);
+            self.push_fold(
+                OperandField::Ext,
+                vec![VirtualOp::Value(p)],
+                /* is_add */ false,
+                Sign::Plus,
+            );
         }
         // Non-trivial recipe → mul-fold the fragment's Coefficient special (Ext operand).
         if let Some(desc) = coeff {
@@ -1386,17 +1492,25 @@ impl<'a> VirtualLower<'a> {
         children: Vec<ExprId>,
         expected: OperandField,
     ) -> Result<(), CompileError> {
-        let children: Vec<ExprId> =
-            children.into_iter().filter(|&c| !is_zero_expr(layer, c)).collect();
+        let children: Vec<ExprId> = children
+            .into_iter()
+            .filter(|&c| !is_zero_expr(layer, c))
+            .collect();
         if children.is_empty() {
             // Sum of only zeros = 0 (value-safe identity; degenerate roots don't occur).
             self.emit_init_field(
-                VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::Zero as u16 },
+                VirtualOp::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::Zero as u16,
+                },
                 OperandField::Base,
             );
             return Ok(());
         }
-        if self.try_compile_fma_virtual(layer, &children, expected)?.is_some() {
+        if self
+            .try_compile_fma_virtual(layer, &children, expected)?
+            .is_some()
+        {
             return Ok(());
         }
         self.compile_reduction_virtual(layer, &children, true, false, expected)
@@ -1411,7 +1525,11 @@ impl<'a> VirtualLower<'a> {
             .iter()
             .position(|(f, _, s)| *f == OperandField::Base && *s == Sign::Plus)
             .or_else(|| addend_ops.iter().position(|(_, _, s)| *s == Sign::Plus))
-            .or_else(|| addend_ops.iter().position(|(f, _, _)| *f == OperandField::Base))
+            .or_else(|| {
+                addend_ops
+                    .iter()
+                    .position(|(f, _, _)| *f == OperandField::Base)
+            })
             .unwrap_or(0);
         self.emit_init_field(addend_ops[seed].1.clone(), addend_ops[seed].0);
         if addend_ops[seed].2 == Sign::Minus {
@@ -1468,10 +1586,18 @@ impl<'a> VirtualLower<'a> {
         let mut groups: BTreeMap<(u8, u8, u8), Vec<(VirtualOp, VirtualOp)>> = BTreeMap::new();
         for (sign, lf, lhs_op, rf, rhs_op) in products {
             let ((cf_l, cf_r), (op_l, op_r)) = canonical_fma_pair_v(lf, rf, lhs_op, rhs_op);
-            groups.entry((cf_l as u8, cf_r as u8, sign as u8)).or_default().push((op_l, op_r));
+            groups
+                .entry((cf_l as u8, cf_r as u8, sign as u8))
+                .or_default()
+                .push((op_l, op_r));
         }
         for ((lf, rf, sign), gpairs) in groups {
-            self.push_fma_chunked(field_from_u8(lf), field_from_u8(rf), sign_from_u8(sign), gpairs);
+            self.push_fma_chunked(
+                field_from_u8(lf),
+                field_from_u8(rf),
+                sign_from_u8(sign),
+                gpairs,
+            );
         }
     }
 
@@ -1507,17 +1633,25 @@ impl<'a> VirtualLower<'a> {
         // `Constant{0}` factor never reaches source resolution (which forbids 0).
         if children.iter().any(|&c| is_zero_expr(layer, c)) {
             self.emit_init_field(
-                VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::Zero as u16 },
+                VirtualOp::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::Zero as u16,
+                },
                 OperandField::Base,
             );
             return Ok(());
         }
-        let factors: Vec<ExprId> =
-            children.into_iter().filter(|&c| !is_constant_one(layer, c)).collect();
+        let factors: Vec<ExprId> = children
+            .into_iter()
+            .filter(|&c| !is_constant_one(layer, c))
+            .collect();
         if factors.is_empty() {
             // Product of only `1`s = 1.
             self.emit_init_field(
-                VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::One as u16 },
+                VirtualOp::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::One as u16,
+                },
                 OperandField::Base,
             );
             return Ok(());
@@ -1535,7 +1669,10 @@ impl<'a> VirtualLower<'a> {
         if surviving.is_empty() {
             // Product of only `-1`s = ±1 (never in real circuits): value-safe identity.
             self.emit_init_field(
-                VirtualOp::Ldc { sub: LdcSub::Special, idx: Special::One as u16 },
+                VirtualOp::Ldc {
+                    sub: LdcSub::Special,
+                    idx: Special::One as u16,
+                },
                 OperandField::Base,
             );
             if negate {
@@ -1834,7 +1971,12 @@ impl<'a> VirtualLower<'a> {
             };
             let field = self.operand_field(layer, id, expected);
             let must_stash = self.is_compound_or_may_admit(layer, id);
-            kids.push(Kid { id, sign, field, must_stash });
+            kids.push(Kid {
+                id,
+                sign,
+                field,
+                must_stash,
+            });
         }
 
         // Fix A: pin resident-compound fold-direct children against eviction until served.
@@ -1856,8 +1998,10 @@ impl<'a> VirtualLower<'a> {
                     && self.defined.contains(&id)
             })
             .collect();
-        let pinned: Vec<ExprId> =
-            candidates.into_iter().filter(|&id| self.pinned_direct.insert(id)).collect();
+        let pinned: Vec<ExprId> = candidates
+            .into_iter()
+            .filter(|&id| self.pinned_direct.insert(id))
+            .collect();
         let result = self.fold_reduction_streamed_folding(layer, &kids, is_add, negate, expected);
         for id in pinned {
             self.pinned_direct.remove(&id);
@@ -1971,7 +2115,9 @@ impl<'a> VirtualLower<'a> {
         let sizes = split_reduction(ops.len());
         let mut idx = 0usize;
         let mut chunks = sizes.into_iter();
-        let first = chunks.next().expect("split_reduction yields >=1 chunk for arity>0");
+        let first = chunks
+            .next()
+            .expect("split_reduction yields >=1 chunk for arity>0");
         self.push_fold(field, ops[idx..idx + first].to_vec(), is_add, Sign::Plus);
         idx += first;
         for size in chunks {
@@ -2011,7 +2157,9 @@ impl<'a> VirtualLower<'a> {
         // compound operands/addends stream one at a time — instead of pre-materializing
         // every product operand concurrently (the wide-L0 placement floor).
         if self.stream_reductions {
-            return self.fma_streamed(layer, &products, &addends, expected).map(Some);
+            return self
+                .fma_streamed(layer, &products, &addends, expected)
+                .map(Some);
         }
 
         let mut addend_ops: Vec<(OperandField, VirtualOp, Sign)> =
@@ -2122,8 +2270,10 @@ impl<'a> VirtualLower<'a> {
                 && !layer.resolutions.contains_key(&id)
                 && self.defined.contains(&id)
         });
-        let pinned: Vec<ExprId> =
-            candidates.into_iter().filter(|&id| self.pinned_direct.insert(id)).collect();
+        let pinned: Vec<ExprId> = candidates
+            .into_iter()
+            .filter(|&id| self.pinned_direct.insert(id))
+            .collect();
         let result = self.fma_streamed_folding(
             layer,
             direct_addends,
@@ -2170,7 +2320,10 @@ impl<'a> VirtualLower<'a> {
         } else if !leaf_products.is_empty() {
             // Seed from the first Plus leaf product (else the first) — matching legacy's
             // no-addends product seed.
-            let seed = leaf_products.iter().position(|(s, ..)| *s == Sign::Plus).unwrap_or(0);
+            let seed = leaf_products
+                .iter()
+                .position(|(s, ..)| *s == Sign::Plus)
+                .unwrap_or(0);
             let (sign, lf, lhs, rf, rhs) = leaf_products[seed];
             let lhs_op = self.direct_operand(layer, lhs, expected)?;
             let rhs_op = self.direct_operand(layer, rhs, expected)?;
@@ -2180,7 +2333,10 @@ impl<'a> VirtualLower<'a> {
         } else {
             // Every product is compound: seed from the first Plus compound product (else the
             // first), computed straight into the fresh acc (nothing to combine yet).
-            let seed = compound_products.iter().position(|(s, ..)| *s == Sign::Plus).unwrap_or(0);
+            let seed = compound_products
+                .iter()
+                .position(|(s, ..)| *s == Sign::Plus)
+                .unwrap_or(0);
             let (sign, lf, lhs, rf, rhs) = compound_products.remove(seed);
             let lhs_op = self.lower_operand_virtual(layer, lhs, expected)?;
             let rhs_op = self.lower_operand_virtual(layer, rhs, expected)?;
@@ -2254,7 +2410,9 @@ impl<'a> VirtualLower<'a> {
     /// LATER re-admission of the same `ExprId` (after this root's write already
     /// happened) can never trigger a second materialize write here.
     fn materialize_if_root(&mut self, expr_id: ExprId, from_acc: bool) {
-        let Some(roots) = self.expr_to_compute.get(&expr_id).cloned() else { return };
+        let Some(roots) = self.expr_to_compute.get(&expr_id).cloned() else {
+            return;
+        };
         let src_id = self.current_value_id(expr_id);
         for (rid, slot, col, field) in roots {
             if self.exposed.contains(&rid) {
@@ -2279,7 +2437,8 @@ impl<'a> VirtualLower<'a> {
                     is_dram_read: false,
                 });
             }
-            self.root_outputs.push((rid, VirtualRootOutput::Global { slot, col }));
+            self.root_outputs
+                .push((rid, VirtualRootOutput::Global { slot, col }));
             self.exposed.insert(rid);
         }
     }
@@ -2288,7 +2447,9 @@ impl<'a> VirtualLower<'a> {
     /// (the value is currently live in acc). Mirrors `materialize_if_root`'s `exposed`
     /// dedup + `root_outputs` push, but reads `expr_to_cache_root` (cache-only).
     fn materialize_cache_root_from_acc(&mut self, expr_id: ExprId) {
-        let Some(roots) = self.expr_to_cache_root.get(&expr_id).cloned() else { return };
+        let Some(roots) = self.expr_to_cache_root.get(&expr_id).cloned() else {
+            return;
+        };
         for (rid, slot, col, field) in roots {
             if self.exposed.contains(&rid) {
                 continue;
@@ -2301,7 +2462,8 @@ impl<'a> VirtualLower<'a> {
                 defines: None,
                 is_dram_read: false,
             });
-            self.root_outputs.push((rid, VirtualRootOutput::Global { slot, col }));
+            self.root_outputs
+                .push((rid, VirtualRootOutput::Global { slot, col }));
             self.exposed.insert(rid);
         }
     }
@@ -2310,7 +2472,9 @@ impl<'a> VirtualLower<'a> {
     /// operand `op` (the value is NOT in acc — a non-admitted leaf; going through acc
     /// would clobber it and add a MOV). Emits `DstFromSrc(GlobalMaterialize, op)`.
     fn materialize_cache_root_from_src(&mut self, expr_id: ExprId, op: &VirtualOp) {
-        let Some(roots) = self.expr_to_cache_root.get(&expr_id).cloned() else { return };
+        let Some(roots) = self.expr_to_cache_root.get(&expr_id).cloned() else {
+            return;
+        };
         for (rid, slot, col, field) in roots {
             if self.exposed.contains(&rid) {
                 continue;
@@ -2323,7 +2487,8 @@ impl<'a> VirtualLower<'a> {
                 defines: None,
                 is_dram_read: false,
             });
-            self.root_outputs.push((rid, VirtualRootOutput::Global { slot, col }));
+            self.root_outputs
+                .push((rid, VirtualRootOutput::Global { slot, col }));
             self.exposed.insert(rid);
         }
     }
@@ -2346,8 +2511,7 @@ struct Kid {
 /// changes which field/sign class wins, so the acc's seed field matches legacy).
 fn pick_seed(kids: &[Kid]) -> usize {
     let by = |pred: &dyn Fn(&Kid) -> bool| -> Option<usize> {
-        kids
-            .iter()
+        kids.iter()
             .position(|k| pred(k) && !k.must_stash)
             .or_else(|| kids.iter().position(|k| pred(k)))
     };
@@ -2455,16 +2619,24 @@ pub(crate) fn lower_layer_virtual(
         HashMap::new();
     for (idx, root) in layer.roots.iter().enumerate() {
         let rid = RootId(idx as u32);
-        let Some(sink) = root.materialize.as_ref() else { continue };
+        let Some(sink) = root.materialize.as_ref() else {
+            continue;
+        };
         if matches!(ctx.actions.get(&rid), Some(ForwardAction::Compute)) {
             let (key, offset) = super::sink_to_backing(sink, this_layer);
             // Dense per-slot renumbering via the SAME authority as reads, so the
             // GlobalMaterialize write and any later read of this value agree.
             let (slot, col) = ctx.backings.slot_col(key, offset)?;
             let field = super::operand_field_of(sink);
-            expr_to_compute.entry(root.expr).or_default().push((rid, slot, col, field));
+            expr_to_compute
+                .entry(root.expr)
+                .or_default()
+                .push((rid, slot, col, field));
             if root.claim.is_none() {
-                expr_to_cache_root.entry(root.expr).or_default().push((rid, slot, col, field));
+                expr_to_cache_root
+                    .entry(root.expr)
+                    .or_default()
+                    .push((rid, slot, col, field));
             }
         }
     }
@@ -2552,8 +2724,11 @@ pub(crate) fn lower_layer_virtual(
                         st.compile_expr_virtual(layer, expr, expected)?;
                         st.materialize_if_root(expr, true);
                         let field = st.operand_field(layer, expr, expected);
-                        let admit =
-                            if st.decisions.is_some() { st.try_admit(expr, field) } else { None };
+                        let admit = if st.decisions.is_some() {
+                            st.try_admit(expr, field)
+                        } else {
+                            None
+                        };
                         if let Some(gen_id) = admit {
                             st.widths.insert(gen_id, field);
                             st.emit_evict_to_cell(gen_id, field);
@@ -2580,8 +2755,10 @@ pub(crate) fn lower_layer_virtual(
                         .unwrap_or(OperandField::Base);
                     let field = super::read_place_operand_field(&place, &st.cross, sink_field);
                     let (slot, col) = st.ctx.backings.read_slot_col(&place, field)?;
-                    st.root_outputs
-                        .push((rid, VirtualRootOutput::Alias(OperandLine::Global { slot, col })));
+                    st.root_outputs.push((
+                        rid,
+                        VirtualRootOutput::Alias(OperandLine::LogicalGlobal { slot, col }),
+                    ));
                     st.exposed.insert(rid);
                 }
             }
@@ -2704,7 +2881,7 @@ pub(crate) fn lower_bwd_root_virtual(
         pinned_direct: HashSet::new(),
         widths: HashMap::new(),
         next_internal: INTERNAL_BASE,
-        expr_to_compute: HashMap::new(),   // no materialize sinks: GlobalMaterialize unemittable
+        expr_to_compute: HashMap::new(), // no materialize sinks: GlobalMaterialize unemittable
         expr_to_cache_root: HashMap::new(),
         exposed: HashSet::new(),
         root_outputs: Vec::new(),
@@ -2737,7 +2914,12 @@ pub(crate) fn lower_bwd_root_virtual(
             // acc is value-preserving), compute the term, fold the partial back.
             let t = st.alloc_temp_evicting(OperandField::Ext)?;
             st.compile_expr_virtual(layer, term, OperandField::Ext)?;
-            st.push_fold(OperandField::Ext, vec![VirtualOp::Value(t)], /* is_add */ true, Sign::Plus);
+            st.push_fold(
+                OperandField::Ext,
+                vec![VirtualOp::Value(t)],
+                /* is_add */ true,
+                Sign::Plus,
+            );
         }
     }
     // Task 4: EOF divergence check + residency reclaim, before the trace is sealed.
@@ -2803,7 +2985,11 @@ pub(crate) fn lower_bwd_fragments_virtual(
             assert!(
                 idx < n && !seen[idx],
                 "lower_bwd_fragments_virtual: order[{pos}] = {idx} is {} (n = {n} fragments)",
-                if idx >= n { "out of range" } else { "a duplicate index" }
+                if idx >= n {
+                    "out of range"
+                } else {
+                    "a duplicate index"
+                }
             );
             seen[idx] = true;
         }
@@ -2872,7 +3058,12 @@ pub(crate) fn lower_bwd_fragments_virtual(
             // contribution, then add-fold the running total back (mirrors the term loop).
             let t = st.alloc_temp_evicting(OperandField::Ext)?;
             st.lower_bwd_fragment(layer, atoms, coeff)?;
-            st.push_fold(OperandField::Ext, vec![VirtualOp::Value(t)], /* is_add */ true, Sign::Plus);
+            st.push_fold(
+                OperandField::Ext,
+                vec![VirtualOp::Value(t)],
+                /* is_add */ true,
+                Sign::Plus,
+            );
         }
     }
 
@@ -2883,7 +3074,11 @@ pub(crate) fn lower_bwd_fragments_virtual(
 
 /// Sorted real (non-internal) `ExprId`s of a defined-resident set.
 fn sorted_real(defined: &HashSet<ExprId>) -> Vec<ExprId> {
-    let mut v: Vec<ExprId> = defined.iter().copied().filter(|e| e.0 < INTERNAL_BASE).collect();
+    let mut v: Vec<ExprId> = defined
+        .iter()
+        .copied()
+        .filter(|e| e.0 < INTERNAL_BASE)
+        .collect();
     v.sort_by_key(|e| e.0);
     v
 }
@@ -2893,8 +3088,8 @@ mod tests {
     use crate::fwd::compile::compile_circuit;
     use crate::fwd::isa::{Instr, OperandLine};
     use crate::fwd::source::SpecialStrategy;
-    use cs::gkr_compiler::dag_ir::{lower_dag, validate, CircuitSchedule};
     use cs::gkr_compiler::GKRCircuitArtifact;
+    use cs::gkr_compiler::dag_ir::{CircuitSchedule, lower_dag, validate};
     use field::baby_bear::base::BabyBearField;
     use std::path::PathBuf;
 
@@ -2907,7 +3102,8 @@ mod tests {
     }
     fn load_schedule(stem: &str) -> Option<CircuitSchedule> {
         let bytes =
-            std::fs::read(compiled_circuit_dir().join(format!("{stem}_schedule_b16_gkr.json"))).ok()?;
+            std::fs::read(compiled_circuit_dir().join(format!("{stem}_schedule_b16_gkr.json")))
+                .ok()?;
         serde_json::from_slice(&bytes).ok()
     }
 
@@ -2915,7 +3111,7 @@ mod tests {
     /// `Special` strategy, NOT a `Global` DRAM backing. add_sub L0 reads VirtualSetup
     /// columns, so its compiled program must carry an `OperandLine::Special { desc }`
     /// whose descriptor strategy is `SpecialStrategy::VirtualSetup`. Before the
-    /// representation swap the same source lowered to `OperandLine::Global` (no such
+    /// representation swap the same source lowered to `OperandLine::LogicalGlobal` (no such
     /// Special descriptor exists), so this test fails RED until the lowering lands.
     #[test]
     fn virtual_setup_lowers_to_special_strategy() {
@@ -2950,12 +3146,10 @@ mod tests {
                     Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
                         operands.iter().for_each(&mut check)
                     }
-                    Instr::Fma { pairs, .. } => {
-                        pairs.iter().for_each(|(l, r)| {
-                            check(l);
-                            check(r);
-                        })
-                    }
+                    Instr::Fma { pairs, .. } => pairs.iter().for_each(|(l, r)| {
+                        check(l);
+                        check(r);
+                    }),
                     Instr::Mov { src: Some(op), .. } => check(op),
                     Instr::Mov { src: None, .. } => {}
                 }

@@ -16,14 +16,16 @@ use cs::gkr_compiler::dag_ir::{
 use std::collections::BTreeMap;
 
 use common::{
-    assert_synthetic_value_exact_planned, encode, synthetic_fma_compound_products_layer,
-    synthetic_wide_add_layer_with_shared_leaf, CrossFields,
+    CrossFields, assert_synthetic_value_exact_planned, encode,
+    synthetic_fma_compound_products_layer, synthetic_wide_add_layer_with_shared_leaf,
 };
-use gkr_eval_isa::bwd::compile::{compile_distilled, compile_distilled_planned, compile_distilled_traced};
-use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
-use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
+use gkr_eval_isa::bwd::compile::{
+    compile_distilled, compile_distilled_planned, compile_distilled_traced,
+};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
+use gkr_eval_isa::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
 use gkr_eval_isa::bwd::trace::{
-    freeze_demand, plan_epoch, BwdCompileTrace, BwdEvent, BwdFingerprint, BwdServedFrom,
+    BwdCompileTrace, BwdEvent, BwdFingerprint, BwdServedFrom, freeze_demand, plan_epoch,
 };
 
 // ── layer builders ──────────────────────────────────────────────────────────────
@@ -33,7 +35,9 @@ use gkr_eval_isa::bwd::trace::{
 /// listed `(expr, relation_index)` claim roots.
 fn layer(nreads: usize, extra: &[Expr], roots: &[(u32, usize)]) -> DistilledLayer {
     let read = |c: usize| SourceInfo {
-        kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: c } },
+        kind: SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: c },
+        },
     };
     let claim = |expr: ExprId, ri: usize| Root {
         expr,
@@ -54,15 +58,27 @@ fn layer(nreads: usize, extra: &[Expr], roots: &[(u32, usize)]) -> DistilledLaye
     }
     exprs.extend_from_slice(extra);
     let roots: Vec<Root> = roots.iter().map(|&(e, ri)| claim(ExprId(e), ri)).collect();
-    let batching = BatchingOrder { roots: (0..roots.len() as u32).map(RootId).collect() };
-    let raw = DagLayer { sources, exprs, roots, batching, resolutions: BTreeMap::new() };
+    let batching = BatchingOrder {
+        roots: (0..roots.len() as u32).map(RootId).collect(),
+    };
+    let raw = DagLayer {
+        sources,
+        exprs,
+        roots,
+        batching,
+        resolutions: BTreeMap::new(),
+    };
     distill(&raw, BwdRegime::Ext, &CrossFields::new(), None)
 }
 
 /// `root = Mul(w0, w0)` + a second claim root `= w0`: `w0` is a fan-out-3 domain leaf
 /// (served twice in `w0*w0`, once in the `beta*w0` spine term), no compound to suppress.
 fn x_times_x() -> DistilledLayer {
-    layer(1, &[Expr::Mul(vec![ExprId(0), ExprId(0)])], &[(1, 0), (0, 1)])
+    layer(
+        1,
+        &[Expr::Mul(vec![ExprId(0), ExprId(0)])],
+        &[(1, 0), (0, 1)],
+    )
 }
 
 /// `root = Mul(Add(w0,w1), w0, w1)`: domain leaves `w0`, `w1` (fan-out 2 each); the
@@ -72,7 +88,10 @@ fn x_times_x() -> DistilledLayer {
 fn straddle() -> DistilledLayer {
     layer(
         2,
-        &[Expr::Add(vec![ExprId(0), ExprId(1)]), Expr::Mul(vec![ExprId(2), ExprId(0), ExprId(1)])],
+        &[
+            Expr::Add(vec![ExprId(0), ExprId(1)]),
+            Expr::Mul(vec![ExprId(2), ExprId(0), ExprId(1)]),
+        ],
         &[(3, 0)],
     )
 }
@@ -81,7 +100,11 @@ fn straddle() -> DistilledLayer {
 /// `[w0, w0, w1, w1]` — `w0`'s interval closes before `w1`'s opens (sequential), the
 /// expiry-then-admit case.
 fn sequential() -> DistilledLayer {
-    layer(2, &[Expr::Mul(vec![ExprId(0), ExprId(1), ExprId(0), ExprId(1)])], &[(2, 0)])
+    layer(
+        2,
+        &[Expr::Mul(vec![ExprId(0), ExprId(1), ExprId(0), ExprId(1)])],
+        &[(2, 0)],
+    )
 }
 
 /// `root = Mul(w0, w0, w0)` + a second claim root `= w0`: `w0` is a fan-out-4 domain leaf
@@ -89,7 +112,11 @@ fn sequential() -> DistilledLayer {
 /// `Retain, Bypass, Retain, Bypass` GAPPED retention chain that RE-ADMITS `w0` after a
 /// rule-a release.
 fn cube() -> DistilledLayer {
-    layer(1, &[Expr::Mul(vec![ExprId(0), ExprId(0), ExprId(0)])], &[(1, 0), (0, 1)])
+    layer(
+        1,
+        &[Expr::Mul(vec![ExprId(0), ExprId(0), ExprId(0)])],
+        &[(1, 0), (0, 1)],
+    )
 }
 
 // ── plan helpers (build FROM a frozen trace) ────────────────────────────────────
@@ -102,12 +129,25 @@ fn frozen_domain_serves(
     budget: usize,
 ) -> (Vec<(BwdFingerprint, BwdServedFrom)>, bool) {
     let (c, trace) = compile_distilled_traced(d, budget, None).expect("traced baseline compile");
-    let f = freeze_demand(d, &trace, &c.program, &c.specials, &c.backings).unwrap();
+    let f = freeze_demand(
+        d,
+        &trace,
+        &c.program,
+        &c.specials,
+        &c.backings,
+        &c.source_windows,
+    )
+    .unwrap();
     (f.domain_serves, f.stream_reductions)
 }
 
 /// Assemble a valid plan (correct `epoch` + `entries_fnv`) from ordered entries.
-fn mk_plan(d: &DistilledLayer, budget: usize, sr: bool, entries: Vec<PlanEntry>) -> BwdOccurrencePlan {
+fn mk_plan(
+    d: &DistilledLayer,
+    budget: usize,
+    sr: bool,
+    entries: Vec<PlanEntry>,
+) -> BwdOccurrencePlan {
     BwdOccurrencePlan {
         epoch: plan_epoch(d, budget, sr),
         entries_fnv: plan_entries_fnv(&entries),
@@ -119,17 +159,31 @@ fn mk_plan(d: &DistilledLayer, budget: usize, sr: bool, entries: Vec<PlanEntry>)
 /// Attach one action per frozen domain serve (in order). Panics if the counts differ,
 /// so the fixture's serve stream is pinned by the test.
 fn attach(serves: &[(BwdFingerprint, BwdServedFrom)], actions: &[PlanAction]) -> Vec<PlanEntry> {
-    assert_eq!(serves.len(), actions.len(), "action count must match domain-serve count");
-    serves.iter().zip(actions).map(|((fp, _), &action)| PlanEntry { fp: *fp, action }).collect()
+    assert_eq!(
+        serves.len(),
+        actions.len(),
+        "action count must match domain-serve count"
+    );
+    serves
+        .iter()
+        .zip(actions)
+        .map(|((fp, _), &action)| PlanEntry { fp: *fp, action })
+        .collect()
 }
 
 // ── event probes on a returned trace ────────────────────────────────────────────
 
 fn admits(t: &BwdCompileTrace, v: ExprId) -> usize {
-    t.events.iter().filter(|e| matches!(e, BwdEvent::Admit { value, .. } if *value == v)).count()
+    t.events
+        .iter()
+        .filter(|e| matches!(e, BwdEvent::Admit { value, .. } if *value == v))
+        .count()
 }
 fn refuses(t: &BwdCompileTrace, v: ExprId) -> usize {
-    t.events.iter().filter(|e| matches!(e, BwdEvent::Refuse { value, .. } if *value == v)).count()
+    t.events
+        .iter()
+        .filter(|e| matches!(e, BwdEvent::Refuse { value, .. } if *value == v))
+        .count()
 }
 fn expired_evicts(t: &BwdCompileTrace, v: ExprId) -> usize {
     t.events
@@ -153,12 +207,19 @@ fn planned_domain_froms(
     c: &gkr_eval_isa::bwd::compile::BwdCompiledLayer,
     t: &BwdCompileTrace,
 ) -> Vec<BwdServedFrom> {
-    freeze_demand(d, t, &c.program, &c.specials, &c.backings)
-        .unwrap()
-        .domain_serves
-        .into_iter()
-        .map(|(_, from)| from)
-        .collect()
+    freeze_demand(
+        d,
+        t,
+        &c.program,
+        &c.specials,
+        &c.backings,
+        &c.source_windows,
+    )
+    .unwrap()
+    .domain_serves
+    .into_iter()
+    .map(|(_, from)| from)
+    .collect()
 }
 
 // ── §4 regression cases ─────────────────────────────────────────────────────────
@@ -174,12 +235,21 @@ fn repeated_keys_distinct_intervals() {
     let baseline = compile_distilled(&d, budget, None).expect("baseline");
     let (serves, sr) = frozen_domain_serves(&d, budget);
     assert_eq!(serves.len(), 2, "shared leaf is served exactly twice");
-    let plan = mk_plan(&d, budget, sr, attach(&serves, &[PlanAction::Retain, PlanAction::Bypass]));
+    let plan = mk_plan(
+        &d,
+        budget,
+        sr,
+        attach(&serves, &[PlanAction::Retain, PlanAction::Bypass]),
+    );
 
     let (c, t) = compile_distilled_planned(&d, budget, &plan).expect("planned compile");
     assert_eq!(diverge_at(&t), None, "leaf plan replays cleanly");
     let leaf = serves[0].0.value;
-    assert_eq!(admits(&t, leaf), 1, "the shared leaf is admitted once (its first serve)");
+    assert_eq!(
+        admits(&t, leaf),
+        1,
+        "the shared leaf is admitted once (its first serve)"
+    );
     // The single suppressed re-gather is exactly the fold_uses drop.
     let suppressed = 1;
     assert_eq!(
@@ -205,16 +275,35 @@ fn bypass_on_resident_serves_then_releases() {
         &d,
         budget,
         sr,
-        attach(&serves, &[PlanAction::Retain, PlanAction::Bypass, PlanAction::Bypass]),
+        attach(
+            &serves,
+            &[PlanAction::Retain, PlanAction::Bypass, PlanAction::Bypass],
+        ),
     );
     let (c, t) = compile_distilled_planned(&d, budget, &plan).expect("planned");
     assert_eq!(diverge_at(&t), None);
     let froms = planned_domain_froms(&d, &c, &t);
-    assert_eq!(froms[0], BwdServedFrom::Recomputed, "serve 1 recomputes then admits");
-    assert_eq!(froms[1], BwdServedFrom::Resident, "serve 2 is a resident free hit");
-    assert_eq!(froms[2], BwdServedFrom::Recomputed, "serve 3 recomputes (slot released at 2)");
+    assert_eq!(
+        froms[0],
+        BwdServedFrom::Recomputed,
+        "serve 1 recomputes then admits"
+    );
+    assert_eq!(
+        froms[1],
+        BwdServedFrom::Resident,
+        "serve 2 is a resident free hit"
+    );
+    assert_eq!(
+        froms[2],
+        BwdServedFrom::Recomputed,
+        "serve 3 recomputes (slot released at 2)"
+    );
     assert_eq!(admits(&t, leaf), 1);
-    assert_eq!(expired_evicts(&t, leaf), 1, "the Bypass at serve 2 releases the slot");
+    assert_eq!(
+        expired_evicts(&t, leaf),
+        1,
+        "the Bypass at serve 2 releases the slot"
+    );
 
     // Fully-retained twin (Retain, Retain, Bypass) keeps the leaf resident through
     // serve 3, so it re-gathers exactly ONE fewer time than the release variant.
@@ -222,7 +311,10 @@ fn bypass_on_resident_serves_then_releases() {
         &d,
         budget,
         sr,
-        attach(&serves, &[PlanAction::Retain, PlanAction::Retain, PlanAction::Bypass]),
+        attach(
+            &serves,
+            &[PlanAction::Retain, PlanAction::Retain, PlanAction::Bypass],
+        ),
     );
     let (cf, tf) = compile_distilled_planned(&d, budget, &full).expect("planned full");
     assert_eq!(diverge_at(&tf), None);
@@ -245,16 +337,25 @@ fn eof_unconsumed_entries_diverge() {
     assert_eq!(serves.len(), 3);
     let leaf = serves[0].0.value;
 
-    let mut entries =
-        attach(&serves, &[PlanAction::Retain, PlanAction::Bypass, PlanAction::Bypass]);
+    let mut entries = attach(
+        &serves,
+        &[PlanAction::Retain, PlanAction::Bypass, PlanAction::Bypass],
+    );
     // One extra trailing entry for a serve that never arrives (a clone of the last
     // fingerprint — its twin is not in the actual stream).
-    entries.push(PlanEntry { fp: serves[2].0, action: PlanAction::Bypass });
+    entries.push(PlanEntry {
+        fp: serves[2].0,
+        action: PlanAction::Bypass,
+    });
     let plan = mk_plan(&d, budget, sr, entries);
 
     let (c, t) = compile_distilled_planned(&d, budget, &plan).expect("planned compile succeeds");
     assert_eq!(admits(&t, leaf), 1, "the pre-EOF Retain applied normally");
-    assert_eq!(diverge_at(&t), Some(3), "EOF divergence recorded at the orphaned entry index");
+    assert_eq!(
+        diverge_at(&t),
+        Some(3),
+        "EOF divergence recorded at the orphaned entry index"
+    );
     assert_synthetic_value_exact_planned(&c, &d);
 }
 
@@ -278,14 +379,32 @@ fn retain_refused_never_preempts_live_retention() {
         sr,
         attach(
             &serves,
-            &[PlanAction::Retain, PlanAction::Retain, PlanAction::Bypass, PlanAction::Bypass],
+            &[
+                PlanAction::Retain,
+                PlanAction::Retain,
+                PlanAction::Bypass,
+                PlanAction::Bypass,
+            ],
         ),
     );
-    let (c, t) = compile_distilled_planned(&d, budget, &plan).expect("compile succeeds under refusal");
-    assert_eq!(diverge_at(&t), None, "no divergence — the refusal is a capacity event, not a mismatch");
+    let (c, t) =
+        compile_distilled_planned(&d, budget, &plan).expect("compile succeeds under refusal");
+    assert_eq!(
+        diverge_at(&t),
+        None,
+        "no divergence — the refusal is a capacity event, not a mismatch"
+    );
     assert_eq!(admits(&t, a), 1, "w0 admitted (the live retention)");
-    assert_eq!(refuses(&t, b), 1, "w1's admission is refused for want of capacity");
-    assert_eq!(admits(&t, b), 0, "w1 is NOT admitted — a live retention is never preempted");
+    assert_eq!(
+        refuses(&t, b),
+        1,
+        "w1's admission is refused for want of capacity"
+    );
+    assert_eq!(
+        admits(&t, b),
+        0,
+        "w1 is NOT admitted — a live retention is never preempted"
+    );
     assert_synthetic_value_exact_planned(&c, &d);
 }
 
@@ -309,12 +428,21 @@ fn expired_victim_evicted() {
         sr,
         attach(
             &serves,
-            &[PlanAction::Retain, PlanAction::Bypass, PlanAction::Retain, PlanAction::Bypass],
+            &[
+                PlanAction::Retain,
+                PlanAction::Bypass,
+                PlanAction::Retain,
+                PlanAction::Bypass,
+            ],
         ),
     );
     let (c, t) = compile_distilled_planned(&d, budget, &plan).expect("compile succeeds");
     assert_eq!(diverge_at(&t), None);
-    assert_eq!(expired_evicts(&t, a), 1, "w0 leaves residency as an expired resident");
+    assert_eq!(
+        expired_evicts(&t, a),
+        1,
+        "w0 leaves residency as an expired resident"
+    );
     assert_eq!(admits(&t, b), 1, "w1 is admitted after w0's slot frees");
 
     // The eviction of w0 precedes w1's admission in the event stream.
@@ -328,7 +456,10 @@ fn expired_victim_evicted() {
         .iter()
         .position(|e| matches!(e, BwdEvent::Admit { value, .. } if *value == b))
         .expect("w1 admit");
-    assert!(evict_pos < admit_pos, "the expired victim is evicted before the new admission");
+    assert!(
+        evict_pos < admit_pos,
+        "the expired victim is evicted before the new admission"
+    );
     assert_synthetic_value_exact_planned(&c, &d);
 }
 
@@ -348,19 +479,36 @@ fn cone_suppression_fails_closed() {
     // `serves[0]`; the injected head is a clone of a later, distinct fingerprint). The
     // REAL entries are `Retain`s that WOULD each admit the leaf — so the byte-identity
     // below can only hold if the fail-closed tail truly suppressed every admission.
-    let head = serves.iter().find(|(fp, _)| *fp != serves[0].0).expect("a distinct later fp");
-    let mut entries = vec![PlanEntry { fp: head.0, action: PlanAction::Bypass }];
+    let head = serves
+        .iter()
+        .find(|(fp, _)| *fp != serves[0].0)
+        .expect("a distinct later fp");
+    let mut entries = vec![PlanEntry {
+        fp: head.0,
+        action: PlanAction::Bypass,
+    }];
     let n = serves.len();
     entries.extend(serves.iter().enumerate().map(|(i, (fp, _))| PlanEntry {
         // Every occurrence but the last is a Retain (has a next serve for its value).
         fp: *fp,
-        action: if i + 1 < n { PlanAction::Retain } else { PlanAction::Bypass },
+        action: if i + 1 < n {
+            PlanAction::Retain
+        } else {
+            PlanAction::Bypass
+        },
     }));
     let plan = mk_plan(&d, budget, sr, entries);
 
     let (c, t) = compile_distilled_planned(&d, budget, &plan).expect("planned compile succeeds");
-    assert_eq!(diverge_at(&t), Some(0), "divergence recorded at the injected head entry");
-    assert!(!any_admit(&t), "the fail-closed tail admits nothing (Retains degraded to Bypass)");
+    assert_eq!(
+        diverge_at(&t),
+        Some(0),
+        "divergence recorded at the injected head entry"
+    );
+    assert!(
+        !any_admit(&t),
+        "the fail-closed tail admits nothing (Retains degraded to Bypass)"
+    );
     assert_synthetic_value_exact_planned(&c, &d);
     assert_eq!(
         encode(&c.program),
@@ -380,7 +528,10 @@ fn epoch_mismatch_is_hard_error() {
         &d,
         budget,
         sr,
-        attach(&serves, &[PlanAction::Bypass, PlanAction::Bypass, PlanAction::Bypass]),
+        attach(
+            &serves,
+            &[PlanAction::Bypass, PlanAction::Bypass, PlanAction::Bypass],
+        ),
     );
     plan.epoch ^= 0xdead_beef; // corrupt the epoch
     let _ = compile_distilled_planned(&d, budget, &plan);
@@ -443,17 +594,27 @@ fn readmit_after_release_fresh_generation() {
         sr,
         attach(
             &serves,
-            &[PlanAction::Retain, PlanAction::Bypass, PlanAction::Retain, PlanAction::Bypass],
+            &[
+                PlanAction::Retain,
+                PlanAction::Bypass,
+                PlanAction::Retain,
+                PlanAction::Bypass,
+            ],
         ),
     );
-    let (c, t) = compile_distilled_planned(&d, budget, &plan).expect("gapped re-admission compiles");
+    let (c, t) =
+        compile_distilled_planned(&d, budget, &plan).expect("gapped re-admission compiles");
     assert_eq!(diverge_at(&t), None, "the gapped chain replays cleanly");
     assert_eq!(
         admits(&t, leaf),
         2,
         "the leaf is admitted twice — a genuine re-admission after the rule-a release",
     );
-    assert_eq!(expired_evicts(&t, leaf), 2, "both retentions release their slot (rule a)");
+    assert_eq!(
+        expired_evicts(&t, leaf),
+        2,
+        "both retentions release their slot (rule a)"
+    );
     // Value must be preserved despite the fresh-generation re-admission (the fix must not
     // corrupt which cell the leaf's later uses read).
     assert_synthetic_value_exact_planned(&c, &d);

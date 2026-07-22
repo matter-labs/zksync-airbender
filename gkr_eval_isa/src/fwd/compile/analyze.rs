@@ -4,13 +4,11 @@
 //! `&DagForwardContext` but NEVER mutates the context. It produces a `ValueGraph`
 //! consumed by every downstream residency-planner task (S2+).
 
-use super::arith::{child_operand_field, is_zero_expr};
 use super::super::context::{DagForwardContext, ForwardAction};
 use super::super::isa::OperandField;
 use super::super::source::lower_resolution;
-use cs::gkr_compiler::dag_ir::{
-    DagLayer, Expr, ExprId, RootId, SinkInfo, SinkKind, SourceKind,
-};
+use super::arith::{child_operand_field, is_zero_expr};
+use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, RootId, SinkInfo, SinkKind, SourceKind};
 use std::collections::HashMap;
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -56,7 +54,7 @@ pub struct ValueInfo {
     /// Estimated cost to re-obtain this value if evicted from residency.
     pub miss: MissPenalty,
     /// True if this value has a real global DRAM backing that can be re-read:
-    /// `SourceKind::Read` or `VirtualSetup` (→ `OperandLine::Global`).
+    /// `SourceKind::Read` or `VirtualSetup` (→ `OperandLine::LogicalGlobal`).
     /// False for compound `Add`/`Mul` subexprs, `Constant`/`Challenge` literals,
     /// and resolution-pruned (special-gather) leaves — these must be recomputed
     /// or re-gathered if evicted.
@@ -87,14 +85,26 @@ pub struct ValueGraph {
 // ── Cost constants ────────────────────────────────────────────────────────────
 
 /// Miss cost for a stored cache root or source-backed read: re-reading from DRAM.
-const MISS_BACKED_READ: MissPenalty = MissPenalty { dram_reads: 1, instrs: 1, cell_ops: 0 };
+const MISS_BACKED_READ: MissPenalty = MissPenalty {
+    dram_reads: 1,
+    instrs: 1,
+    cell_ops: 0,
+};
 
 /// Miss cost for a PEEK / special gather (resolution-pruned fold): one instruction,
 /// no DRAM (the special source is a precomputed array indexed at runtime).
-const MISS_SPECIAL_GATHER: MissPenalty = MissPenalty { dram_reads: 0, instrs: 1, cell_ops: 0 };
+const MISS_SPECIAL_GATHER: MissPenalty = MissPenalty {
+    dram_reads: 0,
+    instrs: 1,
+    cell_ops: 0,
+};
 
 /// Miss cost for a near-free literal (`Constant` or `Challenge`): zero.
-const MISS_LITERAL: MissPenalty = MissPenalty { dram_reads: 0, instrs: 0, cell_ops: 0 };
+const MISS_LITERAL: MissPenalty = MissPenalty {
+    dram_reads: 0,
+    instrs: 0,
+    cell_ops: 0,
+};
 
 // ── Analysis ──────────────────────────────────────────────────────────────────
 
@@ -103,7 +113,10 @@ const MISS_LITERAL: MissPenalty = MissPenalty { dram_reads: 0, instrs: 0, cell_o
 /// (interp.rs:148), not `r.read`, so caching it saves no DRAM read.
 fn is_read_source(layer: &DagLayer, expr_id: ExprId) -> bool {
     if let Expr::Source(src_id) = &layer.exprs[expr_id.0 as usize] {
-        matches!(layer.sources[src_id.0 as usize].kind, SourceKind::Read { .. })
+        matches!(
+            layer.sources[src_id.0 as usize].kind,
+            SourceKind::Read { .. }
+        )
     } else {
         false
     }
@@ -170,7 +183,10 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
     for (idx, root) in layer.roots.iter().enumerate() {
         let is_cache_root = matches!(
             root.materialize,
-            Some(SinkInfo { kind: SinkKind::Cache { .. }, .. })
+            Some(SinkInfo {
+                kind: SinkKind::Cache { .. },
+                ..
+            })
         ) && root.claim.is_none();
         if is_cache_root {
             // Cache root: produced at root idx, available to later roots.
@@ -197,12 +213,8 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
     // Accumulate refcounts and determine is_candidate / field / width / miss.
     for &(expr_id, use_root_idx) in &all_refs {
         let entry = info.entry(expr_id).or_insert_with(|| {
-            let field = child_operand_field(
-                layer,
-                expr_id,
-                OperandField::Base,
-                &ctx.cross_layer_fields,
-            );
+            let field =
+                child_operand_field(layer, expr_id, OperandField::Base, &ctx.cross_layer_fields);
             let width = if field == OperandField::Ext { 4 } else { 1 };
             let miss = compute_miss(layer, expr_id);
             let has_backing = has_global_backing(layer, expr_id);
@@ -315,7 +327,11 @@ pub fn analyze_layer(layer: &DagLayer, ctx: &DagForwardContext) -> ValueGraph {
         }
     }
 
-    ValueGraph { info, dep_edges, descriptors: DescriptorPlan { keys } }
+    ValueGraph {
+        info,
+        dep_edges,
+        descriptors: DescriptorPlan { keys },
+    }
 }
 
 /// DFS walk of an expression tree rooted at `expr_id`, called within the context
@@ -368,7 +384,7 @@ fn dfs_collect_refs(
 }
 
 /// Return `true` if `expr_id` has a real DRAM backing that can be re-read via
-/// `OperandLine::Global` — i.e. it is a `SourceKind::Read` or `VirtualSetup` leaf.
+/// `OperandLine::LogicalGlobal` — i.e. it is a `SourceKind::Read` or `VirtualSetup` leaf.
 /// Returns `false` for compound exprs, literals, and resolution-pruned leaves (those
 /// are re-gathered or recomputed, not re-read from DRAM).
 fn has_global_backing(layer: &DagLayer, expr_id: ExprId) -> bool {
@@ -399,18 +415,19 @@ fn compute_miss(layer: &DagLayer, expr_id: ExprId) -> MissPenalty {
         return MISS_SPECIAL_GATHER;
     }
     match &layer.exprs[expr_id.0 as usize] {
-        Expr::Source(src_id) => {
-            match &layer.sources[src_id.0 as usize].kind {
-                SourceKind::Read { .. }
-                | SourceKind::VirtualSetup { .. } => MISS_BACKED_READ,
-                SourceKind::Constant { .. }
-                | SourceKind::Challenge { .. }
-                | SourceKind::LookupValue { .. } => MISS_LITERAL,
-            }
-        }
+        Expr::Source(src_id) => match &layer.sources[src_id.0 as usize].kind {
+            SourceKind::Read { .. } | SourceKind::VirtualSetup { .. } => MISS_BACKED_READ,
+            SourceKind::Constant { .. }
+            | SourceKind::Challenge { .. }
+            | SourceKind::LookupValue { .. } => MISS_LITERAL,
+        },
         Expr::Add(children) | Expr::Mul(children) => {
             let children = children.clone();
-            let mut total = MissPenalty { dram_reads: 0, instrs: 1, cell_ops: 0 };
+            let mut total = MissPenalty {
+                dram_reads: 0,
+                instrs: 1,
+                cell_ops: 0,
+            };
             for &child_id in &children {
                 let child_cost = compute_miss(layer, child_id);
                 total.dram_reads += child_cost.dram_reads;
@@ -441,7 +458,9 @@ pub fn materialize_descriptors(
 ) -> HashMap<ExprId, u16> {
     let mut map = HashMap::with_capacity(plan.keys.len());
     for &id in &plan.keys {
-        let strategy = layer.resolutions.get(&id)
+        let strategy = layer
+            .resolutions
+            .get(&id)
             .expect("DescriptorPlan key must be present in layer.resolutions");
         let desc = lower_resolution(strategy, id);
         let idx = ctx.specials.push(desc);
@@ -458,8 +477,8 @@ mod tests {
     use crate::fwd::context::ForwardAction;
     use cs::definitions::GKRAddress;
     use cs::gkr_compiler::dag_ir::{
-        ArenaBuilder, BatchingOrder, ClaimInfo, DagLayer, FieldKind, ReadPlace, ResolutionStrategy, Root,
-        RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceKind,
+        ArenaBuilder, BatchingOrder, ClaimInfo, DagLayer, FieldKind, ReadPlace, ResolutionStrategy,
+        Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceKind,
     };
     use std::collections::BTreeMap;
 
@@ -591,7 +610,10 @@ mod tests {
                 Root {
                     expr: add_ab,
                     materialize: Some(SinkInfo {
-                        kind: SinkKind::Cache { layer: 3, offset: 5 },
+                        kind: SinkKind::Cache {
+                            layer: 3,
+                            offset: 5,
+                        },
                         field: FieldKind::Base,
                     }),
                     claim: None, // Cache + no claim → cache root
@@ -618,9 +640,13 @@ mod tests {
     fn source_resident_flags_reused_read_not_virtualsetup() {
         use cs::gkr_compiler::dag_ir::{ReadPlace, VirtualSetupKind};
         let mut a = ArenaBuilder::new();
-        let r_sid  = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 3 } });
-        let vs_sid = a.intern_source(SourceKind::VirtualSetup { kind: VirtualSetupKind::RangeCheck16Bits });
-        let er  = a.source_expr(r_sid);
+        let r_sid = a.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 3 },
+        });
+        let vs_sid = a.intern_source(SourceKind::VirtualSetup {
+            kind: VirtualSetupKind::RangeCheck16Bits,
+        });
+        let er = a.source_expr(r_sid);
         let evs = a.source_expr(vs_sid);
         let root_expr = a.add(vec![er, er, evs, evs]); // read used 2x, vsetup used 2x
 
@@ -633,17 +659,30 @@ mod tests {
         };
         let ctx = make_ctx();
         let g = analyze_layer(&layer, &ctx);
-        assert!(g.info[&er].is_source_resident, "reused Read source must be a residency candidate");
-        assert!(!g.info[&evs].is_source_resident, "VirtualSetup is computed, never a residency candidate");
+        assert!(
+            g.info[&er].is_source_resident,
+            "reused Read source must be a residency candidate"
+        );
+        assert!(
+            !g.info[&evs].is_source_resident,
+            "VirtualSetup is computed, never a residency candidate"
+        );
     }
 
     #[test]
     fn identical_read_sources_dedup_to_one_exprid() {
         use cs::gkr_compiler::dag_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
-        let s1 = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 7 } });
-        let s2 = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 7 } });
-        assert_eq!(s1, s2, "intern_source must dedup identical Read sources (ExprId-keying depends on it)");
+        let s1 = a.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 7 },
+        });
+        let s2 = a.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 7 },
+        });
+        assert_eq!(
+            s1, s2,
+            "intern_source must dedup identical Read sources (ExprId-keying depends on it)"
+        );
     }
 
     // ── Lever A: emission-exact candidate set ─────────────────────────────────
@@ -656,7 +695,9 @@ mod tests {
     fn candidate_skips_zero_annihilated_mul_read() {
         use cs::gkr_compiler::dag_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
-        let r_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 3 } });
+        let r_sid = a.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 3 },
+        });
         let z_sid = a.intern_source(SourceKind::Constant { value: 0 });
         let er = a.source_expr(r_sid);
         let ez = a.source_expr(z_sid);
@@ -686,7 +727,9 @@ mod tests {
     fn candidate_skips_copyalias_root_read() {
         use cs::gkr_compiler::dag_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
-        let r_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 4 } });
+        let r_sid = a.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 4 },
+        });
         let er = a.source_expr(r_sid);
         let root_expr = a.add(vec![er, er]); // read 2x under a CopyAlias root
 
@@ -700,7 +743,10 @@ mod tests {
         let mut ctx = make_ctx();
         ctx.actions.insert(
             RootId(0),
-            ForwardAction::CopyAlias { src_addr: GKRAddress::placeholder(), dst_addr: GKRAddress::placeholder() },
+            ForwardAction::CopyAlias {
+                src_addr: GKRAddress::placeholder(),
+                dst_addr: GKRAddress::placeholder(),
+            },
         );
         let g = analyze_layer(&layer, &ctx);
         assert!(
@@ -717,7 +763,9 @@ mod tests {
     fn candidate_skips_sole_source_passthrough_read() {
         use cs::gkr_compiler::dag_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
-        let r_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 5 } });
+        let r_sid = a.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 5 },
+        });
         let er = a.source_expr(r_sid);
 
         let layer = DagLayer {
@@ -745,8 +793,12 @@ mod tests {
     fn candidate_keeps_read_in_add_with_zero_mul_sibling() {
         use cs::gkr_compiler::dag_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
-        let kept_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 6 } });
-        let dropped_sid = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 7 } });
+        let kept_sid = a.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 6 },
+        });
+        let dropped_sid = a.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: 7 },
+        });
         let z_sid = a.intern_source(SourceKind::Constant { value: 0 });
         let kept = a.source_expr(kept_sid);
         let dropped = a.source_expr(dropped_sid);
@@ -784,8 +836,16 @@ mod tests {
         let before = ctx.specials.len();
         let layer = layer_with_two_peeks_one_dup();
         let graph = analyze_layer(&layer, &ctx);
-        assert_eq!(graph.descriptors.keys.len(), 2, "two distinct PEEK descriptors expected");
-        assert_eq!(ctx.specials.len(), before, "analysis must not mutate ctx.specials");
+        assert_eq!(
+            graph.descriptors.keys.len(),
+            2,
+            "two distinct PEEK descriptors expected"
+        );
+        assert_eq!(
+            ctx.specials.len(),
+            before,
+            "analysis must not mutate ctx.specials"
+        );
     }
 
     #[test]
@@ -794,9 +854,17 @@ mod tests {
         let ctx = DagForwardContext::default();
         let layer = layer_one_used_one_unused_resolution();
         let graph = analyze_layer(&layer, &ctx);
-        assert_eq!(graph.descriptors.keys.len(), 1, "only the reached resolution is planned (no orphan)");
+        assert_eq!(
+            graph.descriptors.keys.len(),
+            1,
+            "only the reached resolution is planned (no orphan)"
+        );
         let mut ctx2 = DagForwardContext::default();
         materialize_descriptors(&graph.descriptors, &layer, &mut ctx2);
-        assert_eq!(ctx2.specials.len(), 1, "materialize interns only the reached descriptor — no orphan for validate_special_bindings");
+        assert_eq!(
+            ctx2.specials.len(),
+            1,
+            "materialize interns only the reached descriptor — no orphan for validate_special_bindings"
+        );
     }
 }
