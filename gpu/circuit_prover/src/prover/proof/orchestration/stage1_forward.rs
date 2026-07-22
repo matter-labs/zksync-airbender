@@ -294,7 +294,7 @@ pub(in crate::prover::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllo
         unsafe { proof_layout.lookup_pow_nonce_device_mut(slab_base) };
     let lookup_nonce_dst: &mut era_cudart::slice::DeviceVariable<u64> =
         unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(lookup_nonce_ptr) };
-    crate::prover::pow::schedule_draw_e4_challenges_with_pow(
+    gpu_whir::pow::schedule_draw_e4_challenges_with_pow(
         &mut d_seed,
         &mut d_lookup_challenges,
         lookup_pow_bits,

@@ -7,7 +7,7 @@ using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 using namespace ::airbender::primitives::vectorized;
 
-namespace airbender::prover::whir {
+namespace airbender::whir {
 
 EXTERN __global__ void ab_whir_fold_split_half_vectorized_e4_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
                                                                     vectorized_e4_matrix_setter<st_modifier::cg> dst, const e4 *challenge,
@@ -233,4 +233,4 @@ EXTERN __global__ void ab_partially_evaluate_monomial_form_by_ref_kernel(vectori
   partially_evaluate_monomial_form_impl(src, dst, *z_ref, *z_chunk_adjustment_ref, log_count);
 }
 
-} // namespace airbender::prover::whir
+} // namespace airbender::whir

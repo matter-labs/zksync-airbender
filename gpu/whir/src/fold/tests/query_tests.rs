@@ -2,19 +2,20 @@ use super::super::*;
 
 use std::alloc::Global;
 
-use crate::ops::powers::get_powers_by_val;
 use era_cudart::memory::memory_copy_async;
+use gpu_ops::powers::get_powers_by_val;
 
 use worker::Worker;
 
-use crate::allocator::tracker::AllocationPlacement;
-use crate::primitives::callbacks::Callbacks;
-use crate::prover::test_utils::make_test_context;
+use crate::test_utils::make_test_context;
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::callbacks::Callbacks;
 
-use super::helpers::{
-    copy_small_to_device, decode_base_leaf_values, query_base_trace_holder_for_folded_index,
+// helpers.rs was promoted to the permanent `crate::fold::debug` module (Task 10).
+use super::make_lde_trace_holder;
+use crate::fold::debug::{
+    copy_back, copy_small_to_device, query_base_trace_holder_for_folded_index,
 };
-use super::{copy_back, make_lde_trace_holder};
 use crate::upstream::{Blake2sU32MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor, PrimeField};
 
 #[test]
@@ -245,35 +246,5 @@ fn whir_build_eq_values_preserves_large_eval_buffer() {
     assert_eq!(actual_mid, expected_mid);
     assert_eq!(actual_tail, expected_tail);
 }
-
-pub(crate) struct GpuScheduledBaseFieldQuery {
-    pub(crate) index: usize,
-    pub(crate) coset_index: usize,
-    // Keeps index-fill callbacks alive until the stream executes them.
-    #[allow(dead_code)]
-    pub(super) callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    pub(super) leafs: HostAllocation<[BF]>,
-    #[allow(dead_code)]
-    pub(super) merkle_paths: HostAllocation<[Digest]>,
-    pub(super) values_per_leaf: usize,
-    pub(super) columns_count: usize,
-}
-
-impl GpuScheduledBaseFieldQuery {
-    pub(crate) fn decode(&self) -> (Vec<Vec<BF>>, BaseFieldQuery<BF, DefaultTreeConstructor>) {
-        let leafs_accessor = self.leafs.get_accessor();
-        let path_accessor = self.merkle_paths.get_accessor();
-        let leafs = unsafe { leafs_accessor.get() };
-        let path = unsafe { path_accessor.get().to_vec() };
-        let decoded = decode_base_leaf_values(leafs, self.values_per_leaf, self.columns_count);
-        let cpu_query = BaseFieldQuery {
-            index: self.index,
-            leaf_values_concatenated: decoded.iter().flatten().copied().collect(),
-            path,
-            _marker: PhantomData,
-        };
-
-        (decoded, cpu_query)
-    }
-}
+// GpuScheduledBaseFieldQuery + its `decode` impl were relocated to
+// `crate::fold::debug` (Task 10), next to the query helper that returns it.

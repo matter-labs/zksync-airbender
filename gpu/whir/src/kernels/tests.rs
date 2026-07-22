@@ -1,14 +1,14 @@
 use super::*;
 
-use crate::primitives::device_structures::DeviceMatrix;
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use field::{Field, Rand};
+use gpu_core::primitives::device_structures::DeviceMatrix;
 use itertools::Itertools;
 use rand::rng;
 
 fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
-    use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
     use fft::utils::bitreverse_enumeration_inplace;
+    use gpu_cub::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 
     let count = 1 << log_count;
     let stride = 2 * count;
@@ -87,8 +87,8 @@ fn run_blake2s_leaves_from_ntt_matches_pack_then_blake(
     log_values_per_leaf: usize,
     coset_index_base: u32,
 ) {
-    use crate::ops::blake2s::{hash_leaves_from_ntt_multi_coset, hash_leaves_multi_coset, Digest};
-    use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    use gpu_hash::blake2s::{hash_leaves_from_ntt_multi_coset, hash_leaves_multi_coset, Digest};
 
     const EXT4_DEGREE: usize = 4;
     let trace_len = 1usize << log_trace_len;
@@ -205,10 +205,10 @@ fn run_gather_leaves_for_queries_from_ntt_matches_packed(
     log_lde_factor: usize,
     log_values_per_leaf: usize,
 ) {
-    use crate::ops::blake2s::{
+    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    use gpu_hash::blake2s::{
         gather_leaves_for_queries, gather_leaves_for_queries_from_ntt, OracleGatherDesc,
     };
-    use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 
     const EXT4_DEGREE: usize = 4;
     const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)

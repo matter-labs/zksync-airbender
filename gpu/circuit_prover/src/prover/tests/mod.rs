@@ -11,12 +11,6 @@ use crate::prover::proof::{
 use crate::prover::test_utils::{
     make_test_context, make_test_context_with_device_allocator_block_log_size,
 };
-use crate::prover::whir::fold::{
-    debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,
-    debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
-    debug_initial_round_checkpoint_for_test, schedule_gpu_whir_fold_with_sources,
-};
-use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::ProverContext;
 use gpu_gkr::proof_layout::{GpuGKRTraceGeometry, ProofLayout};
 use gpu_gkr::{
@@ -46,6 +40,12 @@ use gpu_trace::witness::trace_unrolled::{
     UnrolledMemoryTraceDevice, UnrolledNonMemoryTraceDevice, UnrolledUnifiedTraceDevice,
     PAGE_SIZE_LOG2,
 };
+use gpu_whir::fold::{
+    debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,
+    debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
+    debug_initial_round_checkpoint_for_test, schedule_gpu_whir_fold_with_sources,
+};
+use gpu_whir::GpuWhirExtensionOracle;
 
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;

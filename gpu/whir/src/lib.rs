@@ -1,24 +1,37 @@
-pub(crate) mod fold;
+#![allow(incomplete_features)]
+#![feature(allocator_api)]
+#![feature(generic_const_exprs)]
+#![warn(clippy::manual_div_ceil)]
+#![warn(clippy::needless_pass_by_value)]
+#![allow(clippy::mut_from_ref)]
+
+pub mod fold;
 pub(crate) mod kernels;
+pub mod pow;
+pub(crate) mod upstream;
 
 #[cfg(test)]
+mod test_utils;
+
+#[cfg(test)]
+gpu_core::force_serial_libtest!();
+
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
+use fft::bitreverse_enumeration_inplace;
 
-#[cfg(test)]
-use crate::allocator::tracker::AllocationPlacement;
-#[cfg(test)]
-use crate::ops::blake2s::Digest;
-#[cfg(test)]
-use crate::primitives::callbacks::Callbacks;
-#[cfg(test)]
-use crate::primitives::context::HostAllocation;
-#[cfg(test)]
-use crate::primitives::device_structures::DeviceMatrix;
-use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl};
-use crate::primitives::field::{BF, E4};
-use crate::prover::ProverContext;
-use crate::upstream::FieldExtension;
+use crate::upstream::{
+    extension_field_from_base_coeffs, Field, FieldExtension, MerkleTreeCapVarLength,
+};
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::callbacks::Callbacks;
+use gpu_core::primitives::context::HostAllocation;
+use gpu_core::primitives::device_structures::DeviceMatrix;
+use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl};
+use gpu_core::primitives::field::{BF, E4};
+use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
+use gpu_hash::blake2s::Digest;
+use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
@@ -40,7 +53,12 @@ enum CapTarget<'a> {
     Slab(&'a mut era_cudart::slice::DeviceSlice<u32>),
 }
 
-pub(crate) struct GpuWhirExtensionOracle {
+// #[doc(hidden)] pub: reached by the apex e2e/parity test suite
+// (`prover/tests/whir_oracle_parity.rs`, driven from `stagewise.rs`) across the
+// crate boundary — the oracle + its parity helpers structurally can't move down
+// (their consumer is a full-pipeline apex test). Not part of the production API.
+#[doc(hidden)]
+pub struct GpuWhirExtensionOracle {
     trace_holder: TraceHolder<BF>,
     values_per_leaf: usize,
     lde_factor: usize,
@@ -56,7 +74,8 @@ pub(crate) struct GpuWhirExtensionOracleKeepalive {
     _trace_holder: TraceHolder<BF>,
 }
 
-#[cfg(test)]
+// Permanently compiled: it is the return type of the (now permanent) oracle
+// query helpers reached by the apex parity test suite. Not test-gated.
 pub(crate) struct GpuWhirScheduledExtensionQuery {
     pub(crate) index: usize,
     pub(crate) coset_index: usize,
@@ -256,7 +275,7 @@ impl GpuWhirExtensionOracle {
         // symmetry. The slab range is exclusively written here on
         // `exec_stream`, then read by the gather kernels below, so the
         // subsequent shared reborrow is sound.
-        crate::ops::blake2s::query_index_to_tree_index(
+        gpu_hash::blake2s::query_index_to_tree_index(
             device_query_indexes,
             slab_indices_dst,
             log_lde_factor,
@@ -373,13 +392,260 @@ impl GpuWhirExtensionOracle {
     }
 }
 
-#[cfg(test)]
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
         0
     } else {
         index.reverse_bits() >> (usize::BITS - num_bits)
     }
+}
+
+// ---------------------------------------------------------------------
+// Oracle parity/query test-support surface (permanently compiled).
+//
+// Relocated out of the `#[cfg(test)] mod tests` block (Task 10) so the apex
+// e2e/parity suite (`prover/tests/whir_oracle_parity.rs`, driven from
+// `stagewise.rs`) can reach `from_monomial_coeffs` / `get_tree_cap` /
+// `query_for_folded_index` across the crate boundary — a dependency`s
+// `#[cfg(test)]` items are invisible to consumers. The three apex-reached
+// methods are `#[doc(hidden)] pub`; the rest is crate-internal support.
+// ---------------------------------------------------------------------
+// #[doc(hidden)] pub: returned by `query_for_folded_index` and compared/read by
+// the apex parity test suite across the crate boundary.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GpuWhirExtensionQuery {
+    pub index: usize,
+    pub leaf_values_concatenated: Vec<E4>,
+    pub path: Vec<Digest>,
+}
+
+impl GpuWhirScheduledExtensionQuery {
+    pub(crate) fn decode(&self) -> (Vec<E4>, GpuWhirExtensionQuery) {
+        self.decode_with_index(self.index)
+    }
+
+    pub(crate) fn decode_with_index(&self, index: usize) -> (Vec<E4>, GpuWhirExtensionQuery) {
+        let leaf_values_concatenated = decode_leaf_values(
+            unsafe { self.leafs.get_accessor().get() },
+            self.values_per_leaf,
+        );
+        let path = unsafe { self.merkle_paths.get_accessor().get().to_vec() };
+        let query = GpuWhirExtensionQuery {
+            index,
+            leaf_values_concatenated: leaf_values_concatenated.clone(),
+            path,
+        };
+
+        (leaf_values_concatenated, query)
+    }
+}
+
+pub(crate) fn e4_coeffs_to_vectorized(coeffs: &[E4]) -> Vec<BF> {
+    let trace_len = coeffs.len();
+    let mut vectorized_coeffs = vec![BF::default(); 4 * trace_len];
+    for i in 0..trace_len {
+        let coeff = coeffs[i];
+        let bf_coeffs = [coeff.c0.c0, coeff.c0.c1, coeff.c1.c0, coeff.c1.c1];
+        for j in 0..4 {
+            vectorized_coeffs[i + j * trace_len] = bf_coeffs[j];
+        }
+    }
+    vectorized_coeffs
+}
+
+impl GpuWhirExtensionOracle {
+    // #[doc(hidden)] pub: apex parity test builds a GPU oracle from CPU monomials.
+    #[doc(hidden)]
+    pub fn from_monomial_coeffs(
+        monomial_coeffs: &[E4],
+        lde_factor: usize,
+        values_per_leaf: usize,
+        tree_cap_size: usize,
+        transform_leaves_to_multilinear_coeffs: bool,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let trace_len = monomial_coeffs.len();
+        let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
+        bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
+        let vectorized_monomial_coeffs = e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
+        let mut monomial_coeffs_device_alloc = context.alloc(
+            vectorized_monomial_coeffs.len(),
+            AllocationPlacement::BestFit,
+        )?;
+        let stream = context.get_exec_stream();
+        let host = alloc_static_pinned_box_from_slice(&vectorized_monomial_coeffs[..])?;
+        memory_copy_async(&mut monomial_coeffs_device_alloc, &host[..], stream)?;
+        let monomial_coeffs_device = DeviceMatrix::new(&monomial_coeffs_device_alloc, trace_len);
+        Self::from_device_monomial_coeffs(
+            &monomial_coeffs_device,
+            trace_len,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            transform_leaves_to_multilinear_coeffs,
+            context,
+        )
+    }
+
+    pub(crate) fn from_device_monomial_coeffs(
+        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
+        trace_len: usize,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        tree_cap_size: usize,
+        transform_leaves_to_multilinear_coeffs: bool,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let oracle = Self::from_device_monomial_coeffs_impl(
+            monomial_coeffs,
+            trace_len,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            transform_leaves_to_multilinear_coeffs,
+            CapTarget::OwnAllocation,
+            context,
+        )?;
+        context.get_exec_stream().synchronize()?;
+        Ok(oracle)
+    }
+
+    pub(crate) fn schedule_query_for_folded_index(
+        &mut self,
+        index: usize,
+        context: &ProverContext,
+    ) -> CudaResult<GpuWhirScheduledExtensionQuery> {
+        assert!(index < (1usize << self.trace_len_log2) * self.lde_factor / self.values_per_leaf);
+
+        let coset_index = index & (self.lde_factor - 1);
+        let internal_index = index / self.lde_factor;
+        let coset_dest_index =
+            bitreverse_index(coset_index, self.lde_factor.trailing_zeros() as u32);
+        // tree_index matches CPU `ColumnMajorExtensionOracleForLDE::query_for_folded_index`
+        // (prover/src/gkr/whir/mod.rs). The extension oracle trace holder stores leaves in
+        // this order, so both value and path lookups go through the same index.
+        let tree_index = coset_dest_index * self.packed_leaf_count + internal_index;
+
+        let mut callbacks = Callbacks::new();
+        let mut host_tree_index = unsafe { context.alloc_host_uninit_slice(1) };
+        let ti_accessor = host_tree_index.get_mut_accessor();
+        callbacks.schedule(
+            move || unsafe { ti_accessor.get_mut()[0] = tree_index as u32 },
+            context.get_exec_stream(),
+        )?;
+        let mut device_tree_index = context.alloc(1, AllocationPlacement::BestFit)?;
+        memory_copy_async(
+            &mut device_tree_index,
+            &host_tree_index,
+            context.get_exec_stream(),
+        )?;
+        drop(host_tree_index);
+        // Use the NTT-aware query path: the trace holder's cosets backing
+        // now holds the natural multi-coset NTT output, which `get_query_leafs`
+        // (packed-layout reader) would misinterpret. Switch to the new
+        // `schedule_query_leaves_into_from_ntt` path used by production.
+        let leaf_len = self.values_per_leaf * EXT4_DEGREE;
+        let mut d_leafs = context.alloc(leaf_len, AllocationPlacement::BestFit)?;
+        {
+            let natural_log_lde_factor = self.lde_factor.trailing_zeros();
+            let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
+            const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
+            self.trace_holder.schedule_query_leaves_into_from_ntt(
+                &device_tree_index,
+                &mut d_leafs[..],
+                self.trace_len_log2,
+                natural_log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                context,
+            )?;
+        }
+        let stream_ref = context.get_exec_stream();
+        let mut value_query = unsafe { context.alloc_host_uninit_slice(leaf_len) };
+        memory_copy_async(&mut value_query, &d_leafs[..], stream_ref)?;
+        let path_query = {
+            let natural_log_lde_factor = self.lde_factor.trailing_zeros();
+            let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
+            const LOG_SRC_COLS_PER_COSET: u32 = 2;
+            self.trace_holder.get_query_merkle_paths_from_ntt(
+                &device_tree_index,
+                self.trace_len_log2,
+                natural_log_lde_factor,
+                log_values_per_leaf,
+                LOG_SRC_COLS_PER_COSET,
+                context,
+            )?
+        };
+        Ok(GpuWhirScheduledExtensionQuery {
+            index: tree_index,
+            coset_index,
+            _callbacks: callbacks,
+            leafs: value_query,
+            merkle_paths: path_query,
+            values_per_leaf: self.values_per_leaf,
+        })
+    }
+
+    /// Reads back the unified device cap synchronously and returns it as a
+    /// single-coset `MerkleTreeCapVarLength`. Test-only helper — production
+    /// paths should consume the cap as `unified_device_cap()` and avoid
+    /// host blocking.
+    // #[doc(hidden)] pub: apex parity test reads the recursive-oracle cap.
+    #[doc(hidden)]
+    pub fn get_tree_cap(&self, context: &ProverContext) -> CudaResult<MerkleTreeCapVarLength> {
+        self.trace_holder.read_full_cap_synchronously(context)
+    }
+
+    // #[doc(hidden)] pub: apex parity test queries a folded index for value+path.
+    #[doc(hidden)]
+    pub fn query_for_folded_index(
+        &mut self,
+        index: usize,
+        context: &ProverContext,
+    ) -> CudaResult<(usize, Vec<E4>, GpuWhirExtensionQuery)> {
+        let scheduled = self.schedule_query_for_folded_index(index, context)?;
+        context.get_exec_stream().synchronize()?;
+        let (leaf_values_concatenated, query) = scheduled.decode();
+
+        Ok((scheduled.coset_index, leaf_values_concatenated, query))
+    }
+
+    fn copy_coset_values(&self, coset_index: usize, context: &ProverContext) -> Vec<E4> {
+        // The backing now holds the natural multi-coset NTT output.
+        // Layout: column-major matrix with `trace_len` rows and
+        // `lde_factor * EXT4_DEGREE` columns. Column
+        // `coset * EXT4_DEGREE + bf_comp` holds BF component `bf_comp`
+        // of coset `coset` — cosets in natural (non-bit-reversed) order.
+        let trace_len = self.packed_leaf_count * self.values_per_leaf;
+        let full_trace = self.trace_holder.get_consolidated_cosets();
+        let mut host = vec![BF::ZERO; full_trace.len()];
+        memory_copy_async(&mut host, full_trace, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        (0..trace_len)
+            .map(|pos| {
+                let mut coeffs = [BF::ZERO; EXT4_DEGREE];
+                for bf_comp in 0..EXT4_DEGREE {
+                    coeffs[bf_comp] = host[(coset_index * EXT4_DEGREE + bf_comp) * trace_len + pos];
+                }
+                extension_field_from_base_coeffs::<BF, E4>(coeffs)
+            })
+            .collect()
+    }
+}
+
+fn decode_leaf_values(leafs: &[BF], values_per_leaf: usize) -> Vec<E4> {
+    assert_eq!(leafs.len(), values_per_leaf * EXT4_DEGREE);
+    let mut result = Vec::with_capacity(values_per_leaf);
+    for value_index in 0..values_per_leaf {
+        let mut coeffs = [BF::ZERO; EXT4_DEGREE];
+        for column in 0..EXT4_DEGREE {
+            coeffs[column] = leafs[value_index * EXT4_DEGREE + column];
+        }
+        result.push(extension_field_from_base_coeffs::<BF, E4>(coeffs));
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -401,245 +667,9 @@ pub(crate) mod tests {
     use worker::Worker;
 
     use super::*;
-    use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
-    use crate::prover::test_utils::make_test_context;
+    use crate::test_utils::make_test_context;
+    use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
     use gpu_trace::trace::holder::TreesHolder;
-
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub(crate) struct GpuWhirExtensionQuery {
-        pub(crate) index: usize,
-        pub(crate) leaf_values_concatenated: Vec<E4>,
-        pub(crate) path: Vec<Digest>,
-    }
-
-    impl GpuWhirScheduledExtensionQuery {
-        pub(crate) fn decode(&self) -> (Vec<E4>, GpuWhirExtensionQuery) {
-            self.decode_with_index(self.index)
-        }
-
-        pub(crate) fn decode_with_index(&self, index: usize) -> (Vec<E4>, GpuWhirExtensionQuery) {
-            let leaf_values_concatenated = decode_leaf_values(
-                unsafe { self.leafs.get_accessor().get() },
-                self.values_per_leaf,
-            );
-            let path = unsafe { self.merkle_paths.get_accessor().get().to_vec() };
-            let query = GpuWhirExtensionQuery {
-                index,
-                leaf_values_concatenated: leaf_values_concatenated.clone(),
-                path,
-            };
-
-            (leaf_values_concatenated, query)
-        }
-    }
-
-    pub(crate) fn e4_coeffs_to_vectorized(coeffs: &[E4]) -> Vec<BF> {
-        let trace_len = coeffs.len();
-        let mut vectorized_coeffs = vec![BF::default(); 4 * trace_len];
-        for i in 0..trace_len {
-            let coeff = coeffs[i];
-            let bf_coeffs = [coeff.c0.c0, coeff.c0.c1, coeff.c1.c0, coeff.c1.c1];
-            for j in 0..4 {
-                vectorized_coeffs[i + j * trace_len] = bf_coeffs[j];
-            }
-        }
-        vectorized_coeffs
-    }
-
-    impl GpuWhirExtensionOracle {
-        pub(crate) fn from_monomial_coeffs(
-            monomial_coeffs: &[E4],
-            lde_factor: usize,
-            values_per_leaf: usize,
-            tree_cap_size: usize,
-            transform_leaves_to_multilinear_coeffs: bool,
-            context: &ProverContext,
-        ) -> CudaResult<Self> {
-            let trace_len = monomial_coeffs.len();
-            let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
-            bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
-            let vectorized_monomial_coeffs = e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
-            let mut monomial_coeffs_device_alloc = context.alloc(
-                vectorized_monomial_coeffs.len(),
-                AllocationPlacement::BestFit,
-            )?;
-            let stream = context.get_exec_stream();
-            let host = alloc_static_pinned_box_from_slice(&vectorized_monomial_coeffs[..])?;
-            memory_copy_async(&mut monomial_coeffs_device_alloc, &host[..], stream)?;
-            let monomial_coeffs_device =
-                DeviceMatrix::new(&monomial_coeffs_device_alloc, trace_len);
-            Self::from_device_monomial_coeffs(
-                &monomial_coeffs_device,
-                trace_len,
-                lde_factor,
-                values_per_leaf,
-                tree_cap_size,
-                transform_leaves_to_multilinear_coeffs,
-                context,
-            )
-        }
-
-        pub(crate) fn from_device_monomial_coeffs(
-            monomial_coeffs: &impl DeviceMatrixImpl<BF>,
-            trace_len: usize,
-            lde_factor: usize,
-            values_per_leaf: usize,
-            tree_cap_size: usize,
-            transform_leaves_to_multilinear_coeffs: bool,
-            context: &ProverContext,
-        ) -> CudaResult<Self> {
-            let oracle = Self::from_device_monomial_coeffs_impl(
-                monomial_coeffs,
-                trace_len,
-                lde_factor,
-                values_per_leaf,
-                tree_cap_size,
-                transform_leaves_to_multilinear_coeffs,
-                CapTarget::OwnAllocation,
-                context,
-            )?;
-            context.get_exec_stream().synchronize()?;
-            Ok(oracle)
-        }
-
-        pub(crate) fn schedule_query_for_folded_index(
-            &mut self,
-            index: usize,
-            context: &ProverContext,
-        ) -> CudaResult<GpuWhirScheduledExtensionQuery> {
-            assert!(
-                index < (1usize << self.trace_len_log2) * self.lde_factor / self.values_per_leaf
-            );
-
-            let coset_index = index & (self.lde_factor - 1);
-            let internal_index = index / self.lde_factor;
-            let coset_dest_index =
-                bitreverse_index(coset_index, self.lde_factor.trailing_zeros() as u32);
-            // tree_index matches CPU `ColumnMajorExtensionOracleForLDE::query_for_folded_index`
-            // (prover/src/gkr/whir/mod.rs). The extension oracle trace holder stores leaves in
-            // this order, so both value and path lookups go through the same index.
-            let tree_index = coset_dest_index * self.packed_leaf_count + internal_index;
-
-            let mut callbacks = Callbacks::new();
-            let mut host_tree_index = unsafe { context.alloc_host_uninit_slice(1) };
-            let ti_accessor = host_tree_index.get_mut_accessor();
-            callbacks.schedule(
-                move || unsafe { ti_accessor.get_mut()[0] = tree_index as u32 },
-                context.get_exec_stream(),
-            )?;
-            let mut device_tree_index = context.alloc(1, AllocationPlacement::BestFit)?;
-            memory_copy_async(
-                &mut device_tree_index,
-                &host_tree_index,
-                context.get_exec_stream(),
-            )?;
-            drop(host_tree_index);
-            // Use the NTT-aware query path: the trace holder's cosets backing
-            // now holds the natural multi-coset NTT output, which `get_query_leafs`
-            // (packed-layout reader) would misinterpret. Switch to the new
-            // `schedule_query_leaves_into_from_ntt` path used by production.
-            let leaf_len = self.values_per_leaf * EXT4_DEGREE;
-            let mut d_leafs = context.alloc(leaf_len, AllocationPlacement::BestFit)?;
-            {
-                let natural_log_lde_factor = self.lde_factor.trailing_zeros();
-                let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-                const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
-                self.trace_holder.schedule_query_leaves_into_from_ntt(
-                    &device_tree_index,
-                    &mut d_leafs[..],
-                    self.trace_len_log2,
-                    natural_log_lde_factor,
-                    log_values_per_leaf,
-                    LOG_SRC_COLS_PER_COSET,
-                    context,
-                )?;
-            }
-            let stream_ref = context.get_exec_stream();
-            let mut value_query = unsafe { context.alloc_host_uninit_slice(leaf_len) };
-            memory_copy_async(&mut value_query, &d_leafs[..], stream_ref)?;
-            let path_query = {
-                let natural_log_lde_factor = self.lde_factor.trailing_zeros();
-                let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-                const LOG_SRC_COLS_PER_COSET: u32 = 2;
-                self.trace_holder.get_query_merkle_paths_from_ntt(
-                    &device_tree_index,
-                    self.trace_len_log2,
-                    natural_log_lde_factor,
-                    log_values_per_leaf,
-                    LOG_SRC_COLS_PER_COSET,
-                    context,
-                )?
-            };
-            Ok(GpuWhirScheduledExtensionQuery {
-                index: tree_index,
-                coset_index,
-                _callbacks: callbacks,
-                leafs: value_query,
-                merkle_paths: path_query,
-                values_per_leaf: self.values_per_leaf,
-            })
-        }
-
-        /// Reads back the unified device cap synchronously and returns it as a
-        /// single-coset `MerkleTreeCapVarLength`. Test-only helper — production
-        /// paths should consume the cap as `unified_device_cap()` and avoid
-        /// host blocking.
-        pub(crate) fn get_tree_cap(
-            &self,
-            context: &ProverContext,
-        ) -> CudaResult<MerkleTreeCapVarLength> {
-            self.trace_holder.read_full_cap_synchronously(context)
-        }
-
-        pub(crate) fn query_for_folded_index(
-            &mut self,
-            index: usize,
-            context: &ProverContext,
-        ) -> CudaResult<(usize, Vec<E4>, GpuWhirExtensionQuery)> {
-            let scheduled = self.schedule_query_for_folded_index(index, context)?;
-            context.get_exec_stream().synchronize()?;
-            let (leaf_values_concatenated, query) = scheduled.decode();
-
-            Ok((scheduled.coset_index, leaf_values_concatenated, query))
-        }
-
-        fn copy_coset_values(&self, coset_index: usize, context: &ProverContext) -> Vec<E4> {
-            // The backing now holds the natural multi-coset NTT output.
-            // Layout: column-major matrix with `trace_len` rows and
-            // `lde_factor * EXT4_DEGREE` columns. Column
-            // `coset * EXT4_DEGREE + bf_comp` holds BF component `bf_comp`
-            // of coset `coset` — cosets in natural (non-bit-reversed) order.
-            let trace_len = self.packed_leaf_count * self.values_per_leaf;
-            let full_trace = self.trace_holder.get_consolidated_cosets();
-            let mut host = vec![BF::ZERO; full_trace.len()];
-            memory_copy_async(&mut host, full_trace, context.get_exec_stream()).unwrap();
-            context.get_exec_stream().synchronize().unwrap();
-            (0..trace_len)
-                .map(|pos| {
-                    let mut coeffs = [BF::ZERO; EXT4_DEGREE];
-                    for bf_comp in 0..EXT4_DEGREE {
-                        coeffs[bf_comp] =
-                            host[(coset_index * EXT4_DEGREE + bf_comp) * trace_len + pos];
-                    }
-                    extension_field_from_base_coeffs::<BF, E4>(coeffs)
-                })
-                .collect()
-        }
-    }
-
-    fn decode_leaf_values(leafs: &[BF], values_per_leaf: usize) -> Vec<E4> {
-        assert_eq!(leafs.len(), values_per_leaf * EXT4_DEGREE);
-        let mut result = Vec::with_capacity(values_per_leaf);
-        for value_index in 0..values_per_leaf {
-            let mut coeffs = [BF::ZERO; EXT4_DEGREE];
-            for column in 0..EXT4_DEGREE {
-                coeffs[column] = leafs[value_index * EXT4_DEGREE + column];
-            }
-            result.push(extension_field_from_base_coeffs::<BF, E4>(coeffs));
-        }
-
-        result
-    }
 
     fn sample_monomial_coeffs(size: usize) -> Vec<E4> {
         let mut rng = rand::rng();
@@ -918,7 +948,7 @@ pub(crate) mod tests {
         let mut monomial_coeffs_device = context
             .alloc(
                 trace_len * super::EXT4_DEGREE,
-                crate::allocator::tracker::AllocationPlacement::BestFit,
+                gpu_core::allocator::tracker::AllocationPlacement::BestFit,
             )
             .unwrap();
         memory_copy_async(
@@ -1068,10 +1098,16 @@ pub(crate) mod tests {
             let logical_row_index = stage1_coset_index * oracle.packed_leaf_count + internal_index;
 
             let mut value_index = context
-                .alloc(1, crate::allocator::tracker::AllocationPlacement::BestFit)
+                .alloc(
+                    1,
+                    gpu_core::allocator::tracker::AllocationPlacement::BestFit,
+                )
                 .unwrap();
             let mut path_index = context
-                .alloc(1, crate::allocator::tracker::AllocationPlacement::BestFit)
+                .alloc(
+                    1,
+                    gpu_core::allocator::tracker::AllocationPlacement::BestFit,
+                )
                 .unwrap();
             memory_copy_async(
                 &mut value_index,

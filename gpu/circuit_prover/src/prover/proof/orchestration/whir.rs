@@ -5,9 +5,6 @@ use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::prover::whir::fold::{
-    schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledExecution,
-};
 use crate::prover::ProverContext;
 use crate::upstream::{GKRCircuitArtifact, WhirSchedule};
 use gpu_gkr::backward::kernels::ScheduledBackwardWorkflowStateHandle;
@@ -22,6 +19,7 @@ use gpu_gkr::stage1::GpuGKRStage1Output;
 use gpu_trace::trace::holder::{
     allocate_trees, TraceHolder, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
 };
+use gpu_whir::fold::{schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledExecution};
 
 pub(in crate::prover::proof) struct WhirPhaseResult {
     pub(in crate::prover::proof) transition_ranges: Vec<Range>,
@@ -160,7 +158,7 @@ pub(in crate::prover::proof) fn schedule_whir_phase<'a>(
         unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(batching_nonce_ptr) };
     let (final_device_seed_mut, _claim_point_for_squeeze) =
         backward_scheduled.final_device_seed_and_claim_point_mut();
-    crate::prover::pow::schedule_draw_e4_challenges_with_pow(
+    gpu_whir::pow::schedule_draw_e4_challenges_with_pow(
         &mut **final_device_seed_mut,
         &mut batching_challenge_device,
         batching_pow_bits,

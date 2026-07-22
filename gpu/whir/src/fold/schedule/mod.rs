@@ -1,7 +1,7 @@
 use super::*;
 
-use crate::ops::bit_reverse::bit_reverse_in_place;
-use crate::ops::blake2s::transcript_commit;
+use gpu_hash::blake2s::transcript_commit;
+use gpu_ops::bit_reverse::bit_reverse_in_place;
 
 mod fold_round;
 mod round_phases;
@@ -12,7 +12,9 @@ use round_phases::{
     schedule_ood_sample_phase, schedule_pow_and_query_indexes_phase,
 };
 
-pub(crate) fn schedule_gpu_whir_fold_with_sources(
+// pub (not pub(crate)): the apex proof orchestration (`proof/orchestration/whir.rs`)
+// drives the WHIR phase through this entry point across the crate boundary.
+pub fn schedule_gpu_whir_fold_with_sources(
     memory_trace_holder: &mut TraceHolder<BF>,
     witness_trace_holder: &mut TraceHolder<BF>,
     setup_trace_holder: &mut TraceHolder<BF>,
@@ -139,8 +141,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     // Per-WHIR-round device state for the device-side PoW verify +
     // query-index assembly. Later callbacks consume the nonce.
     let mut pow_round_state: Vec<PowAndQueryIndexesState> = Vec::new();
-    let mut recursive_caps_keepalive: Vec<crate::prover::whir::GpuWhirExtensionOracleKeepalive> =
-        Vec::new();
+    let mut recursive_caps_keepalive: Vec<crate::GpuWhirExtensionOracleKeepalive> = Vec::new();
     // Per-round device-resident OOD points produced by `schedule_ood_sample_phase`
     // and consumed by `schedule_delinearization_running_powers_phase`. Kept on
     // the orchestrator so the device buffers outlive all kernels reading them.
@@ -288,7 +289,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let base_indices_dst = unsafe {
             era_cudart::slice::DeviceSlice::from_raw_parts_mut(base_idx_ptr, base_idx_len)
         };
-        crate::ops::blake2s::query_index_to_tree_index(
+        gpu_hash::blake2s::query_index_to_tree_index(
             device_query_indexes_for_base,
             base_indices_dst,
             log_lde_factor_base,
@@ -318,11 +319,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let base_oracle_descs = |holders: [&TraceHolder<BF>; 3],
                                  slab_ptrs: [u64; 6]|
          -> (
-            [crate::ops::blake2s::OracleGatherDesc; 3],
-            [crate::ops::blake2s::OraclePartialPathDesc; 3],
+            [gpu_hash::blake2s::OracleGatherDesc; 3],
+            [gpu_hash::blake2s::OraclePartialPathDesc; 3],
         ) {
-            let mut leaves = [crate::ops::blake2s::OracleGatherDesc::default(); 3];
-            let mut paths = [crate::ops::blake2s::OraclePartialPathDesc::default(); 3];
+            let mut leaves = [gpu_hash::blake2s::OracleGatherDesc::default(); 3];
+            let mut paths = [gpu_hash::blake2s::OraclePartialPathDesc::default(); 3];
             for (i, holder) in holders.iter().enumerate() {
                 if holder.columns_count == 0 {
                     continue;
@@ -331,13 +332,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 let tree = holder
                     .get_consolidated_tree()
                     .expect("base oracles run with TreesCacheMode::CachePartial");
-                leaves[i] = crate::ops::blake2s::OracleGatherDesc {
+                leaves[i] = gpu_hash::blake2s::OracleGatherDesc {
                     cosets_ptr: cosets.as_ptr() as u64,
                     columns_count: holder.columns_count as u32,
                     _pad: 0,
                     slab_dst_ptr: slab_ptrs[i * 2],
                 };
-                paths[i] = crate::ops::blake2s::OraclePartialPathDesc {
+                paths[i] = gpu_hash::blake2s::OraclePartialPathDesc {
                     cosets_ptr: cosets.as_ptr() as u64,
                     partial_tree_ptr: tree.as_ptr() as u64,
                     columns_count: holder.columns_count as u32,
@@ -407,7 +408,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             ],
             slab_ptrs,
         );
-        crate::ops::blake2s::gather_leaves_for_queries(
+        gpu_hash::blake2s::gather_leaves_for_queries(
             &leaves_descs,
             3,
             log_lde_factor_base,
@@ -421,7 +422,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let base_layers_count = memory_trace_holder.log_domain_size
             - memory_trace_holder.log_rows_per_leaf
             - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor);
-        crate::ops::blake2s::gather_merkle_paths_partial_for_queries(
+        gpu_hash::blake2s::gather_merkle_paths_partial_for_queries(
             &paths_descs,
             3,
             log_lde_factor_base,
@@ -436,7 +437,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         // already lives in slot 0 of per_query_pows
         // (written by `schedule_delinearization_running_powers_phase`), so
         // the squaring kernel only fills the per-query tail at `[log_n..]`.
-        crate::ops::squaring::query_squaring_sequences_bf_to_e4(
+        gpu_ops::squaring::query_squaring_sequences_bf_to_e4(
             query_domain_generator,
             device_query_indexes_for_base,
             &mut per_query_pows[count_per_query..],
@@ -623,7 +624,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         // in slot 0 of per_query_pows (written by
         // `schedule_delinearization_running_powers_phase`), so the squaring
         // kernel only fills the per-query tail at `[log_n..]`.
-        crate::ops::squaring::query_squaring_sequences_bf_to_e4(
+        gpu_ops::squaring::query_squaring_sequences_bf_to_e4(
             query_domain_generator,
             device_query_indexes_for_round,
             &mut per_query_pows[count_per_query..],

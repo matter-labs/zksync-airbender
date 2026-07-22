@@ -5,7 +5,7 @@
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 
-namespace airbender::prover::whir {
+namespace airbender::whir {
 
 EXTERN __global__ void ab_serialize_whir_e4_columns_kernel(const e4 *src, bf *dst, const unsigned count) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -97,4 +97,4 @@ EXTERN __global__ void ab_accumulate_whir_base_columns_with_serialized_bf_e4_ker
   store<bf, st_modifier::cs>(serialized_bf, acc.base_coefficient_from_flat_idx(3), 3 * rows + gid);
 }
 
-} // namespace airbender::prover::whir
+} // namespace airbender::whir

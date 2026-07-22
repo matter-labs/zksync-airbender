@@ -6,22 +6,22 @@ use era_cudart::{
     cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
 };
 
-use crate::ops::simple::pow;
-use crate::primitives::device_structures::{
+use gpu_core::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
-use crate::primitives::field::{BF, E4};
-#[cfg(test)]
-use crate::primitives::utils::GetChunksCount;
-use crate::primitives::utils::{
+use gpu_core::primitives::field::{BF, E4};
+use gpu_ops::simple::pow;
+// Permanently compiled (Task 10): used by the promoted `debug.rs` builders.
+use crate::upstream::FieldExtension;
+use gpu_core::primitives::utils::GetChunksCount;
+use gpu_core::primitives::utils::{
     get_grid_block_dims_for_threads_count, get_grid_block_dims_for_warp_groups, WARP_SIZE,
 };
-use crate::prover::ProverContext;
-use crate::upstream::FieldExtension;
 use gpu_gkr::backward::{
     eq_group_count, gkr_dim_reducing_launch_config, make_eq_sizes, GkrEqSizes,
     GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS,
 };
+use gpu_prover_context::ProverContext;
 
 cuda_kernel_signature_arguments_and_function!(
     SerializeWhirE4Columns,
@@ -38,7 +38,6 @@ cuda_kernel_declaration!(
     )
 );
 
-#[cfg(test)]
 pub(crate) fn serialize_whir_e4_columns(
     src: &DeviceSlice<E4>,
     dst: &mut DeviceSlice<BF>,
@@ -116,7 +115,6 @@ cuda_kernel_declaration!(
     )
 );
 
-#[cfg(test)]
 pub(crate) fn accumulate_whir_base_columns(
     memory_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     witness_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -300,7 +298,6 @@ cuda_kernel_declaration!(
     )
 );
 
-#[cfg(test)]
 pub(crate) fn whir_fold_split_half_in_place(
     values: &mut DeviceSlice<E4>,
     challenge: &DeviceVariable<E4>,
@@ -316,7 +313,6 @@ pub(crate) fn whir_fold_split_half_in_place(
     WhirFoldSplitHalfFunction(ab_whir_fold_split_half_e4_kernel).launch(&config, &args)
 }
 
-#[cfg(test)]
 cuda_kernel_signature_arguments_and_function!(
     PackRowsForWhirLeavesMultiCoset,
     src: PtrAndStride<BF>,
@@ -329,7 +325,6 @@ cuda_kernel_signature_arguments_and_function!(
     src_cols_per_coset: u32,
 );
 
-#[cfg(test)]
 cuda_kernel_declaration!(
     ab_pack_rows_for_whir_leaves_multi_coset_bf_kernel(
         src: PtrAndStride<BF>,

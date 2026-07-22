@@ -1,13 +1,13 @@
-use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::blake2s::{
-    blake2s_pow, reduce_raw_words_to_e4, transcript_commit, transcript_squeeze, STATE_SIZE,
-};
-use crate::primitives::context::DeviceAllocation;
-use crate::primitives::field::E4;
-use crate::prover::ProverContext;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::context::DeviceAllocation;
+use gpu_core::primitives::field::E4;
 use gpu_gkr::gkr_ops::assemble_query_indexes;
+use gpu_hash::blake2s::{
+    blake2s_pow, reduce_raw_words_to_e4, transcript_commit, transcript_squeeze, STATE_SIZE,
+};
+use gpu_prover_context::ProverContext;
 
 /// Device buffers produced by [`schedule_pow_verify_and_query_indexes`]. The
 /// rolling `device_seed` is owned by the WHIR scheduler and threaded in by the
@@ -132,7 +132,10 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
 ///
 /// The nonce is written into the caller-supplied proof-slab slot (0 at Sec80),
 /// read back with the rest of the slab and assembled into `GKRProof` by `finish`.
-pub(crate) fn schedule_draw_e4_challenges_with_pow(
+// pub (not pub(crate)): the apex proof orchestration draws the lookup/WHIR
+// batching challenges through this PoW-gated entry point across the crate
+// boundary (`stage1_forward.rs`, `whir.rs`).
+pub fn schedule_draw_e4_challenges_with_pow(
     device_seed: &mut DeviceSlice<u32>,
     output: &mut DeviceSlice<E4>,
     pow_bits: u32,

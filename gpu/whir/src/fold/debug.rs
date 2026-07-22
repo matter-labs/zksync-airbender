@@ -1,18 +1,21 @@
-use super::super::*;
+use super::*;
 
 use era_cudart::memory::memory_copy_async;
 use fft::bitreverse_enumeration_inplace;
 
-use crate::allocator::tracker::AllocationPlacement;
-use crate::primitives::static_host::{
+use fft::batch_inverse_inplace;
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::static_host::{
     alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
 };
-use fft::batch_inverse_inplace;
 
-use super::GpuScheduledBaseFieldQuery;
-use crate::primitives::callbacks::Callbacks;
-use crate::prover::whir::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
+use crate::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
 use crate::upstream::PrimeField;
+use crate::upstream::{BaseFieldQuery, DefaultTreeConstructor};
+use core::marker::PhantomData;
+use gpu_core::primitives::callbacks::Callbacks;
+use gpu_core::primitives::context::HostAllocation;
+use gpu_hash::blake2s::Digest;
 
 pub(super) fn copy_small_to_device<T: Copy>(
     dst: &mut DeviceSlice<T>,
@@ -607,7 +610,8 @@ pub(super) fn evaluate_monomial_form_device(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn debug_build_initial_state_for_test(
+#[doc(hidden)]
+pub fn debug_build_initial_state_for_test(
     memory_trace_holder: &TraceHolder<BF>,
     mem_polys_claims: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
@@ -653,7 +657,8 @@ pub(crate) fn debug_build_initial_state_for_test(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn debug_build_initial_state_snapshots_for_test(
+#[doc(hidden)]
+pub fn debug_build_initial_state_snapshots_for_test(
     memory_trace_holder: &TraceHolder<BF>,
     mem_polys_claims: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
@@ -715,22 +720,27 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
     Ok((pre_eq, post_eq))
 }
 
-pub(crate) struct DebugInitialWhirRoundCheckpoint {
-    pub(crate) sumcheck_polys: Vec<[E4; 3]>,
-    pub(crate) folding_challenges: Vec<E4>,
-    pub(crate) folded_monomial_form: Vec<E4>,
-    pub(crate) recursive_cap: MerkleTreeCapVarLength,
-    pub(crate) ood_point: E4,
-    pub(crate) ood_value: E4,
-    pub(crate) transcript_seed: Seed,
+// #[doc(hidden)] pub fields: the apex parity test reads every field of the
+// checkpoint returned by `debug_initial_round_checkpoint_for_test`.
+#[doc(hidden)]
+pub struct DebugInitialWhirRoundCheckpoint {
+    pub sumcheck_polys: Vec<[E4; 3]>,
+    pub folding_challenges: Vec<E4>,
+    pub folded_monomial_form: Vec<E4>,
+    pub recursive_cap: MerkleTreeCapVarLength,
+    pub ood_point: E4,
+    pub ood_value: E4,
+    pub transcript_seed: Seed,
 }
 
-pub(crate) struct DebugWhirInitialFoldState {
+#[doc(hidden)]
+pub struct DebugWhirInitialFoldState {
     state: GpuWhirState,
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn debug_initial_round_checkpoint_for_test(
+#[doc(hidden)]
+pub fn debug_initial_round_checkpoint_for_test(
     memory_trace_holder: &TraceHolder<BF>,
     mem_polys_claims: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
@@ -833,7 +843,8 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn debug_build_initial_fold_state_for_test(
+#[doc(hidden)]
+pub fn debug_build_initial_fold_state_for_test(
     memory_trace_holder: &TraceHolder<BF>,
     mem_polys_claims: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
@@ -863,7 +874,8 @@ pub(crate) fn debug_build_initial_fold_state_for_test(
     Ok(DebugWhirInitialFoldState { state })
 }
 
-pub(crate) fn debug_apply_initial_fold_challenge_for_test(
+#[doc(hidden)]
+pub fn debug_apply_initial_fold_challenge_for_test(
     debug_state: &mut DebugWhirInitialFoldState,
     challenge: E4,
     context: &ProverContext,
@@ -904,4 +916,40 @@ pub(super) fn vectorized_to_e4_coeffs(
         })
         .collect_vec();
     coeffs
+}
+
+// Relocated from `tests/query_tests.rs` (Task 10) so this permanently-compiled
+// query helper (`schedule_query_base_trace_holder_for_folded_index`) can name
+// its return type. Crate-internal (query parity tests only) — no apex consumer,
+// so it stays `pub(crate)`, not `#[doc(hidden)] pub`.
+pub(crate) struct GpuScheduledBaseFieldQuery {
+    pub(crate) index: usize,
+    pub(crate) coset_index: usize,
+    // Keeps index-fill callbacks alive until the stream executes them.
+    #[allow(dead_code)]
+    pub(crate) callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    pub(crate) leafs: HostAllocation<[BF]>,
+    #[allow(dead_code)]
+    pub(crate) merkle_paths: HostAllocation<[Digest]>,
+    pub(crate) values_per_leaf: usize,
+    pub(crate) columns_count: usize,
+}
+
+impl GpuScheduledBaseFieldQuery {
+    pub(crate) fn decode(&self) -> (Vec<Vec<BF>>, BaseFieldQuery<BF, DefaultTreeConstructor>) {
+        let leafs_accessor = self.leafs.get_accessor();
+        let path_accessor = self.merkle_paths.get_accessor();
+        let leafs = unsafe { leafs_accessor.get() };
+        let path = unsafe { path_accessor.get().to_vec() };
+        let decoded = decode_base_leaf_values(leafs, self.values_per_leaf, self.columns_count);
+        let cpu_query = BaseFieldQuery {
+            index: self.index,
+            leaf_values_concatenated: decoded.iter().flatten().copied().collect(),
+            path,
+            _marker: PhantomData,
+        };
+
+        (decoded, cpu_query)
+    }
 }

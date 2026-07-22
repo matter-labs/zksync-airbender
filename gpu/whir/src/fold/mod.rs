@@ -1,47 +1,43 @@
 #[cfg(test)]
 use core::marker::PhantomData;
-#[cfg(test)]
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::domain_generator_for_size;
-#[cfg(test)]
 use fft::materialize_powers_serial_starting_with_one;
 
-use crate::allocator::tracker::AllocationPlacement;
-#[cfg(test)]
-use crate::ops::blake2s::Digest;
-use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
-use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
-use crate::ops::ntt::{
-    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
-    natural_evals_to_bitreversed_monomials,
-};
-#[cfg(test)]
-use crate::ops::simple::{add, mul, mul_into_x};
-use crate::ops::transpose::transpose;
-use crate::primitives::context::DeviceAllocation;
-#[cfg(test)]
-use crate::primitives::context::HostAllocation;
-use crate::primitives::device_structures::{
-    DeviceMatrix, DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixOwnsAllocation,
-};
-use crate::primitives::device_tracing::Range;
-use crate::primitives::field::{BF, E4};
-use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
-#[cfg(test)]
-use crate::prover::whir::kernels::whir_fold_split_half_in_place;
-use crate::prover::whir::kernels::{
+use crate::kernels::whir_fold_split_half_in_place;
+use crate::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
     deserialize_whir_e4_columns, launch_batched_accumulate_eq_samples,
     launch_split_accumulate_eq_samples, launch_whir_three_point_partials,
     partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens,
     whir_fold_split_half_in_place_pair, whir_fold_split_half_in_place_vectorized,
 };
-use crate::prover::whir::GpuWhirExtensionOracle;
-use crate::prover::ProverContext;
+use crate::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 use crate::upstream::FieldExtension;
+use crate::GpuWhirExtensionOracle;
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::context::DeviceAllocation;
+use gpu_core::primitives::context::HostAllocation;
+use gpu_core::primitives::device_structures::{
+    DeviceMatrix, DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixOwnsAllocation,
+};
+use gpu_core::primitives::device_tracing::Range;
+use gpu_core::primitives::field::{BF, E4};
+use gpu_cub::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
+use gpu_cub::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 #[cfg(test)]
+use gpu_hash::blake2s::Digest;
+use gpu_ntt::ntt::{
+    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
+    natural_evals_to_bitreversed_monomials,
+};
+use gpu_ops::simple::{add, mul, mul_into_x};
+use gpu_ops::transpose::transpose;
+use gpu_prover_context::ProverContext;
+// Permanently imported (not #[cfg(test)]): the now-permanent `debug.rs` builders
+// consume these via `use super::*`.
 use crate::upstream::{
     add_whir_commitment_to_transcript, commit_field_els, draw_random_field_els, BaseFieldQuery,
     DefaultTreeConstructor, Field, MerkleTreeCapVarLength, Seed, WhirCommitment,
@@ -54,7 +50,8 @@ const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
 mod schedule;
 
-pub(crate) use schedule::schedule_gpu_whir_fold_with_sources;
+// pub: re-exported for the apex proof orchestration (see schedule::… definition).
+pub use schedule::schedule_gpu_whir_fold_with_sources;
 
 pub(super) struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation<BF>,
@@ -63,7 +60,10 @@ pub(super) struct GpuWhirState {
     eq_group_tables: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
     scratch1: DeviceAllocation<E4>,
-    #[cfg(test)]
+    // Permanently allocated (not #[cfg(test)]): the debug/checkpoint builders in
+    // `debug.rs` — now permanently compiled so the apex parity suite can reach
+    // them — write per-round scalars here. Unused on the production fold path.
+    #[allow(dead_code)]
     scalar: DeviceAllocation<E4>,
     reduce_temp: DeviceAllocation<u8>,
     reduce_out: DeviceAllocation<E4>,
@@ -88,7 +88,9 @@ impl FoldRoundGroupKeepalives {
     }
 }
 
-pub(crate) struct GpuWhirFoldScheduledExecution {
+// pub: returned to the apex proof orchestration, which holds it as a scheduled
+// keepalive on the proof job until `prove()` finishes.
+pub struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
     _tracing_ranges: Vec<Range>,
     #[allow(dead_code)]
@@ -112,7 +114,7 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     // Trace holders of retired intermediate WHIR oracles — kept alive so any
     // scheduled D2D/D2H reads against their unified device cap remain valid.
     #[allow(dead_code)]
-    _recursive_caps_keepalive: Vec<crate::prover::whir::GpuWhirExtensionOracleKeepalive>,
+    _recursive_caps_keepalive: Vec<crate::GpuWhirExtensionOracleKeepalive>,
 }
 
 impl GpuWhirFoldScheduledExecution {
@@ -124,7 +126,9 @@ impl GpuWhirFoldScheduledExecution {
     /// the exec stream). Each clear is on its
     /// own line so a single buffer class can be re-retained when bisecting a
     /// multi-schedule regression.
-    pub(crate) fn release_device_buffers(&mut self) {
+    // pub: the apex proof driver (`proof/mod.rs`) releases the WHIR scheduled
+    // execution's device buffers at finish across the crate boundary.
+    pub fn release_device_buffers(&mut self) {
         // Per-fold-round device challenge buffers.
         self._fold_round_group_keepalives.device_challenges.clear();
         // Per-round OOD points + delinearization ephemerals.
@@ -159,7 +163,6 @@ impl GpuWhirState {
             )?,
             scratch0: context.alloc(half_len, AllocationPlacement::BestFit)?,
             scratch1: context.alloc(half_len, AllocationPlacement::BestFit)?,
-            #[cfg(test)]
             scalar: context.alloc(1, AllocationPlacement::BestFit)?,
             reduce_temp: context
                 .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
@@ -173,7 +176,6 @@ impl GpuWhirState {
     }
 }
 
-#[cfg(test)]
 pub(super) fn schedule_reduce_outputs_readback(
     count: usize,
     state: &mut GpuWhirState,
@@ -188,7 +190,6 @@ pub(super) fn schedule_reduce_outputs_readback(
     Ok(host)
 }
 
-#[cfg(test)]
 pub(super) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
         debug_assert_eq!(index, 0);
@@ -304,7 +305,7 @@ pub(super) fn schedule_initialize_batched_forms(
     // — replaces the prior host callback + H2D path.
     let mut challenge_powers_device: DeviceAllocation<E4> =
         context.alloc(total_base_oracles, AllocationPlacement::BestFit)?;
-    crate::ops::powers::get_powers_by_ref(
+    gpu_ops::powers::get_powers_by_ref(
         &batching_challenge_device[0],
         0,
         &mut challenge_powers_device[..],
@@ -489,8 +490,16 @@ pub(super) fn schedule_accumulate_eq_samples_batched(
     }
 }
 
-#[cfg(test)]
-pub(crate) use tests::{
+// debug.rs holds the WHIR-fold debug/checkpoint builders. It is permanently
+// compiled (NOT #[cfg(test)]) so the apex e2e/parity suite can reach the
+// `debug_*_for_test` entry points across the crate boundary — a dependency's
+// #[cfg(test)] items are invisible to consumers. The five entry points are
+// re-exported here as #[doc(hidden)] pub for `gpu_whir::fold::debug_*`.
+#[doc(hidden)]
+pub mod debug;
+
+#[doc(hidden)]
+pub use debug::{
     debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,
     debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
     debug_initial_round_checkpoint_for_test,

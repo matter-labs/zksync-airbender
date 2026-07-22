@@ -29,7 +29,7 @@ max-threads = 1
 # per-process CUDA-init cost. First match wins: this override must stay above
 # the gpu-serial one.
 [[profile.default.overrides]]
-filter = '(package(gpu_hash) | package(gpu_core) | package(gpu_ntt) | package(gpu_ops) | package(gpu_cub) | package(gpu_gkr_model) | package(gpu_prover_context) | package(gpu_trace) | package(gpu_gkr) | package(gpu_circuit_prover) | package(gpu_execution_prover) | package(gpu_program_prover)) & test(/(^|::)cpu_/)'
+filter = '(package(gpu_hash) | package(gpu_core) | package(gpu_ntt) | package(gpu_ops) | package(gpu_cub) | package(gpu_gkr_model) | package(gpu_prover_context) | package(gpu_trace) | package(gpu_gkr) | package(gpu_whir) | package(gpu_circuit_prover) | package(gpu_execution_prover) | package(gpu_program_prover)) & test(/(^|::)cpu_/)'
 test-group = '@global'
 
 # slow-timeout: a hung kernel previously wedged the whole suite and the GPU
@@ -38,7 +38,7 @@ test-group = '@global'
 # the run proceeds. The cap is sized for the heaviest legitimate #[ignore]d
 # proof/e2e tests, which run under the same override.
 [[profile.default.overrides]]
-filter = 'package(gpu_hash) | package(gpu_core) | package(gpu_ntt) | package(gpu_ops) | package(gpu_cub) | package(gpu_gkr_model) | package(gpu_prover_context) | package(gpu_trace) | package(gpu_gkr) | package(gpu_circuit_prover) | package(gpu_execution_prover) | package(gpu_program_prover)'
+filter = 'package(gpu_hash) | package(gpu_core) | package(gpu_ntt) | package(gpu_ops) | package(gpu_cub) | package(gpu_gkr_model) | package(gpu_prover_context) | package(gpu_trace) | package(gpu_gkr) | package(gpu_whir) | package(gpu_circuit_prover) | package(gpu_execution_prover) | package(gpu_program_prover)'
 test-group = 'gpu-serial'
 slow-timeout = { period = "120s", terminate-after = 10 }
 

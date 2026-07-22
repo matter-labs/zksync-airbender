@@ -9,12 +9,12 @@ use crate::primitives::context::HostAllocation;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::proof::inputs::GpuGKRProofTransferKeepalive;
-use crate::prover::whir::fold::GpuWhirFoldScheduledExecution;
 use crate::upstream::{DefaultTreeConstructor, Field, GKRCircuitArtifact, GKRProof, OutputType};
 use gpu_gkr::backward::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
 use gpu_gkr::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
 use gpu_gkr::setup::GpuGKRForwardSetupHostKeepalive;
 use gpu_gkr::stage1::GpuGKRStage1Keepalive;
+use gpu_whir::fold::GpuWhirFoldScheduledExecution;
 
 mod backward;
 pub(super) mod stage1_forward;

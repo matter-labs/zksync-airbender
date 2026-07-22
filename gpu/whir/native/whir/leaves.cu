@@ -7,7 +7,7 @@ using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 using ::airbender::hash::bitreverse_low_bits;
 
-namespace airbender::prover::whir {
+namespace airbender::whir {
 
 // Multi-coset pack: one launch handles `num_cosets_in_tile` independent cosets.
 // `src` is the multi-coset NTT output -- coset-major outer (`coset_in_tile *
@@ -46,4 +46,4 @@ EXTERN __global__ void ab_pack_rows_for_whir_leaves_multi_coset_bf_kernel(const 
   dst.set(dst_row, col, src.get(src_row, src_col_global));
 }
 
-} // namespace airbender::prover::whir
+} // namespace airbender::whir

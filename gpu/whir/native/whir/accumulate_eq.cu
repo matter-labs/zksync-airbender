@@ -5,7 +5,7 @@ using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 using namespace ::airbender::gkr;
 
-namespace airbender::prover::whir {
+namespace airbender::whir {
 
 // Launch with gridDim.x = max(eq_group_count(challenge_count), GKR_EQ_HIGH_SLOTS):
 // blocks past `groups_count` exist only to write the E::ONE() sentinel into
@@ -114,4 +114,4 @@ EXTERN __global__ void ab_whir_accumulate_eq_split_e4_kernel(const e4 *eq_high_a
   eq_poly[gid] = e4::add(eq_poly[gid], acc);
 }
 
-} // namespace airbender::prover::whir
+} // namespace airbender::whir

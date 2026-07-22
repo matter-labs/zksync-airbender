@@ -5,10 +5,10 @@ use std::alloc::Global;
 use era_cudart::memory::memory_copy_async;
 use fft::{bitreverse_enumeration_inplace, Twiddles};
 
-use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
-use crate::prover::test_utils::make_test_context;
-use crate::prover::whir::tests::e4_coeffs_to_vectorized;
+use crate::e4_coeffs_to_vectorized;
+use crate::test_utils::make_test_context;
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_ntt::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
 use gpu_trace::trace::holder::TreesCacheMode;
 
 use crate::upstream::{make_eq_poly_in_full, multivariate_coeffs_into_hypercube_evals, PrimeField};
@@ -711,15 +711,11 @@ fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
     run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true, true);
 }
 
-mod helpers;
-
-pub(crate) use helpers::{
-    debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,
-    debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
-    debug_initial_round_checkpoint_for_test,
-};
-
-use helpers::{
+// helpers.rs was promoted to the permanent `crate::fold::debug` module (Task 10)
+// so the apex parity suite can reach the `debug_*_for_test` entry points (which
+// arrive here via `use super::*`, re-exported at the `fold` level). The internal
+// builders are imported directly from `debug`.
+use crate::fold::debug::{
     build_initial_state, copy_back, evaluate_monomial_form_device, fold_eq_poly_in_place_device,
     fold_evaluation_form_in_place_device, fold_monomial_form_in_place_device,
     schedule_special_three_point_eval_device, special_three_point_eval_device,
@@ -727,5 +723,3 @@ use helpers::{
 };
 
 mod query_tests;
-
-pub(crate) use query_tests::GpuScheduledBaseFieldQuery;

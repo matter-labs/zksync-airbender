@@ -1,8 +1,8 @@
 use super::super::*;
 
-use crate::ops::blake2s::{transcript_commit, transcript_squeeze_e4};
-use crate::ops::powers::get_powers_by_ref;
-use crate::ops::squaring::squaring_sequence_e4;
+use gpu_hash::blake2s::{transcript_commit, transcript_squeeze_e4};
+use gpu_ops::powers::get_powers_by_ref;
+use gpu_ops::squaring::squaring_sequence_e4;
 
 /// Commits the next WHIR extension oracle: builds it from `state.sumchecked_poly_monomial_form`,
 /// gathering its unified device cap directly into the slab at `oracle_idx`, then advances
