@@ -546,7 +546,7 @@ function sumcheck_circuit_layer4(ptr, claim, alpha) -> next_ptr, next_claim, nex
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
-    // split the absorb: final_step, draw, extras). next_claim unused (sccl recomputes).
+    // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
     next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 12)
 }
 
@@ -620,7 +620,7 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
-    // split the absorb: final_step, draw, extras). next_claim unused (sccl recomputes).
+    // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
     next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 18)
 }
 
@@ -697,7 +697,7 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
-    // split the absorb: final_step, draw, extras). next_claim unused (sccl recomputes).
+    // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
     next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 26)
 }
 
@@ -802,11 +802,13 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
-    // split the absorb: final_step, draw, extras). next_claim unused (sccl recomputes).
+    // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
     {
             let base := mload(CIRCUIT_PTR)
             mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
             let bp := add(GKR_ABS_PTR(), 32)
+            // absorb final_step ++ extras contiguously, then draw (soundness: batching depends on
+            // the extra cache-dependency evals). ONE keccak of [seed || final_step || extras].
             calldatacopy(bp, add(base, mul(16, 0)), mul(16, 8))
             bp := add(bp, mul(16, 8))
             calldatacopy(bp, add(base, mul(16, 48)), mul(16, 26))
@@ -821,17 +823,13 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
             bp := add(bp, 16)
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))))
             bp := add(bp, 16)
+            calldatacopy(bp, add(base, mul(16, 8)), mul(16, 40))
+            bp := add(bp, mul(16, 40))
             let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
             mstore(SEED_PTR(), s)
             s := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), s)
             next_alpha := mod(shr(128, s), mload(P_PTR))
-            mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
-            bp := add(GKR_ABS_PTR(), 32)
-            calldatacopy(bp, add(base, mul(16, 8)), mul(16, 40))
-            bp := add(bp, mul(16, 40))
-            s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
-            mstore(SEED_PTR(), s)
             next_ptr := add(ptr, mul(16, 74))
             next_claim := 0
             }
@@ -1204,11 +1202,13 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
 
     
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
-    // split the absorb: final_step, draw, extras). next_claim unused (sccl recomputes).
+    // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
     {
             let base := mload(CIRCUIT_PTR)
             mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
             let bp := add(GKR_ABS_PTR(), 32)
+            // absorb final_step ++ extras contiguously, then draw (soundness: batching depends on
+            // the extra cache-dependency evals). ONE keccak of [seed || final_step || extras].
             calldatacopy(bp, add(base, mul(16, 38)), mul(16, 66))
             bp := add(bp, mul(16, 66))
             calldatacopy(bp, add(base, mul(16, 2)), mul(16, 2))
@@ -1257,13 +1257,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             bp := add(bp, 16)
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15)))))
             bp := add(bp, 16)
-            let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
-            mstore(SEED_PTR(), s)
-            s := keccak256(SEED_PTR(), 32)
-            mstore(SEED_PTR(), s)
-            next_alpha := mod(shr(128, s), mload(P_PTR))
-            mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
-            bp := add(GKR_ABS_PTR(), 32)
             calldatacopy(bp, add(base, mul(16, 0)), mul(16, 2))
             bp := add(bp, mul(16, 2))
             calldatacopy(bp, add(base, mul(16, 4)), mul(16, 1))
@@ -1272,8 +1265,11 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
             bp := add(bp, mul(16, 2))
             calldatacopy(bp, add(base, mul(16, 104)), mul(16, 10))
             bp := add(bp, mul(16, 10))
-            s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
+            let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
             mstore(SEED_PTR(), s)
+            s := keccak256(SEED_PTR(), 32)
+            mstore(SEED_PTR(), s)
+            next_alpha := mod(shr(128, s), mload(P_PTR))
             next_ptr := add(ptr, mul(16, 114))
             next_claim := 0
             }

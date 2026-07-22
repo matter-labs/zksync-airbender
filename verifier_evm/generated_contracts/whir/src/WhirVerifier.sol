@@ -584,6 +584,12 @@ contract WhirVerifier {
             default { do_final(fold, q, pow_bits, qib, vp, idx_mask, mload(REG_ZIOFF), rfin, cb) }
         }
 
+        // Hardening (mirrors GKR's assert_proof_empty): the proof stream must be fully consumed —
+        // the cursor (REG_CD) must land EXACTLY at the end of calldata, with no trailing/unused
+        // bytes. Unlike the GKR stream (which ends 8 bytes early for the WHIR-batching PoW nonce),
+        // the WHIR stream ends at calldatasize() — the last item is the final round's query openings.
+        if iszero(eq(mload(REG_CD), calldatasize())) { revert(0, 0) }
+
         // Every check passed (any failure would have reverted). Notify the registry with
         // the recomputed committed state — GKR marks the same bytes32 from its own tx.
         {

@@ -2349,9 +2349,13 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
 
         // Transcript (absorb evals + draw next batching). For layers WITHOUT caches the whole
         // eval block is one contiguous absorb (sumcheck_claims_batch). For cache layers the
-        // prover absorbs final_step = [gate-input InnerLayer evals ++ the recomputed cache evals]
-        // (address-sorted: InnerLayer < Cached), DRAWS next_batching, then absorbs the extras =
-        // the cache-dependency InnerLayer evals. We reproduce that split here.
+        // absorbed data is final_step = [gate-input InnerLayer evals ++ the recomputed cache evals]
+        // (address-sorted: InnerLayer < Cached) FOLLOWED BY the extras = the cache-dependency
+        // InnerLayer evals — all absorbed into ONE keccak BEFORE drawing next_batching (soundness:
+        // the batching challenge must depend on the extra prover-provided evals too, matching the
+        // prover committing `new_claims ++ extra` in one shot). The keccak transcript hashes
+        // `seed || data` per absorb, so final_step and extras must go into a single absorb — two
+        // separate absorbs would diverge from the prover's single commit.
         fn contiguous_ranges(sorted: &[usize]) -> Vec<(usize, usize)> {
             let mut r = vec![];
             let mut k = 0;
@@ -2430,15 +2434,13 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             let base := mload(CIRCUIT_PTR)
             mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
             let bp := add(GKR_ABS_PTR(), 32)
-{fs_copy}            let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
+            // absorb final_step ++ extras contiguously, then draw (soundness: batching depends on
+            // the extra cache-dependency evals). ONE keccak of [seed || final_step || extras].
+{fs_copy}{ex_copy}            let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
             mstore(SEED_PTR(), s)
             s := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), s)
             next_alpha := mod(shr(128, s), P)
-            mstore(GKR_ABS_PTR(), mload(SEED_PTR()))
-            bp := add(GKR_ABS_PTR(), 32)
-{ex_copy}            s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
-            mstore(SEED_PTR(), s)
             next_ptr := add(ptr, mul(16, {n}))
             next_claim := 0
             }}"
@@ -2469,7 +2471,7 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             {check:x}
             {writeback}
             // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
-            // split the absorb: final_step, draw, extras). next_claim unused (sccl recomputes).
+            // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
             {claims_batch}
         }}
         "
