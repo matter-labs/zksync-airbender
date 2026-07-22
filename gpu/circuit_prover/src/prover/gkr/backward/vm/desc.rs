@@ -45,8 +45,9 @@ pub(crate) const BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW: u32 = 2;
 pub(crate) const BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH: u32 = 3;
 
 const _: () = {
-    use cs::gkr_compiler::dag_ir::VirtualSetupKind::*;
+    use crate::upstream::VirtualSetupKind::*;
     use gkr_eval_isa::fwd::source::KIND_ORDER;
+    assert!(KIND_ORDER.len() == 4);
     assert!(matches!(
         KIND_ORDER[BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS as usize],
         RangeCheck16Bits
@@ -63,6 +64,11 @@ const _: () = {
         KIND_ORDER[BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH as usize],
         InitsAndTeardownsHigh
     ));
+};
+
+const _: () = {
+    assert!(OperandField::Base as u8 == 0);
+    assert!(OperandField::Ext as u8 == 1);
 };
 
 #[repr(C)]
@@ -412,21 +418,24 @@ const _: () = {
 
 #[cfg(all(test, feature = "bench"))]
 mod tests {
-    use cs::gkr_compiler::dag_ir::{BwdRegime, VirtualSetupKind};
+    use cs::gkr_compiler::dag_ir::BwdRegime;
     use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
     use gkr_eval_isa::fwd::isa::OperandField;
+    use gkr_eval_isa::fwd::source::KIND_ORDER;
 
     use super::{
         descriptor_counts, BwdVmDesc, BwdVmSourceWindow, BwdVmSpecial, BWD_VM_ARG_DERIVED_E4_CAP,
         BWD_VM_BF_CONSTANT_CAP, BWD_VM_CELL_CAP, BWD_VM_COEFFICIENT_CAP,
-        BWD_VM_CONST_DERIVED_E4_CAP, BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_WINDOW_CAP,
-        BWD_VM_SPECIAL_CAP, BWD_VM_SPECIAL_KIND_ACC_INIT, BWD_VM_SPECIAL_KIND_COEFFICIENT,
+        BWD_VM_CONST_DERIVED_E4_CAP, BWD_VM_ORIGIN_FIELD_BASE, BWD_VM_ORIGIN_FIELD_EXT,
+        BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_WINDOW_CAP, BWD_VM_SPECIAL_CAP,
+        BWD_VM_SPECIAL_KIND_ACC_INIT, BWD_VM_SPECIAL_KIND_COEFFICIENT,
         BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP, BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH,
         BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW, BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS,
         BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP,
     };
     use crate::prover::gkr::backward::vm::compile::load_add_sub_l0_case;
     use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
+    use crate::upstream::VirtualSetupKind;
 
     #[test]
     fn add_sub_l0_descriptor_census_fits_the_exact_program_cap() {
@@ -513,6 +522,9 @@ mod tests {
     fn special_record_maps_only_the_three_required_kinds() {
         use core::mem::{align_of, offset_of, size_of};
 
+        assert_eq!(KIND_ORDER.len(), 4);
+        assert_eq!(BWD_VM_ORIGIN_FIELD_BASE, 0);
+        assert_eq!(BWD_VM_ORIGIN_FIELD_EXT, 1);
         assert_eq!(size_of::<BwdVmSpecial>(), 4);
         assert_eq!(align_of::<BwdVmSpecial>(), 4);
         assert_eq!(offset_of!(BwdVmSpecial, packed), 0);
