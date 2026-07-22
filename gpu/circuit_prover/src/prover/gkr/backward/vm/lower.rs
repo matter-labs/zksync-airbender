@@ -14,8 +14,8 @@ use gkr_eval_isa::fwd::isa::{
 
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::GkrEqSizes;
-use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
-use crate::upstream::{ChallengeRef, PrimeField};
+use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
+use crate::upstream::{ChallengeRef, GKRAddress, PrimeField};
 
 use super::desc::{
     BwdVmDesc, BwdVmSourceWindow, BwdVmSpecial, SpecialLoweringError, BWD_VM_ARG_DERIVED_E4_CAP,
@@ -29,6 +29,7 @@ pub(crate) struct BwdVmRoundBinding<'a> {
     pub rows: u32,
     pub round_challenges: &'a [E4],
     pub sources: &'a [ResolvedBwdSourceWindow],
+    pub resolve_source: &'a dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
     pub eq_low: *const E4,
     pub eq_sizes: GkrEqSizes,
     pub contributions: *mut E4,
@@ -79,6 +80,18 @@ pub(crate) enum BwdVmLowerError {
         expect_e4: bool,
         got_e4: bool,
     },
+    MissingResolvedSource {
+        window: u8,
+        column: u8,
+    },
+    SourceIdentityMismatch {
+        window: u8,
+        column: u8,
+    },
+    NullSourceGeometry {
+        window: u8,
+        column: u8,
+    },
     SourceColumnOffStride {
         window: u8,
         column: u8,
@@ -107,6 +120,10 @@ pub(crate) enum BwdVmLowerError {
         expect_e4: bool,
         got_e4: bool,
     },
+    NullPublishGeometry {
+        window: u8,
+        column: u8,
+    },
     InvalidDepths {
         window: u8,
         column: u8,
@@ -125,6 +142,12 @@ pub(crate) enum BwdVmLowerError {
     UnsafeReadPublishAlias {
         window: u8,
         column: u8,
+    },
+    UnsafePublishAlias {
+        window: u8,
+        column: u8,
+        other_window: u8,
+        other_column: u8,
     },
     InvalidFoldDescriptor {
         window: u8,
@@ -311,27 +334,6 @@ fn lower_source_geometry(
         }
     }
 
-    // A catch-up fold reads the whole source column before publishing its
-    // target column. Reject overlap against every bound read column, not only
-    // the publishing binding's own read: publish(A) aliasing read(B) can
-    // overwrite data before B's first physical occurrence reaches it.
-    for (&(window, column), binding) in &bindings {
-        if binding.materialize && binding.backing_depth < binding.target_depth {
-            if let Some(publish) = &binding.publish {
-                if bindings.values().any(|other| {
-                    byte_ranges_overlap(
-                        other.read.ptr,
-                        other.read.stride_bytes,
-                        publish.ptr,
-                        publish.stride_bytes,
-                    )
-                }) {
-                    return Err(BwdVmLowerError::UnsafeReadPublishAlias { window, column });
-                }
-            }
-        }
-    }
-
     let mut groups = Vec::<SourceGroup>::new();
     for &(window, column) in &coordinates {
         let binding = bindings
@@ -373,6 +375,13 @@ fn lower_source_geometry(
                 got_e4: binding.read.is_e4,
             });
         }
+        validate_source_geometry(&binding.read, window, column)?;
+        let expected_read = (runtime.resolve_source)(read_place_to_gkr_address(&place))
+            .ok_or(BwdVmLowerError::MissingResolvedSource { window, column })?;
+        validate_source_geometry(&expected_read, window, column)?;
+        if !same_resolved_column(&binding.read, &expected_read) {
+            return Err(BwdVmLowerError::SourceIdentityMismatch { window, column });
+        }
         if binding.backing_depth > binding.target_depth || binding.target_depth != runtime.round {
             return Err(BwdVmLowerError::InvalidDepths {
                 window,
@@ -411,16 +420,7 @@ fn lower_source_geometry(
                             got_e4: publish.is_e4,
                         });
                     }
-                    if binding.backing_depth < binding.target_depth
-                        && byte_ranges_overlap(
-                            binding.read.ptr,
-                            binding.read.stride_bytes,
-                            publish.ptr,
-                            publish.stride_bytes,
-                        )
-                    {
-                        return Err(BwdVmLowerError::UnsafeReadPublishAlias { window, column });
-                    }
+                    validate_publish_geometry(publish, window, column)?;
                     matrix_column(publish, window, column)
                 })
                 .transpose()?,
@@ -451,6 +451,52 @@ fn lower_source_geometry(
         groups[group]
             .entries
             .push(((window, column), read_column, publish_column));
+    }
+
+    // Materialization writes a complete target column on first access even
+    // when the source is already at the target depth. Every publish therefore
+    // must be disjoint from every read and from every other publish.
+    let materialized = bindings
+        .iter()
+        .filter_map(|(&coordinate, binding)| {
+            if binding.materialize {
+                binding
+                    .publish
+                    .as_ref()
+                    .map(|publish| (coordinate, publish))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    for &((window, column), publish) in &materialized {
+        if bindings.values().any(|other| {
+            byte_ranges_overlap(
+                other.read.ptr,
+                other.read.stride_bytes,
+                publish.ptr,
+                publish.stride_bytes,
+            )
+        }) {
+            return Err(BwdVmLowerError::UnsafeReadPublishAlias { window, column });
+        }
+    }
+    for (index, &((window, column), publish)) in materialized.iter().enumerate() {
+        for &((other_window, other_column), other_publish) in &materialized[index + 1..] {
+            if byte_ranges_overlap(
+                publish.ptr,
+                publish.stride_bytes,
+                other_publish.ptr,
+                other_publish.stride_bytes,
+            ) {
+                return Err(BwdVmLowerError::UnsafePublishAlias {
+                    window,
+                    column,
+                    other_window,
+                    other_column,
+                });
+            }
+        }
     }
 
     check_cap(
@@ -542,6 +588,35 @@ fn matrix_column(
         return Err(BwdVmLowerError::SourceColumnOffStride { window, column });
     }
     Ok(offset / resolved.stride_bytes as usize)
+}
+
+fn validate_source_geometry(
+    resolved: &ResolvedColumn,
+    window: u8,
+    column: u8,
+) -> Result<(), BwdVmLowerError> {
+    if resolved.ptr.is_null() || resolved.matrix_base.is_null() {
+        return Err(BwdVmLowerError::NullSourceGeometry { window, column });
+    }
+    Ok(())
+}
+
+fn validate_publish_geometry(
+    resolved: &ResolvedColumn,
+    window: u8,
+    column: u8,
+) -> Result<(), BwdVmLowerError> {
+    if resolved.ptr.is_null() || resolved.matrix_base.is_null() {
+        return Err(BwdVmLowerError::NullPublishGeometry { window, column });
+    }
+    Ok(())
+}
+
+fn same_resolved_column(lhs: &ResolvedColumn, rhs: &ResolvedColumn) -> bool {
+    lhs.is_e4 == rhs.is_e4
+        && lhs.ptr == rhs.ptr
+        && lhs.matrix_base == rhs.matrix_base
+        && lhs.stride_bytes == rhs.stride_bytes
 }
 
 fn checked_column_ptr(base: usize, column: usize, stride: u32) -> Option<usize> {
@@ -861,6 +936,7 @@ mod tests {
     use crate::prover::gkr::backward::GkrEqSizes;
     use crate::prover::gkr::forward::bench_interp::fixture::deterministic_backward_challenge_value;
     use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
+    use crate::upstream::GKRAddress;
 
     fn e4(value: u32) -> E4 {
         <E4 as FieldExtension<BF>>::from_base(BF::from_u32_with_reduction(value))
@@ -958,16 +1034,34 @@ mod tests {
         round: u8,
         sources: &'a [ResolvedBwdSourceWindow],
         challenges: &'a [E4],
+        resolve_source: &'a dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
     ) -> BwdVmRoundBinding<'a> {
         BwdVmRoundBinding {
             round,
             rows: 32,
             round_challenges: challenges,
             sources,
+            resolve_source,
             eq_low: 0x8800_0000usize as *const E4,
             eq_sizes: GkrEqSizes::zeroed(),
             contributions: 0x9900_0000usize as *mut E4,
         }
+    }
+
+    fn expected_sources(
+        case: &AddSubBwdVmCase,
+        sources: &[ResolvedBwdSourceWindow],
+    ) -> BTreeMap<GKRAddress, ResolvedColumn> {
+        sources
+            .iter()
+            .filter_map(|source| {
+                case.compiled
+                    .compiled
+                    .source_windows
+                    .resolve_read_place(source.logical_window, source.logical_column)
+                    .map(|place| (read_place_to_gkr_address(&place), source.read))
+            })
+            .collect()
     }
 
     fn lower_case(
@@ -981,6 +1075,17 @@ mod tests {
             &|reference| e4(derived_tag(reference)),
             &|recipe| e4(recipe_tag(recipe)),
         )
+    }
+
+    fn lower_case_at(
+        case: &AddSubBwdVmCase,
+        round: u8,
+        sources: &[ResolvedBwdSourceWindow],
+        challenges: &[E4],
+    ) -> Result<BwdVmSetup, BwdVmLowerError> {
+        let expected = expected_sources(case, sources);
+        let resolve_source = |address| expected.get(&address).copied();
+        lower_case(case, &runtime(round, sources, challenges, &resolve_source))
     }
 
     fn derived_tag(reference: &crate::upstream::ChallengeRef) -> u32 {
@@ -1005,7 +1110,7 @@ mod tests {
     fn r0_plain_sources_bind_equal_depth_without_publish_and_keep_first_access() {
         let case = load_add_sub_l0_case(BwdRegime::R0, 2);
         let sources = fake_sources(&case, 0, 0, false);
-        let setup = lower_case(&case, &runtime(0, &sources, &[])).unwrap();
+        let setup = lower_case_at(&case, 0, &sources, &[]).unwrap();
 
         assert!(setup.desc.n_source_windows > 0);
         for window in &setup.desc.source_windows[..setup.desc.n_source_windows as usize] {
@@ -1062,7 +1167,7 @@ mod tests {
         let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
         let sources = fake_sources(&case, 0, 2, false);
         let challenges = [e4(7), e4(11)];
-        let setup = lower_case(&case, &runtime(2, &sources, &challenges)).unwrap();
+        let setup = lower_case_at(&case, 2, &sources, &challenges).unwrap();
 
         for window in &setup.desc.source_windows[..setup.desc.n_source_windows as usize] {
             assert_eq!((window.backing_depth, window.target_depth), (0, 2));
@@ -1077,7 +1182,7 @@ mod tests {
         let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
         let sources = fake_sources(&case, 2, 2, true);
         let challenges = [e4(7), e4(11)];
-        let setup = lower_case(&case, &runtime(2, &sources, &challenges)).unwrap();
+        let setup = lower_case_at(&case, 2, &sources, &challenges).unwrap();
 
         for window in &setup.desc.source_windows[..setup.desc.n_source_windows as usize] {
             assert_eq!((window.backing_depth, window.target_depth), (2, 2));
@@ -1108,10 +1213,12 @@ mod tests {
         let sources = fake_sources(&case, 0, 2, false);
         let challenges = [e4(7), e4(11)];
         let next_value = Cell::new(0u32);
+        let expected = expected_sources(&case, &sources);
+        let resolve_source = |address| expected.get(&address).copied();
         let setup = lower_bwd_vm(
             &case.compiled,
             &case.distilled,
-            &runtime(2, &sources, &challenges),
+            &runtime(2, &sources, &challenges, &resolve_source),
             &|reference| e4(derived_tag(reference)),
             &|_| {
                 let slot = next_value.get();
@@ -1197,8 +1304,8 @@ mod tests {
         permuted.reverse();
         let challenges = [e4(7), e4(11)];
 
-        let ordered = lower_case(&case, &runtime(2, &sources, &challenges)).unwrap();
-        let shuffled = lower_case(&case, &runtime(2, &permuted, &challenges)).unwrap();
+        let ordered = lower_case_at(&case, 2, &sources, &challenges).unwrap();
+        let shuffled = lower_case_at(&case, 2, &permuted, &challenges).unwrap();
 
         assert_eq!(
             ordered.desc.program[..ordered.desc.program_lanes as usize],
@@ -1226,6 +1333,72 @@ mod tests {
         }
         assert_eq!(ordered.coefficients, shuffled.coefficients);
         assert_eq!(ordered.const_derived_e4, shuffled.const_derived_e4);
+    }
+
+    #[test]
+    fn lowering_rejects_swapped_same_field_sources_and_null_geometry() {
+        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
+        let challenges = [e4(7), e4(11)];
+        let canonical = fake_sources(&case, 0, 2, false);
+        let expected = expected_sources(&case, &canonical);
+        let resolve_source = |address| expected.get(&address).copied();
+
+        let coordinates = source_coordinates(&case.compiled.compiled.program);
+        let pair = coordinates
+            .iter()
+            .enumerate()
+            .find_map(|(left, &(window, _))| {
+                coordinates
+                    .iter()
+                    .enumerate()
+                    .skip(left + 1)
+                    .find(|(_, (other_window, _))| *other_window == window)
+                    .map(|(right, _)| (left, right))
+            })
+            .expect("fixture has two same-field source columns");
+
+        let mut swapped = canonical.clone();
+        let left = swapped[pair.0].read;
+        swapped[pair.0].read = swapped[pair.1].read;
+        swapped[pair.1].read = left;
+        assert!(matches!(
+            lower_case(&case, &runtime(2, &swapped, &challenges, &resolve_source)),
+            Err(BwdVmLowerError::SourceIdentityMismatch { .. })
+        ));
+
+        let mut null_read = canonical.clone();
+        null_read[0].read.ptr = ptr::null();
+        assert!(matches!(
+            lower_case(&case, &runtime(2, &null_read, &challenges, &resolve_source)),
+            Err(BwdVmLowerError::NullSourceGeometry { .. })
+        ));
+
+        let mut null_publish = fake_sources(&case, 2, 2, true);
+        null_publish[0].publish.as_mut().unwrap().ptr = ptr::null();
+        assert!(matches!(
+            lower_case_at(&case, 2, &null_publish, &challenges),
+            Err(BwdVmLowerError::NullPublishGeometry { .. })
+        ));
+    }
+
+    #[test]
+    fn lowering_rejects_equal_depth_read_and_publish_aliases() {
+        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
+        let challenges = [e4(7), e4(11)];
+
+        let mut read_alias = fake_sources(&case, 2, 2, true);
+        read_alias[0].publish = Some(read_alias[1].read);
+        assert!(matches!(
+            lower_case_at(&case, 2, &read_alias, &challenges),
+            Err(BwdVmLowerError::UnsafeReadPublishAlias { .. })
+        ));
+
+        let mut publish_alias = fake_sources(&case, 2, 2, true);
+        publish_alias[1].publish = publish_alias[0].publish;
+        assert!(matches!(
+            lower_case_at(&case, 2, &publish_alias, &challenges),
+            Err(BwdVmLowerError::UnsafePublishAlias { .. })
+        ));
     }
 
     #[test]
@@ -1268,11 +1441,8 @@ mod tests {
                 let round = u8::from(regime == BwdRegime::Ext) * 2;
                 let sources = fake_sources(&case, 0, round, false);
                 let challenges = [e4(7), e4(11)];
-                let setup = lower_case(
-                    &case,
-                    &runtime(round, &sources, &challenges[..round as usize]),
-                )
-                .unwrap_or_else(|error| panic!("{regime:?} c{budget}: {error:?}"));
+                let setup = lower_case_at(&case, round, &sources, &challenges[..round as usize])
+                    .unwrap_or_else(|error| panic!("{regime:?} c{budget}: {error:?}"));
                 let decoded =
                     decode(&setup.desc.program[..setup.desc.program_lanes as usize]).unwrap();
                 let reencoded = gkr_eval_isa::fwd::encode::encode(&decoded).unwrap();
@@ -1313,35 +1483,35 @@ mod tests {
         let mut missing = fake_sources(&case, 0, 2, false);
         missing.pop();
         assert!(matches!(
-            lower_case(&case, &runtime(2, &missing, &challenges)),
+            lower_case_at(&case, 2, &missing, &challenges),
             Err(BwdVmLowerError::MissingSourceBinding { .. })
         ));
 
         let mut duplicate = fake_sources(&case, 0, 2, false);
         duplicate.push(duplicate[0]);
         assert!(matches!(
-            lower_case(&case, &runtime(2, &duplicate, &challenges)),
+            lower_case_at(&case, 2, &duplicate, &challenges),
             Err(BwdVmLowerError::DuplicateSourceBinding { .. })
         ));
 
         let mut unknown = fake_sources(&case, 0, 2, false);
         unknown[0].logical_window = u8::MAX;
         assert!(matches!(
-            lower_case(&case, &runtime(2, &unknown, &challenges)),
+            lower_case_at(&case, 2, &unknown, &challenges),
             Err(BwdVmLowerError::UnknownSourceBinding { .. })
         ));
 
         let mut wrong_field = fake_sources(&case, 0, 2, false);
         wrong_field[0].read.is_e4 = !wrong_field[0].read.is_e4;
         assert!(matches!(
-            lower_case(&case, &runtime(2, &wrong_field, &challenges)),
+            lower_case_at(&case, 2, &wrong_field, &challenges),
             Err(BwdVmLowerError::SourceFieldMismatch { .. })
         ));
 
         let mut off_stride = fake_sources(&case, 0, 2, false);
         off_stride[0].read.ptr = (off_stride[0].read.matrix_base as usize + 1) as *const u8;
         assert!(matches!(
-            lower_case(&case, &runtime(2, &off_stride, &challenges)),
+            lower_case_at(&case, 2, &off_stride, &challenges),
             Err(BwdVmLowerError::SourceColumnOffStride { .. })
         ));
 
@@ -1364,7 +1534,7 @@ mod tests {
         wide[pair.0].read.ptr = base as *const u8;
         wide[pair.1].read.ptr = (base + 128 * stride) as *const u8;
         assert!(matches!(
-            lower_case(&case, &runtime(2, &wide, &challenges)),
+            lower_case_at(&case, 2, &wide, &challenges),
             Err(BwdVmLowerError::SourceColumnOverflow { .. })
         ));
 
@@ -1375,7 +1545,7 @@ mod tests {
             source.read.ptr = source.read.matrix_base.cast_const();
         }
         assert!(matches!(
-            lower_case(&case, &runtime(2, &too_many_windows, &challenges)),
+            lower_case_at(&case, 2, &too_many_windows, &challenges),
             Err(BwdVmLowerError::Capacity {
                 field: "source_windows",
                 cap: BWD_VM_SOURCE_WINDOW_CAP,
@@ -1388,14 +1558,14 @@ mod tests {
             source.publish = Some(source.read);
         }
         assert!(matches!(
-            lower_case(&case, &runtime(2, &alias, &challenges)),
+            lower_case_at(&case, 2, &alias, &challenges),
             Err(BwdVmLowerError::UnsafeReadPublishAlias { .. })
         ));
 
         let mut cross_alias = fake_sources(&case, 0, 2, true);
         cross_alias[0].publish = Some(cross_alias[1].read);
         assert!(matches!(
-            lower_case(&case, &runtime(2, &cross_alias, &challenges)),
+            lower_case_at(&case, 2, &cross_alias, &challenges),
             Err(BwdVmLowerError::UnsafeReadPublishAlias { .. })
         ));
     }
