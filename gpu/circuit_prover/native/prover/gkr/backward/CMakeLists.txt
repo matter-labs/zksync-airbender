@@ -1,4 +1,6 @@
 target_sources(circuit_prover_native PRIVATE
+        ../eval_vm_exec.cuh
+        ../eval_vm_isa.cuh
         bwd_vm.cu
         bwd_vm.cuh
         coeff.cuh

@@ -14,6 +14,20 @@ constexpr u32 BWD_VM_SOURCE_WINDOW_CAP = 4;
 constexpr u32 BWD_VM_SPECIAL_CAP = 147;
 constexpr u32 BWD_VM_COEFFICIENT_CAP = 145;
 constexpr u32 BWD_VM_CELL_CAP = 18;
+constexpr u32 BWD_VM_THREADS_PER_BLOCK = 128;
+constexpr u32 BWD_VM_MIN_BUDGET_CELLS = 2;
+constexpr u32 BWD_VM_MAX_BUDGET_CELLS = 16;
+
+constexpr u32 BWD_VM_ERR_NULL_COLUMN = 8;
+constexpr u32 BWD_VM_ERR_LDC_OOB = 16;
+constexpr u32 BWD_VM_ERR_BAD_SPECIAL = 32;
+constexpr u32 BWD_VM_ERR_SPECIAL_OOB = 64;
+constexpr u32 BWD_VM_ERR_SOURCE_OOB = 128;
+constexpr u32 BWD_VM_ERR_CELL_OOB = 256;
+constexpr u32 BWD_VM_ERR_NULL_POINTER = 1024;
+constexpr u32 BWD_VM_ERR_BUDGET = 2048;
+constexpr u32 BWD_VM_ERR_BAD_DST = 4096;
+constexpr u32 BWD_VM_ERR_DESC_BOUNDS = 8192;
 
 // These channels reuse existing exact shared ABI banks. Their add/sub census
 // maxima are zero; the capacities are not growth margin.
@@ -121,3 +135,6 @@ static_assert(__builtin_offsetof(bwd_vm_desc, program) == 1148, "program ABI off
 // Existing stream-ordered constant-memory symbols. The coefficient symbol is
 // declared by flat.cuh; ConstDerivedE4 reuses the forward VM's 8-slot bank.
 EXTERN __device__ __constant__ e4 ab_gkr_fwd_vm_const_derived_e4[airbender::prover::gkr::BWD_VM_CONST_DERIVED_E4_CAP];
+
+EXTERN __global__ void ab_gkr_bwd_vm_release_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc);
+EXTERN __global__ void ab_gkr_bwd_vm_validate_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag, e4 *diagnostic_t0_t2);
