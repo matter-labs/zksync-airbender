@@ -5,7 +5,6 @@ use std::alloc::Global;
 use era_cudart::memory::memory_copy_async;
 use fft::{bitreverse_enumeration_inplace, Twiddles};
 
-
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
 use crate::prover::test_utils::make_test_context;
