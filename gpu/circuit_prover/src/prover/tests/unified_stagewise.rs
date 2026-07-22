@@ -127,7 +127,7 @@ fn run_unified_stagewise_parity_test() {
         &timestamps_packed,
     );
     let mut it_transfer = InitsAndTeardownsTransfer::new(it_host, &context).unwrap();
-    let it_h2d = crate::prover::transfer::single_shot_h2d(
+    let it_h2d = gpu_prover_context::transfer::single_shot_h2d(
         |t| it_transfer.schedule_transfer(t, &context),
         &context,
     )
@@ -135,7 +135,7 @@ fn run_unified_stagewise_parity_test() {
     it_h2d.ensure_transferred(&context).unwrap();
 
     // Transfer GPU setup.
-    let _setup_h2d = crate::prover::transfer::single_shot_h2d(
+    let _setup_h2d = gpu_prover_context::transfer::single_shot_h2d(
         |t| gpu_setup_transfer.schedule_transfer(t, &context),
         &context,
     )

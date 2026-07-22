@@ -309,7 +309,7 @@ pub(super) fn finish_proof_fixture(
         // One-shot Transfer: schedule every H2D against it, record_transferred,
         // ensure_transferred, then run `commit_memory` against the now-visible
         // device buffers.
-        let transfer = crate::prover::transfer::single_shot_h2d(
+        let transfer = gpu_prover_context::transfer::single_shot_h2d(
             |t| {
                 setup_transfer.schedule_transfer(t, &context)?;
                 if let Some(decoder_transfer) = decoder_transfer.as_mut() {
@@ -713,7 +713,7 @@ pub(super) fn finish_proof_fixture_memory(
         let mut tracing_data_transfer =
             TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
 
-        let transfer = crate::prover::transfer::single_shot_h2d(
+        let transfer = gpu_prover_context::transfer::single_shot_h2d(
             |t| {
                 setup_transfer.schedule_transfer(t, &context)?;
                 if let Some(decoder_transfer) = decoder_transfer.as_mut() {

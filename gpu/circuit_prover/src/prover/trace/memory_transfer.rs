@@ -28,9 +28,9 @@ use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinne
 use crate::prover::trace::decoder::DecoderTableTransfer;
 use crate::prover::trace::holder::bitreverse_index;
 use crate::prover::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
-use crate::prover::transfer::Transfer;
 use crate::prover::ProverContext;
 use crate::upstream::MerkleTreeCapVarLength;
+use gpu_prover_context::transfer::Transfer;
 
 pub struct GpuGKRMemoryTransferHost {
     pub(crate) log_lde_factor: u32,

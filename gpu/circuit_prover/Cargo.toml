@@ -27,6 +27,7 @@ gpu_cub = { workspace = true }
 gpu_hash = { workspace = true }
 gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
+gpu_prover_context = { workspace = true }
 gpu_gkr_model = { workspace = true }
 
 era_cudart = "=0.156.0"

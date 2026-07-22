@@ -1,15 +1,17 @@
-use crate::allocator::device::{NonConcurrentStaticDeviceAllocator, StaticDeviceAllocationBackend};
-use crate::allocator::host::NonConcurrentStaticHostAllocator;
-use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::ntt_twiddles::DeviceContext;
-use crate::primitives::context::{
-    DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
-};
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::memory::{memory_get_info, CudaHostAllocFlags};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{CudaDeviceAttr, CudaError};
+use gpu_core::allocator::device::{
+    NonConcurrentStaticDeviceAllocator, StaticDeviceAllocationBackend,
+};
+use gpu_core::allocator::host::NonConcurrentStaticHostAllocator;
+use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::context::{
+    DeviceAllocation, DeviceAllocator, DeviceProperties, HostAllocation, HostAllocator,
+};
+use gpu_ntt::ntt_twiddles::DeviceContext;
 use log::error;
 
 #[derive(Copy, Clone, Debug)]
@@ -243,10 +245,11 @@ impl ProverContext {
     /// a write (an H2D from a callback-populated source, or a D2H of fresh
     /// device contents); reading from it before that is UB on the uninit
     /// memory.
-    pub(crate) unsafe fn alloc_host_uninit_slice<T: Sized>(
-        &self,
-        len: usize,
-    ) -> HostAllocation<[T]> {
+    ///
+    /// `pub` (not `pub(crate)`): production code in `gpu_circuit_prover`'s
+    /// `trace::memory` and `proof::orchestration::terminal` allocates host
+    /// readback staging through this across the crate boundary.
+    pub unsafe fn alloc_host_uninit_slice<T: Sized>(&self, len: usize) -> HostAllocation<[T]> {
         HostAllocation::new_uninit_slice_in(len, self.get_host_allocator())
     }
 
@@ -258,22 +261,30 @@ impl ProverContext {
         self.device_allocator.get_used_mem_current()
     }
 
-    #[cfg(test)]
+    // `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
+    // reach this helper across the crate boundary. // test-reference readers
+    #[doc(hidden)]
     pub fn get_used_mem_peak(&self) -> usize {
         self.device_allocator.get_used_mem_peak()
     }
 
-    #[cfg(test)]
+    // `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
+    // reach this helper across the crate boundary. // test-reference readers
+    #[doc(hidden)]
     pub fn get_host_used_mem_current(&self) -> usize {
         self.host_allocator.get_used_mem_current()
     }
 
-    #[cfg(test)]
+    // `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
+    // reach this helper across the crate boundary. // test-reference readers
+    #[doc(hidden)]
     pub fn get_host_used_mem_peak(&self) -> usize {
         self.host_allocator.get_used_mem_peak()
     }
 
-    #[cfg(test)]
+    // `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
+    // reach this helper across the crate boundary. // test-reference readers
+    #[doc(hidden)]
     pub fn reset_host_used_mem_peak(&self) {
         self.host_allocator.reset_used_mem_peak();
     }

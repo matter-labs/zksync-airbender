@@ -1,5 +1,4 @@
 use crate::allocator::tracker::AllocationPlacement;
-use crate::prover::transfer::Transfer;
 use crate::prover::ProverContext;
 use crate::witness::trace_delegation::{DelegationTraceDevice, DelegationTraceHost};
 use crate::witness::trace_unrolled::{
@@ -9,6 +8,7 @@ use crate::witness::trace_unrolled::{
 };
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
+use gpu_prover_context::transfer::Transfer;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;

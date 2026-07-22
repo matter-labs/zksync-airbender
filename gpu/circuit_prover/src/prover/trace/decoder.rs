@@ -1,10 +1,10 @@
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::static_host::StaticPinnedBox;
-use crate::prover::transfer::Transfer;
 use crate::prover::ProverContext;
 use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use era_cudart::result::CudaResult;
+use gpu_prover_context::transfer::Transfer;
 use std::marker::PhantomData;
 use std::sync::Arc;
 

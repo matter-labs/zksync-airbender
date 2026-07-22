@@ -1387,7 +1387,7 @@ where
             let mut final_folding_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(folding_steps) };
             let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
-            crate::prover::transfer::fork_join_exec_to_d2h(
+            gpu_prover_context::transfer::fork_join_exec_to_d2h(
                 stream,
                 context.get_d2h_stream(),
                 |d2h_stream| {

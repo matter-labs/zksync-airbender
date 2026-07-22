@@ -768,7 +768,7 @@ where
     let memory_tree_caps = {
         let mut tracing_data_transfer =
             TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
-        let transfer = crate::prover::transfer::single_shot_h2d(
+        let transfer = gpu_prover_context::transfer::single_shot_h2d(
             |t| tracing_data_transfer.schedule_transfer(t, &context),
             &context,
         )

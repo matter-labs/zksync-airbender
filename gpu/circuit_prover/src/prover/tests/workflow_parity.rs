@@ -198,7 +198,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     );
     let mut gpu_setup_transfer =
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
-    let _h2d = crate::prover::transfer::single_shot_h2d(
+    let _h2d = gpu_prover_context::transfer::single_shot_h2d(
         |t| gpu_setup_transfer.schedule_transfer(t, &context),
         &context,
     )
@@ -807,7 +807,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     );
     let mut gpu_setup_transfer =
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
-    let _h2d = crate::prover::transfer::single_shot_h2d(
+    let _h2d = gpu_prover_context::transfer::single_shot_h2d(
         |t| gpu_setup_transfer.schedule_transfer(t, &context),
         &context,
     )

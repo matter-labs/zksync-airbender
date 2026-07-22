@@ -498,7 +498,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         );
         let mut inits_and_teardowns_transfer =
             InitsAndTeardownsTransfer::new(inits_and_teardowns_host, &context).unwrap();
-        let transfer = crate::prover::transfer::single_shot_h2d(
+        let transfer = gpu_prover_context::transfer::single_shot_h2d(
             |t| {
                 tracing_data_transfer.schedule_transfer(t, &context)?;
                 inits_and_teardowns_transfer.schedule_transfer(t, &context)

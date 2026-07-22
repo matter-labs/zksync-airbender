@@ -250,7 +250,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
     {
         let _range = scoped_range(None, "test.gpu.setup_transfer");
-        let _h2d = crate::prover::transfer::single_shot_h2d(
+        let _h2d = gpu_prover_context::transfer::single_shot_h2d(
             |t| gpu_setup_transfer.schedule_transfer(t, &context),
             &context,
         )
