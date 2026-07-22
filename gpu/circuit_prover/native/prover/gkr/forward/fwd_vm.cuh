@@ -10,8 +10,8 @@
 // Field ORDER deviates from the spec-§2 sketch on purpose: `e4` is
 // `__align__(16)`, so fields are grouped by descending alignment
 // (e4 -> pointers -> u32 -> u16) to keep the layout free of INTERNAL padding
-// and the exact-size assert stable (26,684 field bytes + 4 B tail padding to
-// the 16-B alignment = 26,688). Same members, same semantics.
+// and the exact-size assert stable (27,452 field bytes + 4 B tail padding to
+// the 16-B alignment = 27,456). Same members, same semantics.
 //
 // Caps come from the corpus census (`gkr_eval_isa/tests/fwd_vm_desc_census.rs`,
 // maxima across all 11 committed with-caches fixtures) + margin. Overflow
@@ -30,8 +30,9 @@ constexpr u32 FWD_VM_DESC_CAP = 370;           // packed special descriptors
 constexpr u32 FWD_VM_CONST_DERIVED_E4_CAP = 8; // Task-8 __constant__ e4 bank (not in this struct);
                                                // also hosts the decoder fill (see fill_bank_idx)
 constexpr u32 FWD_VM_FILL_BANK_NONE = ~0u;     // fill_bank_idx sentinel: layer has no SD_DECODER desc
-constexpr u32 FWD_VM_SLOT_COUNT = 16;          // field-qualified column slots
-constexpr u32 FWD_VM_MAPPING_ARENA_COUNT = 3;  // generic_family / range_check_16 / timestamp
+constexpr u32 FWD_VM_SOURCE_WINDOW_COUNT = 64;
+constexpr u32 FWD_VM_DST_SLOT_COUNT = 16;
+constexpr u32 FWD_VM_MAPPING_ARENA_COUNT = 3; // generic_family / range_check_16 / timestamp
 
 // --- special-descriptor strategy kinds (descs[i] kind field) -----------------
 constexpr u32 SD_SINGLE_COLUMN = 0; // PeekSingleColumn: lift(mapping[row])
@@ -70,7 +71,8 @@ constexpr u32 FWD_VM_DESC_VKIND_MASK = 0x7;
 //
 // header:  arith [op:2][arity:7 @2][f0:1 @9][f1:1 @10][promote:1 @11][sign:1 @12][rsvd @13+]
 //          mov   [op=3:2][dir:2 @2][field:1 @4][rsvd @5+]
-// operand: [tag:2][payload:14]; tag 0=Global{[slot:4 @2][col @6]} 1=Smem{[cell @2]}
+// operand: [tag:2][payload:14]; tag 0=Source{[first:1 @2][window:6 @3][column:7 @9]}
+//          1=Smem{[cell @2]}
 //          2=Ldc{[sub:2 @2][idx @4]} 3=Special{[desc @2]}
 // dst:     [tag:1]; tag 0=Smem{[cell @1]} 1=GlobalMaterialize{[slot:4 @1][col @5]}
 
@@ -106,17 +108,20 @@ constexpr u32 FWD_VM_MOV_DIR_RESERVED = 3;
 // operand lane
 constexpr u32 FWD_VM_OPERAND_TAG_BITS = 2;
 constexpr u32 FWD_VM_OPERAND_TAG_MASK = (1u << FWD_VM_OPERAND_TAG_BITS) - 1;
-constexpr u32 FWD_VM_OPERAND_GLOBAL = 0;
+constexpr u32 FWD_VM_OPERAND_SOURCE = 0;
 constexpr u32 FWD_VM_OPERAND_SMEM = 1;
 constexpr u32 FWD_VM_OPERAND_LDC = 2;
 constexpr u32 FWD_VM_OPERAND_SPECIAL = 3;
-constexpr u32 FWD_VM_SLOT_BITS = 4; // FWD_VM_SLOT_COUNT = 1 << FWD_VM_SLOT_BITS
-constexpr u32 FWD_VM_SLOT_MASK = (1u << FWD_VM_SLOT_BITS) - 1;
-constexpr u32 FWD_VM_OPERAND_SLOT_SHIFT = FWD_VM_OPERAND_TAG_BITS;                     // 2
-constexpr u32 FWD_VM_OPERAND_COL_SHIFT = FWD_VM_OPERAND_SLOT_SHIFT + FWD_VM_SLOT_BITS; // 6
-constexpr u32 FWD_VM_OPERAND_CELL_SHIFT = FWD_VM_OPERAND_TAG_BITS;                     // 2
-constexpr u32 FWD_VM_OPERAND_DESC_SHIFT = FWD_VM_OPERAND_TAG_BITS;                     // 2
-constexpr u32 FWD_VM_LDC_SUB_SHIFT = FWD_VM_OPERAND_TAG_BITS;                          // 2
+constexpr u32 FWD_VM_FIRST_ACCESS_SHIFT = FWD_VM_OPERAND_TAG_BITS; // 2
+constexpr u32 FWD_VM_SOURCE_WINDOW_SHIFT = FWD_VM_FIRST_ACCESS_SHIFT + 1;
+constexpr u32 FWD_VM_SOURCE_WINDOW_BITS = 6;
+constexpr u32 FWD_VM_SOURCE_WINDOW_MASK = (1u << FWD_VM_SOURCE_WINDOW_BITS) - 1;
+constexpr u32 FWD_VM_SOURCE_COLUMN_SHIFT = FWD_VM_SOURCE_WINDOW_SHIFT + FWD_VM_SOURCE_WINDOW_BITS;
+constexpr u32 FWD_VM_SOURCE_COLUMN_BITS = 7;
+constexpr u32 FWD_VM_SOURCE_COLUMN_MASK = (1u << FWD_VM_SOURCE_COLUMN_BITS) - 1;
+constexpr u32 FWD_VM_OPERAND_CELL_SHIFT = FWD_VM_OPERAND_TAG_BITS; // 2
+constexpr u32 FWD_VM_OPERAND_DESC_SHIFT = FWD_VM_OPERAND_TAG_BITS; // 2
+constexpr u32 FWD_VM_LDC_SUB_SHIFT = FWD_VM_OPERAND_TAG_BITS;      // 2
 constexpr u32 FWD_VM_LDC_SUB_BITS = 2;
 constexpr u32 FWD_VM_LDC_SUB_MASK = (1u << FWD_VM_LDC_SUB_BITS) - 1;
 constexpr u32 FWD_VM_LDC_IDX_SHIFT = FWD_VM_LDC_SUB_SHIFT + FWD_VM_LDC_SUB_BITS; // 4
@@ -126,11 +131,14 @@ constexpr u32 FWD_VM_DST_TAG_BITS = 1;
 constexpr u32 FWD_VM_DST_TAG_MASK = (1u << FWD_VM_DST_TAG_BITS) - 1;
 constexpr u32 FWD_VM_DST_SMEM = 0;
 constexpr u32 FWD_VM_DST_GLOBAL = 1;
-constexpr u32 FWD_VM_DST_CELL_SHIFT = FWD_VM_DST_TAG_BITS;                     // 1
-constexpr u32 FWD_VM_DST_SLOT_SHIFT = FWD_VM_DST_TAG_BITS;                     // 1
-constexpr u32 FWD_VM_DST_COL_SHIFT = FWD_VM_DST_SLOT_SHIFT + FWD_VM_SLOT_BITS; // 5
+constexpr u32 FWD_VM_DST_SLOT_BITS = 4;
+constexpr u32 FWD_VM_DST_SLOT_MASK = (1u << FWD_VM_DST_SLOT_BITS) - 1;
+constexpr u32 FWD_VM_DST_CELL_SHIFT = FWD_VM_DST_TAG_BITS;                         // 1
+constexpr u32 FWD_VM_DST_SLOT_SHIFT = FWD_VM_DST_TAG_BITS;                         // 1
+constexpr u32 FWD_VM_DST_COL_SHIFT = FWD_VM_DST_SLOT_SHIFT + FWD_VM_DST_SLOT_BITS; // 5
 
-static_assert(FWD_VM_SLOT_COUNT == 1u << FWD_VM_SLOT_BITS, "slot-index field width vs slot-table size drift");
+static_assert(FWD_VM_SOURCE_WINDOW_COUNT == 1u << FWD_VM_SOURCE_WINDOW_BITS, "source-window field width drift");
+static_assert(FWD_VM_DST_SLOT_COUNT == 1u << FWD_VM_DST_SLOT_BITS, "destination-slot field width drift");
 
 struct fwd_vm_desc {
   // schedule-time-known derived e4 values, inline (16-aligned e4 first: zero padding)
@@ -139,10 +147,8 @@ struct fwd_vm_desc {
   // program oversize fallback; null when the program is inline (expected always)
   const u16 *program_ldg; // 192
 
-  // column geometry: a slot IS one homogeneous matrix; ONE table serves both
-  // reads and GlobalMaterialize writes. Column c of slot s is
-  // base[s] + c * stride_bytes[s] for load and store alike.
-  char *base[FWD_VM_SLOT_COUNT]; // 200
+  char *source_base[FWD_VM_SOURCE_WINDOW_COUNT]; // 200
+  char *dst_base[FWD_VM_DST_SLOT_COUNT];         // 712
 
   // special-descriptor header (all schedule-time-known). Every desc mapping is
   // a COLUMN of one of these 3 contiguous u32 arenas (GpuGKRLookupMappings,
@@ -152,47 +158,48 @@ struct fwd_vm_desc {
   // value (also a per-circuit singleton, runtime challenge-dependent) is NOT
   // pointed to from here — it lives in the `ab_gkr_fwd_vm_const_derived_e4`
   // bank at `fill_bank_idx` (same class as a ConstDerivedE4).
-  const u32 *mapping_arena[FWD_VM_MAPPING_ARENA_COUNT]; // 328
-  const e4 *table;                                      // 352
-  const bf *mask;                                       // 360, or null
+  const u32 *mapping_arena[FWD_VM_MAPPING_ARENA_COUNT]; // 840
+  const e4 *table;                                      // 864
+  const bf *mask;                                       // 872, or null
 
   // program header
-  u32 n_instr;       // 368
-  u32 program_lanes; // 372
+  u32 n_instr;       // 880
+  u32 program_lanes; // 884
 
   // column geometry, continued
-  u32 stride_bytes[FWD_VM_SLOT_COUNT]; // 376
+  u32 source_stride_bytes[FWD_VM_SOURCE_WINDOW_COUNT]; // 888
+  u32 dst_stride_bytes[FWD_VM_DST_SLOT_COUNT];         // 1144
 
   // banks, inline (schedule-time known)
-  u32 n_consts;                // 440
-  bf consts[FWD_VM_CONST_CAP]; // 444, Montgomery
-  u32 n_arg_derived_e4;        // 604
+  u32 n_consts;                // 1208
+  bf consts[FWD_VM_CONST_CAP]; // 1212, Montgomery
+  u32 n_arg_derived_e4;        // 1372
 
   // special descriptors
-  u32 n_descs;            // 608
-  u32 n_const_derived_e4; // 612: used length of the Task-8 __constant__ bank
+  u32 n_descs;            // 1376
+  u32 n_const_derived_e4; // 1380: used length of the Task-8 __constant__ bank
                           // (INCLUDING the appended decoder fill slot, if any);
                           // read only under VALIDATE
-  u32 fill_bank_idx;      // 616: const-derived-e4 bank slot of the decoder fill
+  u32 fill_bank_idx;      // 1384: const-derived-e4 bank slot of the decoder fill
                           // value, or FWD_VM_FILL_BANK_NONE when the layer has
                           // no SD_DECODER desc; read only on decoder-miss rows
-  u32 table_len;          // 620
+  u32 table_len;          // 1388
 
   // per-desc packed u32 (bit split above)
-  u32 descs[FWD_VM_DESC_CAP]; // 624, 1,480 B
+  u32 descs[FWD_VM_DESC_CAP]; // 1392, 1,480 B
 
   // geometry
-  u32 count; // 2104: rows (= trace_len = mapping-arena column stride)
+  u32 count; // 2872: rows (= trace_len = mapping-arena column stride)
 
   // program, inline 16-bit wire lanes (gkr_eval_isa::fwd::encode)
-  u16 program[FWD_VM_PROGRAM_CAP]; // 2108, 24,576 B; field bytes end at 26,684
+  u16 program[FWD_VM_PROGRAM_CAP]; // 2876, 24,576 B; field bytes end at 27,452
 };
 
-static_assert(sizeof(fwd_vm_desc) == 26688, "fwd_vm_desc/FwdVmDesc ABI size drift");
+static_assert(sizeof(fwd_vm_desc) == 27456, "fwd_vm_desc/FwdVmDesc ABI size drift");
 static_assert(sizeof(fwd_vm_desc) <= 32764, "fwd_vm_desc exceeds the __grid_constant__ param budget");
 static_assert(alignof(fwd_vm_desc) == 16, "fwd_vm_desc alignment drift (e4 is __align__(16))");
 static_assert(__builtin_offsetof(fwd_vm_desc, arg_derived_e4) == 0, "arg_derived_e4 ABI offset drift");
-static_assert(__builtin_offsetof(fwd_vm_desc, n_arg_derived_e4) == 604, "n_arg_derived_e4 ABI offset drift");
-static_assert(__builtin_offsetof(fwd_vm_desc, n_const_derived_e4) == 612, "n_const_derived_e4 ABI offset drift");
+static_assert(__builtin_offsetof(fwd_vm_desc, n_arg_derived_e4) == 1372, "n_arg_derived_e4 ABI offset drift");
+static_assert(__builtin_offsetof(fwd_vm_desc, n_const_derived_e4) == 1380, "n_const_derived_e4 ABI offset drift");
 
 } // namespace airbender::prover::gkr

@@ -162,12 +162,12 @@ DEVICE_FORCEINLINE void smem_st_e4(bf *cells, const u32 bucket, const u32 budget
       *reinterpret_cast<const uint4 *>(&v);
 }
 
-// --- Global{slot,col}: one field-qualified homogeneous matrix per slot -------
-// Column c of slot s lives at base[s] + c * stride_bytes[s], for load and
-// store alike; the instruction's field bit AGREES with the slot's field by
-// construction (validated Rust-side), so it directly types the access width.
-DEVICE_FORCEINLINE const char *global_col(const fwd_vm_desc &d, const u32 slot, const u32 col) {
-  return d.base[slot] + static_cast<size_t>(col) * d.stride_bytes[slot];
+DEVICE_FORCEINLINE const char *source_col(const fwd_vm_desc &d, const u32 window, const u32 col) {
+  return d.source_base[window] + static_cast<size_t>(col) * d.source_stride_bytes[window];
+}
+
+DEVICE_FORCEINLINE const char *dst_col(const fwd_vm_desc &d, const u32 slot, const u32 col) {
+  return d.dst_base[slot] + static_cast<size_t>(col) * d.dst_stride_bytes[slot];
 }
 
 // --- special descriptors ------------------------------------------------------
@@ -364,7 +364,7 @@ template <bool VALIDATE> DEVICE_FORCEINLINE e4 read_ldc_e4(const fwd_vm_desc &d,
 
 // --- typed operand reads ------------------------------------------------------
 // The consuming instruction's field bit selects the width (Fma: per side).
-// Global loads are single typed loads - a bf column is loaded as bf and lifted
+// Source loads are single typed loads - a bf column is loaded as bf and lifted
 // only when the op's semantics need e4; an e4 column is one vectorized
 // load<e4>. Smem: the field bit selects the view (bf lane vs ext bucket).
 
@@ -372,16 +372,16 @@ template <bool VALIDATE>
 DEVICE_FORCEINLINE bf read_operand_bf(const fwd_vm_desc &d, const bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 l,
                                       u32 &err) {
   switch (l & FWD_VM_OPERAND_TAG_MASK) {
-  case FWD_VM_OPERAND_GLOBAL: { // Global { slot, col }
-    const u32 slot = (l >> FWD_VM_OPERAND_SLOT_SHIFT) & FWD_VM_SLOT_MASK;
-    const u32 col = l >> FWD_VM_OPERAND_COL_SHIFT;
+  case FWD_VM_OPERAND_SOURCE: {
+    const u32 window = (l >> FWD_VM_SOURCE_WINDOW_SHIFT) & FWD_VM_SOURCE_WINDOW_MASK;
+    const u32 col = (l >> FWD_VM_SOURCE_COLUMN_SHIFT) & FWD_VM_SOURCE_COLUMN_MASK;
     if constexpr (VALIDATE) {
-      if (d.base[slot] == nullptr) {
+      if (d.source_base[window] == nullptr) {
         err |= FWDVM_ERR_NULL_COLUMN;
         return bf::ZERO();
       }
     }
-    return load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(global_col(d, slot, col)), gid);
+    return load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(source_col(d, window, col)), gid);
   }
   case FWD_VM_OPERAND_SMEM: { // Smem { cell }: bf -> 4-B lane index
     const u32 cell = l >> FWD_VM_OPERAND_CELL_SHIFT;
@@ -404,16 +404,16 @@ template <bool VALIDATE>
 DEVICE_FORCEINLINE e4 read_operand_e4(const fwd_vm_desc &d, const bf *cells, const u32 budget_buckets, const u32 budget_lanes, const unsigned gid, const u16 l,
                                       u32 &err) {
   switch (l & FWD_VM_OPERAND_TAG_MASK) {
-  case FWD_VM_OPERAND_GLOBAL: { // Global { slot, col }: one vectorized 16-B load
-    const u32 slot = (l >> FWD_VM_OPERAND_SLOT_SHIFT) & FWD_VM_SLOT_MASK;
-    const u32 col = l >> FWD_VM_OPERAND_COL_SHIFT;
+  case FWD_VM_OPERAND_SOURCE: {
+    const u32 window = (l >> FWD_VM_SOURCE_WINDOW_SHIFT) & FWD_VM_SOURCE_WINDOW_MASK;
+    const u32 col = (l >> FWD_VM_SOURCE_COLUMN_SHIFT) & FWD_VM_SOURCE_COLUMN_MASK;
     if constexpr (VALIDATE) {
-      if (d.base[slot] == nullptr) {
+      if (d.source_base[window] == nullptr) {
         err |= FWDVM_ERR_NULL_COLUMN;
         return e4::ZERO();
       }
     }
-    return load<e4, ld_modifier::ca>(reinterpret_cast<const e4 *>(global_col(d, slot, col)), gid);
+    return load<e4, ld_modifier::ca>(reinterpret_cast<const e4 *>(source_col(d, window, col)), gid);
   }
   case FWD_VM_OPERAND_SMEM: { // Smem { cell }: ext -> BUCKET index
     const u32 bucket = l >> FWD_VM_OPERAND_CELL_SHIFT;
@@ -450,15 +450,15 @@ DEVICE_FORCEINLINE void write_dst_bf(const fwd_vm_desc &d, bf *cells, const u32 
     }
     smem_st_bf(cells, cell, budget_buckets, v);
   } else { // GlobalMaterialize { slot, col }
-    const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_SLOT_MASK;
+    const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_DST_SLOT_MASK;
     const u32 col = dl >> FWD_VM_DST_COL_SHIFT;
     if constexpr (VALIDATE) {
-      if (d.base[slot] == nullptr) {
+      if (d.dst_base[slot] == nullptr) {
         err |= FWDVM_ERR_NULL_COLUMN;
         return;
       }
     }
-    store<bf, st_modifier::cs>(reinterpret_cast<bf *>(const_cast<char *>(global_col(d, slot, col))), v, gid);
+    store<bf, st_modifier::cs>(reinterpret_cast<bf *>(const_cast<char *>(dst_col(d, slot, col))), v, gid);
   }
 }
 
@@ -475,15 +475,15 @@ DEVICE_FORCEINLINE void write_dst_e4(const fwd_vm_desc &d, bf *cells, const u32 
     }
     smem_st_e4(cells, bucket, budget_buckets, v);
   } else { // GlobalMaterialize { slot, col }
-    const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_SLOT_MASK;
+    const u32 slot = (dl >> FWD_VM_DST_SLOT_SHIFT) & FWD_VM_DST_SLOT_MASK;
     const u32 col = dl >> FWD_VM_DST_COL_SHIFT;
     if constexpr (VALIDATE) {
-      if (d.base[slot] == nullptr) {
+      if (d.dst_base[slot] == nullptr) {
         err |= FWDVM_ERR_NULL_COLUMN;
         return;
       }
     }
-    store<e4, st_modifier::cs>(reinterpret_cast<e4 *>(const_cast<char *>(global_col(d, slot, col))), v, gid);
+    store<e4, st_modifier::cs>(reinterpret_cast<e4 *>(const_cast<char *>(dst_col(d, slot, col))), v, gid);
   }
 }
 

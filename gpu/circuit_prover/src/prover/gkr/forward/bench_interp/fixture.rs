@@ -1004,4 +1004,3 @@ fn capture_forward_pass(
         layers,
     )
 }
-

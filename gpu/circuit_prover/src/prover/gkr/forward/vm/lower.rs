@@ -22,7 +22,7 @@
 //! `(matrix_base, stride_bytes)` and allocates one WIRE slot per group
 //! (first-appearance order); `base[16]`/`stride_bytes[16]` are indexed by
 //! WIRE slot, and the program rewrite renumbers the slot field alongside the
-//! col field. Total wire slots must fit `SLOT_COUNT` (SLOT_BITS=4 on the
+//! col field. Total wire slots must fit `DST_SLOT_COUNT` (SLOT_BITS=4 on the
 //! wire) — a hard error, guarded corpus-wide by the
 //! `wire_slot_census_fits_slot_count_on_all_fixtures` test (max observed: 6).
 //! Field homogeneity per wire slot holds by construction: a wire slot serves
@@ -34,7 +34,10 @@
 //! scheduling-time-known immutable data, written once on the scheduling
 //! thread); every other cap is a hard error, no fallback.
 
-use std::ptr;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ptr,
+};
 
 use era_cudart::memory::memory_copy_async;
 
@@ -42,22 +45,22 @@ use gkr_eval_isa::fwd::context::CompiledLayer;
 use gkr_eval_isa::fwd::encode::encode;
 use gkr_eval_isa::fwd::error::EncodeError;
 use gkr_eval_isa::fwd::isa::{
-    DstLine, Instr, LdcSub, OperandField, OperandLine, Program, MAX_COLS,
+    DstLine, Instr, LdcSub, MAX_COLS, OperandField, OperandLine, Program, SOURCE_WINDOW_COLUMNS,
 };
-use gkr_eval_isa::fwd::source::{virtual_setup_kind_code, SpecialStrategy};
+use gkr_eval_isa::fwd::source::{SpecialStrategy, virtual_setup_kind_code};
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
+use crate::primitives::static_host::{StaticPinnedBox, alloc_static_pinned_box_from_slice};
 use crate::prover::ProverContext;
 use crate::upstream::{ChallengeRef, GKRAddress, PrimeField, RangeWidth, ReadPlace};
 
 use super::desc::{
-    pack_desc, FwdVmDesc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP,
-    ARG_DERIVED_E4_CAP, CONST_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, FILL_BANK_NONE,
-    MAPPING_ARENA_COUNT, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN,
-    SD_VIRTUAL, SLOT_COUNT,
+    ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP, ARG_DERIVED_E4_CAP, CONST_CAP,
+    CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT, FILL_BANK_NONE, FwdVmDesc, MAPPING_ARENA_COUNT,
+    PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN, SD_VIRTUAL,
+    SOURCE_WINDOW_COUNT, pack_desc,
 };
 
 /// One resolved storage column: the column's device pointer plus the geometry
@@ -139,11 +142,33 @@ pub(crate) enum FwdVmLowerError {
         got_e4: bool,
     },
     /// Splitting compile slots into per-matrix wire slots needs more than
-    /// `SLOT_COUNT` wire slots (SLOT_BITS=4 on the wire; `slot`/`col` locate
+    /// `DST_SLOT_COUNT` wire slots (SLOT_BITS=4 on the wire; `slot`/`col` locate
     /// the column whose fresh `(base, stride)` group did not fit).
     WireSlotOverflow {
         slot: u8,
         col: u16,
+    },
+    SourceWindowOverflow {
+        window: u8,
+        column: u8,
+    },
+    UnmappedSource {
+        window: u8,
+        column: u8,
+    },
+    SourceFieldMismatch {
+        window: u8,
+        column: u8,
+        expect_e4: bool,
+        got_e4: bool,
+    },
+    SourceColumnOffStride {
+        window: u8,
+        column: u8,
+    },
+    SourceColRemapCollision {
+        window: u8,
+        matrix_col: usize,
     },
     /// Column pointer is not `matrix_base + k * stride_bytes` for integer `k`.
     ColumnOffStride {
@@ -234,20 +259,162 @@ pub(crate) fn read_place_to_gkr_address(place: &ReadPlace) -> GKRAddress {
     }
 }
 
+struct SourceGeometry {
+    base: [*mut u8; SOURCE_WINDOW_COUNT],
+    stride_bytes: [u32; SOURCE_WINDOW_COUNT],
+    remap: BTreeMap<(u8, u8), (u8, u8)>,
+    n_windows: usize,
+}
+
+fn source_coordinates(program: &Program) -> BTreeSet<(u8, u8)> {
+    let mut coordinates = BTreeSet::new();
+    let mut record = |operand: &OperandLine| {
+        if let OperandLine::Source { window, column, .. } = *operand {
+            coordinates.insert((window, column));
+        }
+    };
+    for instr in &program.instrs {
+        match instr {
+            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                operands.iter().for_each(&mut record);
+            }
+            Instr::Fma { pairs, .. } => {
+                for (lhs, rhs) in pairs {
+                    record(lhs);
+                    record(rhs);
+                }
+            }
+            Instr::Mov { src: Some(src), .. } => record(src),
+            Instr::Mov { src: None, .. } => {}
+        }
+    }
+    coordinates
+}
+
+fn derive_source_geometry(
+    cl: &CompiledLayer,
+    resolve_column: &dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
+) -> Result<SourceGeometry, FwdVmLowerError> {
+    let mut geometry = SourceGeometry {
+        base: [ptr::null_mut(); SOURCE_WINDOW_COUNT],
+        stride_bytes: [0; SOURCE_WINDOW_COUNT],
+        remap: BTreeMap::new(),
+        n_windows: 0,
+    };
+    let coordinates = source_coordinates(&cl.program);
+    for compiler_window in 0..cl.ctx.source_windows.len() as u8 {
+        let expect_e4 = cl
+            .ctx
+            .source_windows
+            .source_field(compiler_window)
+            .expect("dense source-window table")
+            == OperandField::Ext;
+        let mut groups = Vec::<(*mut u8, u32, Vec<(u8, usize)>)>::new();
+        for &(window, column) in coordinates
+            .iter()
+            .filter(|(window, _)| *window == compiler_window)
+        {
+            let place = cl
+                .ctx
+                .source_windows
+                .resolve_read_place(window, column)
+                .ok_or(FwdVmLowerError::UnmappedSource { window, column })?;
+            let addr = read_place_to_gkr_address(&place);
+            let resolved = resolve_column(addr).ok_or(FwdVmLowerError::UnresolvedColumn {
+                slot: window,
+                col: column as u16,
+                addr,
+            })?;
+            if resolved.is_e4 != expect_e4 {
+                return Err(FwdVmLowerError::SourceFieldMismatch {
+                    window,
+                    column,
+                    expect_e4,
+                    got_e4: resolved.is_e4,
+                });
+            }
+            if resolved.stride_bytes == 0 {
+                return Err(FwdVmLowerError::SourceColumnOffStride { window, column });
+            }
+            let offset = (resolved.ptr as usize)
+                .checked_sub(resolved.matrix_base as usize)
+                .ok_or(FwdVmLowerError::SourceColumnOffStride { window, column })?;
+            if offset % resolved.stride_bytes as usize != 0 {
+                return Err(FwdVmLowerError::SourceColumnOffStride { window, column });
+            }
+            let matrix_col = offset / resolved.stride_bytes as usize;
+            let group = if let Some(index) = groups.iter().position(|(base, stride, _)| {
+                *base == resolved.matrix_base && *stride == resolved.stride_bytes
+            }) {
+                index
+            } else {
+                groups.push((resolved.matrix_base, resolved.stride_bytes, Vec::new()));
+                groups.len() - 1
+            };
+            if groups[group]
+                .2
+                .iter()
+                .any(|(_, existing)| *existing == matrix_col)
+            {
+                return Err(FwdVmLowerError::SourceColRemapCollision { window, matrix_col });
+            }
+            groups[group].2.push((column, matrix_col));
+        }
+
+        for (matrix_base, stride, mut columns) in groups {
+            columns.sort_by_key(|(_, matrix_col)| *matrix_col);
+            let mut active = None::<(u8, usize)>;
+            for (column, matrix_col) in columns {
+                let (wire, first_matrix_col) = match active {
+                    Some((wire, first)) if matrix_col < first + SOURCE_WINDOW_COLUMNS as usize => {
+                        (wire, first)
+                    }
+                    _ => {
+                        if geometry.n_windows >= SOURCE_WINDOW_COUNT {
+                            return Err(FwdVmLowerError::SourceWindowOverflow {
+                                window: compiler_window,
+                                column,
+                            });
+                        }
+                        let wire = geometry.n_windows as u8;
+                        let byte_offset = matrix_col
+                            .checked_mul(stride as usize)
+                            .and_then(|offset| (matrix_base as usize).checked_add(offset))
+                            .ok_or(FwdVmLowerError::SourceColumnOffStride {
+                                window: compiler_window,
+                                column,
+                            })?;
+                        geometry.base[geometry.n_windows] = byte_offset as *mut u8;
+                        geometry.stride_bytes[geometry.n_windows] = stride;
+                        geometry.n_windows += 1;
+                        active = Some((wire, matrix_col));
+                        (wire, matrix_col)
+                    }
+                };
+                geometry.remap.insert(
+                    (compiler_window, column),
+                    (wire, (matrix_col - first_matrix_col) as u8),
+                );
+            }
+        }
+    }
+    Ok(geometry)
+}
+
 /// Wire-slot geometry derived from the storage resolver (module doc,
 /// "wire-slot splitting"): `base`/`stride_bytes` are indexed by WIRE slot —
 /// one wire slot per distinct `(matrix_base, stride_bytes)` group WITHIN each
 /// compile slot, allocated in first-appearance order — plus the
 /// `(compile slot, dense col)` → `(wire slot, matrix col)` renumbering.
 struct SlotGeometry {
-    base: [*mut u8; SLOT_COUNT],
-    stride_bytes: [u32; SLOT_COUNT],
+    base: [*mut u8; DST_SLOT_COUNT],
+    stride_bytes: [u32; DST_SLOT_COUNT],
     /// Wire slots allocated so far (`base`/`stride_bytes` valid for
     /// `0..n_wire_slots`, null/zero beyond).
     n_wire_slots: usize,
-    /// `remap[compile_slot][dense_col]` = `(wire slot, matrix col)` — the
-    /// rewritten `Global` encoding. Empty vec for slots without columns.
-    remap: Vec<Vec<(u8, u16)>>,
+    /// `(compile slot, dense col)` → `(wire slot, matrix col)` for the
+    /// destination columns that the final program actually materializes.
+    remap: BTreeMap<(u8, u16), (u8, u16)>,
     /// Matrix columns already claimed per wire slot (`ColRemapCollision`).
     claimed: Vec<Vec<u16>>,
 }
@@ -271,7 +438,7 @@ impl SlotGeometry {
         {
             return Ok(wire);
         }
-        if self.n_wire_slots >= SLOT_COUNT {
+        if self.n_wire_slots >= DST_SLOT_COUNT {
             return Err(FwdVmLowerError::WireSlotOverflow { slot, col });
         }
         let wire = self.n_wire_slots as u8;
@@ -289,13 +456,32 @@ fn derive_slot_geometry(
 ) -> Result<SlotGeometry, FwdVmLowerError> {
     let backings = &cl.ctx.backings;
     let mut geom = SlotGeometry {
-        base: [ptr::null_mut(); SLOT_COUNT],
-        stride_bytes: [0; SLOT_COUNT],
+        base: [ptr::null_mut(); DST_SLOT_COUNT],
+        stride_bytes: [0; DST_SLOT_COUNT],
         n_wire_slots: 0,
-        remap: vec![Vec::new(); SLOT_COUNT],
-        claimed: vec![Vec::new(); SLOT_COUNT],
+        remap: BTreeMap::new(),
+        claimed: vec![Vec::new(); DST_SLOT_COUNT],
     };
-    for slot in 0..SLOT_COUNT as u8 {
+    let dst_coordinates: BTreeSet<(u8, u16)> = cl
+        .program
+        .instrs
+        .iter()
+        .filter_map(|instr| match instr {
+            Instr::Mov {
+                dst: Some(DstLine::GlobalMaterialize { slot, col }),
+                ..
+            } => Some((*slot, *col)),
+            _ => None,
+        })
+        .collect();
+    for slot in 0..DST_SLOT_COUNT as u8 {
+        let slot_columns: Vec<u16> = dst_coordinates
+            .range((slot, 0)..=(slot, u16::MAX))
+            .map(|&(_, col)| col)
+            .collect();
+        if slot_columns.is_empty() {
+            continue;
+        }
         let Some(field) = backings.slot_field(slot) else {
             continue;
         };
@@ -304,12 +490,10 @@ fn derive_slot_geometry(
         // homogeneity per wire slot follows from the per-column field check
         // below: every group member matches THIS compile slot's field.
         let mut slot_groups: Vec<(*mut u8, u32, u8)> = Vec::new();
-        let n_cols = backings.slot_columns(slot).len();
-        for col in 0..n_cols as u16 {
-            // Total for assigned columns by construction of the reverse map.
+        for col in slot_columns {
             let place = backings
                 .slot_col_to_read_place(slot, col)
-                .expect("slot_columns index must have a reverse-map entry");
+                .ok_or(FwdVmLowerError::UnmappedGlobal { slot, col })?;
             let addr = read_place_to_gkr_address(&place);
             let resolved = resolve_column(addr).ok_or(FwdVmLowerError::UnresolvedColumn {
                 slot,
@@ -346,7 +530,7 @@ fn derive_slot_geometry(
                 return Err(FwdVmLowerError::ColRemapCollision { slot, matrix_col });
             }
             geom.claimed[wire as usize].push(matrix_col as u16);
-            geom.remap[slot as usize].push((wire, matrix_col as u16));
+            geom.remap.insert((slot, col), (wire, matrix_col as u16));
         }
     }
     Ok(geom)
@@ -354,17 +538,27 @@ fn derive_slot_geometry(
 
 fn remap_global(geom: &SlotGeometry, slot: u8, col: u16) -> Result<(u8, u16), FwdVmLowerError> {
     geom.remap
-        .get(slot as usize)
-        .and_then(|cols| cols.get(col as usize))
+        .get(&(slot, col))
         .copied()
         .ok_or(FwdVmLowerError::UnmappedGlobal { slot, col })
 }
 
-fn remap_operand(geom: &SlotGeometry, o: OperandLine) -> Result<OperandLine, FwdVmLowerError> {
+fn remap_operand(geom: &SourceGeometry, o: OperandLine) -> Result<OperandLine, FwdVmLowerError> {
     Ok(match o {
-        OperandLine::Global { slot, col } => {
-            let (slot, col) = remap_global(geom, slot, col)?;
-            OperandLine::Global { slot, col }
+        OperandLine::Source {
+            window,
+            column,
+            first_access,
+        } => {
+            let &(window, column) = geom
+                .remap
+                .get(&(window, column))
+                .ok_or(FwdVmLowerError::UnmappedSource { window, column })?;
+            OperandLine::Source {
+                window,
+                column,
+                first_access,
+            }
         }
         other => other,
     })
@@ -386,7 +580,11 @@ fn remap_dst(geom: &SlotGeometry, d: DstLine) -> Result<DstLine, FwdVmLowerError
 /// fields change, and the rewritten program goes back through the
 /// cap-guarded `encode` (`SlotOutOfRange` at `MAX_SLOTS`, `ColOutOfRange`
 /// at `MAX_COLS`), so a malformed remap cannot reach the wire.
-fn rewrite_program(cl: &CompiledLayer, geom: &SlotGeometry) -> Result<Program, FwdVmLowerError> {
+fn rewrite_program(
+    cl: &CompiledLayer,
+    source_geom: &SourceGeometry,
+    dst_geom: &SlotGeometry,
+) -> Result<Program, FwdVmLowerError> {
     let mut instrs = Vec::with_capacity(cl.program.instrs.len());
     for instr in &cl.program.instrs {
         instrs.push(match instr {
@@ -401,7 +599,7 @@ fn rewrite_program(cl: &CompiledLayer, geom: &SlotGeometry) -> Result<Program, F
                 promote: *promote,
                 operands: operands
                     .iter()
-                    .map(|o| remap_operand(geom, *o))
+                    .map(|o| remap_operand(source_geom, *o))
                     .collect::<Result<_, _>>()?,
             },
             Instr::Mul {
@@ -415,7 +613,7 @@ fn rewrite_program(cl: &CompiledLayer, geom: &SlotGeometry) -> Result<Program, F
                 negate_acc: *negate_acc,
                 operands: operands
                     .iter()
-                    .map(|o| remap_operand(geom, *o))
+                    .map(|o| remap_operand(source_geom, *o))
                     .collect::<Result<_, _>>()?,
             },
             Instr::Fma {
@@ -431,7 +629,12 @@ fn rewrite_program(cl: &CompiledLayer, geom: &SlotGeometry) -> Result<Program, F
                 promote: *promote,
                 pairs: pairs
                     .iter()
-                    .map(|(l, r)| Ok((remap_operand(geom, *l)?, remap_operand(geom, *r)?)))
+                    .map(|(l, r)| {
+                        Ok((
+                            remap_operand(source_geom, *l)?,
+                            remap_operand(source_geom, *r)?,
+                        ))
+                    })
                     .collect::<Result<_, FwdVmLowerError>>()?,
             },
             Instr::Mov {
@@ -442,8 +645,8 @@ fn rewrite_program(cl: &CompiledLayer, geom: &SlotGeometry) -> Result<Program, F
             } => Instr::Mov {
                 dir: *dir,
                 field: *field,
-                dst: dst.map(|d| remap_dst(geom, d)).transpose()?,
-                src: src.map(|s| remap_operand(geom, s)).transpose()?,
+                dst: dst.map(|d| remap_dst(dst_geom, d)).transpose()?,
+                src: src.map(|s| remap_operand(source_geom, s)).transpose()?,
             },
         });
     }
@@ -502,11 +705,14 @@ pub(crate) fn lower_layer_desc(
     let mut desc: FwdVmDesc = unsafe { core::mem::zeroed() };
 
     // ----- column geometry + program rewrite + encode. -----
-    let geom = derive_slot_geometry(cl, resolve_column)?;
-    let program = rewrite_program(cl, &geom)?;
+    let source_geom = derive_source_geometry(cl, resolve_column)?;
+    let dst_geom = derive_slot_geometry(cl, resolve_column)?;
+    let program = rewrite_program(cl, &source_geom, &dst_geom)?;
     let lanes = encode(&program).map_err(FwdVmLowerError::Encode)?;
-    desc.base = geom.base;
-    desc.stride_bytes = geom.stride_bytes;
+    desc.source_base = source_geom.base;
+    desc.source_stride_bytes = source_geom.stride_bytes;
+    desc.dst_base = dst_geom.base;
+    desc.dst_stride_bytes = dst_geom.stride_bytes;
     desc.n_instr = program.instrs.len() as u32;
     desc.program_lanes = lanes.len() as u32;
 
