@@ -544,24 +544,45 @@ mod two_field_mop_tests {
         let (sat, out) =
             run_two_field_cycle(encode_mop(MULMOD_FUNCT7, 10, 11, 12), a, b, 0, expected);
         assert!(sat, "mulmod unsatisfied for non-canonical rs1={a} rs2={b}");
-        assert_eq!(out, expected, "mulmod non-canonical output must match reduced product");
-        assert!(out < BB_P, "mulmod output must be canonical (< p), got {out}");
+        assert_eq!(
+            out, expected,
+            "mulmod non-canonical output must match reduced product"
+        );
+        assert!(
+            out < BB_P,
+            "mulmod output must be canonical (< p), got {out}"
+        );
 
         // addmod: both operands non-canonical (dividend up to ~4p).
         let expected = expected_addmod(a, b);
         let (sat, out) =
             run_two_field_cycle(encode_mop(ADDMOD_FUNCT7, 10, 11, 12), a, b, 0, expected);
         assert!(sat, "addmod unsatisfied for non-canonical rs1={a} rs2={b}");
-        assert_eq!(out, expected, "addmod non-canonical output must match reduced sum");
-        assert!(out < BB_P, "addmod output must be canonical (< p), got {out}");
+        assert_eq!(
+            out, expected,
+            "addmod non-canonical output must match reduced sum"
+        );
+        assert!(
+            out < BB_P,
+            "addmod output must be canonical (< p), got {out}"
+        );
 
         // fmamod: all three operands (including the rd_old addend) non-canonical.
         let expected = expected_fmamod(a, b, c);
         let (sat, out) =
             run_two_field_cycle(encode_mop(FMAMOD_FUNCT7, 10, 11, 12), a, b, c, expected);
-        assert!(sat, "fmamod unsatisfied for non-canonical rs1={a} rs2={b} rd_old={c}");
-        assert_eq!(out, expected, "fmamod non-canonical output must match reduced fma");
-        assert!(out < BB_P, "fmamod output must be canonical (< p), got {out}");
+        assert!(
+            sat,
+            "fmamod unsatisfied for non-canonical rs1={a} rs2={b} rd_old={c}"
+        );
+        assert_eq!(
+            out, expected,
+            "fmamod non-canonical output must match reduced fma"
+        );
+        assert!(
+            out < BB_P,
+            "fmamod output must be canonical (< p), got {out}"
+        );
 
         // submod: subtract the maximal non-canonical word from zero (0 − u32::MAX). This is the
         // worst borrow the +3p offset must absorb (the `u32::MAX < 3p` assert covers it).
@@ -569,9 +590,15 @@ mod two_field_mop_tests {
         let expected = expected_submod(rs1, rs2);
         let (sat, out) =
             run_two_field_cycle(encode_mop(SUBMOD_FUNCT7, 10, 11, 12), rs1, rs2, 0, expected);
-        assert!(sat, "submod unsatisfied for 0 − u32::MAX (max non-canonical subtrahend)");
+        assert!(
+            sat,
+            "submod unsatisfied for 0 − u32::MAX (max non-canonical subtrahend)"
+        );
         assert_eq!(out, expected, "submod(0, u32::MAX) must reduce canonically");
-        assert!(out < BB_P, "submod output must be canonical (< p), got {out}");
+        assert!(
+            out < BB_P,
+            "submod output must be canonical (< p), got {out}"
+        );
     }
 
     #[test]

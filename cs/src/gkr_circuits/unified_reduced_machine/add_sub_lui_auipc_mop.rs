@@ -62,7 +62,10 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
             F::CHAR_BITS >= 68,
             "circuit field too small for two-field mop"
         );
-        assert!(MopF::IS_MONT_REPR, "mop.rr opcodes field must be in Montgomery representation");
+        assert!(
+            MopF::IS_MONT_REPR,
+            "mop.rr opcodes field must be in Montgomery representation"
+        );
     }
 
     let modulus_low = F::from_u32_unchecked((MopF::CHARACTERISTICS_U32 as u16) as u32);

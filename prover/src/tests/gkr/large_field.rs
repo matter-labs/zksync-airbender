@@ -97,9 +97,7 @@ fn load_boundary_transcript_prefix() -> (
     let aux: CommitmentMode = {
         let src =
             std::fs::File::open("unified_circuit_proof_proth120_commitment_mod_aux_data.json")
-                .expect(
-                    "aux data — run gkr_unified_packed_commitment_basic_fibonacci first",
-                );
+                .expect("aux data — run gkr_unified_packed_commitment_basic_fibonacci first");
         serde_json::from_reader(src).expect("deserialize CommitmentMode aux data")
     };
     let CommitmentMode::MergedAndPackedMemoryAndWitness {

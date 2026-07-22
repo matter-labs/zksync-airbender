@@ -76,4 +76,3 @@ pub fn gkr_whir_handoff_seed(proof: &Proof) -> [u8; 32] {
          that records it",
     )
 }
-

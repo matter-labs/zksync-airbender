@@ -691,10 +691,10 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             
             // POINT CHECK
             let acc := 0"); // Horner accumulator starts at 0 (explicit init: the first chunk reads it)
-        // Wrap this layer's cache computations (MemoryTuple / lookups / virtual-setup) in a
-        // dedicated TOP-LEVEL function so their deep expressions (e.g. the 7-arg
-        // gkr_memrel_compress) don't pile onto the layer function's already-tight stack —
-        // buffer them now, hoist the function after the layer, call it inline.
+                            // Wrap this layer's cache computations (MemoryTuple / lookups / virtual-setup) in a
+                            // dedicated TOP-LEVEL function so their deep expressions (e.g. the 7-arg
+                            // gkr_memrel_compress) don't pile onto the layer function's already-tight stack —
+                            // buffer them now, hoist the function after the layer, call it inline.
         *YUL_BUFFER
             .get_or_init(|| std::sync::Mutex::new(None))
             .lock()
