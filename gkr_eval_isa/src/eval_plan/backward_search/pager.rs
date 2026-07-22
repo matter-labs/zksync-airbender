@@ -240,7 +240,11 @@ pub(crate) fn solve_production_paging_observed(
             plan,
         });
     }
-    if demands.iter().all(|demand| demand.width_lanes == 1) {
+    let uniform_width = demands
+        .first()
+        .map(|first| first.width_lanes)
+        .filter(|&width| width != 0 && demands.iter().all(|demand| demand.width_lanes == width));
+    if let Some(width) = uniform_width {
         observe(ProductionPagingProgress {
             solver: ProductionPagingSolver::UniformIntervals,
             current_states: 0,
@@ -253,9 +257,30 @@ pub(crate) fn solve_production_paging_observed(
                 peak_states,
             });
         };
+        let normalized;
+        let uniform_demands = if width == 1 {
+            demands
+        } else {
+            normalized = demands
+                .iter()
+                .cloned()
+                .map(|mut demand| {
+                    demand.width_lanes = 1;
+                    demand.gap_capacity_lanes /= width;
+                    demand
+                })
+                .collect::<Vec<_>>();
+            &normalized
+        };
+        let uniform = solve_uniform_exact_paging_observed(uniform_demands, &mut observe_uniform)?;
+        let plan = if width == 1 {
+            uniform
+        } else {
+            reconstruct_paging_plan(demands, &uniform.actions)?
+        };
         return Ok(ProductionPagingResult {
             solver: ProductionPagingSolver::UniformIntervals,
-            plan: solve_uniform_exact_paging_observed(demands, &mut observe_uniform)?,
+            plan,
         });
     }
     const CAPS: &[usize] = &[250_000, 500_000, 1_000_000, 2_000_000, 4_000_000];
@@ -675,6 +700,51 @@ mod tests {
                 .solver,
             ProductionPagingSolver::ResidentSets
         );
+    }
+
+    #[test]
+    fn production_pager_normalizes_uniform_ext_width() {
+        let demands = ext_stream();
+        let expected = solved(
+            &demands,
+            solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap(),
+        );
+        let actual = solve_production_paging(&demands).unwrap();
+
+        assert_eq!(actual.solver, ProductionPagingSolver::UniformIntervals);
+        assert_eq!(actual.plan.actions, expected.actions);
+        assert_eq!(actual.plan.live_lanes_after, expected.live_lanes_after);
+        assert_eq!(actual.plan.objective, expected.objective);
+        assert_eq!(actual.plan.predicted_misses, expected.predicted_misses);
+        assert_eq!(actual.plan.refused_retains, expected.refused_retains);
+    }
+
+    #[test]
+    fn normalized_uniform_ext_matches_resident_sets_with_capacity_remainders() {
+        for capacities in [
+            [0, 0, 0, 0],
+            [3, 3, 3, 0],
+            [4, 3, 4, 0],
+            [5, 7, 4, 0],
+            [8, 4, 7, 0],
+        ] {
+            let demands = stream(&[
+                (0, 4, capacities[0], 80, 12),
+                (1, 4, capacities[1], 44, 8),
+                (0, 4, capacities[2], 80, 12),
+                (1, 4, capacities[3], 44, 8),
+            ]);
+            let expected = solved(
+                &demands,
+                solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap(),
+            );
+            let actual = solve_production_paging(&demands).unwrap();
+
+            assert_eq!(actual.solver, ProductionPagingSolver::UniformIntervals);
+            assert_eq!(actual.plan.actions, expected.actions);
+            assert_eq!(actual.plan.live_lanes_after, expected.live_lanes_after);
+            assert_eq!(actual.plan.objective, expected.objective);
+        }
     }
 
     #[test]

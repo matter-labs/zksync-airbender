@@ -615,34 +615,77 @@ pub fn select_production_backward_seeds_with_progress(
             reason: "production backward problem is infeasible",
         });
     };
-    let seeds = production_order_seeds(&problem, preceding_order)?;
+    let mut seeds = production_order_seeds(&problem, preceding_order)?;
     let telemetry = TierTelemetry::default();
     progress(telemetry.progress(seeds.len(), 0));
-    let adapter = ProductionOrderAdapter {
-        canonical,
-        distilled,
-        problem: &problem,
-        trace_len,
-        seeds: &seeds,
-        telemetry: &telemetry,
-        tier_evaluations: seeds.len(),
-        evaluation_offset: 0,
-        progress,
-    };
     let mut evaluated = Vec::with_capacity(seeds.len());
     let mut improvement_ordinals = Vec::new();
     let mut best_score = None;
-    for (ordinal, genome) in seeds.iter().cloned().enumerate() {
-        let (score, evaluation) = adapter.evaluate(ordinal, &genome)?;
-        if best_score.is_some_and(|best| score < best) {
-            improvement_ordinals.push(ordinal);
+    {
+        let adapter = ProductionOrderAdapter {
+            canonical,
+            distilled,
+            problem: &problem,
+            trace_len,
+            seeds: &seeds,
+            telemetry: &telemetry,
+            tier_evaluations: seeds.len(),
+            evaluation_offset: 0,
+            progress,
+        };
+        for (ordinal, genome) in seeds.iter().cloned().enumerate() {
+            let (score, evaluation) = if ordinal == 0 {
+                adapter.evaluate_rebuilt_problem(ordinal, Ok(problem.clone()))?
+            } else {
+                adapter.evaluate(ordinal, &genome)?
+            };
+            if best_score.is_some_and(|best| score < best) {
+                improvement_ordinals.push(ordinal);
+            }
+            if best_score.is_none_or(|best| score < best) {
+                best_score = Some(score);
+            }
+            let completed = telemetry.evaluations.fetch_add(1, Ordering::Relaxed) + 1;
+            progress(telemetry.progress(adapter.tier_evaluations, completed));
+            evaluated.push((score, ordinal, genome, evaluation));
         }
-        if best_score.is_none_or(|best| score < best) {
-            best_score = Some(score);
+    }
+
+    let floor_bytes = compulsory_read_floor(&problem)?.dram_bytes()?;
+    let initial_seed_count = seeds.len();
+    // Exact-score one cheap alternative only where the existing seeds still
+    // leave avoidable reads. The exact compiler remains the authority.
+    if best_score.is_some_and(|score| score.whole_pass_dram_bytes > floor_bytes) {
+        let order = budget_aware_seed_order(&problem)?;
+        if !seeds.iter().any(|seed| seed.order == order) {
+            seeds.push(ProductionOrderGenome { order });
         }
-        let completed = telemetry.evaluations.fetch_add(1, Ordering::Relaxed) + 1;
-        progress(telemetry.progress(adapter.tier_evaluations, completed));
-        evaluated.push((score, ordinal, genome, evaluation));
+    }
+    if seeds.len() > initial_seed_count {
+        progress(telemetry.progress(seeds.len(), telemetry.evaluations.load(Ordering::Relaxed)));
+        let adapter = ProductionOrderAdapter {
+            canonical,
+            distilled,
+            problem: &problem,
+            trace_len,
+            seeds: &seeds,
+            telemetry: &telemetry,
+            tier_evaluations: seeds.len(),
+            evaluation_offset: 0,
+            progress,
+        };
+        for (ordinal, genome) in seeds.iter().cloned().enumerate().skip(initial_seed_count) {
+            let (score, evaluation) = adapter.evaluate(ordinal, &genome)?;
+            if best_score.is_some_and(|best| score < best) {
+                improvement_ordinals.push(ordinal);
+            }
+            if best_score.is_none_or(|best| score < best) {
+                best_score = Some(score);
+            }
+            let completed = telemetry.evaluations.fetch_add(1, Ordering::Relaxed) + 1;
+            progress(telemetry.progress(adapter.tier_evaluations, completed));
+            evaluated.push((score, ordinal, genome, evaluation));
+        }
     }
 
     let snapshot = telemetry.snapshot();
@@ -832,6 +875,176 @@ fn map_search_driver_error(error: SearchDriverError<BackwardSearchError>) -> Bac
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProxyValue {
+    width_lanes: usize,
+    read_cost: u128,
+    fragments: Vec<usize>,
+}
+
+/// Build one deterministic, budget-aware alternative order. Connected reuse
+/// components stay contiguous, and fragments are appended individually.
+fn budget_aware_greedy_order(
+    fragment_count: usize,
+    values: &[ProxyValue],
+    capacity_lanes: usize,
+) -> Vec<usize> {
+    if fragment_count == 0 {
+        return Vec::new();
+    }
+
+    let mut parent = (0..fragment_count).collect::<Vec<_>>();
+    fn find(parent: &mut [usize], mut item: usize) -> usize {
+        while parent[item] != item {
+            parent[item] = parent[parent[item]];
+            item = parent[item];
+        }
+        item
+    }
+    fn union(parent: &mut [usize], left: usize, right: usize) {
+        let left = find(parent, left);
+        let right = find(parent, right);
+        if left != right {
+            parent[right] = left;
+        }
+    }
+    for value in values {
+        if let Some((&first, rest)) = value.fragments.split_first() {
+            for &fragment in rest {
+                union(&mut parent, first, fragment);
+            }
+        }
+    }
+    let mut components = BTreeMap::<usize, Vec<usize>>::new();
+    for fragment in 0..fragment_count {
+        let root = find(&mut parent, fragment);
+        components.entry(root).or_default().push(fragment);
+    }
+    let mut components = components.into_values().collect::<Vec<_>>();
+    components.sort_by_key(|component| component[0]);
+
+    let mut values_by_fragment = vec![Vec::new(); fragment_count];
+    for (value_index, value) in values.iter().enumerate() {
+        for &fragment in &value.fragments {
+            values_by_fragment[fragment].push(value_index);
+        }
+    }
+
+    let mut order = Vec::with_capacity(fragment_count);
+    let mut placed = vec![false; fragment_count];
+    let mut placed_uses = vec![0; values.len()];
+    for component in components {
+        for _ in 0..component.len() {
+            let mut best = None;
+            for &fragment in &component {
+                if placed[fragment] {
+                    continue;
+                }
+                let mut candidate_uses = placed_uses.clone();
+                for &value in &values_by_fragment[fragment] {
+                    candidate_uses[value] += 1;
+                }
+                let (spill_cost, live_cost, live_width) =
+                    proxy_frontier_cost(values, &candidate_uses, capacity_lanes);
+                let key = (spill_cost, live_cost, live_width, fragment);
+                if best.as_ref().is_none_or(|(best_key, _)| key < *best_key) {
+                    best = Some((key, fragment));
+                }
+            }
+            let (_, fragment) = best.expect("an unplaced component fragment remains");
+            placed[fragment] = true;
+            for &value in &values_by_fragment[fragment] {
+                placed_uses[value] += 1;
+            }
+            order.push(fragment);
+        }
+    }
+    order
+}
+
+fn proxy_frontier_cost(
+    values: &[ProxyValue],
+    placed_uses: &[usize],
+    capacity_lanes: usize,
+) -> (u128, u128, usize) {
+    let live = values
+        .iter()
+        .zip(placed_uses)
+        .filter(|(value, placed)| **placed != 0 && **placed < value.fragments.len())
+        .collect::<Vec<_>>();
+    let live_cost = live.iter().fold(0u128, |cost, (value, _)| {
+        cost.saturating_add(value.read_cost)
+    });
+    let live_width = live.iter().fold(0usize, |width, (value, _)| {
+        width.saturating_add(value.width_lanes)
+    });
+    // A tiny 0/1 knapsack estimates the read cost that cannot remain resident
+    // across this prefix boundary. Widths and capacity are physical lanes.
+    let mut kept = vec![0u128; capacity_lanes.saturating_add(1)];
+    for (value, _) in &live {
+        if value.width_lanes > capacity_lanes {
+            continue;
+        }
+        for lanes in (value.width_lanes..=capacity_lanes).rev() {
+            kept[lanes] =
+                kept[lanes].max(kept[lanes - value.width_lanes].saturating_add(value.read_cost));
+        }
+    }
+    let retained_cost = kept.into_iter().max().unwrap_or(0);
+    (
+        live_cost.saturating_sub(retained_cost),
+        live_cost,
+        live_width,
+    )
+}
+
+/// Project the exact problem's round-weighted source costs and observed cache
+/// capacity into the cheap constructor model.
+fn budget_aware_seed_order(
+    problem: &BackwardSearchProblem,
+) -> Result<Vec<usize>, BackwardSearchError> {
+    let mut grouped = BTreeMap::new();
+    for demand in &problem.demands {
+        let fragment = problem
+            .fragment_domain
+            .binary_search(&demand.key.fragment)
+            .map_err(|_| BackwardSearchError::InvalidFragmentPermutation)?;
+        let read_cost = demand.miss_cost.dram_bytes()?;
+        let entry = grouped
+            .entry(demand.expr)
+            .or_insert_with(|| (usize::from(demand.width_lanes), read_cost, BTreeSet::new()));
+        if entry.0 != usize::from(demand.width_lanes) || entry.1 != read_cost {
+            return Err(BackwardSearchError::PagingCertificateMismatch {
+                observable: "fragment-order proxy source cost",
+            });
+        }
+        entry.2.insert(fragment);
+    }
+    let values = grouped
+        .into_values()
+        .filter_map(|(width_lanes, read_cost, fragments)| {
+            (fragments.len() > 1).then(|| ProxyValue {
+                width_lanes,
+                read_cost,
+                fragments: fragments.into_iter().collect(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut capacities = problem
+        .demands
+        .iter()
+        .filter(|demand| demand.has_next)
+        .map(|demand| usize::from(demand.gap_capacity_lanes))
+        .collect::<Vec<_>>();
+    capacities.sort_unstable();
+    let capacity_lanes = capacities.get(capacities.len() / 2).copied().unwrap_or(0);
+    Ok(budget_aware_greedy_order(
+        problem.fragment_domain.len(),
+        &values,
+        capacity_lanes,
+    ))
+}
+
 fn production_order_seeds(
     problem: &BackwardSearchProblem,
     preceding_order: Option<&[usize]>,
@@ -1001,6 +1214,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn budget_aware_greedy_keeps_expensive_pairs_out_of_foreign_spans() {
+        let values = vec![
+            ProxyValue {
+                width_lanes: 4,
+                read_cost: 100,
+                fragments: vec![0, 4],
+            },
+            ProxyValue {
+                width_lanes: 4,
+                read_cost: 100,
+                fragments: vec![1, 3],
+            },
+            ProxyValue {
+                width_lanes: 4,
+                read_cost: 1,
+                fragments: vec![0, 2],
+            },
+            ProxyValue {
+                width_lanes: 4,
+                read_cost: 1,
+                fragments: vec![1, 2],
+            },
+        ];
+
+        let order = budget_aware_greedy_order(5, &values, 4);
+
+        assert_eq!(order.len(), 5);
+        let position = |fragment| order.iter().position(|&item| item == fragment).unwrap();
+        assert_eq!(position(0).abs_diff(position(4)), 1);
+        assert_eq!(position(1).abs_diff(position(3)), 1);
+    }
+
+    #[test]
+    fn budget_aware_seed_orders_are_stable_domain_permutations() {
+        let (canonical, distilled) = shared_source_fixture();
+        let (_, problem) = build_backward_search_problem(&canonical, &distilled, 8, 4).unwrap();
+        let problem = problem.unwrap();
+
+        let order = budget_aware_seed_order(&problem).unwrap();
+
+        let expected = (0..problem.fragment_domain.len()).collect::<BTreeSet<_>>();
+        assert_eq!(order.iter().copied().collect::<BTreeSet<_>>(), expected);
+    }
+
+    #[test]
     fn production_seed_selector_evaluates_only_constructive_and_distinct_previous() {
         let selected = select_fixture_seeds(None).unwrap();
         assert_eq!(selected.telemetry.evaluations, 1);
@@ -1040,12 +1298,14 @@ mod tests {
     fn production_bypass_constructor_certifies_without_search_or_solver_calls() {
         let (canonical, distilled) = shared_source_fixture();
         let selected = construct_production_backward_bypass(&canonical, &distilled, 8, 2).unwrap();
-        assert!(selected
-            .candidate
-            .paging
-            .actions
-            .iter()
-            .all(|action| *action == PagingAction::Bypass));
+        assert!(
+            selected
+                .candidate
+                .paging
+                .actions
+                .iter()
+                .all(|action| *action == PagingAction::Bypass)
+        );
         assert_eq!(selected.telemetry, ProductionSearchTelemetry::default());
         assert_eq!(
             selected.order,
@@ -1121,7 +1381,7 @@ mod tests {
         assert_eq!(selected.telemetry.exact_solver_calls, 1);
         assert_eq!(
             selected.telemetry.solver_kinds,
-            vec![ProductionPagingSolver::ResidentSets]
+            vec![ProductionPagingSolver::UniformIntervals]
         );
         assert!(selected.telemetry.peak_dp_states > 0);
         assert_eq!(
