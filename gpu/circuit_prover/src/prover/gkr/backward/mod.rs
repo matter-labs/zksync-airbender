@@ -21,6 +21,7 @@ pub(crate) mod kernels;
 mod lookup_builders;
 mod main_layer;
 mod scheduled_execution;
+pub(crate) mod vm;
 
 // Surface every kernels item via `backward::*` to preserve the previous
 // crate-wide path for consumers that read these as `backward::X`. Direct
