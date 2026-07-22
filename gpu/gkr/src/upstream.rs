@@ -1,5 +1,5 @@
 //! Single-file audit point for items consumed from upstream crates
-//! (`cs`, `prover`, `field`, `common_constants`).
+//! (`cs`, `prover`, `field`).
 //!
 //! When bumping an upstream version, scan this file first — every type,
 //! function, and constant the crate depends on is re-exported here, so a
