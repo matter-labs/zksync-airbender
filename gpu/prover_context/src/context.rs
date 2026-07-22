@@ -176,7 +176,7 @@ impl ProverContext {
     /// would otherwise serialize on `exec_stream`. Producers on `exec_stream` hand off to
     /// `d2h_stream` via a fork event; `d2h_stream` joins back via a second event before the next
     /// exec-stream op that reads what d2h wrote or frees a pool-backed source. See
-    /// `docs/gpu_scheduling_contract.md` for the fork/join/drop ownership rules.
+    /// `gpu/docs/gpu_scheduling_contract.md` for the fork/join/drop ownership rules.
     pub fn get_d2h_stream(&self) -> &CudaStream {
         &self.d2h_stream
     }
@@ -239,7 +239,7 @@ impl ProverContext {
     ///
     /// Returns a pinned host allocation whose contents are **uninitialized**.
     /// The scheduling thread must NOT dereference the returned buffer: per the
-    /// inverted-access rule in `docs/gpu_scheduling_contract.md`, every read
+    /// inverted-access rule in `gpu/docs/gpu_scheduling_contract.md`, every read
     /// and write must come from a stream-scheduled op (host callback or
     /// `memory_copy_async`). The first stream op touching the buffer must be
     /// a write (an H2D from a callback-populated source, or a D2H of fresh

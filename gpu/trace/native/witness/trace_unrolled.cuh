@@ -10,10 +10,10 @@ using namespace ::airbender::trace::witness::trace;
 
 // The structs in this header are FFI mirrors. Their layouts and field
 // semantics are owned by the Rust side: see
-// `gpu/circuit_prover/src/witness/trace_unrolled.rs` for the local mirrors, which in
+// `gpu/trace/src/witness/trace_unrolled.rs` for the local mirrors, which in
 // turn track `riscv_transpiler::witness::{Memory,NonMemory,Unified}OpcodeTracingDataWithTimestamp`
 // and `cs::gkr_circuits::ExecutorFamilyDecoderData` (re-exported as
-// `CSExecutorFamilyDecoderData` via `gpu/circuit_prover/src/upstream.rs`).
+// `CSExecutorFamilyDecoderData` via `gpu/trace/src/upstream.rs`).
 // Document semantics there; keep `#[repr(C)]`-equivalent layouts here.
 
 namespace airbender::trace::witness::trace::unrolled {

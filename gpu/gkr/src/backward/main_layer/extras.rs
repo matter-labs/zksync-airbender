@@ -58,7 +58,7 @@ pub(crate) struct MainLayerExtrasKeepalive<B, E> {
 /// `reduction_temp`) and the orphan view Arc-clones.
 ///
 /// Operates entirely on `exec_stream`. No host blocking. Compatible
-/// with the GPU scheduling contract (`gpu/circuit_prover/docs/gpu_scheduling_contract.md`).
+/// with the GPU scheduling contract (`gpu/docs/gpu_scheduling_contract.md`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_main_layer_extras_eval<E>(
     layer_idx: usize,

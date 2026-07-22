@@ -1,6 +1,6 @@
 //! Device-resident proof image — single `u8` slab layout.
 //!
-//! See `docs/gpu_scheduling_contract.md`. Every proof field produced on device
+//! See `gpu/docs/gpu_scheduling_contract.md`. Every proof field produced on device
 //! lands in one contiguous device allocation (the proof slab); one terminal
 //! D2H copies the slab to pinned host memory; a single host parse over the
 //! slab emits the final `GKRProof`.

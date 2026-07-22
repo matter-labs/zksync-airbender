@@ -52,7 +52,7 @@ edge cases, and wiring behind each rule.
 
 ## Streams
 
-The prover maintains three streams:
+`ProverContext` (`gpu/prover_context/src/context.rs`) owns four streams:
 
 - **exec stream** (`exec_stream`): the single reference stream for all GPU work.
   Kernel launches, pool allocations, pool frees, and host callbacks are all
@@ -69,10 +69,16 @@ The prover maintains three streams:
   exec-stream compute. Ownership is transferred to `d2h_stream` via a fork event
   and returned to `exec_stream` via a join event — see *D2H copies* below.
 
+- **Side stream** (`side_stream`, `get_side_stream()`): an auxiliary compute
+  stream used to overlap independent kernel work (not a copy direction like
+  the two streams above) with exec_stream. Currently its only consumer is
+  `gpu_trace`'s trace holder, for parallel trace commit — see *Side stream*
+  below.
+
 **Rule for auxiliary streams**: any operation on an auxiliary stream
-(h2d_stream or d2h_stream) must be explicitly ordered with respect to
-exec_stream using CUDA events. The driver gives independent streams no
-implicit ordering guarantees.
+(h2d_stream, d2h_stream, or side_stream) must be explicitly ordered with
+respect to exec_stream using CUDA events. The driver gives independent
+streams no implicit ordering guarantees.
 
 ## Memory lifetime
 
@@ -289,6 +295,47 @@ after its last `record` / `wait_event` call — no explicit keepalive is needed.
 their last scheduled op on any stream. Handles stored in execution keepalive
 structs automatically satisfy this because those structs outlive the
 final join.
+
+## Side stream
+
+`side_stream` (`ProverContext::get_side_stream()`) is the fourth stream. Unlike
+`h2d_stream`/`d2h_stream`, it is not dedicated to one copy direction: it carries
+general compute kernels in parallel with the same kind of kernels on
+exec_stream. Its only current consumer is `gpu_trace`'s trace holder
+(`commit_trace_from_ntt_single_tree` in `gpu/trace/src/trace/holder/mod.rs`),
+for parallel trace commit — ping-ponging LDE, leaf-transform, and leaf-commit
+kernels across coset-index chunks between `exec_stream` and `side_stream` to
+overlap the two streams' compute.
+
+The same fork/join/write-exclusivity/drop discipline as the aux streams above
+applies, adapted to a compute (not copy) workload:
+
+```text
+exec_stream:  record E_start                     ("first chunk's inputs are ready")
+side_stream:  wait_event(E_start)                 ("don't start before exec_stream is ready")
+exec_stream:  chunk 0, 2, 4, … : LDE / leaf-transform / leaf-commit kernels
+side_stream:  chunk 1, 3, 5, … : LDE / leaf-transform / leaf-commit kernels
+side_stream:  record E_done                       ("side_stream's chunks are committed")
+exec_stream:  wait_event(E_done)                  ("don't build Merkle-tree nodes yet")
+exec_stream:  build_merkle_tree_nodes(...)         (exec_stream-only; reads every chunk)
+```
+
+- **Fork**: a single event recorded on exec_stream before the chunked
+  ping-pong loop; `side_stream` waits on it before its first chunk (mirrors the
+  H2D fork above, generalized from "before a copy" to "before a kernel").
+- **Join**: a single event recorded on `side_stream` after its last chunk;
+  `exec_stream` waits on it before the exec_stream-only Merkle-tree node build
+  that follows (mirrors the D2H join above).
+- **Write-exclusivity**: each stream's kernels write a disjoint coset-index
+  range of the shared trace/leaf buffers (the per-chunk offset is computed
+  from the chunk's coset-index base), so the two streams never write the same
+  bytes inside the fork/join window — the partitioning itself is what
+  satisfies write-exclusivity here, rather than a read/write split.
+- **Drop on exec_stream**: any pool-backed scratch allocated for the call
+  (`context.alloc` from the stream-ordered pool) is a local handle that drops
+  when the function returns, which is only after the join wait above has
+  already been scheduled on exec_stream — same drop-after-join-scheduled
+  discipline as the aux streams.
 
 ## H2D keepalive callbacks
 

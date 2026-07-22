@@ -7,7 +7,7 @@
 //! `pack_source_u16(first_access, slot_idx, poly_idx)` against the resulting
 //! tables.
 //!
-//! GPU scheduling contract: see docs/gpu_scheduling_contract.md. Builders run
+//! GPU scheduling contract: see gpu/docs/gpu_scheduling_contract.md. Builders run
 //! on the scheduling thread, only read from `GpuGKRStorage` (no allocation,
 //! no kernel launches), and emit a fully-baked descriptor that the launcher
 //! ships to the device on `exec_stream`.
