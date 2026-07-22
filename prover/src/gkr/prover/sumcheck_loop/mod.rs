@@ -430,7 +430,7 @@ where
 
         if !extra_evaluations_from_caching_relations.is_empty() {
             // extend them to transcript seed
-            transcript_input.extend(extra_evaluations_from_caching_relations.values().copied());
+            transcript_inputs.extend(extra_evaluations_from_caching_relations.values().copied());
         }
 
         // after all claims for the next layer are ready - draw the next batching challenge
