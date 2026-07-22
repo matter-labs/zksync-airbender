@@ -70,7 +70,9 @@ struct bwd_vm_special {
 struct bwd_vm_desc {
   e4 arg_derived_e4[BWD_VM_ARG_DERIVED_E4_CAP];
   const e4 *round_challenges;
+  // Production factored-eq low table; high tables remain in ab_gkr_eq_high.
   const e4 *eq_low;
+  // Two contiguous logical_rows halves: q0/T0 first, q2/T2 second.
   e4 *contributions;
   bwd_vm_source_window source_windows[BWD_VM_SOURCE_WINDOW_CAP];
   gkr_eq_sizes eq_sizes;

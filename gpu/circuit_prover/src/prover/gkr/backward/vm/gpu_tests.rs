@@ -1,22 +1,43 @@
+use std::collections::{HashMap, HashSet};
 use std::mem::size_of;
 use std::ptr;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 use era_cudart::memory::memory_copy_async;
-use gkr_eval_isa::bwd::interp::{role_combine, sumcheck_fold_point, Role};
+use era_cudart::slice::DeviceSlice;
+use gkr_eval_isa::bwd::distill::{bind, BwdBindings};
+use gkr_eval_isa::bwd::interp::{interpret_bwd_row, role_combine, sumcheck_fold_point, Role};
+use gkr_eval_isa::bwd::source::MaterializationPolicy;
 use gkr_eval_isa::fwd::encode::encode;
 use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program, Sign};
+use rayon::prelude::*;
 
+use super::compile::{load_add_sub_l0_case, AddSubBwdVmCase};
 use super::desc::{
     BwdVmDesc, BwdVmSourceWindow, BWD_VM_ORIGIN_FIELD_BASE, BWD_VM_ORIGIN_FIELD_EXT,
     BWD_VM_PROGRAM_CAP,
 };
+use super::lower::{lower_bwd_vm, BwdVmRoundBinding, ResolvedBwdSourceWindow};
 use super::{launch_bwd_vm_release, launch_bwd_vm_validate, BWD_VM_ERR_SOURCE_OOB};
 use crate::allocator::tracker::AllocationPlacement;
+use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::primitives::context::DeviceAllocation;
+use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::field::{BF, E4};
+use crate::prover::gkr::backward::{
+    get_eq_high_constant_device_ptr, launch_build_eq_high_and_low_groups_from_point, make_eq_sizes,
+    GKR_EQ_GROUP_SIZE, GKR_EQ_GROUP_TABLE_LEN,
+};
+use crate::prover::gkr::forward::bench_interp::fixture::CircuitFixture;
+use crate::prover::gkr::forward::vm::lower::read_place_to_gkr_address;
 use crate::prover::test_utils::make_test_context;
 use crate::prover::ProverContext;
-use crate::upstream::{Field, FieldExtension, PrimeField};
+use crate::upstream::{Field, FieldExtension, PrimeField, Seed, TIMESTAMP_COLUMNS_NUM_BITS};
+use cs::gkr_compiler::dag_ir::{
+    BwdRegime, ChallengeRef, ChallengeResolver, LookupResolver, LookupValueKind, ReadPlace,
+    ReadResolver, Resolvers, SourceKind, VirtualSetupKind, VirtualSetupResolver,
+};
 
 const BWD_VM_ERR_DESC_BOUNDS: u32 = 8192;
 const BWD_VM_ERR_PROGRAM_OOB: u32 = 16384;
@@ -619,4 +640,618 @@ fn bwd_vm_synthetic_source_parity() {
         malformed.error, BWD_VM_ERR_SOURCE_OOB,
         "malformed source count must fail closed with the exact validation bit"
     );
+}
+
+enum R0HostColumn {
+    Base(Vec<BF>),
+    Ext(Vec<E4>),
+}
+
+struct R0OracleResolvers {
+    columns: HashMap<ReadPlace, R0HostColumn>,
+    challenges: HashMap<ChallengeRef, E4>,
+}
+
+impl ReadResolver for R0OracleResolvers {
+    fn read(&self, place: &ReadPlace, row: usize) -> E4 {
+        match self
+            .columns
+            .get(place)
+            .unwrap_or_else(|| panic!("R0 oracle missing snapshotted column {place:?}"))
+        {
+            R0HostColumn::Base(values) => <E4 as FieldExtension<BF>>::from_base(values[row]),
+            R0HostColumn::Ext(values) => values[row],
+        }
+    }
+}
+
+impl LookupResolver for R0OracleResolvers {
+    fn lookup(
+        &self,
+        kind: &LookupValueKind,
+        set_index: usize,
+        _evaluated_query: E4,
+        row: usize,
+    ) -> BF {
+        panic!("R0 scalar recipe unexpectedly read lookup {kind:?} set {set_index} row {row}")
+    }
+}
+
+impl VirtualSetupResolver for R0OracleResolvers {
+    fn virtual_setup(&self, kind: &VirtualSetupKind, row: usize) -> BF {
+        let value = match kind {
+            VirtualSetupKind::RangeCheck16Bits => (row < (1 << 16)).then_some(row as u32),
+            VirtualSetupKind::RangeCheckTimestamp => {
+                (row < (1usize << TIMESTAMP_COLUMNS_NUM_BITS)).then_some(row as u32)
+            }
+            VirtualSetupKind::InitsAndTeardownsLow => Some(((row << 2) & 0xffff) as u32),
+            VirtualSetupKind::InitsAndTeardownsHigh => Some((row >> 14) as u32),
+        };
+        value.map_or(Field::ZERO, BF::from_u32_unchecked)
+    }
+}
+
+impl ChallengeResolver for R0OracleResolvers {
+    fn challenge(&self, reference: &ChallengeRef) -> E4 {
+        *self
+            .challenges
+            .get(reference)
+            .unwrap_or_else(|| panic!("R0 oracle missing challenge {reference:?}"))
+    }
+}
+
+fn r0_source_coordinates(case: &AddSubBwdVmCase) -> Vec<(u8, u8, ReadPlace)> {
+    let mut out = Vec::new();
+    for (window_index, window) in case
+        .compiled
+        .compiled
+        .source_windows
+        .windows()
+        .iter()
+        .enumerate()
+    {
+        for absolute_column in window.referenced_columns() {
+            let logical_column = u8::try_from(absolute_column - window.first_column)
+                .expect("R0 source column must fit the wire encoding");
+            let logical_window =
+                u8::try_from(window_index).expect("R0 source window must fit the wire encoding");
+            let place = case
+                .compiled
+                .compiled
+                .source_windows
+                .resolve_read_place(logical_window, logical_column)
+                .expect("referenced R0 source must reverse to a ReadPlace");
+            out.push((logical_window, logical_column, place));
+        }
+    }
+    out
+}
+
+fn snapshot_r0_columns(
+    fixture: &CircuitFixture,
+    cases: &[AddSubBwdVmCase],
+) -> HashMap<ReadPlace, R0HostColumn> {
+    let places = cases
+        .iter()
+        .flat_map(r0_source_coordinates)
+        .map(|(_, _, place)| place)
+        .collect::<HashSet<_>>();
+    let mut columns = HashMap::with_capacity(places.len());
+    for place in places {
+        let address = read_place_to_gkr_address(&place);
+        let resolved = fixture
+            .resolved_storage_column(address)
+            .unwrap_or_else(|| panic!("R0 source {place:?}/{address:?} is not resident"));
+        let column = if resolved.is_e4 {
+            let mut host = vec![E4::ZERO; fixture.trace_len];
+            // SAFETY: `resolved.ptr` is the start of a fixture-owned E4 column
+            // with exactly `trace_len` live elements. The fixture outlives the
+            // copy and every later VM launch.
+            let device = unsafe {
+                DeviceSlice::from_raw_parts(resolved.ptr.cast::<E4>(), fixture.trace_len)
+            };
+            memory_copy_async(&mut host[..], device, fixture.context().get_exec_stream())
+                .expect("snapshot R0 E4 source");
+            fixture
+                .context()
+                .get_exec_stream()
+                .synchronize()
+                .expect("snapshot R0 E4 source sync");
+            R0HostColumn::Ext(host)
+        } else {
+            let mut host = vec![BF::ZERO; fixture.trace_len];
+            // SAFETY: same fixture-owned column invariant as the E4 branch,
+            // with the field width established by `ResolvedColumn::is_e4`.
+            let device = unsafe {
+                DeviceSlice::from_raw_parts(resolved.ptr.cast::<BF>(), fixture.trace_len)
+            };
+            memory_copy_async(&mut host[..], device, fixture.context().get_exec_stream())
+                .expect("snapshot R0 BF source");
+            fixture
+                .context()
+                .get_exec_stream()
+                .synchronize()
+                .expect("snapshot R0 BF source sync");
+            R0HostColumn::Base(host)
+        };
+        assert!(columns.insert(place, column).is_none());
+    }
+    columns
+}
+
+fn r0_oracle_resolvers(
+    fixture: &CircuitFixture,
+    cases: &[AddSubBwdVmCase],
+    columns: HashMap<ReadPlace, R0HostColumn>,
+) -> R0OracleResolvers {
+    let references = cases
+        .iter()
+        .flat_map(|case| case.distilled.layer.sources.iter())
+        .filter_map(|source| match &source.kind {
+            SourceKind::Challenge { reference } => Some(reference.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let challenges = references
+        .into_iter()
+        .map(|reference| {
+            let value = fixture.backward_challenge_value(&reference);
+            (reference, value)
+        })
+        .collect();
+    R0OracleResolvers {
+        columns,
+        challenges,
+    }
+}
+
+fn resolved_r0_sources(
+    fixture: &CircuitFixture,
+    case: &AddSubBwdVmCase,
+) -> Vec<ResolvedBwdSourceWindow> {
+    r0_source_coordinates(case)
+        .into_iter()
+        .map(|(logical_window, logical_column, place)| {
+            let read = fixture
+                .resolved_storage_column(read_place_to_gkr_address(&place))
+                .unwrap_or_else(|| panic!("R0 source binding missing {place:?}"));
+            ResolvedBwdSourceWindow {
+                logical_window,
+                logical_column,
+                read,
+                publish: None,
+                backing_depth: 0,
+                target_depth: 0,
+                materialize: false,
+            }
+        })
+        .collect()
+}
+
+fn cpu_factored_eq(point: &[E4]) -> ([Vec<E4>; 2], Vec<E4>) {
+    let group_count = point.len().div_ceil(GKR_EQ_GROUP_SIZE);
+    assert_eq!(
+        group_count, 3,
+        "add/sub R0 must use the incumbent 3-slot eq geometry"
+    );
+    let mut groups = Vec::with_capacity(group_count);
+    let mut consumed = 0usize;
+    for group in 0..group_count {
+        let group_size = (point.len() - consumed).min(GKR_EQ_GROUP_SIZE);
+        let mut table = vec![E4::ONE; 1usize << group_size];
+        for (local, value) in table.iter_mut().enumerate() {
+            for bit in 0..group_size {
+                let is_one = ((local >> (group_size - 1 - bit)) & 1) != 0;
+                let factor = if is_one {
+                    point[consumed + bit]
+                } else {
+                    let mut one_minus = E4::ONE;
+                    one_minus.sub_assign(&point[consumed + bit]);
+                    one_minus
+                };
+                value.mul_assign(&factor);
+            }
+        }
+        groups.push(table);
+        consumed += group_size;
+        assert_eq!(group + 1 == group_count, consumed == point.len());
+    }
+    let low = groups.pop().expect("low eq group");
+    let high1 = groups.pop().expect("second high eq group");
+    let high0 = groups.pop().expect("first high eq group");
+    ([high0, high1], low)
+}
+
+fn factored_eq_at(
+    row: usize,
+    high: &[Vec<E4>; 2],
+    low: &[E4],
+    sizes: &crate::prover::gkr::backward::GkrEqSizes,
+) -> E4 {
+    let shift1 = sizes.low as usize;
+    let shift0 = shift1 + sizes.high[1] as usize;
+    let hi0 = (row >> shift0) & ((1usize << sizes.high[0]) - 1);
+    let hi1 = (row >> shift1) & ((1usize << sizes.high[1]) - 1);
+    let lo = row & ((1usize << sizes.low) - 1);
+    let mut value = high[0][hi0];
+    value.mul_assign(&high[1][hi1]);
+    value.mul_assign(&low[lo]);
+    value
+}
+
+fn r0_expected_contributions(
+    case: &AddSubBwdVmCase,
+    oracle: &R0OracleResolvers,
+    bindings: &BwdBindings,
+    round_challenges: &[E4],
+    high: &[Vec<E4>; 2],
+    low: &[E4],
+    eq_sizes: &crate::prover::gkr::backward::GkrEqSizes,
+) -> Vec<E4> {
+    const ROWS_PER_PROGRESS: usize = 1 << 20;
+    let rows = case.trace_len / 2;
+    let mut expected = vec![E4::ZERO; 2 * rows];
+    let (q0, q2) = expected.split_at_mut(rows);
+    let completed = AtomicUsize::new(0);
+    let started = Instant::now();
+    q0.par_chunks_mut(ROWS_PER_PROGRESS)
+        .zip(q2.par_chunks_mut(ROWS_PER_PROGRESS))
+        .enumerate()
+        .for_each(|(chunk, (q0_chunk, q2_chunk))| {
+            for offset in 0..q0_chunk.len() {
+                let row = chunk * ROWS_PER_PROGRESS + offset;
+                let resolvers = Resolvers {
+                    read: oracle,
+                    lookup: oracle,
+                    virtual_setup: oracle,
+                    challenge: oracle,
+                };
+                let eq = factored_eq_at(row, high, low, eq_sizes);
+                let mut t0 = interpret_bwd_row(
+                    &case.compiled.compiled,
+                    &case.distilled,
+                    bindings,
+                    &resolvers,
+                    Role::T0,
+                    row,
+                    round_challenges,
+                )
+                .unwrap_or_else(|error| {
+                    panic!("c{} R0 row {row} T0: {error:?}", case.budget_cells)
+                });
+                let mut t2 = interpret_bwd_row(
+                    &case.compiled.compiled,
+                    &case.distilled,
+                    bindings,
+                    &resolvers,
+                    Role::T2,
+                    row,
+                    round_challenges,
+                )
+                .unwrap_or_else(|error| {
+                    panic!("c{} R0 row {row} T2: {error:?}", case.budget_cells)
+                });
+                t0.mul_assign(&eq);
+                t2.mul_assign(&eq);
+                q0_chunk[offset] = t0;
+                q2_chunk[offset] = t2;
+            }
+            let done = completed.fetch_add(q0_chunk.len(), Ordering::Relaxed) + q0_chunk.len();
+            eprintln!(
+                "[bwd-vm-r0] c{} oracle rows {done}/{rows} elapsed={:.2}s",
+                case.budget_cells,
+                started.elapsed().as_secs_f64()
+            );
+        });
+    expected
+}
+
+fn sum_half(values: &[E4]) -> E4 {
+    values.iter().copied().fold(E4::ZERO, |mut sum, value| {
+        sum.add_assign(&value);
+        sum
+    })
+}
+
+fn assert_recovery_and_production_coefficients(
+    budget_cells: usize,
+    q0: E4,
+    q2: E4,
+    z: E4,
+    context: &ProverContext,
+) {
+    let q1_oracle = e4(0x5100 + budget_cells as u32);
+    let eq_prefactor = e4(0x6100 + budget_cells as u32);
+    assert_ne!(z, E4::ZERO);
+    assert_ne!(eq_prefactor, E4::ZERO);
+
+    let mut one_minus_z = E4::ONE;
+    one_minus_z.sub_assign(&z);
+    let mut normalized_claim = one_minus_z;
+    normalized_claim.mul_assign(&q0);
+    let mut zq1 = z;
+    zq1.mul_assign(&q1_oracle);
+    normalized_claim.add_assign(&zq1);
+    let mut identity = one_minus_z;
+    identity.mul_assign(&q0);
+    identity.add_assign(&zq1);
+    assert_eq!(identity, normalized_claim, "c{budget_cells} claim identity");
+
+    let mut claim = normalized_claim;
+    claim.mul_assign(&eq_prefactor);
+    let mut recovered_q1 = claim;
+    recovered_q1.mul_assign(&eq_prefactor.inverse().expect("nonzero eq prefactor"));
+    let mut bq0 = one_minus_z;
+    bq0.mul_assign(&q0);
+    recovered_q1.sub_assign(&bq0);
+    recovered_q1.mul_assign(&z.inverse().expect("nonzero z"));
+    assert_eq!(recovered_q1, q1_oracle, "c{budget_cells} recovered q1");
+
+    let mut two_q1 = recovered_q1;
+    two_q1.double();
+    let mut recovered_c = q2;
+    recovered_c.sub_assign(&two_q1);
+    recovered_c.add_assign(&q0);
+    let mut two = E4::ONE;
+    two.add_assign(&E4::ONE);
+    recovered_c.mul_assign(&two.inverse().expect("nonzero two"));
+    let mut recovered_d = recovered_q1;
+    recovered_d.sub_assign(&q0);
+    recovered_d.sub_assign(&recovered_c);
+
+    let mut oracle_two_q1 = q1_oracle;
+    oracle_two_q1.double();
+    let mut oracle_c = q2;
+    oracle_c.sub_assign(&oracle_two_q1);
+    oracle_c.add_assign(&q0);
+    oracle_c.mul_assign(&two.inverse().expect("nonzero oracle two"));
+    let mut oracle_d = q1_oracle;
+    oracle_d.sub_assign(&q0);
+    oracle_d.sub_assign(&oracle_c);
+    assert_eq!(recovered_c, oracle_c, "c{budget_cells} recovered c");
+    assert_eq!(recovered_d, oracle_d, "c{budget_cells} recovered d");
+
+    let mut oracle_q2 = oracle_c;
+    oracle_q2.double();
+    oracle_q2.double();
+    let mut two_d = oracle_d;
+    two_d.double();
+    oracle_q2.add_assign(&two_d);
+    oracle_q2.add_assign(&q0);
+    assert_eq!(oracle_q2, q2, "c{budget_cells} recovered c/d oracle");
+
+    let cpu_coefficients = prover::gkr::sumcheck::output_univariate_monomial_form_max_quadratic::<
+        BF,
+        E4,
+    >(z, normalized_claim, q0, recovered_c);
+
+    let reduction_device = upload(&[q0, recovered_c], context);
+    let prev_coord_device = upload(&[z], context);
+    let mut seed_device = upload(&Seed::default().0[..], context);
+    let mut claim_device = upload(&[claim], context);
+    let mut eq_prefactor_device = upload(&[eq_prefactor], context);
+    let mut coefficients_device = upload(&[E4::ZERO; 4], context);
+    let mut challenge_device = upload(&[E4::ZERO], context);
+    crate::ops::gkr_ops::backward_sumcheck_round_update(
+        &reduction_device,
+        &prev_coord_device,
+        &mut seed_device,
+        &mut claim_device,
+        &mut eq_prefactor_device,
+        &mut coefficients_device,
+        &mut challenge_device,
+        context.get_exec_stream(),
+    )
+    .expect("production backward round-update launch");
+    let gpu_coefficients = download_e4(&coefficients_device, context);
+    assert_e4_bits(
+        &format!("c{budget_cells} production four coefficients"),
+        &gpu_coefficients,
+        &cpu_coefficients,
+    );
+}
+
+fn run_add_sub_r0_budget(
+    fixture: &CircuitFixture,
+    case: &AddSubBwdVmCase,
+    oracle: &R0OracleResolvers,
+    claim_point: &[E4],
+    round_challenges: &[E4],
+) {
+    let context = fixture.context();
+    let rows = case.trace_len / 2;
+    assert_eq!(rows, 1usize << claim_point[1..].len());
+    let eq_sizes = make_eq_sizes(claim_point[1..].len());
+    let (cpu_eq_high, cpu_eq_low) = cpu_factored_eq(&claim_point[1..]);
+    let bindings = bind(&case.distilled, MaterializationPolicy::LazyUpTo(0), 0);
+    eprintln!(
+        "[bwd-vm-r0] c{} phase=oracle rows={rows}",
+        case.budget_cells
+    );
+    let expected = r0_expected_contributions(
+        case,
+        oracle,
+        &bindings,
+        round_challenges,
+        &cpu_eq_high,
+        &cpu_eq_low,
+        &eq_sizes,
+    );
+
+    let claim_point_device = upload(claim_point, context);
+    let mut eq_low_device = upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], context);
+    launch_build_eq_high_and_low_groups_from_point::<E4>(
+        claim_point_device.as_ptr(),
+        1,
+        claim_point[1..].len(),
+        get_eq_high_constant_device_ptr(),
+        eq_low_device.as_mut_ptr(),
+        context,
+    )
+    .expect("build production factored eq");
+
+    let poison = e4(0x7f00 + case.budget_cells as u32);
+    let poison_values = vec![poison; 2 * rows];
+    let mut contributions_device = upload(&poison_values, context);
+    let mut error_device = upload(&[0u32], context);
+    let sources = resolved_r0_sources(fixture, case);
+    let resolve_source = |address| fixture.resolved_storage_column(address);
+    let runtime = BwdVmRoundBinding {
+        round: 0,
+        rows: rows as u32,
+        round_challenges,
+        sources: &sources,
+        resolve_source: &resolve_source,
+        eq_low: eq_low_device.as_ptr(),
+        eq_sizes,
+        contributions: contributions_device.as_mut_ptr(),
+    };
+    let setup = lower_bwd_vm(
+        &case.compiled,
+        &case.distilled,
+        &runtime,
+        &|reference| fixture.backward_challenge_value(reference),
+        &|recipe| fixture.evaluate_backward_recipe(&case.distilled.layer, recipe),
+    )
+    .unwrap_or_else(|error| panic!("lower add/sub R0 c{}: {error:?}", case.budget_cells));
+
+    setup
+        .upload_constant_banks(context)
+        .expect("upload R0 VM coefficient/derived banks before validate");
+    launch_bwd_vm_validate(
+        &setup.desc,
+        case.budget_cells as u32,
+        error_device.as_mut_ptr(),
+        ptr::null_mut(),
+        context,
+    )
+    .expect("real R0 validate launch");
+    assert_eq!(
+        download_u32(&error_device, context),
+        [0],
+        "c{} validation error",
+        case.budget_cells
+    );
+    assert_e4_bits(
+        &format!("c{} validate contributions", case.budget_cells),
+        &download_e4(&contributions_device, context),
+        &expected,
+    );
+
+    let mut first_release: Option<Vec<E4>> = None;
+    for launch in 1..=3 {
+        memory_copy_async(
+            &mut contributions_device[..],
+            &poison_values[..],
+            context.get_exec_stream(),
+        )
+        .expect("fresh contribution poison H2D");
+        setup
+            .upload_constant_banks(context)
+            .expect("upload R0 VM coefficient/derived banks before release");
+        launch_bwd_vm_release(&setup.desc, case.budget_cells as u32, context)
+            .expect("real R0 release launch");
+        let got = download_e4(&contributions_device, context);
+        assert_e4_bits(
+            &format!("c{} release {launch} contributions", case.budget_cells),
+            &got,
+            &expected,
+        );
+        if let Some(first) = &first_release {
+            assert_e4_bits(
+                &format!("c{} release {launch} determinism", case.budget_cells),
+                &got,
+                first,
+            );
+        } else {
+            first_release = Some(got);
+        }
+    }
+
+    let temp_bytes = get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, rows as i32)
+        .expect("compact two-half reduction temp size");
+    let mut reduction_temp = context
+        .alloc(temp_bytes, AllocationPlacement::Top)
+        .expect("compact two-half reduction temp");
+    let mut reduction_output = upload(&[E4::ZERO; 2], context);
+    // SAFETY: this is one temporary mutable view over the complete live temp
+    // allocation, used serially by the incumbent pair of CUB reductions.
+    let reduction_temp_slice = unsafe {
+        DeviceSlice::from_raw_parts_mut(reduction_temp.as_mut_ptr(), reduction_temp.len())
+    };
+    let q0_half = DeviceVectorChunk::new(&contributions_device, 0, rows);
+    reduce(
+        ReduceOperation::Sum,
+        reduction_temp_slice,
+        &q0_half,
+        &mut reduction_output[0],
+        context.get_exec_stream(),
+    )
+    .expect("compact q0 reduction");
+    let q2_half = DeviceVectorChunk::new(&contributions_device, rows, rows);
+    reduce(
+        ReduceOperation::Sum,
+        reduction_temp_slice,
+        &q2_half,
+        &mut reduction_output[1],
+        context.get_exec_stream(),
+    )
+    .expect("compact q2 reduction");
+    let reduced = download_e4(&reduction_output, context);
+    let expected_q0 = sum_half(&expected[..rows]);
+    let expected_q2 = sum_half(&expected[rows..]);
+    assert_e4_bits(
+        &format!("c{} compact reductions", case.budget_cells),
+        &reduced,
+        &[expected_q0, expected_q2],
+    );
+    assert_recovery_and_production_coefficients(
+        case.budget_cells,
+        reduced[0],
+        reduced[1],
+        claim_point[0],
+        context,
+    );
+    eprintln!(
+        "[bwd-vm-r0] c{} phase=complete rows={rows}",
+        case.budget_cells
+    );
+}
+
+#[test]
+#[ignore] // GPU; compile unlocked, run the exact built executable under with_gpu_lock.sh.
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_vm_add_sub_l0_r0_parity() {
+    let cases = [2usize, 5, 16].map(|budget| load_add_sub_l0_case(BwdRegime::R0, budget));
+    assert!(cases
+        .iter()
+        .all(|case| case.trace_len == cases[0].trace_len));
+    let fixture = CircuitFixture::build("add_sub_lui_auipc_mop");
+    assert_eq!(fixture.trace_len, cases[0].trace_len);
+    eprintln!(
+        "[bwd-vm-r0] phase=snapshot trace_len={} source_columns={}",
+        fixture.trace_len,
+        cases
+            .iter()
+            .flat_map(r0_source_coordinates)
+            .map(|(_, _, place)| place)
+            .collect::<HashSet<_>>()
+            .len()
+    );
+    let columns = snapshot_r0_columns(&fixture, &cases);
+    let oracle = r0_oracle_resolvers(&fixture, &cases, columns);
+    let folding_steps = fixture.trace_len.trailing_zeros() as usize;
+    let mut claim_point = Vec::with_capacity(folding_steps);
+    claim_point.push(e4(0x4100));
+    claim_point.extend((1..folding_steps).map(|index| e4(0x4200 + index as u32)));
+    assert!(claim_point.iter().all(|value| *value != E4::ZERO));
+    let round_challenges = (0..folding_steps)
+        .map(|round| e4(0x4300 + round as u32))
+        .collect::<Vec<_>>();
+    assert!(round_challenges.iter().all(|value| *value != E4::ZERO));
+
+    for case in &cases {
+        run_add_sub_r0_budget(&fixture, case, &oracle, &claim_point, &round_challenges);
+    }
 }

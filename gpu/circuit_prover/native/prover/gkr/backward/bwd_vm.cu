@@ -1,4 +1,5 @@
 #include "../eval_vm_exec.cuh"
+#include "../support/eq_inline.cuh"
 #include "bwd_vm.cuh"
 
 namespace airbender::prover::gkr {
@@ -430,6 +431,8 @@ template <bool VALIDATE> DEVICE_FORCEINLINE u32 descriptor_error(const bwd_vm_de
       desc.n_arg_derived_e4 > BWD_VM_ARG_DERIVED_E4_CAP || desc.n_const_derived_e4 > BWD_VM_CONST_DERIVED_E4_CAP ||
       desc.cell_count > budget_cells * BWD_VM_BF_PER_BUCKET)
     error |= BWD_VM_ERR_DESC_BOUNDS;
+  if (desc.contributions != nullptr && desc.eq_low == nullptr)
+    error |= BWD_VM_ERR_NULL_POINTER;
   return error;
 }
 
@@ -484,6 +487,12 @@ template <bool VALIDATE> DEVICE_FORCEINLINE void bwd_vm_body(const bwd_vm_desc &
     error |= adapter.lane_error;
   }
   error |= executor_error;
+  if (desc.contributions != nullptr && error == 0) {
+    const e4 eq = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, static_cast<u32>(logical_row));
+    const e4 contribution = e4::mul(result.acc, eq);
+    const size_t role_offset = lane >= BWD_VM_HALF_WARP_LANES ? desc.logical_rows : 0;
+    store<e4, st_modifier::cs>(desc.contributions + role_offset, contribution, logical_row);
+  }
   if constexpr (VALIDATE) {
     if (diagnostic_t0_t2 != nullptr && error == 0) {
       const size_t role_offset = lane >= BWD_VM_HALF_WARP_LANES ? desc.logical_rows : 0;

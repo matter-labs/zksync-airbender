@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ptr;
 
+use era_cudart::result::CudaResult;
 use gkr_eval_isa::bwd::distill::DistilledLayer;
 use gkr_eval_isa::bwd::fragment::MergedRecipe;
 use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
@@ -13,9 +14,11 @@ use gkr_eval_isa::fwd::isa::{
 };
 
 use crate::primitives::field::{BF, E4};
+use crate::prover::gkr::backward::flat::FLAT_CONST_MAX;
 use crate::prover::gkr::backward::GkrEqSizes;
 use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
-use crate::upstream::{ChallengeRef, GKRAddress, PrimeField};
+use crate::prover::ProverContext;
+use crate::upstream::{ChallengeRef, Field, GKRAddress, PrimeField};
 
 use super::desc::{
     BwdVmDesc, BwdVmSourceWindow, BwdVmSpecial, SpecialLoweringError, BWD_VM_ARG_DERIVED_E4_CAP,
@@ -50,6 +53,48 @@ pub(crate) struct BwdVmSetup {
     pub desc: BwdVmDesc,
     pub const_derived_e4: Vec<E4>,
     pub coefficients: Vec<E4>,
+}
+
+impl BwdVmSetup {
+    /// Upload the two host-evaluated banks consumed by the backward VM. Both
+    /// copies are enqueued on `exec_stream`, so a following validate or release
+    /// launch observes this setup without a host synchronization. Unused slots
+    /// are cleared to keep relaunches independent of the previous setup.
+    pub(crate) fn upload_constant_banks(&self, context: &ProverContext) -> CudaResult<()> {
+        assert_eq!(self.coefficients.len(), self.desc.n_coefficients as usize);
+        assert_eq!(
+            self.const_derived_e4.len(),
+            self.desc.n_const_derived_e4 as usize
+        );
+        assert!(self.coefficients.len() <= BWD_VM_COEFFICIENT_CAP);
+        assert!(self.const_derived_e4.len() <= BWD_VM_CONST_DERIVED_E4_CAP);
+
+        let coefficients: [E4; FLAT_CONST_MAX] =
+            core::array::from_fn(|index| self.coefficients.get(index).copied().unwrap_or(E4::ZERO));
+        let const_derived_e4: [E4; BWD_VM_CONST_DERIVED_E4_CAP] = core::array::from_fn(|index| {
+            self.const_derived_e4
+                .get(index)
+                .copied()
+                .unwrap_or(E4::ZERO)
+        });
+        // SAFETY: both Rust statics are stubs for the exact CUDA __constant__
+        // arrays with matching element counts/layout. Pageable sources are
+        // staged by cudaMemcpyToSymbolAsync before this function returns; the
+        // device copies remain ordered before the caller's next exec-stream
+        // launch.
+        unsafe {
+            crate::primitives::utils::memcpy_to_symbol_async(
+                &super::ab_gkr_flat_coefficients,
+                &coefficients,
+                context.get_exec_stream(),
+            )?;
+            crate::primitives::utils::memcpy_to_symbol_async(
+                &super::ab_gkr_fwd_vm_const_derived_e4,
+                &const_derived_e4,
+                context.get_exec_stream(),
+            )
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
