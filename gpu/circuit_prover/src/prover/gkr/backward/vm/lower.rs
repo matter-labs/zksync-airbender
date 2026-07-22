@@ -5,6 +5,10 @@ use era_cudart::result::CudaResult;
 use gkr_eval_isa::bwd::distill::DistilledLayer;
 use gkr_eval_isa::bwd::fragment::MergedRecipe;
 use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
+#[cfg(all(test, feature = "bench"))]
+use gkr_eval_isa::eval_plan::backward_search::{
+    problem::build_backward_search_problem, BackwardSearchError, StaticMaterialization,
+};
 use gkr_eval_isa::eval_plan::CompiledBackwardEvaluation;
 use gkr_eval_isa::fwd::encode::{decode, encode};
 use gkr_eval_isa::fwd::error::EncodeError;
@@ -19,6 +23,8 @@ use crate::prover::gkr::backward::GkrEqSizes;
 use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
 use crate::prover::ProverContext;
 use crate::upstream::{ChallengeRef, Field, GKRAddress, PrimeField};
+#[cfg(all(test, feature = "bench"))]
+use cs::gkr_compiler::dag_ir::DagLayer;
 
 use super::desc::{
     BwdVmDesc, BwdVmSourceWindow, BwdVmSpecial, SpecialLoweringError, BWD_VM_ARG_DERIVED_E4_CAP,
@@ -53,6 +59,25 @@ pub(crate) struct BwdVmSetup {
     pub desc: BwdVmDesc,
     pub const_derived_e4: Vec<E4>,
     pub coefficients: Vec<E4>,
+}
+
+/// Rebuild the static source-round projection whose certificate was checked
+/// while loading an add/sub artifact case. The projection is independent of
+/// the paging decisions in the compiled candidate; callers must still map its
+/// states and `store_for_next_round` bit literally into runtime storage.
+#[cfg(all(test, feature = "bench"))]
+pub(crate) fn artifact_static_materialization(
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    trace_len: usize,
+    budget_cells: usize,
+) -> Result<StaticMaterialization, BackwardSearchError> {
+    let (_, problem) =
+        build_backward_search_problem(canonical, distilled, trace_len, budget_cells)?;
+    let problem = problem.ok_or(BackwardSearchError::SearchDriverFailure {
+        reason: "artifact-certified backward problem is infeasible",
+    })?;
+    Ok(problem.materialization)
 }
 
 impl BwdVmSetup {
@@ -116,6 +141,10 @@ pub(crate) enum BwdVmLowerError {
         column: u8,
     },
     UnknownSourceBinding {
+        window: u8,
+        column: u8,
+    },
+    ConflictingSourceField {
         window: u8,
         column: u8,
     },
@@ -224,6 +253,13 @@ pub(crate) fn lower_bwd_vm(
     evaluate_derived: &impl Fn(&ChallengeRef) -> E4,
     evaluate_recipe: &impl Fn(&MergedRecipe) -> E4,
 ) -> Result<BwdVmSetup, BwdVmLowerError> {
+    let active_round_challenges = runtime.round as usize;
+    if runtime.round_challenges.len() < active_round_challenges {
+        return Err(BwdVmLowerError::RoundChallengesTooShort {
+            required: active_round_challenges,
+            actual: runtime.round_challenges.len(),
+        });
+    }
     let input = decode(&compiled.encoded).map_err(|_| BwdVmLowerError::InvalidInputEncoding)?;
     if input != compiled.compiled.program {
         return Err(BwdVmLowerError::InputProgramMismatch);
@@ -284,7 +320,7 @@ pub(crate) fn lower_bwd_vm(
     check_cap("cell_count", cell_count, BWD_VM_CELL_CAP)?;
     check_cap(
         "round_challenges",
-        runtime.round_challenges.len(),
+        active_round_challenges,
         u32::MAX as usize,
     )?;
 
@@ -300,7 +336,10 @@ pub(crate) fn lower_bwd_vm(
     desc.n_bf_constants = consts.len() as u32;
     desc.n_arg_derived_e4 = n_arg as u32;
     desc.n_const_derived_e4 = n_const as u32;
-    desc.n_round_challenges = runtime.round_challenges.len() as u32;
+    // This count is also the procedural Ext VirtualSetup fold depth in CUDA.
+    // The backing slice may contain later transcript challenges, but only the
+    // active prefix is semantically visible in this round.
+    desc.n_round_challenges = runtime.round.into();
     desc.logical_rows = runtime.rows;
     desc.cell_count = cell_count as u32;
 
@@ -318,14 +357,24 @@ fn check_cap(field: &'static str, actual: usize, cap: usize) -> Result<(), BwdVm
     Ok(())
 }
 
-fn source_coordinates(program: &Program) -> BTreeSet<(u8, u8)> {
-    let mut coordinates = BTreeSet::new();
-    visit_operands(program, |operand, _| {
+fn source_fields(program: &Program) -> Result<BTreeMap<(u8, u8), OperandField>, BwdVmLowerError> {
+    let mut fields = BTreeMap::new();
+    let mut conflict = None;
+    visit_operands(program, |operand, field| {
         if let OperandLine::Source { window, column, .. } = *operand {
-            coordinates.insert((window, column));
+            let coordinate = (window, column);
+            if fields
+                .insert(coordinate, field)
+                .is_some_and(|prior| prior != field)
+            {
+                conflict = Some(coordinate);
+            }
         }
     });
-    coordinates
+    if let Some((window, column)) = conflict {
+        return Err(BwdVmLowerError::ConflictingSourceField { window, column });
+    }
+    Ok(fields)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -356,7 +405,8 @@ fn lower_source_geometry(
     runtime: &BwdVmRoundBinding<'_>,
     program: &Program,
 ) -> Result<SourceGeometry, BwdVmLowerError> {
-    let coordinates = source_coordinates(program);
+    let source_fields = source_fields(program)?;
+    let coordinates = source_fields.keys().copied().collect::<BTreeSet<_>>();
     let mut bindings = BTreeMap::<(u8, u8), &ResolvedBwdSourceWindow>::new();
     for binding in runtime.sources {
         let coordinate = (binding.logical_window, binding.logical_column);
@@ -406,12 +456,11 @@ fn lower_source_geometry(
             }
         }
 
-        let expect_e4 = compiled
-            .compiled
-            .source_windows
-            .source_field(window)
-            .ok_or(BwdVmLowerError::UnmappedSource { window, column })?
-            == OperandField::Ext;
+        // A backward Ext FoldSource is evaluated as Ext even when its physical
+        // origin is a base-field matrix. The instruction operand field is the
+        // runtime backing contract; SourceWindowTable::source_field describes
+        // only that origin matrix and would reject the required lifted backing.
+        let expect_e4 = source_fields[&(window, column)] == OperandField::Ext;
         if binding.read.is_e4 != expect_e4 {
             return Err(BwdVmLowerError::SourceFieldMismatch {
                 window,
@@ -1033,16 +1082,12 @@ mod tests {
         target_depth: u8,
         materialize: bool,
     ) -> Vec<ResolvedBwdSourceWindow> {
+        let fields = source_fields(&case.compiled.compiled.program)
+            .expect("compiled source operands have one field");
         source_coordinates(&case.compiled.compiled.program)
             .into_iter()
             .map(|(window, column)| {
-                let is_e4 = case
-                    .compiled
-                    .compiled
-                    .source_windows
-                    .source_field(window)
-                    .expect("referenced window")
-                    == OperandField::Ext;
+                let is_e4 = fields[&(window, column)] == OperandField::Ext;
                 let stride = 0x1_000u32;
                 let matrix_base = 0x1000_0000usize + window as usize * 0x0100_0000;
                 let absolute = case.compiled.compiled.source_windows.windows()[window as usize]
@@ -1220,6 +1265,64 @@ mod tests {
         }
         assert_eq!(setup.desc.round_challenges, challenges.as_ptr());
         assert_eq!(setup.desc.n_round_challenges, 2);
+    }
+
+    #[test]
+    fn ext_fold_sources_bind_the_operand_field_not_the_origin_field() {
+        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
+        let sources = fake_sources(&case, 0, 0, false);
+        let fields = source_fields(&case.compiled.compiled.program)
+            .expect("compiled source operands have one field");
+        let (window, column) = fields
+            .iter()
+            .find_map(|(&coordinate, &field)| {
+                (field == OperandField::Ext
+                    && case
+                        .compiled
+                        .compiled
+                        .source_windows
+                        .source_field(coordinate.0)
+                        == Some(OperandField::Base))
+                .then_some(coordinate)
+            })
+            .expect("fixture has an Ext FoldSource over a base origin");
+        assert!(
+            sources
+                .iter()
+                .find(|source| {
+                    (source.logical_window, source.logical_column) == (window, column)
+                })
+                .expect("source binding")
+                .read
+                .is_e4
+        );
+        lower_case_at(&case, 0, &sources, &[])
+            .expect("lifted Ext backing must satisfy the operand field");
+    }
+
+    #[test]
+    fn descriptor_exposes_only_the_active_round_challenge_prefix() {
+        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
+        let challenges = (0..24).map(|round| e4(0x80 + round)).collect::<Vec<_>>();
+        let round_zero_sources = fake_sources(&case, 0, 0, false);
+        let round_zero = lower_case_at(&case, 0, &round_zero_sources, &challenges)
+            .expect("round-zero Ext descriptor");
+        assert_eq!(
+            round_zero.desc.n_round_challenges, 0,
+            "Ext VirtualSetup must fold to the active round, not every supplied challenge"
+        );
+
+        let round_two_sources = fake_sources(&case, 0, 2, false);
+        let round_two = lower_case_at(&case, 2, &round_two_sources, &challenges)
+            .expect("round-two Ext descriptor");
+        assert_eq!(round_two.desc.n_round_challenges, 2);
+        assert!(matches!(
+            lower_case_at(&case, 2, &round_two_sources, &challenges[..1]),
+            Err(BwdVmLowerError::RoundChallengesTooShort {
+                required: 2,
+                actual: 1,
+            })
+        ));
     }
 
     #[test]
