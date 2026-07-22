@@ -366,6 +366,36 @@ contract GKRVerifier {
             revert(0, 0) }
         }
 
+        // Lookup identities — the logup analogue of the permutation-identity check, mirroring the
+        // CPU verifier's `gkr_lookup_identity_failed` gate. The 10 GKR output columns are laid out
+        // in OutputType order [Perm(0,1), Lookup16Bits(2,3), LookupTimestamps(4,5),
+        // GenericLookup(6,7), InitsAndTeardowns(8,9)] as 16 boundary evals each (u128 hi-lane at
+        // `op + (col*16 + j)*16`). Each lookup argument is a (numerator, denominator) pair; its
+        // rational sum Σ_j num_j/den_j over the 16 evals must be exactly zero. Accumulate the sum
+        // as a single fraction — acc_num = acc_num·d + n·acc_den, acc_den = acc_den·d — and require
+        // acc_num == 0 with acc_den ≠ 0 (a vanishing denominator would make the sum ill-defined).
+        // `op` is the output-evals calldata base (the pointer gkr_init read the evals from).
+        function check_lookup_identities(op) {
+            let modulus := mload(P_PTR)
+            // 3 lookup pairs at columns (2,3),(4,5),(6,7) — the fixed unified-circuit output layout
+            // (2 permutation + 3 lookup + 2 inits/teardowns polys = the 10 columns above).
+            for { let lk := 0 } lt(lk, 3) { lk := add(lk, 1) } {
+                let num_base := add(op, mul(mul(add(2, mul(lk, 2)), 16), 16)) // col (2+2·lk), eval 0
+                let den_base := add(num_base, mul(16, 16))                    // col (3+2·lk), eval 0
+                let acc_num := 0
+                let acc_den := 1
+                for { let j := 0 } lt(j, 16) { j := add(j, 1) } {
+                    let n := shr(128, calldataload(add(num_base, mul(j, 16))))
+                    let d := shr(128, calldataload(add(den_base, mul(j, 16))))
+                    acc_num := addmod(mulmod(acc_num, d, modulus), mulmod(n, acc_den, modulus), modulus)
+                    acc_den := mulmod(acc_den, d, modulus)
+                }
+                // Σ num/den == 0 with a non-vanishing denominator.
+                if acc_num { revert(0, 0) }
+                if iszero(acc_den) { revert(0, 0) }
+            }
+        }
+
         function sumcheck_rounds(ptr, claim, total_rounds) -> next_ptr, next_claim, eq_scale {
             let modulus := mload(P_PTR)
             eq_scale := 1
@@ -2085,12 +2115,13 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // their stack slots free before the tail (assert/emit/return) — the legacy backend
         // does not spill, and keeping them live to the end runs the root `ptr` 1 slot too deep.
         // Gas deltas are stashed to heap (read back in the anti-DCE return), so scoping is safe.
-        let ptr, claim
+        let ptr, claim, output_evals_ptr
         {
             let alpha
             mstore(GKR_INIT_GAS_PTR(), gas())
             mstore(SEED_PTR(), 0) // SEED Transcript, FINE as long as we don't draw without absorb!
             ptr := transcript_init(0)
+            output_evals_ptr := ptr // base of the 10 GKR output columns (for the lookup-identity check)
             ptr, claim,
             alpha := gkr_init(ptr)
             mstore(GKR_INIT_GAS_PTR(), sub(mload(GKR_INIT_GAS_PTR()), gas()))
@@ -2105,6 +2136,10 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 
         // Permutation identity: read-set product == write-set product (no inversions).
         check_permutation_identity()
+
+        // Lookup identities: every logup argument's rational sum Σ num/den over the boundary
+        // evaluations must be zero (same as the CPU verifier's lookup-identity check).
+        check_lookup_identities(output_evals_ptr)
 
         // DONE: Proof empty now (own frame — see assert_proof_empty)
         assert_proof_empty(ptr)
