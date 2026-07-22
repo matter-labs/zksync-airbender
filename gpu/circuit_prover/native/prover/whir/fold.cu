@@ -9,17 +9,6 @@ using namespace ::airbender::primitives::vectorized;
 
 namespace airbender::prover::whir {
 
-EXTERN __global__ void ab_whir_fold_monomial_e4_kernel(const e4 *src, const e4 *challenge, e4 *dst, const unsigned half_len) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= half_len)
-    return;
-
-  const e4 c0 = load<e4, ld_modifier::cs>(src, 2 * gid);
-  const e4 c1 = load<e4, ld_modifier::cs>(src, 2 * gid + 1);
-  const e4 folded = e4::fma(c1, *challenge, c0);
-  store<e4, st_modifier::cs>(dst, folded, gid);
-}
-
 EXTERN __global__ void ab_whir_fold_split_half_vectorized_e4_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
                                                                     vectorized_e4_matrix_setter<st_modifier::cg> dst, const e4 *challenge,
                                                                     const unsigned half_len) {
@@ -207,11 +196,6 @@ DEVICE_FORCEINLINE void partially_evaluate_monomial_form_small_impl(vectorized_e
   dst[gid] = e4::mul(result, adjustment);
 }
 
-EXTERN __global__ void ab_partially_evaluate_monomial_form_by_val_small_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 z,
-                                                                               const unsigned log_count) {
-  partially_evaluate_monomial_form_small_impl(src, dst, z, log_count);
-}
-
 EXTERN __global__ void ab_partially_evaluate_monomial_form_by_ref_small_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 *z,
                                                                                const unsigned log_count) {
   partially_evaluate_monomial_form_small_impl(src, dst, *z, log_count);
@@ -242,11 +226,6 @@ DEVICE_FORCEINLINE void partially_evaluate_monomial_form_impl(vectorized_e4_matr
   const unsigned power = bitreverse_low_bits(gid, log_count - 5);
   const e4 adjustment = e4::pow(z_chunk_adjustment, power);
   dst[gid] = e4::mul(result, adjustment);
-}
-
-EXTERN __global__ void ab_partially_evaluate_monomial_form_by_val_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 z,
-                                                                         const e4 z_chunk_adjustment, const unsigned log_count) {
-  partially_evaluate_monomial_form_impl(src, dst, z, z_chunk_adjustment, log_count);
 }
 
 EXTERN __global__ void ab_partially_evaluate_monomial_form_by_ref_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src, e4 *dst, const e4 *z_ref,
