@@ -1582,7 +1582,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             addrs.into_iter().collect()
         };
 
-        let (fold_and_extras_code, cache_check_code, virtual_setup_calls_emit) = if is_layer_0 {
+        // Soundness (matches the prover committing new_claims ++ extra_evals in ONE shot before
+        // drawing the batching challenge): the extra cached-relation evals must be absorbed into
+        // the transcript BEFORE `draw_single_field_el`. So the per-layer code is split into a
+        // `pre_draw` piece (read + commit the extra evals) emitted before the draw and a
+        // `post_draw` piece (fold the claims for the next layer) emitted after it.
+        let (pre_draw_extra_code, post_draw_fold_code, cache_check_code, virtual_setup_calls_emit) = if is_layer_0 {
             let n_total = layer_0_layout.len();
             let n_extra = layer_0_n_extra;
             let layout_kind: Vec<usize> = layer_0_src_kind.clone();
@@ -1590,36 +1595,40 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
             let read_extras = if n_extra > 0 {
                 quote! {
-                    const EXTRA_COMMIT_BUF: usize = {
-                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #n_extra * EXT_DEGREE;
-                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                    };
-                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-                    let extra_data_words = #n_extra * EXT_DEGREE;
+                    // Append the extra cached-relation evals into `eval_buf`, right after the
+                    // `num_dedup` at-point evals, so a SINGLE commit below covers
+                    // `new_claims ++ extra` (the prover commits them together before drawing).
                     {
                         let mut i = 0;
-                        while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                        while i < #n_extra * EXT_DEGREE {
+                            eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                             i += 1;
                         }
                     }
                     let mut extra_evals = LazyVec::<#quartic_struct, #n_extra>::new();
                     {
-                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#n_extra) };
-                        for el in slice {
-                            extra_evals.push(*el);
+                        let slice: &[#quartic_struct] =
+                            unsafe { eval_buf.data_as(#num_dedup_addrs + #n_extra) };
+                        let mut k = #num_dedup_addrs;
+                        while k < #num_dedup_addrs + #n_extra {
+                            extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                            k += 1;
                         }
                     }
-                    ts.commit(&mut extra_buf, extra_data_words);
+                    // one commit of new_claims ++ extra, then (in main body) the draw.
+                    ts.commit(&mut eval_buf, data_words + #n_extra * EXT_DEGREE);
                 }
             } else {
                 quote! {
                     let extra_evals = LazyVec::<#quartic_struct, 0usize>::new();
+                    // no extras: commit just the at-point evals, then draw.
+                    ts.commit(&mut eval_buf, data_words);
                 }
             };
 
-            let fold = quote! {
-                #read_extras
+            // `read_extras` (read the extra evals + commit them) runs BEFORE the draw; it also
+            // declares `extra_evals`, which the post-draw fold consumes (same enclosing block).
+            let post_draw_fold = quote! {
                 let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
                 state.prev_claims.clear();
                 {
@@ -1647,9 +1656,9 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 0,
             );
 
-            (fold, cache_check, virtual_setup_calls.clone())
+            (read_extras, post_draw_fold, cache_check, virtual_setup_calls.clone())
         } else {
-            let fold = if num_extra > 0 {
+            let (pre_draw, post_draw) = if num_extra > 0 {
                 let mut extra_positions: Vec<(usize, usize)> = Vec::new();
                 let mut extra_idx = 0usize;
                 for (merged_idx, addr) in target_addrs.iter().enumerate() {
@@ -1663,28 +1672,31 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
                 let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
 
-                quote! {
-                    const EXTRA_COMMIT_BUF: usize = {
-                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #num_extra * EXT_DEGREE;
-                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                    };
-                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-                    let extra_data_words = #num_extra * EXT_DEGREE;
+                // pre-draw: append the extra evals into `eval_buf` (right after the num_dedup
+                // at-point evals) and commit `new_claims ++ extra` in ONE shot (matching the
+                // prover). Declares `extra_evals`, consumed by the post-draw fold in the same block.
+                let pre_draw = quote! {
                     {
                         let mut i = 0;
-                        while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                        while i < #num_extra * EXT_DEGREE {
+                            eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                             i += 1;
                         }
                     }
                     let mut extra_evals = LazyVec::<#quartic_struct, #num_extra>::new();
                     {
-                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#num_extra) };
-                        for el in slice {
-                            extra_evals.push(*el);
+                        let slice: &[#quartic_struct] =
+                            unsafe { eval_buf.data_as(#num_dedup_addrs + #num_extra) };
+                        let mut k = #num_dedup_addrs;
+                        while k < #num_dedup_addrs + #num_extra {
+                            extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                            k += 1;
                         }
                     }
-                    ts.commit(&mut extra_buf, extra_data_words);
+                    ts.commit(&mut eval_buf, data_words + #num_extra * EXT_DEGREE);
+                };
+                // post-draw: fold the claims for the next layer (no transcript interaction).
+                let post_draw = quote! {
                     let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
                     state.prev_claims.clear();
                     {
@@ -1706,12 +1718,19 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                             merged_idx += 1;
                         }
                     }
-                }
+                };
+                (pre_draw, post_draw)
             } else {
-                quote! {
-                    fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
-                        &eval_buf, &mut state.prev_claims);
-                }
+                // No extras: commit just the at-point evals before the draw, fold after it.
+                (
+                    quote! {
+                        ts.commit(&mut eval_buf, data_words);
+                    },
+                    quote! {
+                        fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
+                            &eval_buf, &mut state.prev_claims);
+                    },
+                )
             };
 
             let cache_check = generate_cache_relation_checks::<MW, _>(
@@ -1720,7 +1739,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 config_idx,
             );
 
-            (fold, cache_check, TokenStream::new())
+            (pre_draw, post_draw, cache_check, TokenStream::new())
         };
 
         let label = &format!("GKR MAIN LAYER {config_idx}");
@@ -1755,9 +1774,15 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     verify_final_step_check::<E>(f[0],
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
-                ts.commit(&mut eval_buf, data_words);
+                // Commit the at-point evals TOGETHER with the extra cached-relation evals in a
+                // SINGLE transcript commit, BEFORE drawing the batching challenge — mirroring the
+                // prover (`commit_field_els(new_claims ++ extra_evals)` then draw). `CommitBuf`
+                // hashes `seed || data` per call, so two separate commits would diverge from the
+                // prover's one; instead the extra evals are appended into `eval_buf` and the single
+                // commit below (inside `pre_draw_extra_code`) covers `data_words + extra`.
+                #pre_draw_extra_code
                 let next_batching = draw_single_field_el(ts);
-                #fold_and_extras_code
+                #post_draw_fold_code
                 #cache_check_code
                 #virtual_setup_calls_emit
                 state.batching_challenge = next_batching;

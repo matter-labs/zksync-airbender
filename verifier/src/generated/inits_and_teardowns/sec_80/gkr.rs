@@ -3576,9 +3576,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
+            let extra_evals = LazyVec::<BabyBearExt4, 0usize>::new();
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            let extra_evals = LazyVec::<BabyBearExt4, 0usize>::new();
             let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(66usize) };
             state.prev_claims.clear();
             {
