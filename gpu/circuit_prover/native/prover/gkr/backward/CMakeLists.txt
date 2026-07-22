@@ -1,4 +1,6 @@
 target_sources(circuit_prover_native PRIVATE
+        bwd_vm.cu
+        bwd_vm.cuh
         coeff.cuh
         continuation.cuh
         dim_reducing.cu
