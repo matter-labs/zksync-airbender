@@ -169,20 +169,18 @@ contract GKRVerifier {
             // (seed = keccak(seed || w0 || w1)) THEN DRAW (seed = keccak(seed); r = top128 mod P).
             // The prior code drew straight from the absorb result (missing the draw keccak) — a
             // leftover of the old field's convention; it corrupts every round after the first.
-            mstore(add(SEED_PTR(), 64), w1)
-            mstore(add(SEED_PTR(), 32), w0)
-            let seed := keccak256(SEED_PTR(), 96) // absorb 4 coeffs
+            //
+            // canonicalize the 4 packed field lanes (mod P) before absorbing, so the transcript
+            // binds to the reduced value, not the prover's 16-byte encoding (each value has
+            // ~2^128/P ≈ 36 encodings). Re-pack keeps the [hi|lo] layout.
+            mstore(add(SEED_PTR(), 32), or(shl(128, mod(shr(128, w0), modulus)), mod(and(w0, MASK), modulus)))
+            mstore(add(SEED_PTR(), 64), or(shl(128, mod(shr(128, w1), modulus)), mod(and(w1, MASK), modulus)))
+            let seed := keccak256(SEED_PTR(), 96) // absorb 4 (canonicalized) coeffs
             mstore(SEED_PTR(), seed)
             seed := keccak256(SEED_PTR(), 32)     // draw
             mstore(SEED_PTR(), seed)
             r := mod(shr(128, seed), modulus)
         }
-
-        // alpha is the batching challenge needed right after checking outputs
-
-
-
-        // alpha is the batching challenge needed right folding point claims
 
         function transcript_init(ptr) -> next_ptr {
             // Proth120 packed-mode transcript (MergedAndPackedMemoryAndWitness), validated
@@ -249,7 +247,11 @@ contract GKRVerifier {
         // returns kept 0 — gkr_compress reads GKR_CLAIMS_PTR / GKR_BATCHING_PTR.
         function gkr_init(ptr) -> next_ptr, claim, alpha {
             let sp := SEED_PTR()
-            // absorb output evals: seed = keccak(seed || outputEvals)
+            // absorb output evals: seed = keccak(seed || outputEvals). The 2560 B are bulk-copied
+            // raw; canonicity is enforced at the use site below — the claims loop reads every one
+            // of these 160 lanes and range-checks `val < P`, so any accepted proof has canonical
+            // evals and hence a canonical absorb (cheaper than reduce-on-copy: it reuses the read
+            // the claims loop already performs).
             mstore(GKR_ABS_PTR(), mload(sp))
             calldatacopy(add(GKR_ABS_PTR(), 32), ptr, GKR_INIT_BYTES)
             let seed := keccak256(GKR_ABS_PTR(), add(32, GKR_INIT_BYTES))
@@ -288,6 +290,9 @@ contract GKRVerifier {
                 for { let j := 0 } lt(j, 16) { j := add(j, 1) } {
                     let k := add(mul(c, 16), j)
                     let val := shr(128, calldataload(add(ptr, mul(k, 16))))
+                    // reject a non-canonical lane so the bulk-absorbed output evals bind to
+                    // reduced values (see the absorb note above)
+                    if iszero(lt(val, mload(P_PTR))) { revert(0, 0) }
                     acc := add(mulmod(val, mload(add(GKR_EQ_PTR(), mul(j, 32))), mload(P_PTR)), acc)
                     prod := mulmod(prod, val, mload(P_PTR))
                 }
@@ -489,7 +494,12 @@ contract GKRVerifier {
             for { let li := 0 } lt(li, 10) { li := add(li, 1) } {
                 let word := calldataload(add(cp, mul(li, 32)))
                 let a := shr(128, word)
-                mstore(add(GKR_CLAIMS_PTR(), mul(li, 32)), add(a, mulmod(add(and(word, MASK), sub(modulus, a)), r_last, modulus)))
+                let b := and(word, MASK)
+                // this loop reads all 10 words (= 20 lanes) of the 320 B LSB-lines absorbed
+                // above, so requiring both lanes < P makes any accepted proof's absorb canonical
+                if iszero(lt(a, modulus)) { revert(0, 0) }
+                if iszero(lt(b, modulus)) { revert(0, 0) }
+                mstore(add(GKR_CLAIMS_PTR(), mul(li, 32)), add(a, mulmod(add(b, sub(modulus, a)), r_last, modulus)))
             }
             ncp := add(cp, 320)
         }
@@ -541,9 +551,11 @@ function sumcheck_circuit_layer4(ptr, claim, alpha) -> next_ptr, next_claim, nex
     if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
-            // WRITEBACK claims for next layer (12 evals)
+            // WRITEBACK claims for next layer (12 evals) + canonicity guard
                 for { let wk := 0 } lt(wk, 12) { wk := add(wk, 1) } {
-                    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
+                    let cv := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk))))
+                    if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
+                    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
@@ -615,9 +627,11 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
     if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
-            // WRITEBACK claims for next layer (18 evals)
+            // WRITEBACK claims for next layer (18 evals) + canonicity guard
                 for { let wk := 0 } lt(wk, 18) { wk := add(wk, 1) } {
-                    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
+                    let cv := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk))))
+                    if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
+                    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
@@ -692,9 +706,11 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
     if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
-            // WRITEBACK claims for next layer (26 evals)
+            // WRITEBACK claims for next layer (26 evals) + canonicity guard
                 for { let wk := 0 } lt(wk, 26) { wk := add(wk, 1) } {
-                    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
+                    let cv := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk))))
+                    if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
+                    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
@@ -797,9 +813,11 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
-            // WRITEBACK claims for next layer (74 evals)
+            // WRITEBACK claims for next layer (74 evals) + canonicity guard
                 for { let wk := 0 } lt(wk, 74) { wk := add(wk, 1) } {
-                    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
+                    let cv := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk))))
+                    if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
+                    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
                 }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
@@ -1201,6 +1219,11 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     if mod(add(claim, sub(mload(P_PTR), rhs_scaled)), mload(P_PTR)) { revert(0, 0) }
 
     
+            // canonicity guard for the base-layer claims_batch absorb: 114 at-point evals from
+            // calldata; require each < P so the absorbed transcript bytes are canonical
+                for { let wk := 0 } lt(wk, 114) { wk := add(wk, 1) } {
+                    if iszero(lt(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))), mload(P_PTR))) { revert(0, 0) }
+                }
     // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
     {

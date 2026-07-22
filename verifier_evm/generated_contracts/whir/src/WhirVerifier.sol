@@ -412,6 +412,9 @@ contract WhirVerifier {
             cp := add(cp, mul(CAP, 32))
             let ood_point := draw1()
             let ood_value := shr(128, calldataload(cp))
+            // reject a non-canonical (>= P) ood_value: it is absorbed as raw bytes below,
+            // so the transcript must bind to the reduced value
+            if iszero(lt(ood_value, P)) { revert(0, 0) }
             calldatacopy(add(SEED_PTR, 32), cp, 16)
             mstore(SEED_PTR, keccak256(SEED_PTR, 48))
             cp := add(cp, 16)
@@ -439,8 +442,14 @@ contract WhirVerifier {
             mstore(SEED_PTR, keccak256(SEED_PTR, add(32, mul(nmono, 16))))
             for { let wj := 0 } lt(wj, shr(1, nmono)) { wj := add(wj, 1) } {
                 let w := calldataload(add(cp, mul(wj, 32)))
-                mstore(add(MONO_PTR, mul(mul(wj, 2), 32)), shr(128, w))
-                mstore(add(MONO_PTR, mul(add(mul(wj, 2), 1), 32)), and(w, MASK))
+                let hi := shr(128, w)
+                let lo := and(w, MASK)
+                // reject non-canonical (>= P) monomials: they were absorbed as raw bytes above,
+                // so the transcript must bind to the reduced value
+                if iszero(lt(hi, P)) { revert(0, 0) }
+                if iszero(lt(lo, P)) { revert(0, 0) }
+                mstore(add(MONO_PTR, mul(mul(wj, 2), 32)), hi)
+                mstore(add(MONO_PTR, mul(add(mul(wj, 2), 1), 32)), lo)
             }
             cp := add(cp, mul(nmono, 16))
             cp := verify_pow(cp, pow_bits)
@@ -565,6 +574,11 @@ contract WhirVerifier {
                 let c0 := shr(128, w0)
                 let c1 := and(w0, MASK)
                 let c2 := shr(128, calldataload(add(cp, 32)))
+                // reject non-canonical (>= P) coeffs: they are absorbed as raw bytes below,
+                // so the transcript must bind to the reduced value
+                if iszero(lt(c0, P)) { revert(0, 0) }
+                if iszero(lt(c1, P)) { revert(0, 0) }
+                if iszero(lt(c2, P)) { revert(0, 0) }
                 calldatacopy(add(SEED_PTR, 32), cp, 48)
                 mstore(SEED_PTR, keccak256(SEED_PTR, 80))
                 let alpha := draw1()

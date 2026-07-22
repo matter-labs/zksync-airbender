@@ -2338,13 +2338,27 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
         // threaded claims array for the next-executed layer. The last-executed layer (i==0) has
         // no next layer. Count == previous_input_count (this layer's absorbed eval count).
         let writeback = if i > 0 {
+            // This writeback loop reads every one of the {previous_input_count} calldata lanes
+            // ([0,n) = final_step gate inputs ++ extras) that the claims_batch absorbs below, so a
+            // `< P` check here makes the absorbed transcript bytes canonical (bind to the reduced
+            // value, not the prover's 16-byte encoding) while reusing the read it already performs.
             format!("
-            // WRITEBACK claims for next layer ({previous_input_count} evals)
+            // WRITEBACK claims for next layer ({previous_input_count} evals) + canonicity guard
             \tfor {{ let wk := 0 }} lt(wk, {previous_input_count}) {{ wk := add(wk, 1) }} {{
-            \t    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))))
+            \t    let cv := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk))))
+            \t    if iszero(lt(cv, P)) {{ revert(0, 0) }}
+            \t    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
             \t}}")
         } else {
-            String::new()
+            // Base layer has no writeback, but the same guard is needed over the n0 at-point
+            // evals (mem++wit++setup) the base-layer claims_batch absorbs from calldata.
+            let n0 = layer0_group_widths.0 + layer0_group_widths.1 + layer0_group_widths.2;
+            format!("
+            // canonicity guard for the base-layer claims_batch absorb: {n0} at-point evals from
+            // calldata; require each < P so the absorbed transcript bytes are canonical
+            \tfor {{ let wk := 0 }} lt(wk, {n0}) {{ wk := add(wk, 1) }} {{
+            \t    if iszero(lt(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))), P)) {{ revert(0, 0) }}
+            \t}}")
         };
 
         // Transcript (absorb evals + draw next batching). For layers WITHOUT caches the whole
