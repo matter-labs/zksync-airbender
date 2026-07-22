@@ -20,9 +20,7 @@ field = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 riscv_transpiler = { workspace = true, features = ["jit"] }
 setups = { workspace = true }
-trace_and_split = { workspace = true }
 verifier_common = { workspace = true }
-worker = { workspace = true }
 
 gpu_core = { workspace = true }
 gpu_cub = { workspace = true }
@@ -48,7 +46,6 @@ type-map = "0.5"
 [features]
 default = ["security_80", "deterministic_pow"]
 deterministic_pow = ["prover/deterministic_pow", "gpu_hash/deterministic_pow"]
-log_gpu_mem_usage = []
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
 test_no_inline = ["field/no_inline"]
@@ -66,6 +63,6 @@ prover = { workspace = true, features = ["test-utils"] }
 env_logger = "0.11"
 itertools = "0.14"
 rand = "0.9"
-blake2s_u32 = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
+worker = { workspace = true }

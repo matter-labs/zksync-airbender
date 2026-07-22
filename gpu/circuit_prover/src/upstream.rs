@@ -1,5 +1,5 @@
 //! Single-file audit point for items consumed from upstream crates
-//! (`cs`, `prover`, `field`, `setups`, `trace_and_split`).
+//! (`cs`, `prover`, `field`, `setups`).
 //!
 //! When bumping an upstream version, scan this file first — every type,
 //! function, and constant the crate depends on is re-exported here, so a
@@ -185,18 +185,8 @@ pub(crate) use cs::utils::split_timestamp;
 // `setups` — compiled-circuit binary loading
 // -----------------------------------------------------------------------
 
-pub(crate) use setups::circuits::{
-    get_bigint_with_control_circuit_setup, get_blake2_g_function_circuit_setup,
-    get_blake2_with_compression_circuit_setup, get_keccak_special5_circuit_setup,
-};
-pub(crate) use setups::pad_bytecode_for_proving;
-pub(crate) use setups::unrolled_circuits::{
-    add_sub_lui_auipc_mop_circuit_setup, inits_and_teardowns_circuit_setup,
-    jump_branch_slt_circuit_setup, load_store_subword_only_circuit_setup,
-    load_store_word_only_circuit_setup, mul_div_unsigned_circuit_setup, shift_binary_circuit_setup,
-};
 pub(crate) use setups::{
-    inits_and_teardowns, read_binary, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
+    inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
     Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
     JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
     LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnsignedMulDivCircuit,
@@ -207,13 +197,3 @@ pub(crate) use setups::{
 // -----------------------------------------------------------------------
 
 pub(crate) use prover::definitions::FinalRegisterValue;
-
-// -----------------------------------------------------------------------
-// `trace_and_split` — Fiat-Shamir transform for permutation argument
-// -----------------------------------------------------------------------
-
-// pr-332 split the FS transform per execution kind (`fs_transform_unrolled_…`
-// vs the new `fs_transform_unified_…` with per-circuit inits-and-teardowns top
-// bits). Keep the old local name for the unrolled flow; the unified flow must
-// migrate to `fs_transform_unified_for_permutation_argument` (protocol change).
-pub(crate) use trace_and_split::fs_transform_unrolled_for_permutation_argument as fs_transform_for_permutation_argument;

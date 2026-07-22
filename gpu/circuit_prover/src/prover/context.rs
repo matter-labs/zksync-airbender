@@ -258,7 +258,7 @@ impl ProverContext {
         self.device_allocator.get_used_mem_current()
     }
 
-    #[cfg(any(test, feature = "log_gpu_mem_usage"))]
+    #[cfg(test)]
     pub fn get_used_mem_peak(&self) -> usize {
         self.device_allocator.get_used_mem_peak()
     }
@@ -280,17 +280,6 @@ impl ProverContext {
 
     pub fn reset_used_mem_peak(&self) {
         self.device_allocator.reset_used_mem_peak();
-    }
-
-    #[cfg(feature = "log_gpu_mem_usage")]
-    pub fn log_gpu_mem_usage(&self, location: &str) {
-        let used_mem_current = self.get_used_mem_current();
-        let used_mem_peak = self.get_used_mem_peak();
-        log::debug!(
-            "GPU memory usage {location} current/peak: {}/{} GB",
-            used_mem_current as f64 / ((1 << 30) as f64),
-            used_mem_peak as f64 / ((1 << 30) as f64),
-        );
     }
 
     pub fn get_device_properties(&self) -> &DeviceProperties {
