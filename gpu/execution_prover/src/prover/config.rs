@@ -6,12 +6,10 @@ use type_map::concurrent::TypeMap;
 
 use crate::precomputations::CircuitPrecomputations;
 use crate::upstream::SecurityLevel;
-use gpu_circuit_prover::prover::config::{
-    UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS,
-};
-use gpu_circuit_prover::prover::ProverContextConfig;
-use gpu_circuit_prover::witness::circuit_type::UnrolledCircuitType;
+use gpu_circuit_prover::config::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
 use gpu_core::primitives::machine_type::MachineType;
+use gpu_prover_context::ProverContextConfig;
+use gpu_trace::witness::circuit_type::UnrolledCircuitType;
 
 /// Specifies the execution mode for the prover.
 ///

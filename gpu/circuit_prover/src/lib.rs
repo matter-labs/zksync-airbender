@@ -16,26 +16,6 @@ pub(crate) mod upstream;
 
 pub use config::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
 
-// TEMPORARY split bridges — removed in Task 12.
-pub use gpu_trace::witness;
-pub mod prover {
-    pub use gpu_gkr::configure_kernel_attributes;
-    pub use gpu_prover_context::{ProverContext, ProverContextConfig};
-    pub use gpu_trace::trace;
-    pub mod gkr {
-        pub use gpu_gkr::setup;
-    }
-    pub mod config {
-        pub use crate::config::*;
-    }
-    pub mod proof {
-        pub use crate::proof::*;
-        pub mod inputs {
-            pub use crate::proof::inputs::*;
-        }
-    }
-}
-
 #[cfg(test)]
 gpu_core::force_serial_libtest!();
 #[cfg(test)]

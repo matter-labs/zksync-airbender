@@ -1,6 +1,6 @@
 use super::UnrolledUnifiedSetup;
-use gpu_circuit_prover::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 use gpu_core::primitives::field::BF;
+use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 
 use crate::upstream::{CSExecutorFamilyDecoderData, CpuGKRSetup};
 use worker::Worker;

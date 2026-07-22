@@ -1,9 +1,9 @@
-use gpu_circuit_prover::prover::gkr::setup::GpuGKRSetupHost;
-use gpu_circuit_prover::prover::ProverContext;
-use gpu_circuit_prover::witness::circuit_type::CircuitType;
-use gpu_circuit_prover::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
+use gpu_gkr::setup::GpuGKRSetupHost;
+use gpu_prover_context::ProverContext;
+use gpu_trace::witness::circuit_type::CircuitType;
+use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 
 use era_cudart::result::CudaResult;
 
