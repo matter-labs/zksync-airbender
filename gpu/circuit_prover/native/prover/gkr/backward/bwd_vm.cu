@@ -216,10 +216,9 @@ struct BwdVmPreflightAdapter {
 DEVICE_FORCEINLINE u32 preflight_error(const bwd_vm_desc &desc) {
   BwdVmPreflightAdapter adapter{desc, 0};
   const eval_vm_result result = eval_vm_execute<true, BwdVmPreflightAdapter>(adapter, desc.n_instr, desc.program_lanes);
-  u32 error = result.error;
   if (adapter.lane_error != 0)
-    error &= ~EVAL_VM_ERR_TRAILING_LANES;
-  return error | adapter.lane_error;
+    return adapter.lane_error;
+  return result.error;
 }
 
 template <bool VALIDATE> struct BwdVmAdapter {

@@ -429,6 +429,36 @@ fn truncated_second_operand_preflights_before_publication(context: &ProverContex
         &download_e4(&diagnostic_device, context),
         &[poison; 2],
     );
+
+    // The same truncation in a non-final instruction makes the shared loop
+    // attempt the next header. That consequential BAD_HEADER must normalize
+    // to the same dedicated logical-lane error without changing poison.
+    memory_copy_async(&mut error_device[..], &[0u32], context.get_exec_stream())
+        .expect("non-final truncation error reset H2D");
+    desc.n_instr = 2;
+    launch_bwd_vm_validate(
+        &desc,
+        2,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        context,
+    )
+    .expect("non-final truncated Add validate launch");
+    assert_eq!(
+        download_u32(&error_device, context),
+        [BWD_VM_ERR_PROGRAM_OOB],
+        "non-final truncation must normalize consequential header errors"
+    );
+    assert_e4_bits(
+        "non-final truncation must preserve publication poison",
+        &download_e4(&published_device, context),
+        &[poison; 4],
+    );
+    assert_e4_bits(
+        "non-final truncation must preserve diagnostic poison",
+        &download_e4(&diagnostic_device, context),
+        &[poison; 2],
+    );
 }
 
 fn release_publication_feeds_a_later_physical_use(context: &ProverContext) {
