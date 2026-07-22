@@ -250,7 +250,8 @@ pub fn schedule_forward_pass<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::ForwardKernels,
+    // `GpuKernels` (not the sealed `ForwardKernels`): see ../gpu_kernels.rs.
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::GpuKernels,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,

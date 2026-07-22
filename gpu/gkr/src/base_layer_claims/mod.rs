@@ -346,7 +346,8 @@ pub fn schedule_prepare_base_layer_claims_with_sources<E>(
 ) -> CudaResult<GpuGKRBaseLayerClaimsScheduledExecution<E>>
 where
     E: Copy
-        + BackwardKernels
+        // `GpuKernels` (not the sealed `BackwardKernels`): see ../gpu_kernels.rs.
+        + crate::GpuKernels
         + FieldExtension<BF>
         + Field
         + gpu_cub::cub::device_reduce::Reduce

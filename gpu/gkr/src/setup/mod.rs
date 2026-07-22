@@ -172,9 +172,10 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         context: &ProverContext,
     ) -> CudaResult<GpuGKRForwardSetup<E>>
     where
+        // `GpuKernels` (not the sealed `SetupKernels`): see ../gpu_kernels.rs.
         E: Field
             + FieldExtension<BF>
-            + crate::SetupKernels
+            + crate::GpuKernels
             + gpu_ops::powers::GetPowersByRef
             + 'static,
     {
@@ -200,7 +201,8 @@ pub fn schedule_forward_setup_for_shape<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardSetup<E>>
 where
-    E: Field + FieldExtension<BF> + crate::SetupKernels + gpu_ops::powers::GetPowersByRef + 'static,
+    // `GpuKernels` (not the sealed `SetupKernels`): see ../gpu_kernels.rs.
+    E: Field + FieldExtension<BF> + crate::GpuKernels + gpu_ops::powers::GetPowersByRef + 'static,
 {
     if let Some((setup_trace_holder, setup_columns_count)) = setup_trace_holder {
         assert_eq!(

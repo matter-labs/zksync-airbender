@@ -169,7 +169,8 @@ where
 
 impl<E> GpuGKRDimensionReducingBackwardState<BF, E>
 where
-    E: Field + FieldExtension<BF> + Reduce + crate::BackwardKernels + 'static,
+    // `GpuKernels` (not the sealed `BackwardKernels`): see ../gpu_kernels.rs.
+    E: Field + FieldExtension<BF> + Reduce + crate::GpuKernels + 'static,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {

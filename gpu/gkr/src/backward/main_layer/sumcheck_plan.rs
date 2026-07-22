@@ -26,7 +26,8 @@ use gpu_prover_context::ProverContext;
 
 impl<E: 'static> GpuGKRMainLayerSumcheckLayerPlan<E>
 where
-    E: Field + FieldExtension<BF> + Reduce + crate::BackwardKernels,
+    // `GpuKernels` (not the sealed `BackwardKernels`): see ../../gpu_kernels.rs.
+    E: Field + FieldExtension<BF> + Reduce + crate::GpuKernels,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {

@@ -74,7 +74,11 @@ pub(crate) fn schedule_main_layer_extras_eval<E>(
     context: &ProverContext,
 ) -> CudaResult<MainLayerExtrasKeepalive<BF, E>>
 where
-    E: crate::BackwardKernels + Field + FieldExtension<BF> + Reduce + 'static,
+    // `GpuKernels` (not the sealed `BackwardKernels`): this pub(crate) fn
+    // calls into `launch_build_eq_values_from_point`, which is bound on the
+    // umbrella (see ../gpu_kernels.rs) — the bound has to be at least that
+    // wide here too, and widening a `pub(crate)` fn's bound leaks nothing.
+    E: crate::GpuKernels + Field + FieldExtension<BF> + Reduce + 'static,
 {
     let orphan_count = orphan_addresses.len();
     assert!(

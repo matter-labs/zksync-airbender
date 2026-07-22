@@ -424,7 +424,8 @@ pub(crate) fn launch_dim_reducing_continuation_batched_compact<
         .launch(&config, &args)
 }
 
-pub fn launch_build_eq_values_from_point<E: crate::BackwardKernels>(
+// `GpuKernels` (not the sealed `BackwardKernels`): see ../../gpu_kernels.rs.
+pub fn launch_build_eq_values_from_point<E: crate::GpuKernels>(
     claim_point: *const E,
     challenge_offset: usize,
     challenge_count: usize,

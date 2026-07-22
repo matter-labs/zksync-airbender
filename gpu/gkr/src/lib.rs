@@ -14,15 +14,14 @@
 #![allow(clippy::too_many_arguments)]
 // `ForwardKernels`/`BackwardKernels`/`SetupKernels` (`{forward,backward,setup}::kernels`)
 // are deliberately sealed per-phase kernel-dispatch traits — `pub(crate)` on
-// purpose, implemented only for the concrete field types this crate wires up,
-// never named by another crate (every consumer, in or out of crate, only
-// ever infers the bound from a concrete type argument). Widening them would
-// contradict that sealing; demoting their many `pub` bound-holders
-// (`schedule_forward_pass`, the various `GpuGKR*Plan` impls, …) isn't
-// possible either — those genuinely are called from `gpu_circuit_prover`
-// production code and its e2e suites. This is the single root cause behind
-// every `private_bounds` warning in this crate.
-#![allow(private_bounds)]
+// purpose, implemented only for the concrete field types this crate wires up
+// (today, only `E4`), never named by another crate. Every pub fn/impl that
+// used to bound a generic directly on one of these sub-traits has been
+// rebound on the `GpuKernels` umbrella trait instead (equivalent today: E4 is
+// the sole implementor of all three, so `T: GpuKernels` and `T: <the specific
+// sub-trait>` admit exactly the same types); see `gpu_kernels.rs` for the one
+// remaining `private_bounds` site this can't route around (the `GpuKernels`
+// declaration's own supertrait bound) and its item-level `#[allow]`.
 
 pub mod backward;
 pub mod base_layer_claims;
